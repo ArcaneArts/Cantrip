@@ -1616,6 +1616,10 @@ export const chatRuntimeSessions = pgTable(
     modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
       onDelete: "set null",
     }),
+    providerAccountId: text("provider_account_id").references(
+      () => modelProviderAccounts.id,
+      { onDelete: "set null" },
+    ),
     status: text("status").notNull().default("detached"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1943,6 +1947,10 @@ export const chatRelocationJobs = pgTable(
     targetRuntimeThreadId: text("target_runtime_thread_id"),
     targetModelRouteId: text("target_model_route_id").references(
       () => modelRoutes.id,
+      { onDelete: "set null" },
+    ),
+    targetProviderAccountId: text("target_provider_account_id").references(
+      () => modelProviderAccounts.id,
       { onDelete: "set null" },
     ),
     attempt: integer("attempt").notNull().default(0),

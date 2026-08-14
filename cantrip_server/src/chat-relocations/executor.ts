@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import {
   chatRelocationHydrationBeginResultSchema,
   chatRelocationHydrationResultSchema,
-  codexAuthStatusSchema,
   mentionedSkillNames,
   workerAttachmentReadResultSchema,
   workerAttachmentUploadResultSchema,
@@ -31,6 +30,7 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "../workers/bridge.js";
+import { resolveChatGptAccountRuntimes } from "../models/chatgpt-account-routing.js";
 
 interface ChatRelocationLogger {
   error(context: Record<string, unknown>, message: string): void;
@@ -338,6 +338,7 @@ export class ChatRelocationJobExecutor {
       const targetRuntime = await this.#selectRuntime(
         claimed,
         claimed.job.targetPlacement.workerId,
+        prepared.source.providerAccountId,
       );
       const targetThreadId = await this.#hydrateTarget(
         claimed,
@@ -364,6 +365,7 @@ export class ChatRelocationJobExecutor {
         {
           cancellationUnsafe: true,
           targetModelRouteId: targetRuntime.routeId,
+          targetProviderAccountId: targetRuntime.provider.accountId,
           targetRuntimeThreadId: targetThreadId,
         },
       );
@@ -827,6 +829,7 @@ export class ChatRelocationJobExecutor {
   async #selectRuntime(
     claimed: ClaimedChatRelocationJob,
     workerId: string,
+    preferredAccountId: string | null,
   ): Promise<ModelRuntime> {
     const settings = await this.repository.getSettings(claimed.ownerId);
     const modelId =
@@ -853,27 +856,18 @@ export class ChatRelocationJobExecutor {
     const unavailable: string[] = [];
     for (const runtime of ordered) {
       if (runtime.provider.kind === "chatgpt") {
-        try {
-          const status = codexAuthStatusSchema.parse(
-            await this.bridge.request(workerId, {
-              type: "codex.auth.status",
-              providerId: runtime.provider.id,
-            }),
-          );
-          if (!status.authenticated || status.authMode !== "chatgpt") {
-            unavailable.push(`${runtime.provider.name} is not signed in`);
-            continue;
-          }
-          if ((status.weeklyUsage?.usedPercent ?? 0) >= 100) {
-            unavailable.push(`${runtime.provider.name} has no usage left`);
-            continue;
-          }
-        } catch (error) {
-          unavailable.push(
-            `${runtime.provider.name} authentication check failed: ${error instanceof Error ? error.message : "unknown error"}`,
-          );
-          continue;
-        }
+        const accountRouting = await resolveChatGptAccountRuntimes({
+          bridge: this.bridge,
+          logger: this.logger,
+          ownerId: claimed.ownerId,
+          preferredAccountId,
+          repository: this.repository,
+          runtime,
+          workerId,
+        });
+        unavailable.push(...accountRouting.unavailable);
+        if (accountRouting.runtimes[0]) return accountRouting.runtimes[0];
+        continue;
       }
       return runtime;
     }

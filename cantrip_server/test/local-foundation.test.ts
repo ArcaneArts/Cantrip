@@ -126,7 +126,10 @@ let turnRequests = 0;
 let compactRequests = 0;
 const turnModelIds: string[] = [];
 const turnProviderIds: string[] = [];
+const turnProviderAccountIds: Array<string | null> = [];
+const turnCredentialHomeKeys: Array<string | null> = [];
 const turnRouteIds: string[] = [];
+const turnThreadIds: Array<string | null> = [];
 const turnPermissionProfileIds: string[] = [];
 const turnPrompts: string[] = [];
 const turnSkillNames: string[][] = [];
@@ -141,6 +144,7 @@ const closedProjectShareIds: string[] = [];
 const authProviderIds: string[] = [];
 const authCredentialHomeKeys: string[] = [];
 const exhaustedProviderIds = new Set<string>();
+const authUsageByCredentialHomeKey = new Map<string, number>();
 const steeredPrompts: string[] = [];
 const steeredAttachmentIds: string[][] = [];
 const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
@@ -348,21 +352,23 @@ const workerBridge = {
         return { accepted: true };
       case "codex.auth.status":
         authProviderIds.push(command.providerId);
-        authCredentialHomeKeys.push(
-          command.credentialHomeKey ?? command.providerId,
-        );
-        return {
-          authenticated: true,
-          authMode: "chatgpt",
-          email: "test@example.com",
-          planType: "plus",
-          weeklyUsage: {
-            usedPercent: exhaustedProviderIds.has(command.providerId)
-              ? 100
-              : 37,
-            resetsAt: 1_786_665_600,
-          },
-        };
+        {
+          const credentialHomeKey =
+            command.credentialHomeKey ?? command.providerId;
+          authCredentialHomeKeys.push(credentialHomeKey);
+          return {
+            authenticated: true,
+            authMode: "chatgpt",
+            email: "test@example.com",
+            planType: "plus",
+            weeklyUsage: {
+              usedPercent:
+                authUsageByCredentialHomeKey.get(credentialHomeKey) ??
+                (exhaustedProviderIds.has(command.providerId) ? 100 : 37),
+              resetsAt: 1_786_665_600,
+            },
+          };
+        }
       case "codex.auth.login.start":
         authProviderIds.push(command.providerId);
         authCredentialHomeKeys.push(
@@ -1206,7 +1212,10 @@ const workerBridge = {
           turnRequests += 1;
           turnModelIds.push(command.model.id);
           turnProviderIds.push(command.provider.id);
+          turnProviderAccountIds.push(command.provider.accountId);
+          turnCredentialHomeKeys.push(command.provider.credentialHomeKey);
           turnRouteIds.push(command.model.routeId);
+          turnThreadIds.push(command.threadId);
           turnPermissionProfileIds.push(command.permissionProfileId);
           turnPrompts.push(command.prompt);
           turnSkillNames.push(command.skillNames);
@@ -4935,6 +4944,108 @@ describe("local server foundation", () => {
       { providerId: chatGptProvider.id, position: 0 },
       { providerId: provider.id, position: 1 },
     ]);
+
+    authUsageByCredentialHomeKey.set(chatGptProvider.id, 98);
+    authUsageByCredentialHomeKey.set(additionalAccount.id, 37);
+    const pooledChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "ChatGPT account routing" },
+        })
+      ).json(),
+    );
+    const pooledTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${pooledChat.id}/turns`,
+      payload: {
+        text: "Use the account with healthy weekly usage.",
+        idempotencyKey: "pooled-account-turn",
+        modelId: routedModel.id,
+      },
+    });
+    expect(pooledTurn.statusCode).toBe(202);
+    await vi.waitFor(() =>
+      expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
+    );
+    expect(turnCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            pooledChat.id,
+          )
+        )?.status,
+      ).toBe("idle");
+    });
+    expect(
+      await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        pooledChat.id,
+      ),
+    ).toMatchObject({ providerAccountId: additionalAccount.id });
+
+    const stickyTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${pooledChat.id}/turns`,
+      payload: {
+        text: "Continue on the current account.",
+        idempotencyKey: "pooled-account-sticky-turn",
+        modelId: routedModel.id,
+      },
+    });
+    expect(stickyTurn.statusCode).toBe(202);
+    await vi.waitFor(() =>
+      expect(turnProviderAccountIds.at(-1)).toBe(additionalAccount.id),
+    );
+    expect(turnThreadIds.at(-1)).toBe("codex-thread-1");
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            pooledChat.id,
+          )
+        )?.status,
+      ).toBe("idle");
+    });
+
+    authUsageByCredentialHomeKey.set(chatGptProvider.id, 50);
+    authUsageByCredentialHomeKey.set(additionalAccount.id, 98);
+    const switchedTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${pooledChat.id}/turns`,
+      payload: {
+        text: "Move past the account below reserve.",
+        idempotencyKey: "pooled-account-switch-turn",
+        modelId: routedModel.id,
+      },
+    });
+    expect(switchedTurn.statusCode).toBe(202);
+    await vi.waitFor(() =>
+      expect(turnProviderAccountIds.at(-1)).toBe(
+        chatGptProvider.accounts[0]!.id,
+      ),
+    );
+    expect(turnCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
+    expect(turnThreadIds.at(-1)).toBeNull();
+    expect(turnPrompts.at(-1)).toContain(
+      "Continue this existing Cantrip conversation. The server-owned history follows:",
+    );
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            pooledChat.id,
+          )
+        )?.status,
+      ).toBe("idle");
+    });
+    authUsageByCredentialHomeKey.clear();
+
     exhaustedProviderIds.add(chatGptProvider.id);
     const routedChat = chatSummarySchema.parse(
       (

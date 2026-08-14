@@ -1,0 +1,4 @@
+ALTER TABLE "chat_relocation_jobs" ADD COLUMN "target_provider_account_id" text;--> statement-breakpoint
+ALTER TABLE "chat_runtime_sessions" ADD COLUMN "provider_account_id" text;--> statement-breakpoint
+ALTER TABLE "chat_relocation_jobs" ADD CONSTRAINT "chat_relocation_jobs_target_provider_account_id_model_provider_accounts_id_fk" FOREIGN KEY ("target_provider_account_id") REFERENCES "public"."model_provider_accounts"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "chat_runtime_sessions" ADD CONSTRAINT "chat_runtime_sessions_provider_account_id_model_provider_accounts_id_fk" FOREIGN KEY ("provider_account_id") REFERENCES "public"."model_provider_accounts"("id") ON DELETE set null ON UPDATE no action;

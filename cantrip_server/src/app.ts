@@ -557,6 +557,7 @@ import {
 } from "./direct-attachments/coordinator.js";
 import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
+import { resolveChatGptAccountRuntimes } from "./models/chatgpt-account-routing.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -2509,6 +2510,10 @@ export async function buildApp({
   const pendingQueueDispatches = new Set<string>();
   const progressingWorktreeTransitions = new Set<string>();
   const routeCooldowns = new Map<string, number>();
+  const runtimeCooldownKey = (runtime: ModelRuntime): string =>
+    runtime.provider.kind === "chatgpt" && runtime.provider.accountId
+      ? `${runtime.routeId}:account:${runtime.provider.accountId}`
+      : runtime.routeId;
   const surfaceAttachmentCounts = new Map<string, number>();
   const workerOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const workerPresenceFingerprints = new Map<string, string>();
@@ -4475,7 +4480,7 @@ export async function buildApp({
   };
 
   const availableModelRuntimes = async (
-    context: { workerId: string },
+    context: { providerAccountId?: string | null; workerId: string },
     modelId: string,
   ): Promise<ModelRuntime[]> => {
     const runtimes = await repository.getModelRuntimes(
@@ -4489,37 +4494,36 @@ export async function buildApp({
     const available: ModelRuntime[] = [];
     const unavailable: string[] = [];
     for (const runtime of runtimes) {
-      const cooldownUntil = routeCooldowns.get(runtime.routeId) ?? 0;
-      if (cooldownUntil > now) {
-        unavailable.push(`${runtime.provider.name} is cooling down`);
+      if (runtime.provider.kind !== "chatgpt") {
+        const cooldownUntil =
+          routeCooldowns.get(runtimeCooldownKey(runtime)) ?? 0;
+        if (cooldownUntil > now) {
+          unavailable.push(`${runtime.provider.name} is cooling down`);
+          continue;
+        }
+        available.push(runtime);
         continue;
       }
-      if (runtime.provider.kind === "chatgpt") {
-        try {
-          const status = codexAuthStatusSchema.parse(
-            await bridge.request(context.workerId, {
-              type: "codex.auth.status",
-              providerId: runtime.provider.id,
-            }),
-          );
-          if (!status.authenticated || status.authMode !== "chatgpt") {
-            unavailable.push(`${runtime.provider.name} is not signed in`);
-            continue;
-          }
-          if ((status.weeklyUsage?.usedPercent ?? 0) >= 100) {
-            unavailable.push(
-              `${runtime.provider.name} has no weekly usage left`,
-            );
-            continue;
-          }
-        } catch (error) {
-          app.log.warn(
-            { err: error, providerId: runtime.provider.id },
-            "Could not preflight ChatGPT route; attempting it directly",
-          );
+
+      const accountRouting = await resolveChatGptAccountRuntimes({
+        bridge,
+        logger: app.log,
+        ownerId: applicationOwnerId(),
+        preferredAccountId: context.providerAccountId,
+        repository,
+        runtime,
+        workerId: context.workerId,
+      });
+      unavailable.push(...accountRouting.unavailable);
+      for (const accountRuntime of accountRouting.runtimes) {
+        const cooldownUntil =
+          routeCooldowns.get(runtimeCooldownKey(accountRuntime)) ?? 0;
+        if (cooldownUntil > now) {
+          unavailable.push(`${runtime.provider.name} account is cooling down`);
+          continue;
         }
+        available.push(accountRuntime);
       }
-      available.push(runtime);
     }
     if (!available.length) {
       throw new Error(
@@ -4537,11 +4541,46 @@ export async function buildApp({
         applicationOwnerId(),
         context.modelRouteId,
       );
-      if (active) return active;
+      if (active) {
+        if (active.provider.kind !== "chatgpt") return active;
+        if (context.providerAccountId) {
+          const accounts = await repository.listModelProviderAccountRuntimes(
+            applicationOwnerId(),
+            active.provider.id,
+            context.workerId,
+            active.model.providerModelId,
+          );
+          const account = accounts.find(
+            (candidate) => candidate.accountId === context.providerAccountId,
+          );
+          if (account) {
+            return {
+              ...active,
+              provider: {
+                ...active.provider,
+                accountId: account.accountId,
+                credentialHomeKey: account.credentialHomeKey,
+              },
+            };
+          }
+        }
+        return (
+          (await availableModelRuntimes(context, active.model.id)).find(
+            (runtime) => runtime.routeId === active.routeId,
+          ) ?? null
+        );
+      }
     }
     const modelId = await resolveModelId(context);
-    return repository.getModelRuntime(applicationOwnerId(), modelId);
+    return (await availableModelRuntimes(context, modelId))[0] ?? null;
   };
+
+  const runtimeCanResumeContext = (
+    context: ChatExecutionContext,
+    runtime: ModelRuntime,
+  ): boolean =>
+    runtime.routeId === context.modelRouteId &&
+    runtime.provider.accountId === context.providerAccountId;
 
   const recordRuntimeTokenUsage = async (
     sourceKey: string,
@@ -5032,7 +5071,7 @@ export async function buildApp({
         await notifyCodeAgentState(execution, "started");
         for (const [index, runtime] of runtimes.entries()) {
           let attemptActivity = false;
-          const canResume = runtime.routeId === execution.modelRouteId;
+          const canResume = runtimeCanResumeContext(execution, runtime);
           const threadId = canResume ? execution.threadId : null;
           const finalAgentTurns = new Set<string>();
           const requestedPrompt =
@@ -5057,6 +5096,7 @@ export async function buildApp({
             threadId,
             runtime.routeId,
             "starting",
+            runtime.provider.accountId,
           );
           try {
             const rawResult = await bridge.request(
@@ -5248,13 +5288,15 @@ export async function buildApp({
             );
             const result = agentTurnResultSchema.parse(rawResult);
             await notifyCodeAgentState(execution, "completed", changedPaths);
-            routeCooldowns.delete(runtime.routeId);
+            routeCooldowns.delete(runtimeCooldownKey(runtime));
             await repository.updateChatRuntime(
               execution.chatId,
               execution.workerId,
               execution.worktreeId,
               result.threadId,
               runtime.routeId,
+              "ready",
+              runtime.provider.accountId,
             );
             if (!result.turnId || !finalAgentTurns.has(result.turnId)) {
               await appendLiveChatMessage(
@@ -5293,7 +5335,7 @@ export async function buildApp({
               index < runtimes.length - 1;
             if (!canRetry) throw error;
             routeCooldowns.set(
-              runtime.routeId,
+              runtimeCooldownKey(runtime),
               Date.now() + ROUTE_FAILURE_COOLDOWN_MS,
             );
             app.log.warn(
@@ -5301,6 +5343,7 @@ export async function buildApp({
                 chatId: execution.chatId,
                 err: error,
                 providerId: runtime.provider.id,
+                providerAccountId: runtime.provider.accountId,
                 routeId: runtime.routeId,
               },
               "Provider route failed before activity; trying the next route",
@@ -5316,6 +5359,8 @@ export async function buildApp({
             execution.worktreeId,
             execution.threadId,
             execution.modelRouteId,
+            "ready",
+            execution.providerAccountId,
           );
         }
         const interrupted = /interrupted/i.test(errorMessage(error));
@@ -5380,7 +5425,9 @@ export async function buildApp({
         type: "chat.goal.create",
         chatId: context.chatId,
         cwd: context.cwd,
-        threadId: context.threadId,
+        threadId: runtimeCanResumeContext(context, runtime)
+          ? context.threadId
+          : null,
         objective: input.text,
         tokenBudget: null,
         model: runtime.model,
@@ -5396,6 +5443,8 @@ export async function buildApp({
       context.worktreeId,
       result.goal.threadId,
       runtime.routeId,
+      "ready",
+      runtime.provider.accountId,
     );
     const updatedContext = await repository.getChatExecutionContext(
       applicationOwnerId(),
@@ -13635,13 +13684,18 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      if (!context.threadId) {
+      const modelId = await resolveModelId(context);
+      const runtime = await runtimeForContext(context);
+      if (!runtime) {
+        return reply
+          .code(409)
+          .send({ error: "No provider route is currently available." });
+      }
+      if (!context.threadId || !runtimeCanResumeContext(context, runtime)) {
         if (!bridge.isConnected(context.workerId)) {
           return reply.code(503).send({ error: "Project worker is offline." });
         }
         try {
-          const modelId = await resolveModelId(context);
-          const runtime = (await availableModelRuntimes(context, modelId))[0]!;
           const mcpServers = await repository.listEffectiveMcpServers(
             applicationOwnerId(),
             context.projectId,
@@ -13669,6 +13723,8 @@ export async function buildApp({
             context.worktreeId,
             result.threadId,
             runtime.routeId,
+            "ready",
+            runtime.provider.accountId,
           );
           const updated = await repository.getChatExecutionContext(
             applicationOwnerId(),
@@ -16617,7 +16673,9 @@ export async function buildApp({
         const result = (await bridge.request(context.workerId, {
           type: "chat.plan.set",
           cwd: context.cwd,
-          threadId: context.threadId,
+          threadId: runtimeCanResumeContext(context, runtime)
+            ? context.threadId
+            : null,
           mode: input.data.mode,
           model: runtime.model,
           provider: runtime.provider,
@@ -16633,6 +16691,8 @@ export async function buildApp({
           context.worktreeId,
           result.threadId,
           runtime.routeId,
+          "ready",
+          runtime.provider.accountId,
         );
         const state = await updateLiveChatPlanMode(
           applicationOwnerId(),
@@ -16807,7 +16867,9 @@ export async function buildApp({
             type: "chat.goal.create",
             chatId: context.chatId,
             cwd: context.cwd,
-            threadId: context.threadId,
+            threadId: runtimeCanResumeContext(context, runtime)
+              ? context.threadId
+              : null,
             objective: input.data.objective,
             tokenBudget: input.data.tokenBudget ?? null,
             model: runtime.model,
@@ -16825,6 +16887,8 @@ export async function buildApp({
           context.worktreeId,
           result.goal.threadId,
           runtime.routeId,
+          "ready",
+          runtime.provider.accountId,
         );
         const updatedContext = await repository.getChatExecutionContext(
           applicationOwnerId(),

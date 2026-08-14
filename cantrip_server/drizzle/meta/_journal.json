@@ -512,6 +512,13 @@
       "when": 1786736961538,
       "tag": "0072_hard_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786738549669,
+      "tag": "0073_friendly_vin_gonzales",
+      "breakpoints": true
     }
   ]
 }
