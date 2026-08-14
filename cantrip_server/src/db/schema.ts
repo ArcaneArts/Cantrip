@@ -17,6 +17,7 @@ import type {
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
   MobileProjectTabConfigurations,
+  ModelReasoningEffortOption,
   PendingPlanQuestion,
   PlanStep,
   ProjectReplicaCapabilities,
@@ -292,6 +293,9 @@ export const modelProviders = pgTable(
     /** @deprecated Read only during the encrypted-secret data migration. */
     apiKey: text("api_key"),
     apiKeyEnvelope: text("api_key_envelope"),
+    weeklyUsageReservePercent: integer("weekly_usage_reserve_percent")
+      .notNull()
+      .default(3),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -304,6 +308,261 @@ export const modelProviders = pgTable(
       table.ownerId,
       table.name,
     ),
+    check(
+      "model_providers_weekly_usage_reserve_percent_check",
+      sql`${table.weeklyUsageReservePercent} BETWEEN 0 AND 100`,
+    ),
+  ],
+);
+
+export const modelProviderAccounts = pgTable(
+  "model_provider_accounts",
+  {
+    id: text("id").primaryKey(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    email: text("email"),
+    planType: text("plan_type"),
+    position: integer("position").notNull().default(0),
+    enabled: boolean("enabled").notNull().default(true),
+    /**
+     * Existing ChatGPT providers can retain their provider-keyed Codex home
+     * while the pooled-account migration moves them without losing auth.
+     */
+    credentialHomeKey: text("credential_home_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("model_provider_accounts_provider_position_unique").on(
+      table.providerId,
+      table.position,
+    ),
+    uniqueIndex("model_provider_accounts_provider_home_unique").on(
+      table.providerId,
+      table.credentialHomeKey,
+    ),
+  ],
+);
+
+export const modelProviderAccountWorkers = pgTable(
+  "model_provider_account_workers",
+  {
+    accountId: text("account_id")
+      .notNull()
+      .references(() => modelProviderAccounts.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    authState: text("auth_state").notNull().default("unknown"),
+    weeklyUsageUsedBasisPoints: integer("weekly_usage_used_basis_points"),
+    weeklyUsageResetsAt: timestamp("weekly_usage_resets_at", {
+      withTimezone: true,
+    }),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.accountId, table.workerId] }),
+    index("model_provider_account_workers_worker_index").on(table.workerId),
+    check(
+      "model_provider_account_workers_auth_state_check",
+      sql`${table.authState} IN ('unknown', 'signed-out', 'signed-in', 'failed')`,
+    ),
+    check(
+      "model_provider_account_workers_usage_check",
+      sql`${table.weeklyUsageUsedBasisPoints} IS NULL OR ${table.weeklyUsageUsedBasisPoints} BETWEEN 0 AND 10000`,
+    ),
+  ],
+);
+
+export const providerModels = pgTable(
+  "provider_models",
+  {
+    id: text("id").primaryKey(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.id, { onDelete: "cascade" }),
+    nativeModelId: text("native_model_id").notNull(),
+    canonicalModelId: text("canonical_model_id"),
+    displayName: text("display_name").notNull(),
+    description: text("description"),
+    contextWindow: integer("context_window"),
+    maxOutputTokens: integer("max_output_tokens"),
+    inputModalities: jsonb("input_modalities")
+      .$type<string[]>()
+      .notNull()
+      .default(["text"]),
+    outputModalities: jsonb("output_modalities")
+      .$type<string[]>()
+      .notNull()
+      .default(["text"]),
+    supportsTools: boolean("supports_tools"),
+    supportsParallelTools: boolean("supports_parallel_tools"),
+    supportsStructuredOutput: boolean("supports_structured_output"),
+    supportsVision: boolean("supports_vision"),
+    supportsReasoning: boolean("supports_reasoning"),
+    supportedReasoningEfforts: jsonb("supported_reasoning_efforts")
+      .$type<ModelReasoningEffortOption[]>()
+      .notNull()
+      .default([]),
+    defaultReasoningEffort: text("default_reasoning_effort"),
+    reasoningMandatory: boolean("reasoning_mandatory"),
+    family: text("family"),
+    parameterSize: text("parameter_size"),
+    quantization: text("quantization"),
+    digest: text("digest"),
+    metadataSource: text("metadata_source").notNull(),
+    matchConfidenceBasisPoints: integer("match_confidence_basis_points"),
+    hidden: boolean("hidden").notNull().default(false),
+    isDefault: boolean("is_default").notNull().default(false),
+    rawMetadata: jsonb("raw_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("provider_models_provider_native_unique").on(
+      table.providerId,
+      table.nativeModelId,
+    ),
+    index("provider_models_canonical_index").on(table.canonicalModelId),
+    check(
+      "provider_models_metadata_source_check",
+      sql`${table.metadataSource} IN ('ollama', 'openrouter', 'codex', 'compatible-api', 'manual')`,
+    ),
+    check(
+      "provider_models_context_window_check",
+      sql`${table.contextWindow} IS NULL OR ${table.contextWindow} > 0`,
+    ),
+    check(
+      "provider_models_max_output_tokens_check",
+      sql`${table.maxOutputTokens} IS NULL OR ${table.maxOutputTokens} > 0`,
+    ),
+    check(
+      "provider_models_match_confidence_check",
+      sql`${table.matchConfidenceBasisPoints} IS NULL OR ${table.matchConfidenceBasisPoints} BETWEEN 0 AND 10000`,
+    ),
+  ],
+);
+
+export const providerModelAvailability = pgTable(
+  "provider_model_availability",
+  {
+    id: text("id").primaryKey(),
+    providerModelId: text("provider_model_id")
+      .notNull()
+      .references(() => providerModels.id, { onDelete: "cascade" }),
+    scopeKey: text("scope_key").notNull(),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "cascade",
+    }),
+    providerAccountId: text("provider_account_id").references(
+      () => modelProviderAccounts.id,
+      { onDelete: "cascade" },
+    ),
+    state: text("state").notNull().default("available"),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("provider_model_availability_model_scope_unique").on(
+      table.providerModelId,
+      table.scopeKey,
+    ),
+    index("provider_model_availability_worker_index").on(table.workerId),
+    index("provider_model_availability_account_index").on(
+      table.providerAccountId,
+    ),
+    check(
+      "provider_model_availability_state_check",
+      sql`${table.state} IN ('available', 'unavailable', 'stale')`,
+    ),
+  ],
+);
+
+export const providerCatalogSyncStates = pgTable(
+  "provider_catalog_sync_states",
+  {
+    id: text("id").primaryKey(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.id, { onDelete: "cascade" }),
+    scopeKey: text("scope_key").notNull(),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "cascade",
+    }),
+    providerAccountId: text("provider_account_id").references(
+      () => modelProviderAccounts.id,
+      { onDelete: "cascade" },
+    ),
+    status: text("status").notNull().default("idle"),
+    error: text("error"),
+    etag: text("etag"),
+    refreshStartedAt: timestamp("refresh_started_at", { withTimezone: true }),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("provider_catalog_sync_states_provider_scope_unique").on(
+      table.providerId,
+      table.scopeKey,
+    ),
+    check(
+      "provider_catalog_sync_states_status_check",
+      sql`${table.status} IN ('idle', 'refreshing', 'current', 'stale', 'failed')`,
+    ),
+  ],
+);
+
+export const providerModelSuppressions = pgTable(
+  "provider_model_suppressions",
+  {
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerModelId: text("provider_model_id")
+      .notNull()
+      .references(() => providerModels.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.ownerId, table.providerModelId] }),
   ],
 );
 
@@ -313,6 +572,8 @@ export const modelProfiles = pgTable("model_profiles", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  canonicalModelId: text("canonical_model_id"),
+  discoveryManaged: boolean("discovery_managed").notNull().default(false),
   reasoningEffort: text("reasoning_effort"),
   routingPolicy: text("routing_policy").notNull().default("priority"),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -333,9 +594,14 @@ export const modelRoutes = pgTable(
     providerId: text("provider_id")
       .notNull()
       .references(() => modelProviders.id, { onDelete: "restrict" }),
+    providerModelId: text("provider_model_id").references(
+      () => providerModels.id,
+      { onDelete: "set null" },
+    ),
     modelName: text("model_name").notNull(),
     position: integer("position").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
+    discoveryManaged: boolean("discovery_managed").notNull().default(false),
     reasoningEffort: text("reasoning_effort"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

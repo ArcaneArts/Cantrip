@@ -1073,13 +1073,119 @@ export function normalizeResponsesBaseUrl(value: string): string {
   }
   return url.toString().replace(/\/$/, "");
 }
-export const reasoningEffortSchema = z.enum([
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
+/**
+ * Reasoning efforts are model-advertised wire values. Codex and compatible
+ * providers may add efforts without a coordinated Cantrip release, so this
+ * intentionally remains open instead of being a closed enum.
+ */
+export const reasoningEffortSchema = z.string().trim().min(1).max(80);
+
+export const modelReasoningEffortOptionSchema = z.object({
+  effort: reasoningEffortSchema,
+  description: z.string().trim().max(500).nullable().default(null),
+});
+
+export const providerModelMetadataSourceSchema = z.enum([
+  "ollama",
+  "openrouter",
+  "codex",
+  "compatible-api",
+  "manual",
 ]);
+
+export const providerModelCatalogEntrySchema = z.object({
+  id: z.string().min(1),
+  providerId: z.string().min(1),
+  nativeModelId: z.string().trim().min(1).max(500),
+  canonicalModelId: z.string().trim().min(1).max(500).nullable(),
+  displayName: z.string().trim().min(1).max(500),
+  description: z.string().max(20_000).nullable(),
+  contextWindow: z.number().int().positive().nullable(),
+  maxOutputTokens: z.number().int().positive().nullable(),
+  inputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
+  outputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
+  supportsTools: z.boolean().nullable(),
+  supportsParallelTools: z.boolean().nullable(),
+  supportsStructuredOutput: z.boolean().nullable(),
+  supportsVision: z.boolean().nullable(),
+  supportsReasoning: z.boolean().nullable(),
+  supportedReasoningEfforts: z
+    .array(modelReasoningEffortOptionSchema)
+    .max(32),
+  defaultReasoningEffort: reasoningEffortSchema.nullable(),
+  reasoningMandatory: z.boolean().nullable(),
+  family: z.string().max(500).nullable(),
+  parameterSize: z.string().max(100).nullable(),
+  quantization: z.string().max(100).nullable(),
+  digest: z.string().max(500).nullable(),
+  metadataSource: providerModelMetadataSourceSchema,
+  matchConfidence: z.number().min(0).max(1).nullable(),
+  hidden: z.boolean(),
+  isDefault: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  lastSeenAt: z.string().datetime(),
+});
+
+export const providerModelAvailabilityStateSchema = z.enum([
+  "available",
+  "unavailable",
+  "stale",
+]);
+
+export const providerModelAvailabilitySchema = z.object({
+  id: z.string().min(1),
+  providerModelId: z.string().min(1),
+  scopeKey: z.string().min(1).max(500),
+  workerId: z.string().min(1).nullable(),
+  providerAccountId: z.string().min(1).nullable(),
+  state: providerModelAvailabilityStateSchema,
+  lastSeenAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const providerCatalogSyncStatusSchema = z.enum([
+  "idle",
+  "refreshing",
+  "current",
+  "stale",
+  "failed",
+]);
+
+export const providerCatalogSyncStateSchema = z.object({
+  id: z.string().min(1),
+  providerId: z.string().min(1),
+  scopeKey: z.string().min(1).max(500),
+  workerId: z.string().min(1).nullable(),
+  providerAccountId: z.string().min(1).nullable(),
+  status: providerCatalogSyncStatusSchema,
+  error: z.string().max(20_000).nullable(),
+  etag: z.string().max(1_000).nullable(),
+  refreshStartedAt: z.string().datetime().nullable(),
+  lastSuccessAt: z.string().datetime().nullable(),
+  updatedAt: z.string().datetime(),
+});
+
+export const modelProviderAccountWorkerSchema = z.object({
+  workerId: z.string().min(1),
+  authState: z.enum(["unknown", "signed-out", "signed-in", "failed"]),
+  weeklyUsageUsedPercent: z.number().min(0).max(100).nullable(),
+  weeklyUsageResetsAt: z.string().datetime().nullable(),
+  lastSyncedAt: z.string().datetime().nullable(),
+});
+
+export const modelProviderAccountSummarySchema = z.object({
+  id: z.string().min(1),
+  providerId: z.string().min(1),
+  label: z.string().trim().min(1).max(160),
+  email: z.string().email().nullable(),
+  planType: z.string().max(160).nullable(),
+  position: z.number().int().nonnegative(),
+  enabled: z.boolean(),
+  workerBindings: z.array(modelProviderAccountWorkerSchema),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
 
 export const tokenUsageTotalsSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -1092,6 +1198,7 @@ export const modelProviderCreateSchema = z.object({
   kind: modelProviderKindSchema,
   baseUrl: z.url(),
   apiKey: z.string().trim().min(1).max(10_000).nullable().optional(),
+  weeklyUsageReservePercent: z.number().int().min(0).max(100).optional(),
 });
 
 export const modelProviderUpdateSchema = modelProviderCreateSchema;
@@ -1101,6 +1208,7 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
   .extend({
     id: z.string().min(1),
     hasApiKey: z.boolean(),
+    weeklyUsageReservePercent: z.number().int().min(0).max(100),
     tokenUsage: tokenUsageTotalsSchema.default({
       inputTokens: 0,
       outputTokens: 0,
@@ -1123,7 +1231,9 @@ export const modelRouteInputSchema = z.object({
 export const modelRouteSummarySchema = modelRouteInputSchema.extend({
   id: z.string().min(1),
   providerName: z.string().min(1),
+  providerModelId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
+  discoveryManaged: z.boolean(),
   reasoningEffort: reasoningEffortSchema.nullable(),
 });
 
@@ -1143,6 +1253,8 @@ export const modelProfileUpdateSchema = modelProfileCreateSchema;
 
 export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   id: z.string().min(1),
+  canonicalModelId: z.string().min(1).nullable(),
+  discoveryManaged: z.boolean(),
   reasoningEffort: reasoningEffortSchema.nullable(),
   routingPolicy: z.literal("priority"),
   routes: z.array(modelRouteSummarySchema).min(1),
@@ -7847,6 +7959,33 @@ export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;
 export type CodexDeviceLogin = z.infer<typeof codexDeviceLoginSchema>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
+export type ModelReasoningEffortOption = z.infer<
+  typeof modelReasoningEffortOptionSchema
+>;
+export type ProviderModelMetadataSource = z.infer<
+  typeof providerModelMetadataSourceSchema
+>;
+export type ProviderModelCatalogEntry = z.infer<
+  typeof providerModelCatalogEntrySchema
+>;
+export type ProviderModelAvailability = z.infer<
+  typeof providerModelAvailabilitySchema
+>;
+export type ProviderModelAvailabilityState = z.infer<
+  typeof providerModelAvailabilityStateSchema
+>;
+export type ProviderCatalogSyncState = z.infer<
+  typeof providerCatalogSyncStateSchema
+>;
+export type ProviderCatalogSyncStatus = z.infer<
+  typeof providerCatalogSyncStatusSchema
+>;
+export type ModelProviderAccountWorker = z.infer<
+  typeof modelProviderAccountWorkerSchema
+>;
+export type ModelProviderAccountSummary = z.infer<
+  typeof modelProviderAccountSummarySchema
+>;
 export type TokenUsageTotals = z.infer<typeof tokenUsageTotalsSchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
