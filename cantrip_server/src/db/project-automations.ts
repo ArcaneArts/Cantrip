@@ -11,6 +11,7 @@ import {
   type ProjectAutomationSchedule,
   type ProjectAutomationUpdate,
 } from "@cantrip/protocol/automations";
+import type { ReasoningEffort } from "@cantrip/protocol";
 import { and, desc, eq, gt, lte } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
@@ -67,6 +68,7 @@ export interface ProjectAutomationDispatchLease {
   leaseToken: string;
   nextRunAt: Date | null;
   runId: string;
+  reasoningEffort: ReasoningEffort | null;
   scheduledFor: Date;
 }
 
@@ -324,6 +326,7 @@ export class ProjectAutomationRepository {
         .select({
           automation: schema.projectAutomations,
           chatTitle: schema.chats.title,
+          reasoningEffort: schema.chats.reasoningEffort,
           workerId: schema.projectWorktrees.workerId,
         })
         .from(schema.projectAutomations)
@@ -426,6 +429,7 @@ export class ProjectAutomationRepository {
                 fencingToken: 1,
                 leaseExpiresAt,
                 attemptCount: 1,
+                reasoningEffort: selected.reasoningEffort,
                 claimedAt: now,
                 createdAt: now,
                 updatedAt: now,
@@ -464,6 +468,7 @@ export class ProjectAutomationRepository {
         fencingToken: run.fencingToken,
         leaseToken,
         nextRunAt,
+        reasoningEffort: run.reasoningEffort,
         runId: run.id,
         scheduledFor: expected,
       };

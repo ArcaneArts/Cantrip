@@ -45,6 +45,8 @@ import {
   chatPermissionProfileUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
+  chatReasoningStateSchema,
+  chatReasoningUpdateSchema,
   codeAttachmentSchema,
   codeRuntimeStatusSchema,
   codeSaveAllResultSchema,
@@ -288,6 +290,7 @@ import type {
   ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
   RemoteDesktopTarget,
+  ReasoningEffort,
   SkillSettingsContext,
   SkillSettingsDeleteRequest,
   SkillSettingsFileRequest,
@@ -3039,12 +3042,33 @@ export async function updateChatModel(chatId: string, modelId: string) {
   );
 }
 
+export async function getChatReasoning(chatId: string) {
+  return chatReasoningStateSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/reasoning`),
+  );
+}
+
+export async function updateChatReasoning(
+  chatId: string,
+  reasoningEffort: ReasoningEffort | null,
+) {
+  return chatReasoningStateSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/reasoning`, {
+      method: "PATCH",
+      body: JSON.stringify(
+        chatReasoningUpdateSchema.parse({ reasoningEffort }),
+      ),
+    }),
+  );
+}
+
 export async function startTurn(
   chatId: string,
   text: string,
   modelId: string,
   attachmentIds: string[] = [],
   mode: ChatTurnMode = "default",
+  reasoningEffort: ReasoningEffort | null = null,
 ) {
   return chatPromptSubmitResultSchema.parse(
     await post(`/api/chats/${encodeURIComponent(chatId)}/turns`, {
@@ -3052,6 +3076,7 @@ export async function startTurn(
       attachmentIds,
       mode,
       modelId,
+      reasoningEffort,
       idempotencyKey: crypto.randomUUID(),
     }),
   );
@@ -3069,6 +3094,7 @@ export async function updateQueuedPrompt(
     attachmentIds?: string[];
     text?: string;
     mode?: ChatTurnMode;
+    reasoningEffort?: ReasoningEffort | null;
     frozen?: boolean;
   },
 ) {

@@ -95,6 +95,8 @@ import {
   chatMessageListSchema,
   chatMessageSchema,
   chatModelUpdateSchema,
+  chatReasoningStateSchema,
+  chatReasoningUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   chatSummarySchema,
@@ -486,6 +488,10 @@ import {
   type ModelRuntime,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
+import {
+  prepareRuntimesForReasoning,
+  reasoningStateForRuntimes,
+} from "./models/reasoning.js";
 import {
   ChatRelocationJobConflictError,
   ChatRelocationJobNotFoundError,
@@ -4544,7 +4550,12 @@ export async function buildApp({
         context.modelRouteId,
       );
       if (active) {
-        if (active.provider.kind !== "chatgpt") return active;
+        if (active.provider.kind !== "chatgpt") {
+          return prepareRuntimesForReasoning(
+            [active],
+            context.reasoningEffort,
+          )[0]!.runtime;
+        }
         if (context.providerAccountId) {
           const accounts = await repository.listModelProviderAccountRuntimes(
             applicationOwnerId(),
@@ -4556,25 +4567,48 @@ export async function buildApp({
             (candidate) => candidate.accountId === context.providerAccountId,
           );
           if (account) {
-            return {
-              ...active,
-              provider: {
-                ...active.provider,
-                accountId: account.accountId,
-                credentialHomeKey: account.credentialHomeKey,
-              },
-            };
+            return prepareRuntimesForReasoning(
+              [
+                {
+                  ...active,
+                  provider: {
+                    ...active.provider,
+                    accountId: account.accountId,
+                    credentialHomeKey: account.credentialHomeKey,
+                  },
+                },
+              ],
+              context.reasoningEffort,
+            )[0]!.runtime;
           }
         }
-        return (
-          (await availableModelRuntimes(context, active.model.id)).find(
-            (runtime) => runtime.routeId === active.routeId,
-          ) ?? null
-        );
+        const selected = (
+          await availableModelRuntimes(context, active.model.id)
+        ).find((runtime) => runtime.routeId === active.routeId);
+        return selected
+          ? prepareRuntimesForReasoning([selected], context.reasoningEffort)[0]!
+              .runtime
+          : null;
       }
     }
     const modelId = await resolveModelId(context);
-    return (await availableModelRuntimes(context, modelId))[0] ?? null;
+    const runtimes = await availableModelRuntimes(context, modelId);
+    return (
+      prepareRuntimesForReasoning(runtimes, context.reasoningEffort)[0]
+        ?.runtime ?? null
+    );
+  };
+
+  const reasoningStateForContext = async (
+    context: ChatExecutionContext,
+    requestedModelId?: string,
+  ) => {
+    const modelId = requestedModelId ?? (await resolveModelId(context));
+    return reasoningStateForRuntimes(
+      modelId,
+      context.reasoningEffort,
+      await repository.getModelRuntimes(applicationOwnerId(), modelId),
+    );
   };
 
   const runtimeCanResumeContext = (
@@ -4955,6 +4989,7 @@ export async function buildApp({
         attachmentIds: prompt.attachments.map(({ id }) => id),
         mode: prompt.mode,
         modelId: prompt.modelId,
+        reasoningEffort: prompt.reasoningEffort,
         idempotencyKey: `queue:${prompt.id}`,
       });
       await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
@@ -4986,8 +5021,17 @@ export async function buildApp({
       throw new Error("Project worker is offline.");
     }
     const modelId = await resolveModelId(context, input.modelId);
-    const runtimes =
+    const requestedReasoningEffort =
+      input.reasoningEffort !== undefined
+        ? input.reasoningEffort
+        : context.reasoningEffort;
+    const candidateRuntimes =
       options.runtimes ?? (await availableModelRuntimes(context, modelId));
+    const preparedRuntimes = prepareRuntimesForReasoning(
+      candidateRuntimes,
+      requestedReasoningEffort,
+    );
+    const runtimes = preparedRuntimes.map(({ runtime }) => runtime);
     const attachments = await resolvePromptAttachments(
       context,
       input.attachmentIds ?? [],
@@ -5032,6 +5076,7 @@ export async function buildApp({
         {
           role: options.messageRole ?? "user",
           mode: options.messageRole === "system" ? undefined : turnMode,
+          reasoningEffort: requestedReasoningEffort,
           content: [
             ...(input.text
               ? [{ type: "text" as const, text: input.text }]
@@ -5052,6 +5097,10 @@ export async function buildApp({
         userMessage.id,
         modelId,
         runtimes[0]!,
+        {
+          appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
+          reasoningAdjusted: preparedRuntimes[0]!.adjusted,
+        },
       );
       await repository.setChatModel(applicationOwnerId(), execution.chatId, {
         modelId,
@@ -5072,6 +5121,7 @@ export async function buildApp({
       try {
         await notifyCodeAgentState(execution, "started");
         for (const [index, runtime] of runtimes.entries()) {
+          const preparedReasoning = preparedRuntimes[index]!;
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
           const threadId = canResume ? execution.threadId : null;
@@ -5089,6 +5139,36 @@ export async function buildApp({
               userMessage.id,
               modelId,
               runtime,
+              {
+                appliedReasoningEffort:
+                  preparedReasoning.appliedReasoningEffort,
+                reasoningAdjusted: preparedReasoning.adjusted,
+              },
+            );
+          }
+          if (preparedReasoning.adjusted && requestedReasoningEffort) {
+            await appendLiveChatMessage(
+              applicationOwnerId(),
+              execution.chatId,
+              {
+                role: "system",
+                content: [
+                  {
+                    type: "activity",
+                    activity: {
+                      id: `reasoning-adjustment:${userMessage.id}:${runtime.routeId}`,
+                      type: "notice",
+                      status: "completed",
+                      level: "warning",
+                      message: `${runtime.provider.name} does not advertise ${requestedReasoningEffort} reasoning for ${runtime.model.name}; this attempt uses the provider default.`,
+                      details: null,
+                      willRetry: null,
+                    },
+                  },
+                ],
+                idempotencyKey: `reasoning-adjustment:${userMessage.id}:${runtime.routeId}:${runtime.provider.accountId ?? "provider"}`,
+              },
+              attribution,
             );
           }
           await repository.updateChatRuntime(
@@ -5408,6 +5488,9 @@ export async function buildApp({
       providerId: firstRuntime.provider.id,
       providerName: firstRuntime.provider.name,
       providerModelName: firstRuntime.model.name,
+      reasoningEffort: requestedReasoningEffort,
+      appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
+      reasoningAdjusted: preparedRuntimes[0]!.adjusted,
     };
   }
 
@@ -5421,7 +5504,14 @@ export async function buildApp({
     }
     await resolvePromptAttachments(context, input.attachmentIds);
     const modelId = await resolveModelId(context, input.modelId);
-    const runtime = (await availableModelRuntimes(context, modelId))[0]!;
+    const requestedReasoningEffort =
+      input.reasoningEffort !== undefined
+        ? input.reasoningEffort
+        : context.reasoningEffort;
+    const runtime = prepareRuntimesForReasoning(
+      await availableModelRuntimes(context, modelId),
+      requestedReasoningEffort,
+    )[0]!.runtime;
     const result = chatGoalResponseSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
@@ -17896,7 +17986,91 @@ export async function buildApp({
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
       }
-      return reply.send(chatSummarySchema.parse(result));
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      const reasoning = await reasoningStateForContext(
+        { ...context, modelId: input.data.modelId },
+        input.data.modelId,
+      );
+      const selected =
+        context.reasoningEffort === reasoning.reasoningEffort
+          ? result
+          : await repository.setChatReasoningEffort(
+              applicationOwnerId(),
+              request.params.chatId,
+              reasoning.reasoningEffort,
+            );
+      return reply.send(chatSummarySchema.parse(selected ?? result));
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/reasoning",
+    async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      try {
+        return reply.send(
+          chatReasoningStateSchema.parse(
+            await reasoningStateForContext(context),
+          ),
+        );
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/reasoning",
+    async (request, reply) => {
+      const input = chatReasoningUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      const current = await reasoningStateForContext(context);
+      if (
+        input.data.reasoningEffort !== null &&
+        !current.options.some(
+          ({ effort }) => effort === input.data.reasoningEffort,
+        )
+      ) {
+        return reply.code(409).send({
+          error:
+            "That reasoning effort is not supported by every eligible provider route.",
+        });
+      }
+      const updated = await repository.setChatReasoningEffort(
+        applicationOwnerId(),
+        context.chatId,
+        input.data.reasoningEffort,
+      );
+      if (!updated) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      return reply.send(
+        chatReasoningStateSchema.parse({
+          ...current,
+          reasoningEffort: input.data.reasoningEffort,
+        }),
+      );
     },
   );
 
@@ -18038,7 +18212,13 @@ export async function buildApp({
       const prompt = await createLiveQueuedPrompt(
         applicationOwnerId(),
         context.chatId,
-        input.data,
+        {
+          ...input.data,
+          reasoningEffort:
+            input.data.reasoningEffort !== undefined
+              ? input.data.reasoningEffort
+              : context.reasoningEffort,
+        },
         modelId,
         attachments.map((attachment) =>
           chatAttachmentSummarySchema.parse(attachment),
@@ -18197,6 +18377,7 @@ export async function buildApp({
             {
               role: "user",
               mode: queued.mode,
+              reasoningEffort: queued.reasoningEffort,
               content: [
                 ...(queued.text
                   ? [{ type: "text" as const, text: queued.text }]
@@ -18239,6 +18420,7 @@ export async function buildApp({
             attachmentIds: queued.attachments.map(({ id }) => id),
             mode: queued.mode,
             modelId: queued.modelId,
+            reasoningEffort: queued.reasoningEffort,
             idempotencyKey: `queue:${queued.id}`,
           });
         }
@@ -18294,7 +18476,16 @@ export async function buildApp({
         const prompt = await createLiveQueuedPrompt(
           applicationOwnerId(),
           context.chatId,
-          { ...input.data, modelId, frozen: false, worktreeId: null },
+          {
+            ...input.data,
+            modelId,
+            reasoningEffort:
+              input.data.reasoningEffort !== undefined
+                ? input.data.reasoningEffort
+                : context.reasoningEffort,
+            frozen: false,
+            worktreeId: null,
+          },
           modelId,
           attachments.map((attachment) =>
             chatAttachmentSummarySchema.parse(attachment),
@@ -18572,6 +18763,7 @@ export async function buildApp({
                 mode: "default",
                 idempotencyKey,
                 modelId,
+                reasoningEffort: claim.reasoningEffort,
                 frozen: false,
                 worktreeId: null,
               },
@@ -18587,6 +18779,7 @@ export async function buildApp({
               text: automation.prompt,
               attachmentIds: [],
               mode: "default",
+              reasoningEffort: claim.reasoningEffort,
               idempotencyKey,
             });
             status = "started";

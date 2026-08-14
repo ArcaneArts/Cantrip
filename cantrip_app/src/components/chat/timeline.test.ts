@@ -24,6 +24,9 @@ function message(
     providerId: null,
     providerName: null,
     providerModelName: null,
+    reasoningEffort: null,
+    appliedReasoningEffort: null,
+    reasoningAdjusted: false,
   };
 }
 
