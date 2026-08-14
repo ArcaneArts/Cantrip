@@ -7724,29 +7724,32 @@ export async function buildApp({
     );
   };
 
-  const chatGptCatalogWorkers = new Map<string, string>();
-  const refreshChatGptCatalogsForWorker = async (
+  const catalogWorkers = new Map<string, string>();
+  const refreshWorkerScopedCatalogs = async (
     ownerId: string,
     workerId: string,
   ) => {
     const settings = await repository.getSettings(ownerId);
     await Promise.allSettled(
       settings.providers
-        .filter((provider) => provider.kind === "chatgpt")
+        .filter(
+          (provider) =>
+            provider.kind === "chatgpt" || provider.kind === "ollama",
+        )
         .map((provider) =>
           loadProviderCatalog(ownerId, provider.id, workerId, false),
         ),
     );
   };
-  const chatGptCatalogRefreshTimer = setInterval(() => {
-    for (const [workerId, ownerId] of chatGptCatalogWorkers) {
+  const workerCatalogRefreshTimer = setInterval(() => {
+    for (const [workerId, ownerId] of catalogWorkers) {
       if (!bridge.isConnected(workerId)) continue;
-      void refreshChatGptCatalogsForWorker(ownerId, workerId).catch(
+      void refreshWorkerScopedCatalogs(ownerId, workerId).catch(
         () => undefined,
       );
     }
   }, 15 * 60_000);
-  chatGptCatalogRefreshTimer.unref();
+  workerCatalogRefreshTimer.unref();
 
   const providerCatalogFailureStatus = (message: string) => {
     if (message === "Worker not found.") return 404;
@@ -19024,8 +19027,8 @@ export async function buildApp({
         socket.close(1013, "Worker relay coordination is unavailable");
         return;
       }
-      chatGptCatalogWorkers.set(workerId, workerAuth.ownerId);
-      void refreshChatGptCatalogsForWorker(workerAuth.ownerId, workerId).catch(
+      catalogWorkers.set(workerId, workerAuth.ownerId);
+      void refreshWorkerScopedCatalogs(workerAuth.ownerId, workerId).catch(
         () => undefined,
       );
       void projectReplicaJobExecutor
@@ -19111,7 +19114,7 @@ export async function buildApp({
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
-    clearInterval(chatGptCatalogRefreshTimer);
+    clearInterval(workerCatalogRefreshTimer);
     for (const observer of customizationStatusObservers.values()) {
       observer.cancelled = true;
       if (observer.timer) clearTimeout(observer.timer);
