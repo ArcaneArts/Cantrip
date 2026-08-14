@@ -6,6 +6,10 @@ import {
   appLiveResourceSchema,
   appLiveScopeKey,
   appLiveServerMessageSchema,
+  decodeAppLiveClientMessage,
+  decodeAppLiveServerMessage,
+  encodeAppLiveClientMessage,
+  encodeAppLiveServerMessage,
   type AppLiveScope,
 } from "../src/index.js";
 
@@ -215,5 +219,37 @@ describe("application live protocol", () => {
         body: ["x".repeat(90_000), "x".repeat(90_000), "x".repeat(90_000)],
       }),
     ).toThrow(/256000/);
+  });
+
+  it("round-trips typed client and server messages through the JSON codec", () => {
+    const clientMessage = {
+      type: "subscribe" as const,
+      requestId: "request-codec",
+      scopes: [projectScope],
+    };
+    const serverMessage = {
+      type: "pong" as const,
+      nonce: "nonce-codec",
+      cursor: 7,
+    };
+
+    expect(
+      decodeAppLiveClientMessage(encodeAppLiveClientMessage(clientMessage)),
+    ).toEqual({ data: clientMessage, success: true });
+    expect(
+      decodeAppLiveServerMessage(encodeAppLiveServerMessage(serverMessage)),
+    ).toEqual({ data: serverMessage, success: true });
+  });
+
+  it("distinguishes malformed JSON from a schema-invalid live message", () => {
+    expect(decodeAppLiveClientMessage("{")).toEqual({
+      reason: "invalid-json",
+      success: false,
+    });
+    expect(decodeAppLiveClientMessage('{"type":"unknown"}')).toEqual({
+      reason: "invalid-message",
+      success: false,
+      value: { type: "unknown" },
+    });
   });
 });

@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  appLiveClientMessageSchema,
   appLiveScopeKey,
   appLiveServerMessageSchema,
+  decodeAppLiveClientMessage,
+  encodeAppLiveServerMessage,
 } from "@cantrip/protocol";
 import type {
   AppLiveClientMessage,
@@ -392,10 +393,8 @@ export class AppLiveHub {
       return;
     }
 
-    let raw: unknown;
-    try {
-      raw = JSON.parse(frameText(data));
-    } catch {
+    const decoded = decodeAppLiveClientMessage(frameText(data));
+    if (!decoded.success && decoded.reason === "invalid-json") {
       this.#protocolViolation(
         connection,
         null,
@@ -405,6 +404,12 @@ export class AppLiveHub {
       return;
     }
 
+    if (decoded.success) {
+      await this.#handleMessage(connection, decoded.data);
+      return;
+    }
+
+    const raw = decoded.value;
     if (
       typeof raw === "object" &&
       raw !== null &&
@@ -421,19 +426,12 @@ export class AppLiveHub {
       );
       return;
     }
-
-    const parsed = appLiveClientMessageSchema.safeParse(raw);
-    if (!parsed.success) {
-      this.#protocolViolation(
-        connection,
-        requestIdFromUnknown(raw),
-        "invalid-message",
-        "The application live message does not match the protocol.",
-      );
-      return;
-    }
-
-    await this.#handleMessage(connection, parsed.data);
+    this.#protocolViolation(
+      connection,
+      requestIdFromUnknown(raw),
+      "invalid-message",
+      "The application live message does not match the protocol.",
+    );
   }
 
   async #handleMessage(
@@ -808,7 +806,7 @@ export class AppLiveHub {
       this.#disconnect(connection);
       return false;
     }
-    const encoded = JSON.stringify(appLiveServerMessageSchema.parse(message));
+    const encoded = encodeAppLiveServerMessage(message);
     if (
       connection.socket.bufferedAmount + Buffer.byteLength(encoded) >
       this.#maxBufferedBytes

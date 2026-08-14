@@ -3,6 +3,7 @@ import {
   decodeTunnelDataPlaneFrame,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
+  workerEventEnvelopeSchema,
   workerNotificationEnvelopeSchema,
   workerResponseEnvelopeSchema,
   type RemoteSurfaceFrameHeader,
@@ -90,6 +91,54 @@ describe("WorkerBridge Remote Surface transport", () => {
     socket.close(1006, "network loss");
 
     await expect(response).rejects.toThrow(/disconnected/i);
+    bridge.close();
+  });
+
+  it("delivers correlated events before resolving their response", async () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+    const delivered: string[] = [];
+
+    const response = bridge.request(
+      "worker-1",
+      { type: "code.probe" },
+      {
+        onEvent: async (event) => {
+          await Promise.resolve();
+          delivered.push(event.type);
+        },
+      },
+    );
+    const request = JSON.parse(String(socket.sent.at(-1))) as {
+      requestId: string;
+    };
+    socket.emit(
+      "message",
+      JSON.stringify(
+        workerEventEnvelopeSchema.parse({
+          kind: "event",
+          requestId: request.requestId,
+          event: { type: "terminal.ready" },
+        }),
+      ),
+      false,
+    );
+    socket.emit(
+      "message",
+      JSON.stringify(
+        workerResponseEnvelopeSchema.parse({
+          kind: "response",
+          requestId: request.requestId,
+          ok: true,
+          result: { available: true },
+        }),
+      ),
+      false,
+    );
+
+    await expect(response).resolves.toEqual({ available: true });
+    expect(delivered).toEqual(["terminal.ready"]);
     bridge.close();
   });
 

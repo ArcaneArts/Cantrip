@@ -1,18 +1,18 @@
 import {
+  decodeWorkerRequestEnvelope,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
+  encodeWorkerServerEnvelope,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   isTunnelDataPlaneFrame,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
-  workerEventEnvelopeSchema,
   type WorkerEvent,
-  workerNotificationEnvelopeSchema,
   type WorkerNotification,
-  workerRequestEnvelopeSchema,
-  workerResponseEnvelopeSchema,
+  type WorkerRequestEnvelope,
+  type WorkerServerEnvelope,
 } from "@cantrip/protocol";
 import WebSocket, { type RawData } from "ws";
 
@@ -97,45 +97,56 @@ export class WorkerConnection {
       headers: { authorization: `Bearer ${this.config.token}` },
     });
     this.#socket = socket;
-    socket.once("open", () => {
-      this.#lastConnectionError = null;
-      this.startKeepalive(socket);
-      this.flushCommandEnvelopes(socket);
-      workerLogger.info("Command channel connected");
-    });
+    socket.once("open", () => this.handleSocketOpen(socket));
     socket.on("message", (data, isBinary) => {
-      void this.onMessage(socket, data, isBinary);
+      void this.onMessage(data, isBinary);
     });
-    socket.once("error", (error) => {
-      if (!this.#closed && error.message !== this.#lastConnectionError) {
-        this.#lastConnectionError = error.message;
-        workerLogger.warn("Command channel unavailable", {
-          error: error.message,
-        });
-      }
+    socket.once("error", (error) => this.handleSocketError(error));
+    socket.once("close", (code, reason) =>
+      this.handleSocketClose(socket, code, reason.toString()),
+    );
+  }
+
+  private handleSocketOpen(socket: WebSocket): void {
+    this.#lastConnectionError = null;
+    this.startKeepalive(socket);
+    this.flushCommandEnvelopes(socket);
+    workerLogger.info("Command channel connected");
+  }
+
+  private handleSocketError(error: Error): void {
+    if (this.#closed || error.message === this.#lastConnectionError) return;
+    this.#lastConnectionError = error.message;
+    workerLogger.warn("Command channel unavailable", {
+      error: error.message,
     });
-    socket.once("close", (code, reason) => {
-      const wasCurrent = this.#socket === socket;
-      if (wasCurrent) {
-        this.clearKeepalive();
-        this.#socket = null;
-        this.handleTransportDisconnect();
+  }
+
+  private handleSocketClose(
+    socket: WebSocket,
+    code: number,
+    reason: string,
+  ): void {
+    const wasCurrent = this.#socket === socket;
+    if (wasCurrent) {
+      this.clearKeepalive();
+      this.#socket = null;
+      this.handleTransportDisconnect();
+    }
+    if (code === 1008) {
+      this.#authenticationRejected = true;
+      const message = reason || "worker authentication rejected";
+      if (message !== this.#lastConnectionError) {
+        this.#lastConnectionError = message;
+        workerLogger.warn(
+          "Command channel authentication rejected; update or re-enroll this worker, then restart it",
+          { error: message },
+        );
       }
-      if (code === 1008) {
-        this.#authenticationRejected = true;
-        const message = reason.toString() || "worker authentication rejected";
-        if (message !== this.#lastConnectionError) {
-          this.#lastConnectionError = message;
-          workerLogger.warn(
-            "Command channel authentication rejected; update or re-enroll this worker, then restart it",
-            { error: message },
-          );
-        }
-      }
-      if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
-        this.#reconnectTimer = setTimeout(() => this.connect(), 1_000);
-      }
-    });
+    }
+    if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
+      this.#reconnectTimer = setTimeout(() => this.connect(), 1_000);
+    }
   }
 
   private startKeepalive(socket: WebSocket): void {
@@ -182,6 +193,10 @@ export class WorkerConnection {
     if (bytes > MAX_BUFFERED_COMMAND_BYTES) return;
     this.#pendingCommandEnvelopes.push(envelope);
     this.#pendingCommandBytes += bytes;
+  }
+
+  private sendServerEnvelope(envelope: WorkerServerEnvelope): void {
+    this.sendCommandEnvelope(encodeWorkerServerEnvelope(envelope));
   }
 
   private flushCommandEnvelopes(socket: WebSocket): void {
@@ -251,12 +266,7 @@ export class WorkerConnection {
     }
     try {
       socket.send(
-        JSON.stringify(
-          workerNotificationEnvelopeSchema.parse({
-            kind: "notification",
-            notification,
-          }),
-        ),
+        encodeWorkerServerEnvelope({ kind: "notification", notification }),
       );
       return true;
     } catch {
@@ -275,73 +285,57 @@ export class WorkerConnection {
     return false;
   }
 
-  private async onMessage(
-    socket: WebSocket,
-    data: RawData,
-    isBinary: boolean,
-  ): Promise<void> {
+  private async onMessage(data: RawData, isBinary: boolean): Promise<void> {
     if (isBinary) {
-      try {
-        const bytes = rawDataBytes(data);
-        if (isTunnelDataPlaneFrame(bytes)) {
-          const frame = decodeTunnelDataPlaneFrame(bytes);
-          await this.handleTunnelDataPlaneFrame(frame.header, frame.payload);
-        } else {
-          const frame = decodeRemoteSurfaceFrame(bytes);
-          await this.handleSurfaceFrame(frame.header, frame.payload);
-        }
-      } catch (error) {
-        workerLogger.warn("Rejected worker data frame", error);
-      }
+      await this.handleBinaryFrame(data);
       return;
     }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(data.toString());
-    } catch {
-      return;
-    }
-    const request = workerRequestEnvelopeSchema.safeParse(raw);
-    if (!request.success) {
-      return;
-    }
+    const request = decodeWorkerRequestEnvelope(data.toString());
+    if (!request.success) return;
 
+    await this.handleRequest(request.data);
+  }
+
+  private async handleBinaryFrame(data: RawData): Promise<void> {
+    try {
+      const bytes = rawDataBytes(data);
+      if (isTunnelDataPlaneFrame(bytes)) {
+        const frame = decodeTunnelDataPlaneFrame(bytes);
+        await this.handleTunnelDataPlaneFrame(frame.header, frame.payload);
+      } else {
+        const frame = decodeRemoteSurfaceFrame(bytes);
+        await this.handleSurfaceFrame(frame.header, frame.payload);
+      }
+    } catch (error) {
+      workerLogger.warn("Rejected worker data frame", error);
+    }
+  }
+
+  private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
     try {
       const emit = (event: WorkerEvent) => {
-        this.sendCommandEnvelope(
-          JSON.stringify(
-            workerEventEnvelopeSchema.parse({
-              kind: "event",
-              requestId: request.data.requestId,
-              event,
-            }),
-          ),
-        );
+        this.sendServerEnvelope({
+          kind: "event",
+          requestId: request.requestId,
+          event,
+        });
       };
-      const result = await this.handleCommand(request.data.command, emit);
-      this.sendCommandEnvelope(
-        JSON.stringify(
-          workerResponseEnvelopeSchema.parse({
-            kind: "response",
-            requestId: request.data.requestId,
-            ok: true,
-            result,
-          }),
-        ),
-      );
+      const result = await this.handleCommand(request.command, emit);
+      this.sendServerEnvelope({
+        kind: "response",
+        requestId: request.requestId,
+        ok: true,
+        result,
+      });
     } catch (error) {
-      this.sendCommandEnvelope(
-        JSON.stringify(
-          workerResponseEnvelopeSchema.parse({
-            kind: "response",
-            requestId: request.data.requestId,
-            ok: false,
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-            },
-          }),
-        ),
-      );
+      this.sendServerEnvelope({
+        kind: "response",
+        requestId: request.requestId,
+        ok: false,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 }

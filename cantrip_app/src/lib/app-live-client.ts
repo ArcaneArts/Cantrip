@@ -1,5 +1,10 @@
-import { appLiveScopeKey, appLiveServerMessageSchema } from "@cantrip/protocol";
+import {
+  appLiveScopeKey,
+  decodeAppLiveServerMessage,
+  encodeAppLiveClientMessage,
+} from "@cantrip/protocol";
 import type {
+  AppLiveClientMessage,
   AppLiveErrorCode,
   AppLiveResyncReason,
   AppLiveScope,
@@ -281,60 +286,68 @@ export class AppLiveClient {
         socket.close(1013, "Application live connection timed out");
       }
     }, CONNECT_TIMEOUT_MS);
-    socket.onOpen(() => {
-      if (this.#socket !== socket || !this.#running) return;
-      this.#setStatus("initializing");
-      this.#send({
-        type: "initialize",
-        protocolVersion: 1,
-        client: this.#options.client,
-        resume:
-          this.#serverEpoch !== null && this.#safeCursor !== null
-            ? {
-                serverEpoch: this.#serverEpoch,
-                cursor: this.#safeCursor,
-              }
-            : null,
-      });
+    socket.onOpen(() => this.#handleSocketOpen(socket));
+    socket.onMessage((data) => this.#handleSocketMessage(socket, data));
+    socket.onError(() => this.#handleSocketError(socket));
+    socket.onClose((event) => this.#handleSocketClose(socket, event));
+  }
+
+  #handleSocketOpen(socket: AppLiveClientSocket): void {
+    if (this.#socket !== socket || !this.#running) return;
+    this.#setStatus("initializing");
+    this.#send({
+      type: "initialize",
+      protocolVersion: 1,
+      client: this.#options.client,
+      resume:
+        this.#serverEpoch !== null && this.#safeCursor !== null
+          ? {
+              serverEpoch: this.#serverEpoch,
+              cursor: this.#safeCursor,
+            }
+          : null,
     });
-    socket.onMessage((data) => {
-      if (this.#socket !== socket || !this.#running) return;
-      this.#handleServerFrame(data);
-    });
-    socket.onError(() => {
-      if (this.#socket !== socket || !this.#running) return;
-      this.#lastError = "The application live connection encountered an error.";
-      this.#emit();
-    });
-    socket.onClose((event) => {
-      if (this.#socket !== socket) return;
-      this.#socket = null;
-      this.#clearConnectTimer();
-      this.#clearHeartbeat();
-      this.#activeScopes.clear();
-      this.#pendingRequests.clear();
-      this.#resumeMode = null;
-      this.#snapshotBarrierCount = 0;
-      this.#lastCursor = this.#safeCursor;
-      this.#resyncGeneration += 1;
-      this.#resyncRunning = false;
-      if (!this.#running) return;
-      if (
-        event.code === 1008 &&
-        /auth|session|sign[ -]?in/i.test(event.reason)
-      ) {
-        this.#options.onAuthenticationRequired?.(
-          event.reason || "Your Cantrip session has expired.",
-        );
-        this.stop();
-        return;
-      }
-      if (event.code !== 1000) {
-        this.#lastError =
-          event.reason || `Application live connection closed (${event.code}).`;
-      }
-      this.#scheduleReconnect();
-    });
+  }
+
+  #handleSocketMessage(socket: AppLiveClientSocket, data: unknown): void {
+    if (this.#socket !== socket || !this.#running) return;
+    this.#handleServerFrame(data);
+  }
+
+  #handleSocketError(socket: AppLiveClientSocket): void {
+    if (this.#socket !== socket || !this.#running) return;
+    this.#lastError = "The application live connection encountered an error.";
+    this.#emit();
+  }
+
+  #handleSocketClose(
+    socket: AppLiveClientSocket,
+    event: { code: number; reason: string },
+  ): void {
+    if (this.#socket !== socket) return;
+    this.#socket = null;
+    this.#clearConnectTimer();
+    this.#clearHeartbeat();
+    this.#activeScopes.clear();
+    this.#pendingRequests.clear();
+    this.#resumeMode = null;
+    this.#snapshotBarrierCount = 0;
+    this.#lastCursor = this.#safeCursor;
+    this.#resyncGeneration += 1;
+    this.#resyncRunning = false;
+    if (!this.#running) return;
+    if (event.code === 1008 && /auth|session|sign[ -]?in/i.test(event.reason)) {
+      this.#options.onAuthenticationRequired?.(
+        event.reason || "Your Cantrip session has expired.",
+      );
+      this.stop();
+      return;
+    }
+    if (event.code !== 1000) {
+      this.#lastError =
+        event.reason || `Application live connection closed (${event.code}).`;
+    }
+    this.#scheduleReconnect();
   }
 
   #handleServerFrame(data: unknown): void {
@@ -342,21 +355,18 @@ export class AppLiveClient {
       this.#protocolFailure("The live server sent a non-text frame.");
       return;
     }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(data);
-    } catch {
+    const decoded = decodeAppLiveServerMessage(data);
+    if (!decoded.success && decoded.reason === "invalid-json") {
       this.#protocolFailure("The live server sent invalid JSON.");
       return;
     }
-    const parsed = appLiveServerMessageSchema.safeParse(raw);
-    if (!parsed.success) {
+    if (!decoded.success) {
       this.#protocolFailure(
         "The live server sent an invalid protocol message.",
       );
       return;
     }
-    this.#handleServerMessage(parsed.data);
+    this.#handleServerMessage(decoded.data);
   }
 
   #handleServerMessage(message: AppLiveServerMessage): void {
@@ -638,11 +648,11 @@ export class AppLiveClient {
     return [...this.#scopeReferences.values()].map(({ scope }) => scope);
   }
 
-  #send(message: object): void {
+  #send(message: AppLiveClientMessage): void {
     const socket = this.#socket;
     if (!socket || socket.readyState !== OPEN_SOCKET_STATE) return;
     try {
-      socket.send(JSON.stringify(message));
+      socket.send(encodeAppLiveClientMessage(message));
     } catch {
       socket.close(1011, "Application live send failed");
     }
