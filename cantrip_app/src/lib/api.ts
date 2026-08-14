@@ -146,6 +146,7 @@ import {
   modelProviderAccountSummarySchema,
   modelProviderAccountUpdateSchema,
   modelProviderCreateSchema,
+  providerModelCatalogResultSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
   mcpServerConfigurationSchema,
@@ -658,6 +659,31 @@ export async function createModelProvider(input: ModelProviderCreate) {
     await post(
       "/api/settings/providers",
       modelProviderCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getProviderModelCatalog(
+  providerId: string,
+  workerId?: string | null,
+) {
+  const query = workerId ? `?workerId=${encodeURIComponent(workerId)}` : "";
+  return providerModelCatalogResultSchema.parse(
+    await request(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/catalog${query}`,
+    ),
+  );
+}
+
+export async function refreshProviderModelCatalog(
+  providerId: string,
+  workerId?: string | null,
+) {
+  const query = workerId ? `?workerId=${encodeURIComponent(workerId)}` : "";
+  return providerModelCatalogResultSchema.parse(
+    await request(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/catalog/refresh${query}`,
+      { method: "POST" },
     ),
   );
 }
