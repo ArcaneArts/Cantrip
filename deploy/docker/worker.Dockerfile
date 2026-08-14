@@ -1,8 +1,10 @@
 FROM node:24-bookworm AS build
 
 ARG TARGETARCH
+ARG CANTRIP_VERSION_PATCH
 ARG RUST_TOOLCHAIN=1.95.0
-ENV CARGO_HOME=/usr/local/cargo \
+ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH} \
+    CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 WORKDIR /workspace
@@ -26,6 +28,8 @@ RUN apt-get update \
 
 COPY . .
 
+RUN test -n "$CANTRIP_VERSION_PATCH" \
+    || (echo "CANTRIP_VERSION_PATCH is required for Docker builds." >&2; exit 1)
 RUN corepack pnpm install --frozen-lockfile
 RUN case "$TARGETARCH" in \
       amd64) cantrip_target=linux-x64 ;; \

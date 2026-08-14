@@ -36,6 +36,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/docker/server.Dockerfile
+      args:
+        CANTRIP_VERSION_PATCH: ${CANTRIP_VERSION_PATCH:?set CANTRIP_VERSION_PATCH to the Git commit count}
     image: cantrip-server:${CANTRIP_IMAGE_TAG:-local}
     restart: unless-stopped
     depends_on:
@@ -103,6 +105,8 @@ services:
     build:
       context: ..
       dockerfile: deploy/docker/worker.Dockerfile
+      args:
+        CANTRIP_VERSION_PATCH: ${CANTRIP_VERSION_PATCH:?set CANTRIP_VERSION_PATCH to the Git commit count}
     image: cantrip-worker:${CANTRIP_IMAGE_TAG:-local}
     restart: unless-stopped
     depends_on:

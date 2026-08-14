@@ -1,16 +1,23 @@
 FROM node:24-bookworm AS build
 
 ARG TARGETARCH
+ARG CANTRIP_VERSION_PATCH
+ENV CANTRIP_VERSION_PATCH=${CANTRIP_VERSION_PATCH}
 WORKDIR /workspace
 
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY version.json ./
+COPY packages/logging ./packages/logging
 COPY packages/protocol ./packages/protocol
+COPY packages/version ./packages/version
 COPY cantrip_server ./cantrip_server
 COPY deploy ./deploy
 COPY patches ./patches
 COPY scripts ./scripts
 
+RUN test -n "$CANTRIP_VERSION_PATCH" \
+    || (echo "CANTRIP_VERSION_PATCH is required for Docker builds." >&2; exit 1)
 RUN corepack pnpm install --frozen-lockfile
 RUN case "$TARGETARCH" in \
       amd64) cantrip_target=linux-x64 ;; \

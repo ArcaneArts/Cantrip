@@ -459,25 +459,39 @@ function writeRemoteEnvironment(config, keyPath, environmentFile) {
   });
 }
 
-function buildServerBundle(config, temporaryDirectory) {
+export function productionServerBuildArguments(
+  config,
+  outputDirectory,
+  versionPatch,
+) {
+  const normalizedVersionPatch = String(versionPatch).trim();
+  if (!/^\d+$/u.test(normalizedVersionPatch)) {
+    throw new Error("Production version patch must be a Git commit count.");
+  }
+  return [
+    "buildx",
+    "build",
+    "--platform",
+    config.platform,
+    "--build-arg",
+    `CANTRIP_VERSION_PATCH=${normalizedVersionPatch}`,
+    "--target",
+    "distribution",
+    "--output",
+    `type=local,dest=${outputDirectory}`,
+    "--file",
+    path.join("deploy", "docker", "server.Dockerfile"),
+    ".",
+  ];
+}
+
+function buildServerBundle(config, temporaryDirectory, versionPatch) {
   const outputDirectory = path.join(temporaryDirectory, "server");
   const artifactPath = path.join(temporaryDirectory, "cantrip-server.tar.gz");
   console.log(`Building the production server bundle for ${config.platform}…`);
   command(
     "docker",
-    [
-      "buildx",
-      "build",
-      "--platform",
-      config.platform,
-      "--target",
-      "distribution",
-      "--output",
-      `type=local,dest=${outputDirectory}`,
-      "--file",
-      path.join("deploy", "docker", "server.Dockerfile"),
-      ".",
-    ],
+    productionServerBuildArguments(config, outputDirectory, versionPatch),
     { inherit: true },
   );
   command("tar", ["-czf", artifactPath, "-C", outputDirectory, "."]);
@@ -549,6 +563,7 @@ export async function deployProduction({
 } = {}) {
   const config = await loadDeploymentConfig();
   const commit = await validateProductionSource(root, expectedCommit);
+  const versionPatch = git(root, ["rev-list", "--count", commit]);
   await validateProductionDns(config);
 
   const secretOutput = secretCommand("infisical", [
@@ -580,7 +595,11 @@ export async function deployProduction({
       { mode: 0o600 },
     );
     await chmod(keyPath, 0o600);
-    const artifactPath = buildServerBundle(config, temporaryDirectory);
+    const artifactPath = buildServerBundle(
+      config,
+      temporaryDirectory,
+      versionPatch,
+    );
     writeRemoteEnvironment(config, keyPath, environmentFile);
     uploadAndInstall(config, keyPath, commit, artifactPath);
     await Promise.all([

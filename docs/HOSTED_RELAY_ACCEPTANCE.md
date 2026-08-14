@@ -11,6 +11,7 @@ Run from a clean checkout with the repository-pinned pnpm version:
 ```bash
 pnpm check
 pnpm audit:server-boundaries
+export CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)"
 docker compose --env-file deploy/hosted.env \
   -f deploy/compose.hosted.yml config --quiet
 ```
