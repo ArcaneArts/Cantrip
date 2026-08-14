@@ -38,6 +38,7 @@ function nonNegativeInteger(value, name) {
 
 export function resolveCantripVersion({
   root = repositoryRoot,
+  environment = process.env,
   loadVersionConfig = readVersionConfig,
   loadGitCommitCount = readGitCommitCount,
 } = {}) {
@@ -52,11 +53,17 @@ export function resolveCantripVersion({
 
   const major = nonNegativeInteger(config.major, "version.json major");
   const minor = nonNegativeInteger(config.minor, "version.json minor");
-  const rawPatch = loadGitCommitCount(root);
+  const patchOverride = environment.CANTRIP_VERSION_PATCH?.trim();
+  const rawPatch = patchOverride || loadGitCommitCount(root);
   if (!/^\d+$/u.test(rawPatch)) {
-    throw new Error("Git commit count must be a non-negative integer.");
+    throw new Error(
+      `${patchOverride ? "CANTRIP_VERSION_PATCH" : "Git commit count"} must be a non-negative integer.`,
+    );
   }
-  const patch = nonNegativeInteger(Number(rawPatch), "Git commit count");
+  const patch = nonNegativeInteger(
+    Number(rawPatch),
+    patchOverride ? "CANTRIP_VERSION_PATCH" : "Git commit count",
+  );
 
   return Object.freeze({
     major,

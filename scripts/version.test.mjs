@@ -12,6 +12,7 @@ import {
 test("builds the official version from version.json and Git commit count", () => {
   assert.deepEqual(
     resolveCantripVersion({
+      environment: {},
       loadVersionConfig: () => ({ major: 1, minor: 1 }),
       loadGitCommitCount: () => "1375",
     }),
@@ -19,10 +20,32 @@ test("builds the official version from version.json and Git commit count", () =>
   );
 });
 
+test("accepts an explicit patch when Git metadata is outside the build context", () => {
+  assert.deepEqual(
+    resolveCantripVersion({
+      environment: { CANTRIP_VERSION_PATCH: "1375" },
+      loadVersionConfig: () => ({ major: 1, minor: 1 }),
+      loadGitCommitCount: () => {
+        throw new Error("Git should not be read when the patch is explicit.");
+      },
+    }),
+    { major: 1, minor: 1, patch: 1375, version: "1.1.1375" },
+  );
+  assert.throws(
+    () =>
+      resolveCantripVersion({
+        environment: { CANTRIP_VERSION_PATCH: "not-a-count" },
+        loadVersionConfig: () => ({ major: 1, minor: 1 }),
+      }),
+    /CANTRIP_VERSION_PATCH must be a non-negative integer/u,
+  );
+});
+
 test("rejects patch fields and invalid version components", () => {
   assert.throws(
     () =>
       resolveCantripVersion({
+        environment: {},
         loadVersionConfig: () => ({ major: 1, minor: 1, patch: 2 }),
         loadGitCommitCount: () => "10",
       }),
@@ -31,6 +54,7 @@ test("rejects patch fields and invalid version components", () => {
   assert.throws(
     () =>
       resolveCantripVersion({
+        environment: {},
         loadVersionConfig: () => ({ major: 1, minor: -1 }),
         loadGitCommitCount: () => "10",
       }),

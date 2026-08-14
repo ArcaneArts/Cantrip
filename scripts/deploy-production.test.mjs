@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   buildProductionEnvironment,
   parseInfisicalSecrets,
+  productionServerBuildArguments,
   quoteSystemdEnvironmentValue,
   serializeSystemdEnvironment,
   validateDeploymentConfig,
@@ -114,6 +115,61 @@ test("validates the committed production target", () => {
     () => validateDeploymentConfig({ ...config, apiDomain: config.codeDomain }),
     /must differ/u,
   );
+});
+
+test("passes the release commit count into the production Docker build", () => {
+  const arguments_ = productionServerBuildArguments(
+    config,
+    "/tmp/cantrip-server-output",
+    "1375",
+  );
+  assert.deepEqual(arguments_.slice(0, 8), [
+    "buildx",
+    "build",
+    "--platform",
+    "linux/amd64",
+    "--build-arg",
+    "CANTRIP_VERSION_PATCH=1375",
+    "--target",
+    "distribution",
+  ]);
+  assert.throws(
+    () => productionServerBuildArguments(config, "/tmp/output", "release"),
+    /must be a Git commit count/u,
+  );
+});
+
+test("copies every server workspace dependency into the Docker build", async () => {
+  const dockerfile = await readFile(
+    new URL("../deploy/docker/server.Dockerfile", import.meta.url),
+    "utf8",
+  );
+  for (const source of [
+    "version.json",
+    "packages/logging",
+    "packages/protocol",
+    "packages/version",
+    "cantrip_server",
+  ]) {
+    assert.match(dockerfile, new RegExp(`^COPY ${source}`, "mu"));
+  }
+  assert.match(dockerfile, /^ARG CANTRIP_VERSION_PATCH$/mu);
+});
+
+test("requires explicit commit-count versions for hosted Docker services", async () => {
+  const [compose, workerDockerfile] = await Promise.all([
+    readFile(new URL("../deploy/compose.hosted.yml", import.meta.url), "utf8"),
+    readFile(
+      new URL("../deploy/docker/worker.Dockerfile", import.meta.url),
+      "utf8",
+    ),
+  ]);
+  assert.equal(
+    compose.match(/CANTRIP_VERSION_PATCH: \$\{CANTRIP_VERSION_PATCH:/gu)
+      ?.length,
+    2,
+  );
+  assert.match(workerDockerfile, /^ARG CANTRIP_VERSION_PATCH$/mu);
 });
 
 test("keeps extracted production releases traversable by the service user", async () => {
