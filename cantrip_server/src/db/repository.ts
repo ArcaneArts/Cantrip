@@ -217,6 +217,8 @@ export interface ProviderModelCatalogWrite {
   digest: string | null;
   metadataSource: ProviderModelCatalogEntry["metadataSource"];
   matchConfidenceBasisPoints: number | null;
+  hidden?: boolean;
+  isDefault?: boolean;
   rawMetadata: Record<string, unknown>;
 }
 
@@ -3164,6 +3166,8 @@ export class ServerRepository {
       etag?: string | null;
       refreshStartedAt?: Date | null;
       lastSuccessAt?: Date | null;
+      workerId?: string | null;
+      providerAccountId?: string | null;
     },
   ): Promise<void> {
     const now = new Date();
@@ -3178,6 +3182,8 @@ export class ServerRepository {
         etag: input.etag ?? null,
         refreshStartedAt: input.refreshStartedAt ?? null,
         lastSuccessAt: input.lastSuccessAt ?? null,
+        workerId: input.workerId ?? null,
+        providerAccountId: input.providerAccountId ?? null,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -3195,6 +3201,10 @@ export class ServerRepository {
           ...(input.lastSuccessAt === undefined
             ? {}
             : { lastSuccessAt: input.lastSuccessAt }),
+          ...(input.workerId === undefined ? {} : { workerId: input.workerId }),
+          ...(input.providerAccountId === undefined
+            ? {}
+            : { providerAccountId: input.providerAccountId }),
           updatedAt: now,
         },
       });
@@ -3208,6 +3218,10 @@ export class ServerRepository {
       availabilityScope: string;
       availableNativeModelIds: ReadonlySet<string>;
       autoCreateLogicalModels?: boolean;
+      autoCreateNativeModelIds?: ReadonlySet<string>;
+      availabilityWorkerId?: string | null;
+      availabilityProviderAccountId?: string | null;
+      defaultNativeModelId?: string | null;
     },
   ): Promise<boolean> {
     const provider = await this.database
@@ -3263,6 +3277,8 @@ export class ServerRepository {
               digest: sql`excluded.digest`,
               metadataSource: sql`excluded.metadata_source`,
               matchConfidenceBasisPoints: sql`excluded.match_confidence_basis_points`,
+              hidden: sql`excluded.hidden`,
+              isDefault: sql`excluded.is_default`,
               rawMetadata: sql`excluded.raw_metadata`,
               lastSeenAt: now,
               updatedAt: now,
@@ -3286,6 +3302,8 @@ export class ServerRepository {
             id: randomUUID(),
             providerModelId: model.id,
             scopeKey: input.availabilityScope,
+            workerId: input.availabilityWorkerId ?? null,
+            providerAccountId: input.availabilityProviderAccountId ?? null,
             state: input.availableNativeModelIds.has(model.nativeModelId)
               ? "available"
               : "unavailable",
@@ -3300,6 +3318,8 @@ export class ServerRepository {
           ],
           set: {
             state: sql`excluded.state`,
+            workerId: sql`excluded.worker_id`,
+            providerAccountId: sql`excluded.provider_account_id`,
             lastSeenAt: now,
             updatedAt: now,
           },
@@ -3336,7 +3356,9 @@ export class ServerRepository {
         );
         const discovered = providerModelRows.filter(
           (model) =>
-            input.availableNativeModelIds.has(model.nativeModelId) &&
+            (
+              input.autoCreateNativeModelIds ?? input.availableNativeModelIds
+            ).has(model.nativeModelId) &&
             !suppressed.has(model.id) &&
             !routedNames.has(model.nativeModelId),
         );
@@ -3368,6 +3390,37 @@ export class ServerRepository {
               discoveryManaged: true,
             })
             .onConflictDoNothing({ target: schema.modelRoutes.id });
+        }
+        if (input.defaultNativeModelId) {
+          const defaultRoutes = await transaction
+            .select({ modelId: schema.modelRoutes.modelId })
+            .from(schema.modelRoutes)
+            .innerJoin(
+              schema.providerModels,
+              and(
+                eq(
+                  schema.providerModels.id,
+                  schema.modelRoutes.providerModelId,
+                ),
+                eq(schema.providerModels.providerId, providerId),
+                eq(
+                  schema.providerModels.nativeModelId,
+                  input.defaultNativeModelId,
+                ),
+              ),
+            )
+            .limit(1);
+          if (defaultRoutes[0]) {
+            await transaction
+              .update(schema.userSettings)
+              .set({ defaultModelId: defaultRoutes[0].modelId, updatedAt: now })
+              .where(
+                and(
+                  eq(schema.userSettings.userId, ownerId),
+                  isNull(schema.userSettings.defaultModelId),
+                ),
+              );
+          }
         }
       }
     });

@@ -15,6 +15,7 @@ import {
   agentInteractionRuntimeRequestSchema,
   agentThreadSyncSchema,
   agentTurnResultSchema,
+  chatGptModelInventorySchema,
   chatGoalClearSchema,
   chatGoalResponseSchema,
   chatPlanAcceptedSchema,
@@ -32,6 +33,7 @@ import {
   type AgentThreadSync,
   type AgentThreadSyncItem,
   type AgentTurnResult,
+  type ChatGptModelInventory,
   type ChatGoalResponse,
   type ChatRelocationContextPayload,
   type CodexCustomizationInventory,
@@ -1778,6 +1780,42 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
+  async listChatGptModels(
+    provider: Extract<
+      WorkerCommand,
+      { type: "model.chatgpt.catalog" }
+    >["provider"],
+  ): Promise<ChatGptModelInventory> {
+    await this.ensureCatalogStarted(provider);
+    const models: ChatGptModelInventory["models"] = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      const response = (await this.request("model/list", {
+        cursor,
+        includeHidden: true,
+        limit: 100,
+      })) as { data?: unknown[]; nextCursor?: string | null };
+      if (!Array.isArray(response.data)) {
+        throw new Error("Codex model/list returned an invalid model page.");
+      }
+      const page = chatGptModelInventorySchema.shape.models.parse(
+        response.data,
+      );
+      models.push(...page);
+      const nextCursor = response.nextCursor ?? null;
+      if (nextCursor && seenCursors.has(nextCursor)) {
+        throw new Error("Codex model/list repeated a pagination cursor.");
+      }
+      if (nextCursor) seenCursors.add(nextCursor);
+      cursor = nextCursor;
+    } while (cursor && models.length < 1_000);
+    return chatGptModelInventorySchema.parse({
+      models,
+      observedAt: new Date().toISOString(),
+    });
+  }
+
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
     await this.ensureStarted(options.model, options.provider);
@@ -2843,6 +2881,44 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
+  private async ensureCatalogStarted(
+    provider: Extract<
+      WorkerCommand,
+      { type: "model.chatgpt.catalog" }
+    >["provider"],
+  ): Promise<void> {
+    if (
+      this.compatibility.compatibility === "missing" ||
+      this.compatibility.compatibility === "incompatible"
+    ) {
+      const detail = this.compatibility.degradedReasons.join(" ");
+      throw new Error(
+        `Codex runtime is ${this.compatibility.compatibility}; expected ${this.compatibility.testedRange}.${detail ? ` ${detail}` : ""}`,
+      );
+    }
+    const runtimeId = `catalog:${provider.id}:${provider.credentialHomeKey}`;
+    if (this.#starting) await this.#starting;
+    if (this.#child) {
+      if (this.#runtimeId !== runtimeId) {
+        throw new Error(
+          "A Codex catalog runtime received a different account.",
+        );
+      }
+      return;
+    }
+    this.#runtimeId = runtimeId;
+    const starting = this.start(null, provider);
+    this.#starting = starting;
+    try {
+      await starting;
+    } catch (error) {
+      if (this.#starting === starting) this.stopFailedStart();
+      throw error;
+    } finally {
+      if (this.#starting === starting) this.#starting = null;
+    }
+  }
+
   private stopFailedStart(): void {
     const socket = this.#socket;
     const child = this.#child;
@@ -3175,7 +3251,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private async start(
-    model: RunAgentTurnOptions["model"],
+    model: RunAgentTurnOptions["model"] | null,
     provider: RunAgentTurnOptions["provider"],
   ): Promise<void> {
     this.#appServerSessionId = randomUUID();
@@ -3194,9 +3270,8 @@ export class CodexAppServer implements CodexRuntime {
           "-c",
           argument,
         ]),
-        "-c",
-        `model=${JSON.stringify(model.name)}`,
-        ...(model.reasoningEffort
+        ...(model ? ["-c", `model=${JSON.stringify(model.name)}`] : []),
+        ...(model?.reasoningEffort
           ? [
               "-c",
               `model_reasoning_effort=${JSON.stringify(model.reasoningEffort)}`,

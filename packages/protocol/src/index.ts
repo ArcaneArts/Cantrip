@@ -6685,6 +6685,46 @@ export const ollamaModelInventorySchema = z.object({
   observedAt: z.string().datetime(),
 });
 
+export const chatGptModelInventoryItemSchema = z.object({
+  id: z.string().trim().min(1).max(500),
+  model: z.string().trim().min(1).max(500),
+  displayName: z.string().trim().min(1).max(500),
+  description: z.string().max(20_000),
+  hidden: z.boolean(),
+  isDefault: z.boolean(),
+  inputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
+  supportedReasoningEfforts: z
+    .array(
+      z.object({
+        reasoningEffort: reasoningEffortSchema,
+        description: z.string().max(500),
+      }),
+    )
+    .max(32),
+  defaultReasoningEffort: reasoningEffortSchema,
+  modelSpecialty: z.string().max(500).nullable(),
+  supportsPersonality: z.boolean(),
+  upgrade: z.string().max(500).nullable(),
+  upgradeInfo: z.record(z.string(), z.unknown()).nullable(),
+  availabilityNux: z.record(z.string(), z.unknown()).nullable(),
+  additionalSpeedTiers: z.array(z.string().max(100)).max(32),
+  serviceTiers: z
+    .array(
+      z.object({
+        id: z.string().max(100),
+        name: z.string().max(200),
+        description: z.string().max(2_000),
+      }),
+    )
+    .max(32),
+  defaultServiceTier: z.string().max(100).nullable(),
+});
+
+export const chatGptModelInventorySchema = z.object({
+  models: z.array(chatGptModelInventoryItemSchema).max(1_000),
+  observedAt: z.string().datetime(),
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
@@ -6698,6 +6738,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("model.ollama.catalog"),
     baseUrl: z.url(),
     apiKey: z.string().min(1).nullable(),
+  }),
+  z.object({
+    type: z.literal("model.chatgpt.catalog"),
+    provider: workerRuntimeProviderSchema.extend({
+      kind: z.literal("chatgpt"),
+      accountId: z.string().min(1),
+      credentialHomeKey: z.string().min(1).max(500),
+    }),
   }),
   z.object({
     type: z.literal("codex.auth.status"),
@@ -8890,6 +8938,10 @@ export type OllamaModelInventoryItem = z.infer<
   typeof ollamaModelInventoryItemSchema
 >;
 export type OllamaModelInventory = z.infer<typeof ollamaModelInventorySchema>;
+export type ChatGptModelInventoryItem = z.infer<
+  typeof chatGptModelInventoryItemSchema
+>;
+export type ChatGptModelInventory = z.infer<typeof chatGptModelInventorySchema>;
 export type ProjectShareAdapterRequestHead = z.infer<
   typeof projectShareAdapterRequestHeadSchema
 >;

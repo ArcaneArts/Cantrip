@@ -215,6 +215,7 @@ async function start(): Promise<void> {
   const github = new GithubClient(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
+  const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
   const projectShareTunnel = new ProjectShareTunnelDestinationAdapter(
@@ -278,6 +279,23 @@ async function start(): Promise<void> {
     return runtime;
   };
 
+  const catalogRuntimeFor = (credentialHomeKey: string) => {
+    let runtime = codexCatalogRuntimes.get(credentialHomeKey);
+    if (!runtime) {
+      const directoryName = createHash("sha256")
+        .update(`catalog:${credentialHomeKey}`)
+        .digest("hex");
+      runtime = new CodexAppServer(
+        config.codexBinary,
+        path.join(config.dataDirectory, "codex-catalogs", directoryName),
+        accountHomeFor(credentialHomeKey),
+        codexRuntime,
+      );
+      codexCatalogRuntimes.set(credentialHomeKey, runtime);
+    }
+    return runtime;
+  };
+
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
@@ -313,6 +331,10 @@ async function start(): Promise<void> {
         return { accepted: true };
       case "model.ollama.catalog":
         return discoverOllamaModels(command.baseUrl, command.apiKey);
+      case "model.chatgpt.catalog":
+        return catalogRuntimeFor(
+          command.provider.credentialHomeKey,
+        ).listChatGptModels(command.provider);
       case "codex.auth.status":
         return authFor(
           command.credentialHomeKey ?? command.providerId,
@@ -333,6 +355,12 @@ async function start(): Promise<void> {
           runtime.close();
           codexRuntimes.delete(runtimeId);
         }
+        codexCatalogRuntimes
+          .get(command.credentialHomeKey ?? command.providerId)
+          ?.close();
+        codexCatalogRuntimes.delete(
+          command.credentialHomeKey ?? command.providerId,
+        );
         return { accepted: true };
       case "github.auth.status":
         return github.authStatus();
@@ -1440,6 +1468,9 @@ async function start(): Promise<void> {
       await desktopAdapter.shutdown();
       await cliBroker.close();
       for (const runtime of codexRuntimes.values()) {
+        runtime.close();
+      }
+      for (const runtime of codexCatalogRuntimes.values()) {
         runtime.close();
       }
       workerLogger.info("Worker stopped", { signal });

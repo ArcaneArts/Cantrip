@@ -132,6 +132,7 @@ export class OllamaCatalogService {
     if (!this.#bridge.isConnected(workerId)) {
       await this.#repository.setProviderCatalogSyncState(providerId, {
         scopeKey,
+        workerId,
         status: "stale",
         error: "Worker is offline.",
       });
@@ -147,6 +148,7 @@ export class OllamaCatalogService {
 
     await this.#repository.setProviderCatalogSyncState(providerId, {
       scopeKey,
+      workerId,
       status: "refreshing",
       error: null,
       refreshStartedAt: new Date(),
@@ -170,6 +172,7 @@ export class OllamaCatalogService {
         {
           models,
           availabilityScope: scopeKey,
+          availabilityWorkerId: workerId,
           availableNativeModelIds: new Set(
             models.map((model) => model.nativeModelId),
           ),
@@ -178,6 +181,7 @@ export class OllamaCatalogService {
       );
       await this.#repository.setProviderCatalogSyncState(providerId, {
         scopeKey,
+        workerId,
         status: "current",
         error: null,
         lastSuccessAt: new Date(),
@@ -187,6 +191,7 @@ export class OllamaCatalogService {
       const message = error instanceof Error ? error.message : String(error);
       await this.#repository.setProviderCatalogSyncState(providerId, {
         scopeKey,
+        workerId,
         status: existing?.models.length ? "stale" : "failed",
         error: message,
       });
