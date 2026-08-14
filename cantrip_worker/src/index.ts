@@ -238,17 +238,17 @@ async function start(): Promise<void> {
     workerId: config.workerId,
   });
 
-  const accountHomeFor = (providerId: string) =>
-    codexAccountHome(config.dataDirectory, providerId);
+  const accountHomeFor = (credentialHomeKey: string) =>
+    codexAccountHome(config.dataDirectory, credentialHomeKey);
 
-  const authFor = (providerId: string) => {
-    let client = codexAuthClients.get(providerId);
+  const authFor = (credentialHomeKey: string) => {
+    let client = codexAuthClients.get(credentialHomeKey);
     if (!client) {
       client = new CodexAuthClient(
         config.codexBinary,
-        accountHomeFor(providerId),
+        accountHomeFor(credentialHomeKey),
       );
-      codexAuthClients.set(providerId, client);
+      codexAuthClients.set(credentialHomeKey, client);
     }
     return client;
   };
@@ -312,13 +312,22 @@ async function start(): Promise<void> {
       case "model.ollama.catalog":
         return discoverOllamaModels(command.baseUrl, command.apiKey);
       case "codex.auth.status":
-        return authFor(command.providerId).status();
+        return authFor(
+          command.credentialHomeKey ?? command.providerId,
+        ).status();
       case "codex.auth.login.start":
-        return authFor(command.providerId).startDeviceLogin();
+        return authFor(
+          command.credentialHomeKey ?? command.providerId,
+        ).startDeviceLogin();
       case "codex.auth.logout":
-        await authFor(command.providerId).logout();
+        await authFor(command.credentialHomeKey ?? command.providerId).logout();
         for (const [runtimeId, runtime] of codexRuntimes) {
-          if (!runtimeId.startsWith(`${command.providerId}:`)) continue;
+          if (
+            !runtimeId.startsWith(
+              `${command.credentialHomeKey ?? command.providerId}:`,
+            )
+          )
+            continue;
           runtime.close();
           codexRuntimes.delete(runtimeId);
         }

@@ -3,8 +3,10 @@ import path from "node:path";
 
 export function codexAccountHome(
   dataDirectory: string,
-  providerId: string,
+  credentialHomeKey: string,
 ): string {
-  const directoryName = createHash("sha256").update(providerId).digest("hex");
+  const directoryName = createHash("sha256")
+    .update(credentialHomeKey)
+    .digest("hex");
   return path.join(dataDirectory, "codex-accounts", directoryName);
 }

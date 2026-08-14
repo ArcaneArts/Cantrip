@@ -61,6 +61,9 @@ import type {
   ModelProfileUpdate,
   McpServerConfiguration,
   McpServerSummary,
+  ModelProviderAccountCreate,
+  ModelProviderAccountSummary,
+  ModelProviderAccountUpdate,
   ModelProviderCreate,
   ProviderCatalogSyncState,
   ProviderModelAvailability,
@@ -1415,6 +1418,7 @@ function toRemoteDesktopSummary(
 function toProviderSummary(
   provider: typeof schema.modelProviders.$inferSelect,
   tokenUsage: TokenUsageTotals = ZERO_TOKEN_USAGE,
+  accounts: ModelProviderAccountSummary[] = [],
 ): ModelProviderSummary {
   return {
     id: provider.id,
@@ -1423,9 +1427,44 @@ function toProviderSummary(
     baseUrl: provider.baseUrl,
     hasApiKey: provider.apiKeyEnvelope !== null || provider.apiKey !== null,
     weeklyUsageReservePercent: provider.weeklyUsageReservePercent,
+    accounts,
     tokenUsage,
     createdAt: toISOString(provider.createdAt),
     updatedAt: toISOString(provider.updatedAt),
+  };
+}
+
+function toProviderAccountSummary(
+  account: typeof schema.modelProviderAccounts.$inferSelect,
+  workerBindings: Array<
+    typeof schema.modelProviderAccountWorkers.$inferSelect
+  > = [],
+): ModelProviderAccountSummary {
+  return {
+    id: account.id,
+    providerId: account.providerId,
+    label: account.label,
+    email: account.email,
+    planType: account.planType,
+    position: account.position,
+    enabled: account.enabled,
+    workerBindings: workerBindings.map((binding) => ({
+      workerId: binding.workerId,
+      authState:
+        binding.authState as ModelProviderAccountSummary["workerBindings"][number]["authState"],
+      weeklyUsageUsedPercent:
+        binding.weeklyUsageUsedBasisPoints === null
+          ? null
+          : binding.weeklyUsageUsedBasisPoints / 100,
+      weeklyUsageResetsAt: binding.weeklyUsageResetsAt
+        ? toISOString(binding.weeklyUsageResetsAt)
+        : null,
+      lastSyncedAt: binding.lastSyncedAt
+        ? toISOString(binding.lastSyncedAt)
+        : null,
+    })),
+    createdAt: toISOString(account.createdAt),
+    updatedAt: toISOString(account.updatedAt),
   };
 }
 
@@ -2228,6 +2267,8 @@ export class ServerRepository {
     const [
       settingsRows,
       providerRows,
+      providerAccountRows,
+      providerAccountWorkerRows,
       modelRows,
       routeRows,
       providerUsageRows,
@@ -2243,6 +2284,40 @@ export class ServerRepository {
         .from(schema.modelProviders)
         .where(eq(schema.modelProviders.ownerId, ownerId))
         .orderBy(asc(schema.modelProviders.name)),
+      this.database
+        .select({ account: schema.modelProviderAccounts })
+        .from(schema.modelProviderAccounts)
+        .innerJoin(
+          schema.modelProviders,
+          and(
+            eq(
+              schema.modelProviders.id,
+              schema.modelProviderAccounts.providerId,
+            ),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        )
+        .orderBy(asc(schema.modelProviderAccounts.position)),
+      this.database
+        .select({ binding: schema.modelProviderAccountWorkers })
+        .from(schema.modelProviderAccountWorkers)
+        .innerJoin(
+          schema.modelProviderAccounts,
+          eq(
+            schema.modelProviderAccounts.id,
+            schema.modelProviderAccountWorkers.accountId,
+          ),
+        )
+        .innerJoin(
+          schema.modelProviders,
+          and(
+            eq(
+              schema.modelProviders.id,
+              schema.modelProviderAccounts.providerId,
+            ),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        ),
       this.database
         .select()
         .from(schema.modelProfiles)
@@ -2329,7 +2404,20 @@ export class ServerRepository {
         mobileProjectTabConfigurations: settings.mobileProjectTabConfigurations,
       },
       providers: providerRows.map((provider) =>
-        toProviderSummary(provider, providerUsage.get(provider.id)),
+        toProviderSummary(
+          provider,
+          providerUsage.get(provider.id),
+          providerAccountRows
+            .filter(({ account }) => account.providerId === provider.id)
+            .map(({ account }) =>
+              toProviderAccountSummary(
+                account,
+                providerAccountWorkerRows
+                  .filter(({ binding }) => binding.accountId === account.id)
+                  .map(({ binding }) => binding),
+              ),
+            ),
+        ),
       ),
       models: modelRows.map((model) =>
         toModelSummary(
@@ -2634,25 +2722,60 @@ export class ServerRepository {
     input: ModelProviderCreate,
   ): Promise<ModelProviderSummary> {
     const id = randomUUID();
-    const result = await this.database
-      .insert(schema.modelProviders)
-      .values({
-        id,
-        ownerId,
-        name: input.name,
-        kind: input.kind,
-        baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
-        weeklyUsageReservePercent: input.weeklyUsageReservePercent ?? 3,
-        apiKey: null,
-        apiKeyEnvelope: input.apiKey
-          ? this.secretVault.encrypt(
-              input.apiKey,
-              modelProviderSecretContext(ownerId, id),
-            )
-          : null,
-      })
-      .returning();
-    return toProviderSummary(firstOrThrow(result, "creating a model provider"));
+    return this.database.transaction(async (transaction) => {
+      if (input.kind === "chatgpt") {
+        const existing = await transaction
+          .select({ id: schema.modelProviders.id })
+          .from(schema.modelProviders)
+          .where(
+            and(
+              eq(schema.modelProviders.ownerId, ownerId),
+              eq(schema.modelProviders.kind, "chatgpt"),
+            ),
+          )
+          .limit(1);
+        if (existing[0]) {
+          throw new Error(
+            "A ChatGPT provider already exists. Add another sign-in to that provider instead.",
+          );
+        }
+      }
+      const result = await transaction
+        .insert(schema.modelProviders)
+        .values({
+          id,
+          ownerId,
+          name: input.name,
+          kind: input.kind,
+          baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
+          weeklyUsageReservePercent: input.weeklyUsageReservePercent ?? 3,
+          apiKey: null,
+          apiKeyEnvelope: input.apiKey
+            ? this.secretVault.encrypt(
+                input.apiKey,
+                modelProviderSecretContext(ownerId, id),
+              )
+            : null,
+        })
+        .returning();
+      const provider = firstOrThrow(result, "creating a model provider");
+      if (input.kind !== "chatgpt") return toProviderSummary(provider);
+      const accountRows = await transaction
+        .insert(schema.modelProviderAccounts)
+        .values({
+          id: randomUUID(),
+          providerId: id,
+          label: "ChatGPT account",
+          position: 0,
+          credentialHomeKey: id,
+        })
+        .returning();
+      return toProviderSummary(provider, ZERO_TOKEN_USAGE, [
+        toProviderAccountSummary(
+          firstOrThrow(accountRows, "creating a ChatGPT account"),
+        ),
+      ]);
+    });
   }
 
   async getModelProvider(
@@ -2670,6 +2793,244 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0] ? toProviderSummary(rows[0]) : null;
+  }
+
+  async listModelProviderAccounts(
+    ownerId: string,
+    providerId: string,
+  ): Promise<ModelProviderAccountSummary[] | null> {
+    const provider = await this.database
+      .select({
+        id: schema.modelProviders.id,
+        kind: schema.modelProviders.kind,
+      })
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!provider[0] || provider[0].kind !== "chatgpt") return null;
+    const [accounts, bindings] = await Promise.all([
+      this.database
+        .select()
+        .from(schema.modelProviderAccounts)
+        .where(eq(schema.modelProviderAccounts.providerId, providerId))
+        .orderBy(asc(schema.modelProviderAccounts.position)),
+      this.database
+        .select({ binding: schema.modelProviderAccountWorkers })
+        .from(schema.modelProviderAccountWorkers)
+        .innerJoin(
+          schema.modelProviderAccounts,
+          and(
+            eq(
+              schema.modelProviderAccounts.id,
+              schema.modelProviderAccountWorkers.accountId,
+            ),
+            eq(schema.modelProviderAccounts.providerId, providerId),
+          ),
+        ),
+    ]);
+    return accounts.map((account) =>
+      toProviderAccountSummary(
+        account,
+        bindings
+          .filter(({ binding }) => binding.accountId === account.id)
+          .map(({ binding }) => binding),
+      ),
+    );
+  }
+
+  async createModelProviderAccount(
+    ownerId: string,
+    providerId: string,
+    input: ModelProviderAccountCreate,
+  ): Promise<ModelProviderAccountSummary | null> {
+    return this.database.transaction(async (transaction) => {
+      const provider = await transaction
+        .select({ kind: schema.modelProviders.kind })
+        .from(schema.modelProviders)
+        .where(
+          and(
+            eq(schema.modelProviders.id, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (provider[0]?.kind !== "chatgpt") return null;
+      const positions = await transaction
+        .select({ position: schema.modelProviderAccounts.position })
+        .from(schema.modelProviderAccounts)
+        .where(eq(schema.modelProviderAccounts.providerId, providerId))
+        .orderBy(desc(schema.modelProviderAccounts.position))
+        .limit(1);
+      const accountId = randomUUID();
+      const rows = await transaction
+        .insert(schema.modelProviderAccounts)
+        .values({
+          id: accountId,
+          providerId,
+          label: input.label,
+          position: (positions[0]?.position ?? -1) + 1,
+          credentialHomeKey: accountId,
+        })
+        .returning();
+      return toProviderAccountSummary(
+        firstOrThrow(rows, "creating a ChatGPT account"),
+      );
+    });
+  }
+
+  async updateModelProviderAccount(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+    input: ModelProviderAccountUpdate,
+  ): Promise<ModelProviderAccountSummary | null> {
+    const rows = await this.database
+      .update(schema.modelProviderAccounts)
+      .set({ ...input, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, accountId),
+          eq(schema.modelProviderAccounts.providerId, providerId),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, providerId),
+                  eq(schema.modelProviders.ownerId, ownerId),
+                  eq(schema.modelProviders.kind, "chatgpt"),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toProviderAccountSummary(rows[0]) : null;
+  }
+
+  async deleteModelProviderAccount(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+  ): Promise<boolean> {
+    const rows = await this.database
+      .delete(schema.modelProviderAccounts)
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, accountId),
+          eq(schema.modelProviderAccounts.providerId, providerId),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, providerId),
+                  eq(schema.modelProviders.ownerId, ownerId),
+                  eq(schema.modelProviders.kind, "chatgpt"),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: schema.modelProviderAccounts.id });
+    return Boolean(rows[0]);
+  }
+
+  async getModelProviderAccountRuntime(
+    ownerId: string,
+    providerId: string,
+    accountId?: string,
+  ): Promise<{
+    accountId: string;
+    credentialHomeKey: string;
+  } | null> {
+    const filters = [
+      eq(schema.modelProviderAccounts.providerId, providerId),
+      eq(schema.modelProviders.ownerId, ownerId),
+      eq(schema.modelProviders.kind, "chatgpt"),
+      ...(accountId
+        ? [eq(schema.modelProviderAccounts.id, accountId)]
+        : [eq(schema.modelProviderAccounts.enabled, true)]),
+    ];
+    const rows = await this.database
+      .select({
+        accountId: schema.modelProviderAccounts.id,
+        credentialHomeKey: schema.modelProviderAccounts.credentialHomeKey,
+      })
+      .from(schema.modelProviderAccounts)
+      .innerJoin(
+        schema.modelProviders,
+        eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+      )
+      .where(and(...filters))
+      .orderBy(asc(schema.modelProviderAccounts.position))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async recordModelProviderAccountStatus(
+    accountId: string,
+    workerId: string,
+    status: {
+      authenticated: boolean;
+      email: string | null;
+      planType: string | null;
+      weeklyUsage: { usedPercent: number; resetsAt: number | null } | null;
+    },
+  ): Promise<void> {
+    const now = new Date();
+    await this.database.transaction(async (transaction) => {
+      await transaction
+        .update(schema.modelProviderAccounts)
+        .set({
+          ...(status.authenticated
+            ? { email: status.email, planType: status.planType }
+            : {}),
+          updatedAt: now,
+        })
+        .where(eq(schema.modelProviderAccounts.id, accountId));
+      await transaction
+        .insert(schema.modelProviderAccountWorkers)
+        .values({
+          accountId,
+          workerId,
+          authState: status.authenticated ? "signed-in" : "signed-out",
+          weeklyUsageUsedBasisPoints: status.weeklyUsage
+            ? Math.round(status.weeklyUsage.usedPercent * 100)
+            : null,
+          weeklyUsageResetsAt: status.weeklyUsage?.resetsAt
+            ? new Date(status.weeklyUsage.resetsAt * 1_000)
+            : null,
+          lastSyncedAt: now,
+          lastError: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [
+            schema.modelProviderAccountWorkers.accountId,
+            schema.modelProviderAccountWorkers.workerId,
+          ],
+          set: {
+            authState: status.authenticated ? "signed-in" : "signed-out",
+            weeklyUsageUsedBasisPoints: status.weeklyUsage
+              ? Math.round(status.weeklyUsage.usedPercent * 100)
+              : null,
+            weeklyUsageResetsAt: status.weeklyUsage?.resetsAt
+              ? new Date(status.weeklyUsage.resetsAt * 1_000)
+              : null,
+            lastSyncedAt: now,
+            lastError: null,
+            updatedAt: now,
+          },
+        });
+    });
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {
@@ -2690,6 +3051,13 @@ export class ServerRepository {
     providerId: string,
     input: ModelProviderUpdate,
   ): Promise<ModelProviderSummary | null> {
+    const current = await this.getModelProvider(ownerId, providerId);
+    if (!current) return null;
+    if (current.kind !== input.kind) {
+      throw new Error(
+        "Provider type cannot be changed. Create a new provider instead.",
+      );
+    }
     const result = await this.database
       .update(schema.modelProviders)
       .set({

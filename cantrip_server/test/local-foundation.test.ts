@@ -139,6 +139,7 @@ const openedProjectShares: Array<
 > = [];
 const closedProjectShareIds: string[] = [];
 const authProviderIds: string[] = [];
+const authCredentialHomeKeys: string[] = [];
 const exhaustedProviderIds = new Set<string>();
 const steeredPrompts: string[] = [];
 const steeredAttachmentIds: string[][] = [];
@@ -347,6 +348,9 @@ const workerBridge = {
         return { accepted: true };
       case "codex.auth.status":
         authProviderIds.push(command.providerId);
+        authCredentialHomeKeys.push(
+          command.credentialHomeKey ?? command.providerId,
+        );
         return {
           authenticated: true,
           authMode: "chatgpt",
@@ -361,6 +365,9 @@ const workerBridge = {
         };
       case "codex.auth.login.start":
         authProviderIds.push(command.providerId);
+        authCredentialHomeKeys.push(
+          command.credentialHomeKey ?? command.providerId,
+        );
         return {
           loginId: "login-1",
           verificationUrl: "https://auth.openai.com/codex/device",
@@ -368,6 +375,9 @@ const workerBridge = {
         };
       case "codex.auth.logout":
         authProviderIds.push(command.providerId);
+        authCredentialHomeKeys.push(
+          command.credentialHomeKey ?? command.providerId,
+        );
         return { accepted: true };
       case "github.auth.status":
         return { authenticated: true, login: "cantrip-test", source: "gh-cli" };
@@ -1842,6 +1852,12 @@ describe("local server foundation", () => {
         })
       ).json(),
     );
+    expect(chatGptProvider.accounts).toEqual([
+      expect.objectContaining({
+        label: "ChatGPT account",
+        position: 0,
+      }),
+    ]);
 
     expect(
       await firstApp.inject({
@@ -1955,6 +1971,54 @@ describe("local server foundation", () => {
       chatGptProvider.id,
       chatGptProvider.id,
     ]);
+    expect(authCredentialHomeKeys).toEqual([
+      chatGptProvider.id,
+      chatGptProvider.id,
+      chatGptProvider.id,
+    ]);
+    const additionalAccount = (
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/settings/providers/${chatGptProvider.id}/accounts`,
+        payload: { label: "Work" },
+      })
+    ).json<{ id: string; label: string; position: number }>();
+    expect(additionalAccount).toMatchObject({ label: "Work", position: 1 });
+    expect(
+      await firstApp.inject({
+        method: "GET",
+        url: `/api/codex/auth/status?workerId=test-worker&providerId=${chatGptProvider.id}&accountId=${additionalAccount.id}`,
+      }),
+    ).toMatchObject({ statusCode: 200 });
+    expect(authCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
+    const pooledSettings = settingsBundleSchema.parse(
+      (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
+    );
+    expect(
+      pooledSettings.providers
+        .find((provider) => provider.id === chatGptProvider.id)
+        ?.accounts.find((account) => account.id === additionalAccount.id),
+    ).toMatchObject({
+      email: "test@example.com",
+      workerBindings: [
+        {
+          authState: "signed-in",
+          weeklyUsageUsedPercent: 37,
+          workerId: "test-worker",
+        },
+      ],
+    });
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: "/api/settings/providers",
+        payload: {
+          name: "Another ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://api.openai.com/v1",
+        },
+      }),
+    ).toMatchObject({ statusCode: 409 });
     expect(
       githubRepositoryListSchema.parse(
         (

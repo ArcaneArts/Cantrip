@@ -1193,6 +1193,19 @@ export const modelProviderAccountSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const modelProviderAccountListSchema = z.array(
+  modelProviderAccountSummarySchema,
+);
+
+export const modelProviderAccountCreateSchema = z.object({
+  label: z.string().trim().min(1).max(160).default("ChatGPT account"),
+});
+
+export const modelProviderAccountUpdateSchema = z.object({
+  label: z.string().trim().min(1).max(160).optional(),
+  enabled: z.boolean().optional(),
+});
+
 export const tokenUsageTotalsSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
   outputTokens: z.number().int().nonnegative(),
@@ -1215,6 +1228,7 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
     id: z.string().min(1),
     hasApiKey: z.boolean(),
     weeklyUsageReservePercent: z.number().int().min(0).max(100),
+    accounts: modelProviderAccountListSchema.default([]),
     tokenUsage: tokenUsageTotalsSchema.default({
       inputTokens: 0,
       outputTokens: 0,
@@ -6685,14 +6699,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("codex.auth.status"),
     providerId: z.string().min(1),
+    credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
   z.object({
     type: z.literal("codex.auth.login.start"),
     providerId: z.string().min(1),
+    credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
   z.object({
     type: z.literal("codex.auth.logout"),
     providerId: z.string().min(1),
+    credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
   z.object({ type: z.literal("github.auth.status") }),
   z.object({
@@ -8017,6 +8034,12 @@ export type ModelProviderAccountWorker = z.infer<
 >;
 export type ModelProviderAccountSummary = z.infer<
   typeof modelProviderAccountSummarySchema
+>;
+export type ModelProviderAccountCreate = z.infer<
+  typeof modelProviderAccountCreateSchema
+>;
+export type ModelProviderAccountUpdate = z.infer<
+  typeof modelProviderAccountUpdateSchema
 >;
 export type TokenUsageTotals = z.infer<typeof tokenUsageTotalsSchema>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;

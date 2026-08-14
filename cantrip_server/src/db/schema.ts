@@ -308,6 +308,9 @@ export const modelProviders = pgTable(
       table.ownerId,
       table.name,
     ),
+    uniqueIndex("model_providers_owner_chatgpt_unique")
+      .on(table.ownerId)
+      .where(sql`${table.kind} = 'chatgpt'`),
     check(
       "model_providers_weekly_usage_reserve_percent_check",
       sql`${table.weeklyUsageReservePercent} BETWEEN 0 AND 100`,
@@ -561,9 +564,7 @@ export const providerModelSuppressions = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [
-    primaryKey({ columns: [table.ownerId, table.providerModelId] }),
-  ],
+  (table) => [primaryKey({ columns: [table.ownerId, table.providerModelId] })],
 );
 
 export const modelProfiles = pgTable("model_profiles", {
