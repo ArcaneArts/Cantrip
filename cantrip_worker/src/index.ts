@@ -267,7 +267,9 @@ async function start(): Promise<void> {
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
         command.provider.kind === "chatgpt"
-          ? accountHomeFor(command.provider.id)
+          ? accountHomeFor(
+              command.provider.credentialHomeKey ?? command.provider.id,
+            )
           : codexHome,
         codexRuntime,
       );
@@ -943,7 +945,10 @@ async function start(): Promise<void> {
               binary: config.codexBinary,
               codexHome:
                 command.launch.provider.kind === "chatgpt"
-                  ? accountHomeFor(command.launch.provider.id)
+                  ? accountHomeFor(
+                      command.launch.provider.credentialHomeKey ??
+                        command.launch.provider.id,
+                    )
                   : codexHome,
               remoteUrl: await runtime.remoteEndpoint(
                 command.launch.model,

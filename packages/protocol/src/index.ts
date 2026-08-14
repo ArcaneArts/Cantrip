@@ -4349,6 +4349,7 @@ export const chatRelocationJobSummarySchema = z.object({
   contextSnapshotId: z.string().uuid(),
   targetRuntimeThreadId: z.string().min(1).nullable(),
   targetModelRouteId: z.string().min(1).nullable(),
+  targetProviderAccountId: z.string().min(1).nullable().default(null),
   attempt: z.number().int().nonnegative(),
   progress: chatRelocationProgressSchema,
   error: chatRelocationErrorSchema.nullable(),
@@ -6630,6 +6631,8 @@ const workerRuntimeProviderSchema = z.object({
   kind: modelProviderKindSchema,
   baseUrl: z.url(),
   apiKey: z.string().min(1).nullable(),
+  accountId: z.string().min(1).nullable().default(null),
+  credentialHomeKey: z.string().min(1).max(500).nullable().default(null),
 });
 
 export const workerChatAttachmentSchema = z.object({

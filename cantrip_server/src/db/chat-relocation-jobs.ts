@@ -104,6 +104,7 @@ function toJob(row: ChatRelocationJobRow): ChatRelocationJobSummary {
     contextSnapshotId: row.id,
     targetRuntimeThreadId: row.targetRuntimeThreadId,
     targetModelRouteId: row.targetModelRouteId,
+    targetProviderAccountId: row.targetProviderAccountId,
     attempt: row.attempt,
     progress: row.progress,
     error:
@@ -1099,6 +1100,7 @@ export class ChatRelocationJobRepository {
     options: {
       cancellationUnsafe?: boolean;
       targetModelRouteId?: string;
+      targetProviderAccountId?: string | null;
       targetRuntimeThreadId?: string;
     } = {},
   ): Promise<ChatRelocationJobSummary> {
@@ -1117,6 +1119,9 @@ export class ChatRelocationJobRepository {
         ...(options.targetModelRouteId
           ? { targetModelRouteId: options.targetModelRouteId }
           : {}),
+        ...(options.targetProviderAccountId === undefined
+          ? {}
+          : { targetProviderAccountId: options.targetProviderAccountId }),
         updatedAt: now,
       })
       .where(
@@ -1332,6 +1337,7 @@ export class ChatRelocationJobRepository {
           worktreeId: job.targetPlacement.worktreeId,
           codexThreadId: job.targetRuntimeThreadId,
           modelRouteId: job.targetModelRouteId,
+          providerAccountId: job.targetProviderAccountId,
           status: "ready",
         })
         .onConflictDoUpdate({
@@ -1343,6 +1349,7 @@ export class ChatRelocationJobRepository {
           set: {
             codexThreadId: job.targetRuntimeThreadId,
             modelRouteId: job.targetModelRouteId,
+            providerAccountId: job.targetProviderAccountId,
             status: "ready",
             updatedAt: now,
           },

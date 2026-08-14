@@ -1230,13 +1230,15 @@ export function codexRuntimeId(
         reasoningEffort: model.reasoningEffort,
         providerName: provider.name,
         providerKind: provider.kind,
+        providerAccountId: provider.accountId,
+        credentialHomeKey: provider.credentialHomeKey,
         baseUrl: provider.baseUrl,
         apiKey: provider.apiKey,
       }),
     )
     .digest("hex")
     .slice(0, 16);
-  return `${provider.id}:${model.routeId}:${configuration}`;
+  return `${provider.credentialHomeKey ?? provider.id}:${model.routeId}:${configuration}`;
 }
 
 function activityStatus(

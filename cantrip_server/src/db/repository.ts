@@ -294,6 +294,7 @@ export interface ChatExecutionContext {
   status: ChatSummary["status"];
   modelId: string | null;
   modelRouteId: string | null;
+  providerAccountId: string | null;
   permissionProfileId: string | null;
   planMode: PlanMode;
   pendingPlanQuestion: PendingPlanQuestion | null;
@@ -463,6 +464,7 @@ export interface ModelRuntime {
     routeId: string;
     name: string;
     reasoningEffort: ModelProfileSummary["reasoningEffort"];
+    providerModelId: string | null;
   };
   provider: {
     id: string;
@@ -470,7 +472,21 @@ export interface ModelRuntime {
     kind: ModelProviderSummary["kind"];
     baseUrl: string;
     apiKey: string | null;
+    accountId: string | null;
+    credentialHomeKey: string | null;
+    weeklyUsageReservePercent: number;
   };
+}
+
+export interface ModelProviderAccountRuntime {
+  accountId: string;
+  authState: ModelProviderAccountSummary["workerBindings"][number]["authState"];
+  credentialHomeKey: string;
+  enabled: boolean;
+  label: string;
+  modelAvailability: ProviderModelAvailability["state"] | null;
+  position: number;
+  weeklyUsageUsedPercent: number | null;
 }
 
 export interface TokenUsageRecordInput {
@@ -3676,6 +3692,7 @@ export class ServerRepository {
         name: row.route.modelName,
         reasoningEffort: (row.route.reasoningEffort ??
           row.model.reasoningEffort) as ModelProfileSummary["reasoningEffort"],
+        providerModelId: row.route.providerModelId,
       },
       provider: {
         id: row.provider.id,
@@ -3688,7 +3705,88 @@ export class ServerRepository {
               modelProviderSecretContext(row.provider.ownerId, row.provider.id),
             )
           : null,
+        accountId: null,
+        credentialHomeKey: null,
+        weeklyUsageReservePercent: row.provider.weeklyUsageReservePercent,
       },
+    }));
+  }
+
+  async listModelProviderAccountRuntimes(
+    ownerId: string,
+    providerId: string,
+    workerId: string,
+    providerModelId: string | null,
+  ): Promise<ModelProviderAccountRuntime[]> {
+    const [accounts, availability] = await Promise.all([
+      this.database
+        .select({
+          account: schema.modelProviderAccounts,
+          binding: schema.modelProviderAccountWorkers,
+        })
+        .from(schema.modelProviderAccounts)
+        .innerJoin(
+          schema.modelProviders,
+          and(
+            eq(
+              schema.modelProviders.id,
+              schema.modelProviderAccounts.providerId,
+            ),
+            eq(schema.modelProviders.ownerId, ownerId),
+            eq(schema.modelProviders.kind, "chatgpt"),
+          ),
+        )
+        .leftJoin(
+          schema.modelProviderAccountWorkers,
+          and(
+            eq(
+              schema.modelProviderAccountWorkers.accountId,
+              schema.modelProviderAccounts.id,
+            ),
+            eq(schema.modelProviderAccountWorkers.workerId, workerId),
+          ),
+        )
+        .where(eq(schema.modelProviderAccounts.providerId, providerId))
+        .orderBy(asc(schema.modelProviderAccounts.position)),
+      providerModelId
+        ? this.database
+            .select({
+              providerAccountId:
+                schema.providerModelAvailability.providerAccountId,
+              state: schema.providerModelAvailability.state,
+            })
+            .from(schema.providerModelAvailability)
+            .where(
+              and(
+                eq(
+                  schema.providerModelAvailability.providerModelId,
+                  providerModelId,
+                ),
+                eq(schema.providerModelAvailability.workerId, workerId),
+              ),
+            )
+        : Promise.resolve([]),
+    ]);
+    const availabilityByAccount = new Map(
+      availability.flatMap(({ providerAccountId, state }) =>
+        providerAccountId ? [[providerAccountId, state]] : [],
+      ),
+    );
+    return accounts.map(({ account, binding }) => ({
+      accountId: account.id,
+      authState: (binding?.authState ??
+        "unknown") as ModelProviderAccountRuntime["authState"],
+      credentialHomeKey: account.credentialHomeKey,
+      enabled: account.enabled,
+      label: account.label,
+      modelAvailability:
+        (availabilityByAccount.get(account.id) as
+          ProviderModelAvailability["state"] | undefined) ?? null,
+      position: account.position,
+      weeklyUsageUsedPercent:
+        binding?.weeklyUsageUsedBasisPoints === null || !binding
+          ? null
+          : binding.weeklyUsageUsedBasisPoints / 100,
     }));
   }
 
@@ -7577,6 +7675,7 @@ export class ServerRepository {
           status: "running",
           modelId: row.chat.modelId,
           modelRouteId: runtime.modelRouteId,
+          providerAccountId: runtime.providerAccountId,
           permissionProfileId: row.chat.permissionProfileId,
           planMode: row.chat.planMode as PlanMode,
           pendingPlanQuestion: row.chat.pendingPlanQuestion,
@@ -10798,6 +10897,7 @@ export class ServerRepository {
       isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,
       modelRouteId: row.runtime?.modelRouteId ?? null,
+      providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
       planMode: row.chat.planMode as PlanMode,
       pendingPlanQuestion: row.chat.pendingPlanQuestion,
@@ -10856,6 +10956,7 @@ export class ServerRepository {
     threadId: string | null,
     modelRouteId: string,
     status = "ready",
+    providerAccountId?: string | null,
   ): Promise<void> {
     const rows = await this.database
       .insert(schema.chatRuntimeSessions)
@@ -10866,6 +10967,7 @@ export class ServerRepository {
         worktreeId,
         codexThreadId: threadId,
         modelRouteId,
+        providerAccountId: providerAccountId ?? null,
         status,
       })
       .onConflictDoUpdate({
@@ -10877,6 +10979,7 @@ export class ServerRepository {
         set: {
           codexThreadId: threadId,
           modelRouteId,
+          ...(providerAccountId === undefined ? {} : { providerAccountId }),
           status,
           updatedAt: new Date(),
         },

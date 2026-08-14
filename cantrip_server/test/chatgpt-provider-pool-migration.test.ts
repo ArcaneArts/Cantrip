@@ -11,9 +11,14 @@ describe("ChatGPT provider pool migration", () => {
     const client = new PGlite();
     try {
       const migrations = readMigrationFiles({ migrationsFolder });
-      const poolMigration = migrations.at(-1);
+      const poolMigrationIndex = migrations.findIndex((migration) =>
+        migration.sql.some((statement) =>
+          statement.includes("model_providers_owner_chatgpt_unique"),
+        ),
+      );
+      const poolMigration = migrations[poolMigrationIndex];
       expect(poolMigration).toBeDefined();
-      for (const migration of migrations.slice(0, -1)) {
+      for (const migration of migrations.slice(0, poolMigrationIndex)) {
         for (const statement of migration.sql) await client.exec(statement);
       }
       await client.exec(`
