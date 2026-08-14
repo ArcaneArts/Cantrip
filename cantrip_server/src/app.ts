@@ -225,6 +225,7 @@ import {
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
   modelProviderCreateSchema,
+  providerModelCatalogResultSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
   mcpServerConfigurationSchema,
@@ -550,6 +551,7 @@ import {
   DirectAttachmentCoordinator,
   DirectAttachmentUnavailableError,
 } from "./direct-attachments/coordinator.js";
+import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -560,6 +562,7 @@ export interface BuildAppOptions {
   workerBridge?: WorkerCommandBus;
   relayQuotas?: RelayQuotaManager;
   coordinator?: RelayCoordinator;
+  providerCatalogService?: OpenRouterCatalogService;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -821,6 +824,7 @@ export async function buildApp({
   database,
   logger = true,
   projectShareTunnel: providedProjectShareTunnel,
+  providerCatalogService: providedProviderCatalogService,
   relayQuotas: providedRelayQuotas,
   coordinator,
   workerBridge,
@@ -866,6 +870,8 @@ export async function buildApp({
     (_request, body, done) => done(null, body),
   );
   const repository = database.repository;
+  const providerCatalogService =
+    providedProviderCatalogService ?? new OpenRouterCatalogService(repository);
   const licenseWhitelistConfigured =
     config.licenseWhitelistEnabled !== undefined;
   const licenseWhitelistEnabled = config.licenseWhitelistEnabled === true;
@@ -7394,6 +7400,51 @@ export async function buildApp({
           : reply.code(404).send({ error: "Provider not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { providerId: string } }>(
+    "/api/settings/providers/:providerId/catalog",
+    async (request, reply) => {
+      try {
+        const catalog = await providerCatalogService.getProviderCatalog(
+          applicationOwnerId(),
+          request.params.providerId,
+        );
+        return catalog
+          ? reply.send(providerModelCatalogResultSchema.parse(catalog))
+          : reply.code(404).send({ error: "Provider not found." });
+      } catch (error) {
+        const message = errorMessage(error);
+        return reply
+          .code(message.includes("not an OpenRouter") ? 409 : 502)
+          .send({
+            error: message,
+          });
+      }
+    },
+  );
+
+  app.post<{ Params: { providerId: string } }>(
+    "/api/settings/providers/:providerId/catalog/refresh",
+    async (request, reply) => {
+      try {
+        const catalog = await providerCatalogService.getProviderCatalog(
+          applicationOwnerId(),
+          request.params.providerId,
+          true,
+        );
+        return catalog
+          ? reply.send(providerModelCatalogResultSchema.parse(catalog))
+          : reply.code(404).send({ error: "Provider not found." });
+      } catch (error) {
+        const message = errorMessage(error);
+        return reply
+          .code(message.includes("not an OpenRouter") ? 409 : 502)
+          .send({
+            error: message,
+          });
       }
     },
   );

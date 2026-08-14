@@ -1109,9 +1109,7 @@ export const providerModelCatalogEntrySchema = z.object({
   supportsStructuredOutput: z.boolean().nullable(),
   supportsVision: z.boolean().nullable(),
   supportsReasoning: z.boolean().nullable(),
-  supportedReasoningEfforts: z
-    .array(modelReasoningEffortOptionSchema)
-    .max(32),
+  supportedReasoningEfforts: z.array(modelReasoningEffortOptionSchema).max(32),
   defaultReasoningEffort: reasoningEffortSchema.nullable(),
   reasoningMandatory: z.boolean().nullable(),
   family: z.string().max(500).nullable(),
@@ -1164,6 +1162,14 @@ export const providerCatalogSyncStateSchema = z.object({
   refreshStartedAt: z.string().datetime().nullable(),
   lastSuccessAt: z.string().datetime().nullable(),
   updatedAt: z.string().datetime(),
+});
+
+export const providerModelCatalogResultSchema = z.object({
+  providerId: z.string().min(1),
+  models: z.array(providerModelCatalogEntrySchema),
+  availability: z.array(providerModelAvailabilitySchema),
+  syncStates: z.array(providerCatalogSyncStateSchema),
+  servedStale: z.boolean(),
 });
 
 export const modelProviderAccountWorkerSchema = z.object({
@@ -7979,6 +7985,9 @@ export type ProviderCatalogSyncState = z.infer<
 >;
 export type ProviderCatalogSyncStatus = z.infer<
   typeof providerCatalogSyncStatusSchema
+>;
+export type ProviderModelCatalogResult = z.infer<
+  typeof providerModelCatalogResultSchema
 >;
 export type ModelProviderAccountWorker = z.infer<
   typeof modelProviderAccountWorkerSchema
