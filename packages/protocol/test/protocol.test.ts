@@ -20,6 +20,7 @@ import {
   cantripCliCommandResultSchema,
   cantripVersionSchema,
   chatAttachmentSummarySchema,
+  chatGptModelInventorySchema,
   chatCreateSchema,
   chatExecutionLaneSummarySchema,
   chatGoalCreateSchema,
@@ -155,6 +156,50 @@ import {
 } from "../src/index.js";
 
 describe("model catalog protocol", () => {
+  it("accepts native ChatGPT Codex model inventory", () => {
+    const inventory = chatGptModelInventorySchema.parse({
+      models: [
+        {
+          id: "gpt-5.6-sol-medium",
+          model: "gpt-5.6-sol",
+          displayName: "GPT-5.6 Sol",
+          description: "Codex model",
+          hidden: false,
+          isDefault: true,
+          inputModalities: ["text", "image"],
+          supportedReasoningEfforts: [
+            { reasoningEffort: "medium", description: "Balanced" },
+          ],
+          defaultReasoningEffort: "medium",
+          modelSpecialty: "coding",
+          supportsPersonality: true,
+          upgrade: null,
+          upgradeInfo: null,
+          availabilityNux: null,
+          additionalSpeedTiers: [],
+          serviceTiers: [],
+          defaultServiceTier: null,
+        },
+      ],
+      observedAt: "2026-08-14T00:00:00.000Z",
+    });
+    expect(inventory.models[0]?.model).toBe("gpt-5.6-sol");
+    expect(
+      workerCommandSchema.parse({
+        type: "model.chatgpt.catalog",
+        provider: {
+          id: "provider-1",
+          name: "ChatGPT",
+          kind: "chatgpt",
+          baseUrl: "https://chatgpt.com/backend-api/codex/responses",
+          apiKey: null,
+          accountId: "account-1",
+          credentialHomeKey: "account-1",
+        },
+      }).type,
+    ).toBe("model.chatgpt.catalog");
+  });
+
   it("preserves provider-advertised reasoning efforts", () => {
     expect(reasoningEffortSchema.parse("ultra")).toBe("ultra");
     expect(reasoningEffortSchema.parse("provider-future-effort")).toBe(

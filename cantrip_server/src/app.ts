@@ -557,6 +557,7 @@ import {
 } from "./direct-attachments/coordinator.js";
 import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
+import { ChatGptCatalogService } from "./models/chatgpt-catalog.js";
 import { resolveChatGptAccountRuntimes } from "./models/chatgpt-account-routing.js";
 
 export interface BuildAppOptions {
@@ -931,6 +932,7 @@ export async function buildApp({
     workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
   });
   const ollamaCatalogService = new OllamaCatalogService(repository, bridge);
+  const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -7204,6 +7206,15 @@ export async function buildApp({
         workerId,
         status,
       );
+      if (status.authenticated) {
+        void loadProviderCatalog(
+          applicationOwnerId(),
+          providerId,
+          workerId,
+          true,
+          account.accountId,
+        ).catch(() => undefined);
+      }
       return reply.send(status);
     } catch (error) {
       const message = errorMessage(error);
@@ -7281,6 +7292,12 @@ export async function buildApp({
           weeklyUsage: null,
         },
       );
+      await chatGptCatalogService.markAccountUnavailable(
+        applicationOwnerId(),
+        providerId,
+        workerId,
+        account.accountId,
+      );
       return reply.code(204).send();
     } catch (error) {
       const message = errorMessage(error);
@@ -7297,7 +7314,7 @@ export async function buildApp({
     const ownerId = applicationOwnerId();
     const settings = await repository.getSettings(ownerId);
     for (const provider of settings.providers) {
-      if (provider.kind !== "ollama") continue;
+      if (provider.kind !== "ollama" && provider.kind !== "chatgpt") continue;
       void loadProviderCatalog(ownerId, provider.id, undefined, false).catch(
         () => undefined,
       );
@@ -7579,13 +7596,14 @@ export async function buildApp({
     providerId: string,
     workerId: string | undefined,
     force: boolean,
+    accountId?: string,
   ) => {
     const provider = await repository.getModelProviderCatalogRuntime(
       ownerId,
       providerId,
     );
     if (!provider) return null;
-    if (provider.kind !== "ollama") {
+    if (provider.kind !== "ollama" && provider.kind !== "chatgpt") {
       return providerCatalogService.getProviderCatalog(
         ownerId,
         providerId,
@@ -7608,7 +7626,18 @@ export async function buildApp({
         undefined;
     }
     if (!selectedWorkerId) {
-      throw new Error("No worker is available for Ollama discovery.");
+      throw new Error(
+        `No worker is available for ${provider.kind === "chatgpt" ? "ChatGPT" : "Ollama"} discovery.`,
+      );
+    }
+    if (provider.kind === "chatgpt") {
+      return chatGptCatalogService.getProviderCatalog(
+        ownerId,
+        providerId,
+        selectedWorkerId,
+        force,
+        accountId,
+      );
     }
     return ollamaCatalogService.getProviderCatalog(
       ownerId,
@@ -7618,17 +7647,43 @@ export async function buildApp({
     );
   };
 
+  const chatGptCatalogWorkers = new Map<string, string>();
+  const refreshChatGptCatalogsForWorker = async (
+    ownerId: string,
+    workerId: string,
+  ) => {
+    const settings = await repository.getSettings(ownerId);
+    await Promise.allSettled(
+      settings.providers
+        .filter((provider) => provider.kind === "chatgpt")
+        .map((provider) =>
+          loadProviderCatalog(ownerId, provider.id, workerId, false),
+        ),
+    );
+  };
+  const chatGptCatalogRefreshTimer = setInterval(() => {
+    for (const [workerId, ownerId] of chatGptCatalogWorkers) {
+      if (!bridge.isConnected(workerId)) continue;
+      void refreshChatGptCatalogsForWorker(ownerId, workerId).catch(
+        () => undefined,
+      );
+    }
+  }, 15 * 60_000);
+  chatGptCatalogRefreshTimer.unref();
+
   const providerCatalogFailureStatus = (message: string) => {
     if (message === "Worker not found.") return 404;
     if (
       message.includes("not an OpenRouter") ||
-      message.includes("not an Ollama")
+      message.includes("not an Ollama") ||
+      message.includes("not a ChatGPT")
     ) {
       return 409;
     }
     if (
       message.includes("worker is available") ||
-      message.includes("offline")
+      message.includes("offline") ||
+      message.includes("signed-in ChatGPT")
     ) {
       return 503;
     }
@@ -18789,6 +18844,10 @@ export async function buildApp({
         socket.close(1013, "Worker relay coordination is unavailable");
         return;
       }
+      chatGptCatalogWorkers.set(workerId, workerAuth.ownerId);
+      void refreshChatGptCatalogsForWorker(workerAuth.ownerId, workerId).catch(
+        () => undefined,
+      );
       void projectReplicaJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -18872,6 +18931,7 @@ export async function buildApp({
     clearInterval(agentInteractionExpiryTimer);
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
+    clearInterval(chatGptCatalogRefreshTimer);
     for (const observer of customizationStatusObservers.values()) {
       observer.cancelled = true;
       if (observer.timer) clearTimeout(observer.timer);
