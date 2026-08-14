@@ -359,6 +359,7 @@ import type {
   AppLiveScope,
   BrowserUpdate,
   ChatMessage,
+  ChatReasoningState,
   ChatTurnCreate,
   CodeRuntimeStatus,
   CodexExternalImportStatus,
@@ -4594,7 +4595,7 @@ export async function buildApp({
     return reasoningStateForRuntimes(
       modelId,
       context.reasoningEffort,
-      await repository.getModelRuntimes(applicationOwnerId(), modelId),
+      await availableModelRuntimes(context, modelId),
     );
   };
 
@@ -17968,6 +17969,22 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      let reasoning: ChatReasoningState;
+      try {
+        reasoning = await reasoningStateForContext(
+          { ...context, modelId: input.data.modelId },
+          input.data.modelId,
+        );
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
       const result = await repository.setChatModel(
         applicationOwnerId(),
         request.params.chatId,
@@ -17976,17 +17993,6 @@ export async function buildApp({
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
       }
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      const reasoning = await reasoningStateForContext(
-        { ...context, modelId: input.data.modelId },
-        input.data.modelId,
-      );
       const selected =
         context.reasoningEffort === reasoning.reasoningEffort
           ? result
@@ -18035,7 +18041,12 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      const current = await reasoningStateForContext(context);
+      let current: ChatReasoningState;
+      try {
+        current = await reasoningStateForContext(context);
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
       if (
         input.data.reasoningEffort !== null &&
         !current.options.some(
