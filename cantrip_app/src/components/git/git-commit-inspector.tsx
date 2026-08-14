@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   getProjectWorktreeCommit,
+  getProjectWorktreeCommitSignature,
   getProjectWorktreeRevisionDiff,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -181,6 +182,9 @@ function CommitOverview({
   parentIndex,
   selectedPath,
   setSelectedPath,
+  signature,
+  signatureError,
+  signatureLoading,
 }: {
   commit: GitCommitDetail;
   onNavigate(revision: string): void;
@@ -188,6 +192,9 @@ function CommitOverview({
   parentIndex: number;
   selectedPath: string | null;
   setSelectedPath(path: string): void;
+  signature: GitSignature | null;
+  signatureError: Error | null;
+  signatureLoading: boolean;
 }) {
   return (
     <div className="min-h-0 flex-1 overflow-auto">
@@ -221,7 +228,18 @@ function CommitOverview({
           <PersonSummary label="Author" {...commit.author} />
           <PersonSummary label="Committer" {...commit.committer} />
         </div>
-        <SignatureSummary signature={commit.signature} />
+        {signature ? (
+          <SignatureSummary signature={signature} />
+        ) : signatureLoading ? (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/45 px-3 py-2 text-[11px] text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" />
+            Verifying commit signature in the background…
+          </div>
+        ) : signatureError ? (
+          <div className="rounded-lg bg-muted/45 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+            Signature verification could not be loaded: {signatureError.message}
+          </div>
+        ) : null}
 
         <div className="grid gap-2">
           <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -375,6 +393,22 @@ export function GitCommitInspector({
       getProjectWorktreeCommit(projectId, worktreeId, revision, parentIndex),
     queryKey: ["worktree-commit", projectId, worktreeId, revision, parentIndex],
   });
+  const signature = useQuery({
+    enabled: Boolean(detail.data?.hash),
+    queryFn: () =>
+      getProjectWorktreeCommitSignature(
+        projectId,
+        worktreeId,
+        detail.data!.hash,
+      ),
+    queryKey: [
+      "worktree-commit-signature",
+      projectId,
+      worktreeId,
+      detail.data?.hash,
+    ],
+    staleTime: 10 * 60_000,
+  });
   const selectedFile = useMemo(
     () => detail.data?.files.find(({ path }) => path === selectedPath),
     [detail.data?.files, selectedPath],
@@ -461,6 +495,9 @@ export function GitCommitInspector({
             parentIndex={parentIndex}
             selectedPath={selectedPath}
             setSelectedPath={setSelectedPath}
+            signature={signature.data ?? detail.data.signature}
+            signatureError={signature.error}
+            signatureLoading={signature.isLoading}
           />
         ) : null}
       </section>

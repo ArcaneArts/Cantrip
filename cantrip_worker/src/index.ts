@@ -67,6 +67,7 @@ import {
   previewGitForcePush,
   previewGitLfsAction,
   readGitCommitDetail,
+  readGitCommitSignature,
   readGitConflict,
   readGitBranches,
   readGitComparison,
@@ -551,6 +552,8 @@ async function start(): Promise<void> {
           command.parentIndex,
           command.revisions,
         );
+      case "git.commit.signature.get":
+        return readGitCommitSignature(command.cwd, command.revision);
       case "git.refs.list":
         return readGitRevisionCandidates(command.cwd);
       case "git.compare":

@@ -186,6 +186,9 @@ const gitHistoryCommands: Array<
 const gitCommitCommands: Array<
   Extract<WorkerCommand, { type: "git.commit.get" }>
 > = [];
+const gitCommitSignatureCommands: Array<
+  Extract<WorkerCommand, { type: "git.commit.signature.get" }>
+> = [];
 const gitCommitActionCommands: Array<
   Extract<
     WorkerCommand,
@@ -676,6 +679,17 @@ const workerBridge = {
           filesChanged: 1,
           additions: 1,
           deletions: 1,
+        };
+      case "git.commit.signature.get":
+        gitCommitSignatureCommands.push(command);
+        return {
+          status: "valid",
+          signer: "Cantrip Test",
+          key: "test-key",
+          fingerprint: "test-fingerprint",
+          format: "gpg",
+          verification: "available",
+          verificationMessage: "Good signature",
         };
       case "git.commit.action.preview": {
         gitCommitActionCommands.push(command);
@@ -3274,6 +3288,18 @@ describe.sequential("server worktree control plane", () => {
       revision,
       parentIndex: 0,
       revisions: expect.arrayContaining([revision]),
+    });
+    const signatureResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/commits/${revision}/signature`,
+    });
+    expect(signatureResponse.json()).toMatchObject({
+      status: "valid",
+      signer: "Cantrip Test",
+    });
+    expect(gitCommitSignatureCommands.at(-1)).toMatchObject({
+      cwd: target.path,
+      revision,
     });
     const revisionDiffResponse = await app.inject({
       method: "GET",

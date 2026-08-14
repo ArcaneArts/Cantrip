@@ -37,6 +37,7 @@ import {
   previewGitManagedOperation,
   previewGitForcePush,
   readGitCommitDetail,
+  readGitCommitSignature,
   readGitConflict,
   readGitBranches,
   readGitComparison,
@@ -1691,9 +1692,7 @@ describe("Git history", () => {
       "Signed release",
     ]);
 
-    expect(
-      (await readGitCommitDetail(directory, "HEAD")).signature,
-    ).toMatchObject({
+    expect(await readGitCommitSignature(directory, "HEAD")).toMatchObject({
       status: "valid",
       format: "ssh",
       verification: "available",
@@ -1718,9 +1717,7 @@ describe("Git history", () => {
       "--unset",
       "gpg.ssh.allowedSignersFile",
     ]);
-    expect(
-      (await readGitCommitDetail(directory, "HEAD")).signature,
-    ).toMatchObject({
+    expect(await readGitCommitSignature(directory, "HEAD")).toMatchObject({
       status: "unverifiable",
       format: "ssh",
       verification: "missing-config",
@@ -2904,8 +2901,12 @@ describe("Git history", () => {
       parentIndex: null,
       baseHash: null,
       messageTruncated: false,
-      signature: { status: "unsigned" },
+      signature: null,
       filesChanged: 2,
+    });
+    expect(await readGitCommitSignature(directory, rootHash)).toMatchObject({
+      status: "unsigned",
+      verification: "not-applicable",
     });
     expect(root.message).toContain("A multiline body");
     expect(root.files).toEqual(

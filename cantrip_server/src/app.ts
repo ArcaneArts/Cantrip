@@ -18530,6 +18530,40 @@ export async function buildApp({
     },
   );
 
+  app.get<{
+    Params: { projectId: string; worktreeId: string; revision: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
+    async (request, reply) => {
+      if (!/^[0-9a-f]{40,64}$/u.test(request.params.revision)) {
+        return reply
+          .code(400)
+          .send({ error: "A full commit hash is required." });
+      }
+      const context = await repository.getProjectWorktreeContext(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        const signature = await bridge.request(context.workerId, {
+          type: "git.commit.signature.get",
+          cwd: context.worktree.path,
+          revision: request.params.revision,
+        });
+        return reply.send(
+          gitCommitDetailSchema.shape.signature.unwrap().parse(signature),
+        );
+      } catch (error) {
+        const status = workerRequestFailureStatus(error);
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
     unsubscribeLiveCoordination?.();

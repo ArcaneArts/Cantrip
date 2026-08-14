@@ -1504,6 +1504,13 @@ describe("Cantrip protocol", () => {
     ).toMatchObject({ type: "git.commit.get", parentIndex: 1 });
     expect(
       workerCommandSchema.parse({
+        type: "git.commit.signature.get",
+        cwd: "/worker/projects/cantrip",
+        revision,
+      }),
+    ).toMatchObject({ type: "git.commit.signature.get", revision });
+    expect(
+      workerCommandSchema.parse({
         type: "git.revision.diff",
         cwd: "/worker/projects/cantrip",
         revision,
