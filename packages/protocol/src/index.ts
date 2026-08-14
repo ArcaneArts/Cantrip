@@ -5035,7 +5035,7 @@ export const gitCommitDetailSchema = z.object({
     .nullable(),
   author: gitCommitPersonSchema,
   committer: gitCommitPersonSchema,
-  signature: gitSignatureSchema,
+  signature: gitSignatureSchema.nullable(),
   refs: z.array(gitRefSchema).max(10_000),
   files: z.array(gitCommitFileSchema).max(100_000),
   filesTruncated: z.boolean(),
@@ -6792,6 +6792,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .array(z.string().regex(/^[0-9a-f]{40,64}$/u))
       .max(500)
       .default([]),
+  }),
+  z.object({
+    type: z.literal("git.commit.signature.get"),
+    cwd: z.string().min(1).max(8_192),
+    revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
   }),
   z.object({
     type: z.literal("git.refs.list"),

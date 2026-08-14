@@ -6,18 +6,18 @@
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
-    "application-principal": 315,
+    "application-principal": 316,
     "external-credential": 2,
     "public-authentication": 3,
     "public-bootstrap": 3,
     "worker-control": 6,
-    "http": 324,
+    "http": 325,
     "legacyLocalOwnerRoutes": 0,
-    "requestPrincipalRoutes": 291,
-    "total": 329,
+    "requestPrincipalRoutes": 292,
+    "total": 330,
     "websocket": 5,
     "workerCredentialRoutes": 6,
-    "workerCommands": 174,
+    "workerCommands": 175,
     "liveResources": 30,
     "repositoryMethods": 286,
     "repositoryOwnerEvidence": {
@@ -1471,6 +1471,14 @@
     },
     {
       "boundary": "application-principal",
+      "line": 18533,
+      "method": "GET",
+      "ownerEvidence": "request-principal",
+      "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
+      "transport": "http"
+    },
+    {
+      "boundary": "application-principal",
       "line": 10975,
       "method": "POST",
       "ownerEvidence": "request-principal",
@@ -2726,6 +2734,7 @@
     "git.commit.action.preview",
     "git.commit.get",
     "git.commit.search",
+    "git.commit.signature.get",
     "git.compare",
     "git.conflicts.apply",
     "git.conflicts.get",

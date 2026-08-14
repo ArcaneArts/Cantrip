@@ -146,6 +146,15 @@ const BRANCH_LIMIT = 20_000;
 const TAG_LIMIT = 10_000;
 const REMOTE_TIMEOUT_MS = 30_000;
 const FORCE_PUSH_COMMIT_LIMIT = 100;
+const COMMIT_SIGNATURE_CACHE_LIMIT = 256;
+const COMMIT_SIGNATURE_CACHE_TTL_MS = 10 * 60_000;
+
+interface CommitSignatureCacheEntry {
+  expiresAt: number;
+  value: Promise<GitSignature>;
+}
+
+const commitSignatureCache = new Map<string, CommitSignatureCacheEntry>();
 
 async function gitOutput(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -1136,6 +1145,94 @@ function signatureDetails(
   };
 }
 
+async function signatureVerificationContext(cwd: string): Promise<string> {
+  const configuration = await gitRaw(cwd, [
+    "config",
+    "--null",
+    "--get-regexp",
+    "^(gpg\\.|user\\.signingkey$)",
+  ]).catch(() => "");
+  return createHash("sha256").update(configuration).digest("hex");
+}
+
+async function loadGitCommitSignature(
+  cwd: string,
+  hash: string,
+): Promise<GitSignature> {
+  const [verification, signedObject] = await Promise.all([
+    execFileAsync(
+      "git",
+      [
+        "-C",
+        cwd,
+        "show",
+        "-s",
+        "--format=%G?%x00%GS%x00%GK%x00%GF%x00%GG",
+        hash,
+      ],
+      { encoding: "utf8", maxBuffer: GIT_BUFFER },
+    ),
+    gitRaw(cwd, ["cat-file", "commit", hash]),
+  ]);
+  const [
+    signatureCode = "N",
+    signatureSigner = "",
+    signatureKey = "",
+    signatureFingerprint = "",
+    signatureVerificationMessage = "",
+  ] = verification.stdout.trimEnd().split("\0");
+  const verificationMessage = [
+    signatureVerificationMessage,
+    verification.stderr,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+  return signatureDetails(
+    signatureCode,
+    signatureSigner,
+    signatureKey,
+    signatureFingerprint,
+    signedObject,
+    verificationMessage,
+  );
+}
+
+export async function readGitCommitSignature(
+  cwd: string,
+  revision: string,
+): Promise<GitSignature> {
+  const [hash, verificationContext] = await Promise.all([
+    resolveCommit(cwd, revision),
+    signatureVerificationContext(cwd),
+  ]);
+  const key = `${path.resolve(cwd)}\0${hash}\0${verificationContext}`;
+  const now = Date.now();
+  const cached = commitSignatureCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    commitSignatureCache.delete(key);
+    commitSignatureCache.set(key, cached);
+    return cached.value;
+  }
+  if (cached) commitSignatureCache.delete(key);
+  while (commitSignatureCache.size >= COMMIT_SIGNATURE_CACHE_LIMIT) {
+    const oldest = commitSignatureCache.keys().next().value;
+    if (oldest === undefined) break;
+    commitSignatureCache.delete(oldest);
+  }
+  const entry: CommitSignatureCacheEntry = {
+    expiresAt: now + COMMIT_SIGNATURE_CACHE_TTL_MS,
+    value: loadGitCommitSignature(cwd, hash),
+  };
+  commitSignatureCache.set(key, entry);
+  void entry.value.catch(() => {
+    if (commitSignatureCache.get(key) === entry) {
+      commitSignatureCache.delete(key);
+    }
+  });
+  return entry.value;
+}
+
 function commitFileStatus(code: string): GitCommitFile["status"] {
   switch (code[0]) {
     case "A":
@@ -1324,16 +1421,12 @@ export async function readGitCommitDetail(
   revisions: string[] = [],
 ): Promise<GitCommitDetail> {
   const hash = await resolveCommit(cwd, revision);
-  const [metadata, signedObject, verification] = await Promise.all([
-    gitRaw(cwd, [
-      "show",
-      "-s",
-      "--date=iso-strict",
-      "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%B%x00%D%x00%G?%x00%GS%x00%GK%x00%GF%x00%GG",
-      hash,
-    ]),
-    gitRaw(cwd, ["cat-file", "commit", hash]),
-    runGitOutcomeBounded(cwd, ["verify-commit", "--raw", hash]),
+  const metadata = await gitRaw(cwd, [
+    "show",
+    "-s",
+    "--date=iso-strict",
+    "--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%B%x00%D",
+    hash,
   ]);
   const [
     fullHash,
@@ -1348,11 +1441,6 @@ export async function readGitCommitDetail(
     subject,
     fullMessage = "",
     decorations = "",
-    signatureCode = "N",
-    signatureSigner = "",
-    signatureKey = "",
-    signatureFingerprint = "",
-    signatureVerificationMessage = "",
   ] = metadata.trimEnd().split("\0");
   const parents = (parentText ?? "").split(" ").filter(Boolean);
   if (parents.length > 0 && parentIndex >= parents.length) {
@@ -1389,14 +1477,7 @@ export async function readGitCommitDetail(
       email: committerEmail,
       date: committedAt,
     },
-    signature: signatureDetails(
-      verification.code === 0 ? "G" : signatureCode,
-      signatureSigner,
-      signatureKey,
-      signatureFingerprint,
-      signedObject,
-      verification.output || signatureVerificationMessage,
-    ),
+    signature: null,
     refs: parseRefs(decorations, branch, remotes),
     files,
     filesTruncated: truncated,

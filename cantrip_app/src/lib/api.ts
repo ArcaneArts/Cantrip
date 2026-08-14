@@ -105,6 +105,7 @@ import {
   gitManagedOperationResponseSchema,
   gitCommitDetailSchema,
   gitCommitSearchResultSchema,
+  gitSignatureSchema,
   gitComparisonSchema,
   gitFileDiffSchema,
   gitFileHistorySchema,
@@ -1028,6 +1029,18 @@ export async function getProjectWorktreeCommit(
   return gitCommitDetailSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/${encodeURIComponent(revision)}?parent=${parentIndex}`,
+    ),
+  );
+}
+
+export async function getProjectWorktreeCommitSignature(
+  projectId: string,
+  worktreeId: string,
+  revision: string,
+) {
+  return gitSignatureSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/${encodeURIComponent(revision)}/signature`,
     ),
   );
 }
