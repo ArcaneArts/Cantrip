@@ -62,6 +62,10 @@ import type {
   McpServerConfiguration,
   McpServerSummary,
   ModelProviderCreate,
+  ProviderCatalogSyncState,
+  ProviderModelAvailability,
+  ProviderModelCatalogEntry,
+  ProviderModelCatalogResult,
   ModelProviderSummary,
   ModelProviderUpdate,
   ModelRouteSummary,
@@ -178,6 +182,40 @@ export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
 const SERVER_ID_STATE_KEY = "server-id";
 export const WORKER_ONLINE_WINDOW_MS = 30_000;
+
+export interface ModelProviderCatalogRuntime {
+  id: string;
+  ownerId: string;
+  kind: ModelProviderSummary["kind"];
+  baseUrl: string;
+  apiKey: string | null;
+}
+
+export interface ProviderModelCatalogWrite {
+  nativeModelId: string;
+  canonicalModelId: string | null;
+  displayName: string;
+  description: string | null;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  inputModalities: string[];
+  outputModalities: string[];
+  supportsTools: boolean | null;
+  supportsParallelTools: boolean | null;
+  supportsStructuredOutput: boolean | null;
+  supportsVision: boolean | null;
+  supportsReasoning: boolean | null;
+  supportedReasoningEfforts: ProviderModelCatalogEntry["supportedReasoningEfforts"];
+  defaultReasoningEffort: string | null;
+  reasoningMandatory: boolean | null;
+  family: string | null;
+  parameterSize: string | null;
+  quantization: string | null;
+  digest: string | null;
+  metadataSource: ProviderModelCatalogEntry["metadataSource"];
+  matchConfidenceBasisPoints: number | null;
+  rawMetadata: Record<string, unknown>;
+}
 
 type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
@@ -1388,6 +1426,83 @@ function toProviderSummary(
     tokenUsage,
     createdAt: toISOString(provider.createdAt),
     updatedAt: toISOString(provider.updatedAt),
+  };
+}
+
+function toProviderModelCatalogEntry(
+  model: typeof schema.providerModels.$inferSelect,
+): ProviderModelCatalogEntry {
+  return {
+    id: model.id,
+    providerId: model.providerId,
+    nativeModelId: model.nativeModelId,
+    canonicalModelId: model.canonicalModelId,
+    displayName: model.displayName,
+    description: model.description,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutputTokens,
+    inputModalities: model.inputModalities,
+    outputModalities: model.outputModalities,
+    supportsTools: model.supportsTools,
+    supportsParallelTools: model.supportsParallelTools,
+    supportsStructuredOutput: model.supportsStructuredOutput,
+    supportsVision: model.supportsVision,
+    supportsReasoning: model.supportsReasoning,
+    supportedReasoningEfforts: model.supportedReasoningEfforts,
+    defaultReasoningEffort: model.defaultReasoningEffort,
+    reasoningMandatory: model.reasoningMandatory,
+    family: model.family,
+    parameterSize: model.parameterSize,
+    quantization: model.quantization,
+    digest: model.digest,
+    metadataSource:
+      model.metadataSource as ProviderModelCatalogEntry["metadataSource"],
+    matchConfidence:
+      model.matchConfidenceBasisPoints === null
+        ? null
+        : model.matchConfidenceBasisPoints / 10_000,
+    hidden: model.hidden,
+    isDefault: model.isDefault,
+    lastSeenAt: toISOString(model.lastSeenAt),
+    createdAt: toISOString(model.createdAt),
+    updatedAt: toISOString(model.updatedAt),
+  };
+}
+
+function toProviderModelAvailability(
+  availability: typeof schema.providerModelAvailability.$inferSelect,
+): ProviderModelAvailability {
+  return {
+    id: availability.id,
+    providerModelId: availability.providerModelId,
+    scopeKey: availability.scopeKey,
+    workerId: availability.workerId,
+    providerAccountId: availability.providerAccountId,
+    state: availability.state as ProviderModelAvailability["state"],
+    lastSeenAt: toISOString(availability.lastSeenAt),
+    updatedAt: toISOString(availability.updatedAt),
+  };
+}
+
+function toProviderCatalogSyncState(
+  state: typeof schema.providerCatalogSyncStates.$inferSelect,
+): ProviderCatalogSyncState {
+  return {
+    id: state.id,
+    providerId: state.providerId,
+    scopeKey: state.scopeKey,
+    workerId: state.workerId,
+    providerAccountId: state.providerAccountId,
+    status: state.status as ProviderCatalogSyncState["status"],
+    error: state.error,
+    etag: state.etag,
+    refreshStartedAt: state.refreshStartedAt
+      ? toISOString(state.refreshStartedAt)
+      : null,
+    lastSuccessAt: state.lastSuccessAt
+      ? toISOString(state.lastSuccessAt)
+      : null,
+    updatedAt: toISOString(state.updatedAt),
   };
 }
 
@@ -2624,6 +2739,241 @@ export class ServerRepository {
       }
     }
     return provider ? toProviderSummary(provider) : null;
+  }
+
+  async getModelProviderCatalogRuntime(
+    ownerId: string,
+    providerId: string,
+  ): Promise<ModelProviderCatalogRuntime | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const provider = rows[0];
+    if (!provider) return null;
+    return {
+      id: provider.id,
+      ownerId: provider.ownerId,
+      kind: provider.kind as ModelProviderSummary["kind"],
+      baseUrl: provider.baseUrl,
+      apiKey: provider.apiKeyEnvelope
+        ? this.secretVault.decrypt(
+            provider.apiKeyEnvelope,
+            modelProviderSecretContext(provider.ownerId, provider.id),
+          )
+        : provider.apiKey,
+    };
+  }
+
+  async setProviderCatalogSyncState(
+    providerId: string,
+    input: {
+      scopeKey: string;
+      status: ProviderCatalogSyncState["status"];
+      error?: string | null;
+      etag?: string | null;
+      refreshStartedAt?: Date | null;
+      lastSuccessAt?: Date | null;
+    },
+  ): Promise<void> {
+    const now = new Date();
+    await this.database
+      .insert(schema.providerCatalogSyncStates)
+      .values({
+        id: randomUUID(),
+        providerId,
+        scopeKey: input.scopeKey,
+        status: input.status,
+        error: input.error ?? null,
+        etag: input.etag ?? null,
+        refreshStartedAt: input.refreshStartedAt ?? null,
+        lastSuccessAt: input.lastSuccessAt ?? null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.providerCatalogSyncStates.providerId,
+          schema.providerCatalogSyncStates.scopeKey,
+        ],
+        set: {
+          status: input.status,
+          ...(input.error === undefined ? {} : { error: input.error }),
+          ...(input.etag === undefined ? {} : { etag: input.etag }),
+          ...(input.refreshStartedAt === undefined
+            ? {}
+            : { refreshStartedAt: input.refreshStartedAt }),
+          ...(input.lastSuccessAt === undefined
+            ? {}
+            : { lastSuccessAt: input.lastSuccessAt }),
+          updatedAt: now,
+        },
+      });
+  }
+
+  async reconcileProviderModelCatalog(
+    ownerId: string,
+    providerId: string,
+    input: {
+      models: ProviderModelCatalogWrite[];
+      availabilityScope: string;
+      availableNativeModelIds: ReadonlySet<string>;
+    },
+  ): Promise<boolean> {
+    const provider = await this.database
+      .select({ id: schema.modelProviders.id })
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!provider[0]) return false;
+
+    const now = new Date();
+    await this.database.transaction(async (transaction) => {
+      if (input.models.length > 0) {
+        await transaction
+          .insert(schema.providerModels)
+          .values(
+            input.models.map((model) => ({
+              id: randomUUID(),
+              providerId,
+              ...model,
+              lastSeenAt: now,
+              updatedAt: now,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [
+              schema.providerModels.providerId,
+              schema.providerModels.nativeModelId,
+            ],
+            set: {
+              canonicalModelId: sql`excluded.canonical_model_id`,
+              displayName: sql`excluded.display_name`,
+              description: sql`excluded.description`,
+              contextWindow: sql`excluded.context_window`,
+              maxOutputTokens: sql`excluded.max_output_tokens`,
+              inputModalities: sql`excluded.input_modalities`,
+              outputModalities: sql`excluded.output_modalities`,
+              supportsTools: sql`excluded.supports_tools`,
+              supportsParallelTools: sql`excluded.supports_parallel_tools`,
+              supportsStructuredOutput: sql`excluded.supports_structured_output`,
+              supportsVision: sql`excluded.supports_vision`,
+              supportsReasoning: sql`excluded.supports_reasoning`,
+              supportedReasoningEfforts: sql`excluded.supported_reasoning_efforts`,
+              defaultReasoningEffort: sql`excluded.default_reasoning_effort`,
+              reasoningMandatory: sql`excluded.reasoning_mandatory`,
+              family: sql`excluded.family`,
+              parameterSize: sql`excluded.parameter_size`,
+              quantization: sql`excluded.quantization`,
+              digest: sql`excluded.digest`,
+              metadataSource: sql`excluded.metadata_source`,
+              matchConfidenceBasisPoints: sql`excluded.match_confidence_basis_points`,
+              rawMetadata: sql`excluded.raw_metadata`,
+              lastSeenAt: now,
+              updatedAt: now,
+            },
+          });
+      }
+
+      const providerModelRows = await transaction
+        .select({
+          id: schema.providerModels.id,
+          nativeModelId: schema.providerModels.nativeModelId,
+        })
+        .from(schema.providerModels)
+        .where(eq(schema.providerModels.providerId, providerId));
+      if (providerModelRows.length === 0) return;
+
+      await transaction
+        .insert(schema.providerModelAvailability)
+        .values(
+          providerModelRows.map((model) => ({
+            id: randomUUID(),
+            providerModelId: model.id,
+            scopeKey: input.availabilityScope,
+            state: input.availableNativeModelIds.has(model.nativeModelId)
+              ? "available"
+              : "unavailable",
+            lastSeenAt: now,
+            updatedAt: now,
+          })),
+        )
+        .onConflictDoUpdate({
+          target: [
+            schema.providerModelAvailability.providerModelId,
+            schema.providerModelAvailability.scopeKey,
+          ],
+          set: {
+            state: sql`excluded.state`,
+            lastSeenAt: now,
+            updatedAt: now,
+          },
+        });
+    });
+    return true;
+  }
+
+  async getProviderModelCatalog(
+    ownerId: string,
+    providerId: string,
+    servedStale = false,
+  ): Promise<ProviderModelCatalogResult | null> {
+    const provider = await this.database
+      .select({ id: schema.modelProviders.id })
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    if (!provider[0]) return null;
+
+    const [models, availability, syncStates] = await Promise.all([
+      this.database
+        .select()
+        .from(schema.providerModels)
+        .where(eq(schema.providerModels.providerId, providerId))
+        .orderBy(asc(schema.providerModels.displayName)),
+      this.database
+        .select({ availability: schema.providerModelAvailability })
+        .from(schema.providerModelAvailability)
+        .innerJoin(
+          schema.providerModels,
+          and(
+            eq(
+              schema.providerModels.id,
+              schema.providerModelAvailability.providerModelId,
+            ),
+            eq(schema.providerModels.providerId, providerId),
+          ),
+        ),
+      this.database
+        .select()
+        .from(schema.providerCatalogSyncStates)
+        .where(eq(schema.providerCatalogSyncStates.providerId, providerId))
+        .orderBy(asc(schema.providerCatalogSyncStates.scopeKey)),
+    ]);
+    return {
+      providerId,
+      models: models.map(toProviderModelCatalogEntry),
+      availability: availability.map(({ availability: row }) =>
+        toProviderModelAvailability(row),
+      ),
+      syncStates: syncStates.map(toProviderCatalogSyncState),
+      servedStale,
+    };
   }
 
   async createModelProfile(
