@@ -34,8 +34,8 @@ test("macOS DMGs use the branded installer background", async () => {
   const dmg = config.bundle?.macOS?.dmg;
 
   assert.deepEqual(dmg?.windowSize, { width: 660, height: 400 });
-  assert.deepEqual(dmg?.appPosition, { x: 180, y: 170 });
-  assert.deepEqual(dmg?.applicationFolderPosition, { x: 480, y: 170 });
+  assert.deepEqual(dmg?.appPosition, { x: 135, y: 190 });
+  assert.deepEqual(dmg?.applicationFolderPosition, { x: 525, y: 190 });
   assert.equal(dmg?.background, "images/dmg-background.png");
 
   const background = await readFile(path.join(tauriDir, dmg.background));
