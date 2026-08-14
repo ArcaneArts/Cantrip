@@ -2,6 +2,7 @@ import { codexAuthStatusSchema } from "@cantrip/protocol";
 
 import type { ModelRuntime, ServerRepository } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import { chatGptAccountSupportsModel } from "./model-route-availability.js";
 
 interface AccountRoutingLogger {
   warn(context: Record<string, unknown>, message: string): void;
@@ -35,7 +36,11 @@ export async function resolveChatGptAccountRuntimes(input: {
   const orderedAccounts = accounts
     .filter(
       (account) =>
-        account.enabled && account.modelAvailability !== "unavailable",
+        account.enabled &&
+        chatGptAccountSupportsModel(
+          runtime.model.providerModelId,
+          account.modelAvailability,
+        ),
     )
     .sort((left, right) => {
       const leftPreferred = left.accountId === input.preferredAccountId;
@@ -47,9 +52,14 @@ export async function resolveChatGptAccountRuntimes(input: {
           : 1;
     });
   if (!orderedAccounts.length) {
+    const hasEnabledAccounts = accounts.some(({ enabled }) => enabled);
     return {
       runtimes: [],
-      unavailable: [`${runtime.provider.name} has no enabled accounts`],
+      unavailable: [
+        hasEnabledAccounts
+          ? `${runtime.model.name} is not available to any ${runtime.provider.name} account on this worker`
+          : `${runtime.provider.name} has no enabled accounts`,
+      ],
     };
   }
 

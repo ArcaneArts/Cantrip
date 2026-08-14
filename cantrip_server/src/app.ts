@@ -565,6 +565,7 @@ import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
 import { ChatGptCatalogService } from "./models/chatgpt-catalog.js";
 import { resolveChatGptAccountRuntimes } from "./models/chatgpt-account-routing.js";
+import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -4503,6 +4504,24 @@ export async function buildApp({
     const unavailable: string[] = [];
     for (const runtime of runtimes) {
       if (runtime.provider.kind !== "chatgpt") {
+        const catalogAvailability = runtime.model.providerModelId
+          ? await repository.listProviderModelAvailability(
+              applicationOwnerId(),
+              runtime.provider.id,
+              runtime.model.providerModelId,
+            )
+          : [];
+        const eligibility = evaluateModelRouteAvailability(
+          runtime,
+          catalogAvailability,
+          context.workerId,
+        );
+        if (!eligibility.available) {
+          unavailable.push(
+            `${runtime.provider.name}: ${eligibility.reason ?? "model unavailable"}`,
+          );
+          continue;
+        }
         const cooldownUntil =
           routeCooldowns.get(runtimeCooldownKey(runtime)) ?? 0;
         if (cooldownUntil > now) {
@@ -4550,38 +4569,6 @@ export async function buildApp({
         context.modelRouteId,
       );
       if (active) {
-        if (active.provider.kind !== "chatgpt") {
-          return prepareRuntimesForReasoning(
-            [active],
-            context.reasoningEffort,
-          )[0]!.runtime;
-        }
-        if (context.providerAccountId) {
-          const accounts = await repository.listModelProviderAccountRuntimes(
-            applicationOwnerId(),
-            active.provider.id,
-            context.workerId,
-            active.model.providerModelId,
-          );
-          const account = accounts.find(
-            (candidate) => candidate.accountId === context.providerAccountId,
-          );
-          if (account) {
-            return prepareRuntimesForReasoning(
-              [
-                {
-                  ...active,
-                  provider: {
-                    ...active.provider,
-                    accountId: account.accountId,
-                    credentialHomeKey: account.credentialHomeKey,
-                  },
-                },
-              ],
-              context.reasoningEffort,
-            )[0]!.runtime;
-          }
-        }
         const selected = (
           await availableModelRuntimes(context, active.model.id)
         ).find((runtime) => runtime.routeId === active.routeId);

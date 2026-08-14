@@ -3502,6 +3502,37 @@ export class ServerRepository {
     };
   }
 
+  async listProviderModelAvailability(
+    ownerId: string,
+    providerId: string,
+    providerModelId: string,
+  ): Promise<ProviderModelAvailability[]> {
+    const rows = await this.database
+      .select({ availability: schema.providerModelAvailability })
+      .from(schema.providerModelAvailability)
+      .innerJoin(
+        schema.providerModels,
+        and(
+          eq(
+            schema.providerModels.id,
+            schema.providerModelAvailability.providerModelId,
+          ),
+          eq(schema.providerModels.id, providerModelId),
+          eq(schema.providerModels.providerId, providerId),
+        ),
+      )
+      .innerJoin(
+        schema.modelProviders,
+        and(
+          eq(schema.modelProviders.id, schema.providerModels.providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      );
+    return rows.map(({ availability }) =>
+      toProviderModelAvailability(availability),
+    );
+  }
+
   async createModelProfile(
     ownerId: string,
     input: ModelProfileCreate,
