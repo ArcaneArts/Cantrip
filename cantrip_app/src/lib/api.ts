@@ -139,6 +139,10 @@ import {
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
+  modelProviderAccountCreateSchema,
+  modelProviderAccountListSchema,
+  modelProviderAccountSummarySchema,
+  modelProviderAccountUpdateSchema,
   modelProviderCreateSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
@@ -265,6 +269,8 @@ import type {
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
+  ModelProviderAccountCreate,
+  ModelProviderAccountUpdate,
   ModelProviderUpdate,
   McpServerConfiguration,
   McpServerCopy,
@@ -566,10 +572,14 @@ export async function revokeWorkerCredential(
   );
 }
 
-export async function getCodexAuthStatus(workerId: string, providerId: string) {
+export async function getCodexAuthStatus(
+  workerId: string,
+  providerId: string,
+  accountId?: string,
+) {
   return codexAuthStatusSchema.parse(
     await request(
-      `/api/codex/auth/status?workerId=${encodeURIComponent(workerId)}&providerId=${encodeURIComponent(providerId)}`,
+      `/api/codex/auth/status?workerId=${encodeURIComponent(workerId)}&providerId=${encodeURIComponent(providerId)}${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ""}`,
     ),
   );
 }
@@ -577,14 +587,23 @@ export async function getCodexAuthStatus(workerId: string, providerId: string) {
 export async function startCodexDeviceLogin(
   workerId: string,
   providerId: string,
+  accountId?: string,
 ) {
   return codexDeviceLoginSchema.parse(
-    await post("/api/codex/auth/device-login", { workerId, providerId }),
+    await post("/api/codex/auth/device-login", {
+      workerId,
+      providerId,
+      accountId,
+    }),
   );
 }
 
-export async function logoutCodex(workerId: string, providerId: string) {
-  await post("/api/codex/auth/logout", { workerId, providerId });
+export async function logoutCodex(
+  workerId: string,
+  providerId: string,
+  accountId?: string,
+) {
+  await post("/api/codex/auth/logout", { workerId, providerId, accountId });
 }
 
 export async function getSettings() {
@@ -637,6 +656,52 @@ export async function createModelProvider(input: ModelProviderCreate) {
       "/api/settings/providers",
       modelProviderCreateSchema.parse(input),
     ),
+  );
+}
+
+export async function listModelProviderAccounts(providerId: string) {
+  return modelProviderAccountListSchema.parse(
+    await request(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/accounts`,
+    ),
+  );
+}
+
+export async function createModelProviderAccount(
+  providerId: string,
+  input: ModelProviderAccountCreate,
+) {
+  return modelProviderAccountSummarySchema.parse(
+    await post(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/accounts`,
+      modelProviderAccountCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateModelProviderAccount(
+  providerId: string,
+  accountId: string,
+  input: ModelProviderAccountUpdate,
+) {
+  return modelProviderAccountSummarySchema.parse(
+    await request(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(modelProviderAccountUpdateSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function deleteModelProviderAccount(
+  providerId: string,
+  accountId: string,
+) {
+  await request(
+    `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
   );
 }
 

@@ -505,6 +505,13 @@
       "when": 1786734277631,
       "tag": "0071_needy_pyro",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1786736961538,
+      "tag": "0072_hard_siren",
+      "breakpoints": true
     }
   ]
 }

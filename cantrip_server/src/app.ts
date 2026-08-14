@@ -224,6 +224,10 @@ import {
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
+  modelProviderAccountCreateSchema,
+  modelProviderAccountListSchema,
+  modelProviderAccountSummarySchema,
+  modelProviderAccountUpdateSchema,
   modelProviderCreateSchema,
   providerModelCatalogResultSchema,
   modelProviderSummarySchema,
@@ -7035,115 +7039,210 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Querystring: { providerId?: string; workerId?: string } }>(
-    "/api/codex/auth/status",
+  app.get<{ Params: { providerId: string } }>(
+    "/api/settings/providers/:providerId/accounts",
     async (request, reply) => {
-      const { providerId, workerId } = request.query;
-      if (!workerId || !providerId) {
-        return reply
-          .code(400)
-          .send({ error: "workerId and providerId are required" });
-      }
-      const provider = await repository.getModelProvider(
+      const accounts = await repository.listModelProviderAccounts(
         applicationOwnerId(),
-        providerId,
+        request.params.providerId,
       );
-      if (provider?.kind !== "chatgpt") {
-        return reply
-          .code(404)
-          .send({ error: "ChatGPT account provider not found." });
-      }
-      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      try {
-        const status = codexAuthStatusSchema.parse(
-          await bridge.request(workerId, {
-            type: "codex.auth.status",
-            providerId,
-          }),
-        );
-        return reply.send(status);
-      } catch (error) {
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: errorMessage(error) });
-      }
+      return accounts
+        ? reply.send(modelProviderAccountListSchema.parse(accounts))
+        : reply.code(404).send({ error: "ChatGPT provider not found." });
     },
   );
 
-  app.post<{ Body: { providerId?: string; workerId?: string } }>(
-    "/api/codex/auth/device-login",
+  app.post<{
+    Params: { providerId: string };
+    Body: unknown;
+  }>("/api/settings/providers/:providerId/accounts", async (request, reply) => {
+    const input = modelProviderAccountCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const account = await repository.createModelProviderAccount(
+      applicationOwnerId(),
+      request.params.providerId,
+      input.data,
+    );
+    return account
+      ? reply.code(201).send(modelProviderAccountSummarySchema.parse(account))
+      : reply.code(404).send({ error: "ChatGPT provider not found." });
+  });
+
+  app.patch<{
+    Params: { providerId: string; accountId: string };
+    Body: unknown;
+  }>(
+    "/api/settings/providers/:providerId/accounts/:accountId",
     async (request, reply) => {
-      const { providerId, workerId } = request.body ?? {};
-      if (!workerId || !providerId) {
-        return reply
-          .code(400)
-          .send({ error: "workerId and providerId are required" });
+      const input = modelProviderAccountUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const provider = await repository.getModelProvider(
+      const account = await repository.updateModelProviderAccount(
         applicationOwnerId(),
-        providerId,
+        request.params.providerId,
+        request.params.accountId,
+        input.data,
       );
-      if (provider?.kind !== "chatgpt") {
-        return reply
-          .code(404)
-          .send({ error: "ChatGPT account provider not found." });
-      }
-      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      try {
-        return reply.send(
-          codexDeviceLoginSchema.parse(
-            await bridge.request(workerId, {
-              type: "codex.auth.login.start",
-              providerId,
-            }),
-          ),
-        );
-      } catch (error) {
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: errorMessage(error) });
-      }
+      return account
+        ? reply.send(modelProviderAccountSummarySchema.parse(account))
+        : reply.code(404).send({ error: "ChatGPT account not found." });
     },
   );
 
-  app.post<{ Body: { providerId?: string; workerId?: string } }>(
-    "/api/codex/auth/logout",
-    async (request, reply) => {
-      const { providerId, workerId } = request.body ?? {};
-      if (!workerId || !providerId) {
-        return reply
-          .code(400)
-          .send({ error: "workerId and providerId are required" });
-      }
-      const provider = await repository.getModelProvider(
+  app.delete<{
+    Params: { providerId: string; accountId: string };
+  }>(
+    "/api/settings/providers/:providerId/accounts/:accountId",
+    async (request, reply) =>
+      (await repository.deleteModelProviderAccount(
+        applicationOwnerId(),
+        request.params.providerId,
+        request.params.accountId,
+      ))
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "ChatGPT account not found." }),
+  );
+
+  const resolveChatGptAuthTarget = async (
+    providerId: string,
+    workerId: string,
+    accountId?: string,
+  ) => {
+    const [account, worker] = await Promise.all([
+      repository.getModelProviderAccountRuntime(
         applicationOwnerId(),
         providerId,
+        accountId,
+      ),
+      repository.getWorker(applicationOwnerId(), workerId),
+    ]);
+    if (!account) throw new Error("ChatGPT account not found.");
+    if (!worker) throw new Error("Worker not found.");
+    return account;
+  };
+
+  app.get<{
+    Querystring: {
+      providerId?: string;
+      accountId?: string;
+      workerId?: string;
+    };
+  }>("/api/codex/auth/status", async (request, reply) => {
+    const { accountId, providerId, workerId } = request.query;
+    if (!workerId || !providerId) {
+      return reply
+        .code(400)
+        .send({ error: "workerId and providerId are required" });
+    }
+    try {
+      const account = await resolveChatGptAuthTarget(
+        providerId,
+        workerId,
+        accountId,
       );
-      if (provider?.kind !== "chatgpt") {
-        return reply
-          .code(404)
-          .send({ error: "ChatGPT account provider not found." });
-      }
-      if (!(await repository.getWorker(applicationOwnerId(), workerId))) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      try {
+      const status = codexAuthStatusSchema.parse(
         await bridge.request(workerId, {
-          type: "codex.auth.logout",
+          type: "codex.auth.status",
           providerId,
-        });
-        return reply.code(204).send();
-      } catch (error) {
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: errorMessage(error) });
+          credentialHomeKey: account.credentialHomeKey,
+        }),
+      );
+      await repository.recordModelProviderAccountStatus(
+        account.accountId,
+        workerId,
+        status,
+      );
+      return reply.send(status);
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.endsWith("not found.")) {
+        return reply.code(404).send({ error: message });
       }
-    },
-  );
+      return reply
+        .code(workerRequestFailureStatus(error))
+        .send({ error: message });
+    }
+  });
+
+  app.post<{
+    Body: { providerId?: string; accountId?: string; workerId?: string };
+  }>("/api/codex/auth/device-login", async (request, reply) => {
+    const { accountId, providerId, workerId } = request.body ?? {};
+    if (!workerId || !providerId) {
+      return reply
+        .code(400)
+        .send({ error: "workerId and providerId are required" });
+    }
+    try {
+      const account = await resolveChatGptAuthTarget(
+        providerId,
+        workerId,
+        accountId,
+      );
+      return reply.send(
+        codexDeviceLoginSchema.parse(
+          await bridge.request(workerId, {
+            type: "codex.auth.login.start",
+            providerId,
+            credentialHomeKey: account.credentialHomeKey,
+          }),
+        ),
+      );
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.endsWith("not found.")) {
+        return reply.code(404).send({ error: message });
+      }
+      return reply
+        .code(workerRequestFailureStatus(error))
+        .send({ error: message });
+    }
+  });
+
+  app.post<{
+    Body: { providerId?: string; accountId?: string; workerId?: string };
+  }>("/api/codex/auth/logout", async (request, reply) => {
+    const { accountId, providerId, workerId } = request.body ?? {};
+    if (!workerId || !providerId) {
+      return reply
+        .code(400)
+        .send({ error: "workerId and providerId are required" });
+    }
+    try {
+      const account = await resolveChatGptAuthTarget(
+        providerId,
+        workerId,
+        accountId,
+      );
+      await bridge.request(workerId, {
+        type: "codex.auth.logout",
+        providerId,
+        credentialHomeKey: account.credentialHomeKey,
+      });
+      await repository.recordModelProviderAccountStatus(
+        account.accountId,
+        workerId,
+        {
+          authenticated: false,
+          email: null,
+          planType: null,
+          weeklyUsage: null,
+        },
+      );
+      return reply.code(204).send();
+    } catch (error) {
+      const message = errorMessage(error);
+      if (message.endsWith("not found.")) {
+        return reply.code(404).send({ error: message });
+      }
+      return reply
+        .code(workerRequestFailureStatus(error))
+        .send({ error: message });
+    }
+  });
 
   app.get("/api/settings", async (_request, reply) => {
     const ownerId = applicationOwnerId();
