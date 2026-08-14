@@ -2823,6 +2823,7 @@ export class ServerRepository {
       models: ProviderModelCatalogWrite[];
       availabilityScope: string;
       availableNativeModelIds: ReadonlySet<string>;
+      autoCreateLogicalModels?: boolean;
     },
   ): Promise<boolean> {
     const provider = await this.database
@@ -2919,6 +2920,72 @@ export class ServerRepository {
             updatedAt: now,
           },
         });
+
+      if (input.autoCreateLogicalModels) {
+        const [suppressions, existingRoutes] = await Promise.all([
+          transaction
+            .select({
+              providerModelId: schema.providerModelSuppressions.providerModelId,
+            })
+            .from(schema.providerModelSuppressions)
+            .where(eq(schema.providerModelSuppressions.ownerId, ownerId)),
+          transaction
+            .select({ modelName: schema.modelRoutes.modelName })
+            .from(schema.modelRoutes)
+            .innerJoin(
+              schema.modelProfiles,
+              and(
+                eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+                eq(schema.modelProfiles.ownerId, ownerId),
+              ),
+            )
+            .where(eq(schema.modelRoutes.providerId, providerId)),
+        ]);
+        const suppressed = new Set(
+          suppressions.map(({ providerModelId }) => providerModelId),
+        );
+        const routedNames = new Set(
+          existingRoutes.map(({ modelName }) => modelName),
+        );
+        const catalogByName = new Map(
+          input.models.map((model) => [model.nativeModelId, model]),
+        );
+        const discovered = providerModelRows.filter(
+          (model) =>
+            input.availableNativeModelIds.has(model.nativeModelId) &&
+            !suppressed.has(model.id) &&
+            !routedNames.has(model.nativeModelId),
+        );
+        for (const model of discovered) {
+          const profileId = `discovered:model:${model.id}`;
+          const routeId = `discovered:route:${model.id}`;
+          await transaction
+            .insert(schema.modelProfiles)
+            .values({
+              id: profileId,
+              ownerId,
+              name: model.nativeModelId,
+              canonicalModelId:
+                catalogByName.get(model.nativeModelId)?.canonicalModelId ??
+                null,
+              discoveryManaged: true,
+            })
+            .onConflictDoNothing({ target: schema.modelProfiles.id });
+          await transaction
+            .insert(schema.modelRoutes)
+            .values({
+              id: routeId,
+              modelId: profileId,
+              providerId,
+              providerModelId: model.id,
+              modelName: model.nativeModelId,
+              position: 0,
+              enabled: true,
+              discoveryManaged: true,
+            })
+            .onConflictDoNothing({ target: schema.modelRoutes.id });
+        }
+      }
     });
     return true;
   }
@@ -3016,16 +3083,44 @@ export class ServerRepository {
   }
 
   async deleteModelProfile(ownerId: string, modelId: string) {
-    const result = await this.database
-      .delete(schema.modelProfiles)
-      .where(
-        and(
-          eq(schema.modelProfiles.id, modelId),
-          eq(schema.modelProfiles.ownerId, ownerId),
-        ),
-      )
-      .returning({ id: schema.modelProfiles.id });
-    return Boolean(result[0]);
+    return this.database.transaction(async (transaction) => {
+      const managedRoutes = await transaction
+        .select({ providerModelId: schema.modelRoutes.providerModelId })
+        .from(schema.modelRoutes)
+        .innerJoin(
+          schema.modelProfiles,
+          and(
+            eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+            eq(schema.modelProfiles.ownerId, ownerId),
+            eq(schema.modelProfiles.discoveryManaged, true),
+          ),
+        )
+        .where(eq(schema.modelRoutes.modelId, modelId));
+      const providerModelIds = managedRoutes.flatMap(({ providerModelId }) =>
+        providerModelId ? [providerModelId] : [],
+      );
+      if (providerModelIds.length > 0) {
+        await transaction
+          .insert(schema.providerModelSuppressions)
+          .values(
+            providerModelIds.map((providerModelId) => ({
+              ownerId,
+              providerModelId,
+            })),
+          )
+          .onConflictDoNothing();
+      }
+      const result = await transaction
+        .delete(schema.modelProfiles)
+        .where(
+          and(
+            eq(schema.modelProfiles.id, modelId),
+            eq(schema.modelProfiles.ownerId, ownerId),
+          ),
+        )
+        .returning({ id: schema.modelProfiles.id });
+      return Boolean(result[0]);
+    });
   }
 
   async updateModelProfile(
