@@ -176,6 +176,11 @@ describe.sequential("project automation API", () => {
   });
 
   it("claims a due occurrence once and queues its prompt durably", async () => {
+    await database.repository.setChatReasoningEffort(
+      LOCAL_USER_ID,
+      chatId,
+      "high",
+    );
     const listed = projectAutomationListSchema.parse(
       (
         await app.inject({
@@ -209,6 +214,12 @@ describe.sequential("project automation API", () => {
     expect(queued[0]?.text).toBe(
       "Review the project and summarize its current state.",
     );
+    await database.repository.setChatReasoningEffort(
+      LOCAL_USER_ID,
+      chatId,
+      "low",
+    );
+    expect(queued[0]?.reasoningEffort).toBe("high");
     expect(conditionRequests).toContainEqual({
       type: "automation.condition.evaluate",
       condition: { type: "open-issues", minimum: 1 },
@@ -224,9 +235,19 @@ describe.sequential("project automation API", () => {
     expect(
       await database.repository.listQueuedPrompts(LOCAL_USER_ID, chatId),
     ).toHaveLength(1);
+    await database.repository.setChatReasoningEffort(
+      LOCAL_USER_ID,
+      chatId,
+      null,
+    );
   });
 
   it("recovers an expired dispatch lease and fences its previous holder", async () => {
+    await database.repository.setChatReasoningEffort(
+      LOCAL_USER_ID,
+      chatId,
+      "ultra",
+    );
     const scheduledFor = new Date(Date.now() + 20_000);
     const automation = await database.repository.projectAutomations.create(
       LOCAL_USER_ID,
@@ -259,7 +280,12 @@ describe.sequential("project automation API", () => {
       30_000,
       scheduledFor,
     );
-    expect(first).toMatchObject({ fencingToken: 1 });
+    expect(first).toMatchObject({ fencingToken: 1, reasoningEffort: "ultra" });
+    await database.repository.setChatReasoningEffort(
+      LOCAL_USER_ID,
+      chatId,
+      "low",
+    );
     expect(
       await database.repository.projectAutomations.claimDue(
         LOCAL_USER_ID,
@@ -292,6 +318,7 @@ describe.sequential("project automation API", () => {
       runId: first!.runId,
       fencingToken: 2,
       dispatchInstanceId: "relay-b",
+      reasoningEffort: "ultra",
     });
     expect(
       await database.repository.projectAutomations.finishDispatch(
@@ -324,6 +351,11 @@ describe.sequential("project automation API", () => {
         automation!.id,
       ),
     ).toBe(true);
+    await database.repository.setChatReasoningEffort(
+      LOCAL_USER_ID,
+      chatId,
+      null,
+    );
   });
 
   it("advances a due occurrence without queuing when its condition is false", async () => {
