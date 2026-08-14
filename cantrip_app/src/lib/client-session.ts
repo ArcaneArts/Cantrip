@@ -69,7 +69,8 @@ export function getClientSession(): ClientSessionContext | null {
 }
 
 export function clientStorageScope(): string {
-  const serverId = session?.serverId ?? getActiveServerConnection().id;
+  const serverId =
+    session?.serverId ?? getActiveServerConnection()?.id ?? "unconfigured";
   return `${serverId}:${session?.user.id ?? "signed-out"}`;
 }
 

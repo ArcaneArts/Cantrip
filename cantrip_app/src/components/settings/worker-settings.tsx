@@ -257,7 +257,7 @@ function WorkerRow({
 export function WorkerSettings() {
   const queryClient = useQueryClient();
   const desktopApp = supportsDesktopWorkers();
-  const activeConnection = getActiveServerConnection();
+  const activeConnection = getActiveServerConnection()!;
   const serverUrl = getActiveServerUrl() || window.location.origin;
   const workers = useQuery({
     queryFn: getWorkerManagement,
