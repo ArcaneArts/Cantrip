@@ -63,11 +63,11 @@ describe("verifyCodexInstallation", () => {
       JSON.stringify({
         schemaVersion: 1,
         component: "codex-cli",
-        version: "0.146.1",
+        version: "0.147.0",
         upstream: {
           repository: "https://github.com/openai/codex.git",
-          ref: "rust-v0.146.1",
-          commit: "79b4f03d35962b005b007a015113b38930711665",
+          ref: "rust-v0.147.0",
+          commit: "be6e8eac029b183056b7e4402879f15d2c85f61b",
         },
         sourceManifestSha256: "a".repeat(64),
         buildRecipeVersion: 1,
@@ -89,7 +89,7 @@ describe("verifyCodexInstallation", () => {
         "darwin",
         "arm64",
       ),
-    ).resolves.toMatchObject({ version: "0.146.1" });
+    ).resolves.toMatchObject({ version: "0.147.0" });
   });
 
   it("accepts the patched Codex recipe manifest", async () => {
@@ -106,15 +106,15 @@ describe("verifyCodexInstallation", () => {
       JSON.stringify({
         schemaVersion: 1,
         component: "codex-cli",
-        version: "0.146.1",
+        version: "0.147.0",
         upstream: {
           repository: "https://github.com/openai/codex.git",
-          ref: "rust-v0.146.1",
-          commit: "79b4f03d35962b005b007a015113b38930711665",
+          ref: "rust-v0.147.0",
+          commit: "be6e8eac029b183056b7e4402879f15d2c85f61b",
         },
         sourceManifestSha256: "a".repeat(64),
         patchesSha256: "b".repeat(64),
-        buildRecipeVersion: 2,
+        buildRecipeVersion: 4,
         entrypoint: "codex",
         artifacts: [
           {
@@ -134,7 +134,7 @@ describe("verifyCodexInstallation", () => {
         "arm64",
       ),
     ).resolves.toMatchObject({
-      buildRecipeVersion: 2,
+      buildRecipeVersion: 4,
       patchesSha256: "b".repeat(64),
     });
   });
@@ -153,11 +153,11 @@ describe("verifyCodexInstallation", () => {
       JSON.stringify({
         schemaVersion: 1,
         component: "codex-cli",
-        version: "0.146.1",
+        version: "0.147.0",
         upstream: {
           repository: "https://github.com/openai/codex.git",
-          ref: "rust-v0.146.1",
-          commit: "79b4f03d35962b005b007a015113b38930711665",
+          ref: "rust-v0.147.0",
+          commit: "be6e8eac029b183056b7e4402879f15d2c85f61b",
         },
         sourceManifestSha256: "a".repeat(64),
         buildRecipeVersion: 2,
@@ -195,11 +195,11 @@ describe("verifyCodexInstallation", () => {
       JSON.stringify({
         schemaVersion: 1,
         component: "codex-cli",
-        version: "0.146.1",
+        version: "0.147.0",
         upstream: {
           repository: "https://github.com/openai/codex.git",
-          ref: "rust-v0.146.1",
-          commit: "79b4f03d35962b005b007a015113b38930711665",
+          ref: "rust-v0.147.0",
+          commit: "be6e8eac029b183056b7e4402879f15d2c85f61b",
         },
         sourceManifestSha256: "a".repeat(64),
         buildRecipeVersion: 1,

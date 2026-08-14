@@ -34,8 +34,8 @@ import {
 } from "./discovery.js";
 
 const MCP_RESOURCE_CONTENT_LIMIT = 5_000_000;
-const PLUGIN_STABILITY_REASON =
-  "The installed App Server exposes plugin methods, but the official API contract still marks them under development and unsuitable for production clients.";
+const PLUGIN_PRODUCT_REASON =
+  "Codex 0.147 exposes stable core plugin methods, but Cantrip has not yet implemented and validated plugin product operations for this protocol revision.";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -121,7 +121,7 @@ export function customizationCapabilities(
 ): CodexCustomizationCapabilities {
   const pluginsUnavailable = capability(
     false,
-    PLUGIN_STABILITY_REASON,
+    PLUGIN_PRODUCT_REASON,
     "unsupported",
   );
   return codexCustomizationCapabilitiesSchema.parse({

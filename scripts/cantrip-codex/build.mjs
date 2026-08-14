@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -42,7 +50,119 @@ const metadata = await readUpstreamMetadata();
 const patches = await readCodexPatches();
 const sourceManifestSha256 = await sha256File(filesManifestPath);
 const patchesSha256 = patchSetSha256(patches);
-const buildRecipeVersion = 3;
+const buildRecipeVersion = 4;
+
+async function fetchRequired(url) {
+  const response = await fetch(url, { redirect: "follow" });
+  if (!response.ok) {
+    throw new Error(
+      `Could not download ${url}: HTTP ${response.status} ${response.statusText}`,
+    );
+  }
+  return response;
+}
+
+async function ensureDownloadedAsset(url, destination, expectedSha256) {
+  try {
+    if ((await sha256File(destination)) === expectedSha256) return;
+  } catch {
+    // Download absent or invalid cached assets below.
+  }
+  await mkdir(path.dirname(destination), { recursive: true });
+  const temporary = `${destination}.${process.pid}.tmp`;
+  await rm(temporary, { force: true });
+  const response = await fetchRequired(url);
+  await writeFile(temporary, Buffer.from(await response.arrayBuffer()));
+  const actualSha256 = await sha256File(temporary);
+  if (actualSha256 !== expectedSha256) {
+    await rm(temporary, { force: true });
+    throw new Error(
+      `Downloaded ${url} with SHA-256 ${actualSha256}; expected ${expectedSha256}.`,
+    );
+  }
+  await rm(destination, { force: true });
+  await rename(temporary, destination);
+}
+
+async function configureRustyV8(
+  buildEnvironment,
+  lockPackages,
+  cargoDirectory,
+) {
+  const v8Package = lockPackages
+    .slice(1)
+    .find((pkg) => /^\s*name = "v8"/m.test(pkg));
+  const version = v8Package?.match(/^\s*version = "([^"]+)"/m)?.[1];
+  if (!version)
+    throw new Error("Could not resolve the pinned v8 crate version.");
+
+  const rustc = process.platform === "win32" ? "rustc.exe" : "rustc";
+  const rustcVersion = spawnSync(rustc, ["-vV"], {
+    cwd: cargoDirectory,
+    encoding: "utf8",
+    env: buildEnvironment,
+  });
+  if (rustcVersion.status !== 0) {
+    process.stderr.write(rustcVersion.stderr ?? "");
+    throw new Error("Could not resolve the Rust host target for rusty_v8.");
+  }
+  const target = rustcVersion.stdout.match(/^host: (\S+)$/m)?.[1];
+  if (!target) throw new Error("rustc -vV did not report a host target.");
+
+  const profile = "ptrcomp_sandbox_release";
+  const releaseTag = `rusty-v8-v${version}`;
+  const baseUrl = `https://github.com/openai/codex/releases/download/${releaseTag}`;
+  const archiveName = target.endsWith("-pc-windows-msvc")
+    ? `rusty_v8_${profile}_${target}.lib.gz`
+    : `librusty_v8_${profile}_${target}.a.gz`;
+  const bindingName = `src_binding_${profile}_${target}.rs`;
+  const checksumsName = `rusty_v8_${profile}_${target}.sha256`;
+  const cacheDirectory = path.join(
+    outputDirectory,
+    "rusty-v8",
+    version,
+    target,
+  );
+  const checksumsResponse = await fetchRequired(`${baseUrl}/${checksumsName}`);
+  const checksumLines = (await checksumsResponse.text())
+    .replaceAll("\r", "")
+    .split("\n")
+    .filter(Boolean);
+  if (checksumLines.length !== 2) {
+    throw new Error(
+      `Expected exactly two rusty_v8 checksums for ${target}; found ${checksumLines.length}.`,
+    );
+  }
+  const checksums = new Map();
+  for (const line of checksumLines) {
+    const match = line.match(/^([0-9a-f]{64})\s+\*?([^/\\]+)$/);
+    if (!match) throw new Error(`Invalid rusty_v8 checksum line: ${line}`);
+    checksums.set(match[2], match[1]);
+  }
+  if (!checksums.has(archiveName) || !checksums.has(bindingName)) {
+    throw new Error(
+      `The rusty_v8 checksum manifest for ${target} does not cover the expected artifacts.`,
+    );
+  }
+
+  const archivePath = path.join(cacheDirectory, archiveName);
+  const bindingPath = path.join(cacheDirectory, bindingName);
+  await ensureDownloadedAsset(
+    `${baseUrl}/${archiveName}`,
+    archivePath,
+    checksums.get(archiveName),
+  );
+  await ensureDownloadedAsset(
+    `${baseUrl}/${bindingName}`,
+    bindingPath,
+    checksums.get(bindingName),
+  );
+  buildEnvironment.RUSTY_V8_ARCHIVE = archivePath;
+  buildEnvironment.RUSTY_V8_SRC_BINDING_PATH = bindingPath;
+  console.log(
+    `Verified Codex-built rusty_v8 ${version} artifacts for ${target}.`,
+  );
+}
 
 async function reusableBundle() {
   let manifest;
@@ -259,6 +379,8 @@ if (normalizedPackages > 0) {
 } else {
   console.log("Prepared Cargo.lock already matches the workspace manifests.");
 }
+
+await configureRustyV8(buildEnvironment, lockPackages, cargoDirectory);
 
 if (process.platform === "linux") {
   const bwrapBuild = spawnSync(

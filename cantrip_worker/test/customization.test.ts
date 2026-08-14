@@ -47,10 +47,10 @@ const methods = {
 const report = codexRuntimeReportSchema.parse({
   adapter: "app-server",
   compatibility: "compatible",
-  version: { raw: "codex-cli 0.146.1", semantic: "0.146.1" },
-  testedRange: ">=0.146.0 <0.147.0",
+  version: { raw: "codex-cli 0.147.0", semantic: "0.147.0" },
+  testedRange: ">=0.147.0 <0.148.0",
   initialize: {
-    userAgent: "codex_cli_rs/0.146.1",
+    userAgent: "codex_cli_rs/0.147.0",
     platformFamily: "unix",
     platformOs: "macos",
     experimentalApi: true,
@@ -91,7 +91,7 @@ describe("Codex customization inventory", () => {
         install: { available: false, stability: "unsupported" },
       },
     });
-    expect(capabilities.plugins.list.reason).toContain("under development");
+    expect(capabilities.plugins.list.reason).toContain("not yet implemented");
 
     const partial = customizationCapabilities({
       ...report,

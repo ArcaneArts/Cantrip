@@ -6,31 +6,33 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.146.1` from the official
-`rust-v0.146.1` source tag. Its resolved commit, imported source manifest, and
+Cantrip currently pins and builds `codex-cli 0.147.0` from the official
+`rust-v0.147.0` source tag. Its resolved commit, imported source manifest, and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on August 8, 2026:
+by that CLI on August 13, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range remains `>=0.146.0 <0.147.0`, but packaged
-workers contain exactly `0.146.1`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.147.0 <0.148.0`, but packaged
+workers contain exactly `0.147.0`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
 Cantrip keeps the imported snapshot pristine and applies a reviewed patch
 series from `cantrip_codex/patches/` only to the ignored build copy. The current
-compatibility patch adds an explicit `dynamicTools` override to
-`thread/resume`: omission preserves persisted declarations, while `[]` clears
-them. Cantrip sends the empty override and its CLI developer instruction on
-both thread start and resume, migrating pre-cutover chats without discarding
-their conversation history. The ordered patch-set hash is part of the runtime
-manifest and invalidates cached binaries.
+patch adds an explicit `dynamicTools` override to `thread/resume`: omission preserves
+persisted declarations, while `[]` clears them. Cantrip sends the empty override
+and its CLI developer instruction on both thread start and resume, migrating
+pre-cutover chats without discarding their conversation history. The build also
+downloads the sandboxed Rusty V8 archive and binding from OpenAI's official
+versioned Codex dependency release, verifies their published SHA-256 values, and
+passes them to Cargo. The ordered patch-set hash is part of the runtime manifest
+and invalidates cached binaries.
 
 ## Startup negotiation
 
@@ -89,11 +91,12 @@ enabled and not in the `deprecated` or `removed` stage. Read and mutation
 methods are tracked independently so a runtime can remain inspectable while a
 write control degrades to disabled.
 
-Product stability may be stricter than method discovery. In particular, the
-tested 0.146.1 runtime advertises plugin methods, but the official App Server
-contract still labels them under development and unsuitable for production
-clients. Cantrip retains those methods in diagnostics while disabling plugin
-product controls. See [Codex-native customization](CODEX_NATIVE_CUSTOMIZATION.md).
+Product readiness may be stricter than method discovery. Codex 0.147 stabilizes
+the core plugin list/read/install/uninstall methods, but Cantrip has not yet
+implemented and validated plugin product operations against their payloads.
+Cantrip retains those methods in diagnostics while disabling plugin product
+controls until that separate feature adoption is complete. See
+[Codex-native customization](CODEX_NATIVE_CUSTOMIZATION.md).
 
 Permission profiles are additionally gated on experimental API negotiation and
 `permissionProfile/list`. When available, Cantrip pages the advertised profiles
