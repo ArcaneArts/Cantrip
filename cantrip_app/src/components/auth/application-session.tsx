@@ -21,6 +21,7 @@ import {
 } from "react";
 
 import { ServerSwitcher } from "@/components/servers/server-switcher";
+import { AddServerForm } from "@/components/servers/add-server-form";
 import { MobileSignInScanner } from "@/components/auth/mobile-sign-in-scanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,12 +43,14 @@ import {
 import { errorMessage } from "@/lib/error-message";
 import {
   getActiveServerConnection,
+  selectServerConnection,
   type ServerConnectionFailureKind,
 } from "@/lib/server-connections";
 import { router } from "@/router";
 
 type ApplicationSessionState =
   | { kind: "loading" }
+  | { kind: "server-required" }
   | {
       kind: "connection-error";
       failureKind: ServerConnectionFailureKind;
@@ -90,6 +93,7 @@ function connectionFailure(
 
 async function loadApplicationSession(): Promise<ApplicationSessionState> {
   clearClientSession();
+  if (!getActiveServerConnection()) return { kind: "server-required" };
   const bootstrap = await getServerBootstrap();
   if (bootstrap.auth.mode === "none") {
     if (!bootstrap.auth.currentUser) {
@@ -141,13 +145,49 @@ function SessionFrame({ children }: { children: React.ReactNode }) {
           <span className="min-w-0">
             <span className="block text-base font-semibold">Cantrip</span>
             <span className="block truncate text-xs text-muted-foreground">
-              {active.name} · {active.url || "Local development server"}
+              {active
+                ? `${active.name} · ${active.url || "Local development server"}`
+                : "Remote server required"}
             </span>
           </span>
         </header>
         {children}
       </section>
     </main>
+  );
+}
+
+function ServerSetupScreen({ onConnected }: { onConnected(): void }) {
+  return (
+    <SessionFrame>
+      <div className="space-y-6 rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
+            <Server className="size-4" />
+          </span>
+          <div>
+            <h1 className="font-semibold">Connect to a Cantrip server</h1>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              Browser and mobile apps are clients only. Add the address of a
+              Cantrip Server running on another device to continue.
+            </p>
+          </div>
+        </div>
+        <AddServerForm
+          autoFocus
+          onSaved={async (connection) => {
+            await selectServerConnection(connection.id);
+            clearClientSession();
+            onConnected();
+          }}
+          submitLabel="Save and connect"
+        />
+      </div>
+      <p className="text-center text-xs leading-5 text-muted-foreground">
+        Enter the server origin, such as https://cantrip.example, without an API
+        path.
+      </p>
+    </SessionFrame>
   );
 }
 
@@ -385,7 +425,7 @@ function AuthenticatedApplication({
   bootstrap: ServerBootstrap;
   user: UserSummary;
 }) {
-  const server = getActiveServerConnection();
+  const serverUrl = getActiveServerConnection()?.url ?? "";
   const queryClient = useMemo(() => {
     const client = new QueryClient({
       defaultOptions: { queries: { refetchOnWindowFocus: false } },
@@ -408,9 +448,9 @@ function AuthenticatedApplication({
       onResync: (scopes, reason) => queryBridge.recoverScopes(scopes, reason),
       storage: window.localStorage,
       storageKey: `cantrip.app-live.resume.v1.${bootstrap.server.id}.${user.id}`,
-      url: appLiveWebSocketUrl(server.url, window.location.origin),
+      url: appLiveWebSocketUrl(serverUrl, window.location.origin),
     });
-  }, [bootstrap.server.id, queryClient, server.url, user.id]);
+  }, [bootstrap.server.id, queryClient, serverUrl, user.id]);
 
   useEffect(() => {
     const releaseScope = liveClient.retainScope({ kind: "current-user" });
@@ -492,6 +532,9 @@ export function ApplicationSession() {
   }
   if (state.kind === "connection-error") {
     return <ConnectionErrorScreen {...state} onRetry={refresh} />;
+  }
+  if (state.kind === "server-required") {
+    return <ServerSetupScreen onConnected={refresh} />;
   }
   if (state.kind === "signed-out") {
     return (

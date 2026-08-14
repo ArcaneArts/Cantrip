@@ -1,7 +1,6 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import {
   Check,
-  Loader2,
   LogOut,
   Plus,
   QrCode,
@@ -10,28 +9,24 @@ import {
   ShieldOff,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 
 import { MobileSignInQrDialog } from "@/components/auth/mobile-sign-in-qr-dialog";
-import { Button } from "@/components/ui/button";
+import { AddServerForm } from "@/components/servers/add-server-form";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { logout, logoutAll } from "@/lib/api";
 import { clearClientSession, getClientSession } from "@/lib/client-session";
 import {
   getActiveServerConnection,
   getServerConnections,
   removeServerConnection,
-  saveServerConnection,
   selectServerConnection,
-  testServerConnection,
 } from "@/lib/server-connections";
 
 type ServerSwitcherProps = {
@@ -51,18 +46,13 @@ export function ServerSwitcher({
   const connections = useMemo(() => [...getServerConnections()], []);
   const active = getActiveServerConnection();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [testing, setTesting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [mobileQrOpen, setMobileQrOpen] = useState(false);
   const clientSession = getClientSession();
 
   const switchTo = async (id: string) => {
-    if (id === active.id) return;
+    if (id === active?.id) return;
     setError(null);
     try {
       await selectServerConnection(id);
@@ -74,32 +64,6 @@ export function ServerSwitcher({
           ? switchError.message
           : "Could not switch servers.",
       );
-    }
-  };
-
-  const test = async () => {
-    setTesting(true);
-    setError(null);
-    setTestResult(null);
-    try {
-      const bootstrap = await testServerConnection(url);
-      setTestResult(
-        `Connected to ${bootstrap.server.id} · ${
-          bootstrap.auth.state === "authenticated"
-            ? "ready"
-            : bootstrap.auth.mode === "password"
-              ? "password required"
-              : "sign-in required"
-        }`,
-      );
-    } catch (connectionError) {
-      setError(
-        connectionError instanceof Error
-          ? connectionError.message
-          : "Could not connect to that server.",
-      );
-    } finally {
-      setTesting(false);
     }
   };
 
@@ -122,25 +86,6 @@ export function ServerSwitcher({
     }
   };
 
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    setSaving(true);
-    try {
-      const connection = await saveServerConnection({ name, url });
-      await selectServerConnection(connection.id);
-      clearClientSession();
-      window.location.reload();
-    } catch (saveError) {
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "Could not save server.",
-      );
-      setSaving(false);
-    }
-  };
-
   return (
     <>
       <DropdownMenuPrimitive.Root>
@@ -154,7 +99,7 @@ export function ServerSwitcher({
                 {currentUserName}
               </span>
               <span className="block truncate text-[11px] text-muted-foreground">
-                {active.name} · {workerName}
+                {active?.name ?? "No server"} · {workerName}
               </span>
             </span>
           </button>
@@ -182,7 +127,7 @@ export function ServerSwitcher({
                     {connection.url || "Development proxy"}
                   </span>
                 </span>
-                {connection.id === active.id ? (
+                {connection.id === active?.id ? (
                   <Check className="size-4" />
                 ) : null}
                 {connection.kind === "remote" ? (
@@ -216,7 +161,6 @@ export function ServerSwitcher({
               className={itemClass}
               onSelect={() => {
                 setError(null);
-                setTestResult(null);
                 setDialogOpen(true);
               }}
             >
@@ -268,57 +212,22 @@ export function ServerSwitcher({
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
-          <form className="grid gap-5" onSubmit={save}>
-            <DialogHeader>
-              <DialogTitle>Add server</DialogTitle>
-              <DialogDescription>
-                Save another Cantrip Server for this app installation. Only its
-                name and origin are stored; sign-in remains in the server's
-                secure session cookie.
-              </DialogDescription>
-            </DialogHeader>
-            <label className="grid gap-2 text-sm">
-              Name
-              <Input
-                autoFocus
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Home server"
-                value={name}
-              />
-            </label>
-            <label className="grid gap-2 text-sm">
-              Server URL
-              <Input
-                inputMode="url"
-                onChange={(event) => {
-                  setUrl(event.target.value);
-                  setError(null);
-                  setTestResult(null);
-                }}
-                placeholder="https://cantrip.example"
-                value={url}
-              />
-            </label>
-            {testResult ? (
-              <p className="text-sm text-emerald-500">{testResult}</p>
-            ) : null}
-            {error ? <p className="text-sm text-destructive">{error}</p> : null}
-            <DialogFooter>
-              <Button
-                disabled={testing}
-                onClick={() => void test()}
-                type="button"
-                variant="outline"
-              >
-                {testing ? <Loader2 className="size-4 animate-spin" /> : null}
-                Test connection
-              </Button>
-              <Button disabled={saving} type="submit">
-                {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-                Save and switch
-              </Button>
-            </DialogFooter>
-          </form>
+          <DialogHeader>
+            <DialogTitle>Add server</DialogTitle>
+            <DialogDescription>
+              Save another Cantrip Server for this app installation. Only its
+              name and origin are stored; sign-in remains in the server's secure
+              session cookie.
+            </DialogDescription>
+          </DialogHeader>
+          <AddServerForm
+            autoFocus
+            onSaved={async (connection) => {
+              await selectServerConnection(connection.id);
+              clearClientSession();
+              window.location.reload();
+            }}
+          />
         </DialogContent>
       </Dialog>
       <MobileSignInQrDialog

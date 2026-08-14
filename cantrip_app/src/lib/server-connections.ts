@@ -34,8 +34,8 @@ type StoredServerConnections = {
 
 const localId = "local";
 let state: StoredServerConnections = {
-  activeId: localId,
-  connections: [{ id: localId, kind: "local", name: "Local", url: "" }],
+  activeId: "",
+  connections: [],
   updatedAt: 0,
   version: 1,
 };
@@ -43,7 +43,12 @@ let state: StoredServerConnections = {
 export function normalizeServerUrl(input: string): string {
   const value = input.trim();
   if (!value) throw new Error("Enter the server URL.");
-  const url = new URL(value);
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Enter a valid server URL, including http:// or https://.");
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Server URLs must use http:// or https://.");
   }
@@ -129,15 +134,17 @@ async function refreshServerConnections(): Promise<void> {
   if (!stored || stored.updatedAt <= state.updatedAt) return;
   const local = state.connections.find(
     (connection) => connection.kind === "local",
-  )!;
-  const connections = [local, ...stored.connections];
+  );
+  const connections = local
+    ? [local, ...stored.connections]
+    : [...stored.connections];
   state = {
     ...stored,
     activeId: connections.some(
       (connection) => connection.id === stored.activeId,
     )
       ? stored.activeId
-      : localId,
+      : (local?.id ?? connections[0]?.id ?? ""),
     connections,
   };
 }
@@ -154,11 +161,9 @@ async function persist(): Promise<void> {
 
 export async function initializeServerConnections(): Promise<void> {
   const stored = newestStoredConnections(await readServerConnectionPayloads());
-  let localUrl = (import.meta.env.VITE_CANTRIP_SERVER_URL ?? "").replace(
-    /\/$/,
-    "",
-  );
-  if (isTauri()) {
+  const desktopApp = isTauri();
+  let localUrl = "";
+  if (desktopApp) {
     try {
       localUrl = await invoke<string>("local_server_url");
     } catch (error) {
@@ -168,16 +173,18 @@ export async function initializeServerConnections(): Promise<void> {
       localUrl = "";
     }
   }
-  const connections: ServerConnection[] = [
-    { id: localId, kind: "local", name: "Local", url: localUrl },
-    ...(stored?.connections ?? []),
-  ];
+  const connections: ServerConnection[] = desktopApp
+    ? [
+        { id: localId, kind: "local", name: "Local", url: localUrl },
+        ...(stored?.connections ?? []),
+      ]
+    : [...(stored?.connections ?? [])];
   state = {
     activeId:
       stored?.activeId &&
       connections.some((item) => item.id === stored.activeId)
         ? stored.activeId
-        : localId,
+        : (connections[0]?.id ?? ""),
     connections,
     updatedAt: stored?.updatedAt ?? 0,
     version: 1,
@@ -188,15 +195,16 @@ export function getServerConnections(): readonly ServerConnection[] {
   return state.connections;
 }
 
-export function getActiveServerConnection(): ServerConnection {
+export function getActiveServerConnection(): ServerConnection | null {
   return (
     state.connections.find((connection) => connection.id === state.activeId) ??
-    state.connections[0]!
+    state.connections[0] ??
+    null
   );
 }
 
 export function getActiveServerUrl(): string {
-  return getActiveServerConnection().url;
+  return getActiveServerConnection()?.url ?? "";
 }
 
 export async function saveServerConnection(input: {
@@ -252,10 +260,21 @@ export async function removeServerConnection(id: string): Promise<void> {
     throw new Error("The bundled local server cannot be removed.");
   await refreshServerConnections();
   const previousState = state;
+  const connections = state.connections.filter(
+    (connection) => connection.id !== id,
+  );
+  const fallbackId =
+    connections.find((connection) => connection.kind === "local")?.id ??
+    connections[0]?.id ??
+    "";
   state = {
     ...state,
-    activeId: state.activeId === id ? localId : state.activeId,
-    connections: state.connections.filter((connection) => connection.id !== id),
+    activeId:
+      state.activeId === id ||
+      !connections.some((connection) => connection.id === state.activeId)
+        ? fallbackId
+        : state.activeId,
+    connections,
     updatedAt: nextUpdatedAt(),
   };
   try {

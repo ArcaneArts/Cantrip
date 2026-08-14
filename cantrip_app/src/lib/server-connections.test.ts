@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { serverConnectionStorageKey } from "./server-connection-storage";
 
+const tauriApi = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  isTauri: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => tauriApi);
+
 import {
   getActiveServerConnection,
   getServerConnections,
@@ -36,10 +43,13 @@ class MemoryStorage implements Storage {
 }
 
 beforeEach(() => {
+  vi.restoreAllMocks();
+  tauriApi.invoke.mockReset();
+  tauriApi.isTauri.mockReset();
+  tauriApi.isTauri.mockReturnValue(false);
   const localStorage = new MemoryStorage();
   vi.stubGlobal("window", { localStorage });
   vi.stubGlobal("localStorage", localStorage);
-  vi.restoreAllMocks();
 });
 
 describe("server connections", () => {
@@ -48,13 +58,19 @@ describe("server connections", () => {
       "https://cantrip.example",
     );
     expect(() => normalizeServerUrl("ws://cantrip.example")).toThrow(/http/);
+    expect(() => normalizeServerUrl("cantrip.example")).toThrow(
+      /valid server URL/,
+    );
     expect(() => normalizeServerUrl("https://cantrip.example/prefix")).toThrow(
       /without a path/,
     );
   });
 
-  it("persists remote profiles and falls back to local after deletion", async () => {
+  it("requires a remote profile outside the desktop app", async () => {
     await initializeServerConnections();
+    expect(getServerConnections()).toEqual([]);
+    expect(getActiveServerConnection()).toBeNull();
+
     const remote = await saveServerConnection({
       name: "Desk server",
       url: "https://desk.example/",
@@ -66,11 +82,30 @@ describe("server connections", () => {
     });
 
     await initializeServerConnections();
-    expect(getServerConnections()).toHaveLength(2);
-    expect(getActiveServerConnection().id).toBe(remote.id);
+    expect(getServerConnections()).toHaveLength(1);
+    expect(getActiveServerConnection()?.id).toBe(remote.id);
 
     await removeServerConnection(remote.id);
-    expect(getActiveServerConnection().kind).toBe("local");
+    expect(getServerConnections()).toEqual([]);
+    expect(getActiveServerConnection()).toBeNull();
+  });
+
+  it("keeps the embedded local profile in the Tauri desktop app", async () => {
+    tauriApi.isTauri.mockReturnValue(true);
+    tauriApi.invoke.mockResolvedValue("http://127.0.0.1:4310");
+
+    await initializeServerConnections();
+
+    expect(tauriApi.invoke).toHaveBeenCalledWith("local_server_url");
+    expect(getServerConnections()).toEqual([
+      {
+        id: "local",
+        kind: "local",
+        name: "Local",
+        url: "http://127.0.0.1:4310",
+      },
+    ]);
+    expect(getActiveServerConnection()?.kind).toBe("local");
   });
 
   it("preserves profiles saved by another browser tab", async () => {
@@ -98,7 +133,7 @@ describe("server connections", () => {
     });
 
     expect(getServerConnections().map((connection) => connection.name)).toEqual(
-      ["Local", "First remote", "Second remote"],
+      ["First remote", "Second remote"],
     );
   });
 
@@ -114,7 +149,7 @@ describe("server connections", () => {
         url: "https://unsaved.example",
       }),
     ).rejects.toThrow(/could not save/i);
-    expect(getServerConnections()).toHaveLength(1);
+    expect(getServerConnections()).toHaveLength(0);
   });
 
   it("distinguishes unreachable and incompatible servers", async () => {

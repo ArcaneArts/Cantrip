@@ -31,7 +31,7 @@ type MobileSignInQrDialogProps = {
 
 function initialServerUrl(): string {
   const active = getActiveServerConnection();
-  if (active.url) return active.url;
+  if (active?.url) return active.url;
   if (typeof window === "undefined") return "";
   return ["http:", "https:"].includes(window.location.protocol)
     ? window.location.origin
@@ -114,7 +114,7 @@ export function MobileSignInQrDialog({
             type: "cantrip.mobile-sign-in",
             version: 1,
             serverId: session.serverId,
-            serverName: active.name,
+            serverName: active?.name ?? "Cantrip Server",
             serverUrl: normalizedUrl,
             code: grant.code,
             expiresAt: grant.expiresAt,
