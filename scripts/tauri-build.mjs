@@ -29,6 +29,15 @@ export function resolveMacBundleVersion({
   return validateMacBundleVersion(String(version.patch), "Git commit count");
 }
 
+export function resolveWindowsBundle({ environment = process.env } = {}) {
+  const override = environment.CANTRIP_WINDOWS_BUNDLE?.trim().toLowerCase();
+  if (!override) return undefined;
+  if (override !== "nsis" && override !== "msi") {
+    throw new Error('CANTRIP_WINDOWS_BUNDLE must be either "nsis" or "msi".');
+  }
+  return override;
+}
+
 export function tauriBuildArguments({
   platform = process.platform,
   environment = process.env,
@@ -46,6 +55,10 @@ export function tauriBuildArguments({
     config.bundle = { macOS: { bundleVersion } };
   }
   arguments_.push("--config", JSON.stringify(config));
+  if (platform === "win32") {
+    const windowsBundle = resolveWindowsBundle({ environment });
+    if (windowsBundle) arguments_.push("--bundles", windowsBundle);
+  }
   arguments_.push(...extraArguments);
   return arguments_;
 }

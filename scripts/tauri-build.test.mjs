@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   resolveMacBundleVersion,
+  resolveWindowsBundle,
   tauriBuildArguments,
 } from "./tauri-build.mjs";
 
@@ -46,6 +47,41 @@ test("rejects invalid macOS bundle versions", () => {
         version,
       }),
     /one to three period-separated integers/,
+  );
+});
+
+test("allows a Windows build to request only the NSIS installer", () => {
+  assert.equal(
+    resolveWindowsBundle({
+      environment: { CANTRIP_WINDOWS_BUNDLE: " NSIS " },
+    }),
+    "nsis",
+  );
+  assert.deepEqual(
+    tauriBuildArguments({
+      platform: "win32",
+      environment: { CANTRIP_WINDOWS_BUNDLE: "nsis" },
+      version,
+    }),
+    [
+      "exec",
+      "tauri",
+      "build",
+      "--config",
+      JSON.stringify({ version: "1.1.314" }),
+      "--bundles",
+      "nsis",
+    ],
+  );
+});
+
+test("rejects an unknown Windows installer override", () => {
+  assert.throws(
+    () =>
+      resolveWindowsBundle({
+        environment: { CANTRIP_WINDOWS_BUNDLE: "portable" },
+      }),
+    /must be either "nsis" or "msi"/,
   );
 });
 

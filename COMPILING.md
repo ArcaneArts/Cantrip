@@ -79,6 +79,40 @@ is the end-to-end compilation check.
 The supported release target is 64-bit Windows, identified by the build scripts
 as `win32-x64`. Use Windows 10 or 11 on x64 hardware.
 
+### One-command clean-machine build
+
+[`scripts/yeet-windows.ps1`](scripts/yeet-windows.ps1) bootstraps a Windows
+machine, clones or refreshes a clean Cantrip checkout at `C:\src\Cantrip`, and
+runs the complete build. It installs WinGet when needed, then Git, x64 Node.js
+24, pnpm 11.15.1, Python, CMake, NASM, Rustup, the pinned Rust MSVC toolchain,
+Visual Studio 2022 C++ Build Tools, and WebView2. Run a downloaded copy from a
+normal PowerShell window; it requests Administrator access itself:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\yeet-windows.ps1
+```
+
+The default build creates the NSIS `.exe` installer and skips MSI to avoid the
+additional WiX/VBSCRIPT dependency. It leaves complete archives, the installer,
+and a transcript under `C:\src\Cantrip\artifacts\bundles\win32-x64`. The script
+caps Cargo at four parallel jobs and lowers that automatically on machines with
+less memory. It is safe to rerun, but deliberately stops rather than overwrite
+an existing checkout with uncommitted changes.
+
+Useful overrides include:
+
+```powershell
+# Build a branch, tag, or commit from origin.
+.\yeet-windows.ps1 -Ref codex/codex-0.147.0
+
+# Put the checkout on another drive and use two Cargo compiler jobs.
+.\yeet-windows.ps1 -CheckoutPath D:\src\Cantrip -CargoJobs 2
+
+# Request both NSIS and MSI, or omit the repository checks on a retry.
+.\yeet-windows.ps1 -Installer all
+.\yeet-windows.ps1 -SkipChecks
+```
+
 ### Prerequisites
 
 Install:
@@ -150,7 +184,9 @@ executables, the Cantrip CLI, Cantrip Code and its native Node modules, the
 Tauri application, and the Windows installers. The Tauri configuration
 currently requests all Windows bundle formats, so a complete build creates both
 an NSIS setup executable and an MSI where the local Windows configuration
-supports it.
+supports it. Set `CANTRIP_WINDOWS_BUNDLE=nsis` or
+`CANTRIP_WINDOWS_BUNDLE=msi` to request only one installer format; the bootstrap
+script uses `nsis` by default.
 
 MSI creation uses WiX and may require the Windows **VBSCRIPT** optional feature.
 VBSCRIPT is not needed for the NSIS `.exe`; see the
