@@ -6623,6 +6623,27 @@ const workerRuntimeModelSchema = z.object({
   routeId: z.string().min(1),
   name: z.string().min(1),
   reasoningEffort: reasoningEffortSchema.nullable(),
+  catalog: providerModelCatalogEntrySchema
+    .pick({
+      nativeModelId: true,
+      displayName: true,
+      description: true,
+      contextWindow: true,
+      maxOutputTokens: true,
+      inputModalities: true,
+      outputModalities: true,
+      supportsTools: true,
+      supportsParallelTools: true,
+      supportsStructuredOutput: true,
+      supportsVision: true,
+      supportsReasoning: true,
+      supportedReasoningEfforts: true,
+      defaultReasoningEffort: true,
+      reasoningMandatory: true,
+      metadataSource: true,
+    })
+    .nullable()
+    .optional(),
 });
 
 const workerRuntimeProviderSchema = z.object({

@@ -71,6 +71,7 @@ import {
   codexModelProviderName,
   codexProviderConfiguration,
 } from "./provider-config.js";
+import { writeManagedCodexModelCatalog } from "./model-catalog.js";
 import {
   customizationInventory,
   parseExternalImportStatus,
@@ -1230,6 +1231,7 @@ export function codexRuntimeId(
       JSON.stringify({
         modelName: model.name,
         reasoningEffort: model.reasoningEffort,
+        modelCatalog: model.catalog ?? null,
         providerName: provider.name,
         providerKind: provider.kind,
         providerAccountId: provider.accountId,
@@ -3257,6 +3259,9 @@ export class CodexAppServer implements CodexRuntime {
     this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
     const providerConfiguration = codexProviderConfiguration(provider);
+    const modelCatalogPath = model
+      ? await writeManagedCodexModelCatalog(this.dataDirectory, model, provider)
+      : null;
     const child = spawn(
       this.codexBinary,
       [
@@ -3270,6 +3275,9 @@ export class CodexAppServer implements CodexRuntime {
           "-c",
           argument,
         ]),
+        ...(modelCatalogPath
+          ? ["-c", `model_catalog_json=${JSON.stringify(modelCatalogPath)}`]
+          : []),
         ...(model ? ["-c", `model=${JSON.stringify(model.name)}`] : []),
         ...(model?.reasoningEffort
           ? [

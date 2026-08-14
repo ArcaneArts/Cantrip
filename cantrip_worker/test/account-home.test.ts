@@ -41,4 +41,49 @@ describe("ChatGPT account homes", () => {
       }),
     );
   });
+
+  it("restarts a custom-provider runtime when managed metadata changes", () => {
+    const provider = {
+      id: "ollama-provider",
+      name: "Ollama",
+      kind: "ollama" as const,
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: null,
+      accountId: null,
+      credentialHomeKey: null,
+    };
+    const model = {
+      id: "logical-model",
+      routeId: "provider-route",
+      name: "gemma4:12b",
+      reasoningEffort: null,
+      catalog: null,
+    };
+    expect(codexRuntimeId(model, provider)).not.toBe(
+      codexRuntimeId(
+        {
+          ...model,
+          catalog: {
+            nativeModelId: "gemma4:12b",
+            displayName: "Gemma 4",
+            description: null,
+            contextWindow: 131_072,
+            maxOutputTokens: null,
+            inputModalities: ["text"],
+            outputModalities: ["text"],
+            supportsTools: true,
+            supportsParallelTools: null,
+            supportsStructuredOutput: null,
+            supportsVision: false,
+            supportsReasoning: false,
+            supportedReasoningEfforts: [],
+            defaultReasoningEffort: null,
+            reasoningMandatory: null,
+            metadataSource: "ollama" as const,
+          },
+        },
+        provider,
+      ),
+    );
+  });
 });
