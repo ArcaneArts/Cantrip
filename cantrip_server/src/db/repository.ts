@@ -467,7 +467,7 @@ export interface ModelRuntime {
     profileName: string;
     routeId: string;
     name: string;
-    reasoningEffort: ModelProfileSummary["reasoningEffort"];
+    reasoningEffort: ReasoningEffort | null;
     providerModelId: string | null;
     catalog: ProviderModelCatalogEntry | null;
   };
@@ -1580,8 +1580,6 @@ function toModelRouteSummary(
     position: route.position,
     enabled: route.enabled,
     discoveryManaged: route.discoveryManaged,
-    reasoningEffort:
-      route.reasoningEffort as ModelRouteSummary["reasoningEffort"],
   };
 }
 
@@ -1595,8 +1593,6 @@ function toModelSummary(
     name: model.name,
     canonicalModelId: model.canonicalModelId,
     discoveryManaged: model.discoveryManaged,
-    reasoningEffort:
-      model.reasoningEffort as ModelProfileSummary["reasoningEffort"],
     routingPolicy: "priority",
     routes,
     tokenUsage,
@@ -3551,7 +3547,6 @@ export class ServerRepository {
         id: modelId,
         ownerId,
         name: input.name,
-        reasoningEffort: input.reasoningEffort ?? null,
       });
       await transaction.insert(schema.modelRoutes).values(
         input.routes.map((route, position) => ({
@@ -3561,7 +3556,6 @@ export class ServerRepository {
           modelName: route.modelName,
           position,
           enabled: route.enabled,
-          reasoningEffort: route.reasoningEffort ?? null,
         })),
       );
     });
@@ -3627,10 +3621,7 @@ export class ServerRepository {
       return null;
     }
     const models = await this.database
-      .select({
-        id: schema.modelProfiles.id,
-        reasoningEffort: schema.modelProfiles.reasoningEffort,
-      })
+      .select({ id: schema.modelProfiles.id })
       .from(schema.modelProfiles)
       .where(
         and(
@@ -3657,8 +3648,6 @@ export class ServerRepository {
     const existingRouteById = new Map(
       existingRoutes.map((route) => [route.id, route]),
     );
-    const profileReasoningChanged =
-      models[0].reasoningEffort !== (input.reasoningEffort ?? null);
     const invalidatedRouteIds = new Set(
       existingRoutes.flatMap((route) => {
         const inputRoute = input.routes.find(
@@ -3667,9 +3656,7 @@ export class ServerRepository {
         if (!inputRoute) return [route.id];
         const runtimeConfigurationChanged =
           route.providerId !== inputRoute.providerId ||
-          route.modelName !== inputRoute.modelName ||
-          route.reasoningEffort !== (inputRoute.reasoningEffort ?? null) ||
-          (profileReasoningChanged && route.reasoningEffort === null);
+          route.modelName !== inputRoute.modelName;
         return runtimeConfigurationChanged ? [route.id] : [];
       }),
     );
@@ -3679,7 +3666,6 @@ export class ServerRepository {
         .update(schema.modelProfiles)
         .set({
           name: input.name,
-          reasoningEffort: input.reasoningEffort ?? null,
           updatedAt: new Date(),
         })
         .where(eq(schema.modelProfiles.id, modelId));
@@ -3714,7 +3700,6 @@ export class ServerRepository {
               modelName: route.modelName,
               position,
               enabled: route.enabled,
-              reasoningEffort: route.reasoningEffort ?? null,
               updatedAt: new Date(),
             })
             .where(eq(schema.modelRoutes.id, route.id));
@@ -3726,7 +3711,6 @@ export class ServerRepository {
             modelName: route.modelName,
             position,
             enabled: route.enabled,
-            reasoningEffort: route.reasoningEffort ?? null,
           });
         }
       }
@@ -3813,8 +3797,7 @@ export class ServerRepository {
         profileName: row.model.name,
         routeId: row.route.id,
         name: row.route.modelName,
-        reasoningEffort: (row.route.reasoningEffort ??
-          row.model.reasoningEffort) as ModelProfileSummary["reasoningEffort"],
+        reasoningEffort: null,
         providerModelId:
           row.route.providerModelId ?? row.providerModel?.id ?? null,
         catalog: row.providerModel

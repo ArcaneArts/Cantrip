@@ -567,9 +567,7 @@ export function SettingsPage({
     mutationFn: async () => {
       const input = {
         name: modelName,
-        routes: modelRoutes.map(
-          ({ key: _key, reasoningEffort: _legacyReasoning, ...route }) => route,
-        ),
+        routes: modelRoutes.map(({ key: _key, ...route }) => route),
       };
       return editingModel
         ? updateModelProfile(editingModel.id, input)

@@ -21,12 +21,7 @@ function supportsEffort(
   effort: ReasoningEffort,
 ): boolean {
   const catalog = runtime.model.catalog;
-  if (!catalog) {
-    // Temporary deployment compatibility for a route that predates provider
-    // catalogs. It may only retain the exact effort it was already configured
-    // to use; unknown routes never advertise new choices to the composer.
-    return runtime.model.reasoningEffort === effort;
-  }
+  if (!catalog) return false;
   return catalog.supportedReasoningEfforts.some(
     (option) => option.effort === effort,
   );

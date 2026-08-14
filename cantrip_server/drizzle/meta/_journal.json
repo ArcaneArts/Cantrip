@@ -526,6 +526,13 @@
       "when": 1786742269713,
       "tag": "0074_condemned_grandmaster",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1786743753645,
+      "tag": "0075_free_onslaught",
+      "breakpoints": true
     }
   ]
 }

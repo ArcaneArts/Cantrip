@@ -129,6 +129,46 @@ describe("per-turn reasoning migration", () => {
           automation_effort: "medium",
         },
       ]);
+
+      const cleanupMigrationIndex = migrations.findIndex((migration) =>
+        migration.sql.some((statement) =>
+          statement.includes(
+            'ALTER TABLE "model_profiles" DROP COLUMN "reasoning_effort"',
+          ),
+        ),
+      );
+      expect(cleanupMigrationIndex).toBeGreaterThan(reasoningMigrationIndex);
+      for (const migration of migrations.slice(
+        reasoningMigrationIndex + 1,
+        cleanupMigrationIndex + 1,
+      )) {
+        for (const statement of migration.sql) await client.exec(statement);
+      }
+
+      const preserved = await client.query<{
+        chat_effort: string | null;
+        message_effort: string | null;
+        prompt_effort: string | null;
+      }>(`
+        SELECT
+          (SELECT reasoning_effort FROM chats WHERE id = 'chat-1') AS chat_effort,
+          (SELECT reasoning_effort FROM queued_prompts WHERE id = 'prompt-1') AS prompt_effort,
+          (SELECT reasoning_effort FROM chat_messages WHERE id = 'message-1') AS message_effort
+      `);
+      expect(preserved.rows).toEqual([
+        {
+          chat_effort: "medium",
+          prompt_effort: "medium",
+          message_effort: "high",
+        },
+      ]);
+      const obsoleteColumns = await client.query<{ column_name: string }>(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name IN ('model_profiles', 'model_routes')
+          AND column_name = 'reasoning_effort'
+      `);
+      expect(obsoleteColumns.rows).toEqual([]);
     } finally {
       await client.close();
     }

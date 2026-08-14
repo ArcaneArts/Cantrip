@@ -1244,7 +1244,6 @@ export const modelRouteInputSchema = z.object({
   id: z.string().min(1).optional(),
   providerId: z.string().min(1),
   modelName: z.string().trim().min(1).max(160),
-  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   enabled: z.boolean().default(true),
 });
 
@@ -1254,12 +1253,10 @@ export const modelRouteSummarySchema = modelRouteInputSchema.extend({
   providerModelId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
   discoveryManaged: z.boolean(),
-  reasoningEffort: reasoningEffortSchema.nullable(),
 });
 
 export const modelProfileCreateSchema = z.object({
   name: z.string().trim().min(1).max(160),
-  reasoningEffort: reasoningEffortSchema.nullable().optional(),
   routes: z
     .array(modelRouteInputSchema)
     .min(1)
@@ -1275,7 +1272,6 @@ export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   id: z.string().min(1),
   canonicalModelId: z.string().min(1).nullable(),
   discoveryManaged: z.boolean(),
-  reasoningEffort: reasoningEffortSchema.nullable(),
   routingPolicy: z.literal("priority"),
   routes: z.array(modelRouteSummarySchema).min(1),
   tokenUsage: tokenUsageTotalsSchema.default({
