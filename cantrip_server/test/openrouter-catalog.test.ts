@@ -201,4 +201,55 @@ describe("OpenRouter catalog", () => {
       await client.close();
     }
   });
+
+  it("serves the durable last-good catalog when a forced refresh fails", async () => {
+    const client = new PGlite();
+    const database = drizzle(client, { schema });
+    let fail = false;
+    try {
+      await migrate(database, { migrationsFolder });
+      const repository = new ServerRepository(
+        database,
+        new SecretVault({
+          activeKeyId: "test",
+          keys: [{ id: "test", key: Buffer.alloc(32, 11) }],
+        }),
+      );
+      await repository.ensureLocalIdentity();
+      const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+        name: "OpenRouter",
+        kind: "openai-compatible",
+        baseUrl: "https://openrouter.ai/api/v1",
+      });
+      const service = new OpenRouterCatalogService(repository, {
+        fetch: (async () => {
+          if (fail) throw new Error("catalog network unavailable");
+          return Response.json(publicModels);
+        }) as typeof fetch,
+      });
+
+      expect(
+        await service.getProviderCatalog(LOCAL_USER_ID, provider.id, true),
+      ).toMatchObject({ models: expect.any(Array), servedStale: false });
+      fail = true;
+      const stale = await service.getProviderCatalog(
+        LOCAL_USER_ID,
+        provider.id,
+        true,
+      );
+      expect(stale).toMatchObject({
+        models: expect.any(Array),
+        servedStale: true,
+      });
+      expect(stale?.models).toHaveLength(2);
+      expect(stale?.syncStates).toEqual([
+        expect.objectContaining({
+          status: "stale",
+          error: "catalog network unavailable",
+        }),
+      ]);
+    } finally {
+      await client.close();
+    }
+  });
 });

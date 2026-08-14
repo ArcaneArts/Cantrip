@@ -337,7 +337,12 @@ export class OpenRouterCatalogService {
         Boolean(refresh),
       );
       if (background.length > 0) {
-        this.#scheduleBackgroundPersistence(ownerId, providerId, background);
+        this.#scheduleBackgroundPersistence(
+          ownerId,
+          providerId,
+          scopes,
+          background,
+        );
       }
       return this.#repository.getProviderModelCatalog(
         ownerId,
@@ -346,15 +351,27 @@ export class OpenRouterCatalogService {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      const existing = await this.#repository.getProviderModelCatalog(
+        ownerId,
+        providerId,
+        true,
+      );
       await Promise.all(
         scopes.map((scopeKey) =>
           this.#repository.setProviderCatalogSyncState(provider.id, {
             scopeKey,
-            status: "failed",
+            status: existing?.models.length ? "stale" : "failed",
             error: message,
           }),
         ),
       );
+      if (existing?.models.length) {
+        return this.#repository.getProviderModelCatalog(
+          ownerId,
+          providerId,
+          true,
+        );
+      }
       throw error;
     }
   }
@@ -418,6 +435,7 @@ export class OpenRouterCatalogService {
   #scheduleBackgroundPersistence(
     ownerId: string,
     providerId: string,
+    scopes: string[],
     refreshes: Promise<CatalogSnapshot>[],
   ): void {
     if (this.#backgroundRefreshes.has(providerId)) return;
@@ -426,11 +444,15 @@ export class OpenRouterCatalogService {
         await this.getProviderCatalog(ownerId, providerId, false);
       })
       .catch(async (error: unknown) => {
-        await this.#repository.setProviderCatalogSyncState(providerId, {
-          scopeKey: OPENROUTER_GLOBAL_SCOPE,
-          status: "failed",
-          error: error instanceof Error ? error.message : String(error),
-        });
+        await Promise.all(
+          scopes.map((scopeKey) =>
+            this.#repository.setProviderCatalogSyncState(providerId, {
+              scopeKey,
+              status: "stale",
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          ),
+        );
       })
       .finally(() => {
         if (this.#backgroundRefreshes.get(providerId) === refresh) {

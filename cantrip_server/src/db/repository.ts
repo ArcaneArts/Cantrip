@@ -156,6 +156,10 @@ import {
   type ExecutionTargetCapability,
 } from "../execution-targets/catalog.js";
 import {
+  enrichCatalogFromExactOpenRouterMatch,
+  exactOpenRouterAliases,
+} from "../models/catalog-enrichment.js";
+import {
   mcpServerSecretContext,
   modelProviderSecretContext,
   type SecretVault,
@@ -3790,6 +3794,60 @@ export class ServerRepository {
         ),
       )
       .orderBy(asc(schema.modelRoutes.position));
+    const catalogRows = rows.flatMap((row) =>
+      row.providerModel
+        ? [
+            {
+              catalog: toProviderModelCatalogEntry(row.providerModel),
+              providerKind: row.provider.kind as ModelProviderSummary["kind"],
+            },
+          ]
+        : [],
+    );
+    const aliases = [
+      ...new Set(
+        catalogRows.flatMap(({ catalog, providerKind }) => [
+          ...exactOpenRouterAliases(catalog, providerKind),
+        ]),
+      ),
+    ];
+    const enrichmentRows = aliases.length
+      ? await this.database
+          .select({
+            model: schema.providerModels,
+            provider: schema.modelProviders,
+          })
+          .from(schema.providerModels)
+          .innerJoin(
+            schema.modelProviders,
+            and(
+              eq(schema.modelProviders.id, schema.providerModels.providerId),
+              eq(schema.modelProviders.ownerId, ownerId),
+              eq(schema.modelProviders.kind, "openai-compatible"),
+            ),
+          )
+          .where(
+            or(
+              inArray(schema.providerModels.nativeModelId, aliases),
+              inArray(schema.providerModels.canonicalModelId, aliases),
+            ),
+          )
+      : [];
+    const openRouterCatalog = enrichmentRows.flatMap((row) => {
+      try {
+        const hostname = new URL(row.provider.baseUrl).hostname.toLowerCase();
+        if (
+          hostname !== "openrouter.ai" &&
+          !hostname.endsWith(".openrouter.ai")
+        ) {
+          return [];
+        }
+      } catch {
+        return [];
+      }
+      return [toProviderModelCatalogEntry(row.model)];
+    });
+
     return rows.map((row) => ({
       routeId: row.route.id,
       model: {
@@ -3801,7 +3859,11 @@ export class ServerRepository {
         providerModelId:
           row.route.providerModelId ?? row.providerModel?.id ?? null,
         catalog: row.providerModel
-          ? toProviderModelCatalogEntry(row.providerModel)
+          ? enrichCatalogFromExactOpenRouterMatch(
+              toProviderModelCatalogEntry(row.providerModel),
+              row.provider.kind as ModelProviderSummary["kind"],
+              openRouterCatalog,
+            )
           : null,
       },
       provider: {
