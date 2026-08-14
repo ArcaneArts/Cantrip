@@ -4,6 +4,7 @@ import type {
   ModelProviderKind,
   ModelProviderSummary,
   ModelRouteInput,
+  ProviderModelCatalogEntry,
   ThemePreference,
   UserSettings,
   TunnelSummary,
@@ -27,6 +28,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  RefreshCw,
   Route,
   Search,
   Server,
@@ -56,9 +58,11 @@ import {
   deleteModelProvider,
   getSettings,
   getCodexAuthStatus,
+  getProviderModelCatalog,
   getWorkers,
   logoutCodex,
   startCodexDeviceLogin,
+  refreshProviderModelCatalog,
   updateModelProfile,
   updateModelProvider,
   updateSettings,
@@ -75,6 +79,16 @@ import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
 import { TunnelSettings } from "./tunnel-settings";
+import {
+  availableCatalogModelIds,
+  catalogDisplayStatus,
+  catalogModelAvailable,
+  catalogScopeLabel,
+  formatCatalogAge,
+  formatContextWindow,
+  latestCatalogSuccess,
+  providerSupportsCatalog,
+} from "./provider-catalog-display";
 
 export type SettingsSection =
   | "general"
@@ -173,21 +187,71 @@ function ProviderRow({
   onEdit(): void;
   onRemove(): void;
 }) {
-  const auth = useQuery({
-    enabled: provider.kind === "chatgpt" && Boolean(workerId),
-    queryFn: () => getCodexAuthStatus(workerId!, provider.id),
-    queryKey: ["codex-auth", workerId, provider.id],
-    refetchInterval: 10_000,
+  const queryClient = useQueryClient();
+  const supportsCatalog = providerSupportsCatalog(provider);
+  const catalogQueryKey = ["provider-catalog", provider.id, workerId];
+  const catalog = useQuery({
+    enabled: supportsCatalog,
+    queryFn: () => getProviderModelCatalog(provider.id, workerId),
+    queryKey: catalogQueryKey,
+    retry: false,
+    staleTime: 60_000,
   });
-  const signedIn = auth.data?.authenticated && auth.data.authMode === "chatgpt";
-  const weeklyRemaining = auth.data?.weeklyUsage
-    ? Math.max(0, 100 - auth.data.weeklyUsage.usedPercent)
+  const refreshCatalog = useMutation({
+    mutationFn: () => refreshProviderModelCatalog(provider.id, workerId),
+    onSuccess: (result) => {
+      queryClient.setQueryData(catalogQueryKey, result);
+      void queryClient.invalidateQueries({ queryKey: ["settings"] });
+    },
+  });
+  const availableModelIds = catalog.data
+    ? availableCatalogModelIds(catalog.data, workerId)
+    : new Set<string>();
+  const availableModelCount =
+    catalog.data?.models.filter(
+      (model) => !model.hidden && availableModelIds.has(model.id),
+    ).length ?? 0;
+  const displayStatus = catalogDisplayStatus(provider, catalog.data, workerId);
+  const catalogError =
+    refreshCatalog.error ??
+    catalog.error ??
+    catalog.data?.syncStates.find(({ error }) => error)?.error ??
+    null;
+  const enabledAccounts = provider.accounts.filter(({ enabled }) => enabled);
+  const signedInBindings = enabledAccounts.flatMap((account) =>
+    account.workerBindings.filter(
+      (binding) =>
+        binding.authState === "signed-in" &&
+        (!workerId || binding.workerId === workerId),
+    ),
+  );
+  const remainingUsage = signedInBindings.flatMap((binding) =>
+    binding.weeklyUsageUsedPercent === null
+      ? []
+      : [Math.max(0, 100 - binding.weeklyUsageUsedPercent)],
+  );
+  const lowestRemaining = remainingUsage.length
+    ? Math.min(...remainingUsage)
     : null;
+  const statusTone =
+    displayStatus === "current"
+      ? "text-emerald-500"
+      : displayStatus === "failed"
+        ? "text-destructive"
+        : displayStatus === "stale"
+          ? "text-amber-500"
+          : "text-muted-foreground";
+  const statusLabel =
+    displayStatus === "manual"
+      ? "Manual"
+      : displayStatus === "unknown" && catalog.isLoading
+        ? "Loading"
+        : displayStatus[0]!.toUpperCase() + displayStatus.slice(1);
 
   return (
     <div
       data-high-contrast-row
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_auto_auto]"
+      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_auto]"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <Server className="size-4 shrink-0 text-muted-foreground" />
@@ -202,34 +266,15 @@ function ProviderRow({
       <div className="col-span-2 min-w-0 pl-6 sm:col-span-1 sm:pl-0">
         {provider.kind === "chatgpt" ? (
           <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-            {!workerId ? (
-              <span>Worker offline · sign-in status unavailable</span>
-            ) : auth.isLoading ? (
-              <span>Checking sign-in…</span>
-            ) : auth.isError ? (
-              <span className="text-destructive">
-                Could not check sign-in status
-              </span>
-            ) : signedIn ? (
-              <>
-                <span className="inline-flex shrink-0 items-center gap-1 text-emerald-500">
-                  <span className="size-1.5 rounded-full bg-current" /> Signed
-                  in
-                </span>
-                <span className="truncate">
-                  {auth.data?.email ?? "ChatGPT account"}
-                </span>
-                <span className="shrink-0 font-medium text-foreground">
-                  {weeklyRemaining === null
-                    ? "7-day usage unavailable"
-                    : `${Math.round(weeklyRemaining)}% 7-day usage left`}
-                </span>
-              </>
-            ) : (
-              <span className="inline-flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-muted-foreground" />
-                Not signed in
-              </span>
+            <span
+              className={
+                signedInBindings.length ? "text-emerald-500" : undefined
+              }
+            >
+              {signedInBindings.length}/{enabledAccounts.length} signed in
+            </span>
+            {lowestRemaining === null ? null : (
+              <span>{Math.round(lowestRemaining)}% lowest 7-day remaining</span>
             )}
           </p>
         ) : (
@@ -238,13 +283,47 @@ function ProviderRow({
           </p>
         )}
       </div>
-      <div className="hidden items-center justify-end gap-1 sm:flex">
-        <Badge variant="secondary">{provider.kind}</Badge>
-        {provider.hasApiKey ? (
-          <KeyRound className="size-3.5 text-muted-foreground" />
-        ) : null}
+      <div className="hidden min-w-0 sm:block">
+        <p className={`truncate text-xs font-medium ${statusTone}`}>
+          {refreshCatalog.isPending ? "Refreshing" : statusLabel}
+          {supportsCatalog ? ` · ${availableModelCount} available` : ""}
+        </p>
+        <p
+          className="truncate text-[10px] text-muted-foreground"
+          title={catalogError ? errorText(catalogError) : undefined}
+        >
+          {catalogError
+            ? errorText(catalogError)
+            : formatCatalogAge(latestCatalogSuccess(catalog.data, workerId))}
+        </p>
+      </div>
+      <div className="hidden min-w-0 sm:block">
+        <p className="truncate text-xs text-muted-foreground">
+          {catalogScopeLabel(provider, catalog.data, workerId)}
+        </p>
+        <div className="mt-0.5 flex items-center gap-1">
+          <Badge variant="secondary">{provider.kind}</Badge>
+          {provider.hasApiKey ? (
+            <KeyRound className="size-3 text-muted-foreground" />
+          ) : null}
+        </div>
       </div>
       <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
+        {supportsCatalog ? (
+          <Button
+            className="size-8"
+            size="icon"
+            variant="ghost"
+            disabled={refreshCatalog.isPending}
+            title="Refresh model catalog"
+            onClick={() => refreshCatalog.mutate()}
+          >
+            <RefreshCw
+              className={`size-3.5 ${refreshCatalog.isPending ? "animate-spin" : ""}`}
+            />
+            <span className="sr-only">Refresh {provider.name} catalog</span>
+          </Button>
+        ) : null}
         <Button className="size-8" size="icon" variant="ghost" onClick={onEdit}>
           <Pencil className="size-3.5" />
           <span className="sr-only">Edit {provider.name}</span>
@@ -261,6 +340,122 @@ function ProviderRow({
         </Button>
       </div>
     </div>
+  );
+}
+
+function CatalogModelField({
+  provider,
+  routeKey,
+  value,
+  workerId,
+  onChange,
+}: {
+  provider: ModelProviderSummary | undefined;
+  routeKey: string;
+  value: string;
+  workerId: string | null;
+  onChange(value: string): void;
+}) {
+  const supportsCatalog = provider ? providerSupportsCatalog(provider) : false;
+  const catalog = useQuery({
+    enabled: Boolean(provider && supportsCatalog),
+    queryFn: () => getProviderModelCatalog(provider!.id, workerId),
+    queryKey: ["provider-catalog", provider?.id, workerId],
+    retry: false,
+    staleTime: 60_000,
+  });
+  const visibleModels =
+    catalog.data?.models.filter(({ hidden }) => !hidden) ?? [];
+  const availableModelIds = catalog.data
+    ? availableCatalogModelIds(catalog.data, workerId)
+    : new Set<string>();
+  const selected = visibleModels.find(
+    ({ nativeModelId }) => nativeModelId === value,
+  );
+  const listId = `provider-models-${routeKey}`;
+
+  return (
+    <div className="grid min-w-0 gap-1">
+      <input
+        required
+        value={value}
+        list={supportsCatalog ? listId : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+        placeholder={
+          supportsCatalog ? "Search catalog or enter a custom ID" : "Model ID"
+        }
+      />
+      {supportsCatalog ? (
+        <datalist id={listId}>
+          {visibleModels.map((model) => (
+            <option key={model.id} value={model.nativeModelId}>
+              {model.displayName}
+              {availableModelIds.has(model.id)
+                ? ""
+                : " — unavailable on this worker"}
+            </option>
+          ))}
+        </datalist>
+      ) : null}
+      <CatalogModelMetadata
+        catalog={catalog.data}
+        loading={catalog.isLoading}
+        model={selected}
+        supportsCatalog={supportsCatalog}
+        value={value}
+        workerId={workerId}
+      />
+    </div>
+  );
+}
+
+function CatalogModelMetadata({
+  catalog,
+  loading,
+  model,
+  supportsCatalog,
+  value,
+  workerId,
+}: {
+  catalog: Awaited<ReturnType<typeof getProviderModelCatalog>> | undefined;
+  loading: boolean;
+  model: ProviderModelCatalogEntry | undefined;
+  supportsCatalog: boolean;
+  value: string;
+  workerId: string | null;
+}) {
+  if (!supportsCatalog || !value) return null;
+  if (loading) {
+    return (
+      <span className="text-[10px] text-muted-foreground">
+        Loading catalog…
+      </span>
+    );
+  }
+  if (!model || !catalog) {
+    return (
+      <span className="text-[10px] text-muted-foreground">Custom model ID</span>
+    );
+  }
+  const metadata = [
+    formatContextWindow(model.contextWindow),
+    model.inputModalities.length ? model.inputModalities.join(" + ") : null,
+    model.supportsTools ? "tools" : null,
+    model.supportsStructuredOutput ? "structured output" : null,
+    model.supportsVision ? "vision" : null,
+    model.supportsReasoning ? "reasoning" : null,
+  ].filter((item): item is string => Boolean(item));
+  const available = catalogModelAvailable(model, catalog, workerId);
+  return (
+    <span
+      className={`truncate text-[10px] ${available ? "text-muted-foreground" : "text-amber-500"}`}
+      title={model.description ?? undefined}
+    >
+      {available
+        ? metadata.join(" · ") || "Catalog metadata incomplete"
+        : "Unavailable on this worker"}
+    </span>
   );
 }
 
@@ -741,10 +936,11 @@ export function SettingsPage({
                       <span className="sr-only">Add provider</span>
                     </Button>
                   </div>
-                  <div className="hidden grid-cols-[minmax(0,1.1fr)_minmax(0,1.7fr)_auto_72px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                  <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_104px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Provider</span>
                     <span>Connection</span>
-                    <span>Type</span>
+                    <span>Catalog</span>
+                    <span>Scope</span>
                     <span className="text-right">Actions</span>
                   </div>
                   <div className="divide-y border-t sm:border-t-0">
@@ -1415,6 +1611,7 @@ export function SettingsPage({
                                   ? {
                                       ...candidate,
                                       providerId: event.target.value,
+                                      modelName: "",
                                     }
                                   : candidate,
                               ),
@@ -1433,23 +1630,25 @@ export function SettingsPage({
                         <span className="font-medium text-muted-foreground sm:sr-only">
                           Provider model name
                         </span>
-                        <input
-                          required
+                        <CatalogModelField
+                          provider={settings.data?.providers.find(
+                            ({ id }) => id === route.providerId,
+                          )}
+                          routeKey={route.key}
                           value={route.modelName}
-                          onChange={(event) =>
+                          workerId={worker?.workerId ?? null}
+                          onChange={(modelName) =>
                             setModelRoutes((routes) =>
                               routes.map((candidate) =>
                                 candidate.key === route.key
                                   ? {
                                       ...candidate,
-                                      modelName: event.target.value,
+                                      modelName,
                                     }
                                   : candidate,
                               ),
                             )
                           }
-                          className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
-                          placeholder="openai/gpt-5.6-sol"
                         />
                       </label>
                       <div className="flex items-center justify-end gap-0.5">
