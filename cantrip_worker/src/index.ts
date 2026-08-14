@@ -33,6 +33,7 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { workerLogger } from "./logger.js";
+import { discoverOllamaModels } from "./ollama.js";
 import {
   buildGitAgentPrompt,
   failedPullRequestChecksEvidence,
@@ -308,6 +309,8 @@ async function start(): Promise<void> {
         config.token = command.credential;
         config.tokenSource = "persisted";
         return { accepted: true };
+      case "model.ollama.catalog":
+        return discoverOllamaModels(command.baseUrl, command.apiKey);
       case "codex.auth.status":
         return authFor(command.providerId).status();
       case "codex.auth.login.start":

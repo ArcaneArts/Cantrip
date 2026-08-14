@@ -6650,6 +6650,24 @@ export const workerProjectShareOpenResultSchema = z.object({
   realm: z.string().min(1).max(200),
 });
 
+export const ollamaModelInventoryItemSchema = z.object({
+  name: z.string().trim().min(1).max(500),
+  modifiedAt: z.string().datetime().nullable(),
+  sizeBytes: z.number().int().nonnegative().nullable(),
+  digest: z.string().trim().min(1).max(500).nullable(),
+  family: z.string().trim().min(1).max(500).nullable(),
+  families: z.array(z.string().trim().min(1).max(500)).max(32),
+  parameterSize: z.string().trim().min(1).max(100).nullable(),
+  quantization: z.string().trim().min(1).max(100).nullable(),
+  capabilities: z.array(z.string().trim().min(1).max(100)).max(64),
+  modelInfo: z.record(z.string(), z.unknown()),
+});
+
+export const ollamaModelInventorySchema = z.object({
+  models: z.array(ollamaModelInventoryItemSchema).max(1_000),
+  observedAt: z.string().datetime(),
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
@@ -6658,6 +6676,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("worker.credential.rotate"),
     credential: workerCredentialSecretSchema,
+  }),
+  z.object({
+    type: z.literal("model.ollama.catalog"),
+    baseUrl: z.url(),
+    apiKey: z.string().min(1).nullable(),
   }),
   z.object({
     type: z.literal("codex.auth.status"),
@@ -8837,6 +8860,10 @@ export type WorkerAttachmentReadResult = z.infer<
 export type WorkerProjectShareOpenResult = z.infer<
   typeof workerProjectShareOpenResultSchema
 >;
+export type OllamaModelInventoryItem = z.infer<
+  typeof ollamaModelInventoryItemSchema
+>;
+export type OllamaModelInventory = z.infer<typeof ollamaModelInventorySchema>;
 export type ProjectShareAdapterRequestHead = z.infer<
   typeof projectShareAdapterRequestHeadSchema
 >;

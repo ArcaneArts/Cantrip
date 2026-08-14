@@ -552,6 +552,7 @@ import {
   DirectAttachmentUnavailableError,
 } from "./direct-attachments/coordinator.js";
 import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
+import { OllamaCatalogService } from "./models/ollama-catalog.js";
 
 export interface BuildAppOptions {
   config: ServerConfig;
@@ -924,6 +925,7 @@ export async function buildApp({
     workerConcurrency: config.workerCommandConcurrency ?? 64,
     workerRatePerMinute: config.workerCommandRatePerMinute ?? 1_200,
   });
+  const ollamaCatalogService = new OllamaCatalogService(repository, bridge);
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -7144,11 +7146,15 @@ export async function buildApp({
   );
 
   app.get("/api/settings", async (_request, reply) => {
-    return reply.send(
-      settingsBundleSchema.parse(
-        await repository.getSettings(applicationOwnerId()),
-      ),
-    );
+    const ownerId = applicationOwnerId();
+    const settings = await repository.getSettings(ownerId);
+    for (const provider of settings.providers) {
+      if (provider.kind !== "ollama") continue;
+      void loadProviderCatalog(ownerId, provider.id, undefined, false).catch(
+        () => undefined,
+      );
+    }
+    return reply.send(settingsBundleSchema.parse(settings));
   });
 
   app.get<{
@@ -7357,6 +7363,14 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
+      if (provider.kind === "ollama") {
+        void loadProviderCatalog(
+          applicationOwnerId(),
+          provider.id,
+          undefined,
+          false,
+        ).catch(() => undefined);
+      }
       return reply.code(201).send(modelProviderSummarySchema.parse(provider));
     } catch (error) {
       return reply.code(409).send({ error: errorMessage(error) });
@@ -7395,6 +7409,14 @@ export async function buildApp({
           request.params.providerId,
           input.data,
         );
+        if (provider?.kind === "ollama") {
+          void loadProviderCatalog(
+            applicationOwnerId(),
+            provider.id,
+            undefined,
+            true,
+          ).catch(() => undefined);
+        }
         return provider
           ? reply.send(modelProviderSummarySchema.parse(provider))
           : reply.code(404).send({ error: "Provider not found." });
@@ -7404,35 +7426,100 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { providerId: string } }>(
-    "/api/settings/providers/:providerId/catalog",
-    async (request, reply) => {
-      try {
-        const catalog = await providerCatalogService.getProviderCatalog(
-          applicationOwnerId(),
-          request.params.providerId,
-        );
-        return catalog
-          ? reply.send(providerModelCatalogResultSchema.parse(catalog))
-          : reply.code(404).send({ error: "Provider not found." });
-      } catch (error) {
-        const message = errorMessage(error);
-        return reply
-          .code(message.includes("not an OpenRouter") ? 409 : 502)
-          .send({
-            error: message,
-          });
-      }
-    },
-  );
+  const loadProviderCatalog = async (
+    ownerId: string,
+    providerId: string,
+    workerId: string | undefined,
+    force: boolean,
+  ) => {
+    const provider = await repository.getModelProviderCatalogRuntime(
+      ownerId,
+      providerId,
+    );
+    if (!provider) return null;
+    if (provider.kind !== "ollama") {
+      return providerCatalogService.getProviderCatalog(
+        ownerId,
+        providerId,
+        force,
+      );
+    }
+    let selectedWorkerId = workerId;
+    if (!selectedWorkerId) {
+      const [settings, workers] = await Promise.all([
+        repository.getSettings(ownerId),
+        repository.listWorkers(ownerId),
+      ]);
+      const defaultWorkerId = settings.preferences.defaultWorkerId;
+      selectedWorkerId =
+        (defaultWorkerId && bridge.isConnected(defaultWorkerId)
+          ? defaultWorkerId
+          : workers.find((worker) => bridge.isConnected(worker.workerId))
+              ?.workerId) ??
+        defaultWorkerId ??
+        undefined;
+    }
+    if (!selectedWorkerId) {
+      throw new Error("No worker is available for Ollama discovery.");
+    }
+    return ollamaCatalogService.getProviderCatalog(
+      ownerId,
+      providerId,
+      selectedWorkerId,
+      force,
+    );
+  };
 
-  app.post<{ Params: { providerId: string } }>(
+  const providerCatalogFailureStatus = (message: string) => {
+    if (message === "Worker not found.") return 404;
+    if (
+      message.includes("not an OpenRouter") ||
+      message.includes("not an Ollama")
+    ) {
+      return 409;
+    }
+    if (
+      message.includes("worker is available") ||
+      message.includes("offline")
+    ) {
+      return 503;
+    }
+    return 502;
+  };
+
+  app.get<{
+    Params: { providerId: string };
+    Querystring: { workerId?: string };
+  }>("/api/settings/providers/:providerId/catalog", async (request, reply) => {
+    try {
+      const catalog = await loadProviderCatalog(
+        applicationOwnerId(),
+        request.params.providerId,
+        request.query.workerId,
+        false,
+      );
+      return catalog
+        ? reply.send(providerModelCatalogResultSchema.parse(catalog))
+        : reply.code(404).send({ error: "Provider not found." });
+    } catch (error) {
+      const message = errorMessage(error);
+      return reply.code(providerCatalogFailureStatus(message)).send({
+        error: message,
+      });
+    }
+  });
+
+  app.post<{
+    Params: { providerId: string };
+    Querystring: { workerId?: string };
+  }>(
     "/api/settings/providers/:providerId/catalog/refresh",
     async (request, reply) => {
       try {
-        const catalog = await providerCatalogService.getProviderCatalog(
+        const catalog = await loadProviderCatalog(
           applicationOwnerId(),
           request.params.providerId,
+          request.query.workerId,
           true,
         );
         return catalog
@@ -7440,11 +7527,9 @@ export async function buildApp({
           : reply.code(404).send({ error: "Provider not found." });
       } catch (error) {
         const message = errorMessage(error);
-        return reply
-          .code(message.includes("not an OpenRouter") ? 409 : 502)
-          .send({
-            error: message,
-          });
+        return reply.code(providerCatalogFailureStatus(message)).send({
+          error: message,
+        });
       }
     },
   );
