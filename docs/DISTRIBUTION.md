@@ -15,6 +15,9 @@ automatic deploys enabled. Host-based ingress serves the marketing site at
 `cantrip.art`, the browser application at `app.cantrip.art`, and redirects the
 DigitalOcean starter hostname to the marketing site. The components build from
 the repository root so pnpm can resolve the shared workspace protocol package.
+Each component has an explicit browser-only build command; App Platform must
+not invoke the root native distribution build, which requires Rust and other
+desktop toolchains that are intentionally absent from its Node.js build image.
 The `cantrip.art` DigitalOcean DNS zone manages routing explicitly: the apex
 uses App Platform's static ingress addresses and `app` is a CNAME to the app's
 DigitalOcean starter hostname.
