@@ -599,6 +599,11 @@ import {
 import { ChatGptCredentialRefresher } from "./models/chatgpt-credential-refresher.js";
 import { GrokCredentialRefresher } from "./models/grok-credential-refresher.js";
 import { ProviderCredentialMigrationCoordinator } from "./models/provider-credential-migrations.js";
+import { ProviderAccountLifecycleService } from "./models/provider-account-lifecycle.js";
+import {
+  OAuthProviderCredentialRevoker,
+  type ProviderCredentialRevoker,
+} from "./models/provider-credential-revocation.js";
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
   accountProviderLabel,
@@ -619,6 +624,7 @@ export interface BuildAppOptions {
   providerCatalogService?: OpenRouterCatalogService;
   providerAccessTokens?: ProviderAccessTokenService;
   providerCredentialMigrations?: ProviderCredentialMigrationCoordinator;
+  providerCredentialRevoker?: ProviderCredentialRevoker;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -632,6 +638,15 @@ class SkillSettingsRequestError extends Error {
 }
 
 class ScheduleDispatchLeaseLostError extends Error {}
+
+class ProviderAccountReconnectRequiredError extends Error {
+  constructor() {
+    super(
+      "The original worker must reconnect before this provider account can be signed out globally.",
+    );
+    this.name = "ProviderAccountReconnectRequiredError";
+  }
+}
 
 function gitManagedOperationContext(
   operation: GitManagedOperationRecord,
@@ -875,6 +890,7 @@ export async function buildApp({
   providerCatalogService: providedProviderCatalogService,
   providerAccessTokens: providedProviderAccessTokens,
   providerCredentialMigrations: providedProviderCredentialMigrations,
+  providerCredentialRevoker: providedProviderCredentialRevoker,
   relayQuotas: providedRelayQuotas,
   coordinator,
   workerBridge,
@@ -1014,6 +1030,22 @@ export async function buildApp({
     new ProviderCredentialMigrationCoordinator(repository, bridge, {
       purgeEnabledKinds: new Set(["chatgpt", "grok"]),
     });
+  const providerCredentialRevoker =
+    providedProviderCredentialRevoker ?? new OAuthProviderCredentialRevoker();
+  const providerAccountLifecycle = new ProviderAccountLifecycleService(
+    repository,
+    bridge,
+    {
+      accessTokens: providerAccessTokens,
+      invalidateCatalog: ({ accountId, kind, ownerId, providerId }) =>
+        (kind === "grok"
+          ? grokCatalogService
+          : chatGptCatalogService
+        ).markAccountUnavailable(ownerId, providerId, accountId),
+      logger: app.log,
+      revoker: providerCredentialRevoker,
+    },
+  );
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -7401,33 +7433,160 @@ export async function buildApp({
     Params: { providerId: string; accountId: string };
   }>(
     "/api/settings/providers/:providerId/accounts/:accountId",
-    async (request, reply) =>
-      (await repository.deleteModelProviderAccount(
-        applicationOwnerId(),
-        request.params.providerId,
-        request.params.accountId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Provider account not found." }),
+    async (request, reply) => {
+      try {
+        const account = await resolveAccountAuthTarget(
+          request.params.providerId,
+          request.params.accountId,
+        );
+        await prepareProviderAccountSignOut(account, request.params.providerId);
+        await providerAccountLifecycle.signOut({
+          accountId: account.accountId,
+          credentialHomeKey: account.credentialHomeKey,
+          kind: account.providerKind,
+          ownerId: applicationOwnerId(),
+          providerId: request.params.providerId,
+        });
+        return (await repository.deleteModelProviderAccount(
+          applicationOwnerId(),
+          request.params.providerId,
+          request.params.accountId,
+        ))
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "Provider account not found." });
+      } catch (error) {
+        const message = errorMessage(error);
+        if (message.endsWith("not found.")) {
+          return reply.code(404).send({ error: message });
+        }
+        if (error instanceof ProviderAccountReconnectRequiredError) {
+          return reply.code(409).send({ error: message });
+        }
+        return sendWorkerRequestFailure(reply, error, message);
+      }
+    },
   );
 
-  const resolveAccountAuthTarget = async (
+  async function resolveAccountAuthTarget(
     providerId: string,
     accountId?: string,
-  ) => {
-    const [provider, account] = await Promise.all([
+  ) {
+    const [provider, account, accounts] = await Promise.all([
       repository.getModelProvider(applicationOwnerId(), providerId),
       repository.getModelProviderAccountRuntime(
         applicationOwnerId(),
         providerId,
         accountId,
       ),
+      repository.listModelProviderAccounts(applicationOwnerId(), providerId),
     ]);
-    if (!provider || !isAccountProviderKind(provider.kind) || !account) {
+    const summary = account
+      ? accounts?.find(({ id }) => id === account.accountId)
+      : null;
+    if (
+      !provider ||
+      !isAccountProviderKind(provider.kind) ||
+      !account ||
+      !summary
+    ) {
       throw new Error("Provider account not found.");
     }
-    return { ...account, providerKind: provider.kind };
-  };
+    return {
+      ...account,
+      credentialState: summary.credentialState,
+      providerKind: provider.kind,
+      workerBindings: summary.workerBindings,
+    };
+  }
+
+  async function accountAuthRunnerAvailable(
+    workerId: string | undefined,
+  ): Promise<boolean> {
+    return Boolean(
+      workerId &&
+      bridge.isConnected(workerId) &&
+      (await repository.getWorker(applicationOwnerId(), workerId)),
+    );
+  }
+
+  async function prepareProviderAccountSignOut(
+    account: Awaited<ReturnType<typeof resolveAccountAuthTarget>>,
+    providerId: string,
+    requestedWorkerId?: string,
+  ): Promise<void> {
+    const logoutWorker = (workerId: string) =>
+      bridge.request(
+        workerId,
+        {
+          type: "codex.auth.logout",
+          providerId,
+          providerKind: account.providerKind,
+          credentialHomeKey: account.credentialHomeKey,
+        },
+        { ownerId: applicationOwnerId(), timeoutMs: 15_000 },
+      );
+    let storedCredential = await repository.getModelProviderAccountCredential(
+      applicationOwnerId(),
+      providerId,
+      account.accountId,
+    );
+    const legacyWorkers = account.workerBindings
+      .filter(({ authState }) => authState === "signed-in")
+      .map(({ workerId }) => workerId);
+    if (storedCredential) {
+      const connectedLegacyWorkers: string[] = [];
+      for (const workerId of legacyWorkers) {
+        if (await accountAuthRunnerAvailable(workerId)) {
+          connectedLegacyWorkers.push(workerId);
+        }
+      }
+      await Promise.allSettled(connectedLegacyWorkers.map(logoutWorker));
+      return;
+    }
+
+    const boundWorkers = account.workerBindings.map(({ workerId }) => workerId);
+    const candidates =
+      account.credentialState === "migration-needed"
+        ? legacyWorkers
+        : [requestedWorkerId, ...legacyWorkers, ...boundWorkers].filter(
+            (workerId): workerId is string => Boolean(workerId),
+          );
+    let runnerId: string | null = null;
+    for (const candidate of new Set(candidates)) {
+      if (await accountAuthRunnerAvailable(candidate)) {
+        runnerId = candidate;
+        break;
+      }
+    }
+    if (!runnerId) {
+      if (account.credentialState === "migration-needed") {
+        throw new ProviderAccountReconnectRequiredError();
+      }
+      return;
+    }
+
+    const capture = await providerCredentialMigrations.captureAccount(
+      applicationOwnerId(),
+      runnerId,
+      providerId,
+      account.accountId,
+    );
+    storedCredential = await repository.getModelProviderAccountCredential(
+      applicationOwnerId(),
+      providerId,
+      account.accountId,
+    );
+    if (storedCredential) {
+      if (capture.workerLogoutRequired) {
+        await logoutWorker(runnerId).catch(() => undefined);
+      }
+      return;
+    }
+
+    // Older workers cannot hand server-managed auth back cleanly. Their normal
+    // logout is the only available upstream revocation and local purge path.
+    await logoutWorker(runnerId);
+  }
 
   app.get<{
     Querystring: {
@@ -7448,11 +7607,43 @@ export async function buildApp({
       if (!provider || !isAccountProviderKind(provider.kind) || !accounts) {
         throw new Error("Provider account not found.");
       }
-      const account = accountId
+      let account = accountId
         ? accounts.find(({ id }) => id === accountId)
         : accounts.find(({ enabled }) => enabled);
       if (!account) throw new Error("Provider account not found.");
-      const status = providerAccountAuthStatus(provider.kind, account);
+      let captureError: string | null = null;
+      if (
+        account.credentialState !== "signed-in" &&
+        request.query.workerId &&
+        (await accountAuthRunnerAvailable(request.query.workerId))
+      ) {
+        const capture = await providerCredentialMigrations.captureAccount(
+          applicationOwnerId(),
+          request.query.workerId,
+          providerId,
+          account.id,
+        );
+        if (capture.malformed > 0) {
+          captureError =
+            "The worker's provider credential is invalid. Sign in again to replace it.";
+        } else if (capture.failed > 0) {
+          captureError =
+            "The worker could not transfer provider authentication to the server. Reconnect or update the worker, then try again.";
+        }
+        const refreshed = await repository.listModelProviderAccounts(
+          applicationOwnerId(),
+          providerId,
+        );
+        account = refreshed?.find(({ id }) => id === account!.id) ?? account;
+      }
+      const globalStatus = providerAccountAuthStatus(provider.kind, account);
+      const status =
+        !globalStatus.authenticated && captureError
+          ? codexAuthStatusSchema.parse({
+              ...globalStatus,
+              loginError: captureError,
+            })
+          : globalStatus;
       if (status.authenticated && request.query.workerId) {
         void loadProviderCatalog(
           applicationOwnerId(),
@@ -7487,16 +7678,30 @@ export async function buildApp({
         repository.getWorker(applicationOwnerId(), workerId),
       ]);
       if (!worker) throw new Error("Worker not found.");
-      return reply.send(
-        codexDeviceLoginSchema.parse(
-          await bridge.request(workerId, {
-            type: "codex.auth.login.start",
-            providerId,
-            providerKind: account.providerKind,
-            credentialHomeKey: account.credentialHomeKey,
-          }),
-        ),
+      providerAccessTokens.allowAccount(
+        applicationOwnerId(),
+        providerId,
+        account.accountId,
       );
+      const login = codexDeviceLoginSchema.parse(
+        await bridge.request(workerId, {
+          type: "codex.auth.login.start",
+          providerId,
+          providerKind: account.providerKind,
+          credentialHomeKey: account.credentialHomeKey,
+        }),
+      );
+      await repository.recordModelProviderAccountStatus(
+        account.accountId,
+        workerId,
+        {
+          authenticated: false,
+          email: null,
+          planType: null,
+          weeklyUsage: null,
+        },
+      );
+      return reply.send(login);
     } catch (error) {
       const message = errorMessage(error);
       if (message.endsWith("not found.")) {
@@ -7510,47 +7715,28 @@ export async function buildApp({
     Body: { providerId?: string; accountId?: string; workerId?: string };
   }>("/api/codex/auth/logout", async (request, reply) => {
     const { accountId, providerId, workerId } = request.body ?? {};
-    if (!workerId || !providerId) {
-      return reply
-        .code(400)
-        .send({ error: "workerId and providerId are required" });
+    if (!providerId) {
+      return reply.code(400).send({ error: "providerId is required" });
     }
     try {
-      const [account, worker] = await Promise.all([
-        resolveAccountAuthTarget(providerId, accountId),
-        repository.getWorker(applicationOwnerId(), workerId),
-      ]);
-      if (!worker) throw new Error("Worker not found.");
-      await bridge.request(workerId, {
-        type: "codex.auth.logout",
-        providerId,
-        providerKind: account.providerKind,
+      const account = await resolveAccountAuthTarget(providerId, accountId);
+      await prepareProviderAccountSignOut(account, providerId, workerId);
+      const signedOut = await providerAccountLifecycle.signOut({
+        accountId: account.accountId,
         credentialHomeKey: account.credentialHomeKey,
-      });
-      await repository.recordModelProviderAccountStatus(
-        account.accountId,
-        workerId,
-        {
-          authenticated: false,
-          email: null,
-          planType: null,
-          weeklyUsage: null,
-        },
-      );
-      await (
-        account.providerKind === "grok"
-          ? grokCatalogService
-          : chatGptCatalogService
-      ).markAccountUnavailable(
-        applicationOwnerId(),
+        kind: account.providerKind,
+        ownerId: applicationOwnerId(),
         providerId,
-        account.accountId,
-      );
+      });
+      if (!signedOut) throw new Error("Provider account not found.");
       return reply.code(204).send();
     } catch (error) {
       const message = errorMessage(error);
       if (message.endsWith("not found.")) {
         return reply.code(404).send({ error: message });
+      }
+      if (error instanceof ProviderAccountReconnectRequiredError) {
+        return reply.code(409).send({ error: message });
       }
       return sendWorkerRequestFailure(reply, error, message);
     }
@@ -7794,15 +7980,60 @@ export async function buildApp({
     "/api/settings/providers/:providerId",
     async (request, reply) => {
       try {
+        const ownerId = applicationOwnerId();
+        const provider = await repository.getModelProvider(
+          ownerId,
+          request.params.providerId,
+        );
+        if (!provider) {
+          return reply.code(404).send({ error: "Provider not found." });
+        }
+        if (isAccountProviderKind(provider.kind)) {
+          const settings = await repository.getSettings(ownerId);
+          if (
+            settings.models.some((model) =>
+              model.routes.some(
+                ({ providerId }) => providerId === request.params.providerId,
+              ),
+            )
+          ) {
+            return reply.code(409).send({
+              error:
+                "Delete the provider's models before deleting the provider.",
+            });
+          }
+          const accounts =
+            (await repository.listModelProviderAccounts(
+              ownerId,
+              provider.id,
+            )) ?? [];
+          for (const { id: accountId } of accounts) {
+            const account = await resolveAccountAuthTarget(
+              provider.id,
+              accountId,
+            );
+            await prepareProviderAccountSignOut(account, provider.id);
+            await providerAccountLifecycle.signOut({
+              accountId,
+              credentialHomeKey: account.credentialHomeKey,
+              kind: provider.kind,
+              ownerId,
+              providerId: provider.id,
+            });
+          }
+        }
         openRouterRuntimeCatalogs.invalidate(request.params.providerId);
         const deleted = await repository.deleteModelProvider(
-          applicationOwnerId(),
+          ownerId,
           request.params.providerId,
         );
         return deleted
           ? reply.code(204).send()
           : reply.code(404).send({ error: "Provider not found." });
-      } catch {
+      } catch (error) {
+        if (error instanceof ProviderAccountReconnectRequiredError) {
+          return reply.code(409).send({ error: error.message });
+        }
         return reply.code(409).send({
           error: "Delete the provider's models before deleting the provider.",
         });

@@ -3006,6 +3006,15 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.safeParse({ type: "codex.auth.status" }).success,
     ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "provider.auth.account.clear",
+        providerId: "chatgpt-provider-1",
+        providerKind: "chatgpt",
+        providerAccountId: "account-1",
+        credentialHomeKey: "account-home-1",
+      }).type,
+    ).toBe("provider.auth.account.clear");
   });
 
   it("validates worker-backed chat compaction", () => {

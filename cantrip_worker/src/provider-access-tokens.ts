@@ -52,7 +52,16 @@ export class ProviderAccessTokenRequestError extends Error {
 export class ProviderAccessTokenClient {
   readonly #cache = new Map<string, ProviderAccessTokenLease>();
   readonly #fetch: typeof fetch;
-  readonly #inflight = new Map<string, Promise<ProviderAccessTokenLease>>();
+  readonly #generations = new Map<string, number>();
+  #globalGeneration = 0;
+  readonly #inflight = new Map<
+    string,
+    {
+      accountKey: string;
+      generation: string;
+      promise: Promise<ProviderAccessTokenLease>;
+    }
+  >();
   readonly #now: () => number;
   readonly #requestTimeoutMs: number;
 
@@ -99,18 +108,29 @@ export class ProviderAccessTokenClient {
     const requestKey = request.forceRefresh
       ? `${key}:refresh:${request.credentialRevision ?? "unknown"}`
       : `${key}:lease`;
+    const generation = this.#generationFor(key);
     const existing = this.#inflight.get(requestKey);
-    if (existing) return existing;
-    const pending = this.#request(
-      providerId,
-      providerAccountId,
-      request,
-    ).finally(() => {
-      if (this.#inflight.get(requestKey) === pending) {
-        this.#inflight.delete(requestKey);
-      }
+    if (existing?.generation === generation) return existing.promise;
+    const pending = this.#request(providerId, providerAccountId, request)
+      .then((lease) => {
+        if (this.#generationFor(key) !== generation) {
+          throw new ProviderAccessTokenRequestError(
+            409,
+            "credential-unavailable",
+          );
+        }
+        return lease;
+      })
+      .finally(() => {
+        if (this.#inflight.get(requestKey)?.promise === pending) {
+          this.#inflight.delete(requestKey);
+        }
+      });
+    this.#inflight.set(requestKey, {
+      accountKey: key,
+      generation,
+      promise: pending,
     });
-    this.#inflight.set(requestKey, pending);
     const lease = await pending;
     const current = this.#cache.get(key);
     if (!current || lease.credentialRevision >= current.credentialRevision) {
@@ -121,15 +141,35 @@ export class ProviderAccessTokenClient {
 
   clear(providerId?: string, providerAccountId?: string): void {
     if (!providerId) {
+      this.#globalGeneration += 1;
       this.#cache.clear();
+      this.#inflight.clear();
       return;
     }
     if (providerAccountId) {
-      this.#cache.delete(`${providerId}:${providerAccountId}`);
+      this.#invalidate(`${providerId}:${providerAccountId}`);
       return;
     }
-    for (const key of this.#cache.keys()) {
-      if (key.startsWith(`${providerId}:`)) this.#cache.delete(key);
+    const prefix = `${providerId}:`;
+    const keys = new Set([
+      ...this.#cache.keys(),
+      ...this.#generations.keys(),
+      ...[...this.#inflight.values()].map(({ accountKey }) => accountKey),
+    ]);
+    for (const key of keys) {
+      if (key.startsWith(prefix)) this.#invalidate(key);
+    }
+  }
+
+  #generationFor(key: string): string {
+    return `${this.#globalGeneration}:${this.#generations.get(key) ?? 0}`;
+  }
+
+  #invalidate(key: string): void {
+    this.#generations.set(key, (this.#generations.get(key) ?? 0) + 1);
+    this.#cache.delete(key);
+    for (const [requestKey, request] of this.#inflight) {
+      if (request.accountKey === key) this.#inflight.delete(requestKey);
     }
   }
 

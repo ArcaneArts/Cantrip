@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ProviderAccessTokenClient } from "../src/provider-access-tokens.js";
 
@@ -160,5 +160,39 @@ describe("worker provider access tokens", () => {
       }),
     ]);
     expect(revisions).toEqual([1, 2]);
+  });
+
+  it("invalidates an in-flight lease when global sign-out clears the account", async () => {
+    let release: ((response: Response) => void) | null = null;
+    let requests = 0;
+    const client = new ProviderAccessTokenClient(
+      {
+        serverUrl: "https://cantrip.example.test",
+        token: `ctwk_${"d".repeat(43)}`,
+        workerId: "worker-one",
+      },
+      {
+        now: () => start,
+        fetch: async () => {
+          requests += 1;
+          if (requests > 1) return Response.json(lease(start, "new-access"));
+          return new Promise<Response>((resolve) => {
+            release = resolve;
+          });
+        },
+      },
+    );
+
+    const pending = client.get("provider-one", "account-one");
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    client.clear("provider-one", "account-one");
+    release!(Response.json(lease(start, "stale-access")));
+    await expect(pending).rejects.toMatchObject({
+      code: "credential-unavailable",
+    });
+    await expect(
+      client.get("provider-one", "account-one"),
+    ).resolves.toMatchObject({ accessToken: "new-access" });
+    expect(requests).toBe(2);
   });
 });

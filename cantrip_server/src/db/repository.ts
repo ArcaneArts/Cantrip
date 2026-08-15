@@ -549,16 +549,18 @@ export interface ProviderAccountCredentialRecord {
   updatedAt: string | null;
 }
 
+export interface ProviderAccountCredentialSignOutRecord {
+  credential: ProviderCredential | null;
+  revision: number;
+}
+
 export interface ProviderAccountCredentialMigrationRecord {
   accountId: string;
   credentialHomeKey: string;
   providerId: string;
   providerKind: "chatgpt" | "grok";
   revision: number;
-  state: Extract<
-    ProviderAccountCredentialState,
-    "migration-needed" | "signed-in"
-  >;
+  state: ProviderAccountCredentialState;
   subject: string | null;
 }
 
@@ -3164,6 +3166,44 @@ export class ServerRepository {
     );
   }
 
+  async getModelProviderAccountCredentialMigration(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+  ): Promise<ProviderAccountCredentialMigrationRecord | null> {
+    const rows = await this.database
+      .select({
+        accountId: schema.modelProviderAccounts.id,
+        credentialHomeKey: schema.modelProviderAccounts.credentialHomeKey,
+        providerId: schema.modelProviderAccounts.providerId,
+        providerKind: schema.modelProviders.kind,
+        revision: schema.modelProviderAccounts.credentialRevision,
+        state: schema.modelProviderAccounts.credentialState,
+        subject: schema.modelProviderAccounts.credentialSubject,
+      })
+      .from(schema.modelProviderAccounts)
+      .innerJoin(
+        schema.modelProviders,
+        eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+      )
+      .where(
+        and(
+          eq(schema.modelProviders.ownerId, ownerId),
+          eq(schema.modelProviders.id, providerId),
+          eq(schema.modelProviderAccounts.id, accountId),
+          inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row || !isAccountProviderKind(row.providerKind)) return null;
+    return {
+      ...row,
+      providerKind: row.providerKind,
+      state: row.state as ProviderAccountCredentialState,
+    };
+  }
+
   async storeModelProviderAccountCredential(
     ownerId: string,
     providerId: string,
@@ -3424,9 +3464,29 @@ export class ServerRepository {
     accountId: string,
     expectedRevision?: number,
   ): Promise<boolean> {
+    return Boolean(
+      await this.takeModelProviderAccountCredentialForSignOut(
+        ownerId,
+        providerId,
+        accountId,
+        expectedRevision,
+      ),
+    );
+  }
+
+  async takeModelProviderAccountCredentialForSignOut(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+    expectedRevision?: number,
+  ): Promise<ProviderAccountCredentialSignOutRecord | null> {
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
-        .select({ revision: schema.modelProviderAccounts.credentialRevision })
+        .select({
+          account: schema.modelProviderAccounts,
+          kind: schema.modelProviders.kind,
+          ownerId: schema.modelProviders.ownerId,
+        })
         .from(schema.modelProviderAccounts)
         .innerJoin(
           schema.modelProviders,
@@ -3440,21 +3500,51 @@ export class ServerRepository {
             inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for("update");
       const row = rows[0];
-      if (!row) return false;
-      if (expectedRevision !== undefined && row.revision !== expectedRevision) {
+      if (!row || !isAccountProviderKind(row.kind)) return null;
+      if (
+        expectedRevision !== undefined &&
+        row.account.credentialRevision !== expectedRevision
+      ) {
         throw new ProviderCredentialRevisionConflictError();
       }
+      let credential: ProviderCredential | null = null;
+      if (row.account.credentialEnvelope) {
+        try {
+          const parsed = parseProviderCredential(
+            this.secretVault.decrypt(
+              row.account.credentialEnvelope,
+              modelProviderAccountSecretContext(
+                row.ownerId,
+                providerId,
+                accountId,
+                row.kind,
+              ),
+            ),
+            row.kind,
+          );
+          if (
+            !row.account.credentialSubject ||
+            row.account.credentialSubject === providerCredentialSubject(parsed)
+          ) {
+            credential = parsed;
+          }
+        } catch {
+          // Sign-out still clears an unreadable envelope; it just cannot revoke it.
+        }
+      }
+      const now = new Date();
       const updated = await transaction
         .update(schema.modelProviderAccounts)
         .set({
           credentialEnvelope: null,
-          credentialRevision: row.revision + 1,
+          credentialRevision: row.account.credentialRevision + 1,
           credentialState: "signed-out",
           credentialSubject: null,
           credentialExpiresAt: null,
-          credentialUpdatedAt: new Date(),
+          credentialUpdatedAt: now,
           credentialRefreshLeaseId: null,
           credentialRefreshLeaseExpiresAt: null,
           credentialLastRefreshError: null,
@@ -3462,19 +3552,32 @@ export class ServerRepository {
           planType: null,
           weeklyUsageUsedBasisPoints: null,
           weeklyUsageResetsAt: null,
-          authLastSyncedAt: new Date(),
-          updatedAt: new Date(),
+          authLastSyncedAt: now,
+          updatedAt: now,
         })
         .where(
           and(
             eq(schema.modelProviderAccounts.id, accountId),
             eq(schema.modelProviderAccounts.providerId, providerId),
-            eq(schema.modelProviderAccounts.credentialRevision, row.revision),
+            eq(
+              schema.modelProviderAccounts.credentialRevision,
+              row.account.credentialRevision,
+            ),
           ),
         )
         .returning({ id: schema.modelProviderAccounts.id });
       if (!updated[0]) throw new ProviderCredentialRevisionConflictError();
-      return true;
+      await transaction
+        .update(schema.modelProviderAccountWorkers)
+        .set({
+          authState: "signed-out",
+          weeklyUsageUsedBasisPoints: null,
+          weeklyUsageResetsAt: null,
+          lastSyncedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(schema.modelProviderAccountWorkers.accountId, accountId));
+      return { credential, revision: row.account.credentialRevision + 1 };
     });
   }
 

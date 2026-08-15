@@ -28,6 +28,10 @@ export interface ProviderCredentialMigrationSummary {
   purged: number;
 }
 
+export interface ProviderCredentialAccountCaptureSummary extends ProviderCredentialMigrationSummary {
+  workerLogoutRequired: boolean;
+}
+
 export interface ProviderCredentialMigrationOptions {
   purgeEnabledKinds?: ReadonlySet<ProviderCredentialKind>;
 }
@@ -78,12 +82,49 @@ export class ProviderCredentialMigrationCoordinator {
     return summary;
   }
 
+  /** Captures one explicitly selected account after a device-code login. */
+  async captureAccount(
+    ownerId: string,
+    workerId: string,
+    providerId: string,
+    accountId: string,
+  ): Promise<ProviderCredentialAccountCaptureSummary> {
+    const summary = emptySummary();
+    const candidate =
+      await this.repository.getModelProviderAccountCredentialMigration(
+        ownerId,
+        providerId,
+        accountId,
+      );
+    if (!candidate) {
+      summary.failed = 1;
+      return { ...summary, workerLogoutRequired: false };
+    }
+    summary.checked = 1;
+    try {
+      const serverManagedAuth = await this.#migrateCandidate(
+        ownerId,
+        workerId,
+        candidate,
+        summary,
+      );
+      return {
+        ...summary,
+        workerLogoutRequired: serverManagedAuth === false,
+      };
+    } catch {
+      // Worker OAuth payloads remain deliberately absent from outward errors.
+      summary.failed = 1;
+      return { ...summary, workerLogoutRequired: false };
+    }
+  }
+
   async #migrateCandidate(
     ownerId: string,
     workerId: string,
     candidate: ProviderAccountCredentialMigrationRecord,
     summary: ProviderCredentialMigrationSummary,
-  ): Promise<void> {
+  ): Promise<boolean | null> {
     const captured = providerLegacyCredentialCaptureResultSchema.parse(
       await this.workers.request(
         workerId,
@@ -99,11 +140,11 @@ export class ProviderCredentialMigrationCoordinator {
     );
     if (captured.status === "missing") {
       summary.missing += 1;
-      return;
+      return null;
     }
     if (captured.status === "malformed") {
       summary.malformed += 1;
-      return;
+      return null;
     }
 
     const credential = parseProviderCredential(
@@ -124,7 +165,7 @@ export class ProviderCredentialMigrationCoordinator {
       if (stored.metadata.subject !== subject) {
         await this.#markConflict(ownerId, candidate, stored?.revision);
         summary.conflicts += 1;
-        return;
+        return null;
       }
       if (stored.state !== "signed-in") {
         throw new Error("Provider account migration state changed.");
@@ -157,7 +198,7 @@ export class ProviderCredentialMigrationCoordinator {
         if (stored.metadata.subject !== subject) {
           await this.#markConflict(ownerId, candidate, stored?.revision);
           summary.conflicts += 1;
-          return;
+          return null;
         }
         if (stored.state !== "signed-in") {
           throw new Error("Provider account migration state changed.");
@@ -172,7 +213,7 @@ export class ProviderCredentialMigrationCoordinator {
       !captured.serverManagedAuth ||
       !this.#purgeEnabledKinds.has(candidate.providerKind)
     ) {
-      return;
+      return captured.serverManagedAuth;
     }
     const purged = providerLegacyCredentialPurgeResultSchema.parse(
       await this.workers.request(
@@ -198,6 +239,7 @@ export class ProviderCredentialMigrationCoordinator {
       );
     }
     if (purged.purged) summary.purged += 1;
+    return captured.serverManagedAuth;
   }
 
   async #markConflict(

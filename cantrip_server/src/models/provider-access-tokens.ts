@@ -94,11 +94,14 @@ function requireDuration(
 
 export class ProviderAccessTokenService {
   readonly #accessLeaseDurationMs: number;
+  readonly #disabled = new Set<string>();
+  readonly #generations = new Map<string, number>();
   readonly #inflight = new Map<
     string,
     Promise<ProviderAccountCredentialRecord>
   >();
   readonly #now: () => number;
+  readonly #refreshAborts = new Map<string, AbortController>();
   readonly #refreshLeaseDurationMs: number;
   readonly #refreshers: Partial<
     Record<ProviderCredentialKind, ProviderCredentialRefresher>
@@ -133,6 +136,18 @@ export class ProviderAccessTokenService {
     this.#sleep = options.sleep ?? defaultSleep;
   }
 
+  allowAccount(ownerId: string, providerId: string, accountId: string): void {
+    this.#disabled.delete(this.#accountKey({ accountId, ownerId, providerId }));
+  }
+
+  denyAccount(ownerId: string, providerId: string, accountId: string): void {
+    const key = this.#accountKey({ accountId, ownerId, providerId });
+    this.#disabled.add(key);
+    this.#generations.set(key, this.#generation(key) + 1);
+    this.#inflight.delete(key);
+    this.#refreshAborts.get(key)?.abort();
+  }
+
   async issue(input: {
     accountId: string;
     credentialRevision?: number | null;
@@ -141,6 +156,7 @@ export class ProviderAccessTokenService {
     ownerId: string;
     providerId: string;
   }): Promise<ProviderAccessTokenLease> {
+    this.#assertEnabled(input);
     if (
       !Number.isSafeInteger(input.minimumValidityMs) ||
       input.minimumValidityMs < 30_000 ||
@@ -189,7 +205,40 @@ export class ProviderAccessTokenService {
     if (!this.#isUsable(record, input.minimumValidityMs)) {
       throw new ProviderAccessTokenError("refresh-failed");
     }
+    this.#assertEnabled(input);
     return this.#lease(record);
+  }
+
+  #accountKey(input: {
+    accountId: string;
+    ownerId: string;
+    providerId: string;
+  }): string {
+    return `${input.ownerId}:${input.providerId}:${input.accountId}`;
+  }
+
+  #assertEnabled(input: {
+    accountId: string;
+    ownerId: string;
+    providerId: string;
+  }): void {
+    if (this.#disabled.has(this.#accountKey(input))) {
+      throw new ProviderAccessTokenError("credential-unavailable");
+    }
+  }
+
+  #assertGeneration(
+    input: { accountId: string; ownerId: string; providerId: string },
+    generation: number,
+  ): void {
+    this.#assertEnabled(input);
+    if (this.#generation(this.#accountKey(input)) !== generation) {
+      throw new ProviderAccessTokenError("credential-unavailable");
+    }
+  }
+
+  #generation(key: string): number {
+    return this.#generations.get(key) ?? 0;
   }
 
   async #readAvailable(input: {
@@ -197,6 +246,7 @@ export class ProviderAccessTokenService {
     ownerId: string;
     providerId: string;
   }): Promise<ProviderAccountCredentialRecord> {
+    this.#assertEnabled(input);
     const record = await this.repository.getModelProviderAccountCredential(
       input.ownerId,
       input.providerId,
@@ -240,14 +290,17 @@ export class ProviderAccessTokenService {
     },
     record: ProviderAccountCredentialRecord,
   ): Promise<ProviderAccountCredentialRecord> {
-    const key = `${input.ownerId}:${input.providerId}:${input.accountId}`;
+    const key = this.#accountKey(input);
     const existing = this.#inflight.get(key);
     if (existing) return existing;
-    const refreshing = this.#refreshAcrossInstances(input, record).finally(
-      () => {
-        if (this.#inflight.get(key) === refreshing) this.#inflight.delete(key);
-      },
-    );
+    const generation = this.#generation(key);
+    const refreshing = this.#refreshAcrossInstances(
+      input,
+      record,
+      generation,
+    ).finally(() => {
+      if (this.#inflight.get(key) === refreshing) this.#inflight.delete(key);
+    });
     this.#inflight.set(key, refreshing);
     return refreshing;
   }
@@ -262,11 +315,13 @@ export class ProviderAccessTokenService {
       providerId: string;
     },
     initial: ProviderAccountCredentialRecord,
+    generation: number,
   ): Promise<ProviderAccountCredentialRecord> {
     const deadline = this.#now() + this.#refreshWaitMs;
     const startingRevision = initial.revision;
     let record = initial;
     while (this.#now() < deadline) {
+      this.#assertGeneration(input, generation);
       if (
         input.forceRefresh
           ? record.revision !== startingRevision
@@ -302,11 +357,18 @@ export class ProviderAccessTokenService {
           providerId: input.providerId,
         });
       if (acquired) {
-        return this.#refreshOwned(input, record, refresher, leaseId);
+        return this.#refreshOwned(
+          input,
+          record,
+          refresher,
+          leaseId,
+          generation,
+        );
       }
 
       await this.#sleep(REFRESH_POLL_MS);
       record = await this.#readAvailable(input);
+      this.#assertGeneration(input, generation);
     }
     throw new ProviderAccessTokenError("refresh-timeout");
   }
@@ -323,12 +385,15 @@ export class ProviderAccessTokenService {
     record: ProviderAccountCredentialRecord,
     refresher: ProviderCredentialRefresher,
     leaseId: string,
+    generation: number,
   ): Promise<ProviderAccountCredentialRecord> {
+    const key = this.#accountKey(input);
     try {
       const refreshed = parseProviderCredential(
-        await this.#refreshWithTimeout(refresher, record.credential),
+        await this.#refreshWithTimeout(key, refresher, record.credential),
         record.credential.kind,
       );
+      this.#assertGeneration(input, generation);
       if (
         refreshed.expiresAt !== null &&
         refreshed.expiresAt <= this.#now() + input.minimumValidityMs
@@ -346,6 +411,14 @@ export class ProviderAccessTokenService {
       if (!saved) throw new ProviderAccessTokenError("credential-unavailable");
       return saved;
     } catch (error) {
+      if (this.#disabled.has(key)) {
+        await this.repository.releaseModelProviderAccountRefreshLease({
+          ...input,
+          error: "Provider credential refresh failed.",
+          leaseId,
+        });
+        throw new ProviderAccessTokenError("credential-unavailable");
+      }
       if (error instanceof ProviderCredentialIdentityConflictError) {
         await this.repository.releaseModelProviderAccountRefreshLease({
           ...input,
@@ -383,10 +456,12 @@ export class ProviderAccessTokenService {
   }
 
   async #refreshWithTimeout(
+    key: string,
     refresher: ProviderCredentialRefresher,
     credential: ProviderCredential,
   ): Promise<ProviderCredential> {
     const abort = new AbortController();
+    this.#refreshAborts.set(key, abort);
     let timer: ReturnType<typeof setTimeout> | null = null;
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
@@ -402,6 +477,9 @@ export class ProviderAccessTokenService {
       ]);
     } finally {
       if (timer) clearTimeout(timer);
+      if (this.#refreshAborts.get(key) === abort) {
+        this.#refreshAborts.delete(key);
+      }
       abort.abort();
     }
   }

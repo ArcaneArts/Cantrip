@@ -144,6 +144,10 @@ const closedProjectShareIds: string[] = [];
 const authProviderIds: string[] = [];
 const authCredentialHomeKeys: string[] = [];
 const authProviderKinds: Array<"chatgpt" | "grok"> = [];
+const clearedProviderAccounts: Array<
+  Extract<WorkerCommand, { type: "provider.auth.account.clear" }>
+> = [];
+const revokedProviderKinds: Array<"chatgpt" | "grok"> = [];
 const exhaustedProviderIds = new Set<string>();
 const authUsageByCredentialHomeKey = new Map<string, number>();
 const steeredPrompts: string[] = [];
@@ -397,6 +401,9 @@ const workerBridge = {
         authCredentialHomeKeys.push(
           command.credentialHomeKey ?? command.providerId,
         );
+        return { accepted: true };
+      case "provider.auth.account.clear":
+        clearedProviderAccounts.push(command);
         return { accepted: true };
       case "github.auth.status":
         return { authenticated: true, login: "cantrip-test", source: "gh-cli" };
@@ -1656,6 +1663,12 @@ describe("local server foundation", () => {
       config,
       database: firstDatabase,
       logger: false,
+      providerCredentialRevoker: {
+        revoke: async (credential) => {
+          revokedProviderKinds.push(credential.kind);
+          return "revoked";
+        },
+      },
       workerBridge,
     });
 
@@ -2011,12 +2024,34 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(authProviderIds).toEqual([chatGptProvider.id, chatGptProvider.id]);
-    expect(authCredentialHomeKeys).toEqual([
-      chatGptProvider.id,
-      chatGptProvider.id,
+    expect(authProviderIds).toEqual([chatGptProvider.id]);
+    expect(authCredentialHomeKeys).toEqual([chatGptProvider.id]);
+    expect(authProviderKinds).toEqual(["chatgpt"]);
+    expect(clearedProviderAccounts).toEqual([
+      expect.objectContaining({
+        providerAccountId: primaryChatGptAccount.id,
+        providerId: chatGptProvider.id,
+        type: "provider.auth.account.clear",
+      }),
     ]);
-    expect(authProviderKinds).toEqual(["chatgpt", "chatgpt"]);
+    expect(revokedProviderKinds).toEqual(["chatgpt"]);
+    await firstDatabase.repository.storeModelProviderAccountCredential(
+      LOCAL_USER_ID,
+      chatGptProvider.id,
+      primaryChatGptAccount.id,
+      {
+        accessToken: "server-owned-access-token",
+        accountId: "upstream-workspace",
+        email: "test@example.com",
+        expiresAt: Date.now() + 3_600_000,
+        idToken: "server-owned-identity-token",
+        kind: "chatgpt",
+        planType: "plus",
+        refreshToken: "server-owned-refresh-token",
+        userId: "upstream-user",
+        version: 1,
+      },
+    );
     const additionalAccount = (
       await firstApp.inject({
         method: "POST",
