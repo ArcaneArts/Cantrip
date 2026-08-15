@@ -99,6 +99,13 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           : event.scope.kind === "current-user"
             ? [["chats"]]
             : [];
+    case "chat-import-job":
+      return projectId
+        ? [
+            ["chat-import-jobs", projectId],
+            ...(event.entityId ? [["chat-import-job", event.entityId]] : []),
+          ]
+        : [["chat-import-jobs"]];
     case "chat-relocation-job":
       return event.scope.kind === "chat"
         ? [

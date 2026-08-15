@@ -75,6 +75,18 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          entityId: "import-one",
+          resource: "chat-import-job",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([
+      ["chat-import-jobs", "project-one"],
+      ["chat-import-job", "import-one"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "workflow-run",
           scope: { kind: "workflow-run", runId: "run-one" },
         }),

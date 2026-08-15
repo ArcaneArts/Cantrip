@@ -6859,6 +6859,101 @@ export const externalChatDiscoveryWorkerResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const externalChatTranscriptMetadataSchema =
+  externalChatThreadMetadataSchema.omit({ archived: true });
+
+export const externalChatTranscriptSchema = z.object({
+  sourceId: externalChatSourceSchema.shape.sourceId,
+  sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
+  metadata: externalChatTranscriptMetadataSchema,
+  sync: agentThreadSyncSchema,
+});
+
+export const externalChatReadWorkerResultSchema = z.object({
+  transcript: externalChatTranscriptSchema,
+});
+
+export const chatImportStateSchema = z.enum([
+  "queued",
+  "reading",
+  "importing",
+  "awaiting-hydration",
+  "hydrating",
+  "succeeded",
+  "blocked",
+  "failed",
+  "cancelled",
+]);
+
+export const chatImportErrorSchema = z.object({
+  code: z.enum([
+    "worker-offline",
+    "capability-missing",
+    "source-not-found",
+    "source-changed",
+    "project-mismatch",
+    "runtime-incompatible",
+    "target-not-found",
+    "stale-attempt",
+    "worker-error",
+  ]),
+  message: z.string().min(1).max(2_000),
+  retryable: z.boolean(),
+});
+
+export const chatImportProgressSchema = z.object({
+  stage: z.string().min(1).max(100),
+  percent: z.number().int().min(0).max(100),
+  message: z.string().min(1).max(2_000),
+  updatedAt: z.string().datetime(),
+});
+
+export const chatImportJobSummarySchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().min(1).max(200),
+  chatId: z.string().min(1).max(200).nullable(),
+  sourceKind: externalChatSourceKindSchema,
+  sourceWorkerId: z.string().min(1).max(200),
+  sourceId: externalChatSourceSchema.shape.sourceId,
+  sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
+  targetPlacement: executionPlacementSchema,
+  state: chatImportStateSchema,
+  stateRevision: z.number().int().positive(),
+  idempotencyKey: z.string().min(1).max(200),
+  attempt: z.number().int().nonnegative(),
+  progress: chatImportProgressSchema,
+  error: chatImportErrorSchema.nullable(),
+  sourceMetadata: externalChatTranscriptMetadataSchema.nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+});
+
+export const chatImportJobListSchema = z
+  .array(chatImportJobSummarySchema)
+  .max(1_000);
+
+export const chatImportSelectionSchema = z.object({
+  sourceKind: externalChatSourceKindSchema,
+  sourceWorkerId: z.string().min(1).max(200),
+  sourceId: externalChatSourceSchema.shape.sourceId,
+  sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
+  idempotencyKey: z.string().min(1).max(200),
+  target: executionTargetSchema.optional(),
+  modelId: z.string().min(1).max(200).nullable().default(null),
+  permissionProfileId: z.string().min(1).max(200).nullable().default(null),
+  planMode: planModeSchema.default("default"),
+});
+
+export const chatImportCreateSchema = z.object({
+  imports: z.array(chatImportSelectionSchema).min(1).max(50),
+});
+
+export const chatImportJobRetrySchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
+
 const workerRuntimeModelSchema = z.object({
   id: z.string().min(1),
   routeId: z.string().min(1),
@@ -7243,6 +7338,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("external.chat-history.discover"),
     includeArchived: z.boolean().default(false),
+    targets: z.array(externalChatDiscoveryTargetSchema).min(1).max(64),
+  }),
+  z.object({
+    type: z.literal("external.chat-history.read"),
+    sourceKind: externalChatSourceKindSchema,
+    sourceId: externalChatSourceSchema.shape.sourceId,
+    sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
     targets: z.array(externalChatDiscoveryTargetSchema).min(1).max(64),
   }),
   z.object({ type: z.literal("browser.services.discover") }),
@@ -9226,6 +9328,21 @@ export type ExternalChatDiscoveryTarget = z.infer<
 export type ExternalChatDiscoveryWorkerResult = z.infer<
   typeof externalChatDiscoveryWorkerResultSchema
 >;
+export type ExternalChatTranscriptMetadata = z.infer<
+  typeof externalChatTranscriptMetadataSchema
+>;
+export type ExternalChatTranscript = z.infer<
+  typeof externalChatTranscriptSchema
+>;
+export type ExternalChatReadWorkerResult = z.infer<
+  typeof externalChatReadWorkerResultSchema
+>;
+export type ChatImportState = z.infer<typeof chatImportStateSchema>;
+export type ChatImportError = z.infer<typeof chatImportErrorSchema>;
+export type ChatImportProgress = z.infer<typeof chatImportProgressSchema>;
+export type ChatImportJobSummary = z.infer<typeof chatImportJobSummarySchema>;
+export type ChatImportSelection = z.infer<typeof chatImportSelectionSchema>;
+export type ChatImportCreate = z.infer<typeof chatImportCreateSchema>;
 export type WorkerChatAttachment = z.infer<typeof workerChatAttachmentSchema>;
 export type CustomizationCapability = z.infer<
   typeof customizationCapabilitySchema

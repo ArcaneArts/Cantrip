@@ -181,6 +181,7 @@ import {
   type SecretVault,
 } from "../security/secret-vault.js";
 import * as schema from "./schema.js";
+import { ChatImportJobRepository } from "./chat-import-jobs.js";
 import { ChatRelocationJobRepository } from "./chat-relocation-jobs.js";
 import {
   acquireChatLogicalBranchLease,
@@ -1767,6 +1768,7 @@ function toQueuedPrompt(
 }
 
 export class ServerRepository {
+  readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
@@ -1779,6 +1781,7 @@ export class ServerRepository {
     private readonly database: RepositoryDatabase,
     private readonly secretVault: SecretVault,
   ) {
+    this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);

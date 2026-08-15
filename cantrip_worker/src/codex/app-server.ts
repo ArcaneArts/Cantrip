@@ -154,7 +154,7 @@ interface ActiveTurn {
   workflowOutputSchema: Record<string, unknown> | null;
 }
 
-interface ThreadTurn {
+export interface CodexThreadTurn {
   completedAt: number | null;
   durationMs: number | null;
   error: TurnError | null;
@@ -172,11 +172,11 @@ interface ThreadTurn {
   status: "completed" | "failed" | "interrupted" | "inProgress";
 }
 
-interface ThreadReadResponse {
+export interface CodexThreadReadResponse {
   thread: {
     id: string;
     status: { type: "active" | "idle" | "notLoaded" | "systemError" };
-    turns: ThreadTurn[];
+    turns: CodexThreadTurn[];
   };
 }
 
@@ -1722,7 +1722,7 @@ export function normalizeNoticeActivity(input: {
 
 function turnSummaryActivity(
   turn: Pick<
-    ThreadTurn,
+    CodexThreadTurn,
     "completedAt" | "durationMs" | "id" | "startedAt" | "status"
   >,
   correlation: CodexEventCorrelation,
@@ -1740,6 +1740,111 @@ function turnSummaryActivity(
     startedAt: turn.startedAt,
     completedAt: turn.completedAt,
     correlation,
+  });
+}
+
+export function normalizeCodexThreadTurn(
+  turn: CodexThreadTurn,
+  cwd: string,
+  threadId: string,
+): AgentThreadSync["turns"][number] {
+  const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
+    if (item.type === "userMessage") {
+      const text = item.content
+        .flatMap((content) =>
+          content.type === "text" && content.text ? [content.text] : [],
+        )
+        .join("\n\n")
+        .trim();
+      return text ? [{ type: "userMessage", id: item.id, text }] : [];
+    }
+    if (item.type === "agentMessage") {
+      const message = normalizeAgentMessage(
+        item,
+        eventCorrelation("thread/read", null, threadId, turn.id, item.id),
+      );
+      return message ? [{ type: "agentMessage", ...message }] : [];
+    }
+    const activity = normalizeCodexThreadItem(
+      item,
+      cwd,
+      turn.status === "inProgress" ? "started" : "completed",
+      eventCorrelation("thread/read", null, threadId, turn.id, item.id),
+    );
+    if (activity) return [{ type: "activity", activity }];
+    const unknown = item as { id?: unknown; type?: unknown };
+    const itemId = typeof unknown.id === "string" ? unknown.id : null;
+    const itemType =
+      typeof unknown.type === "string" ? unknown.type : "unknown";
+    return [
+      {
+        type: "activity",
+        activity: normalizeNoticeActivity({
+          level: "warning",
+          message: "An unsupported Codex history item could not be rendered.",
+          details: `Item type: ${itemType.slice(0, 200)}`,
+          correlation: eventCorrelation(
+            "thread/read",
+            null,
+            threadId,
+            turn.id,
+            itemId,
+          ),
+        }),
+      },
+    ];
+  });
+  if (turn.error?.message) {
+    items.push({
+      type: "activity",
+      activity: normalizeNoticeActivity({
+        level: "error",
+        message: turn.error.message,
+        details: turn.error.additionalDetails,
+        willRetry: false,
+        correlation: eventCorrelation(
+          "thread/read",
+          null,
+          threadId,
+          turn.id,
+          null,
+        ),
+      }),
+    });
+  }
+  items.push({
+    type: "activity",
+    activity: turnSummaryActivity(
+      turn,
+      eventCorrelation("thread/read", null, threadId, turn.id, null),
+    ),
+  });
+  return {
+    id: turn.id,
+    status: turn.status,
+    startedAt: turn.startedAt,
+    completedAt: turn.completedAt,
+    durationMs: turn.durationMs,
+    items,
+  };
+}
+
+export function normalizeCodexThreadReadResponse(
+  response: CodexThreadReadResponse,
+  cwd: string,
+): AgentThreadSync {
+  const turns = response.thread.turns.map((turn) =>
+    normalizeCodexThreadTurn(turn, cwd, response.thread.id),
+  );
+  const status = turns.some((turn) => turn.status === "inProgress")
+    ? "running"
+    : turns.some((turn) => turn.status === "failed")
+      ? "failed"
+      : "idle";
+  return agentThreadSyncSchema.parse({
+    threadId: response.thread.id,
+    status,
+    turns,
   });
 }
 
@@ -2422,9 +2527,9 @@ export class CodexAppServer implements CodexRuntime {
     const response = (await this.request("thread/read", {
       threadId: options.threadId,
       includeTurns: true,
-    })) as ThreadReadResponse;
+    })) as CodexThreadReadResponse;
     const baseline = this.#externalTurnBaselines.get(options.threadId);
-    const turns = response.thread.turns
+    const sourceTurns = response.thread.turns
       .filter((turn) => (baseline ? !baseline.has(turn.id) : false))
       .filter(
         (turn) =>
@@ -2433,21 +2538,15 @@ export class CodexAppServer implements CodexRuntime {
               item.type === "userMessage" &&
               item.clientId?.startsWith("cantrip:"),
           ),
-      )
-      .map((turn) => this.syncTurn(turn, options.cwd, response.thread.id));
-    for (const turn of turns) {
+      );
+    const sync = normalizeCodexThreadReadResponse(
+      { thread: { ...response.thread, turns: sourceTurns } },
+      options.cwd,
+    );
+    for (const turn of sync.turns) {
       if (turn.status !== "inProgress") baseline?.add(turn.id);
     }
-    const status = turns.some((turn) => turn.status === "inProgress")
-      ? "running"
-      : turns.some((turn) => turn.status === "failed")
-        ? "failed"
-        : "idle";
-    return agentThreadSyncSchema.parse({
-      threadId: response.thread.id,
-      status,
-      turns,
-    });
+    return sync;
   }
 
   async prepareExternalSync(
@@ -2457,12 +2556,12 @@ export class CodexAppServer implements CodexRuntime {
     > & { threadId: string },
   ): Promise<void> {
     await this.ensureStarted(options.model, options.provider);
-    let response: ThreadReadResponse;
+    let response: CodexThreadReadResponse;
     try {
       response = (await this.request("thread/read", {
         threadId: options.threadId,
         includeTurns: true,
-      })) as ThreadReadResponse;
+      })) as CodexThreadReadResponse;
     } catch (error) {
       if (!/not materialized yet/i.test(String(error))) throw error;
       this.#externalTurnBaselines.set(options.threadId, new Set());
@@ -3248,67 +3347,6 @@ export class CodexAppServer implements CodexRuntime {
       this.#collaborationModes.set(threadId, mode);
     }
     return collaborationMode;
-  }
-
-  private syncTurn(turn: ThreadTurn, cwd: string, threadId: string) {
-    const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
-      if (item.type === "userMessage") {
-        const text = item.content
-          .flatMap((content) =>
-            content.type === "text" && content.text ? [content.text] : [],
-          )
-          .join("\n\n")
-          .trim();
-        return text ? [{ type: "userMessage", id: item.id, text }] : [];
-      }
-      if (item.type === "agentMessage") {
-        const message = normalizeAgentMessage(
-          item,
-          eventCorrelation("thread/read", null, threadId, turn.id, item.id),
-        );
-        return message ? [{ type: "agentMessage", ...message }] : [];
-      }
-      const activity = normalizeCodexThreadItem(
-        item,
-        cwd,
-        turn.status === "inProgress" ? "started" : "completed",
-        eventCorrelation("thread/read", null, threadId, turn.id, item.id),
-      );
-      return activity ? [{ type: "activity", activity }] : [];
-    });
-    if (turn.error?.message) {
-      items.push({
-        type: "activity",
-        activity: normalizeNoticeActivity({
-          level: "error",
-          message: turn.error.message,
-          details: turn.error.additionalDetails,
-          willRetry: false,
-          correlation: eventCorrelation(
-            "thread/read",
-            null,
-            threadId,
-            turn.id,
-            null,
-          ),
-        }),
-      });
-    }
-    items.push({
-      type: "activity",
-      activity: turnSummaryActivity(
-        turn,
-        eventCorrelation("thread/read", null, threadId, turn.id, null),
-      ),
-    });
-    return {
-      id: turn.id,
-      status: turn.status,
-      startedAt: turn.startedAt,
-      completedAt: turn.completedAt,
-      durationMs: turn.durationMs,
-      items,
-    };
   }
 
   private async start(

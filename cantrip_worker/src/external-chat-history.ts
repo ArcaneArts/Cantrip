@@ -7,14 +7,20 @@ import { promisify } from "node:util";
 
 import {
   externalChatDiscoveryWorkerResultSchema,
+  externalChatReadWorkerResultSchema,
   externalChatSourceSchema,
   type ExternalChatDiscoveryTarget,
   type ExternalChatDiscoveryWorkerResult,
+  type ExternalChatReadWorkerResult,
   type ExternalChatSource,
   type ExternalChatThreadMatch,
   type ExternalChatThreadMetadata,
 } from "@cantrip/protocol";
 
+import {
+  normalizeCodexThreadReadResponse,
+  type CodexThreadReadResponse,
+} from "./codex/app-server.js";
 import {
   discoverCodexVersion,
   isTestedCodexVersion,
@@ -79,6 +85,11 @@ export interface ExternalChatHistorySource {
     includeArchived: boolean;
     targets: ExternalChatDiscoveryTarget[];
   }): Promise<ExternalChatSource[]>;
+  read(input: {
+    sourceId: string;
+    sourceThreadId: string;
+    targets: ExternalChatDiscoveryTarget[];
+  }): Promise<ExternalChatReadWorkerResult>;
 }
 
 interface CodexExternalChatHistoryOptions {
@@ -529,6 +540,97 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
     );
   }
 
+  async read(input: {
+    sourceId: string;
+    sourceThreadId: string;
+    targets: ExternalChatDiscoveryTarget[];
+  }): Promise<ExternalChatReadWorkerResult> {
+    if (this.#platform !== "darwin" && this.#platform !== "win32") {
+      throw new Error(
+        "External Codex history is not supported on this platform.",
+      );
+    }
+    const runtimeVersion = await this.#readRuntimeVersion(this.#binary);
+    const semantic = runtimeVersion
+      ? parseCodexSemanticVersion(runtimeVersion)
+      : null;
+    if (!semantic || !isTestedCodexVersion(semantic)) {
+      throw new Error(
+        "The bundled Codex reader is outside Cantrip's tested range.",
+      );
+    }
+    const homes = sourceHomes(
+      this.#environment,
+      this.#homeDirectory,
+      this.#managedDataDirectory,
+      this.#platform,
+    );
+    let selected: CandidateHome | null = null;
+    for (const home of homes) {
+      const canonicalHome = await this.#resolvePath(home.path);
+      if (sourceFingerprint(canonicalHome, this.#platform) === input.sourceId) {
+        selected = home;
+        break;
+      }
+    }
+    if (!selected || !(await this.#pathExists(selected.path))) {
+      throw new Error("The selected Codex history source was not found.");
+    }
+    const targets = await matchedTargets(
+      input.targets,
+      this.#platform,
+      this.#resolvePath,
+      this.#resolveGitOrigin,
+    );
+    const client = this.#createClient(selected.path);
+    try {
+      await initializeCodexRpcClient(client, {
+        name: "cantrip_external_history_reader",
+        title: "Cantrip External History Reader",
+        version: "1.0.0",
+        experimentalApi: true,
+      });
+      const response = await client.request("thread/read", {
+        threadId: input.sourceThreadId,
+        includeTurns: true,
+      });
+      if (response.error) throw new Error(response.error.message);
+      const result = objectValue(response.result);
+      const rawThread = objectValue(result?.thread);
+      const sourceThread = parseSourceThread(rawThread);
+      if (
+        !sourceThread ||
+        sourceThread.id !== input.sourceThreadId ||
+        !Array.isArray(rawThread?.turns)
+      ) {
+        throw new Error("Codex returned an invalid thread/read response.");
+      }
+      const match = matchThread(sourceThread, targets, this.#platform);
+      const metadata = match ? toMetadata(sourceThread, false, match) : null;
+      if (!metadata) {
+        throw new Error(
+          "The selected Codex chat no longer belongs to this project or is not safe to import.",
+        );
+      }
+      const canonicalHome = await this.#resolvePath(selected.path);
+      const sync = normalizeCodexThreadReadResponse(
+        { thread: rawThread } as unknown as CodexThreadReadResponse,
+        sourceThread.cwd,
+      );
+      const { archived: _archived, ...transcriptMetadata } = metadata;
+      return externalChatReadWorkerResultSchema.parse({
+        transcript: {
+          sourceId: sourceFingerprint(canonicalHome, this.#platform),
+          sourceThreadId: sourceThread.id,
+          metadata: transcriptMetadata,
+          sync,
+        },
+      });
+    } finally {
+      client.close();
+    }
+  }
+
   private async discoverHome(
     home: CandidateHome,
     targets: MatchedTarget[],
@@ -643,4 +745,16 @@ export async function discoverExternalChatHistory(
     sources,
     truncated: sources.some((candidate) => candidate.truncated),
   });
+}
+
+export async function readExternalChatHistory(
+  options: CodexExternalChatHistoryOptions,
+  input: {
+    sourceId: string;
+    sourceThreadId: string;
+    targets: ExternalChatDiscoveryTarget[];
+  },
+): Promise<ExternalChatReadWorkerResult> {
+  const source = new CodexExternalChatHistorySource(options);
+  return source.read(input);
 }
