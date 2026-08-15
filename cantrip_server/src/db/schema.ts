@@ -1360,41 +1360,48 @@ export const gitOperations = pgTable(
   ],
 );
 
-export const chats = pgTable("chats", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  position: integer("position").notNull().default(0),
-  status: text("status").notNull().default("idle"),
-  activeWorkerId: text("active_worker_id").references(() => workers.id, {
-    onDelete: "set null",
-  }),
-  activeWorktreeId: text("active_worktree_id")
-    .notNull()
-    .references(() => projectWorktrees.id, { onDelete: "restrict" }),
-  placementRevision: integer("placement_revision").notNull().default(1),
-  worktreeMode: text("worktree_mode").notNull().default("agent-managed"),
-  modelId: text("model_id").references(() => modelProfiles.id, {
-    onDelete: "restrict",
-  }),
-  reasoningEffort: text("reasoning_effort"),
-  permissionProfileId: text("permission_profile_id"),
-  automationPaused: boolean("automation_paused").notNull().default(false),
-  planMode: text("plan_mode").notNull().default("default"),
-  planExplanation: text("plan_explanation"),
-  planSteps: jsonb("plan_steps").$type<PlanStep[]>().notNull().default([]),
-  pendingPlanQuestion: jsonb(
-    "pending_plan_question",
-  ).$type<PendingPlanQuestion | null>(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const chats = pgTable(
+  "chats",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    position: integer("position").notNull().default(0),
+    status: text("status").notNull().default("idle"),
+    activeWorkerId: text("active_worker_id").references(() => workers.id, {
+      onDelete: "set null",
+    }),
+    activeWorktreeId: text("active_worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "restrict" }),
+    placementRevision: integer("placement_revision").notNull().default(1),
+    worktreeMode: text("worktree_mode").notNull().default("agent-managed"),
+    modelId: text("model_id").references(() => modelProfiles.id, {
+      onDelete: "restrict",
+    }),
+    reasoningEffort: text("reasoning_effort"),
+    permissionProfileId: text("permission_profile_id"),
+    automationPaused: boolean("automation_paused").notNull().default(false),
+    planMode: text("plan_mode").notNull().default("default"),
+    planExplanation: text("plan_explanation"),
+    planSteps: jsonb("plan_steps").$type<PlanStep[]>().notNull().default([]),
+    pendingPlanQuestion: jsonb(
+      "pending_plan_question",
+    ).$type<PendingPlanQuestion | null>(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("chats_project_archived_index").on(table.projectId, table.archivedAt),
+  ],
+);
 
 export const terminals = pgTable("terminals", {
   id: text("id").primaryKey(),

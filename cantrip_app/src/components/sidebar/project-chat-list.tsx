@@ -125,6 +125,8 @@ function SortableChat({
   worktreeStatus?: WorktreeStatusMap[string];
 }) {
   const actions = {
+    deleteDisabled:
+      chat.status === "running" || chat.status === "waiting-for-approval",
     onDelete,
     onDuplicate,
     onRename,
@@ -236,6 +238,7 @@ function StandardSidebarSurfaceTab({
 function GroupedSidebarTab({
   active,
   count,
+  deleteDisabled,
   editing,
   onClose,
   onDelete,
@@ -251,6 +254,7 @@ function GroupedSidebarTab({
 }: {
   active: boolean;
   count: number;
+  deleteDisabled?: boolean;
   editing: boolean;
   onClose(): void;
   onDelete(): void;
@@ -285,6 +289,7 @@ function GroupedSidebarTab({
             {count}
           </span>
           <SurfaceActionsMenu
+            deleteDisabled={deleteDisabled}
             title={title}
             onDelete={onDelete}
             onDuplicate={onDuplicate}
@@ -799,7 +804,13 @@ export function ProjectChatList({
     else setDeleteProjectViewTarget(tab.view);
   };
   const closeTabImmediately = (tab: SidebarTab) => {
-    if (tab.kind === "chat") onDeleteChat(tab.chat.id);
+    if (
+      tab.kind === "chat" &&
+      (tab.chat.status === "running" ||
+        tab.chat.status === "waiting-for-approval")
+    ) {
+      setDeleteTarget(tab.chat);
+    } else if (tab.kind === "chat") onDeleteChat(tab.chat.id);
     else if (tab.kind === "terminal") onDeleteTerminal(tab.terminal.id);
     else if (tab.kind === "explorer") onCloseExplorer(tab.explorer.id);
     else if (tab.kind === "browser") onDeleteBrowser(tab.browser.id);
@@ -898,6 +909,11 @@ export function ProjectChatList({
                               key={group.id}
                               active={group.id === selectedGroupId}
                               count={group.members.length}
+                              deleteDisabled={
+                                tab.kind === "chat" &&
+                                (tab.chat.status === "running" ||
+                                  tab.chat.status === "waiting-for-approval")
+                              }
                               editing={tabIsEditing(tab)}
                               onClose={() => closeTabImmediately(tab)}
                               onDelete={() => requestTabDelete(tab)}
@@ -1180,8 +1196,10 @@ export function ProjectChatList({
           <DialogHeader>
             <DialogTitle>Delete agent?</DialogTitle>
             <DialogDescription>
-              “{deleteTarget?.title}” and its conversation history will be
-              permanently deleted.
+              {deleteTarget?.status === "running" ||
+              deleteTarget?.status === "waiting-for-approval"
+                ? "Stop the active agent before removing this tab."
+                : `“${deleteTarget?.title ?? "This agent"}” will move to Archive for 90 days if it has conversation history. Empty agents are deleted immediately.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1190,12 +1208,16 @@ export function ProjectChatList({
             </DialogClose>
             <Button
               className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={
+                deleteTarget?.status === "running" ||
+                deleteTarget?.status === "waiting-for-approval"
+              }
               onClick={() => {
                 if (deleteTarget) onDeleteChat(deleteTarget.id);
                 setDeleteTarget(null);
               }}
             >
-              Delete
+              Remove
             </Button>
           </DialogFooter>
         </DialogContent>

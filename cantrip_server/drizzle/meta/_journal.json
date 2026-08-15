@@ -540,6 +540,13 @@
       "when": 1786806069060,
       "tag": "0076_needy_pet_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1786807015137,
+      "tag": "0077_wise_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

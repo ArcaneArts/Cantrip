@@ -14,6 +14,7 @@ import type {
   AgentInteractionRequestQuery,
   AgentInteractionResolutionCreate,
   AgentInteractionResponse,
+  ArchivedChatSummary,
   AccountLicenseWhitelistEntry,
   AccountSessionSummary,
   AuditEvent,
@@ -140,6 +141,7 @@ import {
   gte,
   inArray,
   isNull,
+  isNotNull,
   lt,
   lte,
   ne,
@@ -193,6 +195,7 @@ export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
 export const DEFAULT_MODEL_ID = "00000000-0000-0000-0000-000000000020";
 export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
+export const ARCHIVED_CHAT_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 const SERVER_ID_STATE_KEY = "server-id";
 export const WORKER_ONLINE_WINDOW_MS = 30_000;
 
@@ -1109,6 +1112,27 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     planMode: chat.planMode as ChatSummary["planMode"],
     hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
     automationPaused: chat.automationPaused,
+    createdAt: toISOString(chat.createdAt),
+    updatedAt: toISOString(chat.updatedAt),
+  };
+}
+
+function toArchivedChatSummary(
+  chat: typeof schema.chats.$inferSelect,
+  messageCount: number,
+): ArchivedChatSummary {
+  if (!chat.archivedAt) {
+    throw new Error("Cannot summarize an active chat as archived.");
+  }
+  return {
+    id: chat.id,
+    projectId: chat.projectId,
+    title: chat.title,
+    messageCount,
+    archivedAt: toISOString(chat.archivedAt),
+    expiresAt: new Date(
+      chat.archivedAt.getTime() + ARCHIVED_CHAT_RETENTION_MS,
+    ).toISOString(),
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
   };
@@ -8834,7 +8858,12 @@ export class ServerRepository {
       this.database
         .select({ position: schema.chats.position })
         .from(schema.chats)
-        .where(eq(schema.chats.projectId, projectId))
+        .where(
+          and(
+            eq(schema.chats.projectId, projectId),
+            isNull(schema.chats.archivedAt),
+          ),
+        )
         .orderBy(desc(schema.chats.position))
         .limit(1),
       this.database
@@ -8882,9 +8911,47 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.chats.projectId, projectId))
+      .where(
+        and(
+          eq(schema.chats.projectId, projectId),
+          isNull(schema.chats.archivedAt),
+        ),
+      )
       .orderBy(asc(schema.chats.position), asc(schema.chats.createdAt));
     return rows.map(({ chat }) => toChatSummary(chat));
+  }
+
+  async listArchivedChats(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ArchivedChatSummary[]> {
+    const rows = await this.database
+      .select({
+        chat: schema.chats,
+        messageCount: sql<number>`(
+          select count(*)::int
+          from ${schema.chatMessages}
+          where ${schema.chatMessages.chatId} = ${schema.chats.id}
+        )`,
+      })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chats.projectId, projectId),
+          isNotNull(schema.chats.archivedAt),
+        ),
+      )
+      .orderBy(desc(schema.chats.archivedAt));
+    return rows.map(({ chat, messageCount }) =>
+      toArchivedChatSummary(chat, messageCount),
+    );
   }
 
   async createChat(
@@ -9050,7 +9117,7 @@ export class ServerRepository {
         schema.projectWorktrees,
         eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
       )
-      .where(eq(schema.chats.id, chatId))
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     const row = rows[0];
     if (!row) return null;
@@ -10471,13 +10538,13 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.chats.id, chatId))
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!owned[0]) return null;
     const result = await this.database
       .update(schema.chats)
       .set({ title: input.title, updatedAt: new Date() })
-      .where(eq(schema.chats.id, chatId))
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .returning();
     return result[0] ? toChatSummary(result[0]) : null;
   }
@@ -10692,7 +10759,7 @@ export class ServerRepository {
   async deleteChat(
     ownerId: string,
     chatId: string,
-  ): Promise<boolean | "running"> {
+  ): Promise<false | "archived" | "deleted" | "running"> {
     const rows = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
@@ -10706,17 +10773,116 @@ export class ServerRepository {
       .where(eq(schema.chats.id, chatId))
       .limit(1);
     const chat = rows[0]?.chat;
-    if (!chat) return false;
+    if (!chat || chat.archivedAt) return false;
     if (chatIsExecuting(chat.status as ChatSummary["status"])) return "running";
-    await this.database.transaction(async (transaction) => {
+    return this.database.transaction(async (transaction) => {
+      const messages = await transaction
+        .select({ id: schema.chatMessages.id })
+        .from(schema.chatMessages)
+        .where(eq(schema.chatMessages.chatId, chatId))
+        .limit(1);
       await detachProjectTab(
         transaction,
         chat.projectId,
         projectTabKey("chat", chatId),
       );
+      if (messages[0]) {
+        await transaction
+          .update(schema.chats)
+          .set({
+            archivedAt: new Date(),
+            automationPaused: true,
+            status: "idle",
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.chats.id, chatId));
+        return "archived";
+      }
       await transaction.delete(schema.chats).where(eq(schema.chats.id, chatId));
+      return "deleted";
     });
-    return true;
+  }
+
+  async restoreArchivedChat(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatSummary | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(eq(schema.chats.id, chatId), isNotNull(schema.chats.archivedAt)),
+      )
+      .limit(1);
+    const chat = rows[0]?.chat;
+    if (!chat) return null;
+    const position = await this.nextProjectTabPosition(chat.projectId);
+    return this.database.transaction(async (transaction) => {
+      const restored = await transaction
+        .update(schema.chats)
+        .set({ archivedAt: null, position, updatedAt: new Date() })
+        .where(eq(schema.chats.id, chatId))
+        .returning();
+      await attachProjectTab(transaction, {
+        projectId: chat.projectId,
+        tabId: chatId,
+        tabKind: "chat",
+      });
+      return toChatSummary(firstOrThrow(restored, "restoring a chat"));
+    });
+  }
+
+  async permanentlyDeleteArchivedChat(
+    ownerId: string,
+    chatId: string,
+  ): Promise<boolean> {
+    const deleted = await this.database
+      .delete(schema.chats)
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          isNotNull(schema.chats.archivedAt),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning({ id: schema.chats.id });
+    return deleted.length > 0;
+  }
+
+  async purgeExpiredArchivedChats(
+    ownerId: string,
+    cutoff: Date,
+  ): Promise<number> {
+    const deleted = await this.database
+      .delete(schema.chats)
+      .where(
+        and(
+          isNotNull(schema.chats.archivedAt),
+          lte(schema.chats.archivedAt, cutoff),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning({ id: schema.chats.id });
+    return deleted.length;
   }
 
   async forkChat(
@@ -11135,7 +11301,7 @@ export class ServerRepository {
           eq(schema.chatExecutionLanes.state, "active"),
         ),
       )
-      .where(eq(schema.chats.id, chatId))
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     const row = rows[0];
     if (!row) {
@@ -11187,6 +11353,7 @@ export class ServerRepository {
         and(
           eq(schema.chatRuntimeSessions.workerId, workerId),
           eq(schema.chatRuntimeSessions.codexThreadId, threadId),
+          isNull(schema.chats.archivedAt),
         ),
       );
     const contexts = await Promise.all(
@@ -11588,7 +11755,7 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.chats.id, chatId))
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!owned[0]) return null;
     return this.database.transaction(async (transaction) => {
@@ -11952,7 +12119,7 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
-      .where(eq(schema.chats.id, chatId))
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
     if (!chat[0]) {
       return null;

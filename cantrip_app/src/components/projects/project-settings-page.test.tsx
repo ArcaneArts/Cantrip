@@ -242,6 +242,7 @@ describe("project settings", () => {
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("~/repos/cantrip");
     expect(markup).toContain("Workflows");
+    expect(markup).toContain("Archive");
     expect(markup).toContain("Worktrees");
     expect(markup).toContain("Replicas");
     expect(markup).toContain("Tunnels");

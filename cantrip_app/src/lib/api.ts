@@ -12,6 +12,8 @@ import {
   agentInteractionRequestListSchema,
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
+  archivedChatCleanupResultSchema,
+  archivedChatListSchema,
   browserListSchema,
   browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
@@ -2095,6 +2097,20 @@ export async function getChats(projectId: string) {
   );
 }
 
+export async function getArchivedChats(projectId: string) {
+  return archivedChatListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/archived-chats`,
+    ),
+  );
+}
+
+export async function cleanupArchivedChats() {
+  return archivedChatCleanupResultSchema.parse(
+    await post("/api/chats/archives/cleanup", {}),
+  );
+}
+
 export async function createChatRelocation(
   chatId: string,
   input: ChatRelocationCreate,
@@ -2742,6 +2758,18 @@ export async function updateChatWorktree(
 
 export async function deleteChat(chatId: string) {
   await request(`/api/chats/${encodeURIComponent(chatId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function restoreArchivedChat(chatId: string) {
+  return chatSummarySchema.parse(
+    await post(`/api/chats/${encodeURIComponent(chatId)}/restore`, {}),
+  );
+}
+
+export async function permanentlyDeleteArchivedChat(chatId: string) {
+  await request(`/api/chats/${encodeURIComponent(chatId)}/permanent`, {
     method: "DELETE",
   });
 }
