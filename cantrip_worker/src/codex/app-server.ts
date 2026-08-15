@@ -306,6 +306,20 @@ export function codexEndpointFromLine(line: string): string | null {
   return /^\s*listening on:\s+(ws:\/\/\S+)\s*$/.exec(plainText)?.[1] ?? null;
 }
 
+export function codexStartupExitMessage(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  stderrLines: readonly string[],
+): string {
+  const status = signal ?? `code ${String(code)}`;
+  const diagnostic = stderrLines
+    .map((line) => stripVTControlCharacters(line).trim())
+    .filter(Boolean)
+    .at(-1)
+    ?.slice(0, 2_000);
+  return `Codex app-server exited before listening (${status})${diagnostic ? `: ${diagnostic}` : "."}`;
+}
+
 export function codexWorkspaceContext(cwd: string): {
   cwd: string;
   runtimeWorkspaceRoots: string[];
@@ -3301,6 +3315,16 @@ export class CodexAppServer implements CodexRuntime {
 
     const stdoutLines = readline.createInterface({ input: child.stdout });
     const stderrLines = readline.createInterface({ input: child.stderr });
+    const startupStderr: string[] = [];
+    let startupComplete = false;
+    stderrLines.on("line", (line) => {
+      if (line.trimStart().startsWith("listening on:")) return;
+      process.stderr.write(`[codex] ${line}\n`);
+      if (!startupComplete) {
+        startupStderr.push(line);
+        if (startupStderr.length > 20) startupStderr.shift();
+      }
+    });
     const remoteUrl = await new Promise<string>((resolve, reject) => {
       const timeout = setTimeout(
         () =>
@@ -3314,6 +3338,7 @@ export class CodexAppServer implements CodexRuntime {
       const inspectLine = (line: string) => {
         const endpoint = codexEndpointFromLine(line);
         if (endpoint) {
+          startupComplete = true;
           clearTimeout(timeout);
           resolve(endpoint);
         }
@@ -3326,11 +3351,7 @@ export class CodexAppServer implements CodexRuntime {
       });
       child.once("exit", (code, signal) => {
         clearTimeout(timeout);
-        reject(
-          new Error(
-            `Codex app-server exited before listening (${signal ?? `code ${String(code)}`}).`,
-          ),
-        );
+        reject(new Error(codexStartupExitMessage(code, signal, startupStderr)));
       });
     });
     this.#remoteUrl = remoteUrl;
@@ -3379,11 +3400,6 @@ export class CodexAppServer implements CodexRuntime {
       this.#skillRoots = [];
       this.#child?.kill("SIGINT");
       this.#child = null;
-    });
-    stderrLines.on("line", (line) => {
-      if (!line.trimStart().startsWith("listening on:")) {
-        process.stderr.write(`[codex] ${line}\n`);
-      }
     });
     child.once("exit", (code, signal) => {
       this.handleExit(

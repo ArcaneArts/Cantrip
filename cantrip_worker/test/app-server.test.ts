@@ -11,6 +11,7 @@ import {
   codexResultForAgentInteraction,
   CodexAppServer,
   codexEndpointFromLine,
+  codexStartupExitMessage,
   codexMcpConfigOverride,
   codexModelProviderName,
   codexThreadPermissionParams,
@@ -722,6 +723,19 @@ describe("codexEndpointFromLine", () => {
         "  \u001b[2mlistening on:\u001b[0m \u001b[32mws://127.0.0.1:54321\u001b[0m",
       ),
     ).toBe("ws://127.0.0.1:54321");
+  });
+});
+
+describe("codexStartupExitMessage", () => {
+  it("surfaces the final startup diagnostic without terminal control codes", () => {
+    expect(
+      codexStartupExitMessage(1, null, [
+        "first warning",
+        "\u001b[31mmodel catalog is missing base instructions\u001b[0m",
+      ]),
+    ).toBe(
+      "Codex app-server exited before listening (code 1): model catalog is missing base instructions",
+    );
   });
 });
 

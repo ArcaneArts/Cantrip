@@ -12,6 +12,12 @@ type RuntimeProvider = Extract<
 
 const SUPPORTED_INPUT_MODALITIES = new Set(["text", "image", "audio"]);
 
+// Codex 0.147+ requires every externally supplied model to define its base
+// instructions. Cantrip adds its product-specific guidance separately as
+// developer instructions, so keep this model-agnostic and concise.
+export const CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS =
+  "You are Codex, a coding agent. Follow the developer and user instructions. Use the available tools to inspect and modify the repository, run commands, and verify your work. Continue until the user's request is complete.";
+
 export function codexCatalogForRuntimeModel(model: RuntimeModel) {
   const catalog = model.catalog;
   if (!catalog) return null;
@@ -44,6 +50,7 @@ export function codexCatalogForRuntimeModel(model: RuntimeModel) {
         slug: model.name,
         display_name: catalog.displayName,
         description: catalog.description,
+        base_instructions: CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
         default_reasoning_level: supportsReasoning
           ? catalog.defaultReasoningEffort
           : null,

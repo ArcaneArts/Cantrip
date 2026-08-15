@@ -6,6 +6,7 @@ import type { WorkerCommand } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
   codexCatalogForRuntimeModel,
   writeManagedCodexModelCatalog,
 } from "../src/codex/model-catalog.js";
@@ -58,6 +59,7 @@ describe("managed Codex model catalogs", () => {
         expect.objectContaining({
           slug: "gemma4:12b",
           display_name: "Gemma 4 12B",
+          base_instructions: CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
           context_window: 131_072,
           max_context_window: 131_072,
           auto_compact_token_limit: null,
