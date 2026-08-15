@@ -2,13 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   desktopBackgroundThrottlingPolicy,
+  desktopExplorerFileSearch,
+  desktopExplorerFileWindowLabel,
   desktopPopoutTitlebarLeftInset,
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
+  parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
+  type DesktopExplorerFileTarget,
   type DesktopPopoutGroupTarget,
 } from "./desktop-popout";
 
@@ -111,6 +115,57 @@ describe("desktop pop-out groups", () => {
 
     expect(onClosed).toHaveBeenCalledOnce();
     expect(unlisten).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("desktop Explorer file windows", () => {
+  const target: DesktopExplorerFileTarget = {
+    explorerId: "explorer/one",
+    path: "src/components/file name.tsx",
+    projectId: "project one",
+  };
+
+  it("round-trips the transient file target", () => {
+    expect(
+      parseDesktopExplorerFileTarget(desktopExplorerFileSearch(target)),
+    ).toEqual(target);
+  });
+
+  it("rejects incomplete file targets", () => {
+    expect(
+      parseDesktopExplorerFileTarget(
+        "?cantrip-explorer-file=src%2Findex.ts&project=project",
+      ),
+    ).toBeNull();
+    expect(
+      parseDesktopExplorerFileTarget(
+        "?cantrip-explorer-file=src%2Findex.ts&explorer=explorer",
+      ),
+    ).toBeNull();
+  });
+
+  it("uses one bounded stable label per Explorer path", () => {
+    const label = desktopExplorerFileWindowLabel(
+      "explorer with spaces",
+      "src/components/file.tsx",
+    );
+
+    expect(label).toMatch(/^cantrip-editor-explorer_with_spaces-[a-z0-9]+$/u);
+    expect(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/file.tsx",
+      ),
+    ).toBe(label);
+    expect(
+      desktopExplorerFileWindowLabel(
+        "explorer with spaces",
+        "src/components/other.tsx",
+      ),
+    ).not.toBe(label);
+    expect(
+      desktopExplorerFileWindowLabel("x".repeat(1_000), "file.ts").length,
+    ).toBeLessThan(100);
   });
 });
 

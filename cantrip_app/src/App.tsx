@@ -11,6 +11,7 @@ import type {
   CodeAppearance,
   CodeTabSummary,
   ExecutionTarget,
+  ExplorerEntry,
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
@@ -121,6 +122,7 @@ import {
   GitHistoryView,
   type GitHistoryHeaderState,
 } from "@/components/git/git-history";
+import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import type {
   ExplorerHeaderState,
   ExplorerLifecycleActions,
@@ -276,7 +278,9 @@ import {
   focusDesktopPopoutGroup,
   isDesktopRuntime,
   isMacosDesktopRuntime,
+  openDesktopExplorerFile,
   openDesktopPopoutGroup,
+  parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
   updateDesktopWindowTheme,
@@ -2445,17 +2449,26 @@ export function App() {
         : null,
     [desktopRuntime],
   );
-  const isPopout = popoutTarget !== null;
+  const explorerFileTarget = useMemo(
+    () =>
+      desktopRuntime
+        ? parseDesktopExplorerFileTarget(window.location.search)
+        : null,
+    [desktopRuntime],
+  );
+  const popoutProjectId =
+    popoutTarget?.projectId ?? explorerFileTarget?.projectId ?? null;
+  const isPopout = popoutTarget !== null || explorerFileTarget !== null;
   const compactLayout = useCompactLayout();
   const compactShell = compactLayout && !isPopout;
   const showContentTitlebar = !isPopout || desktopRuntime;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    popoutTarget?.projectId ?? null,
+    popoutProjectId,
   );
   const [createdRepositoryOnboarding, setCreatedRepositoryOnboarding] =
     useState<{ openInitialChat: boolean; projectId: string } | null>(null);
   const [workspaceSelection, setWorkspaceSelection] = useState(() =>
-    emptyWorkspaceSelection(popoutTarget?.projectId ?? null),
+    emptyWorkspaceSelection(popoutProjectId),
   );
   const [pendingSurfaceSelection, setPendingSurfaceSelection] = useState<{
     groupId?: string;
@@ -2592,6 +2605,20 @@ export function App() {
       );
     },
     [queryClient],
+  );
+
+  const openExplorerFileWindow = useCallback(
+    async (explorer: ExplorerSummary, entry: ExplorerEntry) => {
+      await openDesktopExplorerFile(
+        {
+          explorerId: explorer.id,
+          path: entry.path,
+          projectId: explorer.projectId,
+        },
+        entry.name,
+      );
+    },
+    [],
   );
 
   const resetMobileBottomTabs = () => {
@@ -4121,6 +4148,7 @@ export function App() {
 
   useEffect(() => {
     if (!projects.data) return;
+    if (explorerFileTarget) return;
     if (showServerAdmin) return;
     const action = projectSelectionAction({
       compact: compactShell,
@@ -4145,6 +4173,7 @@ export function App() {
     setChatConsoleChatId(null);
   }, [
     compactShell,
+    explorerFileTarget,
     projects.data,
     selectedProjectId,
     showServerAdmin,
@@ -4727,6 +4756,29 @@ export function App() {
     !(compactShell && mobileTabGridOpen) &&
     !groupOwnedElsewhere,
   );
+  if (explorerFileTarget) {
+    const explorer =
+      explorers.data?.find(({ id }) => id === explorerFileTarget.explorerId) ??
+      null;
+    const explorerError = explorers.isError
+      ? errorText(explorers.error)
+      : explorers.isSuccess && !explorer
+        ? "This Explorer is no longer available."
+        : null;
+    return (
+      <ExplorerFilePopout
+        error={explorerError}
+        explorer={explorer}
+        gitStatus={explorer ? worktreeStatuses[explorer.worktreeId] : undefined}
+        loading={explorers.isLoading}
+        overlayTitlebar={overlayTitlebar}
+        path={explorerFileTarget.path}
+        projectTitle={
+          selectedProject?.github?.nameWithOwner ?? selectedProject?.name
+        }
+      />
+    );
+  }
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
@@ -5409,6 +5461,7 @@ export function App() {
             onChanged={handleExplorerChanged}
             onHeaderChange={setExplorerHeader}
             onLifecycleChange={handleExplorerLifecycleChange}
+            onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
           />
         </Suspense>
 

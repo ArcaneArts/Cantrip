@@ -24,6 +24,7 @@ import {
 
 import { Markdown } from "@/components/chat/markdown";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
+import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
@@ -150,6 +151,11 @@ export interface ExplorerLifecycleActions {
   save(): Promise<boolean>;
 }
 
+export interface TransientExplorerFile {
+  path: string;
+  close(): void;
+}
+
 export function ExplorerView({
   active = true,
   explorer,
@@ -157,6 +163,8 @@ export function ExplorerView({
   onChanged,
   onHeaderChange,
   onLifecycleChange,
+  onOpenFile,
+  transientFile,
 }: {
   active?: boolean;
   explorer: ExplorerSummary;
@@ -167,9 +175,26 @@ export function ExplorerView({
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
   ): void;
+  onOpenFile?(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ): void | Promise<void>;
+  transientFile?: TransientExplorerFile;
 }) {
-  const [selectedPath, setSelectedPath] = useState(explorer.selectedPath);
-  const [fileMode, setFileModeState] = useState(explorer.fileMode);
+  const [selectedPath, setSelectedPath] = useState(() =>
+    explorerSurfaceSelectedPath({
+      openFilesExternally: Boolean(onOpenFile),
+      persistedPath: explorer.selectedPath,
+      transientPath: transientFile?.path,
+    }),
+  );
+  const [fileMode, setFileModeState] = useState<ExplorerFileMode>(() =>
+    transientFile
+      ? monacoLanguageForPath(transientFile.path)
+        ? "edit"
+        : "preview"
+      : explorer.fileMode,
+  );
   const [draft, setDraft] = useState("");
   const [baselineContent, setBaselineContent] = useState("");
   const [draftVersion, setDraftVersion] = useState<string | null>(null);
@@ -255,6 +280,7 @@ export function ExplorerView({
   const persistViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
       applyViewState(next);
+      if (transientFile) return Promise.resolve(true);
       if (mountedRef.current) setViewStatePending((count) => count + 1);
       const operation = viewStateQueueRef.current.then(async () => {
         try {
@@ -282,7 +308,7 @@ export function ExplorerView({
       viewStateQueueRef.current = operation;
       return operation;
     },
-    [applyViewState, explorer.id, onChanged],
+    [applyViewState, explorer.id, onChanged, transientFile],
   );
 
   const loadFile = useCallback(
@@ -362,13 +388,18 @@ export function ExplorerView({
     async (persisted: ExplorerSummary) => {
       await viewStateQueueRef.current;
       worktreeIdRef.current = persisted.worktreeId;
+      const nextSelectedPath = explorerSurfaceSelectedPath({
+        openFilesExternally: Boolean(onOpenFile),
+        persistedPath: persisted.selectedPath,
+        transientPath: transientFile?.path,
+      });
       applyViewState({
-        selectedPath: persisted.selectedPath,
-        fileMode: persisted.fileMode,
+        selectedPath: nextSelectedPath,
+        fileMode: transientFile ? fileModeRef.current : persisted.fileMode,
       });
       onChanged?.(persisted);
-      if (persisted.selectedPath) {
-        await loadFile(persisted.selectedPath).catch(() => undefined);
+      if (nextSelectedPath) {
+        await loadFile(nextSelectedPath).catch(() => undefined);
       } else {
         setDraft("");
         setBaselineContent("");
@@ -376,10 +407,20 @@ export function ExplorerView({
         resetSaveFile();
       }
     },
-    [applyViewState, loadFile, onChanged, resetSaveFile],
+    [
+      applyViewState,
+      loadFile,
+      onChanged,
+      onOpenFile,
+      resetSaveFile,
+      transientFile,
+    ],
   );
 
   useEffect(() => {
+    // Desktop Explorer surfaces remain file browsers. Their editor windows are
+    // transient and must not be pulled back inline by legacy saved view state.
+    if (transientFile || onOpenFile) return;
     const worktreeChanged = worktreeIdRef.current !== explorer.worktreeId;
     const viewStateChanged =
       explorer.selectedPath !== selectedPathRef.current ||
@@ -396,7 +437,9 @@ export function ExplorerView({
     explorer.fileMode,
     explorer.selectedPath,
     explorer.worktreeId,
+    onOpenFile,
     reconcile,
+    transientFile,
     viewStatePending,
   ]);
 
@@ -439,12 +482,16 @@ export function ExplorerView({
     ) {
       return;
     }
+    if (transientFile) {
+      transientFile.close();
+      return;
+    }
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
     resetSaveFile();
     void persistViewState({ selectedPath: null, fileMode: "preview" });
-  }, [persistViewState, resetSaveFile]);
+  }, [persistViewState, resetSaveFile, transientFile]);
 
   const changeFileMode = useCallback(
     (mode: ExplorerFileMode) => {
@@ -524,6 +571,20 @@ export function ExplorerView({
 
   const openEntry = (entry: ExplorerEntry) => {
     if (entry.kind !== "file" || !entry.viewable) return;
+    if (onOpenFile) {
+      setViewStateError(null);
+      void Promise.resolve(onOpenFile(explorer, entry)).catch(
+        (error: unknown) => {
+          if (!mountedRef.current) return;
+          setViewStateError(
+            error instanceof Error
+              ? error.message
+              : "The file editor window could not be opened.",
+          );
+        },
+      );
+      return;
+    }
     setDraft("");
     setBaselineContent("");
     setDraftVersion(null);
@@ -605,11 +666,18 @@ export function ExplorerView({
           </div>
         </div>
       ) : (
-        <ExplorerFileBrowser
-          explorer={explorer}
-          gitStatus={gitStatus}
-          onOpenFile={openEntry}
-        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {viewStateError ? (
+            <div className="shrink-0 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
+              {viewStateError}
+            </div>
+          ) : null}
+          <ExplorerFileBrowser
+            explorer={explorer}
+            gitStatus={gitStatus}
+            onOpenFile={openEntry}
+          />
+        </div>
       )}
     </div>
   );

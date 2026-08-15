@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "popouts",
-  "description": "Capabilities for project tabs opened in their own desktop window",
-  "windows": ["cantrip-group-*"],
+  "description": "Capabilities for project tabs and transient file editors opened in their own desktop window",
+  "windows": ["cantrip-group-*", "cantrip-editor-*"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview",

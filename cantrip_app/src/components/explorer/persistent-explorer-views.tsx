@@ -1,4 +1,8 @@
-import type { ExplorerSummary, GitStatus } from "@cantrip/protocol";
+import type {
+  ExplorerEntry,
+  ExplorerSummary,
+  GitStatus,
+} from "@cantrip/protocol";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -36,6 +40,7 @@ export function PersistentExplorerViews({
   onChanged,
   onHeaderChange,
   onLifecycleChange,
+  onOpenFile,
 }: {
   activeExplorer: ExplorerSummary | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
@@ -45,6 +50,10 @@ export function PersistentExplorerViews({
     explorerId: string,
     actions: ExplorerLifecycleActions | null,
   ): void;
+  onOpenFile?(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+  ): void | Promise<void>;
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -94,6 +103,7 @@ export function PersistentExplorerViews({
         onChanged={onChanged}
         onHeaderChange={active ? onHeaderChange : undefined}
         onLifecycleChange={handleLifecycleChange}
+        onOpenFile={onOpenFile}
       />
     );
   });

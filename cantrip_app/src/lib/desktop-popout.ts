@@ -7,7 +7,14 @@ export type DesktopPopoutGroupTarget = {
   projectId: string;
 };
 
+export type DesktopExplorerFileTarget = {
+  explorerId: string;
+  path: string;
+  projectId: string;
+};
+
 const groupParameter = "cantrip-popout-group";
+const explorerFileParameter = "cantrip-explorer-file";
 const noDesktopPopoutListener = () => undefined;
 
 export type DesktopPopoutWindowLifecycle = {
@@ -43,8 +50,50 @@ export function desktopPopoutGroupSearch(
   return `?${parameters.toString()}`;
 }
 
+export function parseDesktopExplorerFileTarget(
+  search: string,
+): DesktopExplorerFileTarget | null {
+  const parameters = new URLSearchParams(search);
+  const explorerId = parameters.get("explorer");
+  const path = parameters.get(explorerFileParameter);
+  const projectId = parameters.get("project");
+  return explorerId && path && projectId
+    ? { explorerId, path, projectId }
+    : null;
+}
+
+export function desktopExplorerFileSearch(
+  target: DesktopExplorerFileTarget,
+): string {
+  const parameters = new URLSearchParams({
+    [explorerFileParameter]: target.path,
+    explorer: target.explorerId,
+    project: target.projectId,
+  });
+  return `?${parameters.toString()}`;
+}
+
 export function desktopPopoutGroupWindowLabel(groupId: string): string {
   return `cantrip-group-${groupId.replace(/[^A-Za-z0-9-/:_]/g, "_")}`;
+}
+
+function stableLabelHash(value: string): string {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function desktopExplorerFileWindowLabel(
+  explorerId: string,
+  path: string,
+): string {
+  const safeExplorerId = explorerId
+    .replace(/[^A-Za-z0-9-/:_]/g, "_")
+    .slice(0, 64);
+  return `cantrip-editor-${safeExplorerId}-${stableLabelHash(path)}`;
 }
 
 export function isDesktopRuntime(): boolean {
@@ -94,11 +143,9 @@ export async function updateDesktopWindowTheme(
   await getCurrentWebviewWindow().setTheme(theme);
 }
 
-async function focusWindow(groupId: string): Promise<boolean> {
+async function focusWindow(label: string): Promise<boolean> {
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-  const existing = await WebviewWindow.getByLabel(
-    desktopPopoutGroupWindowLabel(groupId),
-  );
+  const existing = await WebviewWindow.getByLabel(label);
   if (!existing) return false;
   await existing.show();
   await existing.unminimize();
@@ -109,7 +156,9 @@ async function focusWindow(groupId: string): Promise<boolean> {
 export async function focusDesktopPopoutGroup(
   groupId: string,
 ): Promise<boolean> {
-  return isDesktopRuntime() ? focusWindow(groupId) : false;
+  return isDesktopRuntime()
+    ? focusWindow(desktopPopoutGroupWindowLabel(groupId))
+    : false;
 }
 
 export async function observeDesktopPopoutClosure(
@@ -176,13 +225,37 @@ export async function openDesktopPopoutGroup(
   title: string,
   position?: { x: number; y: number },
 ): Promise<"created" | "focused"> {
+  return openDesktopWindow(
+    desktopPopoutGroupWindowLabel(target.groupId),
+    desktopPopoutGroupSearch(target),
+    title,
+    position,
+  );
+}
+
+export async function openDesktopExplorerFile(
+  target: DesktopExplorerFileTarget,
+  title: string,
+): Promise<"created" | "focused"> {
+  return openDesktopWindow(
+    desktopExplorerFileWindowLabel(target.explorerId, target.path),
+    desktopExplorerFileSearch(target),
+    title,
+  );
+}
+
+async function openDesktopWindow(
+  label: string,
+  search: string,
+  title: string,
+  position?: { x: number; y: number },
+): Promise<"created" | "focused"> {
   if (!isDesktopRuntime()) {
     throw new Error("Pop-out windows are only available in the desktop app.");
   }
-  if (await focusWindow(target.groupId)) return "focused";
+  if (await focusWindow(label)) return "focused";
 
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
-  const label = desktopPopoutGroupWindowLabel(target.groupId);
   const path = window.location.pathname || "/";
   const macos = isMacosDesktopRuntime();
   const popout = new WebviewWindow(label, {
@@ -197,7 +270,7 @@ export async function openDesktopPopoutGroup(
     title: `${title} — Cantrip`,
     titleBarStyle: macos ? "overlay" : undefined,
     transparent: macos,
-    url: `${path}${desktopPopoutGroupSearch(target)}`,
+    url: `${path}${search}`,
     width: 1100,
   });
 
@@ -228,7 +301,7 @@ export async function openDesktopPopoutGroup(
     // Two callers may race after both observe no owner. The stable label lets
     // the loser recover by focusing the window that won instead of surfacing a
     // duplicate-window error.
-    if (await focusWindow(target.groupId)) return "focused";
+    if (await focusWindow(label)) return "focused";
     throw error;
   }
 }
