@@ -1410,6 +1410,7 @@ export const terminals = pgTable("terminals", {
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  directoryPath: text("directory_path").notNull().default(""),
   position: integer("position").notNull().default(0),
   status: text("status").notNull().default("idle"),
   activeWorkerId: text("active_worker_id")

@@ -601,9 +601,16 @@ describe("Cantrip protocol", () => {
     expect(
       terminalCreateSchema.safeParse({
         title: "Placed terminal",
+        directoryPath: "packages/app/src",
         target,
       }).success,
     ).toBe(true);
+    expect(
+      terminalCreateSchema.safeParse({
+        directoryPath: "../outside",
+        target,
+      }).success,
+    ).toBe(false);
     expect(
       chatCreateSchema.safeParse({
         worktreeId: "legacy-worktree",

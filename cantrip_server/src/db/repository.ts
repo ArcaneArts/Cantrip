@@ -190,6 +190,15 @@ import {
   ProjectTabLayoutRepository,
 } from "./tab-layouts.js";
 
+function terminalWorkingDirectory(
+  sourceRoot: string,
+  directoryPath: string,
+): string {
+  if (!directoryPath) return sourceRoot;
+  const root = sourceRoot.replace(/[\\/]+$/u, "") || sourceRoot;
+  return `${root}/${directoryPath.replaceAll("\\", "/")}`;
+}
+
 export const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const DEFAULT_OLLAMA_PROVIDER_ID =
   "00000000-0000-0000-0000-000000000010";
@@ -9084,6 +9093,7 @@ export class ServerRepository {
           id: randomUUID(),
           projectId,
           title: input.title,
+          directoryPath: input.directoryPath ?? "",
           position,
           activeWorkerId: workerId,
           worktreeId,
@@ -9204,7 +9214,10 @@ export class ServerRepository {
       );
     return rows.map(({ terminal, worktree }) => ({
       terminalId: terminal.id,
-      cwd: worktree.absolutePath,
+      cwd: terminalWorkingDirectory(
+        worktree.absolutePath,
+        terminal.directoryPath,
+      ),
       command: terminal.serviceCommand,
     }));
   }
@@ -10503,7 +10516,10 @@ export class ServerRepository {
           projectId: row.terminal.projectId,
           workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
-          cwd: row.worktree.absolutePath,
+          cwd: terminalWorkingDirectory(
+            row.worktree.absolutePath,
+            row.terminal.directoryPath,
+          ),
           linkedChatId: row.terminal.linkedChatId,
           service: {
             enabled: row.terminal.serviceEnabled,

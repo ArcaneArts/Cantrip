@@ -1,0 +1,1 @@
+ALTER TABLE "terminals" ADD COLUMN "directory_path" text DEFAULT '' NOT NULL;

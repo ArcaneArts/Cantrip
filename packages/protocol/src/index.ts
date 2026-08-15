@@ -2714,9 +2714,23 @@ export const chatPermissionProfileUpdateSchema = z.object({
   id: permissionProfileIdSchema,
 });
 
+export const repositoryRelativePathSchema = z
+  .string()
+  .min(1)
+  .max(4_096)
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !/^[A-Za-z]:[\\/]/u.test(value) &&
+      !value.split(/[\\/]/u).includes("..") &&
+      !value.includes("\0"),
+    "Expected a safe repository-relative path.",
+  );
+
 export const terminalCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(200).default("Terminal"),
+    directoryPath: repositoryRelativePathSchema.optional(),
     worktreeId: z.string().min(1).optional(),
     tabGroupId: z.string().min(1).optional(),
     target: executionTargetSchema.optional(),
@@ -5174,18 +5188,7 @@ export const gitAgentDraftResultSchema = z.object({
   generatedAt: z.iso.datetime(),
 });
 
-export const gitRelativePathSchema = z
-  .string()
-  .min(1)
-  .max(4_096)
-  .refine(
-    (value) =>
-      !value.startsWith("/") &&
-      !/^[A-Za-z]:[\\/]/u.test(value) &&
-      !value.split(/[\\/]/u).includes("..") &&
-      !value.includes("\0"),
-    "Expected a safe repository-relative path.",
-  );
+export const gitRelativePathSchema = repositoryRelativePathSchema;
 
 export const gitCommitFileSchema = z.object({
   path: gitRelativePathSchema,
