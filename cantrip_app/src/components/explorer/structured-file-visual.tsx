@@ -14,7 +14,10 @@ import {
   type KeyboardEvent,
 } from "react";
 
-import type { StructuredFileFormat } from "./explorer-file-language";
+import type {
+  StructuredFileFormat,
+  VisualFileFormat,
+} from "./explorer-file-language";
 import {
   coerceStructuredScalar,
   countStructuredScalarValues,
@@ -31,6 +34,7 @@ import {
   type StructuredScalar,
   type StructuredValue,
 } from "./structured-file";
+import { TabularFileVisual } from "./tabular-file-visual";
 
 function displayKey(key: string | number): string {
   return typeof key === "number" ? `[${key}]` : key;
@@ -285,7 +289,7 @@ function StructuredRows({
   });
 }
 
-export function StructuredFileVisual({
+function NestedStructuredFileVisual({
   content,
   format,
   onChange,
@@ -476,5 +480,41 @@ export function StructuredFileVisual({
         </div>
       </div>
     </div>
+  );
+}
+
+export function StructuredFileVisual({
+  content,
+  format,
+  onChange,
+  onSave,
+  path,
+}: {
+  content: string;
+  format: VisualFileFormat;
+  onChange(content: string): void;
+  onSave(): void;
+  path: string;
+}) {
+  if (format === "csv" || format === "env" || format === "properties") {
+    return (
+      <TabularFileVisual
+        content={content}
+        format={format}
+        onChange={onChange}
+        onSave={onSave}
+        path={path}
+      />
+    );
+  }
+
+  return (
+    <NestedStructuredFileVisual
+      content={content}
+      format={format}
+      onChange={onChange}
+      onSave={onSave}
+      path={path}
+    />
   );
 }
