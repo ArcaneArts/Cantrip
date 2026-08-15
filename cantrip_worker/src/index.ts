@@ -32,6 +32,7 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
+import { GrokAuthClient } from "./grok-auth-client.js";
 import { workerLogger } from "./logger.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
@@ -214,6 +215,7 @@ async function start(): Promise<void> {
   );
   const github = new GithubClient(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
+  const grokAuthClients = new Map<string, GrokAuthClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const pausedChats = new Set<string>();
@@ -254,6 +256,18 @@ async function start(): Promise<void> {
     return client;
   };
 
+  const grokFor = (credentialHomeKey: string) => {
+    let client = grokAuthClients.get(credentialHomeKey);
+    if (!client) {
+      client = new GrokAuthClient(accountHomeFor(credentialHomeKey));
+      grokAuthClients.set(credentialHomeKey, client);
+    }
+    return client;
+  };
+
+  const accountBackedProvider = (kind: string) =>
+    kind === "chatgpt" || kind === "grok";
+
   const runtimeFor = (command: {
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
     provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
@@ -267,12 +281,22 @@ async function start(): Promise<void> {
       runtime = new CodexAppServer(
         config.codexBinary,
         path.join(config.dataDirectory, "codex-runtimes", directoryName),
-        command.provider.kind === "chatgpt"
+        accountBackedProvider(command.provider.kind)
           ? accountHomeFor(
               command.provider.credentialHomeKey ?? command.provider.id,
             )
           : codexHome,
         codexRuntime,
+        undefined,
+        async (provider) =>
+          provider.kind === "grok"
+            ? {
+                ...provider,
+                baseUrl: await grokFor(
+                  provider.credentialHomeKey ?? provider.id,
+                ).localProxyBaseUrl(),
+              }
+            : provider,
       );
       codexRuntimes.set(runtimeId, runtime);
     }
@@ -335,16 +359,30 @@ async function start(): Promise<void> {
         return catalogRuntimeFor(
           command.provider.credentialHomeKey,
         ).listChatGptModels(command.provider);
+      case "model.grok.catalog":
+        return grokFor(command.provider.credentialHomeKey).listModels();
       case "codex.auth.status":
-        return authFor(
-          command.credentialHomeKey ?? command.providerId,
-        ).status();
+        return command.providerKind === "grok"
+          ? grokFor(command.credentialHomeKey ?? command.providerId).status()
+          : authFor(command.credentialHomeKey ?? command.providerId).status();
       case "codex.auth.login.start":
-        return authFor(
-          command.credentialHomeKey ?? command.providerId,
-        ).startDeviceLogin();
+        return command.providerKind === "grok"
+          ? grokFor(
+              command.credentialHomeKey ?? command.providerId,
+            ).startDeviceLogin()
+          : authFor(
+              command.credentialHomeKey ?? command.providerId,
+            ).startDeviceLogin();
       case "codex.auth.logout":
-        await authFor(command.credentialHomeKey ?? command.providerId).logout();
+        if (command.providerKind === "grok") {
+          await grokFor(
+            command.credentialHomeKey ?? command.providerId,
+          ).logout();
+        } else {
+          await authFor(
+            command.credentialHomeKey ?? command.providerId,
+          ).logout();
+        }
         for (const [runtimeId, runtime] of codexRuntimes) {
           if (
             !runtimeId.startsWith(
@@ -971,13 +1009,12 @@ async function start(): Promise<void> {
             {
               ...command.launch,
               binary: config.codexBinary,
-              codexHome:
-                command.launch.provider.kind === "chatgpt"
-                  ? accountHomeFor(
-                      command.launch.provider.credentialHomeKey ??
-                        command.launch.provider.id,
-                    )
-                  : codexHome,
+              codexHome: accountBackedProvider(command.launch.provider.kind)
+                ? accountHomeFor(
+                    command.launch.provider.credentialHomeKey ??
+                      command.launch.provider.id,
+                  )
+                : codexHome,
               remoteUrl: await runtime.remoteEndpoint(
                 command.launch.model,
                 command.launch.provider,
@@ -1460,6 +1497,7 @@ async function start(): Promise<void> {
       terminalDirectEndpoints.close();
       codeDirectEndpoints.close();
       for (const client of codexAuthClients.values()) client.close();
+      for (const client of grokAuthClients.values()) client.close();
       terminals.closeAll();
       tunnelDestinations.close();
       await projectShares.closeAll();

@@ -1,7 +1,7 @@
 import {
-  chatGptModelInventorySchema,
   codexAuthStatusSchema,
-  type ChatGptModelInventoryItem,
+  grokModelInventorySchema,
+  type GrokModelInventoryItem,
   type ProviderModelCatalogResult,
 } from "@cantrip/protocol";
 
@@ -15,64 +15,48 @@ import type { WorkerCommandBus } from "../workers/bridge.js";
 const FRESHNESS_WINDOW_MS = 15 * 60_000;
 const DISCOVERY_TIMEOUT_MS = 2 * 60_000;
 
-export function chatGptAccountScope(
-  workerId: string,
-  accountId: string,
-): string {
-  return `worker:${workerId}:chatgpt-account:${accountId}`;
+export function grokAccountScope(workerId: string, accountId: string): string {
+  return `worker:${workerId}:grok-account:${accountId}`;
 }
 
-export function normalizeChatGptModel(
-  model: ChatGptModelInventoryItem,
+export function normalizeGrokCatalogModel(
+  model: GrokModelInventoryItem,
 ): ProviderModelCatalogWrite {
-  const efforts = model.supportedReasoningEfforts.map((effort) => ({
-    effort: effort.reasoningEffort,
-    description: effort.description || null,
-  }));
+  const supportsVision = model.inputModalities.includes("image") ? true : null;
   return {
-    nativeModelId: model.model,
-    canonicalModelId: model.model,
+    nativeModelId: model.id,
+    canonicalModelId: model.id,
     displayName: model.displayName,
-    description: model.description || null,
-    contextWindow: null,
-    maxOutputTokens: null,
-    inputModalities:
-      model.inputModalities.length > 0 ? model.inputModalities : ["text"],
-    outputModalities: ["text"],
-    supportsTools: null,
-    supportsParallelTools: null,
+    description: model.description,
+    contextWindow: model.contextWindow,
+    maxOutputTokens: model.maxOutputTokens,
+    inputModalities: model.inputModalities,
+    outputModalities: model.outputModalities,
+    supportsTools: true,
+    supportsParallelTools: true,
     supportsStructuredOutput: null,
-    supportsVision: model.inputModalities.includes("image"),
-    supportsReasoning: efforts.length > 0,
-    supportedReasoningEfforts: efforts,
+    supportsVision,
+    supportsReasoning: model.supportsReasoning,
+    supportedReasoningEfforts: model.supportedReasoningEfforts,
     defaultReasoningEffort: model.defaultReasoningEffort,
     reasoningMandatory: null,
-    family: model.modelSpecialty,
+    family: "grok",
     parameterSize: null,
     quantization: null,
     digest: null,
-    metadataSource: "codex",
+    metadataSource: "grok",
     matchConfidenceBasisPoints: 10_000,
     hidden: model.hidden,
     isDefault: model.isDefault,
-    rawMetadata: {
-      catalogId: model.id,
-      upgrade: model.upgrade,
-      upgradeInfo: model.upgradeInfo,
-      availabilityNux: model.availabilityNux,
-      supportsPersonality: model.supportsPersonality,
-      additionalSpeedTiers: model.additionalSpeedTiers,
-      serviceTiers: model.serviceTiers,
-      defaultServiceTier: model.defaultServiceTier,
-    },
+    rawMetadata: model.rawMetadata,
   };
 }
 
-function isChatGptProvider(provider: ModelProviderCatalogRuntime): boolean {
-  return provider.kind === "chatgpt";
+function isGrokProvider(provider: ModelProviderCatalogRuntime): boolean {
+  return provider.kind === "grok";
 }
 
-export class ChatGptCatalogService {
+export class GrokCatalogService {
   readonly #bridge: WorkerCommandBus;
   readonly #repository: ServerRepository;
 
@@ -87,7 +71,7 @@ export class ChatGptCatalogService {
     workerId: string,
     accountId: string,
   ): Promise<void> {
-    const scopeKey = chatGptAccountScope(workerId, accountId);
+    const scopeKey = grokAccountScope(workerId, accountId);
     await this.#repository.reconcileProviderModelCatalog(ownerId, providerId, {
       models: [],
       availabilityScope: scopeKey,
@@ -119,8 +103,8 @@ export class ChatGptCatalogService {
     ]);
     if (!provider) return null;
     if (!worker) throw new Error("Worker not found.");
-    if (!isChatGptProvider(provider) || !accounts) {
-      throw new Error("Provider is not a ChatGPT provider.");
+    if (!isGrokProvider(provider) || !accounts) {
+      throw new Error("Provider is not a Grok provider.");
     }
     if (!this.#bridge.isConnected(workerId)) {
       throw new Error("Worker is offline.");
@@ -132,7 +116,7 @@ export class ChatGptCatalogService {
         (!requestedAccountId || account.id === requestedAccountId),
     );
     if (requestedAccountId && selectedAccounts.length === 0) {
-      throw new Error("ChatGPT account not found.");
+      throw new Error("Grok account not found.");
     }
     const existing = await this.#repository.getProviderModelCatalog(
       ownerId,
@@ -141,7 +125,7 @@ export class ChatGptCatalogService {
     let succeeded = 0;
     let lastError: unknown = null;
     for (const account of selectedAccounts) {
-      const scopeKey = chatGptAccountScope(workerId, account.id);
+      const scopeKey = grokAccountScope(workerId, account.id);
       const sync = existing?.syncStates.find(
         (state) => state.scopeKey === scopeKey,
       );
@@ -173,7 +157,7 @@ export class ChatGptCatalogService {
               {
                 type: "codex.auth.status",
                 providerId,
-                providerKind: "chatgpt",
+                providerKind: "grok",
                 credentialHomeKey: runtime.credentialHomeKey,
               },
               { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
@@ -184,7 +168,7 @@ export class ChatGptCatalogService {
             workerId,
             status,
           );
-          if (!status.authenticated) {
+          if (!status.authenticated || status.authMode !== "grok") {
             await this.markAccountUnavailable(
               ownerId,
               providerId,
@@ -203,15 +187,15 @@ export class ChatGptCatalogService {
           error: null,
           refreshStartedAt: new Date(),
         });
-        const inventory = chatGptModelInventorySchema.parse(
+        const inventory = grokModelInventorySchema.parse(
           await this.#bridge.request(
             workerId,
             {
-              type: "model.chatgpt.catalog",
+              type: "model.grok.catalog",
               provider: {
                 id: providerId,
-                name: "ChatGPT",
-                kind: "chatgpt",
+                name: "Grok",
+                kind: "grok",
                 baseUrl: provider.baseUrl,
                 apiKey: null,
                 accountId: account.id,
@@ -221,7 +205,7 @@ export class ChatGptCatalogService {
             { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
           ),
         );
-        const models = inventory.models.map(normalizeChatGptModel);
+        const models = inventory.models.map(normalizeGrokCatalogModel);
         const visible = inventory.models.filter((model) => !model.hidden);
         await this.#repository.reconcileProviderModelCatalog(
           ownerId,
@@ -235,11 +219,9 @@ export class ChatGptCatalogService {
               models.map((model) => model.nativeModelId),
             ),
             autoCreateLogicalModels: true,
-            autoCreateNativeModelIds: new Set(
-              visible.map((model) => model.model),
-            ),
+            autoCreateNativeModelIds: new Set(visible.map((model) => model.id)),
             defaultNativeModelId:
-              visible.find((model) => model.isDefault)?.model ?? null,
+              visible.find((model) => model.isDefault)?.id ?? null,
           },
         );
         await this.#repository.setProviderCatalogSyncState(providerId, {
@@ -270,8 +252,6 @@ export class ChatGptCatalogService {
       );
     }
     if (lastError) throw lastError;
-    throw new Error(
-      "No signed-in ChatGPT account is available on this worker.",
-    );
+    throw new Error("No signed-in Grok account is available on this worker.");
   }
 }

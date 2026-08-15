@@ -59,6 +59,8 @@ import {
 import {
   createModelProfile,
   createModelProvider,
+  createModelProviderAccount,
+  deleteModelProviderAccount,
   deleteModelProfile,
   deleteModelProvider,
   getSettings,
@@ -68,6 +70,7 @@ import {
   logoutCodex,
   startCodexDeviceLogin,
   refreshProviderModelCatalog,
+  updateModelProviderAccount,
   updateModelProfile,
   updateModelProvider,
   updateSettings,
@@ -117,7 +120,7 @@ const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
 type ProviderSetupKind = ModelProviderKind | "openai" | "openrouter" | "xai";
 
 const providerSetups: Record<
-  Exclude<ProviderSetupKind, "chatgpt" | "openai-compatible">,
+  Exclude<ProviderSetupKind, "chatgpt" | "grok" | "openai-compatible">,
   { baseUrl: string; kind: ModelProviderKind; label: string }
 > = {
   ollama: {
@@ -133,7 +136,7 @@ const providerSetups: Record<
   xai: {
     baseUrl: "https://api.x.ai/v1",
     kind: "openai-compatible",
-    label: "xAI / Grok",
+    label: "xAI API",
   },
   openai: {
     baseUrl: "https://api.openai.com/v1",
@@ -143,13 +146,29 @@ const providerSetups: Record<
 };
 
 function providerSetupFor(provider: ModelProviderSummary): ProviderSetupKind {
-  if (provider.kind === "chatgpt" || provider.kind === "ollama") {
+  if (
+    provider.kind === "chatgpt" ||
+    provider.kind === "grok" ||
+    provider.kind === "ollama"
+  ) {
     return provider.kind;
   }
   const match = Object.entries(providerSetups).find(
     ([key, setup]) => key !== "ollama" && setup.baseUrl === provider.baseUrl,
   );
   return (match?.[0] as ProviderSetupKind | undefined) ?? "openai-compatible";
+}
+
+type AccountProviderKind = Extract<ModelProviderKind, "chatgpt" | "grok">;
+
+function isAccountProviderKind(
+  kind: ModelProviderKind,
+): kind is AccountProviderKind {
+  return kind === "chatgpt" || kind === "grok";
+}
+
+function accountProviderName(kind: AccountProviderKind) {
+  return kind === "grok" ? "Grok" : "ChatGPT";
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
@@ -285,7 +304,7 @@ function ProviderRow({
         </Badge>
       </div>
       <div className="col-span-2 min-w-0 pl-6 sm:col-span-1 sm:pl-0">
-        {provider.kind === "chatgpt" ? (
+        {isAccountProviderKind(provider.kind) ? (
           <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span
               className={
@@ -510,19 +529,45 @@ export function SettingsPage({
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434/v1");
   const [apiKey, setApiKey] = useState("");
   const [removeApiKey, setRemoveApiKey] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
+    null,
+  );
+  const [accountLabelDraft, setAccountLabelDraft] = useState("");
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [editingModel, setEditingModel] = useState<ModelProfileSummary | null>(
     null,
   );
   const [modelName, setModelName] = useState("");
   const [modelRoutes, setModelRoutes] = useState<EditableRoute[]>([]);
-  const chatGptProvider =
-    editingProvider?.kind === "chatgpt" ? editingProvider : null;
+  const accountProvider =
+    editingProvider && isAccountProviderKind(editingProvider.kind)
+      ? editingProvider
+      : null;
+  const selectedAccount =
+    accountProvider?.accounts.find(({ id }) => id === selectedAccountId) ??
+    accountProvider?.accounts[0] ??
+    null;
+  const authProviderName = accountProvider
+    ? accountProviderName(accountProvider.kind as AccountProviderKind)
+    : "account";
   const codexAuth = useQuery({
-    enabled: Boolean(worker && providerDialogOpen && chatGptProvider),
-    queryFn: () => getCodexAuthStatus(worker!.workerId, chatGptProvider!.id),
-    queryKey: ["codex-auth", worker?.workerId, chatGptProvider?.id],
-    refetchInterval: 10_000,
+    enabled: Boolean(
+      worker && providerDialogOpen && accountProvider && selectedAccount,
+    ),
+    queryFn: () =>
+      getCodexAuthStatus(
+        worker!.workerId,
+        accountProvider!.id,
+        selectedAccount!.id,
+      ),
+    queryKey: [
+      "codex-auth",
+      worker?.workerId,
+      accountProvider?.id,
+      selectedAccount?.id,
+    ],
+    refetchInterval: (query) =>
+      query.state.data?.loginPending ? 1_500 : 10_000,
   });
 
   const refresh = () =>
@@ -550,9 +595,12 @@ export function SettingsPage({
       const input = {
         name: providerName,
         kind: providerKind,
-        baseUrl:
-          providerKind === "chatgpt" ? "https://api.openai.com/v1" : baseUrl,
-        ...(providerKind === "chatgpt"
+        baseUrl: isAccountProviderKind(providerKind)
+          ? providerKind === "grok"
+            ? "https://cli-chat-proxy.grok.com/v1"
+            : "https://api.openai.com/v1"
+          : baseUrl,
+        ...(isAccountProviderKind(providerKind)
           ? { apiKey: null }
           : editingProvider
             ? removeApiKey
@@ -568,12 +616,17 @@ export function SettingsPage({
     },
     onSuccess: async (provider) => {
       await refresh();
-      if (provider.kind === "chatgpt" && editingProvider?.kind !== "chatgpt") {
+      if (
+        isAccountProviderKind(provider.kind) &&
+        editingProvider?.kind !== provider.kind
+      ) {
         setEditingProvider(provider);
         setProviderName(provider.name);
         setProviderKind(provider.kind);
         setProviderSetup(provider.kind);
         setBaseUrl(provider.baseUrl);
+        setSelectedAccountId(provider.accounts[0]?.id ?? null);
+        setAccountLabelDraft(provider.accounts[0]?.label ?? "");
         return;
       }
       setProviderDialogOpen(false);
@@ -604,14 +657,20 @@ export function SettingsPage({
   });
   const beginCodexLogin = useMutation({
     mutationFn: () =>
-      startCodexDeviceLogin(worker!.workerId, chatGptProvider!.id),
+      startCodexDeviceLogin(
+        worker!.workerId,
+        accountProvider!.id,
+        selectedAccount!.id,
+      ),
     onSuccess: (login) => {
       setDeviceLogin(login);
       setDeviceLinkCopied(false);
+      void codexAuth.refetch();
     },
   });
   const signOutCodex = useMutation({
-    mutationFn: () => logoutCodex(worker!.workerId, chatGptProvider!.id),
+    mutationFn: () =>
+      logoutCodex(worker!.workerId, accountProvider!.id, selectedAccount!.id),
     onSuccess: async () => {
       setDeviceLogin(null);
       await codexAuth.refetch();
@@ -619,9 +678,58 @@ export function SettingsPage({
   });
 
   useEffect(() => {
-    if (codexAuth.data?.authMode !== "chatgpt") return;
+    if (codexAuth.data?.authMode !== accountProvider?.kind) return;
     setDeviceLogin(null);
-  }, [codexAuth.data?.authMode]);
+  }, [accountProvider?.kind, codexAuth.data?.authMode]);
+
+  useEffect(() => {
+    setAccountLabelDraft(selectedAccount?.label ?? "");
+    setDeviceLogin(null);
+    setDeviceCodeCopied(false);
+    setDeviceLinkCopied(false);
+  }, [selectedAccount?.id, selectedAccount?.label]);
+
+  const reloadAccountProvider = async (providerId: string) => {
+    const bundle = await getSettings();
+    queryClient.setQueryData(["settings"], bundle);
+    const provider =
+      bundle.providers.find(({ id }) => id === providerId) ?? null;
+    setEditingProvider(provider);
+    return provider;
+  };
+  const addProviderAccount = useMutation({
+    mutationFn: () =>
+      createModelProviderAccount(accountProvider!.id, {
+        label: `${authProviderName} account ${accountProvider!.accounts.length + 1}`,
+      }),
+    onSuccess: async (account) => {
+      await reloadAccountProvider(account.providerId);
+      setSelectedAccountId(account.id);
+      setAccountLabelDraft(account.label);
+    },
+  });
+  const renameProviderAccount = useMutation({
+    mutationFn: () =>
+      updateModelProviderAccount(accountProvider!.id, selectedAccount!.id, {
+        label: accountLabelDraft.trim(),
+      }),
+    onSuccess: async (account) => {
+      await reloadAccountProvider(account.providerId);
+      setSelectedAccountId(account.id);
+    },
+  });
+  const removeProviderAccount = useMutation({
+    mutationFn: () =>
+      deleteModelProviderAccount(accountProvider!.id, selectedAccount!.id),
+    onSuccess: async () => {
+      const providerId = accountProvider!.id;
+      const nextAccount = accountProvider!.accounts.find(
+        ({ id }) => id !== selectedAccount!.id,
+      );
+      await reloadAccountProvider(providerId);
+      setSelectedAccountId(nextAccount?.id ?? null);
+    },
+  });
 
   const openProviderDialog = (provider: ModelProviderSummary | null) => {
     saveProvider.reset();
@@ -634,6 +742,8 @@ export function SettingsPage({
     setBaseUrl(provider?.baseUrl ?? "http://127.0.0.1:11434/v1");
     setApiKey("");
     setRemoveApiKey(false);
+    setSelectedAccountId(provider?.accounts[0]?.id ?? null);
+    setAccountLabelDraft(provider?.accounts[0]?.label ?? "");
     setDeviceLogin(null);
     setDeviceCodeCopied(false);
     setDeviceLinkCopied(false);
@@ -687,7 +797,7 @@ export function SettingsPage({
     !modelSearch ||
     matchesSearch(
       modelSearch,
-      "providers provider ollama api chatgpt account endpoint key",
+      "providers provider ollama api chatgpt grok supergrok oauth xai account endpoint key",
     );
   const visibleProviders = providerSectionMatches
     ? providers
@@ -939,7 +1049,7 @@ export function SettingsPage({
                           </span>
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
-                          Ollama, compatible APIs, and isolated ChatGPT
+                          Ollama, compatible APIs, and isolated ChatGPT or Grok
                           accounts.
                         </p>
                       </div>
@@ -1265,7 +1375,7 @@ export function SettingsPage({
                 {editingProvider ? "Edit provider" : "Add provider"}
               </DialogTitle>
               <DialogDescription>
-                Configure an API endpoint or a ChatGPT account used through
+                Configure an API endpoint or a subscription account used through
                 Codex.
               </DialogDescription>
             </DialogHeader>
@@ -1286,10 +1396,16 @@ export function SettingsPage({
                   onChange={(event) => {
                     const setup = event.target.value as ProviderSetupKind;
                     setProviderSetup(setup);
-                    if (setup === "chatgpt") {
-                      setProviderKind("chatgpt");
-                      setBaseUrl("https://api.openai.com/v1");
-                      if (!providerName.trim()) setProviderName("ChatGPT");
+                    if (setup === "chatgpt" || setup === "grok") {
+                      setProviderKind(setup);
+                      setBaseUrl(
+                        setup === "grok"
+                          ? "https://cli-chat-proxy.grok.com/v1"
+                          : "https://api.openai.com/v1",
+                      );
+                      if (!providerName.trim()) {
+                        setProviderName(accountProviderName(setup));
+                      }
                     } else if (setup === "openai-compatible") {
                       setProviderKind("openai-compatible");
                       if (!editingProvider) setBaseUrl("https://");
@@ -1304,15 +1420,16 @@ export function SettingsPage({
                 >
                   <option value="ollama">Ollama</option>
                   <option value="openrouter">OpenRouter</option>
-                  <option value="xai">xAI / Grok</option>
+                  <option value="xai">xAI API key</option>
                   <option value="openai">OpenAI API</option>
                   <option value="openai-compatible">
                     Custom OpenAI compatible
                   </option>
                   <option value="chatgpt">ChatGPT Account</option>
+                  <option value="grok">Grok / SuperGrok Account</option>
                 </select>
               </Field>
-              {providerKind !== "chatgpt" ? (
+              {!isAccountProviderKind(providerKind) ? (
                 <Field label="Base URL">
                   <div className="space-y-1.5">
                     <input
@@ -1340,11 +1457,11 @@ export function SettingsPage({
                 </Field>
               ) : (
                 <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  This provider keeps its own ChatGPT sign-in on the selected
-                  worker.
+                  This provider keeps each {accountProviderName(providerKind)}
+                  sign-in isolated on the selected worker.
                 </div>
               )}
-              {providerKind !== "chatgpt" ? (
+              {!isAccountProviderKind(providerKind) ? (
                 <Field label="API key (optional)">
                   <input
                     type="password"
@@ -1362,7 +1479,8 @@ export function SettingsPage({
                 </Field>
               ) : null}
             </div>
-            {providerKind !== "chatgpt" && editingProvider?.hasApiKey ? (
+            {!isAccountProviderKind(providerKind) &&
+            editingProvider?.hasApiKey ? (
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <input
                   type="checkbox"
@@ -1372,29 +1490,122 @@ export function SettingsPage({
                 Remove the saved API key
               </label>
             ) : null}
-            {providerKind === "chatgpt" ? (
-              !chatGptProvider ? (
-                <p className="rounded-lg border bg-muted/35 p-3 text-sm text-muted-foreground">
-                  Add this provider to continue to ChatGPT device sign-in.
+            {accountProvider ? (
+              <div className="grid gap-3 border-y py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">Accounts</p>
+                    <p className="text-xs text-muted-foreground">
+                      Each sign-in has separate credentials and can be tried as
+                      a fallback route.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={addProviderAccount.isPending}
+                    onClick={() => addProviderAccount.mutate()}
+                  >
+                    {addProviderAccount.isPending ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="size-3.5" />
+                    )}
+                    Account
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {accountProvider.accounts.map((account) => {
+                    const signedIn = account.workerBindings.some(
+                      (binding) =>
+                        binding.authState === "signed-in" &&
+                        (!worker || binding.workerId === worker.workerId),
+                    );
+                    return (
+                      <Button
+                        key={account.id}
+                        type="button"
+                        size="sm"
+                        variant={
+                          account.id === selectedAccount?.id
+                            ? "outline"
+                            : "ghost"
+                        }
+                        onClick={() => setSelectedAccountId(account.id)}
+                      >
+                        <span
+                          className={`size-1.5 rounded-full ${signedIn ? "bg-emerald-400" : "bg-muted-foreground/45"}`}
+                        />
+                        {account.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+                {selectedAccount ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      aria-label="Account label"
+                      value={accountLabelDraft}
+                      onChange={(event) =>
+                        setAccountLabelDraft(event.target.value)
+                      }
+                      className={`${inputClass} h-8 flex-1`}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !accountLabelDraft.trim() ||
+                        accountLabelDraft.trim() === selectedAccount.label ||
+                        renameProviderAccount.isPending
+                      }
+                      onClick={() => renameProviderAccount.mutate()}
+                    >
+                      Save label
+                    </Button>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      title="Delete account"
+                      disabled={
+                        accountProvider.accounts.length <= 1 ||
+                        removeProviderAccount.isPending
+                      }
+                      onClick={() => removeProviderAccount.mutate()}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {isAccountProviderKind(providerKind) ? (
+              !accountProvider || !selectedAccount ? (
+                <p className="border-y py-3 text-sm text-muted-foreground">
+                  Add this provider to continue to{" "}
+                  {accountProviderName(providerKind)} device sign-in.
                 </p>
               ) : !worker ? (
-                <p className="rounded-lg border bg-muted/35 p-3 text-sm text-muted-foreground">
-                  Connect a worker to manage this ChatGPT account.
+                <p className="border-y py-3 text-sm text-muted-foreground">
+                  Connect a worker to manage this {authProviderName} account.
                 </p>
               ) : codexAuth.isLoading ? (
-                <div className="flex items-center gap-2 rounded-lg border p-3 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Checking ChatGPT
-                  authentication…
+                <div className="flex items-center gap-2 border-y py-3 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> Checking{" "}
+                  {authProviderName} authentication…
                 </div>
-              ) : codexAuth.data?.authMode === "chatgpt" ? (
-                <div className="grid gap-3 rounded-lg border p-3">
+              ) : codexAuth.data?.authMode === accountProvider.kind ? (
+                <div className="grid gap-3 border-y py-3">
                   <div className="flex items-center gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">
-                        Signed in with ChatGPT
+                        Signed in with {authProviderName}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {codexAuth.data.email ?? "ChatGPT account"}
+                        {codexAuth.data.email ?? selectedAccount.label}
                         {codexAuth.data.planType
                           ? ` · ${codexAuth.data.planType} plan`
                           : ""}
@@ -1437,22 +1648,28 @@ export function SettingsPage({
                   ) : null}
                 </div>
               ) : (
-                <div className="grid gap-3 rounded-lg border p-3">
+                <div className="grid gap-3 border-y py-3">
                   <Button
                     type="button"
                     className="w-fit"
-                    disabled={beginCodexLogin.isPending}
+                    disabled={
+                      beginCodexLogin.isPending ||
+                      Boolean(codexAuth.data?.loginPending)
+                    }
                     onClick={() => beginCodexLogin.mutate()}
                   >
-                    {beginCodexLogin.isPending ? (
+                    {beginCodexLogin.isPending ||
+                    codexAuth.data?.loginPending ? (
                       <Loader2 className="size-4 animate-spin" />
                     ) : (
                       <KeyRound className="size-4" />
                     )}
-                    Get sign-in code
+                    {codexAuth.data?.loginPending
+                      ? "Waiting for authorization"
+                      : "Get sign-in code"}
                   </Button>
                   {deviceLogin ? (
-                    <div className="grid gap-3 rounded-lg bg-muted/40 p-3 text-sm">
+                    <div className="grid gap-3 bg-muted/40 p-3 text-sm">
                       <p>
                         Enter code{" "}
                         <button
@@ -1482,7 +1699,7 @@ export function SettingsPage({
                           target="_blank"
                           rel="noreferrer"
                         >
-                          the OpenAI device page
+                          the {authProviderName} device page
                         </a>
                         . This page updates after authorization.
                       </p>
@@ -1513,18 +1730,29 @@ export function SettingsPage({
                       </Button>
                     </div>
                   ) : null}
+                  {codexAuth.data?.loginError ? (
+                    <p className="text-sm text-destructive">
+                      {codexAuth.data.loginError}
+                    </p>
+                  ) : null}
                 </div>
               )
             ) : null}
-            {providerKind === "chatgpt" &&
+            {isAccountProviderKind(providerKind) &&
             (codexAuth.isError ||
               beginCodexLogin.isError ||
-              signOutCodex.isError) ? (
+              signOutCodex.isError ||
+              addProviderAccount.isError ||
+              renameProviderAccount.isError ||
+              removeProviderAccount.isError) ? (
               <p className="text-sm text-destructive">
                 {errorText(
                   codexAuth.error ??
                     beginCodexLogin.error ??
-                    signOutCodex.error,
+                    signOutCodex.error ??
+                    addProviderAccount.error ??
+                    renameProviderAccount.error ??
+                    removeProviderAccount.error,
                 )}
               </p>
             ) : null}

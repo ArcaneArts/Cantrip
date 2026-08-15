@@ -1,6 +1,7 @@
 import type { ProviderModelAvailability } from "@cantrip/protocol";
 
 import type { ModelRuntime } from "../db/repository.js";
+import { isAccountProviderKind } from "./account-provider.js";
 
 export interface ModelRouteAvailabilityResult {
   available: boolean;
@@ -19,7 +20,7 @@ function isOpenRouterRuntime(runtime: ModelRuntime) {
   }
 }
 
-export function chatGptAccountSupportsModel(
+export function accountProviderSupportsModel(
   providerModelId: string | null,
   availability: ProviderModelAvailability["state"] | null,
 ) {
@@ -35,7 +36,7 @@ export function evaluateModelRouteAvailability(
 ): ModelRouteAvailabilityResult {
   if (
     runtime.model.providerModelId === null ||
-    runtime.provider.kind === "chatgpt"
+    isAccountProviderKind(runtime.provider.kind)
   ) {
     return { available: true, reason: null };
   }

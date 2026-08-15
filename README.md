@@ -25,11 +25,13 @@ Settings are stored by the server for the current Cantrip identity rather than i
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
 - Isolated ChatGPT account providers authenticated through Codex, including account status and available usage information when Codex exposes it.
+- Isolated Grok and SuperGrok OAuth accounts, with worker-owned rotating credentials, subscription model discovery, and multi-account fallback routing through xAI's subscription proxy.
 
 Models are logical profiles with one or more ordered provider routes. A profile
 such as `GPT-5.6 Sol` can prefer one ChatGPT account, fall back to another when
 its reported weekly usage is exhausted, and then use an OpenAI-compatible
-route such as OpenRouter. Each route keeps its provider-specific model name and
+route such as OpenRouter. Grok profiles can likewise pool multiple SuperGrok
+accounts. Each route keeps its provider-specific model name and
 optional reasoning override. Cantrip records the concrete route used for a
 turn and only retries another route automatically when the first attempt fails
 before producing command or file activity.

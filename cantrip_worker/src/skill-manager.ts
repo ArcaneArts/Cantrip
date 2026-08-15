@@ -317,7 +317,7 @@ export class SkillManager {
 
   async #roots(context: SkillContext): Promise<SkillRoot[]> {
     const accountHome =
-      context.providerKind === "chatgpt"
+      context.providerKind === "chatgpt" || context.providerKind === "grok"
         ? codexAccountHome(this.#dataDirectory, context.providerId)
         : path.join(this.#dataDirectory, "codex-home");
     const roots: SkillRoot[] = [];

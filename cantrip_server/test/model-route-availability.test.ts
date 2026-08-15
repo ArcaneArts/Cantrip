@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ModelRuntime } from "../src/db/repository.js";
 import {
-  chatGptAccountSupportsModel,
+  accountProviderSupportsModel,
   evaluateModelRouteAvailability,
 } from "../src/models/model-route-availability.js";
 
@@ -99,14 +99,14 @@ describe("model route availability", () => {
     });
   });
 
-  it("requires discovered ChatGPT models on the selected account and worker", () => {
-    expect(chatGptAccountSupportsModel("provider-model-1", "available")).toBe(
+  it("requires discovered account-provider models on the selected account and worker", () => {
+    expect(accountProviderSupportsModel("provider-model-1", "available")).toBe(
       true,
     );
-    expect(chatGptAccountSupportsModel("provider-model-1", "unavailable")).toBe(
-      false,
-    );
-    expect(chatGptAccountSupportsModel("provider-model-1", null)).toBe(false);
-    expect(chatGptAccountSupportsModel(null, null)).toBe(true);
+    expect(
+      accountProviderSupportsModel("provider-model-1", "unavailable"),
+    ).toBe(false);
+    expect(accountProviderSupportsModel("provider-model-1", null)).toBe(false);
+    expect(accountProviderSupportsModel(null, null)).toBe(true);
   });
 });
