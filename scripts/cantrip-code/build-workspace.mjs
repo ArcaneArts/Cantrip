@@ -1,9 +1,12 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { promisify } from "node:util";
 
 const PREPARATION_PREFIX = "cantrip-code-";
+const execFileAsync = promisify(execFile);
 
 export async function createBuildWorkspace(
   targetId,
@@ -12,6 +15,13 @@ export async function createBuildWorkspace(
   const parent = path.join(temporaryRoot, PREPARATION_PREFIX);
   await mkdir(parent, { recursive: true });
   return mkdtemp(path.join(parent, `${targetId}-`));
+}
+
+export async function initializeBuildWorkspaceRepository(directory) {
+  // VS Code's pinned postinstall writes repository-local Git settings. The
+  // prepared source is intentionally outside Cantrip's checkout to keep native
+  // Windows compiler paths short, so give that disposable copy its own repo.
+  await execFileAsync("git", ["init", "--quiet"], { cwd: directory });
 }
 
 export async function removeBuildWorkspace(

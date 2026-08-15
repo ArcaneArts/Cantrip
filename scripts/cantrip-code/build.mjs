@@ -11,6 +11,7 @@ import path from "node:path";
 import process from "node:process";
 import {
   createBuildWorkspace,
+  initializeBuildWorkspaceRepository,
   removeBuildWorkspace,
 } from "./build-workspace.mjs";
 import {
@@ -111,6 +112,8 @@ try {
     );
     console.log(`Applied ${path.basename(item.patchPath)}`);
   }
+
+  await initializeBuildWorkspaceRepository(source);
 
   const upstream = await readJson(upstreamConfigPath);
   const toolchain = await ensureBuildNode(target);
