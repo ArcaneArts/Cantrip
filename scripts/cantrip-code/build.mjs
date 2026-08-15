@@ -10,6 +10,10 @@ import {
 import path from "node:path";
 import process from "node:process";
 import {
+  createBuildWorkspace,
+  removeBuildWorkspace,
+} from "./build-workspace.mjs";
+import {
   CODE_MANIFEST_NAME,
   assertHostTarget,
   createBuildManifest,
@@ -18,7 +22,6 @@ import {
   verifyBuild,
 } from "./build-lib.mjs";
 import {
-  codeBuildRoot,
   codeCacheRoot,
   codeRoot,
   copyDirectory,
@@ -55,18 +58,15 @@ await run(process.execPath, [
   path.join(codeRoot, "..", "scripts", "cantrip-code", "verify-upstream.mjs"),
 ]);
 
-const preparationRoot = path.join(
-  codeBuildRoot,
-  `${target.id}-${identity.fingerprint}`,
-);
+// Native Windows dependencies still include build tools that are not reliably
+// long-path aware. Keep the disposable source tree below the OS temp directory
+// instead of nesting it under the repository plus a 64-character fingerprint.
+const preparationRoot = await createBuildWorkspace(target.id);
 const source = path.join(preparationRoot, "source");
 const gulpOutput = path.join(
   preparationRoot,
   `vscode-reh-web-${target.platform}-${target.arch}`,
 );
-await rm(preparationRoot, { recursive: true, force: true });
-await mkdir(preparationRoot, { recursive: true });
-
 try {
   console.log(`Preparing pinned Cantrip Code source for ${target.id}...`);
   await copyDirectory(upstreamRoot, source);
@@ -193,7 +193,9 @@ try {
   );
 } finally {
   if (!args.flag("keep-prepared")) {
-    await rm(preparationRoot, { recursive: true, force: true });
+    // A failed Windows native build can briefly retain antivirus/compiler file
+    // handles. Retry cleanup and never mask the actual build failure with EBUSY.
+    await removeBuildWorkspace(preparationRoot);
   } else {
     console.log(`Kept prepared source at ${preparationRoot}`);
   }
