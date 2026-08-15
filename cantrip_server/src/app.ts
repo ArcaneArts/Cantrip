@@ -5988,9 +5988,7 @@ export async function buildApp({
     }
     return reply
       .header("cache-control", "no-store")
-      .send(
-        authSessionStateSchema.parse(await sessionService.rotateCsrf(session)),
-      );
+      .send(authSessionStateSchema.parse(sessionService.sessionState(session)));
   });
 
   app.post("/api/auth/logout", async (request, reply) => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { request } from "./api-client";
 import {
   clearClientSession,
+  getClientSession,
   onAuthenticationRequired,
   scopedClientStorageKey,
   setClientSession,
@@ -77,5 +78,54 @@ describe("authenticated API client", () => {
     });
     expect(listener).toHaveBeenCalledWith("Authentication is required.");
     unsubscribe();
+  });
+
+  it("refreshes a stale CSRF token once and retries the rejected mutation", async () => {
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "s".repeat(32),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      serverId: "server-one",
+      user,
+    });
+    const refreshedToken = "n".repeat(32);
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "CSRF validation failed." }), {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            currentUser: user,
+            csrfToken: refreshedToken,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), {
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(
+      request("/api/workers/worker-one", { method: "DELETE" }),
+    ).resolves.toEqual({ ok: true });
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch.mock.calls[1]![0]).toBe("/api/auth/session");
+    expect(
+      new Headers(fetch.mock.calls[0]![1]!.headers).get("x-cantrip-csrf"),
+    ).toBe("s".repeat(32));
+    expect(
+      new Headers(fetch.mock.calls[2]![1]!.headers).get("x-cantrip-csrf"),
+    ).toBe(refreshedToken);
+    expect(getClientSession()?.csrfToken).toBe(refreshedToken);
   });
 });
