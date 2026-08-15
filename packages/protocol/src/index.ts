@@ -1101,6 +1101,47 @@ export const providerAccessTokenLeaseSchema = z.object({
   providerKind: z.enum(["chatgpt", "grok"]),
 });
 
+const providerLegacyCredentialBaseSchema = z.object({
+  accessToken: z.string().min(1).max(1_000_000),
+  email: z.string().max(1_024).nullable(),
+  expiresAt: z.number().int().positive().nullable(),
+  planType: z.string().max(1_024).nullable(),
+  refreshToken: z.string().min(1).max(1_000_000).nullable(),
+  version: z.literal(1),
+});
+
+/** Internal worker-to-server migration payload. Never expose through app APIs. */
+export const providerLegacyCredentialSchema = z.discriminatedUnion("kind", [
+  providerLegacyCredentialBaseSchema.extend({
+    accountId: z.string().min(1).max(512),
+    idToken: z.string().min(1).max(1_000_000).nullable(),
+    kind: z.literal("chatgpt"),
+    userId: z.string().min(1).max(512).nullable(),
+  }),
+  providerLegacyCredentialBaseSchema.extend({
+    kind: z.literal("grok"),
+    userId: z.string().min(1).max(512),
+  }),
+]);
+
+export const providerLegacyCredentialCaptureResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({ status: z.literal("missing") }),
+    z.object({ status: z.literal("malformed") }),
+    z.object({
+      credential: providerLegacyCredentialSchema,
+      status: z.literal("available"),
+    }),
+  ],
+);
+
+export const providerLegacyCredentialPurgeResultSchema = z.object({
+  purged: z.boolean(),
+  serverCredentialRevision: z.number().int().positive(),
+  subject: z.string().min(1).max(1_024),
+});
+
 /**
  * Codex model-provider URLs are API roots. Codex adds the Responses endpoint
  * itself, so accepting a pasted chat/completions or responses URL would create
@@ -6902,6 +6943,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     providerKind: z.enum(["chatgpt", "grok"]).default("chatgpt"),
     credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
+  z.object({
+    type: z.literal("provider.auth.legacy.capture"),
+    providerId: z.string().min(1).max(512),
+    providerKind: z.enum(["chatgpt", "grok"]),
+    providerAccountId: z.string().min(1).max(512),
+    credentialHomeKey: z.string().min(1).max(500),
+  }),
+  z.object({
+    type: z.literal("provider.auth.legacy.purge"),
+    providerId: z.string().min(1).max(512),
+    providerKind: z.enum(["chatgpt", "grok"]),
+    providerAccountId: z.string().min(1).max(512),
+    credentialHomeKey: z.string().min(1).max(500),
+    expectedSubject: z.string().min(1).max(1_024),
+    serverCredentialRevision: z.number().int().positive(),
+  }),
   z.object({ type: z.literal("github.auth.status") }),
   z.object({
     type: z.literal("github.repositories.cached"),
@@ -8206,6 +8263,15 @@ export type ProviderAccessTokenLeaseRequest = z.infer<
 >;
 export type ProviderAccessTokenLease = z.infer<
   typeof providerAccessTokenLeaseSchema
+>;
+export type ProviderLegacyCredential = z.infer<
+  typeof providerLegacyCredentialSchema
+>;
+export type ProviderLegacyCredentialCaptureResult = z.infer<
+  typeof providerLegacyCredentialCaptureResultSchema
+>;
+export type ProviderLegacyCredentialPurgeResult = z.infer<
+  typeof providerLegacyCredentialPurgeResultSchema
 >;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ModelReasoningEffortOption = z.infer<

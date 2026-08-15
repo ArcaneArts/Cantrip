@@ -547,6 +547,19 @@ export interface ProviderAccountCredentialRecord {
   updatedAt: string | null;
 }
 
+export interface ProviderAccountCredentialMigrationRecord {
+  accountId: string;
+  credentialHomeKey: string;
+  providerId: string;
+  providerKind: "chatgpt" | "grok";
+  revision: number;
+  state: Extract<
+    ProviderAccountCredentialState,
+    "migration-needed" | "signed-in"
+  >;
+  subject: string | null;
+}
+
 export class ProviderCredentialIdentityConflictError extends Error {
   constructor() {
     super("The provider account identity does not match the stored identity.");
@@ -3086,6 +3099,52 @@ export class ServerRepository {
         ? toISOString(row.account.credentialUpdatedAt)
         : null,
     };
+  }
+
+  async listModelProviderAccountCredentialMigrations(
+    ownerId: string,
+  ): Promise<ProviderAccountCredentialMigrationRecord[]> {
+    const rows = await this.database
+      .select({
+        accountId: schema.modelProviderAccounts.id,
+        credentialHomeKey: schema.modelProviderAccounts.credentialHomeKey,
+        providerId: schema.modelProviderAccounts.providerId,
+        providerKind: schema.modelProviders.kind,
+        revision: schema.modelProviderAccounts.credentialRevision,
+        state: schema.modelProviderAccounts.credentialState,
+        subject: schema.modelProviderAccounts.credentialSubject,
+      })
+      .from(schema.modelProviderAccounts)
+      .innerJoin(
+        schema.modelProviders,
+        eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+      )
+      .where(
+        and(
+          eq(schema.modelProviders.ownerId, ownerId),
+          inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+          inArray(schema.modelProviderAccounts.credentialState, [
+            "migration-needed",
+            "signed-in",
+          ]),
+        ),
+      )
+      .orderBy(
+        asc(schema.modelProviders.createdAt),
+        asc(schema.modelProviderAccounts.position),
+      );
+    return rows.flatMap((row) =>
+      isAccountProviderKind(row.providerKind) &&
+      (row.state === "migration-needed" || row.state === "signed-in")
+        ? [
+            {
+              ...row,
+              providerKind: row.providerKind,
+              state: row.state,
+            },
+          ]
+        : [],
+    );
   }
 
   async storeModelProviderAccountCredential(

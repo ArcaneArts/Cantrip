@@ -53,6 +53,7 @@ import {
   modelProviderAccountSummarySchema,
   providerAccessTokenLeaseRequestSchema,
   providerAccessTokenLeaseSchema,
+  providerLegacyCredentialCaptureResultSchema,
   settingsBundleSchema,
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
@@ -813,6 +814,46 @@ describe("Cantrip protocol", () => {
     expect(lease.providerIdentity.kind).toBe("chatgpt");
     expect(JSON.stringify(lease)).not.toContain("refreshToken");
     expect(JSON.stringify(lease)).not.toContain("idToken");
+  });
+
+  it("validates bounded legacy provider credential migration messages", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "provider.auth.legacy.capture",
+        providerId: "provider-one",
+        providerKind: "chatgpt",
+        providerAccountId: "account-one",
+        credentialHomeKey: "home-one",
+      }).type,
+    ).toBe("provider.auth.legacy.capture");
+    expect(
+      workerCommandSchema.parse({
+        type: "provider.auth.legacy.purge",
+        providerId: "provider-one",
+        providerKind: "chatgpt",
+        providerAccountId: "account-one",
+        credentialHomeKey: "home-one",
+        expectedSubject: "chatgpt:upstream-account",
+        serverCredentialRevision: 2,
+      }).type,
+    ).toBe("provider.auth.legacy.purge");
+    expect(
+      providerLegacyCredentialCaptureResultSchema.parse({
+        status: "available",
+        credential: {
+          accessToken: "access-token",
+          accountId: "upstream-account",
+          email: "person@example.test",
+          expiresAt: null,
+          idToken: "id-token",
+          kind: "chatgpt",
+          planType: "pro",
+          refreshToken: "refresh-token",
+          userId: "upstream-user",
+          version: 1,
+        },
+      }).credential.kind,
+    ).toBe("chatgpt");
   });
 
   it("validates exact-revision replica job commands and durable state", () => {
