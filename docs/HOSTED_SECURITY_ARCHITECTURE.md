@@ -135,10 +135,10 @@ without refreshing the inventory.
 
 At this revision the inventory contains:
 
-- 304 HTTP and 5 WebSocket routes;
-- 170 worker command variants;
-- 30 application live resource variants;
-- 273 database repository entry points; and
+- 343 HTTP and 5 WebSocket routes;
+- 187 worker command variants;
+- 31 application live resource variants;
+- 317 database repository entry points; and
 - the five non-route data planes listed below.
 
 The inventory's `ownerEvidence` field is not an authorization guarantee. It is
@@ -182,14 +182,15 @@ principal. Native clients and raw HTTP clients are not constrained by CORS.
 
 ### Worker control
 
-The six `/api/internal/*` routes are a distinct machine-credential boundary:
+The seven `/api/internal/*` routes are a distinct machine-credential boundary:
 
 - worker heartbeat;
 - worker command WebSocket attachment;
 - one-time worker enrollment;
 - automation schedule synchronization;
 - automation dispatch reporting; and
-- agent worktree tool results.
+- agent worktree tool results; and
+- short-lived provider-account access-token leases.
 
 Hosted and standalone workers authenticate with a unique credential bound to
 one owner and immutable worker ID. The server stores only its SHA-256 hash,
@@ -263,6 +264,52 @@ exists briefly in server memory when an authorized provider or MCP runtime is
 dispatched to its assigned worker. Operators must back up the keyring separately from PostgreSQL,
 retain old keys until startup has completed a rotation, and never place the
 keyring in source control, logs, or support bundles.
+
+### 7.1 Portable provider OAuth accounts
+
+ChatGPT and Grok/SuperGrok credentials use the same vault but a distinct
+authenticated context:
+
+`cantrip:model-provider-account:<kind>:<ownerId>:<providerId>:<accountId>`
+
+That context prevents an envelope copied between owners, providers, accounts,
+or provider kinds from decrypting. Migrations `0080_flimsy_captain_flint` and
+`0081_bizarre_skaar` add the encrypted envelope, monotonic credential revision,
+identity subject, lifecycle state, expiry, and cross-process refresh lease.
+Migration `0086_slow_jack_murdock` moves quota and catalog availability to a
+stable provider-account scope.
+
+The provider access route authenticates the worker's individual credential and
+derives its immutable owner and worker ID from that credential. The repository
+loads the provider and account through the derived owner; request path IDs can
+never select another owner's credential. A valid response contains only the
+current access token, its revision and expiry, and the minimum provider identity
+metadata required by the runtime. It never contains a refresh token, ID token,
+or credential envelope. The worker caches the lease in memory for at most five
+minutes and never beyond the upstream token expiry.
+
+Refreshes are single-flight inside one server process and fenced across server
+replicas by the database refresh lease and expected credential revision. The
+complete replacement credential, including a rotated refresh token, is
+encrypted before the revision advances. A stale caller observes the newer
+revision instead of refreshing again. Permanent invalid-grant failures become
+`reauth-required`; an upstream identity change becomes `conflict`. Global
+sign-out first denies leases and aborts in-flight refreshes, atomically removes
+the durable credential, attempts bounded upstream revocation, invalidates the
+catalog, and tells every connected worker to close the affected runtime and
+discard any legacy file.
+
+The server is therefore a trusted credential broker. A database dump without
+the operator keyring does not reveal these credentials. The worker revalidates
+and discards its cached lease after at most five minutes, but an exfiltrated
+OAuth bearer token remains usable until its upstream expiry or revocation. A
+compromised live server process or active keyring can use every provider account
+it owns. Operators must protect the server and keyring accordingly, revoke
+provider accounts after a control-plane compromise, and never copy lease
+responses, OAuth capture payloads, or envelopes into logs, events, diagnostics,
+support bundles, or browser state. The full data flow, migration rules, test
+evidence, and manual verification procedure live in
+[`PROVIDER_AUTHENTICATION.md`](PROVIDER_AUTHENTICATION.md).
 
 The append-only `audit_events` ledger records authentication decisions, session
 revocation, worker enrollment outcomes, project access, Git requests, and

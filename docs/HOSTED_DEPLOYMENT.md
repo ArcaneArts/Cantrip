@@ -144,8 +144,10 @@ credential revocation or loss; an ordinary upgrade keeps the worker identity.
 ## Migrations and rolling upgrades
 
 Cantrip migrations are forward-only. Take a verified PostgreSQL backup and keep
-the active secret-encryption keyring before applying an upgrade. Run exactly one
-migration job against the target release:
+the complete secret-encryption keyring before applying an upgrade. The database
+contains encrypted provider API keys, ChatGPT/Grok OAuth accounts, and MCP
+credentials; neither a database-only backup nor a keyring-only backup is
+independently useful. Run exactly one migration job against the target release:
 
 ```bash
 docker compose --env-file deploy/hosted.env \
@@ -410,9 +412,13 @@ content, or source files.
 1. Block new public traffic and preserve logs and audit events without copying
    secrets, prompts, source, or terminal contents into the incident system.
 2. Revoke affected sessions and worker credentials from a trusted account.
-3. Rotate provider credentials and add a new envelope key. Keep old envelope
-   keys until all rows rewrap and a verified backup completes.
+3. Globally sign out or revoke affected ChatGPT/Grok accounts, rotate provider
+   API credentials, and add a new envelope key. Keep old envelope keys until all
+   rows rewrap and a verified backup completes.
 4. Restore PostgreSQL plus the matching keyring when durable state is damaged.
 5. Re-enroll workers only when their credential or identity store is lost.
-6. Validate cross-account isolation, worker routing, Code isolation, and TURN
-   fallback before reopening traffic.
+6. Validate cross-account isolation, worker routing, portable provider leases,
+   Code isolation, and TURN fallback before reopening traffic. Use the
+   cross-platform provider procedure in
+   [`PROVIDER_AUTHENTICATION.md`](PROVIDER_AUTHENTICATION.md) after restoring
+   provider-account envelopes.

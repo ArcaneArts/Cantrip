@@ -1,6 +1,6 @@
 # Cantrip Project Plan
 
-- Status: local and hosted account foundations, independently enrolled workers, multi-worker replicas, Redis relay coordination, fenced scheduling, production deployment assets, and end-to-end durable chat relocation implemented
+- Status: local and hosted account foundations, independently enrolled workers, portable server-owned ChatGPT/Grok OAuth accounts, multi-worker replicas, Redis relay coordination, fenced scheduling, production deployment assets, and end-to-end durable chat relocation implemented
 - Canonical domain: `cantrip.art`
 - Desktop/mobile application identifier: `art.cantrip`
 - Package manager: pnpm workspaces
@@ -35,7 +35,8 @@ this deployment shape incrementally.
 - Allow a project or a new chat to select from multiple connected workers.
 - Support a future idle-chat handoff to another worker when that worker has a compatible source checkout; do not promise migration of opaque live Codex state.
 - Support an anonymous, zero-sign-in loopback mode and a separate hosted account mode with email/password identities.
-- Support Codex-managed ChatGPT sign-in and its Codex quota reporting.
+- Support portable server-owned ChatGPT and Grok/SuperGrok sign-in, account
+  status, model catalogs, and quota reporting across workers.
 - Support OpenAI-compatible provider profiles with a model, base URL, API key, structured-output capability, tool calling, and reasoning capability metadata.
 - Support worker-local providers such as Ollama, where `localhost` refers to the worker rather than the server or UI device.
 - Make the browser the fast development harness now, while keeping the frontend portable to Tauri and Capacitor.
@@ -324,7 +325,8 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `chat_inputs` | Durable prompt queue with mode, ordering key, idempotency key, delivery state, and optional expected turn ID. |
 | `chat_events` | Append-only normalized event log with per-chat ordering, raw payload, and deduplication key. |
 | `pending_requests` | Approvals, user-input prompts, or elicitation requests awaiting a client response. |
-| `model_providers` | Independent API endpoints or isolated ChatGPT, Grok, and SuperGrok accounts, including server-held endpoint configuration and worker-held authentication identity. |
+| `model_providers` | Independent API endpoints or ChatGPT, Grok, and SuperGrok provider groups, including server-held endpoint configuration. |
+| `model_provider_accounts` | Stable provider-account identity, encrypted OAuth credential envelope and revision, refresh coordination, global auth/quota state, and worker-independent catalog scope. |
 | `model_profiles` | Logical user-facing models selected by chats and queued prompts, with a default reasoning effort and routing policy. |
 | `model_routes` | Ordered provider bindings for a logical model: provider-specific model name, enabled state, priority, and optional reasoning override. |
 | `tunnels` | Owner-scoped logical routes with explicit source and destination endpoints, optional organizational project association, management policy, desired/observed state, and aggregate traffic counters. |
@@ -468,19 +470,36 @@ Bootstrap advertises `linkCodes` and `multipleWorkers` now that enrollment and t
 
 For `pnpm dev` and the embedded Tauri runtime, server and worker may share a development-only token through explicit loopback bootstrap configuration. The server refuses that path in standalone, password, account, non-loopback, and hosted modes. It is bootstrap plumbing, not remote enrollment, and the app never receives it.
 
-### 9.2 Sign in with ChatGPT
+### 9.2 Provider-account authentication
 
-The worker proxies Codex app-server's account methods through a narrow server API:
+ChatGPT and Grok/SuperGrok accounts are portable server resources. An online
+worker may run the initial browser or device-code login, but the server validates
+the resulting provider identity and stores the durable OAuth credential as an
+account-specific AES-256-GCM envelope. Workers request short-lived access-token
+leases through their own owner-bound machine credentials; refresh and rotating
+refresh-token persistence are serialized by credential revision and a database
+lease.
 
-- `account/read` for current state;
-- `account/login/start` for browser or device-code login;
-- `account/login/cancel` and `account/logout`;
-- `account/rateLimits/read` and rate-limit update events; and
-- account update/completion notifications.
+ChatGPT runtimes use Codex 0.147's experimental `chatgptAuthTokens` login mode.
+The worker supplies a leased access token, account/workspace ID, and plan type to
+`account/login/start`, then answers
+`account/chatgptAuthTokens/refresh` by forcing a newer server lease. Grok keeps
+the worker-local loopback subscription proxy and its xAI headers, path/origin
+restrictions, request limit, and single 401 retry, but its token source is the
+same server lease service. Normal server-managed operation writes neither
+`auth.json` nor `grok-auth.json` on the worker.
 
-For local desktop use, the browser callback flow is acceptable. For a phone controlling a private or headless worker, device-code login is the preferred path because the browser callback listener exists on the worker. The app displays the verification URL and one-time code while the worker owns token persistence and refresh.
+Legacy worker-local credentials remain a temporary compatibility path. A
+connected worker captures and validates the credential, the server durably
+encrypts it, and only then does the worker purge the matching local file.
+Conflicting identities fail closed. ChatGPT migration stops the affected runtime
+and removes the local file without calling ordinary Codex logout, because logout
+would revoke the credential just imported by the server. If the only legacy copy
+is offline, the status explicitly asks for that original worker to reconnect.
 
-ChatGPT tokens stay in the worker's isolated Codex credential store. Grok OAuth access and rotating refresh tokens stay in an equivalent owner-only worker account home and are injected through a loopback-only proxy to xAI's subscription endpoint. The server stores only account display metadata, auth status, model availability, and quota snapshots needed for the UI. It must never store or relay raw ChatGPT or Grok access/refresh tokens.
+The complete ownership, refresh, migration, lifecycle, and threat contract is
+maintained in
+[`PROVIDER_AUTHENTICATION.md`](PROVIDER_AUTHENTICATION.md).
 
 ### 9.3 Model profiles and provider routes
 
@@ -510,7 +529,13 @@ The UI must disable unsupported options and label unverified models. If importan
 
 The server stores provider API keys only as authenticated, versioned AES-256-GCM envelopes. Hosted deployments must supply an operator-owned keyring and identify its active key. Older keys remain available during rotation; startup verifies every envelope, migrates legacy plaintext rows, and rewraps older envelopes with the active key. Anonymous local development generates a private mode-0600 key in the ignored server data directory so the zero-configuration loop remains intact.
 
-The app receives only `hasApiKey` metadata. A decrypted key exists in server memory only while resolving an authorized model route and is sent solely to the assigned authenticated worker for its Codex runtime. It is never returned through provider APIs or live events. ChatGPT access and refresh tokens remain entirely in each worker's isolated Codex credential store.
+The app receives only `hasApiKey` metadata and redacted provider-account state.
+A decrypted API key exists in server memory only while resolving an authorized
+model route and is sent solely to the assigned authenticated worker. ChatGPT and
+Grok refresh tokens remain inside the server process and encrypted database
+envelopes. Workers receive bounded access-token leases and identity metadata only;
+those leases are neither exposed to app APIs/live events nor written to their
+provider credential directories.
 
 No plaintext provider secret may appear in logs, database rows or JSON payloads, event streams, generated support bundles, or browser storage. Database backups must be paired with the relevant encryption keyring, and retired keys must not be removed until all envelopes have been rewrapped and a verified backup has been taken.
 
@@ -623,7 +648,10 @@ Configuration uses validated environment variables and config files with documen
 - steer a running turn and reorder queued prompts;
 - compact and resume after a full stack restart;
 - keep history readable with a worker offline, then hand an idle logical chat to a compatible worker-specific runtime session;
-- configure ChatGPT, API-key, and keyless local profiles using fake providers; and
+- enroll a worker with empty provider credential homes, list account-backed
+  ChatGPT and Grok models, complete turns through existing server accounts, and
+  preserve the selected logical model through worker relocation;
+- configure API-key and keyless local profiles using fake providers; and
 - cover desktop and phone-sized layouts in Playwright.
 
 ## 14. Observability and operations
@@ -665,7 +693,8 @@ Exit: a developer can use Cantrip locally in the browser for a real repository w
 ### Phase 2: runtime profiles and local tools
 
 - Add isolated Codex homes and a runtime process pool. The local vertical slice now has server-owned settings, per-message logical model selection, isolated provider runtimes, and ordered provider-route failover.
-- Add ChatGPT browser/device login, logout, account display, and rate-limit UI.
+- Add server-owned portable ChatGPT and Grok/SuperGrok browser/device login,
+  logout, account display, model catalog, and rate-limit UI. (Implemented.)
 - Add API-key/base-URL and keyless Ollama profiles.
 - Add explicit model capability tests and structured-output probes.
 - Add the worker-backed file browser and Git status/diff. The initial server-routed, worker-owned PTY terminal is implemented; idle expiration, backpressure, and remote opt-in hardening remain.
@@ -727,7 +756,10 @@ The first meaningful release is complete when all of the following are true:
 - Interrupt and explicit context compaction work and leave the chat resumable.
 - Restarting the browser, server, worker, or Codex runtime does not duplicate completed inputs or lose accepted queued inputs.
 - Conversation history remains readable from PGlite when the worker is stopped; files remain worker-only.
-- ChatGPT login is completed on the worker, quota state is visible, and raw tokens never enter the server database.
+- ChatGPT and Grok login may run on any online worker; the completed account,
+  quota/catalog state, encrypted credential, refresh authority, and global
+  lifecycle belong to the server. A newly enrolled worker can use the existing
+  logical model profiles without provider sign-in or durable local credentials.
 - A tested OpenAI-compatible profile and a worker-local Ollama profile can run, with unsupported capabilities visibly disabled.
 - A trusted workflow can execute bounded Codex nodes, survive durable-boundary restarts, isolate mutations in leased worktrees, and be invoked through explicitly enabled schedule/API/webhook/Git/saved-command triggers without adding a second agent runtime.
 - Security tests cover unauthorized chat access, forged worker events, replayed commands, path traversal, symlink escape, secret leakage, and approval spoofing.
@@ -737,6 +769,7 @@ The first meaningful release is complete when all of the following are true:
 | Risk | Mitigation |
 | --- | --- |
 | Codex app-server evolves quickly. | Pin a tested range, generate schemas from the installed CLI, isolate it behind `CodexRuntime`, preserve unknown events, and run compatibility CI. |
+| Codex 0.147's `chatgptAuthTokens` methods are experimental. | Pin exactly 0.147 in packaged workers, capability-gate login, test the refresh server request, and fail with an explicit compatibility error before using a server-owned ChatGPT account. |
 | Arbitrary provider/model compatibility is uneven. | Require Responses compatibility, probe capabilities per model, label unverified models, and avoid claiming universal support. |
 | A server compromise can become worker RCE. | Outbound authenticated workers, strict ownership, sandbox defaults, source scoping, approval UX, secret isolation, audit logs, and focused security testing. |
 | Server and Codex histories diverge. | Treat the server log as logical conversation/UI authority and each worker's Codex rollout as runtime-continuation authority; reconcile by stable IDs/cursors and label history-based handoffs. |

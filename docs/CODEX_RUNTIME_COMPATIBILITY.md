@@ -74,6 +74,36 @@ Destination hydration additionally requires `thread/start`, `thread/read`, and
 `thread/inject_items`; missing methods produce a durable, explicit import
 compatibility state. See [the import contract](CODEX_CHAT_IMPORT.md).
 
+## Server-managed ChatGPT authentication
+
+Portable ChatGPT accounts depend on an experimental Codex 0.147 App Server
+surface. Before starting a server-managed ChatGPT runtime, the worker requires:
+
+- semantic version `0.147.x`;
+- `initialize.capabilities.experimentalApi` support; and
+- an available `account/login/start` method.
+
+The worker obtains a short-lived access lease from Cantrip Server and invokes
+`account/login/start` with `type: "chatgptAuthTokens"`, the access token,
+ChatGPT account/workspace ID, and plan type. Codex may later send the worker an
+`account/chatgptAuthTokens/refresh` server request. Cantrip validates its reason
+and previous account ID, asks the server for a forced lease newer than the
+current credential revision, verifies the provider/account identity did not
+change, and returns the replacement token within the normal App Server request
+timeout. The worker keeps these tokens only in memory and does not create a
+durable `auth.json` for this mode.
+
+This integration required no patch to the imported Codex 0.147 source. It is
+still experimental upstream: method names, request shapes, login result types,
+or refresh timing may change even if core thread methods remain compatible.
+Cantrip therefore fails with an explicit server-managed-auth compatibility
+error instead of falling through to an unrelated account. A Codex pin upgrade
+must regenerate schemas and add a real compatibility fixture covering login,
+one successful turn, the refresh server request, identity preservation, and
+failure timing before expanding the tested range. The broader credential and
+migration contract lives in
+[`PROVIDER_AUTHENTICATION.md`](PROVIDER_AUTHENTICATION.md).
+
 ## Compatibility states
 
 - `compatible`: the version is in range, initialization validates, every core

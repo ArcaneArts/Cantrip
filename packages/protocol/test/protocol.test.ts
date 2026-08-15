@@ -3164,6 +3164,21 @@ describe("Cantrip protocol", () => {
     ).toEqual({ type: "chat.pause.set", chatId: "chat-1", paused: true });
   });
 
+  it("does not serialize provider credentials through worker events", () => {
+    const secret = "provider-refresh-token-that-must-not-escape";
+    const event = workerEventSchema.parse({
+      type: "terminal.ready",
+      accessToken: "provider-access-token-that-must-not-escape",
+      refreshToken: secret,
+      credentialEnvelope: `encrypted:${secret}`,
+    });
+
+    expect(event).toEqual({ type: "terminal.ready" });
+    expect(JSON.stringify(event)).not.toContain(secret);
+    expect(JSON.stringify(event)).not.toContain("provider-access-token");
+    expect(JSON.stringify(event)).not.toContain("credentialEnvelope");
+  });
+
   it("validates durable Plan Mode state and no-timeout worker questions", () => {
     const state = chatPlanStateSchema.parse({
       mode: "plan",

@@ -80,9 +80,12 @@ The following timers remain intentionally:
   recovery uses two-second and 1.5-second intervals, respectively.
 - Pending customization imports and MCP OAuth operations apply live payloads;
   their one-second status check is only a disconnected recovery path.
-- The settings UI checks external Codex/ChatGPT authentication state every ten
-  seconds while that UI is mounted. It is worker-owned external state, not
-  Cantrip committed application state.
+- The settings UI checks global ChatGPT and Grok provider-account status every
+  ten seconds while that UI is mounted. The encrypted credential, lifecycle,
+  quota, and catalog state are server-owned; the timer is a bounded recovery
+  path for provider/OAuth state that is not yet an application-live resource.
+  An active device-login runner checks more frequently until that operation
+  completes.
 - The singleton app-control client sends a heartbeat at the negotiated
   interval, currently 30 seconds, and reconnects with bounded exponential
   backoff and jitter.
