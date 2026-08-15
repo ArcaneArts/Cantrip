@@ -547,6 +547,10 @@ import {
   optionalToolString,
   requiredToolString,
 } from "./http/request-helpers.js";
+import {
+  sendWorkerConflictFailure,
+  sendWorkerRequestFailure,
+} from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
 import { createServerLogStream } from "./logger.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
@@ -637,16 +641,6 @@ const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
 const REMOTE_DESKTOP_FLEET_SURFACE_LIMIT = 64;
 const FINITE_WORKER_COMMAND_TIMEOUT_MS = 30 * 60_000;
 const STREAMING_WORKER_COMMAND_TIMEOUT_MS = null;
-function workerRequestFailureStatus(error: unknown): 429 | 502 | 503 {
-  if (error instanceof RelayLimitError) return 429;
-  return error instanceof WorkerUnavailableError ? 503 : 502;
-}
-
-function workerConflictFailureStatus(error: unknown): 409 | 429 | 503 {
-  if (error instanceof RelayLimitError) return 429;
-  return error instanceof WorkerUnavailableError ? 503 : 409;
-}
-
 function mutationAuditDescriptor(
   method: string,
   route: string,
@@ -6355,9 +6349,7 @@ export async function buildApp({
         });
         return reply.send(cantripVersionSchema.parse(version));
       } catch (error) {
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -7095,10 +7087,11 @@ export async function buildApp({
               input.data.response,
             );
           } catch (error) {
-            const status = workerConflictFailureStatus(error);
-            return reply.code(status).send({
-              error: `The workflow runtime no longer accepts this interaction: ${errorMessage(error)}`,
-            });
+            return sendWorkerConflictFailure(
+              reply,
+              error,
+              `The workflow runtime no longer accepts this interaction: ${errorMessage(error)}`,
+            );
           }
           try {
             const interaction = await resolveLiveAgentInteractionRequest(
@@ -7148,10 +7141,11 @@ export async function buildApp({
             ),
           );
         } catch (error) {
-          const status = workerConflictFailureStatus(error);
-          return reply.code(status).send({
-            error: `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
-          });
+          return sendWorkerConflictFailure(
+            reply,
+            error,
+            `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
+          );
         }
         const interaction = await resolveLiveAgentInteractionRequest(
           applicationOwnerId(),
@@ -7302,9 +7296,7 @@ export async function buildApp({
       if (message.endsWith("not found.")) {
         return reply.code(404).send({ error: message });
       }
-      return reply
-        .code(workerRequestFailureStatus(error))
-        .send({ error: message });
+      return sendWorkerRequestFailure(reply, error, message);
     }
   });
 
@@ -7337,9 +7329,7 @@ export async function buildApp({
       if (message.endsWith("not found.")) {
         return reply.code(404).send({ error: message });
       }
-      return reply
-        .code(workerRequestFailureStatus(error))
-        .send({ error: message });
+      return sendWorkerRequestFailure(reply, error, message);
     }
   });
 
@@ -7385,9 +7375,7 @@ export async function buildApp({
       if (message.endsWith("not found.")) {
         return reply.code(404).send({ error: message });
       }
-      return reply
-        .code(workerRequestFailureStatus(error))
-        .send({ error: message });
+      return sendWorkerRequestFailure(reply, error, message);
     }
   });
 
@@ -7897,8 +7885,7 @@ export async function buildApp({
         });
         return reply.send(githubAuthStatusSchema.parse(result));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -7934,8 +7921,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -7959,8 +7945,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -7992,8 +7977,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -8027,8 +8011,7 @@ export async function buildApp({
           }),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -9148,10 +9131,11 @@ export async function buildApp({
           }),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({
-          error: `Codex could not generate a valid workflow: ${errorMessage(error)}`,
-        });
+        return sendWorkerRequestFailure(
+          reply,
+          error,
+          `Codex could not generate a valid workflow: ${errorMessage(error)}`,
+        );
       }
     },
   );
@@ -9271,9 +9255,11 @@ export async function buildApp({
           }),
         );
       } catch (error) {
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: `Git assistant failed: ${errorMessage(error)}` });
+        return sendWorkerRequestFailure(
+          reply,
+          error,
+          `Git assistant failed: ${errorMessage(error)}`,
+        );
       }
     },
   );
@@ -9298,9 +9284,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9355,8 +9339,7 @@ export async function buildApp({
           ? reply.send(githubPullRequestCheckoutResultSchema.parse(result))
           : reply.code(404).send({ error: "Project worktree not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9423,8 +9406,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9494,8 +9476,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9551,8 +9532,7 @@ export async function buildApp({
         );
         return reply.send(githubPullRequestDetailSchema.parse(pullRequest));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -9653,8 +9633,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9689,9 +9668,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9742,8 +9719,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -9794,8 +9770,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -9861,8 +9836,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -9906,8 +9880,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -9938,8 +9911,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -9988,8 +9960,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -10019,9 +9990,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -10096,9 +10065,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -10148,8 +10115,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -10237,8 +10203,7 @@ export async function buildApp({
         if (error instanceof WorkflowConflictError) {
           return reply.code(409).send({ error: error.message });
         }
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -10638,8 +10603,7 @@ export async function buildApp({
               .code(404)
               .send({ error: "Workflow run or worktree lease not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -10966,8 +10930,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeListSchema.parse(worktrees))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -10993,8 +10956,7 @@ export async function buildApp({
           ? reply.code(201).send(projectWorktreeSummarySchema.parse(created))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11041,8 +11003,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeSummarySchema.parse(worktree))
           : reply.code(404).send({ error: "Worktree not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11084,8 +11045,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeSummarySchema.parse(worktree))
           : reply.code(404).send({ error: "Worktree not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11178,8 +11138,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeSummarySchema.parse(worktree))
           : reply.code(404).send({ error: "Worktree not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11219,8 +11178,7 @@ export async function buildApp({
           ? reply.send(projectWorktreeListSchema.parse(worktrees))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11260,8 +11218,7 @@ export async function buildApp({
           if (snapshot)
             return reply.send(worktreeStatusResultSchema.parse(snapshot));
         }
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -11296,8 +11253,7 @@ export async function buildApp({
         });
         return reply.send(gitFileDiffSchema.parse(result));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -11345,8 +11301,7 @@ export async function buildApp({
         });
         return reply.send(gitHistorySchema.parse(history));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -11389,8 +11344,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11494,8 +11448,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11542,9 +11495,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11654,9 +11605,7 @@ export async function buildApp({
             projectId: request.params.projectId,
           });
         }
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11740,9 +11689,7 @@ export async function buildApp({
           gitManagedOperationResponseSchema.parse({ operation }),
         );
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11834,9 +11781,7 @@ export async function buildApp({
           gitManagedOperationResponseSchema.parse({ operation }),
         );
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11929,9 +11874,7 @@ export async function buildApp({
           gitManagedOperationResponseSchema.parse({ operation }),
         );
       } catch (error) {
-        return reply
-          .code(workerConflictFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -11983,8 +11926,7 @@ export async function buildApp({
         });
         return reply.send(gitCommitDetailSchema.parse(detail));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12035,8 +11977,7 @@ export async function buildApp({
           ]),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12078,8 +12019,7 @@ export async function buildApp({
         });
         return reply.send(gitComparisonSchema.parse(comparison));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12119,8 +12059,7 @@ export async function buildApp({
         });
         return reply.send(gitRevisionFileDiffSchema.parse(diff));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12147,8 +12086,7 @@ export async function buildApp({
         });
         return reply.send(gitPartialPatchPreviewSchema.parse(preview));
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12196,8 +12134,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12222,8 +12159,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12278,8 +12214,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12318,8 +12253,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12358,8 +12292,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12466,8 +12399,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12513,8 +12445,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12544,8 +12475,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12570,8 +12500,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12613,8 +12542,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12643,8 +12571,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12669,8 +12596,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12712,8 +12638,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12742,8 +12667,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12768,8 +12692,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12811,8 +12734,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12841,8 +12763,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12868,8 +12789,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -12911,8 +12831,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12941,8 +12860,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12968,8 +12886,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -12994,8 +12911,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13030,8 +12946,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13073,8 +12988,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13115,8 +13029,7 @@ export async function buildApp({
         );
         return reply.code(201).send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -13148,8 +13061,7 @@ export async function buildApp({
         );
         return reply.send(preview);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -13199,8 +13111,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -13250,8 +13161,7 @@ export async function buildApp({
         );
         return reply.send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -13285,8 +13195,7 @@ export async function buildApp({
       });
       return reply.send(gitHistorySchema.parse(history));
     } catch (error) {
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -13308,8 +13217,7 @@ export async function buildApp({
         );
         return reply.send(projectRepositoryStatsSchema.parse(stats));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13375,8 +13283,7 @@ export async function buildApp({
         );
         return reply.code(201).send(result);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -13433,8 +13340,7 @@ export async function buildApp({
       });
       return reply.send(githubIssueListSchema.parse(issues));
     } catch (error) {
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -13460,8 +13366,7 @@ export async function buildApp({
         });
         return reply.send(githubIssueDetailSchema.parse(issue));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13493,8 +13398,7 @@ export async function buildApp({
         });
         return reply.send(githubIssueDetailSchema.parse(issue));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13526,8 +13430,7 @@ export async function buildApp({
         });
         return reply.send(githubIssueDetailSchema.parse(issue));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13549,8 +13452,7 @@ export async function buildApp({
         });
         return reply.send(gitStatusSchema.parse(status));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13591,8 +13493,7 @@ export async function buildApp({
         }
         return reply.send(result);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -13689,8 +13590,7 @@ export async function buildApp({
             .catch(() => undefined);
         }
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
 
       return (await repository.deleteProject(
@@ -13757,8 +13657,7 @@ export async function buildApp({
           error: "This GitHub repository already has a Cantrip project.",
         });
       }
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -13872,8 +13771,7 @@ export async function buildApp({
           if (!updated) throw new Error("Chat source not found.");
           context = updated;
         } catch (error) {
-          const status = workerConflictFailureStatus(error);
-          return reply.code(status).send({ error: errorMessage(error) });
+          return sendWorkerConflictFailure(reply, error);
         }
       }
       const terminal = await repository.getOrCreateChatConsole(
@@ -13946,8 +13844,7 @@ export async function buildApp({
         );
         return reply.send(scriptCommandListSchema.parse(commands));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -14049,8 +13946,7 @@ export async function buildApp({
         await updateTerminalStatus(context.terminalId, "running");
         return reply.code(202).send({ accepted: true });
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -14408,9 +14304,7 @@ export async function buildApp({
           session.id,
           failedRuntime,
         );
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: message });
+        return sendWorkerRequestFailure(reply, error, message);
       }
       if (!runtime) {
         return reply.code(502).send({ error: "Code editor did not start." });
@@ -14843,8 +14737,7 @@ export async function buildApp({
           ),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -15869,8 +15762,7 @@ export async function buildApp({
       });
       return reply.send(explorerDirectorySchema.parse(directory));
     } catch (error) {
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -15891,8 +15783,7 @@ export async function buildApp({
       });
       return reply.send(explorerDirectoryCommitsSchema.parse(commits));
     } catch (error) {
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -15916,8 +15807,7 @@ export async function buildApp({
       });
       return reply.send(explorerFileSchema.parse(file));
     } catch (error) {
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -15943,8 +15833,7 @@ export async function buildApp({
         });
         return reply.send(explorerFileSchema.parse(file));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -16096,9 +15985,7 @@ export async function buildApp({
         if (error instanceof DirectAttachmentUnavailableError) {
           return reply.code(409).send({ error: error.message });
         }
-        return reply
-          .code(workerRequestFailureStatus(error))
-          .send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -16506,8 +16393,7 @@ export async function buildApp({
         );
         return reply.send(released);
       } catch (error) {
-        const status = workerConflictFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerConflictFailure(reply, error);
       }
     },
   );
@@ -17339,8 +17225,7 @@ export async function buildApp({
         });
         return reply.send(skillListSchema.parse(skills));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17373,8 +17258,7 @@ export async function buildApp({
       });
       return reply.send(codexCustomizationInventorySchema.parse(inventory));
     } catch (error) {
-      const status = workerRequestFailureStatus(error);
-      return reply.code(status).send({ error: errorMessage(error) });
+      return sendWorkerRequestFailure(reply, error);
     }
   });
 
@@ -17404,8 +17288,7 @@ export async function buildApp({
         });
         return reply.send(codexExternalImportPreviewSchema.parse(preview));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17441,8 +17324,7 @@ export async function buildApp({
         });
         return reply.send(codexMcpResourceReadSchema.parse(resource));
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17480,8 +17362,7 @@ export async function buildApp({
         publishChatInvalidation(context.chatId, "customization");
         return reply.send(configured);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17519,8 +17400,7 @@ export async function buildApp({
         publishChatInvalidation(context.chatId, "customization");
         return reply.send(roots);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17564,8 +17444,7 @@ export async function buildApp({
         observeMcpOauthStatus(context, runtime, initial);
         return reply.send(result);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17603,8 +17482,7 @@ export async function buildApp({
         observeMcpOauthStatus(context, runtime, status);
         return reply.send(status);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17637,8 +17515,7 @@ export async function buildApp({
         publishChatInvalidation(context.chatId, "customization");
         return reply.send(reloaded);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17677,8 +17554,7 @@ export async function buildApp({
         observeExternalImportStatus(context, runtime, status);
         return reply.code(202).send(status);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17718,8 +17594,7 @@ export async function buildApp({
         observeExternalImportStatus(context, runtime, status);
         return reply.send(status);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17856,8 +17731,7 @@ export async function buildApp({
         } catch {
           // Cleanup is best effort if the worker disconnected mid-upload.
         }
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -17934,8 +17808,7 @@ export async function buildApp({
           .type(attachment.mimeType)
           .send(content);
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
@@ -19113,8 +18986,7 @@ export async function buildApp({
           gitCommitDetailSchema.shape.signature.unwrap().parse(signature),
         );
       } catch (error) {
-        const status = workerRequestFailureStatus(error);
-        return reply.code(status).send({ error: errorMessage(error) });
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );
