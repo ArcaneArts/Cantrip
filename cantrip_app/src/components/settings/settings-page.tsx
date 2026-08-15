@@ -26,7 +26,6 @@ import {
   Moon,
   Network,
   Palette,
-  Pencil,
   Plus,
   RefreshCw,
   Route,
@@ -37,7 +36,13 @@ import {
   Sun,
   Trash2,
 } from "lucide-react";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -174,6 +179,16 @@ function matchesSearch(query: string, ...values: Array<string | null>) {
   return values.some((value) => value?.toLowerCase().includes(query));
 }
 
+function editSettingsRowFromKeyboard(
+  event: KeyboardEvent<HTMLDivElement>,
+  onEdit: () => void,
+) {
+  if (event.target !== event.currentTarget) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  onEdit();
+}
+
 function ProviderRow({
   provider,
   workerId,
@@ -251,7 +266,13 @@ function ProviderRow({
   return (
     <div
       data-high-contrast-row
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_auto]"
+      role="button"
+      tabIndex={0}
+      aria-label={`Edit ${provider.name}`}
+      title={`Edit ${provider.name}`}
+      className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_72px]"
+      onClick={onEdit}
+      onKeyDown={(event) => editSettingsRowFromKeyboard(event, onEdit)}
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <Server className="size-4 shrink-0 text-muted-foreground" />
@@ -308,10 +329,13 @@ function ProviderRow({
           ) : null}
         </div>
       </div>
-      <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
+      <div
+        className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
+        onClick={(event) => event.stopPropagation()}
+      >
         {supportsCatalog ? (
           <Button
-            className="size-8"
+            className="size-7"
             size="icon"
             variant="ghost"
             disabled={refreshCatalog.isPending}
@@ -324,12 +348,8 @@ function ProviderRow({
             <span className="sr-only">Refresh {provider.name} catalog</span>
           </Button>
         ) : null}
-        <Button className="size-8" size="icon" variant="ghost" onClick={onEdit}>
-          <Pencil className="size-3.5" />
-          <span className="sr-only">Edit {provider.name}</span>
-        </Button>
         <Button
-          className="size-8"
+          className="size-7"
           size="icon"
           variant="ghost"
           disabled={removing}
@@ -934,7 +954,7 @@ export function SettingsPage({
                       <span className="sr-only">Add provider</span>
                     </Button>
                   </div>
-                  <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_104px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                  <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_72px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Provider</span>
                     <span>Connection</span>
                     <span>Catalog</span>
@@ -1019,7 +1039,7 @@ export function SettingsPage({
                     </select>
                   </label>
 
-                  <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                  <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Model</span>
                     <span>Routes</span>
                     <span>Configuration</span>
@@ -1030,7 +1050,17 @@ export function SettingsPage({
                       <div
                         key={model.id}
                         data-high-contrast-row
-                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-2.5 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_72px]"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Edit ${model.name}`}
+                        title={`Edit ${model.name}`}
+                        className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px]"
+                        onClick={() => openModelDialog(model)}
+                        onKeyDown={(event) =>
+                          editSettingsRowFromKeyboard(event, () =>
+                            openModelDialog(model),
+                          )
+                        }
                       >
                         <div className="flex min-w-0 items-center gap-2.5">
                           <Cpu className="size-4 shrink-0 text-muted-foreground" />
@@ -1070,18 +1100,12 @@ export function SettingsPage({
                             <Badge variant="secondary">Default</Badge>
                           ) : null}
                         </div>
-                        <div className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto">
+                        <div
+                          className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <Button
-                            className="size-8"
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => openModelDialog(model)}
-                          >
-                            <Pencil className="size-3.5" />
-                            <span className="sr-only">Edit {model.name}</span>
-                          </Button>
-                          <Button
-                            className="size-8"
+                            className="size-7"
                             size="icon"
                             variant="ghost"
                             disabled={removeModel.isPending}
