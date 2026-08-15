@@ -41,6 +41,36 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
   assert.match(workflow, /tag="v\$\{version\}"/u);
 });
 
+test("saves Codex before building Cantrip Code", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  const codexBuild = workflow.indexOf("- name: Build Codex runtime");
+  const codexSave = workflow.indexOf("- name: Save verified Codex runtime");
+  const codeBuild = workflow.indexOf("- name: Build Cantrip Code");
+  assert.ok(codexBuild >= 0);
+  assert.ok(codexSave > codexBuild);
+  assert.ok(codeBuild > codexSave);
+  assert.match(workflow, /uses: actions\/cache\/restore@v4/u);
+  assert.match(workflow, /uses: actions\/cache\/save@v4/u);
+});
+
+test("installs the native libraries required by Windows Code modules", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  assert.match(
+    workflow,
+    /Microsoft\.VisualStudio\.Component\.VC\.Runtimes\.x86\.x64\.Spectre/u,
+  );
+  assert.match(workflow, /setup\.exe/u);
+  assert.match(workflow, /Visual Studio Spectre libraries found at/u);
+});
+
 test("fails closed while signing and notarizing both the macOS app and DMG", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
