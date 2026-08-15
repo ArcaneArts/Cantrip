@@ -16,7 +16,7 @@ import {
 } from "../src/chat-relocations/executor.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { DEFAULT_MODEL_ROUTE_ID, LOCAL_USER_ID } from "../src/db/repository.js";
+import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
@@ -186,6 +186,48 @@ describe.sequential("chat relocation executor", () => {
       () => true,
       () => true,
     );
+    const provider = await database.repository.createModelProvider(
+      LOCAL_USER_ID,
+      {
+        name: "Portable ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+      },
+    );
+    const account = provider.accounts[0]!;
+    await database.repository.storeModelProviderAccountCredential(
+      LOCAL_USER_ID,
+      provider.id,
+      account.id,
+      {
+        accessToken: "server-owned-access-token",
+        accountId: "upstream-workspace",
+        email: "person@example.test",
+        expiresAt: Date.now() + 3_600_000,
+        idToken: "server-owned-identity-token",
+        kind: "chatgpt",
+        planType: "pro",
+        refreshToken: "server-owned-refresh-token",
+        userId: "upstream-user",
+        version: 1,
+      },
+    );
+    const portableModel = await database.repository.createModelProfile(
+      LOCAL_USER_ID,
+      {
+        name: "Portable Codex",
+        routes: [
+          {
+            providerId: provider.id,
+            modelName: "gpt-5.6-sol",
+            enabled: true,
+          },
+        ],
+      },
+    );
+    await database.repository.setChatModel(LOCAL_USER_ID, chat!.id, {
+      modelId: portableModel!.id,
+    });
     const attachmentBytes = Buffer.from("context", "utf8");
     const attachmentSha256 = createHash("sha256")
       .update(attachmentBytes)
@@ -223,7 +265,9 @@ describe.sequential("chat relocation executor", () => {
       "worker-source",
       source.id,
       "thread-source",
-      DEFAULT_MODEL_ROUTE_ID,
+      portableModel!.routes[0]!.id,
+      "ready",
+      account.id,
     );
     const job = await database.repository.chatRelocationJobs.create(
       LOCAL_USER_ID,
@@ -338,6 +382,9 @@ describe.sequential("chat relocation executor", () => {
       workerId: "worker-target",
       worktreeId: target.id,
       threadId: "thread-target",
+      modelId: portableModel!.id,
+      modelRouteId: portableModel!.routes[0]!.id,
+      providerAccountId: account.id,
     });
     const hydratedPayload = JSON.parse(
       Buffer.concat(hydrationChunks).toString("utf8"),
@@ -353,6 +400,18 @@ describe.sequential("chat relocation executor", () => {
     expect(commands.map((command) => command.type)).toContain(
       "chat.relocation.hydration.complete",
     );
+    expect(
+      commands.find(
+        (command) => command.type === "chat.relocation.hydration.begin",
+      ),
+    ).toMatchObject({
+      model: { id: portableModel!.id, routeId: portableModel!.routes[0]!.id },
+      provider: {
+        id: provider.id,
+        accountId: account.id,
+        credentialHomeKey: provider.id,
+      },
+    });
     expect(hydrationCompleteTimeout).toBe(CHAT_RELOCATION_HYDRATION_TIMEOUT_MS);
     expect(commands.at(-1)).toMatchObject({
       type: "chat.relocation.thread.release",

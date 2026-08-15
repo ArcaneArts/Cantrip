@@ -65,11 +65,13 @@ describe("ChatGPT catalog", () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
     const commands: unknown[] = [];
+    const commandWorkers: string[] = [];
     const bridge = {
       attach() {},
       close() {},
       isConnected: () => true,
-      request: async (_workerId, command) => {
+      request: async (workerId, command) => {
+        commandWorkers.push(workerId);
         commands.push(command);
         return {
           models: [
@@ -104,6 +106,9 @@ describe("ChatGPT catalog", () => {
         ) VALUES (
           'worker-1', '${LOCAL_USER_ID}', 'Local Worker', 'darwin', 'arm64',
           now(), now()
+        ), (
+          'worker-2', '${LOCAL_USER_ID}', 'Fresh Worker', 'win32', 'x64',
+          now(), now()
         );
       `);
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
@@ -121,6 +126,23 @@ describe("ChatGPT catalog", () => {
         { label: "Backup" },
       );
       for (const account of [first, second!]) {
+        await repository.storeModelProviderAccountCredential(
+          LOCAL_USER_ID,
+          provider.id,
+          account.id,
+          {
+            accessToken: `access-${account.id}`,
+            accountId: `upstream-${account.id}`,
+            email: `${account.id}@example.com`,
+            expiresAt: Date.now() + 3_600_000,
+            idToken: `identity-${account.id}`,
+            kind: "chatgpt",
+            planType: "pro",
+            refreshToken: `refresh-${account.id}`,
+            userId: `user-${account.id}`,
+            version: 1,
+          },
+        );
         await repository.recordModelProviderAccountStatus(
           account.id,
           "worker-1",
@@ -155,6 +177,12 @@ describe("ChatGPT catalog", () => {
         ]),
       );
       expect(catalog?.availability).toHaveLength(4);
+      expect(
+        catalog?.availability.every(({ workerId }) => workerId === null),
+      ).toBe(true);
+      expect(
+        catalog?.syncStates.every(({ workerId }) => workerId === null),
+      ).toBe(true);
       expect(
         new Set(
           catalog?.availability.map(({ providerAccountId }) =>
@@ -196,6 +224,18 @@ describe("ChatGPT catalog", () => {
       expect(commands[1]).toMatchObject({
         type: "model.chatgpt.catalog",
         provider: { accountId: second!.id, credentialHomeKey: second!.id },
+      });
+      await service.getProviderCatalog(
+        LOCAL_USER_ID,
+        provider.id,
+        "worker-2",
+        true,
+        first.id,
+      );
+      expect(commandWorkers.at(-1)).toBe("worker-2");
+      expect(commands.at(-1)).toMatchObject({
+        type: "model.chatgpt.catalog",
+        provider: { accountId: first.id },
       });
     } finally {
       await client.close();

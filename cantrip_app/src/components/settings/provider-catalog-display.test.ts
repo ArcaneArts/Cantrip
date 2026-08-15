@@ -110,6 +110,10 @@ describe("provider catalog presentation", () => {
               planType: "SuperGrok",
               position: 0,
               enabled: true,
+              credentialState: "signed-in",
+              weeklyUsageUsedPercent: null,
+              weeklyUsageResetsAt: null,
+              authLastSyncedAt: "2026-08-14T00:00:00.000Z",
               workerBindings: [
                 {
                   workerId: "a",

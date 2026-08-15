@@ -604,6 +604,7 @@ import {
   accountProviderLabel,
   isAccountProviderKind,
 } from "./models/account-provider.js";
+import { providerAccountAuthStatus } from "./models/provider-account-status.js";
 import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
 
 export interface BuildAppOptions {
@@ -4672,8 +4673,6 @@ export async function buildApp({
       }
 
       const accountRouting = await resolveAccountProviderRuntimes({
-        bridge,
-        logger: app.log,
         ownerId: applicationOwnerId(),
         preferredAccountId: context.providerAccountId,
         repository,
@@ -5476,6 +5475,38 @@ export async function buildApp({
                       runtime,
                       event.activity.last,
                     );
+                  }
+                  if (
+                    event.activity.type === "rateLimit" &&
+                    runtime.provider.accountId
+                  ) {
+                    const weekly = [
+                      event.activity.primary,
+                      event.activity.secondary,
+                    ].find(
+                      (window) => window?.windowDurationMins === 7 * 24 * 60,
+                    );
+                    if (weekly) {
+                      await repository
+                        .recordModelProviderAccountUsage({
+                          accountId: runtime.provider.accountId,
+                          ownerId: applicationOwnerId(),
+                          planType: event.activity.planType,
+                          providerId: runtime.provider.id,
+                          resetsAt: weekly.resetsAt,
+                          usedPercent: weekly.usedPercent,
+                        })
+                        .catch((error) => {
+                          app.log.warn(
+                            {
+                              accountId: runtime.provider.accountId,
+                              err: error,
+                              providerId: runtime.provider.id,
+                            },
+                            "Unable to persist provider account quota",
+                          );
+                        });
+                    }
                   }
                   if (event.activity.type === "fileChange") {
                     for (const change of event.activity.changes) {
@@ -7382,22 +7413,19 @@ export async function buildApp({
 
   const resolveAccountAuthTarget = async (
     providerId: string,
-    workerId: string,
     accountId?: string,
   ) => {
-    const [provider, account, worker] = await Promise.all([
+    const [provider, account] = await Promise.all([
       repository.getModelProvider(applicationOwnerId(), providerId),
       repository.getModelProviderAccountRuntime(
         applicationOwnerId(),
         providerId,
         accountId,
       ),
-      repository.getWorker(applicationOwnerId(), workerId),
     ]);
     if (!provider || !isAccountProviderKind(provider.kind) || !account) {
       throw new Error("Provider account not found.");
     }
-    if (!worker) throw new Error("Worker not found.");
     return { ...account, providerKind: provider.kind };
   };
 
@@ -7408,38 +7436,30 @@ export async function buildApp({
       workerId?: string;
     };
   }>("/api/codex/auth/status", async (request, reply) => {
-    const { accountId, providerId, workerId } = request.query;
-    if (!workerId || !providerId) {
-      return reply
-        .code(400)
-        .send({ error: "workerId and providerId are required" });
+    const { accountId, providerId } = request.query;
+    if (!providerId) {
+      return reply.code(400).send({ error: "providerId is required" });
     }
     try {
-      const account = await resolveAccountAuthTarget(
-        providerId,
-        workerId,
-        accountId,
-      );
-      const status = codexAuthStatusSchema.parse(
-        await bridge.request(workerId, {
-          type: "codex.auth.status",
-          providerId,
-          providerKind: account.providerKind,
-          credentialHomeKey: account.credentialHomeKey,
-        }),
-      );
-      await repository.recordModelProviderAccountStatus(
-        account.accountId,
-        workerId,
-        status,
-      );
-      if (status.authenticated) {
+      const [provider, accounts] = await Promise.all([
+        repository.getModelProvider(applicationOwnerId(), providerId),
+        repository.listModelProviderAccounts(applicationOwnerId(), providerId),
+      ]);
+      if (!provider || !isAccountProviderKind(provider.kind) || !accounts) {
+        throw new Error("Provider account not found.");
+      }
+      const account = accountId
+        ? accounts.find(({ id }) => id === accountId)
+        : accounts.find(({ enabled }) => enabled);
+      if (!account) throw new Error("Provider account not found.");
+      const status = providerAccountAuthStatus(provider.kind, account);
+      if (status.authenticated && request.query.workerId) {
         void loadProviderCatalog(
           applicationOwnerId(),
           providerId,
-          workerId,
+          request.query.workerId,
           true,
-          account.accountId,
+          account.id,
         ).catch(() => undefined);
       }
       return reply.send(status);
@@ -7462,11 +7482,11 @@ export async function buildApp({
         .send({ error: "workerId and providerId are required" });
     }
     try {
-      const account = await resolveAccountAuthTarget(
-        providerId,
-        workerId,
-        accountId,
-      );
+      const [account, worker] = await Promise.all([
+        resolveAccountAuthTarget(providerId, accountId),
+        repository.getWorker(applicationOwnerId(), workerId),
+      ]);
+      if (!worker) throw new Error("Worker not found.");
       return reply.send(
         codexDeviceLoginSchema.parse(
           await bridge.request(workerId, {
@@ -7496,11 +7516,11 @@ export async function buildApp({
         .send({ error: "workerId and providerId are required" });
     }
     try {
-      const account = await resolveAccountAuthTarget(
-        providerId,
-        workerId,
-        accountId,
-      );
+      const [account, worker] = await Promise.all([
+        resolveAccountAuthTarget(providerId, accountId),
+        repository.getWorker(applicationOwnerId(), workerId),
+      ]);
+      if (!worker) throw new Error("Worker not found.");
       await bridge.request(workerId, {
         type: "codex.auth.logout",
         providerId,
@@ -7524,7 +7544,6 @@ export async function buildApp({
       ).markAccountUnavailable(
         applicationOwnerId(),
         providerId,
-        workerId,
         account.accountId,
       );
       return reply.code(204).send();

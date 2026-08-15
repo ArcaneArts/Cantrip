@@ -347,28 +347,32 @@ describe("model catalog protocol", () => {
         lastSeenAt: "2026-08-14T00:00:00.000Z",
       }).contextWindow,
     ).toBe(131_072);
-    expect(
-      modelProviderAccountSummarySchema.parse({
-        id: "account-1",
-        providerId: "provider-1",
-        label: "Personal",
-        email: "user@example.com",
-        planType: "pro",
-        position: 0,
-        enabled: true,
-        workerBindings: [
-          {
-            workerId: "worker-1",
-            authState: "signed-in",
-            weeklyUsageUsedPercent: 42.5,
-            weeklyUsageResetsAt: "2026-08-21T00:00:00.000Z",
-            lastSyncedAt: "2026-08-14T00:00:00.000Z",
-          },
-        ],
-        createdAt: "2026-08-14T00:00:00.000Z",
-        updatedAt: "2026-08-14T00:00:00.000Z",
-      }).workerBindings[0]?.weeklyUsageUsedPercent,
-    ).toBe(42.5);
+    const account = modelProviderAccountSummarySchema.parse({
+      id: "account-1",
+      providerId: "provider-1",
+      label: "Personal",
+      email: "user@example.com",
+      planType: "pro",
+      position: 0,
+      enabled: true,
+      credentialState: "signed-in",
+      weeklyUsageUsedPercent: 42.5,
+      weeklyUsageResetsAt: "2026-08-21T00:00:00.000Z",
+      authLastSyncedAt: "2026-08-14T00:00:00.000Z",
+      workerBindings: [
+        {
+          workerId: "worker-1",
+          authState: "signed-in",
+          weeklyUsageUsedPercent: 42.5,
+          weeklyUsageResetsAt: "2026-08-21T00:00:00.000Z",
+          lastSyncedAt: "2026-08-14T00:00:00.000Z",
+        },
+      ],
+      createdAt: "2026-08-14T00:00:00.000Z",
+      updatedAt: "2026-08-14T00:00:00.000Z",
+    });
+    expect(account.weeklyUsageUsedPercent).toBe(42.5);
+    expect(account.workerBindings[0]?.weeklyUsageUsedPercent).toBe(42.5);
   });
 });
 
