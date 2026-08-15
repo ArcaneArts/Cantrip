@@ -61,6 +61,7 @@ describe("worker provider access tokens", () => {
       `Bearer ctwk_${"a".repeat(43)}`,
     );
     expect(requests[0]?.body).toEqual({
+      credentialRevision: null,
       forceRefresh: false,
       minimumValiditySeconds: 120,
     });
@@ -70,13 +71,28 @@ describe("worker provider access tokens", () => {
     });
     expect(forced.accessToken).toBe("forced-access");
     expect(requests).toHaveLength(2);
+    expect(requests[1]?.body).toEqual({
+      credentialRevision: 2,
+      forceRefresh: true,
+      minimumValiditySeconds: 120,
+    });
+
+    await client.get("provider-one", "account-one", {
+      credentialRevision: 1,
+      forceRefresh: true,
+    });
+    expect(requests[2]?.body).toEqual({
+      credentialRevision: 1,
+      forceRefresh: true,
+      minimumValiditySeconds: 120,
+    });
 
     now += 4 * 60_000 + 31_000;
     await client.get("provider-one", "account-one");
-    expect(requests).toHaveLength(3);
+    expect(requests).toHaveLength(4);
     client.clear("provider-one", "account-one");
     await client.get("provider-one", "account-one");
-    expect(requests).toHaveLength(4);
+    expect(requests).toHaveLength(5);
   });
 
   it("does not copy an untrusted server error body into worker errors", async () => {
@@ -103,5 +119,46 @@ describe("worker provider access tokens", () => {
     }
     expect(message).toContain("HTTP 503");
     expect(message).not.toContain("server-only");
+  });
+
+  it("coalesces refreshes only when runtimes used the same revision", async () => {
+    const revisions: Array<number | null> = [];
+    const client = new ProviderAccessTokenClient(
+      {
+        serverUrl: "https://cantrip.example.test",
+        token: `ctwk_${"c".repeat(43)}`,
+        workerId: "worker-one",
+      },
+      {
+        now: () => start,
+        fetch: async (_input, init) => {
+          const body = JSON.parse(String(init?.body)) as {
+            credentialRevision: number | null;
+          };
+          revisions.push(body.credentialRevision);
+          await Promise.resolve();
+          return Response.json({
+            ...lease(start, `access-${body.credentialRevision}`),
+            credentialRevision: (body.credentialRevision ?? 0) + 1,
+          });
+        },
+      },
+    );
+
+    await Promise.all([
+      client.get("provider-one", "account-one", {
+        credentialRevision: 1,
+        forceRefresh: true,
+      }),
+      client.get("provider-one", "account-one", {
+        credentialRevision: 1,
+        forceRefresh: true,
+      }),
+      client.get("provider-one", "account-one", {
+        credentialRevision: 2,
+        forceRefresh: true,
+      }),
+    ]);
+    expect(revisions).toEqual([1, 2]);
   });
 });

@@ -168,7 +168,12 @@ export class ProviderCredentialMigrationCoordinator {
       summary.captured += 1;
     }
 
-    if (!this.#purgeEnabledKinds.has(candidate.providerKind)) return;
+    if (
+      !captured.serverManagedAuth ||
+      !this.#purgeEnabledKinds.has(candidate.providerKind)
+    ) {
+      return;
+    }
     const purged = providerLegacyCredentialPurgeResultSchema.parse(
       await this.workers.request(
         workerId,

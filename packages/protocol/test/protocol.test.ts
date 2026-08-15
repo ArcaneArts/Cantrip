@@ -792,6 +792,7 @@ describe("Cantrip protocol", () => {
 
   it("validates short-lived provider access leases without durable secrets", () => {
     expect(providerAccessTokenLeaseRequestSchema.parse({})).toEqual({
+      credentialRevision: null,
       forceRefresh: false,
       minimumValiditySeconds: 120,
     });
@@ -837,23 +838,27 @@ describe("Cantrip protocol", () => {
         serverCredentialRevision: 2,
       }).type,
     ).toBe("provider.auth.legacy.purge");
-    expect(
-      providerLegacyCredentialCaptureResultSchema.parse({
-        status: "available",
-        credential: {
-          accessToken: "access-token",
-          accountId: "upstream-account",
-          email: "person@example.test",
-          expiresAt: null,
-          idToken: "id-token",
-          kind: "chatgpt",
-          planType: "pro",
-          refreshToken: "refresh-token",
-          userId: "upstream-user",
-          version: 1,
-        },
-      }).credential.kind,
-    ).toBe("chatgpt");
+    const legacyCapture = providerLegacyCredentialCaptureResultSchema.parse({
+      status: "available",
+      credential: {
+        accessToken: "access-token",
+        accountId: "upstream-account",
+        email: "person@example.test",
+        expiresAt: null,
+        idToken: "id-token",
+        kind: "chatgpt",
+        planType: "pro",
+        refreshToken: "refresh-token",
+        userId: "upstream-user",
+        version: 1,
+      },
+    });
+    expect(legacyCapture).toMatchObject({
+      serverManagedAuth: false,
+      status: "available",
+    });
+    if (legacyCapture.status !== "available") throw new Error("capture failed");
+    expect(legacyCapture.credential.kind).toBe("chatgpt");
   });
 
   it("validates exact-revision replica job commands and durable state", () => {

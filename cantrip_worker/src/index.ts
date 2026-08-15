@@ -13,6 +13,7 @@ import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
+import { chatGptExternalAuthCapabilityError } from "./codex/external-chatgpt-auth.js";
 import type { CodexRuntime } from "./codex/runtime.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
@@ -39,6 +40,7 @@ import {
 } from "./legacy-provider-credentials.js";
 import { workerLogger } from "./logger.js";
 import { discoverOllamaModels } from "./ollama.js";
+import { ProviderAccessTokenClient } from "./provider-access-tokens.js";
 import {
   buildGitAgentPrompt,
   failedPullRequestChecksEvidence,
@@ -220,6 +222,7 @@ async function start(): Promise<void> {
   const github = new GithubClient(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
+  const providerAccessTokens = new ProviderAccessTokenClient(config);
   const codexRuntimes = new Map<string, CodexRuntime>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const pausedChats = new Set<string>();
@@ -301,6 +304,7 @@ async function start(): Promise<void> {
                 ).localProxyBaseUrl(),
               }
             : provider,
+        providerAccessTokens,
       );
       codexRuntimes.set(runtimeId, runtime);
     }
@@ -318,6 +322,9 @@ async function start(): Promise<void> {
         path.join(config.dataDirectory, "codex-catalogs", directoryName),
         accountHomeFor(credentialHomeKey),
         codexRuntime,
+        undefined,
+        undefined,
+        providerAccessTokens,
       );
       codexCatalogRuntimes.set(credentialHomeKey, runtime);
     }
@@ -399,13 +406,26 @@ async function start(): Promise<void> {
           ).logout();
         }
         return { accepted: true };
-      case "provider.auth.legacy.capture":
-        return captureLegacyProviderCredential(
+      case "provider.auth.legacy.capture": {
+        const captured = await captureLegacyProviderCredential(
           accountHomeFor(command.credentialHomeKey),
           command.providerKind,
         );
+        return captured.status === "available"
+          ? {
+              ...captured,
+              serverManagedAuth:
+                command.providerKind === "chatgpt" &&
+                chatGptExternalAuthCapabilityError(codexRuntime) === null,
+            }
+          : captured;
+      }
       case "provider.auth.legacy.purge": {
         closeAccountRuntimes(command.credentialHomeKey);
+        providerAccessTokens.clear(
+          command.providerId,
+          command.providerAccountId,
+        );
         if (command.providerKind === "grok") {
           grokAuthClients.get(command.credentialHomeKey)?.close();
           grokAuthClients.delete(command.credentialHomeKey);

@@ -121,8 +121,22 @@ describe("provider access token leases", () => {
         expect(JSON.stringify(lease)).not.toContain("refresh-token");
         expect(JSON.stringify(lease)).not.toContain("id-token");
       }
+      const stale = await secondServer.issue({
+        accountId,
+        credentialRevision: 1,
+        forceRefresh: true,
+        minimumValidityMs: 2 * 60_000,
+        ownerId: LOCAL_USER_ID,
+        providerId,
+      });
+      expect(refreshes).toBe(1);
+      expect(stale).toMatchObject({
+        accessToken: "rotated-access-token",
+        credentialRevision: 2,
+      });
       const forced = await firstServer.issue({
         accountId,
+        credentialRevision: 2,
         forceRefresh: true,
         minimumValidityMs: 2 * 60_000,
         ownerId: LOCAL_USER_ID,

@@ -34,6 +34,7 @@ describe("provider credential migration", () => {
     const database = drizzle(client, { schema });
     const commands: Array<Record<string, unknown>> = [];
     let localCredential = credential();
+    let serverManagedAuth = true;
     const workers = {
       attach() {},
       close() {},
@@ -41,7 +42,11 @@ describe("provider credential migration", () => {
       request: async (_workerId, command) => {
         commands.push(command);
         if (command.type === "provider.auth.legacy.capture") {
-          return { credential: localCredential, status: "available" };
+          return {
+            credential: localCredential,
+            serverManagedAuth,
+            status: "available",
+          };
         }
         if (command.type === "provider.auth.legacy.purge") {
           return {
@@ -136,6 +141,18 @@ describe("provider credential migration", () => {
         workers,
         { purgeEnabledKinds: new Set(["chatgpt"]) },
       );
+      serverManagedAuth = false;
+      const deferred = await purgeCoordinator.migrateWorker(
+        LOCAL_USER_ID,
+        "worker-one",
+      );
+      expect(deferred).toMatchObject({ alreadyCaptured: 1, purged: 0 });
+      expect(commands.map(({ type }) => type)).toEqual([
+        "provider.auth.legacy.capture",
+      ]);
+
+      commands.length = 0;
+      serverManagedAuth = true;
       const purged = await purgeCoordinator.migrateWorker(
         LOCAL_USER_ID,
         "worker-one",
