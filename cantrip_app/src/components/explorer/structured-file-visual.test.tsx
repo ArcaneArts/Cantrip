@@ -36,4 +36,43 @@ describe("StructuredFileVisual", () => {
     expect(markup).toContain("Visual mode is unavailable");
     expect(markup).toContain("Switch to Edit to repair the document");
   });
+
+  it("renders CSV with locked headers and editable body cells", () => {
+    const markup = renderToStaticMarkup(
+      <StructuredFileVisual
+        content={"name,email\nCantrip,hello@cantrip.app\n"}
+        format="csv"
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        path="people.csv"
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Search rows"');
+    expect(markup).toContain(
+      "Cells only · headers, rows, and columns are locked",
+    );
+    expect(markup).toContain("name");
+    expect(markup).toContain('aria-label="Edit row 2, name"');
+    expect(markup).not.toContain("Add property");
+  });
+
+  it("renders editable dotenv properties with an add-variable action", () => {
+    const markup = renderToStaticMarkup(
+      <StructuredFileVisual
+        content={"PORT=3000\n"}
+        format="env"
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        path=".env"
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Search variables"');
+    expect(markup).toContain(
+      "Keys and values are editable · comments are preserved",
+    );
+    expect(markup).toContain("Add variable");
+    expect(markup).toContain('aria-label="Edit variable name PORT"');
+  });
 });

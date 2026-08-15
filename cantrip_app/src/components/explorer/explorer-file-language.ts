@@ -83,13 +83,18 @@ export function monacoModelPath(explorerId: string, path: string): string {
 export type { ExplorerFileMode } from "@cantrip/protocol";
 
 export type StructuredFileFormat = "json" | "toml" | "yaml";
+export type TabularFileFormat = "csv" | "env" | "properties";
+export type VisualFileFormat = StructuredFileFormat | TabularFileFormat;
 
 export function structuredFileFormatForPath(
   path: string,
-): StructuredFileFormat | null {
-  const extension = path.split(".").at(-1)?.toLowerCase();
+): VisualFileFormat | null {
+  const filename = path.split("/").at(-1)?.toLowerCase() ?? "";
+  const extension = filename.split(".").at(-1);
   if (extension === "json" || extension === "toml") return extension;
-  return extension === "yaml" || extension === "yml" ? "yaml" : null;
+  if (extension === "yaml" || extension === "yml") return "yaml";
+  if (extension === "csv" || extension === "properties") return extension;
+  return filename === ".env" || extension === "env" ? "env" : null;
 }
 
 export function defaultExplorerFileMode(path: string): ExplorerFileMode {

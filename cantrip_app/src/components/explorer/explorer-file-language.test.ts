@@ -20,6 +20,9 @@ describe("explorer file editing", () => {
     expect(defaultExplorerFileMode("Cargo.toml")).toBe("visual");
     expect(defaultExplorerFileMode("compose.yaml")).toBe("visual");
     expect(defaultExplorerFileMode("workflow.YML")).toBe("visual");
+    expect(defaultExplorerFileMode("data.csv")).toBe("visual");
+    expect(defaultExplorerFileMode("gradle.properties")).toBe("visual");
+    expect(defaultExplorerFileMode(".env")).toBe("visual");
     expect(defaultExplorerFileMode("README.md")).toBe("preview");
   });
 
@@ -27,6 +30,9 @@ describe("explorer file editing", () => {
     expect(structuredFileFormatForPath("package.json")).toBe("json");
     expect(structuredFileFormatForPath("Cargo.toml")).toBe("toml");
     expect(structuredFileFormatForPath("compose.yml")).toBe("yaml");
+    expect(structuredFileFormatForPath("people.csv")).toBe("csv");
+    expect(structuredFileFormatForPath("gradle.properties")).toBe("properties");
+    expect(structuredFileFormatForPath(".env")).toBe("env");
     expect(structuredFileFormatForPath("src/App.tsx")).toBeNull();
   });
 
