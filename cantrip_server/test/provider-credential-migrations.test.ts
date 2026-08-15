@@ -29,6 +29,82 @@ function credential(accountId = "upstream-account") {
 }
 
 describe("provider credential migration", () => {
+  it("captures an explicitly selected signed-out account after device login", async () => {
+    const client = new PGlite();
+    const database = drizzle(client, { schema });
+    const commands: Array<Record<string, unknown>> = [];
+    const workers = {
+      attach() {},
+      close() {},
+      isConnected: () => true,
+      request: async (_workerId, command) => {
+        commands.push(command);
+        if (command.type === "provider.auth.legacy.capture") {
+          return {
+            credential: credential(),
+            serverManagedAuth: true,
+            status: "available",
+          };
+        }
+        if (command.type === "provider.auth.legacy.purge") {
+          return {
+            purged: true,
+            serverCredentialRevision: command.serverCredentialRevision,
+            subject: command.expectedSubject,
+          };
+        }
+        throw new Error("Unexpected worker command.");
+      },
+      sendSurfaceFrame: () => false,
+      subscribeSurfaceFrames: () => () => undefined,
+      subscribeWorkerDisconnect: () => () => undefined,
+    } satisfies WorkerCommandBus;
+    try {
+      await migrate(database, { migrationsFolder });
+      const repository = new ServerRepository(
+        database,
+        new SecretVault({
+          activeKeyId: "test",
+          keys: [{ id: "test", key: Buffer.alloc(32, 14) }],
+        }),
+      );
+      await repository.ensureLocalIdentity();
+      const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        kind: "chatgpt",
+        name: "ChatGPT",
+      });
+      const accountId = provider.accounts[0]!.id;
+      const coordinator = new ProviderCredentialMigrationCoordinator(
+        repository,
+        workers,
+        { purgeEnabledKinds: new Set(["chatgpt"]) },
+      );
+
+      await expect(
+        coordinator.captureAccount(
+          LOCAL_USER_ID,
+          "worker-one",
+          provider.id,
+          accountId,
+        ),
+      ).resolves.toMatchObject({ captured: 1, checked: 1, purged: 1 });
+      expect(commands.map(({ type }) => type)).toEqual([
+        "provider.auth.legacy.capture",
+        "provider.auth.legacy.purge",
+      ]);
+      expect(
+        await repository.getModelProviderAccountCredential(
+          LOCAL_USER_ID,
+          provider.id,
+          accountId,
+        ),
+      ).toMatchObject({ state: "signed-in" });
+    } finally {
+      await client.close();
+    }
+  });
+
   it("captures idempotently, defers purge, and quarantines identity conflicts", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
@@ -142,11 +218,17 @@ describe("provider credential migration", () => {
         { purgeEnabledKinds: new Set(["chatgpt"]) },
       );
       serverManagedAuth = false;
-      const deferred = await purgeCoordinator.migrateWorker(
+      const deferred = await purgeCoordinator.captureAccount(
         LOCAL_USER_ID,
         "worker-one",
+        provider.id,
+        accountId,
       );
-      expect(deferred).toMatchObject({ alreadyCaptured: 1, purged: 0 });
+      expect(deferred).toMatchObject({
+        alreadyCaptured: 1,
+        purged: 0,
+        workerLogoutRequired: true,
+      });
       expect(commands.map(({ type }) => type)).toEqual([
         "provider.auth.legacy.capture",
       ]);

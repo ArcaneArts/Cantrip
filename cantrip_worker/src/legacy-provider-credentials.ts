@@ -176,3 +176,21 @@ export async function purgeLegacyProviderCredential(
     subject: expectedSubject,
   });
 }
+
+/**
+ * Removes any worker-local credential for an account after the server has
+ * made sign-out authoritative. Unlike provider logout, this never contacts
+ * the upstream provider and therefore cannot race revocation across workers.
+ */
+export async function discardLegacyProviderCredential(
+  credentialHome: string,
+  kind: "chatgpt" | "grok",
+): Promise<boolean> {
+  try {
+    await unlink(credentialPath(credentialHome, kind));
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}

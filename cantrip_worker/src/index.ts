@@ -42,6 +42,7 @@ import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
   captureLegacyProviderCredential,
+  discardLegacyProviderCredential,
   purgeLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
 import { workerLogger } from "./logger.js";
@@ -406,6 +407,26 @@ async function start(): Promise<void> {
     codexCatalogRuntimes.delete(credentialHomeKey);
   };
 
+  const closeProviderAccountRuntime = (input: {
+    credentialHomeKey: string;
+    providerAccountId: string;
+    providerId: string;
+    providerKind: "chatgpt" | "grok";
+  }) => {
+    closeAccountRuntimes(input.credentialHomeKey);
+    providerAccessTokens.clear(input.providerId, input.providerAccountId);
+    if (input.providerKind === "grok") {
+      grokAuthClients.get(input.credentialHomeKey)?.close();
+      grokAuthClients.delete(input.credentialHomeKey);
+      const clientKey = `${input.providerId}:${input.providerAccountId}`;
+      serverManagedGrokClients.get(clientKey)?.close();
+      serverManagedGrokClients.delete(clientKey);
+      return;
+    }
+    codexAuthClients.get(input.credentialHomeKey)?.close();
+    codexAuthClients.delete(input.credentialHomeKey);
+  };
+
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
@@ -489,26 +510,9 @@ async function start(): Promise<void> {
           : captured;
       }
       case "provider.auth.legacy.purge": {
-        closeAccountRuntimes(command.credentialHomeKey);
-        providerAccessTokens.clear(
-          command.providerId,
-          command.providerAccountId,
-        );
-        if (command.providerKind === "grok") {
-          grokAuthClients.get(command.credentialHomeKey)?.close();
-          grokAuthClients.delete(command.credentialHomeKey);
-          serverManagedGrokClients
-            .get(`${command.providerId}:${command.providerAccountId}`)
-            ?.close();
-          serverManagedGrokClients.delete(
-            `${command.providerId}:${command.providerAccountId}`,
-          );
-        } else {
-          // Deliberately stop and remove the local file without account/logout;
-          // Codex logout revokes the shared OAuth credential on the provider.
-          codexAuthClients.get(command.credentialHomeKey)?.close();
-          codexAuthClients.delete(command.credentialHomeKey);
-        }
+        closeProviderAccountRuntime(command);
+        // Deliberately stop and remove the local file without account/logout;
+        // Codex logout revokes the shared OAuth credential on the provider.
         return purgeLegacyProviderCredential(
           accountHomeFor(command.credentialHomeKey),
           command.providerKind,
@@ -516,6 +520,13 @@ async function start(): Promise<void> {
           command.serverCredentialRevision,
         );
       }
+      case "provider.auth.account.clear":
+        closeProviderAccountRuntime(command);
+        await discardLegacyProviderCredential(
+          accountHomeFor(command.credentialHomeKey),
+          command.providerKind,
+        );
+        return { accepted: true };
       case "github.auth.status":
         return github.authStatus();
       case "github.repositories.cached":

@@ -585,14 +585,15 @@ export async function revokeWorkerCredential(
 }
 
 export async function getCodexAuthStatus(
-  workerId: string,
   providerId: string,
   accountId?: string,
+  workerId?: string,
 ) {
+  const query = new URLSearchParams({ providerId });
+  if (accountId) query.set("accountId", accountId);
+  if (workerId) query.set("workerId", workerId);
   return codexAuthStatusSchema.parse(
-    await request(
-      `/api/codex/auth/status?workerId=${encodeURIComponent(workerId)}&providerId=${encodeURIComponent(providerId)}${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ""}`,
-    ),
+    await request(`/api/codex/auth/status?${query.toString()}`),
   );
 }
 
@@ -611,11 +612,11 @@ export async function startCodexDeviceLogin(
 }
 
 export async function logoutCodex(
-  workerId: string,
   providerId: string,
   accountId?: string,
+  workerId?: string,
 ) {
-  await post("/api/codex/auth/logout", { workerId, providerId, accountId });
+  await post("/api/codex/auth/logout", { providerId, accountId, workerId });
 }
 
 export async function getSettings() {

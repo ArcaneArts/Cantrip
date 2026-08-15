@@ -7323,6 +7323,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     expectedSubject: z.string().min(1).max(1_024),
     serverCredentialRevision: z.number().int().positive(),
   }),
+  z.object({
+    type: z.literal("provider.auth.account.clear"),
+    providerId: z.string().min(1).max(512),
+    providerKind: z.enum(["chatgpt", "grok"]),
+    providerAccountId: z.string().min(1).max(512),
+    credentialHomeKey: z.string().min(1).max(500),
+  }),
   z.object({ type: z.literal("github.auth.status") }),
   z.object({
     type: z.literal("github.repositories.cached"),

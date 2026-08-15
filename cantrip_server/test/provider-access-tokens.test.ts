@@ -312,4 +312,152 @@ describe("provider access token leases", () => {
       await client.close();
     }
   });
+
+  it("aborts an in-flight refresh when account sign-out denies leases", async () => {
+    const { accountId, client, providerId, repository } = await fixture();
+    let refreshStarted: (() => void) | null = null;
+    const started = new Promise<void>((resolve) => {
+      refreshStarted = resolve;
+    });
+    const service = new ProviderAccessTokenService(repository, {
+      now: () => now,
+      refreshers: {
+        chatgpt: {
+          refresh: async (_credential, signal) =>
+            new Promise((_resolve, reject) => {
+              refreshStarted?.();
+              signal.addEventListener(
+                "abort",
+                () => reject(new Error("refresh aborted")),
+                { once: true },
+              );
+            }),
+        },
+      },
+    });
+    try {
+      const pending = service.issue({
+        accountId,
+        credentialRevision: 1,
+        forceRefresh: true,
+        minimumValidityMs: 2 * 60_000,
+        ownerId: LOCAL_USER_ID,
+        providerId,
+      });
+      await started;
+      service.denyAccount(LOCAL_USER_ID, providerId, accountId);
+      await expect(pending).rejects.toMatchObject({
+        code: "credential-unavailable",
+      });
+      expect(
+        await repository.getModelProviderAccountCredential(
+          LOCAL_USER_ID,
+          providerId,
+          accountId,
+        ),
+      ).toMatchObject({
+        credential: { accessToken: "old-access-token" },
+        revision: 1,
+        state: "signed-in",
+      });
+      const raw = await client.query<{
+        credential_refresh_lease_id: string | null;
+      }>(`
+        SELECT credential_refresh_lease_id
+        FROM model_provider_accounts
+        WHERE id = '${accountId}'
+      `);
+      expect(raw.rows[0]?.credential_refresh_lease_id).toBeNull();
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("cannot reuse a stale refresh after sign-out and a new sign-in", async () => {
+    const { accountId, client, providerId, repository } = await fixture();
+    let refreshStarted: (() => void) | null = null;
+    let finishRefresh:
+      ((credential: ChatGptProviderCredential) => void) | null = null;
+    const started = new Promise<void>((resolve) => {
+      refreshStarted = resolve;
+    });
+    const service = new ProviderAccessTokenService(repository, {
+      now: () => now,
+      refreshers: {
+        chatgpt: {
+          refresh: async () =>
+            new Promise<ChatGptProviderCredential>((resolve) => {
+              finishRefresh = resolve;
+              refreshStarted?.();
+            }),
+        },
+      },
+    });
+    try {
+      const stale = service.issue({
+        accountId,
+        credentialRevision: 1,
+        forceRefresh: true,
+        minimumValidityMs: 2 * 60_000,
+        ownerId: LOCAL_USER_ID,
+        providerId,
+      });
+      await started;
+      service.denyAccount(LOCAL_USER_ID, providerId, accountId);
+      expect(
+        await repository.takeModelProviderAccountCredentialForSignOut(
+          LOCAL_USER_ID,
+          providerId,
+          accountId,
+        ),
+      ).toMatchObject({ revision: 2 });
+      service.allowAccount(LOCAL_USER_ID, providerId, accountId);
+      await repository.storeModelProviderAccountCredential(
+        LOCAL_USER_ID,
+        providerId,
+        accountId,
+        credential({
+          accessToken: "new-sign-in-access-token",
+          expiresAt: now + 60 * 60_000,
+          refreshToken: "new-sign-in-refresh-token",
+        }),
+        2,
+      );
+
+      await expect(
+        service.issue({
+          accountId,
+          forceRefresh: false,
+          minimumValidityMs: 2 * 60_000,
+          ownerId: LOCAL_USER_ID,
+          providerId,
+        }),
+      ).resolves.toMatchObject({
+        accessToken: "new-sign-in-access-token",
+        credentialRevision: 3,
+      });
+      finishRefresh?.(
+        credential({
+          accessToken: "stale-rotated-access-token",
+          expiresAt: now + 60 * 60_000,
+          refreshToken: "stale-rotated-refresh-token",
+        }),
+      );
+      await expect(stale).rejects.toMatchObject({
+        code: "credential-unavailable",
+      });
+      expect(
+        await repository.getModelProviderAccountCredential(
+          LOCAL_USER_ID,
+          providerId,
+          accountId,
+        ),
+      ).toMatchObject({
+        credential: { accessToken: "new-sign-in-access-token" },
+        revision: 3,
+      });
+    } finally {
+      await client.close();
+    }
+  });
 });

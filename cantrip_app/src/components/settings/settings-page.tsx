@@ -304,10 +304,10 @@ function ProviderRow({
           <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
             <span
               className={
-                signedInBindings.length ? "text-emerald-500" : undefined
+                signedInAccounts.length ? "text-emerald-500" : undefined
               }
             >
-              {signedInBindings.length}/{enabledAccounts.length} signed in
+              {signedInAccounts.length}/{enabledAccounts.length} signed in
             </span>
             {lowestRemaining === null ? null : (
               <span>{Math.round(lowestRemaining)}% lowest 7-day remaining</span>
@@ -428,7 +428,9 @@ function CatalogModelField({
               {model.displayName}
               {availableModelIds.has(model.id)
                 ? ""
-                : " — unavailable on this worker"}
+                : provider && isAccountProviderKind(provider.kind)
+                  ? " — unavailable for this account"
+                  : " — unavailable on this worker"}
             </option>
           ))}
         </datalist>
@@ -437,6 +439,9 @@ function CatalogModelField({
         catalog={catalog.data}
         loading={catalog.isLoading}
         model={selected}
+        accountScoped={Boolean(
+          provider && isAccountProviderKind(provider.kind),
+        )}
         supportsCatalog={supportsCatalog}
         value={value}
         workerId={workerId}
@@ -446,6 +451,7 @@ function CatalogModelField({
 }
 
 function CatalogModelMetadata({
+  accountScoped,
   catalog,
   loading,
   model,
@@ -453,6 +459,7 @@ function CatalogModelMetadata({
   value,
   workerId,
 }: {
+  accountScoped: boolean;
   catalog: Awaited<ReturnType<typeof getProviderModelCatalog>> | undefined;
   loading: boolean;
   model: ProviderModelCatalogEntry | undefined;
@@ -489,7 +496,9 @@ function CatalogModelMetadata({
     >
       {available
         ? metadata.join(" · ") || "Catalog metadata incomplete"
-        : "Unavailable on this worker"}
+        : accountScoped
+          ? "Unavailable for this account"
+          : "Unavailable on this worker"}
     </span>
   );
 }
@@ -546,24 +555,20 @@ export function SettingsPage({
   const authProviderName = accountProvider
     ? accountProviderName(accountProvider.kind as AccountProviderKind)
     : "account";
+  const authCaptureWorkerId =
+    worker && selectedAccount?.credentialState !== "signed-in"
+      ? worker.workerId
+      : undefined;
   const codexAuth = useQuery({
-    enabled: Boolean(
-      worker && providerDialogOpen && accountProvider && selectedAccount,
-    ),
+    enabled: Boolean(providerDialogOpen && accountProvider && selectedAccount),
     queryFn: () =>
       getCodexAuthStatus(
-        worker!.workerId,
         accountProvider!.id,
         selectedAccount!.id,
+        authCaptureWorkerId,
       ),
-    queryKey: [
-      "codex-auth",
-      worker?.workerId,
-      accountProvider?.id,
-      selectedAccount?.id,
-    ],
-    refetchInterval: (query) =>
-      query.state.data?.loginPending ? 1_500 : 10_000,
+    queryKey: ["codex-auth", accountProvider?.id, selectedAccount?.id],
+    refetchInterval: deviceLogin ? 1_500 : 10_000,
   });
 
   const refresh = () =>
@@ -666,16 +671,17 @@ export function SettingsPage({
   });
   const signOutCodex = useMutation({
     mutationFn: () =>
-      logoutCodex(worker!.workerId, accountProvider!.id, selectedAccount!.id),
+      logoutCodex(accountProvider!.id, selectedAccount!.id, worker?.workerId),
     onSuccess: async () => {
       setDeviceLogin(null);
-      await codexAuth.refetch();
+      await Promise.all([codexAuth.refetch(), refresh()]);
     },
   });
 
   useEffect(() => {
     if (codexAuth.data?.authMode !== accountProvider?.kind) return;
     setDeviceLogin(null);
+    void refresh();
   }, [accountProvider?.kind, codexAuth.data?.authMode]);
 
   useEffect(() => {
@@ -1045,7 +1051,7 @@ export function SettingsPage({
                           </span>
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
-                          Ollama, compatible APIs, and isolated ChatGPT or Grok
+                          Ollama, compatible APIs, and portable ChatGPT or Grok
                           accounts.
                         </p>
                       </div>
@@ -1453,8 +1459,9 @@ export function SettingsPage({
                 </Field>
               ) : (
                 <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-                  This provider keeps each {accountProviderName(providerKind)}
-                  sign-in isolated on the selected worker.
+                  Cantrip stores each {accountProviderName(providerKind)}
+                  sign-in securely on the server and makes it available to every
+                  compatible worker.
                 </div>
               )}
               {!isAccountProviderKind(providerKind) ? (
@@ -1492,8 +1499,8 @@ export function SettingsPage({
                   <div>
                     <p className="text-sm font-medium">Accounts</p>
                     <p className="text-xs text-muted-foreground">
-                      Each sign-in has separate credentials and can be tried as
-                      a fallback route.
+                      Each server-owned sign-in has separate credentials and can
+                      be tried as a fallback route from any worker.
                     </p>
                   </div>
                   <Button
@@ -1580,10 +1587,6 @@ export function SettingsPage({
                   Add this provider to continue to{" "}
                   {accountProviderName(providerKind)} device sign-in.
                 </p>
-              ) : !worker ? (
-                <p className="border-y py-3 text-sm text-muted-foreground">
-                  Connect a worker to manage this {authProviderName} account.
-                </p>
               ) : codexAuth.isLoading ? (
                 <div className="flex items-center gap-2 border-y py-3 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Checking{" "}
@@ -1639,8 +1642,26 @@ export function SettingsPage({
                     </div>
                   ) : null}
                 </div>
+              ) : !worker ? (
+                <div className="grid gap-1 border-y py-3 text-sm text-muted-foreground">
+                  <p>
+                    Connect a worker to start {authProviderName} device
+                    authorization. Once connected, the account will be usable
+                    from every compatible worker.
+                  </p>
+                  {codexAuth.data?.loginError ? (
+                    <p className="text-amber-500">
+                      {codexAuth.data.loginError}
+                    </p>
+                  ) : null}
+                </div>
               ) : (
                 <div className="grid gap-3 border-y py-3">
+                  <p className="text-xs text-muted-foreground">
+                    {worker.name} will run device authorization only. The
+                    completed account is stored on the server and shared with
+                    every compatible worker.
+                  </p>
                   <Button
                     type="button"
                     className="w-fit"

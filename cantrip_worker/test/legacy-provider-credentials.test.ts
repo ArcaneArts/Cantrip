@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   captureLegacyProviderCredential,
+  discardLegacyProviderCredential,
   legacyProviderCredentialSubject,
   purgeLegacyProviderCredential,
 } from "../src/legacy-provider-credentials.js";
@@ -153,5 +154,11 @@ describe("legacy provider credentials", () => {
     await expect(
       purgeLegacyProviderCredential(home, "grok", "grok:user", 1),
     ).rejects.toThrow("Malformed");
+    await expect(discardLegacyProviderCredential(home, "grok")).resolves.toBe(
+      true,
+    );
+    expect((await captureLegacyProviderCredential(home, "grok")).status).toBe(
+      "missing",
+    );
   });
 });
