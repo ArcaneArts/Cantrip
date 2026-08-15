@@ -1227,7 +1227,7 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
   .extend({
     id: z.string().min(1),
     hasApiKey: z.boolean(),
-    weeklyUsageReservePercent: z.number().int().min(0).max(100),
+    weeklyUsageReservePercent: z.number().int().min(0).max(100).default(3),
     accounts: modelProviderAccountListSchema.default([]),
     tokenUsage: tokenUsageTotalsSchema.default({
       inputTokens: 0,
@@ -1250,9 +1250,9 @@ export const modelRouteInputSchema = z.object({
 export const modelRouteSummarySchema = modelRouteInputSchema.extend({
   id: z.string().min(1),
   providerName: z.string().min(1),
-  providerModelId: z.string().min(1).nullable(),
+  providerModelId: z.string().min(1).nullable().default(null),
   position: z.number().int().nonnegative(),
-  discoveryManaged: z.boolean(),
+  discoveryManaged: z.boolean().default(false),
 });
 
 export const modelProfileCreateSchema = z.object({
@@ -1270,8 +1270,8 @@ export const modelProfileUpdateSchema = modelProfileCreateSchema;
 
 export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   id: z.string().min(1),
-  canonicalModelId: z.string().min(1).nullable(),
-  discoveryManaged: z.boolean(),
+  canonicalModelId: z.string().min(1).nullable().default(null),
+  discoveryManaged: z.boolean().default(false),
   routingPolicy: z.literal("priority"),
   routes: z.array(modelRouteSummarySchema).min(1),
   tokenUsage: tokenUsageTotalsSchema.default({
