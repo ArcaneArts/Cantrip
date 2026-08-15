@@ -71,19 +71,18 @@ test("installs the native libraries required by Windows Code modules", async () 
   assert.match(workflow, /Visual Studio Spectre libraries found at/u);
 });
 
-test("packages the macOS DMG without Apple signing credentials", async () => {
+test("signs the macOS DMG without invoking Apple notarization", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
     "utf8",
   );
 
-  assert.match(workflow, /- name: Package macOS DMG/u);
-  assert.doesNotMatch(workflow, /APPLE_CERTIFICATE/u);
+  assert.match(workflow, /- name: Import macOS signing certificate/u);
+  assert.match(workflow, /APPLE_CERTIFICATE/u);
+  assert.match(workflow, /CANTRIP_REQUIRE_MACOS_SIGNING: "1"/u);
   assert.doesNotMatch(workflow, /APPSTORE_CONNECT_/u);
-  assert.doesNotMatch(
-    workflow,
-    /CANTRIP_REQUIRE_MACOS_(?:SIGNING|NOTARIZATION)/u,
-  );
+  assert.doesNotMatch(workflow, /CANTRIP_REQUIRE_MACOS_NOTARIZATION/u);
+  assert.doesNotMatch(workflow, /Developer ID Application/u);
 });
 
 test("builds generated desktop dependencies before packaging installers", async () => {
@@ -95,7 +94,7 @@ test("builds generated desktop dependencies before packaging installers", async 
   const protocolBuild = workflow.indexOf(
     "- name: Build desktop workspace dependencies",
   );
-  const macosPackage = workflow.indexOf("- name: Package macOS DMG");
+  const macosPackage = workflow.indexOf("- name: Package signed macOS DMG");
   const windowsPackage = workflow.indexOf(
     "- name: Package Windows NSIS installer",
   );

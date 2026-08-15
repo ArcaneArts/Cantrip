@@ -122,6 +122,67 @@ test("verifies the outer app, embedded runtime, and DMG signatures", async () =>
   }
 });
 
+test("accepts a certificate-signed distribution without notarization", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-signed-"));
+  try {
+    const app = path.join(root, "macos", "Cantrip.app");
+    const node = path.join(app, "Contents", "Resources", "runtime", "node");
+    const dmg = path.join(root, "dmg", "Cantrip.dmg");
+    await mkdir(path.dirname(node), { recursive: true });
+    await mkdir(path.dirname(dmg), { recursive: true });
+    await writeFile(node, thinMachO);
+    await writeFile(dmg, "dmg");
+
+    const calls = [];
+    const result = await verifyMacosDistribution({
+      bundleDirectory: root,
+      requireNotarization: false,
+      runCommand: (command, arguments_) => {
+        calls.push({ command, arguments_ });
+        const target = arguments_.at(-1);
+        if (target === app && arguments_[0] === "-dvvv") {
+          return [
+            "Identifier=art.cantrip",
+            "flags=0x10000(runtime)",
+            "Authority=Apple Development: Cantrip Test (TEAMID)",
+            "TeamIdentifier=TEAMID",
+          ].join("\n");
+        }
+        if (target === node && arguments_.includes("--entitlements")) {
+          return "com.apple.security.cs.allow-jit";
+        }
+        if ((target === node || target === dmg) && arguments_[0] === "-dvvv") {
+          return [
+            ...(target === node ? ["flags=0x10000(runtime)"] : []),
+            "Authority=Apple Development: Cantrip Test (TEAMID)",
+            "TeamIdentifier=TEAMID",
+          ].join("\n");
+        }
+        return "";
+      },
+    });
+
+    assert.deepEqual(result, {
+      apps: [app],
+      dmgs: [dmg],
+      runtimeBinaryCount: 1,
+    });
+    assert.equal(
+      calls.some(({ command }) => command === "spctl"),
+      false,
+    );
+    assert.equal(
+      calls.some(
+        ({ command, arguments_ }) =>
+          command === "xcrun" && arguments_[0] === "stapler",
+      ),
+      false,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
 test("validates the inner app before notarizing and stapling the DMG", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-notarize-macos-"));
   try {
@@ -219,7 +280,7 @@ test("rejects an ad-hoc outer app signature", async () => {
             ? "Identifier=art.cantrip\nSignature=adhoc\nTeamIdentifier=not set"
             : "",
       }),
-      /not signed with a Developer ID identity/u,
+      /ad-hoc signature/u,
     );
   } finally {
     await rm(root, { force: true, recursive: true });
