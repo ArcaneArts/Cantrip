@@ -153,6 +153,10 @@ export async function walkFiles(directory, prefix = "") {
   return files;
 }
 
+export function normalizeGitPath(value, separator = path.sep) {
+  return value.split(separator).join("/");
+}
+
 export async function createSourceManifest(directory = upstreamRoot) {
   const files = [];
   const regularFiles = [];
@@ -167,12 +171,21 @@ export async function createSourceManifest(directory = upstreamRoot) {
         sha256: sha256Text(target),
       });
     } else {
-      const repositoryPath = path.relative(root, absolute);
-      if (repositoryPath.startsWith("..")) {
+      const relativeToRepository = path.relative(root, absolute);
+      if (
+        relativeToRepository === ".." ||
+        relativeToRepository.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(relativeToRepository)
+      ) {
         throw new Error(
           `Cannot hash source outside the repository: ${absolute}`,
         );
       }
+      // Git's attribute matching always uses slash-delimited repository paths.
+      // Passing Windows-native backslashes to `hash-object --stdin-paths`
+      // opens the files but bypasses the nested text attributes, so CRLF
+      // checkout bytes produce different hashes from the pinned manifest.
+      const repositoryPath = normalizeGitPath(relativeToRepository);
       regularFiles.push({ path: relative, repositoryPath });
     }
   }
