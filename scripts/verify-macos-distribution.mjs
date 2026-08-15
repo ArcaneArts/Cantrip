@@ -44,17 +44,25 @@ export async function findMacosArtifacts(directory) {
   return { apps: apps.sort(), dmgs: dmgs.sort() };
 }
 
-function assertDeveloperId(details, description) {
-  if (!/Authority=Developer ID Application:/u.test(details)) {
-    throw new Error(
-      `${description} is not signed with a Developer ID identity.`,
-    );
-  }
+function assertSigningIdentity(details, description, requireDeveloperId) {
   if (
     /Signature=adhoc/u.test(details) ||
     /TeamIdentifier=not set/u.test(details)
   ) {
     throw new Error(`${description} has only an ad-hoc signature.`);
+  }
+  if (!/^Authority=.+$/mu.test(details)) {
+    throw new Error(
+      `${description} is not signed with a certificate identity.`,
+    );
+  }
+  if (
+    requireDeveloperId &&
+    !/Authority=Developer ID Application:/u.test(details)
+  ) {
+    throw new Error(
+      `${description} must use a Developer ID identity for notarization.`,
+    );
   }
 }
 
@@ -86,7 +94,7 @@ export async function verifyMacosDistribution({
       "-",
       app,
     ]);
-    assertDeveloperId(details, app);
+    assertSigningIdentity(details, app, requireNotarization);
     if (!/Identifier=art\.cantrip(?:\s|$)/u.test(details)) {
       throw new Error(`${app} does not use the art.cantrip bundle identifier.`);
     }
@@ -112,7 +120,7 @@ export async function verifyMacosDistribution({
       runtimeBinaryCount += 1;
       runCommand("codesign", ["--verify", "--strict", "--verbose=2", binary]);
       const binaryDetails = runCommand("codesign", ["-dvvv", binary]);
-      assertDeveloperId(binaryDetails, binary);
+      assertSigningIdentity(binaryDetails, binary, requireNotarization);
       if (
         ((await stat(binary)).mode & 0o111) !== 0 &&
         !/flags=.*\bruntime\b/u.test(binaryDetails)
@@ -146,7 +154,11 @@ export async function verifyMacosDistribution({
   for (const dmg of dmgs) {
     runCommand("hdiutil", ["verify", dmg]);
     runCommand("codesign", ["--verify", "--strict", "--verbose=2", dmg]);
-    assertDeveloperId(runCommand("codesign", ["-dvvv", dmg]), dmg);
+    assertSigningIdentity(
+      runCommand("codesign", ["-dvvv", dmg]),
+      dmg,
+      requireNotarization,
+    );
     if (requireNotarization) {
       runCommand("xcrun", ["stapler", "validate", "-v", dmg]);
       runCommand("spctl", [
@@ -180,6 +192,6 @@ if (isMain) {
     requireNotarization: process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1",
   });
   console.log(
-    `Verified ${result.apps.length} Developer ID app, ${result.dmgs.length} signed DMG, and ${result.runtimeBinaryCount} embedded runtime binaries${process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1" ? " with stapled Apple notarization tickets" : ""}.`,
+    `Verified ${result.apps.length} certificate-signed app, ${result.dmgs.length} signed DMG, and ${result.runtimeBinaryCount} embedded runtime binaries${process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1" ? " with Developer ID and stapled Apple notarization tickets" : ""}.`,
   );
 }

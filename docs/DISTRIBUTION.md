@@ -85,12 +85,20 @@ entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
 
 ### macOS distribution
 
-The release workflow currently creates and uploads an unsigned, unnotarized
-Apple-silicon DMG. It does not read Apple certificate or App Store Connect
-secrets. This keeps release packaging independent from Apple's signing and
-notarization services, but macOS may warn users that it cannot verify the
-developer. Signing and notarization support remains available to local builds
-when explicitly enabled.
+The release workflow creates and uploads a signed, unnotarized Apple-silicon
+DMG. It signs the embedded native runtimes, app bundle, and disk image with the
+certificate supplied through these Actions secrets:
+
+- `APPLE_CERTIFICATE`: a base64-encoded `.p12` containing a valid macOS
+  code-signing identity and its private key;
+- `APPLE_CERTIFICATE_PASSWORD`: the password used to export that `.p12`; and
+- `KEYCHAIN_PASSWORD`: an arbitrary password for the job-scoped temporary
+  keychain.
+
+The hosted workflow does not use App Store Connect credentials and does not
+submit the app or DMG for notarization. A Developer ID certificate is therefore
+not required by the workflow, although macOS may still warn users that the
+unnotarized app has not been checked by Apple.
 
 For a signed and notarized local package, install the Developer ID certificate
 in the login keychain, find its exact identity, and provide the downloaded API
