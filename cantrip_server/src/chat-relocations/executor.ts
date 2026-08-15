@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 
 import {
-  chatRelocationHydrationBeginResultSchema,
-  chatRelocationHydrationResultSchema,
-  mentionedSkillNames,
   workerAttachmentReadResultSchema,
   workerAttachmentUploadResultSchema,
   worktreeStatusResultSchema,
@@ -15,8 +12,12 @@ import {
 
 import { effectivePermissionProfile } from "../chats/execution-helpers.js";
 import {
+  CANONICAL_CHAT_HYDRATION_TIMEOUT_MS,
+  CanonicalChatHydrationError,
+  hydrateCanonicalChat,
+} from "../chats/hydration.js";
+import {
   ChatRelocationJobStaleAttemptError,
-  encodeChatRelocationPayload,
   type ClaimedChatRelocationJob,
 } from "../db/chat-relocation-jobs.js";
 import { ProjectReplicaJobConflictError } from "../db/project-replica-jobs.js";
@@ -52,11 +53,11 @@ class RelocationExecutionError extends Error {
 
 const MAX_CONCURRENT_CHAT_RELOCATIONS = 2;
 const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
-const HYDRATION_CHUNK_BYTES = 256 * 1_024;
 const REPLICA_JOB_WAIT_MS = 5 * 60_000;
 const JOB_LEASE_RENEWAL_INTERVAL_MS = 30_000;
 const JOB_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
-export const CHAT_RELOCATION_HYDRATION_TIMEOUT_MS = 30 * 60_000;
+export const CHAT_RELOCATION_HYDRATION_TIMEOUT_MS =
+  CANONICAL_CHAT_HYDRATION_TIMEOUT_MS;
 const REQUIRED_TARGET_METHODS = [
   "thread/start",
   "thread/inject_items",
@@ -96,24 +97,6 @@ function runtimeCapabilityError(
         false,
       )
     : null;
-}
-
-function requiredSkillNames(claimed: ClaimedChatRelocationJob): string[] {
-  const names = new Set<string>();
-  for (const message of claimed.snapshot.payload.messages) {
-    for (const item of message.content) {
-      if (item.type !== "text") continue;
-      for (const name of mentionedSkillNames(item.text)) names.add(name);
-    }
-  }
-  if (names.size > 64) {
-    throw executionError(
-      "policy-denied",
-      "The canonical transcript references more than 64 skills and cannot be hydrated safely.",
-      false,
-    );
-  }
-  return [...names].sort();
 }
 
 function mapReplicaError(job: ProjectReplicaJobSummary): ChatRelocationError {
@@ -885,15 +868,6 @@ export class ChatRelocationJobExecutor {
     target: ProjectWorktreeExecutionContext,
     runtime: ModelRuntime,
   ): Promise<string> {
-    const bytes = encodeChatRelocationPayload(claimed.snapshot.payload);
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== claimed.snapshot.summary.transcriptSha256) {
-      throw executionError(
-        "stale-attempt",
-        "The immutable relocation transcript failed server-side digest verification.",
-        false,
-      );
-    }
     const targetContext: ChatExecutionContext = {
       ...source,
       cwd: target.worktree.path,
@@ -906,67 +880,32 @@ export class ChatRelocationJobExecutor {
       claimed.ownerId,
       claimed.job.projectId,
     );
-    const begin = chatRelocationHydrationBeginResultSchema.parse(
-      await this.bridge.request(
-        target.workerId,
-        {
-          type: "chat.relocation.hydration.begin",
-          chatId: claimed.job.chatId,
-          snapshotId: claimed.snapshot.summary.id,
-          transcriptSha256: digest,
-          sizeBytes: bytes.byteLength,
-          cwd: target.worktree.path,
-          requiredSkillNames: requiredSkillNames(claimed),
-          planMode: source.planMode,
-          model: runtime.model,
-          provider: runtime.provider,
-          permissionProfileId:
-            effectivePermissionProfile(targetContext).effectiveId,
-          mcpServers,
-        },
-        { timeoutMs: 30_000 },
-      ),
-    );
-    if (begin.status === "hydrated") return begin.threadId;
-    for (
-      let offset = 0, chunkIndex = 0;
-      offset < bytes.byteLength;
-      offset += HYDRATION_CHUNK_BYTES, chunkIndex += 1
-    ) {
-      await this.bridge.request(
-        target.workerId,
-        {
-          type: "chat.relocation.hydration.chunk",
-          snapshotId: claimed.snapshot.summary.id,
-          chunkIndex,
-          data: bytes
-            .subarray(offset, offset + HYDRATION_CHUNK_BYTES)
-            .toString("base64"),
-        },
-        { timeoutMs: 30_000 },
-      );
+    try {
+      const hydrated = await hydrateCanonicalChat({
+        bridge: this.bridge,
+        chatId: claimed.job.chatId,
+        cwd: target.worktree.path,
+        expectedSha256: claimed.snapshot.summary.transcriptSha256,
+        mcpServers,
+        payload: claimed.snapshot.payload,
+        permissionProfileId:
+          effectivePermissionProfile(targetContext).effectiveId,
+        planMode: source.planMode,
+        runtime,
+        snapshotId: claimed.snapshot.summary.id,
+        workerId: target.workerId,
+      });
+      return hydrated.threadId;
+    } catch (error) {
+      if (error instanceof CanonicalChatHydrationError) {
+        throw executionError(
+          error.code === "too-many-skills" ? "policy-denied" : "stale-attempt",
+          error.message,
+          false,
+        );
+      }
+      throw error;
     }
-    const hydrated = chatRelocationHydrationResultSchema.parse(
-      await this.bridge.request(
-        target.workerId,
-        {
-          type: "chat.relocation.hydration.complete",
-          snapshotId: claimed.snapshot.summary.id,
-        },
-        { timeoutMs: CHAT_RELOCATION_HYDRATION_TIMEOUT_MS },
-      ),
-    );
-    if (
-      hydrated.snapshotId !== claimed.snapshot.summary.id ||
-      hydrated.transcriptSha256 !== digest
-    ) {
-      throw executionError(
-        "stale-attempt",
-        "The target worker returned hydration state for a different snapshot.",
-        false,
-      );
-    }
-    return hydrated.threadId;
   }
 
   async #releaseSource(

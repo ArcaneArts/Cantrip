@@ -19455,6 +19455,8 @@ export async function buildApp({
               sourceThreadId: selection.sourceThreadId,
               targetPlacement: placement,
               modelId: selection.modelId,
+              modelRouteId: selection.modelRouteId,
+              providerAccountId: selection.providerAccountId,
               permissionProfileId: selection.permissionProfileId,
               planMode: selection.planMode,
               idempotencyKey: selection.idempotencyKey,

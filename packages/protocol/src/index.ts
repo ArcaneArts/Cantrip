@@ -6918,6 +6918,9 @@ export const chatImportJobSummarySchema = z.object({
   sourceId: externalChatSourceSchema.shape.sourceId,
   sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
   targetPlacement: executionPlacementSchema,
+  managedThreadId: z.string().min(1).max(500).nullable(),
+  targetModelRouteId: z.string().min(1).max(200).nullable(),
+  targetProviderAccountId: z.string().min(1).max(200).nullable(),
   state: chatImportStateSchema,
   stateRevision: z.number().int().positive(),
   idempotencyKey: z.string().min(1).max(200),
@@ -6943,6 +6946,8 @@ export const chatImportSelectionSchema = z.object({
   idempotencyKey: z.string().min(1).max(200),
   target: executionTargetSchema.optional(),
   modelId: z.string().min(1).max(200).nullable().default(null),
+  modelRouteId: z.string().min(1).max(200).nullable().default(null),
+  providerAccountId: z.string().min(1).max(200).nullable().default(null),
   permissionProfileId: z.string().min(1).max(200).nullable().default(null),
   planMode: planModeSchema.default("default"),
 });
