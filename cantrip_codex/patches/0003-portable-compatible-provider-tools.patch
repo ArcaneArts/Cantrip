@@ -1,0 +1,53 @@
+diff --git a/codex-rs/model-provider/src/provider.rs b/codex-rs/model-provider/src/provider.rs
+--- a/codex-rs/model-provider/src/provider.rs
++++ b/codex-rs/model-provider/src/provider.rs
+@@ -299,13 +299,17 @@ impl ModelProvider for ConfiguredModelProvider {
+     fn capabilities(&self) -> ProviderCapabilities {
+-        let remote_compaction = if self.info.is_openai()
+-            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref())
+-        {
++        let supports_openai_extensions = self.info.is_openai()
++            || is_azure_responses_provider(&self.info.name, self.info.base_url.as_deref());
++        let remote_compaction = if supports_openai_extensions {
+             RemoteCompactionSupport::V2
+         } else {
+             RemoteCompactionSupport::Unsupported
+         };
+ 
+         ProviderCapabilities {
++            // OpenAI's namespace and image-generation tool types are not part
++            // of the portable Responses surface implemented by compatible providers.
++            namespace_tools: supports_openai_extensions,
++            image_generation: supports_openai_extensions,
+             remote_compaction,
+             ..ProviderCapabilities::default()
+         }
+@@ -591,6 +595,28 @@ mod tests {
+         assert_eq!(provider.capabilities(), ProviderCapabilities::default());
+     }
+ 
++    #[test]
++    fn configured_compatible_provider_disables_openai_extension_tools() {
++        let provider = create_model_provider(
++            ModelProviderInfo {
++                name: "Compatible".to_string(),
++                base_url: Some("https://example.com/v1".to_string()),
++                ..ModelProviderInfo::default()
++            },
++            /*auth_manager*/ None,
++        );
++
++        assert_eq!(
++            provider.capabilities(),
++            ProviderCapabilities {
++                namespace_tools: false,
++                image_generation: false,
++                remote_compaction: RemoteCompactionSupport::Unsupported,
++                ..ProviderCapabilities::default()
++            }
++        );
++    }
++
+     #[test]
+     fn configured_provider_remote_compaction_matches_provider_support() {
+         let cases = [

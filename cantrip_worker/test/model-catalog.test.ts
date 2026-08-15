@@ -107,4 +107,13 @@ describe("managed Codex model catalogs", () => {
       await rm(directory, { force: true, recursive: true });
     }
   });
+
+  it("does not advertise OpenAI custom tools to compatible providers", () => {
+    expect(
+      codexCatalogForRuntimeModel(model, "openai-compatible")?.models[0],
+    ).toMatchObject({
+      shell_type: "shell_command",
+      apply_patch_tool_type: null,
+    });
+  });
 });

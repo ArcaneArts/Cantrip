@@ -567,6 +567,7 @@ import {
   DirectAttachmentUnavailableError,
 } from "./direct-attachments/coordinator.js";
 import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
+import { OpenRouterRuntimeCatalogHydrator } from "./models/openrouter-runtime-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
 import { ChatGptCatalogService } from "./models/chatgpt-catalog.js";
 import { resolveChatGptAccountRuntimes } from "./models/chatgpt-account-routing.js";
@@ -881,6 +882,25 @@ export async function buildApp({
   const repository = database.repository;
   const providerCatalogService =
     providedProviderCatalogService ?? new OpenRouterCatalogService(repository);
+  const openRouterRuntimeCatalogs = new OpenRouterRuntimeCatalogHydrator(
+    async (providerId) => {
+      try {
+        return Boolean(
+          await providerCatalogService.getProviderCatalog(
+            applicationOwnerId(),
+            providerId,
+            false,
+          ),
+        );
+      } catch (error) {
+        app.log.warn(
+          { err: error, providerId },
+          "Unable to hydrate OpenRouter model metadata",
+        );
+        return false;
+      }
+    },
+  );
   const licenseWhitelistConfigured =
     config.licenseWhitelistEnabled !== undefined;
   const licenseWhitelistEnabled = config.licenseWhitelistEnabled === true;
@@ -4487,10 +4507,18 @@ export async function buildApp({
     context: { providerAccountId?: string | null; workerId: string },
     modelId: string,
   ): Promise<ModelRuntime[]> => {
-    const runtimes = await repository.getModelRuntimes(
+    let runtimes = await repository.getModelRuntimes(
       applicationOwnerId(),
       modelId,
     );
+    if (await openRouterRuntimeCatalogs.hydrate(runtimes)) {
+      // Catalog reconciliation binds legacy name-only routes and supplies the
+      // reasoning/capability metadata used by both the composer and Codex.
+      runtimes = await repository.getModelRuntimes(
+        applicationOwnerId(),
+        modelId,
+      );
+    }
     if (!runtimes.length) {
       throw new Error("The selected model has no enabled provider routes.");
     }
@@ -7615,6 +7643,7 @@ export async function buildApp({
     "/api/settings/providers/:providerId",
     async (request, reply) => {
       try {
+        openRouterRuntimeCatalogs.invalidate(request.params.providerId);
         const deleted = await repository.deleteModelProvider(
           applicationOwnerId(),
           request.params.providerId,
@@ -7638,6 +7667,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
+        openRouterRuntimeCatalogs.invalidate(request.params.providerId);
         const provider = await repository.updateModelProvider(
           applicationOwnerId(),
           request.params.providerId,
@@ -7673,11 +7703,13 @@ export async function buildApp({
     );
     if (!provider) return null;
     if (provider.kind !== "ollama" && provider.kind !== "chatgpt") {
-      return providerCatalogService.getProviderCatalog(
+      const catalog = await providerCatalogService.getProviderCatalog(
         ownerId,
         providerId,
         force,
       );
+      if (catalog) openRouterRuntimeCatalogs.markHydrated(providerId);
+      return catalog;
     }
     let selectedWorkerId = workerId;
     if (!selectedWorkerId) {

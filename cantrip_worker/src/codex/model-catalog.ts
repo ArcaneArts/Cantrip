@@ -18,10 +18,14 @@ const SUPPORTED_INPUT_MODALITIES = new Set(["text", "image", "audio"]);
 export const CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS =
   "You are Codex, a coding agent. Follow the developer and user instructions. Use the available tools to inspect and modify the repository, run commands, and verify your work. Continue until the user's request is complete.";
 
-export function codexCatalogForRuntimeModel(model: RuntimeModel) {
+export function codexCatalogForRuntimeModel(
+  model: RuntimeModel,
+  providerKind: RuntimeProvider["kind"] = "ollama",
+) {
   const catalog = model.catalog;
   if (!catalog) return null;
   const supportsTools = catalog.supportsTools;
+  const supportsFreeformTools = providerKind !== "openai-compatible";
   const supportsReasoning = catalog.supportsReasoning === true;
   const inputModalities = catalog.inputModalities.filter((modality) =>
     SUPPORTED_INPUT_MODALITIES.has(modality),
@@ -39,6 +43,7 @@ export function codexCatalogForRuntimeModel(model: RuntimeModel) {
         contextWindow: catalog.contextWindow,
         inputModalities,
         supportsTools,
+        supportsFreeformTools,
         supportsParallelTools: catalog.supportsParallelTools,
         supportedReasoningLevels,
       }),
@@ -74,7 +79,11 @@ export function codexCatalogForRuntimeModel(model: RuntimeModel) {
         default_reasoning_summary: "auto",
         support_verbosity: false,
         default_verbosity: null,
-        apply_patch_tool_type: supportsTools === true ? "freeform" : null,
+        // Third-party Responses implementations commonly support JSON-schema
+        // function tools but reject OpenAI's custom/freeform tool extension.
+        // Keep edits available through the normal shell tool on those routes.
+        apply_patch_tool_type:
+          supportsTools === true && supportsFreeformTools ? "freeform" : null,
         web_search_tool_type: "text",
         truncation_policy: { mode: "bytes", limit: 10_000 },
         supports_parallel_tool_calls: catalog.supportsParallelTools === true,
@@ -104,7 +113,7 @@ export async function writeManagedCodexModelCatalog(
   provider: RuntimeProvider,
 ): Promise<string | null> {
   if (provider.kind === "chatgpt") return null;
-  const catalog = codexCatalogForRuntimeModel(model);
+  const catalog = codexCatalogForRuntimeModel(model, provider.kind);
   if (!catalog) return null;
   await mkdir(dataDirectory, { recursive: true });
   const catalogPath = path.resolve(dataDirectory, "cantrip-model-catalog.json");
