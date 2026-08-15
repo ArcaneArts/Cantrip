@@ -50,6 +50,15 @@ Remote Surface identities. Cross-worker agent reads and bounded mutations now
 consume this shared resolver. Servers advertise this end-to-end contract with
 `capabilities.crossWorkerExecutionTargets`.
 
+External ChatGPT Codex history follows the same placement boundary. Discovery
+fans out only to workers that both own a project replica and advertise the
+external-history capability. Source identities retain their worker ID, while
+the destination is resolved independently through normal project placement.
+A source worker may therefore read a selected local transcript while another
+worker receives its bounded attachments and hydrates the new Cantrip-managed
+thread. Durable already-imported references remain owner-scoped across projects
+and workers. See [the Codex chat import guide](CODEX_CHAT_IMPORT.md).
+
 ## Current replica read contract
 
 `project_sources` is the persisted replica table and enforces one row per

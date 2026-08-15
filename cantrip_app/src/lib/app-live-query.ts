@@ -104,6 +104,7 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ? [
             ["chat-import-jobs", projectId],
             ...(event.entityId ? [["chat-import-job", event.entityId]] : []),
+            ["external-chat-history", projectId],
             ["chats", projectId],
             ["project-tab-layout", projectId],
           ]

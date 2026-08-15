@@ -130,6 +130,10 @@ export function ExternalChatImportSettings({
     selectedProvider?.accounts.filter(({ enabled }) => enabled) ?? [];
   const recentJobs = [...(jobs.data ?? [])].reverse().slice(0, 20);
   const summary = summarizeChatImportJobs(jobs.data ?? []);
+  const importedCount = candidates.filter(
+    ({ existingImport, existingJob }) =>
+      (existingJob?.state ?? existingImport?.state) === "succeeded",
+  ).length;
   const sourceMessages =
     discovery.data?.workers.flatMap((worker) => [
       ...(worker.error ? [worker.error.message] : []),
@@ -283,7 +287,7 @@ export function ExternalChatImportSettings({
                 {discovery.isError
                   ? errorMessage(discovery.error)
                   : candidates.length
-                    ? `${candidates.length} chat${candidates.length === 1 ? "" : "s"} match this project${summary.succeeded ? ` · ${summary.succeeded} imported` : ""}`
+                    ? `${candidates.length} chat${candidates.length === 1 ? "" : "s"} match this project${importedCount ? ` · ${importedCount} imported` : ""}`
                     : (sourceMessages[0] ??
                       "No safe root chats currently match this project.")}
               </p>
@@ -390,7 +394,9 @@ export function ExternalChatImportSettings({
                   candidate={candidate}
                   checked={selectedKeys.has(candidate.key)}
                   disabled={
-                    Boolean(candidate.existingJob) ||
+                    Boolean(
+                      candidate.existingImport || candidate.existingJob,
+                    ) ||
                     (!selectedKeys.has(candidate.key) &&
                       selectedKeys.size >= 50)
                   }

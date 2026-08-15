@@ -83,6 +83,7 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["chat-import-jobs", "project-one"],
       ["chat-import-job", "import-one"],
+      ["external-chat-history", "project-one"],
       ["chats", "project-one"],
       ["project-tab-layout", "project-one"],
     ]);

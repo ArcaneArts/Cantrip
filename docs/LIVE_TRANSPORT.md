@@ -137,6 +137,12 @@ one-second status GETs are disabled. A disconnected app retains the one-second
 status GET as a recovery fallback, and reconnect recovery refetches the
 authoritative status before observation resumes.
 
+External Codex chat imports publish project-scoped `chat-import-job`
+invalidations after every durable transition. The app refreshes the job list,
+already-imported discovery metadata, chat list, and tab layout from that event;
+the previous two-second job refresh runs only while the live channel is not
+healthy. HTTP job snapshots remain authoritative after reconnect or resync.
+
 ## Observability and verification
 
 `GET /api/health` exposes the live hub's epoch, cursor, connection, delivery,

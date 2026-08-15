@@ -4,7 +4,9 @@ import {
   chatImportJobListSchema,
   chatImportJobSummarySchema,
   chatRelocationContextPayloadSchema,
+  externalChatImportReferenceSchema,
   type ChatAttachmentSummary,
+  type ExternalChatImportReference,
   type ChatImportError,
   type ChatImportJobSummary,
   type ChatImportProgress,
@@ -66,6 +68,14 @@ export interface ChatImportHydrationContext {
 export interface ImportedChatAttachment {
   descriptor: ExternalChatAttachment;
   id: string;
+}
+
+export interface ExternalChatImportSourceReference {
+  sourceKind: ExternalChatSourceKind;
+  sourceWorkerId: string;
+  sourceId: string;
+  sourceThreadId: string;
+  reference: ExternalChatImportReference;
 }
 
 export function chatImportAttachmentId(
@@ -466,6 +476,46 @@ export class ChatImportJobRepository {
       )
       .limit(CHAT_IMPORT_JOB_HISTORY_LIMIT);
     return chatImportJobListSchema.parse(rows.reverse().map(toJob));
+  }
+
+  async listSourceReferences(
+    ownerId: string,
+    sourceWorkerIds: string[],
+  ): Promise<ExternalChatImportSourceReference[]> {
+    const workerIds = [...new Set(sourceWorkerIds)];
+    if (workerIds.length === 0) return [];
+    const rows = await this.database
+      .select({
+        job: schema.chatImportJobs,
+        projectName: schema.projects.name,
+      })
+      .from(schema.chatImportJobs)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chatImportJobs.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatImportJobs.ownerId, ownerId),
+          inArray(schema.chatImportJobs.sourceWorkerId, workerIds),
+        ),
+      );
+    return rows.map(({ job, projectName }) => ({
+      sourceKind: job.sourceKind,
+      sourceWorkerId: job.sourceWorkerId,
+      sourceId: job.sourceId,
+      sourceThreadId: job.sourceThreadId,
+      reference: externalChatImportReferenceSchema.parse({
+        jobId: job.id,
+        projectId: job.projectId,
+        projectName,
+        chatId: job.chatId,
+        state: job.state,
+      }),
+    }));
   }
 
   async recoverInterrupted(force = true, now = new Date()): Promise<number> {
