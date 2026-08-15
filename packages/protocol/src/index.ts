@@ -1084,6 +1084,7 @@ export const providerAccessTokenLeaseSchema = z.object({
   accessToken: z.string().min(1).max(1_000_000),
   credentialRevision: z.number().int().nonnegative(),
   expiresAt: z.string().datetime({ offset: true }).nullable(),
+  email: z.string().max(1_024).nullable().default(null),
   issuedAt: z.string().datetime({ offset: true }),
   leaseExpiresAt: z.string().datetime({ offset: true }),
   planType: z.string().max(1_024).nullable(),

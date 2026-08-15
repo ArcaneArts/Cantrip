@@ -584,6 +584,7 @@ import {
   ProviderAccessTokenService,
 } from "./models/provider-access-tokens.js";
 import { ChatGptCredentialRefresher } from "./models/chatgpt-credential-refresher.js";
+import { GrokCredentialRefresher } from "./models/grok-credential-refresher.js";
 import { ProviderCredentialMigrationCoordinator } from "./models/provider-credential-migrations.js";
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
@@ -989,12 +990,15 @@ export async function buildApp({
     new ProviderAccessTokenService(repository, {
       refreshLeaseDurationMs: 7_500,
       refreshWaitMs: 8_500,
-      refreshers: { chatgpt: new ChatGptCredentialRefresher() },
+      refreshers: {
+        chatgpt: new ChatGptCredentialRefresher(),
+        grok: new GrokCredentialRefresher(),
+      },
     });
   const providerCredentialMigrations =
     providedProviderCredentialMigrations ??
     new ProviderCredentialMigrationCoordinator(repository, bridge, {
-      purgeEnabledKinds: new Set(["chatgpt"]),
+      purgeEnabledKinds: new Set(["chatgpt", "grok"]),
     });
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();

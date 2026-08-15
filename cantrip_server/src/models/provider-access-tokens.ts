@@ -429,6 +429,7 @@ export class ProviderAccessTokenService {
     return {
       accessToken: record.credential.accessToken,
       credentialRevision: record.revision,
+      email: record.credential.email,
       expiresAt: record.credential.expiresAt
         ? new Date(record.credential.expiresAt).toISOString()
         : null,
