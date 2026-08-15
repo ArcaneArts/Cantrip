@@ -6880,6 +6880,10 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       const principal = authenticatedPrincipal(request);
+      const workerId = await repository.findReusableWorkerId(
+        principal.user.id,
+        input.data.candidateWorkerIds,
+      );
       const generated = createWorkerEnrollmentCode();
       const expiresAt = new Date(
         Date.now() + input.data.expiresInSeconds * 1_000,
@@ -6897,6 +6901,7 @@ export async function buildApp({
           id,
           expiresAt: expiresAt.toISOString(),
           label: input.data.label,
+          workerId,
         }),
       );
     },

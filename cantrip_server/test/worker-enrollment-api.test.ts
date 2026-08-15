@@ -152,6 +152,7 @@ describe("per-worker enrollment credentials", () => {
       expect(createdCode.statusCode).toBe(201);
       const link = workerEnrollmentCodeResultSchema.parse(createdCode.json());
       expect(link.code).toMatch(/^ctwl_/u);
+      expect(link.workerId).toBeNull();
       expect(
         workerEnrollmentCodeStatusSchema.parse(
           (
@@ -345,6 +346,28 @@ describe("per-worker enrollment credentials", () => {
         ).statusCode,
       ).toBe(401);
 
+      const project = await database.repository.createGithubProject(
+        registered.json().currentUser.id as string,
+        {
+          workerId: "worker-one",
+          repositoryId: "worker-reenrollment-project",
+          nameWithOwner: "ArcaneArts/Cantrip",
+          url: "https://github.com/ArcaneArts/Cantrip",
+        },
+      );
+      await database.repository.completeGithubProjectSetup(
+        registered.json().currentUser.id as string,
+        project.id,
+        "worker-one",
+        {
+          path: path.join(config.dataDirectory, "worker-one", "Cantrip"),
+          displayPath: "ArcaneArts/Cantrip",
+          reused: false,
+          updated: false,
+          warning: null,
+        },
+      );
+
       const unlinked = await app.inject({
         method: "DELETE",
         url: "/api/workers/worker-one",
@@ -369,16 +392,21 @@ describe("per-worker enrollment credentials", () => {
             method: "POST",
             url: "/api/workers/enrollment-codes",
             headers: authHeaders,
-            payload: { label: "Studio Mac", expiresInSeconds: 300 },
+            payload: {
+              label: "Studio Mac",
+              expiresInSeconds: 300,
+              candidateWorkerIds: ["worker-owned-by-someone-else", "worker-one"],
+            },
           })
         ).json(),
       );
+      expect(relinkCode.workerId).toBe("worker-one");
       const relinked = await app.inject({
         method: "POST",
         url: "/api/internal/workers/enroll",
         payload: {
           code: relinkCode.code,
-          heartbeat: heartbeat("worker-one"),
+          heartbeat: heartbeat(relinkCode.workerId!),
         },
       });
       expect(relinked.statusCode).toBe(201);

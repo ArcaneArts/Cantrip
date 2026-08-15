@@ -52,6 +52,7 @@ import { errorMessage } from "@/lib/error-message";
 import {
   forgetDesktopWorker,
   getDesktopAutostart,
+  listDesktopWorkerCandidates,
   listDesktopWorkers,
   pairDesktopWorker,
   setDesktopAutostart,
@@ -305,6 +306,7 @@ export function WorkerSettings() {
       createWorkerEnrollmentCode({
         label: pairLabel.trim() || null,
         expiresInSeconds: pairExpiry,
+        candidateWorkerIds: [],
       }),
     onSuccess: setPairResult,
   });
@@ -350,14 +352,17 @@ export function WorkerSettings() {
   });
   const addThisMachine = useMutation({
     mutationFn: async () => {
+      const candidateWorkerIds = await listDesktopWorkerCandidates(serverUrl);
       const enrollment = await createWorkerEnrollmentCode({
         label: "This machine",
         expiresInSeconds: 300,
+        candidateWorkerIds,
       });
       const desktopWorker = await pairDesktopWorker({
         enrollmentCode: enrollment.code,
         name: "This machine",
         serverUrl,
+        workerId: enrollment.workerId,
       });
       return { desktopWorker, enrollment };
     },

@@ -15,10 +15,19 @@ export async function listDesktopWorkers(): Promise<DesktopWorkerStatus[]> {
   return isTauri() ? invoke<DesktopWorkerStatus[]>("list_desktop_workers") : [];
 }
 
+export async function listDesktopWorkerCandidates(
+  serverUrl: string,
+): Promise<string[]> {
+  return isTauri()
+    ? invoke<string[]>("list_desktop_worker_candidates", { serverUrl })
+    : [];
+}
+
 export async function pairDesktopWorker(input: {
   enrollmentCode: string;
   name: string;
   serverUrl: string;
+  workerId?: string | null;
 }): Promise<DesktopWorkerStatus> {
   if (!isTauri()) {
     throw new Error("Adding this machine requires the Cantrip desktop app.");

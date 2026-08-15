@@ -4004,6 +4004,40 @@ export class ServerRepository {
     return id;
   }
 
+  async findReusableWorkerId(
+    ownerId: string,
+    candidateWorkerIds: readonly string[],
+  ): Promise<string | null> {
+    const candidates = [...new Set(candidateWorkerIds)].slice(0, 64);
+    if (candidates.length === 0) return null;
+
+    const activeSourceCount = sql<number>`count(${schema.projectSources.id})`;
+    const rows = await this.database
+      .select({
+        id: schema.workers.id,
+        sourceCount: activeSourceCount,
+      })
+      .from(schema.workers)
+      .leftJoin(
+        schema.projectSources,
+        and(
+          eq(schema.projectSources.workerId, schema.workers.id),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.workers.ownerId, ownerId),
+          inArray(schema.workers.id, candidates),
+          sql`${schema.workers.unlinkedAt} IS NOT NULL`,
+        ),
+      )
+      .groupBy(schema.workers.id, schema.workers.lastSeenAt)
+      .orderBy(desc(activeSourceCount), desc(schema.workers.lastSeenAt))
+      .limit(1);
+    return rows[0]?.id ?? null;
+  }
+
   async getWorkerEnrollmentCodeStatus(
     ownerId: string,
     enrollmentCodeId: string,
