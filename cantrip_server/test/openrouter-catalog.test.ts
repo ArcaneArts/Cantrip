@@ -35,6 +35,12 @@ const publicModels = {
         "response_format",
         "reasoning",
       ],
+      reasoning: {
+        mandatory: true,
+        default_enabled: true,
+        supported_efforts: ["xhigh", "high", "medium", "low"],
+        default_effort: "high",
+      },
       top_provider: {
         context_length: 200_000,
         max_completion_tokens: 32_000,
@@ -55,7 +61,7 @@ const publicModels = {
 };
 
 describe("OpenRouter catalog", () => {
-  it("normalizes capabilities without inventing reasoning levels", () => {
+  it("normalizes the reasoning levels advertised by OpenRouter", () => {
     const model = normalizeOpenRouterModel(publicModels.data[0]!);
     expect(model).toMatchObject({
       nativeModelId: "openai/gpt-test",
@@ -67,7 +73,14 @@ describe("OpenRouter catalog", () => {
       supportsStructuredOutput: true,
       supportsVision: true,
       supportsReasoning: true,
-      supportedReasoningEfforts: [],
+      supportedReasoningEfforts: [
+        { effort: "xhigh", description: "xhigh reasoning" },
+        { effort: "high", description: "high reasoning" },
+        { effort: "medium", description: "medium reasoning" },
+        { effort: "low", description: "low reasoning" },
+      ],
+      defaultReasoningEffort: "high",
+      reasoningMandatory: true,
       metadataSource: "openrouter",
     });
   });
