@@ -2112,6 +2112,10 @@ export const chatImportJobs = pgTable(
     progress: jsonb("progress").$type<ChatImportProgress>().notNull(),
     sourceMetadata:
       jsonb("source_metadata").$type<ExternalChatTranscriptMetadata>(),
+    attachmentCount: integer("attachment_count").notNull().default(0),
+    attachmentWarningCount: integer("attachment_warning_count")
+      .notNull()
+      .default(0),
     lastErrorCode: text("last_error_code").$type<ChatImportError["code"]>(),
     lastErrorMessage: text("last_error_message"),
     errorRetryable: boolean("error_retryable"),

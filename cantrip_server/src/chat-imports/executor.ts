@@ -1,8 +1,13 @@
+import { createHash } from "node:crypto";
+
 import {
   agentThreadSyncSchema,
+  externalChatAttachmentReadResultSchema,
   externalChatReadWorkerResultSchema,
+  workerAttachmentUploadResultSchema,
   type ChatImportError,
   type ChatImportJobSummary,
+  type ExternalChatAttachment,
 } from "@cantrip/protocol";
 
 import { effectivePermissionProfile } from "../chats/execution-helpers.js";
@@ -13,7 +18,9 @@ import {
 import {
   ChatImportJobConflictError,
   ChatImportJobStaleAttemptError,
+  chatImportAttachmentId,
   type ClaimedChatImportJob,
+  type ImportedChatAttachment,
 } from "../db/chat-import-jobs.js";
 import type {
   ChatExecutionContext,
@@ -40,6 +47,7 @@ export interface ChatImportLiveChange {
 const MAX_CONCURRENT_CHAT_IMPORTS = 2;
 const JOB_LEASE_RENEWAL_INTERVAL_MS = 30_000;
 const JOB_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
+const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 export const CHAT_IMPORT_READ_TIMEOUT_MS = 30 * 60_000;
 const REQUIRED_HYDRATION_METHODS = [
   "thread/start",
@@ -329,14 +337,183 @@ export class ChatImportJobExecutor {
       claimed.job.attempt,
     );
     this.onChanged({ ownerId: claimed.ownerId, job: importing });
+    const importedAttachments = await this.#transferAttachments(
+      claimed,
+      result.transcript.attachments,
+    );
     const completed =
       await this.repository.chatImportJobs.completeCanonicalImport(
         claimed.job.id,
         claimed.commandId,
         claimed.job.attempt,
         result.transcript,
+        importedAttachments,
       );
     this.onChanged({ ownerId: claimed.ownerId, job: completed });
+    if (result.transcript.attachments.length) {
+      await this.bridge
+        .request(claimed.job.sourceWorkerId, {
+          type: "external.chat-history.attachments.release",
+          sourceKind: claimed.job.sourceKind,
+          sourceId: claimed.job.sourceId,
+          sourceThreadId: claimed.job.sourceThreadId,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            { err: error, chatImportJobId: claimed.job.id },
+            "Could not release staged external chat attachments",
+          );
+        });
+    }
+  }
+
+  async #transferAttachments(
+    claimed: ClaimedChatImportJob,
+    descriptors: ExternalChatAttachment[],
+  ): Promise<ImportedChatAttachment[]> {
+    const imported: ImportedChatAttachment[] = [];
+    for (const descriptor of descriptors) {
+      const id = chatImportAttachmentId(claimed.job.id, descriptor.id);
+      if (descriptor.status !== "available") {
+        imported.push({ descriptor, id });
+        continue;
+      }
+      if (!this.bridge.isConnected(claimed.job.targetPlacement.workerId)) {
+        throw new WorkerUnavailableError("Destination worker is offline.");
+      }
+      let uploadStarted = false;
+      try {
+        await this.bridge.request(claimed.job.targetPlacement.workerId, {
+          type: "attachment.upload.begin",
+          chatId: claimed.job.id,
+          attachmentId: id,
+          fileName: descriptor.fileName,
+          sizeBytes: descriptor.sizeBytes,
+        });
+        uploadStarted = true;
+        const digest = createHash("sha256");
+        let offset = 0;
+        let chunkIndex = 0;
+        let unavailableWarning: string | null = null;
+        while (
+          offset < descriptor.sizeBytes ||
+          (descriptor.sizeBytes === 0 && offset === 0)
+        ) {
+          const source = externalChatAttachmentReadResultSchema.parse(
+            await this.bridge.request(claimed.job.sourceWorkerId, {
+              type: "external.chat-history.attachment.read",
+              sourceKind: claimed.job.sourceKind,
+              sourceId: claimed.job.sourceId,
+              sourceThreadId: claimed.job.sourceThreadId,
+              attachmentId: descriptor.id,
+              offset,
+              limit: ATTACHMENT_CHUNK_BYTES,
+            }),
+          );
+          if (source.status === "unavailable") {
+            unavailableWarning = source.warning;
+            break;
+          }
+          if (
+            source.sizeBytes !== descriptor.sizeBytes ||
+            source.sha256 !== descriptor.sha256
+          ) {
+            unavailableWarning =
+              "The attachment changed after the source transcript was read.";
+            break;
+          }
+          const bytes = Buffer.from(source.data, "base64");
+          const remaining = descriptor.sizeBytes - offset;
+          if (
+            bytes.byteLength > Math.min(ATTACHMENT_CHUNK_BYTES, remaining) ||
+            (!source.eof && bytes.byteLength === 0)
+          ) {
+            unavailableWarning =
+              "The source worker returned an invalid attachment stream.";
+            break;
+          }
+          digest.update(bytes);
+          await this.bridge.request(claimed.job.targetPlacement.workerId, {
+            type: "attachment.upload.chunk",
+            chatId: claimed.job.id,
+            attachmentId: id,
+            chunkIndex,
+            data: bytes.toString("base64"),
+          });
+          offset += bytes.byteLength;
+          chunkIndex += 1;
+          if (source.eof) {
+            if (offset !== descriptor.sizeBytes) {
+              unavailableWarning = "The source attachment was truncated.";
+            }
+            break;
+          }
+          if (offset === descriptor.sizeBytes) {
+            unavailableWarning =
+              "The source worker did not terminate the attachment stream.";
+            break;
+          }
+        }
+        if (
+          unavailableWarning ||
+          offset !== descriptor.sizeBytes ||
+          digest.digest("hex") !== descriptor.sha256
+        ) {
+          await this.bridge.request(claimed.job.targetPlacement.workerId, {
+            type: "attachment.delete",
+            chatId: claimed.job.id,
+            attachmentId: id,
+          });
+          uploadStarted = false;
+          imported.push({
+            id,
+            descriptor: {
+              ...descriptor,
+              status: "missing",
+              sha256: null,
+              warning:
+                unavailableWarning ??
+                "The source attachment failed content verification.",
+            },
+          });
+          continue;
+        }
+        const uploaded = workerAttachmentUploadResultSchema.parse(
+          await this.bridge.request(claimed.job.targetPlacement.workerId, {
+            type: "attachment.upload.complete",
+            chatId: claimed.job.id,
+            attachmentId: id,
+          }),
+        );
+        uploadStarted = false;
+        if (
+          uploaded.sizeBytes !== descriptor.sizeBytes ||
+          uploaded.sha256 !== descriptor.sha256
+        ) {
+          await this.bridge.request(claimed.job.targetPlacement.workerId, {
+            type: "attachment.delete",
+            chatId: claimed.job.id,
+            attachmentId: id,
+          });
+          throw new Error(
+            "The destination worker failed imported attachment verification.",
+          );
+        }
+        imported.push({ descriptor, id });
+      } catch (error) {
+        if (uploadStarted) {
+          await this.bridge
+            .request(claimed.job.targetPlacement.workerId, {
+              type: "attachment.delete",
+              chatId: claimed.job.id,
+              attachmentId: id,
+            })
+            .catch(() => undefined);
+        }
+        throw error;
+      }
+    }
+    return imported;
   }
 
   async #hydrate(claimed: ClaimedChatImportJob): Promise<void> {

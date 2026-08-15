@@ -7,6 +7,7 @@ import {
   normalizeExternalPath,
   normalizeGitOrigin,
 } from "../src/external-chat-history.js";
+import type { ExternalChatAttachmentStagingStore } from "../src/external-chat-attachments.js";
 
 const target: ExternalChatDiscoveryTarget = {
   projectReplicaId: "replica-one",
@@ -52,6 +53,7 @@ function thread(overrides: Record<string, unknown> = {}) {
 function sourceWithResponses(
   responses: unknown[],
   requests: Array<{ method: string; params: unknown }>,
+  attachmentStore?: ExternalChatAttachmentStagingStore,
 ) {
   return new CodexExternalChatHistorySource({
     binary: "/bin/codex",
@@ -63,6 +65,7 @@ function sourceWithResponses(
     resolvePath: async (candidate) => candidate,
     resolveGitOrigin: async () => "github.com/arcanearts/cantrip",
     readRuntimeVersion: async () => "codex-cli 0.147.0",
+    attachmentStore,
     createClient: () => ({
       async request(method, params) {
         requests.push({ method, params });
@@ -297,6 +300,105 @@ describe("external Codex chat history discovery", () => {
         ["thread/resume", "thread/start", "turn/start"].includes(method),
       ),
     ).toBe(false);
+  });
+
+  it("stages local media only during selected transcript reads and preserves image-only messages", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const attachmentCalls: Array<{ type: string; path?: string | null }> = [];
+    const attachmentStore = {
+      async cleanupExpired() {
+        attachmentCalls.push({ type: "cleanup" });
+      },
+      async release() {
+        attachmentCalls.push({ type: "release" });
+      },
+      async stage(
+        _sourceId: string,
+        _sourceThreadId: string,
+        candidate: {
+          id: string;
+          itemId: string;
+          kind: "audio" | "image";
+          path: string | null;
+        },
+      ) {
+        attachmentCalls.push({ type: "stage", path: candidate.path });
+        return {
+          id: candidate.id,
+          itemId: candidate.itemId,
+          fileName: "reference.png",
+          mimeType: "image/png",
+          sizeBytes: 12,
+          kind: candidate.kind,
+          status: "available" as const,
+          sha256: "f".repeat(64),
+          warning: null,
+        };
+      },
+    } as unknown as ExternalChatAttachmentStagingStore;
+    const source = sourceWithResponses(
+      [
+        { data: [thread()], nextCursor: null, backwardsCursor: null },
+        {
+          thread: {
+            ...thread(),
+            turns: [
+              {
+                id: "turn-one",
+                status: "completed",
+                startedAt: 1_786_800_000,
+                completedAt: 1_786_800_010,
+                durationMs: 10_000,
+                error: null,
+                items: [
+                  {
+                    type: "userMessage",
+                    id: "user-image-only",
+                    clientId: null,
+                    content: [
+                      { type: "localImage", path: "screens/reference.png" },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      requests,
+      attachmentStore,
+    );
+
+    const discovered = await source.discover({
+      includeArchived: false,
+      targets: [target],
+    });
+    expect(attachmentCalls).toEqual([]);
+    const result = await source.read({
+      sourceId: discovered[0]!.sourceId,
+      sourceThreadId: thread().id,
+      targets: [target],
+    });
+
+    expect(attachmentCalls).toEqual([
+      { type: "cleanup" },
+      { type: "release" },
+      {
+        type: "stage",
+        path: "/workspace/Cantrip/screens/reference.png",
+      },
+    ]);
+    expect(result.transcript.attachments).toHaveLength(1);
+    expect(result.transcript.sync.turns[0]?.items).toEqual(
+      expect.arrayContaining([
+        {
+          type: "userMessage",
+          id: "user-image-only",
+          text: "",
+          externalAttachmentIds: [result.transcript.attachments[0]!.id],
+        },
+      ]),
+    );
   });
 
   it("rejects a source thread whose project match changed", async () => {

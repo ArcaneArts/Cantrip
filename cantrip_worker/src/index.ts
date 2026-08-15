@@ -5,6 +5,7 @@ import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
+import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { evaluateProjectAutomationCondition } from "./automation-conditions.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
@@ -230,6 +231,9 @@ async function start(): Promise<void> {
   let lastConnectionError: string | null = null;
   let stopping = false;
   const attachments = new AttachmentStore(config.dataDirectory);
+  const externalChatAttachments = new ExternalChatAttachmentStagingStore(
+    config.dataDirectory,
+  );
   const chatRelocations = new ChatRelocationHydrationStore(
     config.dataDirectory,
   );
@@ -686,6 +690,7 @@ async function start(): Promise<void> {
       case "external.chat-history.discover":
         return discoverExternalChatHistory(
           {
+            attachmentStore: externalChatAttachments,
             binary: config.codexBinary,
             managedDataDirectory: config.dataDirectory,
           },
@@ -694,11 +699,26 @@ async function start(): Promise<void> {
       case "external.chat-history.read":
         return readExternalChatHistory(
           {
+            attachmentStore: externalChatAttachments,
             binary: config.codexBinary,
             managedDataDirectory: config.dataDirectory,
           },
           command,
         );
+      case "external.chat-history.attachment.read":
+        return externalChatAttachments.read(
+          command.sourceId,
+          command.sourceThreadId,
+          command.attachmentId,
+          command.offset,
+          command.limit,
+        );
+      case "external.chat-history.attachments.release":
+        await externalChatAttachments.release(
+          command.sourceId,
+          command.sourceThreadId,
+        );
+        return { accepted: true };
       case "browser.services.discover":
         return discoverBrowserServices({ workerId: config.workerId });
       case "project.share.open":

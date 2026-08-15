@@ -4,10 +4,12 @@ import {
   chatImportJobListSchema,
   chatImportJobSummarySchema,
   chatRelocationContextPayloadSchema,
+  type ChatAttachmentSummary,
   type ChatImportError,
   type ChatImportJobSummary,
   type ChatImportProgress,
   type ChatRelocationContextPayload,
+  type ExternalChatAttachment,
   type ExecutionPlacement,
   type ExternalChatDiscoveryTarget,
   type ExternalChatSourceKind,
@@ -61,6 +63,25 @@ export interface ChatImportHydrationContext {
   payload: ChatRelocationContextPayload;
 }
 
+export interface ImportedChatAttachment {
+  descriptor: ExternalChatAttachment;
+  id: string;
+}
+
+export function chatImportAttachmentId(
+  jobId: string,
+  externalAttachmentId: string,
+): string {
+  const bytes = createHash("sha256")
+    .update(`${jobId}\0${externalAttachmentId}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function toISOString(value: Date): string {
   return value.toISOString();
 }
@@ -101,6 +122,8 @@ function toJob(row: ChatImportJobRow): ChatImportJobSummary {
           }
         : null,
     sourceMetadata: row.sourceMetadata,
+    attachmentCount: row.attachmentCount,
+    attachmentWarningCount: row.attachmentWarningCount,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
     startedAt: row.startedAt ? toISOString(row.startedAt) : null,
@@ -684,6 +707,7 @@ export class ChatImportJobRepository {
     commandId: string,
     attempt: number,
     transcript: ExternalChatTranscript,
+    importedAttachments: ImportedChatAttachment[] = [],
   ): Promise<ChatImportJobSummary> {
     const now = new Date();
     const completed = await this.database.transaction(async (transaction) => {
@@ -709,6 +733,22 @@ export class ChatImportJobRepository {
       ) {
         throw new ChatImportJobConflictError(
           "The source chat identity changed while it was being imported.",
+        );
+      }
+      const transcriptAttachmentIds = new Set(
+        transcript.attachments.map(({ id }) => id),
+      );
+      if (
+        transcriptAttachmentIds.size !== transcript.attachments.length ||
+        importedAttachments.length !== transcript.attachments.length ||
+        importedAttachments.some(
+          ({ descriptor, id }) =>
+            !transcriptAttachmentIds.has(descriptor.id) ||
+            id !== chatImportAttachmentId(job.id, descriptor.id),
+        )
+      ) {
+        throw new ChatImportJobConflictError(
+          "The imported attachment set changed before canonical storage.",
         );
       }
       const sourceMatches = await transaction
@@ -765,7 +805,7 @@ export class ChatImportJobRepository {
         .where(eq(schema.chats.projectId, job.projectId))
         .orderBy(desc(schema.chats.position))
         .limit(1);
-      const chatId = randomUUID();
+      const chatId = job.id;
       const chats = await transaction
         .insert(schema.chats)
         .values({
@@ -810,10 +850,59 @@ export class ChatImportJobRepository {
         tabId: chatId,
         tabKind: "chat",
       });
+      const attachmentByExternalId = new Map<string, ChatAttachmentSummary>();
+      for (const imported of importedAttachments) {
+        const warning = imported.descriptor.warning;
+        const status =
+          imported.descriptor.status === "available" ? "ready" : "failed";
+        const inserted = await transaction
+          .insert(schema.chatAttachments)
+          .values({
+            id: imported.id,
+            chatId,
+            workerId: job.targetPlacement.workerId,
+            fileName: imported.descriptor.fileName,
+            mimeType: imported.descriptor.mimeType,
+            sizeBytes: imported.descriptor.sizeBytes,
+            kind: imported.descriptor.kind,
+            source: "file",
+            status,
+            previewText: warning,
+            sha256: imported.descriptor.sha256 ?? "0".repeat(64),
+            error: warning,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .returning();
+        const attachment = inserted[0]!;
+        if (status === "ready") {
+          await transaction.insert(schema.chatAttachmentReplicas).values({
+            attachmentId: imported.id,
+            workerId: job.targetPlacement.workerId,
+            status: "ready",
+            verifiedAt: now,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
+        attachmentByExternalId.set(imported.descriptor.id, {
+          id: attachment.id,
+          chatId,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          kind: attachment.kind,
+          source: attachment.source,
+          status: attachment.status as "failed" | "ready",
+          previewText: attachment.previewText,
+          createdAt: toISOString(attachment.createdAt),
+        });
+      }
       const messages = canonicalMessagesFromThreadSync(transcript.sync, {
         idempotencyPrefix: "codex-import",
         interruptedMessage: "Turn interrupted in the imported Codex chat.",
         failedMessage: "The imported Codex turn failed.",
+        externalAttachments: attachmentByExternalId,
       });
       for (const { message } of messages) {
         await transaction.insert(schema.chatMessages).values({
@@ -837,6 +926,10 @@ export class ChatImportJobRepository {
           commandId: null,
           leaseExpiresAt: null,
           sourceMetadata: transcript.metadata,
+          attachmentCount: importedAttachments.length,
+          attachmentWarningCount: importedAttachments.filter(
+            ({ descriptor }) => descriptor.status !== "available",
+          ).length,
           progress: progress(
             "awaiting-hydration",
             75,
@@ -891,13 +984,56 @@ export class ChatImportJobRepository {
         "The imported transcript is too large to hydrate safely.",
       );
     }
+    const referencedAttachmentIds = [
+      ...new Set(
+        messages.flatMap((message) =>
+          message.content.flatMap((item) =>
+            item.type === "attachment" ? [item.attachment.id] : [],
+          ),
+        ),
+      ),
+    ];
+    const attachmentRows = referencedAttachmentIds.length
+      ? await this.database
+          .select({
+            attachment: schema.chatAttachments,
+            replica: schema.chatAttachmentReplicas,
+          })
+          .from(schema.chatAttachments)
+          .leftJoin(
+            schema.chatAttachmentReplicas,
+            eq(
+              schema.chatAttachmentReplicas.attachmentId,
+              schema.chatAttachments.id,
+            ),
+          )
+          .where(
+            and(
+              eq(schema.chatAttachments.chatId, chatId),
+              inArray(schema.chatAttachments.id, referencedAttachmentIds),
+            ),
+          )
+      : [];
+    const attachmentsById = new Map(
+      referencedAttachmentIds.map((attachmentId) => [
+        attachmentId,
+        attachmentRows.filter(
+          ({ attachment }) => attachment.id === attachmentId,
+        ),
+      ]),
+    );
     if (
-      messages.some((message) =>
-        message.content.some((item) => item.type === "attachment"),
-      )
+      [...attachmentsById.values()].some((availability) => {
+        const attachment = availability[0]?.attachment;
+        return (
+          !attachment ||
+          (attachment.status === "ready" &&
+            !availability.some(({ replica }) => replica?.status === "ready"))
+        );
+      })
     ) {
       throw new ChatImportJobConflictError(
-        "Imported attachments must be staged before runtime hydration.",
+        "An imported attachment is missing from canonical chat state.",
       );
     }
     return {
@@ -911,7 +1047,33 @@ export class ChatImportJobRepository {
           content: message.content,
           createdAt: toISOString(message.createdAt),
         })),
-        attachments: [],
+        attachments: referencedAttachmentIds.map((attachmentId) => {
+          const availability = attachmentsById.get(attachmentId)!;
+          const attachment = availability[0]!.attachment;
+          return {
+            attachment: {
+              id: attachment.id,
+              chatId: attachment.chatId,
+              fileName: attachment.fileName,
+              mimeType: attachment.mimeType,
+              sizeBytes: attachment.sizeBytes,
+              kind: attachment.kind,
+              source: attachment.source,
+              status: attachment.status,
+              previewText: attachment.previewText,
+              createdAt: toISOString(attachment.createdAt),
+            },
+            sha256: attachment.sha256,
+            sourceWorkerId: attachment.workerId,
+            availableWorkerIds: [
+              ...new Set(
+                availability.flatMap(({ replica }) =>
+                  replica?.status === "ready" ? [replica.workerId] : [],
+                ),
+              ),
+            ].sort(),
+          };
+        }),
       }),
     };
   }
@@ -1020,7 +1182,9 @@ export class ChatImportJobRepository {
           progress: progress(
             "succeeded",
             100,
-            "Chat history is imported and ready to continue.",
+            job.attachmentWarningCount > 0
+              ? `Chat history is ready with ${job.attachmentWarningCount} unavailable attachment${job.attachmentWarningCount === 1 ? "" : "s"}.`
+              : "Chat history is imported and ready to continue.",
             now,
           ),
           lastErrorCode: null,

@@ -1,0 +1,2 @@
+ALTER TABLE "chat_import_jobs" ADD COLUMN "attachment_count" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "chat_import_jobs" ADD COLUMN "attachment_warning_count" integer DEFAULT 0 NOT NULL;

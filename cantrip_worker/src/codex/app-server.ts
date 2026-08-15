@@ -1747,6 +1747,7 @@ export function normalizeCodexThreadTurn(
   turn: CodexThreadTurn,
   cwd: string,
   threadId: string,
+  externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
 ): AgentThreadSync["turns"][number] {
   const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
     if (item.type === "userMessage") {
@@ -1756,7 +1757,18 @@ export function normalizeCodexThreadTurn(
         )
         .join("\n\n")
         .trim();
-      return text ? [{ type: "userMessage", id: item.id, text }] : [];
+      const externalAttachmentIds =
+        externalAttachmentIdsByItemId.get(item.id) ?? [];
+      return text || externalAttachmentIds.length
+        ? [
+            {
+              type: "userMessage",
+              id: item.id,
+              text,
+              externalAttachmentIds,
+            },
+          ]
+        : [];
     }
     if (item.type === "agentMessage") {
       const message = normalizeAgentMessage(
@@ -1832,9 +1844,15 @@ export function normalizeCodexThreadTurn(
 export function normalizeCodexThreadReadResponse(
   response: CodexThreadReadResponse,
   cwd: string,
+  externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
 ): AgentThreadSync {
   const turns = response.thread.turns.map((turn) =>
-    normalizeCodexThreadTurn(turn, cwd, response.thread.id),
+    normalizeCodexThreadTurn(
+      turn,
+      cwd,
+      response.thread.id,
+      externalAttachmentIdsByItemId,
+    ),
   );
   const status = turns.some((turn) => turn.status === "inProgress")
     ? "running"
