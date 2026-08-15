@@ -460,8 +460,11 @@ Settings → Workers provides the supported onboarding and management surface. T
 Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release
 workflow, which builds separate Server, Worker, and Desktop artifacts for
-macOS ARM64 and Windows x64 before publishing them in a commit-addressed GitHub
-release. The command never force-pushes a divergent release branch. See
+macOS ARM64 and Windows x64 before publishing them in a versioned GitHub
+release. Release packaging runs only when that branch advances, uses
+content-addressed caches for the pinned Codex and Cantrip Code runtimes, and
+tags releases with the repository's `major.minor.commit-count` version. The
+command never force-pushes a divergent release branch. See
 [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the artifact flow, environment
 contract, desktop lifecycle, and current security boundary.
 

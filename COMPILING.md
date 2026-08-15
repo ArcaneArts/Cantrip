@@ -225,9 +225,10 @@ Use `pnpm dev` instead for the browser client.
   mirrors must be allowed through any proxy or endpoint filter. A failed native
   archive download is not repaired by installing another compiler.
 
-The manually runnable **Native Windows compile** GitHub Actions workflow uses a
-clean `windows-2025` host and executes `pnpm bundle`. It is the reproducible
-clean-machine check when a local Windows builder is unavailable.
+Release automation uses a clean Blacksmith Windows Server 2025 x64 runner and
+requests only the NSIS installer. It is triggered exclusively by advancing the
+`release` branch through `pnpm release`; it does not run as a pull-request or
+manually dispatched compile check.
 
 ## macOS
 

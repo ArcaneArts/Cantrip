@@ -58,12 +58,30 @@ Desktop client from those exact service trees. Final archives and native
 installers are collected under `artifacts/bundles/<os>-<arch>/`; it does not
 create a GitHub release.
 
-The release workflow is intentionally limited to macOS ARM64 (`macos-14`) and
-Windows x64 (`windows-2025`). Its Server and Worker jobs run in parallel. The
-Client job downloads those native service archives, embeds them alongside the
-runner's Node.js runtime, builds the Tauri client, and publishes the resulting
-client bundle. A final job creates a GitHub release tagged
-`release-<full-commit-sha>` and uploads every service/client artifact.
+The only GitHub Actions release trigger is a push to `release`; pull requests,
+ordinary `main` pushes, and manual dispatches do not run native packaging. The
+workflow uses Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64
+runners. Server and Worker jobs run in parallel for both platforms. Desktop
+jobs then download those exact native service archives, embed them alongside
+the runner's Node.js runtime, and build a signed macOS DMG or Windows NSIS
+installer. A final job creates a GitHub release tagged
+`v<major>.<minor>.<commit-count>` and uploads the DMG, NSIS executable, and both
+standalone Server and Worker archives for both platforms.
+
+Release caches are content-addressed and platform-specific. They retain the
+verified final Codex runtime bundle and exact-fingerprint Cantrip Code
+distribution rather than their very large intermediate build trees. Separate
+caches retain pnpm downloads, Cargo dependencies and safe incremental output,
+the OpenVSCode npm download cache, its checksum-pinned Node toolchain, and
+Codex's checksum-verified rusty_v8 downloads. A source or patch change produces
+a new key and the build scripts still validate every restored runtime before
+reusing it. Blacksmith transparently serves standard `actions/cache`,
+`setup-node`, and Rust cache action traffic from its colocated cache.
+
+Before advancing `release`, install the Blacksmith GitHub App for this
+repository so jobs with `blacksmith-*` runner labels can be provisioned. The
+first run for each platform is expected to be cold; later releases reuse cache
+entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
 
 ### macOS direct-distribution signing
 
