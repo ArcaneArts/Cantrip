@@ -815,6 +815,7 @@ describe("Cantrip protocol", () => {
       providerKind: "chatgpt",
     });
     expect(lease.providerIdentity.kind).toBe("chatgpt");
+    expect(lease.email).toBeNull();
     expect(JSON.stringify(lease)).not.toContain("refreshToken");
     expect(JSON.stringify(lease)).not.toContain("idToken");
   });

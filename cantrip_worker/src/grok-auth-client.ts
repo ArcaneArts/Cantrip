@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { createServer, type IncomingMessage, type Server } from "node:http";
 import {
   chmod,
   mkdir,
@@ -9,23 +8,28 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 
 import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
-  grokModelInventorySchema,
   type CodexAuthStatus,
   type CodexDeviceLogin,
   type GrokModelInventory,
-  type GrokModelInventoryItem,
 } from "@cantrip/protocol";
+
+import {
+  GROK_CLIENT_VERSION,
+  GrokSubscriptionClient,
+} from "./grok-subscription-client.js";
+
+export {
+  GROK_CLIENT_VERSION,
+  GROK_SUBSCRIPTION_PROXY,
+  normalizeGrokModel,
+} from "./grok-subscription-client.js";
 
 export const GROK_OAUTH_ISSUER = "https://auth.x.ai";
 export const GROK_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
-export const GROK_SUBSCRIPTION_PROXY = "https://cli-chat-proxy.grok.com/v1";
-export const GROK_CLIENT_VERSION = "1.0.3";
 
 const GROK_OAUTH_SCOPES = [
   "openid",
@@ -42,7 +46,6 @@ const GROK_OAUTH_SCOPES = [
 const DEVICE_GRANT_TYPE = "urn:ietf:params:oauth:grant-type:device_code";
 const EARLY_REFRESH_MS = 5 * 60_000;
 const PROFILE_CACHE_MS = 30_000;
-const MAX_PROXY_REQUEST_BYTES = 64 * 1_024 * 1_024;
 
 interface StoredGrokCredential {
   accessToken: string;
@@ -115,135 +118,6 @@ function stringField(
   return null;
 }
 
-function numberField(
-  value: Record<string, unknown>,
-  ...keys: string[]
-): number | null {
-  for (const key of keys) {
-    const candidate = value[key];
-    if (typeof candidate === "number" && Number.isSafeInteger(candidate)) {
-      return candidate > 0 ? candidate : null;
-    }
-  }
-  return null;
-}
-
-function booleanField(
-  value: Record<string, unknown>,
-  ...keys: string[]
-): boolean | null {
-  for (const key of keys) {
-    if (typeof value[key] === "boolean") return value[key];
-  }
-  return null;
-}
-
-function stringArrayField(
-  value: Record<string, unknown>,
-  ...keys: string[]
-): string[] {
-  for (const key of keys) {
-    const candidate = value[key];
-    if (!Array.isArray(candidate)) continue;
-    return candidate.filter(
-      (entry): entry is string =>
-        typeof entry === "string" && Boolean(entry.trim()),
-    );
-  }
-  return [];
-}
-
-function normalizeReasoningEfforts(
-  value: Record<string, unknown>,
-  meta: Record<string, unknown>,
-): GrokModelInventoryItem["supportedReasoningEfforts"] {
-  const raw =
-    value.reasoningEfforts ??
-    value.reasoning_efforts ??
-    meta.reasoningEfforts ??
-    meta.reasoning_efforts;
-  if (!Array.isArray(raw)) return [];
-  const efforts = new Map<string, string | null>();
-  for (const entry of raw) {
-    if (typeof entry === "string") {
-      if (entry.trim()) efforts.set(entry.trim(), null);
-      continue;
-    }
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-    const record = entry as Record<string, unknown>;
-    const effort = stringField(record, "value", "effort", "id");
-    if (!effort) continue;
-    efforts.set(effort, stringField(record, "description", "label"));
-  }
-  return [...efforts].map(([effort, description]) => ({ effort, description }));
-}
-
-export function normalizeGrokModel(
-  input: unknown,
-): GrokModelInventoryItem | null {
-  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  const value = input as Record<string, unknown>;
-  const meta =
-    value._meta &&
-    typeof value._meta === "object" &&
-    !Array.isArray(value._meta)
-      ? (value._meta as Record<string, unknown>)
-      : {};
-  const id =
-    stringField(value, "model", "modelId", "id") ??
-    stringField(meta, "model", "modelId", "id");
-  if (!id) return null;
-  const efforts = normalizeReasoningEfforts(value, meta);
-  const defaultReasoningEffort =
-    stringField(value, "reasoningEffort", "reasoning_effort") ??
-    stringField(meta, "reasoningEffort", "reasoning_effort");
-  const inputModalities = stringArrayField(
-    value,
-    "inputModalities",
-    "input_modalities",
-  );
-  const outputModalities = stringArrayField(
-    value,
-    "outputModalities",
-    "output_modalities",
-  );
-  return grokModelInventorySchema.shape.models.element.parse({
-    id,
-    displayName: stringField(value, "name", "displayName") ?? id,
-    description: stringField(value, "description"),
-    contextWindow:
-      numberField(value, "contextWindow", "context_window") ??
-      numberField(meta, "contextWindow", "totalContextTokens"),
-    maxOutputTokens: numberField(
-      value,
-      "maxCompletionTokens",
-      "max_completion_tokens",
-      "maxOutputTokens",
-      "max_output_tokens",
-    ),
-    inputModalities: inputModalities.length ? inputModalities : ["text"],
-    outputModalities: outputModalities.length ? outputModalities : ["text"],
-    supportedReasoningEfforts: efforts,
-    defaultReasoningEffort,
-    supportsReasoning:
-      booleanField(
-        value,
-        "supportsReasoningEffort",
-        "supports_reasoning_effort",
-      ) ??
-      booleanField(
-        meta,
-        "supportsReasoningEffort",
-        "supports_reasoning_effort",
-      ) ??
-      Boolean(defaultReasoningEffort || efforts.length),
-    hidden:
-      booleanField(value, "hidden") ?? booleanField(meta, "hidden") ?? false,
-    isDefault: booleanField(value, "isDefault", "is_default") ?? false,
-    rawMetadata: value,
-  });
-}
-
 function defaultSleep(
   milliseconds: number,
   signal: AbortSignal,
@@ -266,23 +140,6 @@ function defaultSleep(
   });
 }
 
-async function readRequestBody(
-  request: IncomingMessage,
-): Promise<Buffer | undefined> {
-  if (request.method === "GET" || request.method === "HEAD") return undefined;
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    size += bytes.byteLength;
-    if (size > MAX_PROXY_REQUEST_BYTES) {
-      throw new Error("Grok proxy request exceeded 64 MiB.");
-    }
-    chunks.push(bytes);
-  }
-  return Buffer.concat(chunks);
-}
-
 export class GrokAuthClient {
   readonly #authPath: string;
   readonly #clientId: string;
@@ -290,15 +147,12 @@ export class GrokAuthClient {
   readonly #fetch: typeof fetch;
   readonly #issuer: string;
   readonly #now: () => number;
-  readonly #proxyBaseUrl: string;
-  readonly #proxyPathToken = randomUUID();
   readonly #sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  readonly #subscription: GrokSubscriptionClient;
   #credential: StoredGrokCredential | null | undefined;
   #loginError: string | null = null;
   #pendingLogin: PendingLogin | null = null;
   #profileFetchedAt = 0;
-  #proxyServer: Server | null = null;
-  #proxyStarting: Promise<string> | null = null;
   #refreshing: Promise<StoredGrokCredential> | null = null;
 
   constructor(
@@ -313,10 +167,25 @@ export class GrokAuthClient {
     this.#fetch = options.fetch ?? fetch;
     this.#issuer = (options.issuer ?? GROK_OAUTH_ISSUER).replace(/\/+$/u, "");
     this.#now = options.now ?? Date.now;
-    this.#proxyBaseUrl = (
-      options.proxyBaseUrl ?? GROK_SUBSCRIPTION_PROXY
-    ).replace(/\/+$/u, "");
     this.#sleep = options.sleep ?? defaultSleep;
+    this.#subscription = new GrokSubscriptionClient(
+      async (request) => {
+        const credential = await this.#validCredential(
+          request?.forceRefresh ?? false,
+        );
+        return {
+          accessToken: credential.accessToken,
+          email: credential.email,
+          userId: credential.userId,
+        };
+      },
+      {
+        clientVersion: this.#clientVersion,
+        fetch: this.#fetch,
+        now: this.#now,
+        proxyBaseUrl: options.proxyBaseUrl,
+      },
+    );
   }
 
   async status(): Promise<CodexAuthStatus> {
@@ -378,54 +247,24 @@ export class GrokAuthClient {
     this.#loginError = null;
     this.#credential = null;
     this.#profileFetchedAt = 0;
-    this.#proxyServer?.close();
-    this.#proxyServer = null;
+    this.#subscription.close();
     await unlink(this.#authPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
     });
   }
 
   async listModels(): Promise<GrokModelInventory> {
-    const response = await this.#authorizedFetch("/models", {}, true);
-    if (!response.ok) {
-      throw new Error(
-        `Grok model discovery failed (${response.status}): ${await response.text()}`,
-      );
-    }
-    const payload = (await response.json()) as { data?: unknown[] };
-    const models = (Array.isArray(payload.data) ? payload.data : [])
-      .map(normalizeGrokModel)
-      .filter((model): model is GrokModelInventoryItem => Boolean(model));
-    if (!models.some(({ isDefault }) => isDefault)) {
-      const first = models.find(({ hidden }) => !hidden);
-      if (first) first.isDefault = true;
-    }
-    return grokModelInventorySchema.parse({
-      models,
-      observedAt: new Date(this.#now()).toISOString(),
-    });
+    return this.#subscription.listModels();
   }
 
   async localProxyBaseUrl(): Promise<string> {
-    if (this.#proxyServer) {
-      const address = this.#proxyServer.address();
-      if (address && typeof address !== "string") {
-        return `http://127.0.0.1:${address.port}/${this.#proxyPathToken}/v1`;
-      }
-    }
-    this.#proxyStarting ??= this.#startProxy();
-    try {
-      return await this.#proxyStarting;
-    } finally {
-      this.#proxyStarting = null;
-    }
+    return this.#subscription.localProxyBaseUrl();
   }
 
   close(): void {
     this.#pendingLogin?.abort.abort(new Error("Grok authentication stopped."));
     this.#pendingLogin = null;
-    this.#proxyServer?.close();
-    this.#proxyServer = null;
+    this.#subscription.close();
   }
 
   async #requestDeviceCode(): Promise<DeviceCodeResponse> {
@@ -677,11 +516,10 @@ export class GrokAuthClient {
   ): Promise<StoredGrokCredential> {
     this.#profileFetchedAt = this.#now();
     try {
-      const response = await this.#fetch(
-        `${this.#proxyBaseUrl}/user?include=subscription`,
-        {
-          headers: this.#authHeaders(credential),
-        },
+      const response = await this.#subscription.request(
+        "/user?include=subscription",
+        {},
+        false,
       );
       if (!response.ok) return credential;
       const profile = (await response.json()) as Record<string, unknown>;
@@ -700,146 +538,5 @@ export class GrokAuthClient {
     } catch {
       return credential;
     }
-  }
-
-  #authHeaders(
-    credential: StoredGrokCredential,
-    initial?: HeadersInit,
-  ): Headers {
-    const headers = new Headers(initial);
-    headers.set("authorization", `Bearer ${credential.accessToken}`);
-    headers.set("x-xai-token-auth", "xai-grok-cli");
-    headers.set("x-grok-client-version", this.#clientVersion);
-    headers.set("x-grok-client-identifier", "cantrip");
-    headers.set("x-grok-client-mode", "interactive");
-    headers.set("x-authenticateresponse", "authenticate-response");
-    if (credential.userId) headers.set("x-userid", credential.userId);
-    if (credential.email) headers.set("x-email", credential.email);
-    return headers;
-  }
-
-  async #authorizedFetch(
-    resource: string,
-    init: RequestInit,
-    retryUnauthorized: boolean,
-  ): Promise<Response> {
-    let credential = await this.#validCredential();
-    const target = resource.startsWith("http")
-      ? new URL(resource)
-      : new URL(resource.replace(/^\//u, ""), `${this.#proxyBaseUrl}/`);
-    if (target.origin !== new URL(this.#proxyBaseUrl).origin) {
-      throw new Error(
-        "Grok credential forwarding escaped the subscription proxy.",
-      );
-    }
-    let response = await this.#fetch(target, {
-      ...init,
-      headers: this.#authHeaders(credential, init.headers),
-    });
-    if (response.status === 401 && retryUnauthorized) {
-      credential = await this.#validCredential(true);
-      response = await this.#fetch(target, {
-        ...init,
-        headers: this.#authHeaders(credential, init.headers),
-      });
-    }
-    return response;
-  }
-
-  async #startProxy(): Promise<string> {
-    await this.#validCredential();
-    const server = createServer((request, response) => {
-      void this.#handleProxyRequest(request)
-        .then(async (upstream) => {
-          response.statusCode = upstream.status;
-          for (const [name, value] of upstream.headers) {
-            if (
-              [
-                "connection",
-                "content-encoding",
-                "content-length",
-                "transfer-encoding",
-              ].includes(name.toLowerCase())
-            ) {
-              continue;
-            }
-            response.setHeader(name, value);
-          }
-          if (!upstream.body) {
-            response.end();
-            return;
-          }
-          await pipeline(Readable.fromWeb(upstream.body as never), response);
-        })
-        .catch((error) => {
-          if (response.headersSent) {
-            response.destroy(error instanceof Error ? error : undefined);
-            return;
-          }
-          response.statusCode = errorMessage(error).includes("64 MiB")
-            ? 413
-            : 502;
-          response.setHeader("content-type", "application/json");
-          response.end(JSON.stringify({ error: errorMessage(error) }));
-        });
-    });
-    this.#proxyServer = server;
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    server.unref();
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      server.close();
-      this.#proxyServer = null;
-      throw new Error("Could not bind the local Grok credential proxy.");
-    }
-    return `http://127.0.0.1:${address.port}/${this.#proxyPathToken}/v1`;
-  }
-
-  async #handleProxyRequest(request: IncomingMessage): Promise<Response> {
-    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-    const localPrefix = `/${this.#proxyPathToken}/v1/`;
-    if (!requestUrl.pathname.startsWith(localPrefix)) {
-      throw new Error("Grok proxy rejected a path outside /v1.");
-    }
-    const upstreamPath = `/v1/${requestUrl.pathname.slice(localPrefix.length)}`;
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(request.headers)) {
-      if (
-        value === undefined ||
-        [
-          "authorization",
-          "connection",
-          "content-length",
-          "host",
-          "transfer-encoding",
-          "x-authenticateresponse",
-          "x-email",
-          "x-grok-client-identifier",
-          "x-grok-client-mode",
-          "x-grok-client-version",
-          "x-userid",
-          "x-xai-token-auth",
-        ].includes(name.toLowerCase())
-      ) {
-        continue;
-      }
-      headers.set(name, Array.isArray(value) ? value.join(", ") : value);
-    }
-    const body = await readRequestBody(request);
-    return this.#authorizedFetch(
-      `${new URL(this.#proxyBaseUrl).origin}${upstreamPath}${requestUrl.search}`,
-      {
-        method: request.method,
-        headers,
-        body: body as BodyInit | undefined,
-      },
-      true,
-    );
   }
 }

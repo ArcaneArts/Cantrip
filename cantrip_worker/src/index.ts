@@ -38,13 +38,18 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
+import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
   captureLegacyProviderCredential,
   purgeLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
 import { workerLogger } from "./logger.js";
 import { discoverOllamaModels } from "./ollama.js";
-import { ProviderAccessTokenClient } from "./provider-access-tokens.js";
+import {
+  ProviderAccessTokenClient,
+  ProviderAccessTokenRequestError,
+} from "./provider-access-tokens.js";
+import { createServerManagedGrokClient } from "./server-managed-grok.js";
 import {
   buildGitAgentPrompt,
   failedPullRequestChecksEvidence,
@@ -121,6 +126,11 @@ import {
   scanWorkflowRepository,
   writeWorkflowRepositoryDocument,
 } from "./workflow-repository.js";
+
+type GrokSubscriptionOperations = Pick<
+  GrokSubscriptionClient,
+  "listModels" | "localProxyBaseUrl"
+>;
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -227,6 +237,7 @@ async function start(): Promise<void> {
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
   const providerAccessTokens = new ProviderAccessTokenClient(config);
+  const serverManagedGrokClients = new Map<string, GrokSubscriptionClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const pausedChats = new Set<string>();
@@ -276,6 +287,44 @@ async function start(): Promise<void> {
     return client;
   };
 
+  const serverManagedGrokFor = (providerId: string, accountId: string) => {
+    const key = `${providerId}:${accountId}`;
+    let client = serverManagedGrokClients.get(key);
+    if (!client) {
+      client = createServerManagedGrokClient(
+        providerId,
+        accountId,
+        providerAccessTokens,
+      );
+      serverManagedGrokClients.set(key, client);
+    }
+    return client;
+  };
+
+  const legacyGrokFallback = (error: unknown) =>
+    error instanceof ProviderAccessTokenRequestError &&
+    (error.status === 404 ||
+      error.code === "credential-unavailable" ||
+      error.code === "migration-needed");
+
+  const withGrokSubscription = async <T>(
+    provider: {
+      accountId: string;
+      credentialHomeKey: string;
+      id: string;
+    },
+    operation: (client: GrokSubscriptionOperations) => Promise<T>,
+  ): Promise<T> => {
+    try {
+      return await operation(
+        serverManagedGrokFor(provider.id, provider.accountId),
+      );
+    } catch (error) {
+      if (!legacyGrokFallback(error)) throw error;
+      return operation(grokFor(provider.credentialHomeKey));
+    }
+  };
+
   const accountBackedProvider = (kind: string) =>
     kind === "chatgpt" || kind === "grok";
 
@@ -303,9 +352,17 @@ async function start(): Promise<void> {
           provider.kind === "grok"
             ? {
                 ...provider,
-                baseUrl: await grokFor(
-                  provider.credentialHomeKey ?? provider.id,
-                ).localProxyBaseUrl(),
+                baseUrl:
+                  provider.accountId && provider.credentialHomeKey
+                    ? await withGrokSubscription(
+                        {
+                          accountId: provider.accountId,
+                          credentialHomeKey: provider.credentialHomeKey,
+                          id: provider.id,
+                        },
+                        (client) => client.localProxyBaseUrl(),
+                      )
+                    : provider.baseUrl,
               }
             : provider,
         providerAccessTokens,
@@ -385,7 +442,9 @@ async function start(): Promise<void> {
           command.provider.credentialHomeKey,
         ).listChatGptModels(command.provider);
       case "model.grok.catalog":
-        return grokFor(command.provider.credentialHomeKey).listModels();
+        return withGrokSubscription(command.provider, (client) =>
+          client.listModels(),
+        );
       case "codex.auth.status":
         return command.providerKind === "grok"
           ? grokFor(command.credentialHomeKey ?? command.providerId).status()
@@ -419,8 +478,9 @@ async function start(): Promise<void> {
           ? {
               ...captured,
               serverManagedAuth:
-                command.providerKind === "chatgpt" &&
-                chatGptExternalAuthCapabilityError(codexRuntime) === null,
+                command.providerKind === "grok"
+                  ? true
+                  : chatGptExternalAuthCapabilityError(codexRuntime) === null,
             }
           : captured;
       }
@@ -433,6 +493,12 @@ async function start(): Promise<void> {
         if (command.providerKind === "grok") {
           grokAuthClients.get(command.credentialHomeKey)?.close();
           grokAuthClients.delete(command.credentialHomeKey);
+          serverManagedGrokClients
+            .get(`${command.providerId}:${command.providerAccountId}`)
+            ?.close();
+          serverManagedGrokClients.delete(
+            `${command.providerId}:${command.providerAccountId}`,
+          );
         } else {
           // Deliberately stop and remove the local file without account/logout;
           // Codex logout revokes the shared OAuth credential on the provider.
@@ -1560,6 +1626,7 @@ async function start(): Promise<void> {
       codeDirectEndpoints.close();
       for (const client of codexAuthClients.values()) client.close();
       for (const client of grokAuthClients.values()) client.close();
+      for (const client of serverManagedGrokClients.values()) client.close();
       terminals.closeAll();
       tunnelDestinations.close();
       await projectShares.closeAll();
