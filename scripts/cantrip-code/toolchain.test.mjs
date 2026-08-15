@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checksumForArchive, nodeArchive } from "./toolchain.mjs";
+import {
+  checksumForArchive,
+  nodeArchive,
+  npmLifecycleEnvironmentForTarget,
+} from "./toolchain.mjs";
 
 test("maps Cantrip targets to official Node release archives", () => {
   assert.deepEqual(
@@ -30,4 +34,15 @@ test("selects an exact archive checksum", () => {
     checksum,
   );
   assert.throws(() => checksumForArchive("", "missing.tar.gz"));
+});
+
+test("serializes native dependency lifecycle scripts only on Windows", () => {
+  assert.deepEqual(npmLifecycleEnvironmentForTarget({ platform: "win32" }), {
+    npm_config_foreground_scripts: "true",
+  });
+  assert.deepEqual(
+    npmLifecycleEnvironmentForTarget({ platform: "darwin" }),
+    {},
+  );
+  assert.deepEqual(npmLifecycleEnvironmentForTarget({ platform: "linux" }), {});
 });

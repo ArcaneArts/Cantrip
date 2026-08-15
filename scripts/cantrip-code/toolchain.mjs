@@ -117,3 +117,15 @@ export function environmentForBuildNode(toolchain, additions = {}) {
     PATH: `${binDirectory}${path.delimiter}${process.env.PATH ?? ""}`,
   };
 }
+
+export function npmLifecycleEnvironmentForTarget(target) {
+  // Several OpenVSCode native dependencies reference the same shared
+  // node-addon-api MSBuild project. npm otherwise runs their lifecycle scripts
+  // concurrently, which makes Windows builds race while writing the project's
+  // lastbuildstate file. Foreground scripts are deliberately serialized by
+  // npm's lifecycle runner; keep that workaround Windows-only so other hosts
+  // retain their existing install parallelism.
+  return target.platform === "win32"
+    ? { npm_config_foreground_scripts: "true" }
+    : {};
+}

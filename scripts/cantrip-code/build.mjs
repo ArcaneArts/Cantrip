@@ -36,7 +36,11 @@ import {
   writeJson,
 } from "./lib.mjs";
 import { readPatchSeries } from "./patches.mjs";
-import { ensureBuildNode, environmentForBuildNode } from "./toolchain.mjs";
+import {
+  ensureBuildNode,
+  environmentForBuildNode,
+  npmLifecycleEnvironmentForTarget,
+} from "./toolchain.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const target = normalizeTarget(args.optional("target"));
@@ -122,6 +126,7 @@ try {
   const buildEnvironment = environmentForBuildNode(toolchain, {
     BUILD_SOURCEVERSION: upstream.openvscodeServerCommit,
     npm_config_cache: path.join(codeCacheRoot, "npm"),
+    ...npmLifecycleEnvironmentForTarget(target),
   });
   if (target.platform === "darwin") {
     // The fmt version pinned by @vscode/spdlog uses a consteval path rejected
