@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -17,6 +17,13 @@ use crate::{node_service_command, process_environment::configure_desktop_child, 
 #[serde(rename_all = "camelCase")]
 struct DesktopWorkerProfile {
     name: String,
+    server_url: String,
+    worker_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StoredWorkerCredentialIdentity {
     server_url: String,
     worker_id: String,
 }
@@ -48,6 +55,7 @@ fn replacement_profile(
     existing: Option<&DesktopWorkerProfile>,
     name: &str,
     server_url: &str,
+    reusable_worker_id: Option<&str>,
 ) -> (Option<String>, DesktopWorkerProfile) {
     let replaced_worker_id = existing.map(|profile| profile.worker_id.clone());
     (
@@ -55,9 +63,18 @@ fn replacement_profile(
         DesktopWorkerProfile {
             name: name.to_string(),
             server_url: server_url.to_string(),
-            worker_id: format!("desktop-{}", Uuid::new_v4()),
+            worker_id: reusable_worker_id
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("desktop-{}", Uuid::new_v4())),
         },
     )
+}
+
+fn valid_desktop_worker_id(value: &str) -> bool {
+    value
+        .strip_prefix("desktop-")
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .is_some()
 }
 
 fn open_log(path: &Path) -> Result<File, String> {
@@ -201,6 +218,41 @@ impl DesktopWorkers {
         Ok(())
     }
 
+    fn reusable_worker_ids(&self, server_url: &str) -> Vec<String> {
+        let mut candidates = HashSet::new();
+        if let Ok(profiles) = self.profiles.lock() {
+            candidates.extend(
+                profiles
+                    .iter()
+                    .filter(|profile| profile.server_url == server_url)
+                    .map(|profile| profile.worker_id.clone()),
+            );
+        }
+        if let Ok(entries) = fs::read_dir(&self.data_directory) {
+            for entry in entries.flatten() {
+                let credential_path = entry.path().join("worker-credential.json");
+                let Ok(contents) = fs::read_to_string(credential_path) else {
+                    continue;
+                };
+                let Ok(identity) =
+                    serde_json::from_str::<StoredWorkerCredentialIdentity>(&contents)
+                else {
+                    continue;
+                };
+                if identity.server_url == server_url
+                    && valid_desktop_worker_id(&identity.worker_id)
+                    && entry.file_name().to_string_lossy() == identity.worker_id
+                {
+                    candidates.insert(identity.worker_id);
+                }
+            }
+        }
+        let mut candidates = candidates.into_iter().collect::<Vec<_>>();
+        candidates.sort();
+        candidates.truncate(64);
+        candidates
+    }
+
     pub fn stop_all(&self) {
         if let Ok(mut children) = self.children.lock() {
             for child in children.values_mut() {
@@ -299,10 +351,20 @@ pub fn list_desktop_workers(
 }
 
 #[tauri::command]
+pub fn list_desktop_worker_candidates(
+    server_url: String,
+    workers: State<'_, DesktopWorkers>,
+) -> Result<Vec<String>, String> {
+    let server_url = normalize_server_url(&server_url)?;
+    Ok(workers.reusable_worker_ids(&server_url))
+}
+
+#[tauri::command]
 pub fn pair_desktop_worker(
     enrollment_code: String,
     name: String,
     server_url: String,
+    worker_id: Option<String>,
     workers: State<'_, DesktopWorkers>,
 ) -> Result<DesktopWorkerStatus, String> {
     if !enrollment_code.starts_with("ctwl_") || enrollment_code.len() != 37 {
@@ -313,6 +375,12 @@ pub fn pair_desktop_worker(
     if name.is_empty() || name.len() > 120 {
         return Err("The worker name must contain between 1 and 120 characters.".into());
     }
+    if worker_id
+        .as_deref()
+        .is_some_and(|worker_id| !valid_desktop_worker_id(worker_id))
+    {
+        return Err("The reusable desktop worker identity is malformed.".into());
+    }
     let existing = workers
         .profiles
         .lock()
@@ -320,7 +388,8 @@ pub fn pair_desktop_worker(
         .iter()
         .find(|profile| profile.server_url == server_url)
         .cloned();
-    let (replaced_worker_id, profile) = replacement_profile(existing.as_ref(), name, &server_url);
+    let (replaced_worker_id, profile) =
+        replacement_profile(existing.as_ref(), name, &server_url, worker_id.as_deref());
     if let Some(worker_id) = replaced_worker_id {
         workers.stop(&worker_id)?;
     }
@@ -395,8 +464,12 @@ mod tests {
             worker_id: "desktop-owned-by-another-account".into(),
         };
 
-        let (replaced_worker_id, replacement) =
-            replacement_profile(Some(&existing), "This machine", "https://relay.cantrip.art");
+        let (replaced_worker_id, replacement) = replacement_profile(
+            Some(&existing),
+            "This machine",
+            "https://relay.cantrip.art",
+            None,
+        );
 
         assert_eq!(
             replaced_worker_id.as_deref(),
@@ -406,5 +479,20 @@ mod tests {
         assert!(replacement.worker_id.starts_with("desktop-"));
         assert_eq!(replacement.name, "This machine");
         assert_eq!(replacement.server_url, existing.server_url);
+    }
+
+    #[test]
+    fn reuses_a_server_authorized_worker_identity() {
+        let (_, replacement) = replacement_profile(
+            None,
+            "This machine",
+            "https://relay.cantrip.art",
+            Some("desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2"),
+        );
+
+        assert_eq!(
+            replacement.worker_id,
+            "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2"
+        );
     }
 }

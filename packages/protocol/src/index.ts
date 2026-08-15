@@ -492,6 +492,10 @@ const workerEnrollmentCodeSchema = z
 export const workerEnrollmentCodeCreateSchema = z.object({
   label: z.string().trim().min(1).max(120).nullable().default(null),
   expiresInSeconds: z.number().int().min(60).max(1_800).default(600),
+  candidateWorkerIds: z
+    .array(z.string().min(1).max(255))
+    .max(64)
+    .default([]),
 });
 
 export const workerEnrollmentCodeResultSchema = z.object({
@@ -499,6 +503,7 @@ export const workerEnrollmentCodeResultSchema = z.object({
   code: workerEnrollmentCodeSchema,
   label: z.string().min(1).max(120).nullable(),
   expiresAt: z.string().datetime({ offset: true }),
+  workerId: z.string().min(1).max(255).nullable().default(null),
 });
 
 export const workerEnrollmentCodeStatusSchema = z.object({

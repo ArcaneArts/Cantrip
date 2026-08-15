@@ -680,6 +680,14 @@ describe("Cantrip protocol", () => {
       }).success,
     ).toBe(false);
     expect(
+      workerEnrollmentCodeResultSchema.parse({
+        id: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+        code: `ctwl_${"a".repeat(32)}`,
+        label: null,
+        expiresAt: "2026-08-11T12:10:00.000Z",
+      }).workerId,
+    ).toBeNull();
+    expect(
       workerCredentialSummarySchema.parse({
         id: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
         workerId: "worker-one",
