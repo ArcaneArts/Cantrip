@@ -764,6 +764,7 @@ h1 {
 
 .workspace-section,
 .capabilities-section,
+.toolkit-section,
 .agent-section,
 .git-section,
 .routing-section,
@@ -789,6 +790,7 @@ h1 {
   background: currentColor;
 }
 .section-heading h2,
+.toolkit-section h2,
 .agent-copy h2,
 .git-copy h2,
 .architecture-copy h2,
@@ -952,6 +954,113 @@ h1 {
   flex: none;
   margin-top: 1px;
   color: var(--cyan);
+}
+
+.toolkit-section {
+  padding-top: 80px;
+}
+.toolkit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  border-top: 1px solid var(--line-strong);
+  border-left: 1px solid var(--line-strong);
+}
+.toolkit-card {
+  position: relative;
+  min-height: 390px;
+  padding: 42px;
+  overflow: hidden;
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+}
+.toolkit-card::after {
+  content: "";
+  position: absolute;
+  width: 180px;
+  height: 180px;
+  right: -92px;
+  bottom: -92px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 30%, transparent);
+  transform: rotate(45deg);
+}
+.toolkit-card-2::after,
+.toolkit-card-3::after {
+  border-color: color-mix(in srgb, var(--violet) 30%, transparent);
+}
+.toolkit-card-4::after {
+  border-color: color-mix(in srgb, var(--lime) 32%, transparent);
+}
+.toolkit-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.toolkit-card-heading > span {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--cyan);
+  background: var(--cyan-soft);
+}
+.toolkit-card-2 .toolkit-card-heading > span,
+.toolkit-card-3 .toolkit-card-heading > span {
+  color: var(--violet);
+  background: var(--violet-soft);
+}
+.toolkit-card-4 .toolkit-card-heading > span {
+  color: var(--lime);
+  background: var(--lime-soft);
+}
+.toolkit-card-heading small {
+  color: var(--ink-faint);
+  font-family: "SFMono-Regular", "Cascadia Code", monospace;
+  font-size: 9px;
+  letter-spacing: 0.11em;
+}
+.toolkit-card h3 {
+  max-width: 430px;
+  margin: 54px 0 13px;
+  font-size: 27px;
+  letter-spacing: -0.04em;
+}
+.toolkit-card > p {
+  max-width: 470px;
+  margin-bottom: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.toolkit-card ul {
+  position: relative;
+  z-index: 1;
+  margin: 27px 0 0;
+  padding: 20px 0 0;
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  list-style: none;
+}
+.toolkit-card li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.toolkit-card li svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--cyan);
+}
+.toolkit-card-2 li svg,
+.toolkit-card-3 li svg {
+  color: var(--violet);
+}
+.toolkit-card-4 li svg {
+  color: var(--lime);
 }
 
 .agent-panel {
@@ -1157,20 +1266,32 @@ h1 {
   font-size: 15px;
   line-height: 1.75;
 }
-.inline-features {
+.git-detail-list {
   margin-top: 31px;
   display: grid;
-  gap: 13px;
+  gap: 11px;
 }
-.inline-features span {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--ink-soft);
-  font-size: 11px;
+.git-detail-list article {
+  padding: 13px 0;
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 10px;
+  border-top: 1px solid var(--line);
 }
-.inline-features svg {
+.git-detail-list article > svg {
+  margin-top: 2px;
   color: var(--cyan);
+}
+.git-detail-list h3 {
+  margin-bottom: 4px;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+}
+.git-detail-list p {
+  margin-bottom: 0;
+  color: var(--ink-faint);
+  font-size: 10px;
+  line-height: 1.55;
 }
 
 .routing-board {
@@ -1677,6 +1798,7 @@ h1 {
   }
   .workspace-section,
   .capabilities-section,
+  .toolkit-section,
   .agent-section,
   .git-section,
   .routing-section,
@@ -1707,6 +1829,9 @@ h1 {
     gap: 45px;
   }
   .capability-grid {
+    grid-template-columns: 1fr;
+  }
+  .toolkit-grid {
     grid-template-columns: 1fr;
   }
   .capability-card:nth-child(2),
@@ -1820,6 +1945,13 @@ h1 {
   .capability-card {
     min-height: 0;
     padding: 28px 23px;
+  }
+  .toolkit-card {
+    min-height: 0;
+    padding: 32px 24px;
+  }
+  .toolkit-card h3 {
+    margin-top: 38px;
   }
   .agent-panel {
     padding: 30px 20px;

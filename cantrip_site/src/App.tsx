@@ -58,30 +58,30 @@ const surfaces: Array<{
   {
     icon: MessageSquare,
     title: "Codex chats",
-    meta: "STEER · QUEUE · FORK",
+    meta: "STEER · QUEUE · APPROVE",
     description:
-      "Structured Markdown, plans, reasoning, tools, subagents, attachments, and a linked live Codex console.",
+      "Structured plans, reasoning, tools, subagents, approvals, attachments, and a linked live Codex console.",
   },
   {
     icon: TerminalSquare,
     title: "Real terminals",
-    meta: "PTY · RECONNECT",
+    meta: "PTY · DIRECT · RECONNECT",
     description:
-      "Worker-owned shells with real color, resize, reconnect, and the exact project checkout beneath them.",
+      "Worker-owned shells with real color, resize, durable reconnect, and a direct local desktop path when available.",
   },
   {
     icon: Code2,
     title: "Cantrip Code",
-    meta: "VSCODE · PERSISTENT",
+    meta: "VSCODE · DIRECT · PERSISTENT",
     description:
-      "A worker-hosted VS Code workbench with persistent settings, extensions, terminals, and project context.",
+      "A worker-hosted VS Code workbench with durable settings, extensions, terminals, theme, and project context.",
   },
   {
     icon: FolderTree,
     title: "Project explorer",
-    meta: "FILES · MARKDOWN",
+    meta: "LAZY TREE · EDIT · PREVIEW",
     description:
-      "Navigate the worker filesystem and preview source or rendered Markdown without leaving the workspace.",
+      "Browse a Git-aware lazy file tree, preview source or Markdown, and edit supported files in a persistent editor.",
   },
   {
     icon: Globe2,
@@ -100,9 +100,9 @@ const surfaces: Array<{
   {
     icon: GitBranch,
     title: "Git workspace",
-    meta: "HISTORY · PRS · ISSUES",
+    meta: "HISTORY · REVIEW · RECOVERY",
     description:
-      "Graph every branch and worktree, inspect diffs, stage, commit, stash, pull, push, and manage GitHub work.",
+      "Graph every branch and worktree, stage by line or hunk, resolve history, recover mistakes, and manage GitHub work.",
   },
   {
     icon: Network,
@@ -117,7 +117,8 @@ const agentFeatures = [
   "Choose Default, Plan, Goal, and model per message",
   "Steer active work or sort, edit, freeze, and send queued prompts",
   "Pause at a safe boundary without losing buffered work",
-  "Use slash commands, skills, MCP, attachments, and large pastes",
+  "Use slash commands, skills, hooks, MCP, approvals, and attachments",
+  "Give agents a scoped Cantrip CLI for worktrees and live surfaces",
   "Toggle into the exact linked Codex console whenever you want it",
   "Fork at any message, rename, duplicate, compact, and pop out chats",
 ];
@@ -155,8 +156,8 @@ const capabilityGroups: Array<{
       "Keep Primary calm while agent-managed chats acquire isolated worktrees and ship reviewable pull requests.",
     features: [
       "Branch graph, tags, worktree HEADs, and WIP rows",
-      "Staging, commits, stashes, comparisons, recovery, and LFS",
-      "GitHub issues and pull requests without context switching",
+      "Line and hunk staging, conflicts, stashes, bisect, and recovery",
+      "GitHub issues, PR review, releases, signatures, LFS, and submodules",
     ],
   },
   {
@@ -180,8 +181,90 @@ const capabilityGroups: Array<{
     features: [
       "Embedded desktop server and worker",
       "Account-mode PostgreSQL server and enrolled workers",
-      "Desktop, web, and mobile sign-in with QR handoff",
+      "Native desktop, web, iOS, and Android clients with QR handoff",
     ],
+  },
+];
+
+const toolkitFeatures: Array<{
+  description: string;
+  features: string[];
+  icon: LucideIcon;
+  label: string;
+  title: string;
+}> = [
+  {
+    icon: FolderTree,
+    label: "EXPLORE & EDIT",
+    title: "A file tree that knows the checkout",
+    description:
+      "Explorer loads directories on demand and decorates them with live Git state and recent commit context.",
+    features: [
+      "Source and rendered Markdown preview",
+      "Persistent Monaco editing with guarded saves",
+      "Selection and edit state survive tab switches",
+    ],
+  },
+  {
+    icon: Code2,
+    label: "FULL IDE",
+    title: "Cantrip Code stays warm",
+    description:
+      "Keep a complete worker-hosted workbench beside the chat instead of rebuilding editor context for every task.",
+    features: [
+      "Project and worktree-aware sessions",
+      "Persistent settings, extensions, terminals, and theme",
+      "Direct local desktop transport with relay fallback",
+    ],
+  },
+  {
+    icon: Command,
+    label: "CANTRIP CLI",
+    title: "One narrow command surface for agents",
+    description:
+      "The worker-authenticated CLI gives terminals and Codex the same server-owned project and execution context.",
+    features: [
+      "Create, switch, release, and inspect worktrees",
+      "Read or write Explorer files and target live terminals",
+      "Open Browser services with human-readable or JSON output",
+    ],
+  },
+  {
+    icon: Network,
+    label: "LIVE TRANSPORT",
+    title: "Direct when local. Relayed when remote.",
+    description:
+      "Cantrip chooses the shortest authorized path without changing the project or weakening the control plane.",
+    features: [
+      "One-use, server-authorized desktop capabilities",
+      "Direct PTY, project share, Code, and tunnel streams",
+      "WebRTC Remote Desktop with authenticated relay fallback",
+    ],
+  },
+];
+
+const gitDetails: Array<{
+  description: string;
+  icon: LucideIcon;
+  title: string;
+}> = [
+  {
+    icon: GitBranch,
+    title: "Shape the change",
+    description:
+      "Stage whole files, individual hunks, or selected lines; compare arbitrary revisions and trace file history or blame.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Resolve without guessing",
+    description:
+      "Continue merges and rebases, resolve conflicts, recover lost work, and protect published history from unsafe rewrites.",
+  },
+  {
+    icon: GitPullRequest,
+    title: "Review through release",
+    description:
+      "Create and review pull requests, follow conversations and checks, merge deliberately, and manage tags and releases.",
   },
 ];
 
@@ -353,9 +436,15 @@ function TerminalDemo() {
       </div>
       <br />
       <div>
-        <span className="prompt">❯</span> pnpm --filter @cantrip/app test
+        <span className="prompt">❯</span> cantrip status
       </div>
-      <div className="terminal-pass">✓ 106 tests passed</div>
+      <div className="muted-line">project Cantrip · worktree unified-git</div>
+      <div className="muted-line">chat attached · worker local-mac</div>
+      <br />
+      <div>
+        <span className="prompt">❯</span> pnpm check
+      </div>
+      <div className="terminal-pass">✓ checks passed</div>
       <div>
         <span className="prompt">❯</span> <span className="cursor-block" />
       </div>
@@ -539,10 +628,11 @@ function App() {
         <div className="header-inner">
           <Brand />
           <nav aria-label="Primary navigation">
-            <a href="#workspace">Product</a>
+            <a href="#workspace">Surfaces</a>
+            <a href="#toolkit">Tooling</a>
             <a href="#agents">Agents</a>
             <a href="#workflows">Workflows</a>
-            <a href="#architecture">Architecture</a>
+            <a href="#architecture">Deploy</a>
           </nav>
           <div className="header-actions">
             <ThemeSettings mode={mode} setMode={setMode} />
@@ -571,13 +661,14 @@ function App() {
         <section className="hero section-wrap">
           <div className="hero-copy">
             <div className="status-line">
-              <i /> DESKTOP · WEB · SELF-HOSTED · OPEN SOURCE
+              <i /> NATIVE DESKTOP · WEB · MOBILE · SELF-HOSTED
             </div>
             <h1>One workspace for the whole build.</h1>
             <p className="hero-lede">
-              Cantrip brings Codex agents, terminals, VS Code, Git, browsers,
-              remote desktops, and automations into one local-first workspace
-              that follows you between devices.
+              Give Codex a durable workspace around the whole job: editable
+              files, real terminals, persistent VS Code, Git and GitHub,
+              browsers, remote desktops, and automations—local-first and
+              available from every device.
             </p>
             <div className="hero-actions">
               <a
@@ -615,8 +706,8 @@ function App() {
               <div>
                 <Braces size={17} />
                 <span>
-                  <strong>Powered by open Codex CLI.</strong>
-                  <small>Structured chat or the live console.</small>
+                  <strong>Codex plus the Cantrip CLI.</strong>
+                  <small>Agents can operate worktrees and surfaces.</small>
                 </span>
               </div>
             </div>
@@ -692,6 +783,46 @@ function App() {
                   <div className="capability-heading">
                     <span className="capability-icon">
                       <Icon size={19} />
+                    </span>
+                    <small>{label}</small>
+                  </div>
+                  <h3>{title}</h3>
+                  <p>{description}</p>
+                  <ul>
+                    {features.map((feature) => (
+                      <li key={feature}>
+                        <Check size={13} /> {feature}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ),
+            )}
+          </div>
+        </section>
+
+        <section className="toolkit-section section-wrap" id="toolkit">
+          <div className="section-heading split-heading">
+            <div>
+              <SectionLabel>WORKER-NATIVE TOOLKIT</SectionLabel>
+              <h2>The environment is part of the conversation.</h2>
+            </div>
+            <p>
+              Cantrip gives people and agents the same durable view of files,
+              processes, editor state, and execution targets—without copying the
+              repository into the control plane.
+            </p>
+          </div>
+          <div className="toolkit-grid">
+            {toolkitFeatures.map(
+              ({ description, features, icon: Icon, label, title }, index) => (
+                <article
+                  className={`toolkit-card toolkit-card-${index + 1}`}
+                  key={label}
+                >
+                  <div className="toolkit-card-heading">
+                    <span>
+                      <Icon size={20} />
                     </span>
                     <small>{label}</small>
                   </div>
@@ -795,19 +926,19 @@ function App() {
             <h2>Let agents work in parallel—not on top of each other.</h2>
             <p>
               Cantrip understands branches, worktrees, staged and unstaged
-              changes, history, issues, and pull requests. Keep Primary calm
-              while every task gets its own lane.
+              changes, history, issues, pull requests, submodules, LFS, and
+              signatures. Keep Primary calm while every task gets its own lane.
             </p>
-            <div className="inline-features">
-              <span>
-                <GitBranch size={16} /> Agent-managed worktrees
-              </span>
-              <span>
-                <GitPullRequest size={16} /> Unified Git surface
-              </span>
-              <span>
-                <ShieldCheck size={16} /> Guarded operations
-              </span>
+            <div className="git-detail-list">
+              {gitDetails.map(({ description, icon: Icon, title }) => (
+                <article key={title}>
+                  <Icon size={17} />
+                  <div>
+                    <h3>{title}</h3>
+                    <p>{description}</p>
+                  </div>
+                </article>
+              ))}
             </div>
           </div>
         </section>
@@ -892,14 +1023,20 @@ function App() {
             </p>
             <div className="architecture-points">
               <span>
-                <Link2 size={15} /> Add this machine in one click
+                <Monitor size={15} /> Native macOS, Windows, and Linux desktop
+                bundles
               </span>
               <span>
-                <Smartphone size={15} /> Scan a QR code to sign in on mobile
+                <Smartphone size={15} /> Web, iOS, and Android clients with QR
+                sign-in handoff
+              </span>
+              <span>
+                <Link2 size={15} /> Embedded local mode or a PostgreSQL-backed
+                hosted server
               </span>
               <span>
                 <Network size={15} /> Reach every enrolled worker through one
-                server
+                authenticated control plane
               </span>
             </div>
             <a
@@ -914,7 +1051,7 @@ function App() {
             <div className="arch-node clients">
               <Columns3 size={20} />
               <span>Clients</span>
-              <small>Desktop · Web · Mobile</small>
+              <small>Tauri · Web · iOS · Android</small>
             </div>
             <div className="arch-link">
               <i />
@@ -923,7 +1060,7 @@ function App() {
             <div className="arch-node server">
               <Cloud size={20} />
               <span>Server</span>
-              <small>Accounts · History · Config · Routing</small>
+              <small>PGlite / PostgreSQL · Identity · History · Routing</small>
             </div>
             <div className="arch-link">
               <i />
@@ -932,12 +1069,12 @@ function App() {
             <div className="arch-workers">
               <div className="arch-node worker">
                 <Box size={18} />
-                <span>Mac mini</span>
+                <span>Desktop worker</span>
                 <small>Codex · Code · Git · PTY</small>
               </div>
               <div className="arch-node worker">
                 <Box size={18} />
-                <span>Laptop / VPS</span>
+                <span>Remote worker</span>
                 <small>Files · Browser · Desktop</small>
               </div>
             </div>
