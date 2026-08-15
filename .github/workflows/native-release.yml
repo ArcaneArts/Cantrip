@@ -88,18 +88,54 @@ jobs:
         run: |
           choco install nasm --no-progress --yes
           nasm -v
+          $component = "Microsoft.VisualStudio.Component.VC.Runtimes.x86.x64.Spectre"
+          $installerRoot = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+          $vswhere = Join-Path $installerRoot "vswhere.exe"
+          $setup = Join-Path $installerRoot "setup.exe"
+          $installation = @(
+            & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          ) | Select-Object -First 1
+          if (!$installation) {
+            throw "Visual Studio C++ Build Tools are not installed."
+          }
+          $spectreInstallation = @(
+            & $vswhere -latest -products * -requires $component -property installationPath
+          ) | Select-Object -First 1
+          if (!$spectreInstallation) {
+            Write-Host "Installing Visual Studio Spectre-mitigated x64/x86 libraries..."
+            $arguments = @(
+              "modify",
+              "--installPath", "`"$installation`"",
+              "--add", $component,
+              "--quiet",
+              "--norestart"
+            )
+            $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+            if (@(0, 3010) -notcontains $process.ExitCode) {
+              throw "Visual Studio Installer failed with exit code $($process.ExitCode)."
+            }
+          }
+          $spectreInstallation = @(
+            & $vswhere -latest -products * -requires $component -property installationPath
+          ) | Select-Object -First 1
+          if (!$spectreInstallation) {
+            throw "Visual Studio Spectre-mitigated x64/x86 libraries are unavailable after installation."
+          }
+          Write-Host "Visual Studio Spectre libraries found at $spectreInstallation"
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
           shared-key: worker-${{ matrix.target }}
           workspaces: cantrip_cli -> target
       - name: Restore verified Codex runtime
-        uses: actions/cache@v4
+        id: codex-runtime-cache
+        uses: actions/cache/restore@v4
         with:
           path: cantrip_codex/.build/${{ matrix.target }}/bundle
           key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
       - name: Restore Codex rusty_v8 downloads
-        uses: actions/cache@v4
+        id: codex-v8-cache
+        uses: actions/cache/restore@v4
         with:
           path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
           key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
@@ -112,19 +148,54 @@ jobs:
           fingerprint="$(node --input-type=module -e "import { calculateBuildFingerprint } from './scripts/cantrip-code/build-lib.mjs'; process.stdout.write(await calculateBuildFingerprint('${{ matrix.target }}'))")"
           echo "value=$fingerprint" >> "$GITHUB_OUTPUT"
       - name: Restore verified Cantrip Code distribution
-        uses: actions/cache@v4
+        id: code-runtime-cache
+        uses: actions/cache/restore@v4
         with:
           path: .cantrip-code/cache/builds/${{ matrix.target }}/${{ steps.code-fingerprint.outputs.value }}
           key: cantrip-code-build-${{ matrix.target }}-${{ steps.code-fingerprint.outputs.value }}
       - name: Restore Cantrip Code build downloads
-        uses: actions/cache@v4
+        id: code-dependencies-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             .cantrip-code/cache/npm
             .cantrip-code/cache/toolchains
           key: cantrip-code-dependencies-${{ matrix.target }}-${{ hashFiles('cantrip_code/upstream/.nvmrc', 'cantrip_code/upstream/package-lock.json') }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm package:worker --target ${{ matrix.target }}
+      - name: Build Codex runtime
+        run: pnpm codex:build
+      - name: Save verified Codex runtime
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/bundle
+          key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - name: Save Codex rusty_v8 downloads
+        if: steps.codex-runtime-cache.outputs.cache-hit != 'true' && steps.codex-v8-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
+          key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+      - name: Build Cantrip CLI
+        run: pnpm cli:build:release
+      - name: Build Cantrip Code
+        run: pnpm code:build --target ${{ matrix.target }}
+      - name: Save verified Cantrip Code distribution
+        if: steps.code-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cantrip-code/cache/builds/${{ matrix.target }}/${{ steps.code-fingerprint.outputs.value }}
+          key: cantrip-code-build-${{ matrix.target }}-${{ steps.code-fingerprint.outputs.value }}
+      - name: Save Cantrip Code build downloads
+        if: steps.code-runtime-cache.outputs.cache-hit != 'true' && steps.code-dependencies-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cantrip-code/cache/npm
+            .cantrip-code/cache/toolchains
+          key: cantrip-code-dependencies-${{ matrix.target }}-${{ hashFiles('cantrip_code/upstream/.nvmrc', 'cantrip_code/upstream/package-lock.json') }}
+      - name: Package worker from verified runtimes
+        run: pnpm package:worker --target ${{ matrix.target }}
       - run: node scripts/archive-distribution.mjs worker --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:
