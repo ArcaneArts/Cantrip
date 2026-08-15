@@ -169,7 +169,7 @@ describe("server account authentication", () => {
         currentUser: { email: "Owner@Example.com" },
         expiresAt: expect.any(String),
       });
-      expect(restoredSession.json().csrfToken).not.toBe(csrfToken);
+      expect(restoredSession.json().csrfToken).toBe(csrfToken);
       csrfToken = restoredSession.json().csrfToken as string;
 
       const restoredPartitionedSession = await app.inject({
@@ -180,6 +180,7 @@ describe("server account authentication", () => {
       expect(restoredPartitionedSession.statusCode).toBe(200);
       expect(restoredPartitionedSession.json()).toMatchObject({
         currentUser: { email: "Owner@Example.com" },
+        csrfToken,
       });
       csrfToken = restoredPartitionedSession.json().csrfToken as string;
 

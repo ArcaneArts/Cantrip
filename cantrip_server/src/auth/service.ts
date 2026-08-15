@@ -42,6 +42,10 @@ export function hashSecret(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
 }
 
+function csrfTokenForSessionToken(sessionToken: string): string {
+  return hashSecret(`cantrip-csrf:${sessionToken}`);
+}
+
 export function createMobileSignInCode(): {
   code: string;
   codeHash: string;
@@ -109,7 +113,9 @@ export class UserSessionService {
     this.sessionTtlSeconds = config.sessionTtlSeconds ?? 30 * 24 * 60 * 60;
   }
 
-  async resolve(request: FastifyRequest): Promise<ActiveUserSession | null> {
+  async resolve(
+    request: FastifyRequest,
+  ): Promise<(ActiveUserSession & { csrfToken: string }) | null> {
     for (const name of [this.cookieName, this.partitionedCookieName]) {
       if (!name) continue;
       const token = cookieValue(request, name);
@@ -117,7 +123,17 @@ export class UserSessionService {
       const session = await this.repository.getActiveUserSession(
         hashSecret(token),
       );
-      if (session) return session;
+      if (session) {
+        const csrfToken = csrfTokenForSessionToken(token);
+        const csrfTokenHash = hashSecret(csrfToken);
+        if (session.csrfTokenHash !== csrfTokenHash) {
+          await this.repository.rotateSessionCsrfToken(
+            session.id,
+            csrfTokenHash,
+          );
+        }
+        return { ...session, csrfToken, csrfTokenHash };
+      }
     }
     return null;
   }
@@ -141,7 +157,7 @@ export class UserSessionService {
     authMethod: ActiveUserSession["authMethod"],
   ): Promise<AuthSession> {
     const token = randomBytes(32).toString("base64url");
-    const csrfToken = randomBytes(32).toString("base64url");
+    const csrfToken = csrfTokenForSessionToken(token);
     const expiresAt = new Date(Date.now() + this.sessionTtlSeconds * 1_000);
     await this.repository.createUserSession({
       authMethod,
@@ -170,15 +186,12 @@ export class UserSessionService {
     return { currentUser: user, csrfToken, expiresAt: expiresAt.toISOString() };
   }
 
-  async rotateCsrf(session: ActiveUserSession): Promise<AuthSession> {
-    const csrfToken = randomBytes(32).toString("base64url");
-    await this.repository.rotateSessionCsrfToken(
-      session.id,
-      hashSecret(csrfToken),
-    );
+  sessionState(
+    session: ActiveUserSession & { csrfToken: string },
+  ): AuthSession {
     return {
       currentUser: session.user,
-      csrfToken,
+      csrfToken: session.csrfToken,
       expiresAt: session.expiresAt.toISOString(),
     };
   }
