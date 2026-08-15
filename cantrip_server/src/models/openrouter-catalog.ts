@@ -96,7 +96,7 @@ function openRouterHost(hostname: string): boolean {
 }
 
 export function isOpenRouterProvider(
-  provider: ModelProviderCatalogRuntime,
+  provider: Pick<ModelProviderCatalogRuntime, "baseUrl" | "kind">,
 ): boolean {
   try {
     return (
