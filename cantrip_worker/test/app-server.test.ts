@@ -11,6 +11,7 @@ import {
   codexResultForAgentInteraction,
   CodexAppServer,
   codexEndpointFromLine,
+  codexReasoningEffortParams,
   codexStartupExitMessage,
   codexMcpConfigOverride,
   codexModelProviderName,
@@ -443,6 +444,25 @@ describe("codexWorkspaceContext", () => {
       cwd: "/tmp/project/worktree",
       runtimeWorkspaceRoots: ["/tmp/project/worktree"],
     });
+  });
+});
+
+describe("codexReasoningEffortParams", () => {
+  const model = {
+    id: "logical-model",
+    routeId: "provider-route",
+    name: "gpt-test",
+    reasoningEffort: null,
+  };
+
+  it("uses the App Server effort override when an effort is selected", () => {
+    expect(
+      codexReasoningEffortParams({ ...model, reasoningEffort: "high" }),
+    ).toEqual({ effort: "high" });
+  });
+
+  it("leaves the provider default untouched when no effort is selected", () => {
+    expect(codexReasoningEffortParams(model)).toEqual({});
   });
 });
 
