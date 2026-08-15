@@ -96,3 +96,27 @@ test("fails closed while signing and notarizing both the macOS app and DMG", asy
   assert.match(workflow, /CANTRIP_REQUIRE_MACOS_NOTARIZATION: "1"/u);
   assert.doesNotMatch(workflow, /unset APPLE_API_ISSUER/u);
 });
+
+test("builds generated desktop dependencies before packaging installers", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  const protocolBuild = workflow.indexOf(
+    "- name: Build desktop workspace dependencies",
+  );
+  const macosPackage = workflow.indexOf(
+    "- name: Package signed and notarized macOS DMG",
+  );
+  const windowsPackage = workflow.indexOf(
+    "- name: Package Windows NSIS installer",
+  );
+  assert.ok(protocolBuild >= 0);
+  assert.match(
+    workflow.slice(protocolBuild, macosPackage),
+    /pnpm --filter @cantrip\/protocol build/u,
+  );
+  assert.ok(macosPackage > protocolBuild);
+  assert.ok(windowsPackage > protocolBuild);
+});

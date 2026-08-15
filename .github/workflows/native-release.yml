@@ -257,6 +257,8 @@ jobs:
           tar -xzf "artifacts/incoming/server/cantrip-server-${{ matrix.target }}.tar.gz" -C artifacts
           tar -xzf "artifacts/incoming/worker/cantrip-worker-${{ matrix.target }}.tar.gz" -C artifacts
       - run: pnpm install --frozen-lockfile
+      - name: Build desktop workspace dependencies
+        run: pnpm --filter @cantrip/protocol build
       - name: Import macOS Developer ID certificate
         if: matrix.target == 'darwin-arm64'
         shell: bash
@@ -285,9 +287,12 @@ jobs:
             -s \
             -k "$KEYCHAIN_PASSWORD" \
             "$keychain"
-          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          identities="$(security find-identity -v -p codesigning "$keychain" || true)"
+          identity="$(printf '%s\n' "$identities" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
           if [ -z "$identity" ]; then
-            echo "The imported certificate does not contain a Developer ID Application identity." >&2
+            printf '%s\n' "$identities" >&2
+            echo "APPLE_CERTIFICATE does not contain a valid Developer ID Application identity." >&2
+            echo "Export APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE with its private key; do not use APPLE_MAC_APP_CERTIFICATE or an Apple Distribution/App Store certificate." >&2
             exit 1
           fi
           rm -f "$certificate"
