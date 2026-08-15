@@ -1,0 +1,1 @@
+ALTER TABLE "model_profiles" ADD COLUMN "default_reasoning_effort" text;
