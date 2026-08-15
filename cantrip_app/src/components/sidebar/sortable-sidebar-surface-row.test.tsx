@@ -21,6 +21,7 @@ function renderRow(editing: boolean) {
           trailing={<span>Primary worktree</span>}
           renameValue="Renamed terminal"
           onCancelRename={vi.fn()}
+          onClose={vi.fn()}
           onRename={vi.fn()}
           onSelect={vi.fn()}
           onSubmitRename={vi.fn()}
