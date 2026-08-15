@@ -348,6 +348,15 @@ export const modelProviderAccounts = pgTable(
     credentialUpdatedAt: timestamp("credential_updated_at", {
       withTimezone: true,
     }),
+    credentialRefreshLeaseId: text("credential_refresh_lease_id"),
+    credentialRefreshLeaseExpiresAt: timestamp(
+      "credential_refresh_lease_expires_at",
+      { withTimezone: true },
+    ),
+    credentialLastRefreshAt: timestamp("credential_last_refresh_at", {
+      withTimezone: true,
+    }),
+    credentialLastRefreshError: text("credential_last_refresh_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -371,6 +380,10 @@ export const modelProviderAccounts = pgTable(
     check(
       "model_provider_accounts_credential_revision_check",
       sql`${table.credentialRevision} >= 0`,
+    ),
+    check(
+      "model_provider_accounts_refresh_lease_pair_check",
+      sql`(${table.credentialRefreshLeaseId} IS NULL) = (${table.credentialRefreshLeaseExpiresAt} IS NULL)`,
     ),
   ],
 );

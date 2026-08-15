@@ -531,6 +531,11 @@ export type ProviderAccountCredentialState =
   | "reauth-required"
   | "conflict";
 
+export type ProviderCredentialRefreshFailure =
+  | "Provider credential refresh failed."
+  | "Provider credential requires sign-in."
+  | "Provider credential identity changed during refresh.";
+
 /** Internal secret-bearing record. Never return this object from an API. */
 export interface ProviderAccountCredentialRecord {
   accountId: string;
@@ -3089,7 +3094,11 @@ export class ServerRepository {
     accountId: string,
     input: ProviderCredential,
     expectedRevision?: number,
+    refreshLeaseId?: string,
   ): Promise<ProviderAccountCredentialRecord | null> {
+    if (refreshLeaseId && expectedRevision === undefined) {
+      throw new Error("A credential revision is required for refresh writes.");
+    }
     const credential = parseProviderCredential(input, input.kind);
     const subject = providerCredentialSubject(credential);
     return this.database.transaction(async (transaction) => {
@@ -3151,6 +3160,14 @@ export class ServerRepository {
             ? new Date(credential.expiresAt)
             : null,
           credentialUpdatedAt: updatedAt,
+          credentialLastRefreshError: null,
+          ...(refreshLeaseId
+            ? {
+                credentialLastRefreshAt: updatedAt,
+                credentialRefreshLeaseId: null,
+                credentialRefreshLeaseExpiresAt: null,
+              }
+            : {}),
           email: credential.email,
           planType: credential.planType,
           updatedAt,
@@ -3163,6 +3180,14 @@ export class ServerRepository {
               schema.modelProviderAccounts.credentialRevision,
               row.account.credentialRevision,
             ),
+            ...(refreshLeaseId
+              ? [
+                  eq(
+                    schema.modelProviderAccounts.credentialRefreshLeaseId,
+                    refreshLeaseId,
+                  ),
+                ]
+              : []),
           ),
         )
         .returning({
@@ -3179,6 +3204,141 @@ export class ServerRepository {
         updatedAt: toISOString(updatedAt),
       };
     });
+  }
+
+  async tryAcquireModelProviderAccountRefreshLease(input: {
+    accountId: string;
+    expectedRevision: number;
+    leaseExpiresAt: Date;
+    leaseId: string;
+    now: Date;
+    ownerId: string;
+    providerId: string;
+  }): Promise<boolean> {
+    const rows = await this.database
+      .update(schema.modelProviderAccounts)
+      .set({
+        credentialRefreshLeaseId: input.leaseId,
+        credentialRefreshLeaseExpiresAt: input.leaseExpiresAt,
+      })
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, input.accountId),
+          eq(schema.modelProviderAccounts.providerId, input.providerId),
+          eq(
+            schema.modelProviderAccounts.credentialRevision,
+            input.expectedRevision,
+          ),
+          eq(schema.modelProviderAccounts.credentialState, "signed-in"),
+          isNotNull(schema.modelProviderAccounts.credentialEnvelope),
+          or(
+            isNull(schema.modelProviderAccounts.credentialRefreshLeaseId),
+            lte(
+              schema.modelProviderAccounts.credentialRefreshLeaseExpiresAt,
+              input.now,
+            ),
+          ),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, input.providerId),
+                  eq(schema.modelProviders.ownerId, input.ownerId),
+                  inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: schema.modelProviderAccounts.id });
+    return Boolean(rows[0]);
+  }
+
+  async releaseModelProviderAccountRefreshLease(input: {
+    accountId: string;
+    error: ProviderCredentialRefreshFailure;
+    leaseId: string;
+    ownerId: string;
+    providerId: string;
+    state?: Extract<
+      ProviderAccountCredentialState,
+      "signed-in" | "reauth-required" | "conflict"
+    >;
+  }): Promise<boolean> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.modelProviderAccounts)
+      .set({
+        credentialLastRefreshAt: now,
+        credentialLastRefreshError: input.error,
+        credentialRefreshLeaseId: null,
+        credentialRefreshLeaseExpiresAt: null,
+        ...(input.state ? { credentialState: input.state } : {}),
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, input.accountId),
+          eq(schema.modelProviderAccounts.providerId, input.providerId),
+          eq(
+            schema.modelProviderAccounts.credentialRefreshLeaseId,
+            input.leaseId,
+          ),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, input.providerId),
+                  eq(schema.modelProviders.ownerId, input.ownerId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: schema.modelProviderAccounts.id });
+    return Boolean(rows[0]);
+  }
+
+  async updateModelProviderAccountCredentialState(input: {
+    accountId: string;
+    expectedRevision: number;
+    ownerId: string;
+    providerId: string;
+    state: Extract<
+      ProviderAccountCredentialState,
+      "reauth-required" | "conflict"
+    >;
+  }): Promise<boolean> {
+    const rows = await this.database
+      .update(schema.modelProviderAccounts)
+      .set({ credentialState: input.state, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, input.accountId),
+          eq(schema.modelProviderAccounts.providerId, input.providerId),
+          eq(
+            schema.modelProviderAccounts.credentialRevision,
+            input.expectedRevision,
+          ),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, input.providerId),
+                  eq(schema.modelProviders.ownerId, input.ownerId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: schema.modelProviderAccounts.id });
+    return Boolean(rows[0]);
   }
 
   async clearModelProviderAccountCredential(
@@ -3218,6 +3378,9 @@ export class ServerRepository {
           credentialSubject: null,
           credentialExpiresAt: null,
           credentialUpdatedAt: new Date(),
+          credentialRefreshLeaseId: null,
+          credentialRefreshLeaseExpiresAt: null,
+          credentialLastRefreshError: null,
           email: null,
           planType: null,
           updatedAt: new Date(),

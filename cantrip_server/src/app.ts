@@ -233,6 +233,8 @@ import {
   modelProviderAccountSummarySchema,
   modelProviderAccountUpdateSchema,
   modelProviderCreateSchema,
+  providerAccessTokenLeaseRequestSchema,
+  providerAccessTokenLeaseSchema,
   providerModelCatalogResultSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
@@ -575,6 +577,10 @@ import { OpenRouterRuntimeCatalogHydrator } from "./models/openrouter-runtime-ca
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
 import { ChatGptCatalogService } from "./models/chatgpt-catalog.js";
 import { GrokCatalogService } from "./models/grok-catalog.js";
+import {
+  ProviderAccessTokenError,
+  ProviderAccessTokenService,
+} from "./models/provider-access-tokens.js";
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
   accountProviderLabel,
@@ -592,6 +598,7 @@ export interface BuildAppOptions {
   relayQuotas?: RelayQuotaManager;
   coordinator?: RelayCoordinator;
   providerCatalogService?: OpenRouterCatalogService;
+  providerAccessTokens?: ProviderAccessTokenService;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -844,6 +851,7 @@ export async function buildApp({
   logger = true,
   projectShareTunnel: providedProjectShareTunnel,
   providerCatalogService: providedProviderCatalogService,
+  providerAccessTokens: providedProviderAccessTokens,
   relayQuotas: providedRelayQuotas,
   coordinator,
   workerBridge,
@@ -876,6 +884,9 @@ export async function buildApp({
               "req.body.apiKey",
               "req.body.enrollmentCode",
               "req.body.password",
+              "req.body.accessToken",
+              "req.body.refreshToken",
+              "req.body.idToken",
               "res.headers.set-cookie",
             ],
             censor: "[REDACTED]",
@@ -965,6 +976,8 @@ export async function buildApp({
   const ollamaCatalogService = new OllamaCatalogService(repository, bridge);
   const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
   const grokCatalogService = new GrokCatalogService(repository, bridge);
+  const providerAccessTokens =
+    providedProviderAccessTokens ?? new ProviderAccessTokenService(repository);
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -2131,6 +2144,7 @@ export async function buildApp({
   const websocketRateLimiter = new SlidingWindowRateLimiter(
     config.websocketHandshakeRatePerMinute ?? 120,
   );
+  const providerAccessLeaseRateLimiter = new SlidingWindowRateLimiter(120);
   const accountWebsockets = new ActiveLimit(config.accountWebsocketLimit ?? 32);
   const accountUploads = new ActiveLimit(config.accountUploadConcurrency ?? 4);
   const uploadReleases = new WeakMap<FastifyRequest, () => void>();
@@ -18523,6 +18537,68 @@ export async function buildApp({
             ? 409
             : 400;
         return reply.code(status).send({ error: message });
+      }
+    },
+  );
+
+  app.post<{
+    Body: unknown;
+    Params: { accountId: string; providerId: string };
+    Querystring: { workerId?: string };
+  }>(
+    "/api/internal/workers/providers/:providerId/accounts/:accountId/access-lease",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
+        return reply.code(400).send({ error: "workerId is required." });
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        workerId,
+        "worker:connect",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      const retryAfter = providerAccessLeaseRateLimiter.consume(
+        `${workerAuth.ownerId}:${workerId}`,
+      );
+      if (retryAfter !== null) {
+        return reply
+          .header("retry-after", String(retryAfter))
+          .code(429)
+          .send({ error: "Provider access lease rate limit reached." });
+      }
+      if (!(await repository.getWorker(workerAuth.ownerId, workerId))) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      const input = providerAccessTokenLeaseRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        return reply.send(
+          providerAccessTokenLeaseSchema.parse(
+            await providerAccessTokens.issue({
+              accountId: request.params.accountId,
+              forceRefresh: input.data.forceRefresh,
+              minimumValidityMs: input.data.minimumValiditySeconds * 1_000,
+              ownerId: workerAuth.ownerId,
+              providerId: request.params.providerId,
+            }),
+          ),
+        );
+      } catch (error) {
+        if (!(error instanceof ProviderAccessTokenError)) throw error;
+        const status = error.code.startsWith("refresh-") ? 503 : 409;
+        return reply
+          .code(status)
+          .send({ code: error.code, error: error.message });
       }
     },
   );

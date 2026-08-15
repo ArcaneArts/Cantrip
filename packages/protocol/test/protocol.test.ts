@@ -51,6 +51,8 @@ import {
   executionTargetResolveRequestSchema,
   executionTargetSchema,
   modelProviderAccountSummarySchema,
+  providerAccessTokenLeaseRequestSchema,
+  providerAccessTokenLeaseSchema,
   settingsBundleSchema,
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
@@ -785,6 +787,32 @@ describe("Cantrip protocol", () => {
         credential: `ctwk_${"b".repeat(43)}`,
       }).type,
     ).toBe("worker.credential.rotate");
+  });
+
+  it("validates short-lived provider access leases without durable secrets", () => {
+    expect(providerAccessTokenLeaseRequestSchema.parse({})).toEqual({
+      forceRefresh: false,
+      minimumValiditySeconds: 120,
+    });
+    const lease = providerAccessTokenLeaseSchema.parse({
+      accessToken: "worker-access-token",
+      credentialRevision: 4,
+      expiresAt: "2026-08-15T12:30:00.000Z",
+      issuedAt: "2026-08-15T12:00:00.000Z",
+      leaseExpiresAt: "2026-08-15T12:05:00.000Z",
+      planType: "pro",
+      providerAccountId: "cantrip-account",
+      providerId: "provider-one",
+      providerIdentity: {
+        accountId: "upstream-account",
+        kind: "chatgpt",
+        userId: "upstream-user",
+      },
+      providerKind: "chatgpt",
+    });
+    expect(lease.providerIdentity.kind).toBe("chatgpt");
+    expect(JSON.stringify(lease)).not.toContain("refreshToken");
+    expect(JSON.stringify(lease)).not.toContain("idToken");
   });
 
   it("validates exact-revision replica job commands and durable state", () => {

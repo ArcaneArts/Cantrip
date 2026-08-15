@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
+  providerAccessTokenLeaseSchema,
   workerCredentialListSchema,
   workerEnrollmentCodeResultSchema,
   workerEnrollmentCodeStatusSchema,
@@ -181,6 +182,69 @@ describe("per-worker enrollment credentials", () => {
         workerId: "worker-one",
       });
       expect(enrolledResponse.body).not.toContain("secretHash");
+      const ownerId = registered.json().currentUser.id as string;
+      const provider = await database.repository.createModelProvider(ownerId, {
+        baseUrl: "https://chatgpt.com/backend-api/codex",
+        kind: "chatgpt",
+        name: "ChatGPT",
+      });
+      const providerAccountId = provider.accounts[0]!.id;
+      await database.repository.storeModelProviderAccountCredential(
+        ownerId,
+        provider.id,
+        providerAccountId,
+        {
+          accessToken: "leased-worker-access-token",
+          accountId: "upstream-account",
+          email: "owner@example.com",
+          expiresAt: Date.now() + 60 * 60_000,
+          idToken: "server-only-identity-token",
+          kind: "chatgpt",
+          planType: "pro",
+          refreshToken: "server-only-refresh-token",
+          userId: "upstream-user",
+          version: 1,
+        },
+        0,
+      );
+      const leaseUrl = `/api/internal/workers/providers/${provider.id}/accounts/${providerAccountId}/access-lease`;
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${leaseUrl}?workerId=worker-one`,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(401);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `${leaseUrl}?workerId=worker-two`,
+            headers: {
+              authorization: `Bearer ${enrolled.credential}`,
+            },
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(401);
+      const leaseResponse = await app.inject({
+        method: "POST",
+        url: `${leaseUrl}?workerId=worker-one`,
+        headers: { authorization: `Bearer ${enrolled.credential}` },
+        payload: {},
+      });
+      expect(leaseResponse.statusCode).toBe(200);
+      expect(
+        providerAccessTokenLeaseSchema.parse(leaseResponse.json()),
+      ).toMatchObject({
+        accessToken: "leased-worker-access-token",
+        providerAccountId,
+        providerId: provider.id,
+        providerKind: "chatgpt",
+      });
+      expect(leaseResponse.body).not.toContain("server-only");
       expect(
         workerEnrollmentCodeStatusSchema.parse(
           (
