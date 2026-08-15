@@ -201,6 +201,7 @@ import {
   createTerminal,
   compactChat,
   clearChatGoal,
+  cleanupArchivedChats,
   deleteChat,
   deleteChatAttachment,
   deleteBrowser,
@@ -1520,7 +1521,13 @@ function ChatTranscript({
       const title = window.prompt("Rename agent", chat.title)?.trim();
       if (title) onRename(title);
     } else if (name === "delete") {
-      if (window.confirm(`Delete “${chat.title}”? This cannot be undone.`)) {
+      if (chat.status === "running" || chat.status === "waiting-for-approval") {
+        setCommandNotice("Stop the active agent before removing this tab.");
+      } else if (
+        window.confirm(
+          `Remove “${chat.title}”? Agents with conversation history remain in Archive for 90 days.`,
+        )
+      ) {
         onDelete();
       }
     } else if (name === "status") {
@@ -2545,6 +2552,7 @@ export function App() {
   const explorerLifecycleRef = useRef(
     new Map<string, ExplorerLifecycleActions>(),
   );
+  const archiveCleanupRequestedRef = useRef(false);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -2657,6 +2665,25 @@ export function App() {
     queryFn: getServerBootstrap,
     queryKey: ["server-bootstrap"],
   });
+  useEffect(() => {
+    if (
+      isPopout ||
+      !bootstrap.isSuccess ||
+      archiveCleanupRequestedRef.current
+    ) {
+      return;
+    }
+    archiveCleanupRequestedRef.current = true;
+    void cleanupArchivedChats()
+      .then(({ deleted }) => {
+        if (deleted > 0) {
+          void queryClient.invalidateQueries({ queryKey: ["archived-chats"] });
+        }
+      })
+      .catch((error) => {
+        console.warn("Could not clean up expired archived chats", error);
+      });
+  }, [bootstrap.isSuccess, isPopout, queryClient]);
   const workers = useQuery({
     queryFn: getWorkers,
     queryKey: ["workers"],
@@ -3274,6 +3301,9 @@ export function App() {
       });
       await queryClient.invalidateQueries({
         queryKey: ["project-tab-layout", selectedProjectId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["archived-chats", selectedProjectId],
       });
     },
   });
@@ -5492,6 +5522,9 @@ export function App() {
                 kind: "history",
                 worktreeId,
               })
+            }
+            onRestoreChat={(chat) =>
+              openCreatedTab(chat.projectId, "chat", chat.id)
             }
             onOpenTunnelOwner={openTunnelOwner}
           />

@@ -2663,6 +2663,23 @@ export const chatSummarySchema = z.object({
 
 export const chatListSchema = z.array(chatSummarySchema);
 
+export const archivedChatSummarySchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().min(1),
+  title: z.string().min(1),
+  messageCount: z.number().int().nonnegative(),
+  archivedAt: z.string().datetime(),
+  expiresAt: z.string().datetime(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export const archivedChatListSchema = z.array(archivedChatSummarySchema);
+
+export const archivedChatCleanupResultSchema = z.object({
+  deleted: z.number().int().nonnegative(),
+});
+
 export const permissionProfileIdSchema = z.string().min(1).max(200);
 
 export const permissionProfileSummarySchema = z.object({
@@ -8615,6 +8632,10 @@ export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
+export type ArchivedChatSummary = z.infer<typeof archivedChatSummarySchema>;
+export type ArchivedChatCleanupResult = z.infer<
+  typeof archivedChatCleanupResultSchema
+>;
 export type ChatRelocationState = z.infer<typeof chatRelocationStateSchema>;
 export type ChatRelocationErrorCode = z.infer<
   typeof chatRelocationErrorCodeSchema

@@ -44,6 +44,14 @@ import {
   workspaceTopBarDropId,
 } from "@/lib/workspace-dnd-model";
 
+function surfaceIsExecuting(surface: ProjectSurface): boolean {
+  return (
+    surface.kind === "chat" &&
+    (surface.entity.status === "running" ||
+      surface.entity.status === "waiting-for-approval")
+  );
+}
+
 export interface ProjectTabBarProps {
   activeTabKey: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
@@ -97,6 +105,10 @@ export function ProjectTabBar({
     if (title && title !== surface.title) onRename(surface, title);
   };
   const closeImmediately = (surface: ProjectSurface) => {
+    if (surfaceIsExecuting(surface)) {
+      setDeleteTarget(surface);
+      return;
+    }
     if (surface.tabKey === activeTabKey) {
       const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
       if (nextTabKey) onSelect(nextTabKey);
@@ -176,6 +188,7 @@ export function ProjectTabBar({
                         )}
                         {!editing ? (
                           <SurfaceActionsMenu
+                            deleteDisabled={surfaceIsExecuting(surface)}
                             title={surface.title}
                             onDelete={() => setDeleteTarget(surface)}
                             onDuplicate={
@@ -221,6 +234,7 @@ export function ProjectTabBar({
                         <ContextMenu.Separator className="my-1 h-px bg-border" />
                         <StyledContextMenuItem
                           className="text-destructive focus:bg-destructive/10"
+                          disabled={surfaceIsExecuting(surface)}
                           onSelect={() => setDeleteTarget(surface)}
                         >
                           <Trash2 className="size-4" /> Delete
@@ -259,8 +273,11 @@ export function ProjectTabBar({
           <DialogHeader>
             <DialogTitle>Delete {deleteTarget?.title}?</DialogTitle>
             <DialogDescription>
-              This permanently removes the {deleteTarget?.kind ?? "surface"}
-              tab and its Cantrip-owned state. Project files are not deleted.
+              {deleteTarget && surfaceIsExecuting(deleteTarget)
+                ? "Stop the active agent before removing this tab."
+                : deleteTarget?.kind === "chat"
+                  ? "Agents with conversation history move to Archive for 90 days. Empty agents are deleted immediately."
+                  : `This permanently removes the ${deleteTarget?.kind ?? "surface"} tab and its Cantrip-owned state. Project files are not deleted.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -269,6 +286,9 @@ export function ProjectTabBar({
             </DialogClose>
             <Button
               className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={Boolean(
+                deleteTarget && surfaceIsExecuting(deleteTarget),
+              )}
               onClick={() => {
                 if (deleteTarget) {
                   const nextTabKey = nextProjectTabAfterRemoval(

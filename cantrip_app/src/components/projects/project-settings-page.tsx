@@ -16,6 +16,7 @@ import type {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
+  Archive,
   Cable,
   CircleAlert,
   Code2,
@@ -75,6 +76,7 @@ import {
 import { cn } from "@/lib/utils";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
+import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
@@ -88,6 +90,7 @@ const createdDate = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 type ProjectSettingsSection =
   | "general"
+  | "archive"
   | "automations"
   | "workflows"
   | "replicas"
@@ -98,6 +101,7 @@ type ProjectSettingsSection =
 
 const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "archive", label: "Archive", icon: Archive },
   { id: "automations", label: "Automations", icon: CalendarClock },
   { id: "workflows", label: "Workflows", icon: Workflow },
   { id: "replicas", label: "Replicas", icon: Database },
@@ -212,6 +216,7 @@ export function ProjectSettingsPage({
   onCreateExplorer,
   onCreateHistory,
   onCreateTerminal,
+  onRestoreChat,
   onOpenTunnelOwner,
   project,
   projectViews,
@@ -230,6 +235,7 @@ export function ProjectSettingsPage({
   onCreateExplorer(worktreeId: string): void;
   onCreateHistory(worktreeId: string): void;
   onCreateTerminal(worktreeId: string): void;
+  onRestoreChat?(chat: ChatSummary): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   project: ProjectSummary;
   projectViews: ProjectViewSummary[];
@@ -406,6 +412,12 @@ export function ProjectSettingsPage({
         <div className="min-h-0 flex-1 overflow-y-auto">
           <ProjectAutomationsSettings chats={chats} projectId={project.id} />
         </div>
+      ) : null}
+      {section === "archive" ? (
+        <ProjectArchiveSettings
+          projectId={project.id}
+          onRestoreChat={onRestoreChat}
+        />
       ) : null}
       {section === "workflows" ? (
         <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">

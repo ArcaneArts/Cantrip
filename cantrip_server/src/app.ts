@@ -68,6 +68,8 @@ import {
   chatAttachmentKindSchema,
   chatAttachmentSourceSchema,
   chatAttachmentSummarySchema,
+  archivedChatCleanupResultSchema,
+  archivedChatListSchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -480,6 +482,7 @@ import {
   CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   ExecutionPlacementUnavailableError,
+  ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
   TunnelManagementError,
@@ -13734,6 +13737,25 @@ export async function buildApp({
     },
   );
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/archived-chats",
+    async (request, reply) => {
+      const chats = await repository.listArchivedChats(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return reply.send(archivedChatListSchema.parse(chats));
+    },
+  );
+
+  app.post("/api/chats/archives/cleanup", async (_request, reply) => {
+    const deleted = await repository.purgeExpiredArchivedChats(
+      applicationOwnerId(),
+      new Date(Date.now() - ARCHIVED_CHAT_RETENTION_MS),
+    );
+    return reply.send(archivedChatCleanupResultSchema.parse({ deleted }));
+  });
+
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/chats",
     async (request, reply) => {
@@ -16473,6 +16495,32 @@ export async function buildApp({
       return result
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/restore",
+    async (request, reply) => {
+      const chat = await repository.restoreArchivedChat(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return chat
+        ? reply.send(chatSummarySchema.parse(chat))
+        : reply.code(404).send({ error: "Archived chat not found." });
+    },
+  );
+
+  app.delete<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/permanent",
+    async (request, reply) => {
+      const deleted = await repository.permanentlyDeleteArchivedChat(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return deleted
+        ? reply.code(204).send()
+        : reply.code(404).send({ error: "Archived chat not found." });
     },
   );
 

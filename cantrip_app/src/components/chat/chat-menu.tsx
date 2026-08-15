@@ -25,6 +25,7 @@ import {
 import { cn } from "@/lib/utils";
 
 interface Actions {
+  deleteDisabled?: boolean;
   onDelete(): void;
   onDuplicate(): void;
   onRename(): void;
@@ -125,7 +126,13 @@ function ContextWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
   );
 }
 
-function ContextItems({ onDelete, onDuplicate, onRename, worktree }: Actions) {
+function ContextItems({
+  deleteDisabled,
+  onDelete,
+  onDuplicate,
+  onRename,
+  worktree,
+}: Actions) {
   return (
     <>
       <ContextMenuPrimitive.Item className={itemClass} onSelect={onRename}>
@@ -138,9 +145,11 @@ function ContextItems({ onDelete, onDuplicate, onRename, worktree }: Actions) {
       <ContextMenuPrimitive.Separator className="my-1 h-px bg-border" />
       <ContextMenuPrimitive.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
+        disabled={deleteDisabled}
         onSelect={onDelete}
       >
-        <Trash2 className="size-4" /> Delete
+        <Trash2 className="size-4" />
+        {deleteDisabled ? "Stop agent before deleting" : "Delete"}
       </ContextMenuPrimitive.Item>
     </>
   );
@@ -224,7 +233,13 @@ function DropdownWorktreeItems({ actions }: { actions: ChatWorktreeActions }) {
   );
 }
 
-function DropdownItems({ onDelete, onDuplicate, onRename, worktree }: Actions) {
+function DropdownItems({
+  deleteDisabled,
+  onDelete,
+  onDuplicate,
+  onRename,
+  worktree,
+}: Actions) {
   return (
     <>
       <DropdownMenuPrimitive.Item className={itemClass} onSelect={onRename}>
@@ -237,9 +252,11 @@ function DropdownItems({ onDelete, onDuplicate, onRename, worktree }: Actions) {
       <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
       <DropdownMenuPrimitive.Item
         className={cn(itemClass, "text-destructive focus:bg-destructive/10")}
+        disabled={deleteDisabled}
         onSelect={onDelete}
       >
-        <Trash2 className="size-4" /> Delete
+        <Trash2 className="size-4" />
+        {deleteDisabled ? "Stop agent before deleting" : "Delete"}
       </DropdownMenuPrimitive.Item>
     </>
   );

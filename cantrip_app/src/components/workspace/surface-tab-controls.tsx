@@ -46,6 +46,7 @@ export function InlineRenameLabel({
 export function SurfaceActionsMenu({
   align = "end",
   contentClassName,
+  deleteDisabled = false,
   onDelete,
   onDuplicate,
   onRename,
@@ -55,6 +56,7 @@ export function SurfaceActionsMenu({
 }: {
   align?: "start" | "center" | "end";
   contentClassName?: string;
+  deleteDisabled?: boolean;
   onDelete(): void;
   onDuplicate?: () => void;
   onRename(): void;
@@ -96,9 +98,11 @@ export function SurfaceActionsMenu({
           <DropdownMenu.Separator className="my-1 h-px bg-border" />
           <StyledDropdownMenuItem
             className="text-destructive focus:bg-destructive/10"
+            disabled={deleteDisabled}
             onSelect={onDelete}
           >
-            <Trash2 className="size-4" /> Delete
+            <Trash2 className="size-4" />
+            {deleteDisabled ? "Stop agent before deleting" : "Delete"}
           </StyledDropdownMenuItem>
         </StyledDropdownMenuContent>
       </DropdownMenu.Portal>
