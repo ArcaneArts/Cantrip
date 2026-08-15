@@ -45,6 +45,8 @@ export function createHeartbeat(
       exactRevision: true,
     },
     chatRelocation: true,
+    externalCodexHistory:
+      process.platform === "darwin" || process.platform === "win32",
     startedAt,
   });
 }

@@ -8,6 +8,7 @@ import { AttachmentStore } from "./attachment-store.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { evaluateProjectAutomationCondition } from "./automation-conditions.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
+import { discoverExternalChatHistory } from "./external-chat-history.js";
 import { codexAccountHome } from "./codex/account-home.js";
 import { CodexAppServer, codexRuntimeId } from "./codex/app-server.js";
 import { CodexAuthClient } from "./codex/auth-client.js";
@@ -593,6 +594,14 @@ async function start(): Promise<void> {
         return discoverScriptCommands(command.cwd);
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
+      case "external.chat-history.discover":
+        return discoverExternalChatHistory(
+          {
+            binary: config.codexBinary,
+            managedDataDirectory: config.dataDirectory,
+          },
+          command,
+        );
       case "browser.services.discover":
         return discoverBrowserServices({ workerId: config.workerId });
       case "project.share.open":

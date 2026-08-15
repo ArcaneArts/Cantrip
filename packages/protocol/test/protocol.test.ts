@@ -50,6 +50,8 @@ import {
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
   executionTargetSchema,
+  externalChatDiscoveryWorkerResultSchema,
+  projectExternalChatDiscoverySchema,
   modelProviderAccountSummarySchema,
   providerAccessTokenLeaseRequestSchema,
   providerAccessTokenLeaseSchema,
@@ -3389,6 +3391,86 @@ describe("Cantrip protocol", () => {
       transports: ["websocket"],
     });
     expect(heartbeat.code).toBeUndefined();
+    expect(heartbeat.externalCodexHistory).toBe(false);
+  });
+
+  it("validates external Codex history discovery metadata and commands", () => {
+    const command = workerCommandSchema.parse({
+      type: "external.chat-history.discover",
+      includeArchived: false,
+      targets: [
+        {
+          projectReplicaId: "replica-one",
+          path: "/workspace/Cantrip",
+          repositoryFingerprint: "fingerprint",
+          worktrees: [
+            {
+              worktreeId: "worktree-one",
+              path: "/workspace/Cantrip",
+              isPrimary: true,
+            },
+          ],
+        },
+      ],
+    });
+    expect(command.type).toBe("external.chat-history.discover");
+
+    const workerResult = externalChatDiscoveryWorkerResultSchema.parse({
+      sources: [
+        {
+          kind: "chatgpt-codex",
+          sourceId: "a".repeat(64),
+          name: "ChatGPT Codex",
+          platform: "darwin",
+          homeLabel: "~/.codex",
+          availability: "available",
+          message: null,
+          runtimeVersion: "0.147.0",
+          truncated: false,
+          threads: [
+            {
+              sourceThreadId: "thread-one",
+              title: "Import chat history",
+              preview: "Continue the Cantrip work",
+              cwd: "/workspace/Cantrip",
+              createdAt: "2026-08-14T10:00:00.000Z",
+              updatedAt: "2026-08-15T10:00:00.000Z",
+              archived: false,
+              source: "vscode",
+              status: "not-loaded",
+              modelProvider: "openai",
+              cliVersion: "0.147.0",
+              git: null,
+              match: {
+                kind: "worktree-path",
+                projectReplicaId: "replica-one",
+                worktreeId: "worktree-one",
+              },
+            },
+          ],
+        },
+      ],
+      truncated: false,
+    });
+    expect(workerResult.sources[0]?.threads).toHaveLength(1);
+    expect(
+      projectExternalChatDiscoverySchema.parse({
+        projectId: "project-one",
+        observedAt: "2026-08-15T10:00:00.000Z",
+        partial: false,
+        truncated: false,
+        workers: [
+          {
+            workerId: "worker-one",
+            workerName: "Worker One",
+            platform: "darwin",
+            status: "ok",
+            sources: workerResult.sources,
+            error: null,
+          },
+        ],
+      }).workers[0]?.status,
+    ).toBe("ok");
   });
 
   it("validates Cantrip Code capabilities, durable tabs, and worker commands", () => {

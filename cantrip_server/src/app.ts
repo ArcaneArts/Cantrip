@@ -121,6 +121,7 @@ import {
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
   executionTargetSchema,
+  externalChatDiscoveryWorkerResultSchema,
   githubAuthStatusSchema,
   githubIssueCloseSchema,
   githubIssueCommentCreateSchema,
@@ -246,6 +247,7 @@ import {
   orderedIdsSchema,
   operationalProbeSchema,
   projectListSchema,
+  projectExternalChatDiscoverySchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   projectRemoveSchema,
@@ -654,6 +656,8 @@ const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
 const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
 const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
+const EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS = 20_000;
+const EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT = 64;
 const REMOTE_DESKTOP_FLEET_TIMEOUT_MS = 20_000;
 const REMOTE_DESKTOP_FLEET_WORKER_LIMIT = 64;
 const REMOTE_DESKTOP_FLEET_TARGET_LIMIT = 4_096;
@@ -14701,6 +14705,166 @@ export async function buildApp({
           ),
         ),
       ),
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { includeArchived?: string };
+  }>(
+    "/api/projects/:projectId/external-chat-history",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const replicas = await repository.listProjectReplicas(
+        ownerId,
+        request.params.projectId,
+      );
+      if (!replicas) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      if (
+        request.query.includeArchived !== undefined &&
+        !["true", "false"].includes(request.query.includeArchived)
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "includeArchived must be true or false." });
+      }
+      const includeArchived = request.query.includeArchived === "true";
+      const [workers, worktrees] = await Promise.all([
+        repository.listWorkers(ownerId),
+        repository.listProjectWorktrees(ownerId, request.params.projectId),
+      ]);
+      const workersById = new Map(
+        workers.map((worker) => [worker.workerId, worker]),
+      );
+      const groupedReplicas = new Map<string, typeof replicas>();
+      for (const replica of replicas) {
+        const grouped = groupedReplicas.get(replica.workerId) ?? [];
+        grouped.push(replica);
+        groupedReplicas.set(replica.workerId, grouped);
+      }
+      const candidates = [...groupedReplicas].sort(([leftId], [rightId]) => {
+        const left = workersById.get(leftId)?.name ?? leftId;
+        const right = workersById.get(rightId)?.name ?? rightId;
+        return left.localeCompare(right) || leftId.localeCompare(rightId);
+      });
+      const fleetTruncated =
+        candidates.length > EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT;
+      const results = await Promise.all(
+        candidates
+          .slice(0, EXTERNAL_CHAT_DISCOVERY_WORKER_LIMIT)
+          .map(async ([workerId, workerReplicas]) => {
+            const worker = workersById.get(workerId);
+            const workerName = (worker?.name ?? workerId).slice(0, 200);
+            const base = {
+              workerId,
+              workerName,
+              platform: (worker?.platform ?? "unknown").slice(0, 100),
+            };
+            if (!worker?.externalCodexHistory) {
+              return {
+                ...base,
+                status: "unsupported" as const,
+                sources: [],
+                error: {
+                  code: "capability-missing" as const,
+                  message: `${workerName} does not support local Codex history discovery.`,
+                },
+              };
+            }
+            if (!worker.online || !bridge.isConnected(workerId)) {
+              return {
+                ...base,
+                status: "offline" as const,
+                sources: [],
+                error: {
+                  code: "worker-offline" as const,
+                  message: `${workerName} is offline.`,
+                },
+              };
+            }
+            try {
+              const result = externalChatDiscoveryWorkerResultSchema.parse(
+                await bridge.request(
+                  workerId,
+                  {
+                    type: "external.chat-history.discover",
+                    includeArchived,
+                    targets: workerReplicas.map((replica) => ({
+                      projectReplicaId: replica.id,
+                      path: replica.path,
+                      repositoryFingerprint: replica.repositoryFingerprint,
+                      worktrees: worktrees
+                        .filter(
+                          (worktree) =>
+                            worktree.projectSourceId === replica.id &&
+                            worktree.workerId === workerId,
+                        )
+                        .map((worktree) => ({
+                          worktreeId: worktree.id,
+                          path: worktree.path,
+                          isPrimary: worktree.isPrimary,
+                        })),
+                    })),
+                  },
+                  { timeoutMs: EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS },
+                ),
+              );
+              return {
+                ...base,
+                status: "ok" as const,
+                sources: result.sources,
+                error: null,
+              };
+            } catch (error) {
+              const message = errorMessage(error).slice(0, 2_000);
+              const unavailable = error instanceof WorkerUnavailableError;
+              const timedOut = /timed out/iu.test(message);
+              return {
+                ...base,
+                status: unavailable
+                  ? ("offline" as const)
+                  : timedOut
+                    ? ("timed-out" as const)
+                    : ("error" as const),
+                sources: [],
+                error: {
+                  code: unavailable
+                    ? ("worker-offline" as const)
+                    : timedOut
+                      ? ("worker-timeout" as const)
+                      : ("worker-error" as const),
+                  message:
+                    message ||
+                    `Could not inspect Codex history on ${workerName}.`,
+                },
+              };
+            }
+          }),
+      );
+      const truncated =
+        fleetTruncated ||
+        results.some((result) =>
+          result.sources.some((source) => source.truncated),
+        );
+      return reply.send(
+        projectExternalChatDiscoverySchema.parse({
+          projectId: request.params.projectId,
+          observedAt: new Date().toISOString(),
+          partial:
+            truncated ||
+            results.some(
+              (result) =>
+                result.status !== "ok" ||
+                result.sources.some(
+                  (source) => source.availability !== "available",
+                ),
+            ),
+          truncated,
+          workers: results,
+        }),
+      );
+    },
   );
 
   app.get<{ Params: { projectId: string } }>(

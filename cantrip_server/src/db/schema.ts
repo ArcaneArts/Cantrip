@@ -744,6 +744,9 @@ export const workers = pgTable("workers", {
   chatRelocationCapability: boolean("chat_relocation_capability")
     .notNull()
     .default(false),
+  externalCodexHistoryCapability: boolean("external_codex_history_capability")
+    .notNull()
+    .default(false),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
   lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
   unlinkedAt: timestamp("unlinked_at", { withTimezone: true }),

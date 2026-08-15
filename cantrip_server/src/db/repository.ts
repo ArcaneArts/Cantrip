@@ -1340,6 +1340,7 @@ function toWorkerSummary(
     code: worker.codeCapabilities,
     projectReplicas: worker.projectReplicaCapabilities,
     chatRelocation: worker.chatRelocationCapability,
+    externalCodexHistory: worker.externalCodexHistoryCapability,
     startedAt: toISOString(worker.startedAt),
     lastSeenAt: toISOString(worker.lastSeenAt),
     online: Date.now() - worker.lastSeenAt.getTime() <= WORKER_ONLINE_WINDOW_MS,
@@ -4744,6 +4745,12 @@ export class ServerRepository {
         remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
         directBrokerAdvertisement: input.heartbeat.directBroker,
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
+        projectReplicaCapabilities:
+          input.heartbeat.projectReplicas ??
+          unavailableProjectReplicaCapabilities,
+        chatRelocationCapability: input.heartbeat.chatRelocation ?? false,
+        externalCodexHistoryCapability:
+          input.heartbeat.externalCodexHistory ?? false,
         startedAt: new Date(input.heartbeat.startedAt),
         lastSeenAt: now,
         unlinkedAt: null,
@@ -4959,6 +4966,7 @@ export class ServerRepository {
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
       chatRelocationCapability: heartbeat.chatRelocation ?? false,
+      externalCodexHistoryCapability: heartbeat.externalCodexHistory ?? false,
       startedAt: new Date(heartbeat.startedAt),
       lastSeenAt: now,
       unlinkedAt: null,
