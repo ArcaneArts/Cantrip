@@ -4,6 +4,7 @@ import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
   monacoModelPath,
+  structuredFileFormatForPath,
 } from "./explorer-file-language";
 
 describe("explorer file editing", () => {
@@ -14,8 +15,19 @@ describe("explorer file editing", () => {
     expect(monacoLanguageForPath("assets/photo.png")).toBeNull();
   });
 
-  it("opens every supported file in preview mode", () => {
-    expect(defaultExplorerFileMode()).toBe("preview");
+  it("opens structured files visually and other files in preview mode", () => {
+    expect(defaultExplorerFileMode("package.json")).toBe("visual");
+    expect(defaultExplorerFileMode("Cargo.toml")).toBe("visual");
+    expect(defaultExplorerFileMode("compose.yaml")).toBe("visual");
+    expect(defaultExplorerFileMode("workflow.YML")).toBe("visual");
+    expect(defaultExplorerFileMode("README.md")).toBe("preview");
+  });
+
+  it("identifies supported structured file formats", () => {
+    expect(structuredFileFormatForPath("package.json")).toBe("json");
+    expect(structuredFileFormatForPath("Cargo.toml")).toBe("toml");
+    expect(structuredFileFormatForPath("compose.yml")).toBe("yaml");
+    expect(structuredFileFormatForPath("src/App.tsx")).toBeNull();
   });
 
   it("uses collision-safe Monaco model paths", () => {

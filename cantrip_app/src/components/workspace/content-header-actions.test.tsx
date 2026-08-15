@@ -71,6 +71,7 @@ function explorerHeader(): ExplorerHeaderState {
   return {
     back: vi.fn(),
     canEdit: true,
+    canVisual: false,
     directoryPath: "src/App.tsx",
     dirty: true,
     fileMode: "edit",
@@ -144,6 +145,20 @@ describe("ContentHeaderActions", () => {
         />,
       ),
     ).toBe("");
+  });
+
+  it("labels the structured Explorer mode as Visual", () => {
+    const markup = renderToStaticMarkup(
+      <ContentHeaderActions
+        explorer={{
+          ...explorerHeader(),
+          canVisual: true,
+          fileMode: "visual",
+        }}
+      />,
+    );
+
+    expect(markup).toContain('title="Visual mode"');
   });
 
   it("uses icon-only Git actions in the compact variant", () => {

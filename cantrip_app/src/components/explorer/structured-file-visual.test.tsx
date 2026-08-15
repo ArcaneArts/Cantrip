@@ -1,0 +1,39 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+
+import { StructuredFileVisual } from "./structured-file-visual";
+
+describe("StructuredFileVisual", () => {
+  it("renders searchable value-only rows and expandable sections", () => {
+    const markup = renderToStaticMarkup(
+      <StructuredFileVisual
+        content={'{"name":"Cantrip","scripts":{"test":"vitest"}}'}
+        format="json"
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        path="package.json"
+      />,
+    );
+
+    expect(markup).toContain('aria-label="Search structured values"');
+    expect(markup).toContain("Values only · keys and structure are locked");
+    expect(markup).toContain('aria-label="Edit name"');
+    expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("scripts");
+  });
+
+  it("explains how to repair invalid structured source", () => {
+    const markup = renderToStaticMarkup(
+      <StructuredFileVisual
+        content="{invalid"
+        format="json"
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        path="broken.json"
+      />,
+    );
+
+    expect(markup).toContain("Visual mode is unavailable");
+    expect(markup).toContain("Switch to Edit to repair the document");
+  });
+});
