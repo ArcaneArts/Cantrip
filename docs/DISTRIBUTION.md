@@ -98,7 +98,11 @@ certificate supplied through these Actions secrets:
 The hosted workflow does not use App Store Connect credentials and does not
 submit the app or DMG for notarization. A Developer ID certificate is therefore
 not required by the workflow, although macOS may still warn users that the
-unnotarized app has not been checked by Apple.
+unnotarized app has not been checked by Apple. If macOS imports the `.p12` but
+reports no currently valid identity, packaging falls back to a complete ad-hoc
+signature rather than failing the release. The fallback still seals and
+verifies every native runtime, the app bundle, and the DMG, but it does not
+establish an Apple-verified developer identity.
 
 For a signed and notarized local package, install the Developer ID certificate
 in the login keychain, find its exact identity, and provide the downloaded API

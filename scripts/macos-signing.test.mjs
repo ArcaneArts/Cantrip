@@ -54,6 +54,24 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
     assert.ok(nodeCall.includes("--entitlements"));
     assert.ok(codexCall.includes("--timestamp"));
     assert.equal(codexCall.includes("--entitlements"), false);
+
+    const adhocCalls = [];
+    await signMacosRuntime({
+      directory: root,
+      entitlements: "/tmp/node-entitlements.plist",
+      identity: "-",
+      run: (arguments_) => adhocCalls.push(arguments_),
+    });
+    assert.equal(adhocCalls.length, 2);
+    assert.equal(
+      adhocCalls.some((call) => call.includes("--timestamp")),
+      false,
+    );
+    assert.ok(
+      adhocCalls
+        .find((call) => call.at(-1) === node)
+        .includes("--entitlements"),
+    );
   } finally {
     await rm(root, { force: true, recursive: true });
   }
@@ -156,6 +174,68 @@ test("accepts a certificate-signed distribution without notarization", async () 
             ...(target === node ? ["flags=0x10000(runtime)"] : []),
             "Authority=Apple Development: Cantrip Test (TEAMID)",
             "TeamIdentifier=TEAMID",
+          ].join("\n");
+        }
+        return "";
+      },
+    });
+
+    assert.deepEqual(result, {
+      apps: [app],
+      dmgs: [dmg],
+      runtimeBinaryCount: 1,
+    });
+    assert.equal(
+      calls.some(({ command }) => command === "spctl"),
+      false,
+    );
+    assert.equal(
+      calls.some(
+        ({ command, arguments_ }) =>
+          command === "xcrun" && arguments_[0] === "stapler",
+      ),
+      false,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("accepts a fully sealed ad-hoc distribution when explicitly allowed", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-adhoc-"));
+  try {
+    const app = path.join(root, "macos", "Cantrip.app");
+    const node = path.join(app, "Contents", "Resources", "runtime", "node");
+    const dmg = path.join(root, "dmg", "Cantrip.dmg");
+    await mkdir(path.dirname(node), { recursive: true });
+    await mkdir(path.dirname(dmg), { recursive: true });
+    await writeFile(node, thinMachO);
+    await writeFile(dmg, "dmg");
+
+    const calls = [];
+    const result = await verifyMacosDistribution({
+      allowAdhoc: true,
+      bundleDirectory: root,
+      requireNotarization: false,
+      runCommand: (command, arguments_) => {
+        calls.push({ command, arguments_ });
+        const target = arguments_.at(-1);
+        if (target === app && arguments_[0] === "-dvvv") {
+          return [
+            "Identifier=art.cantrip",
+            "flags=0x10000(runtime)",
+            "Signature=adhoc",
+            "TeamIdentifier=not set",
+          ].join("\n");
+        }
+        if (target === node && arguments_.includes("--entitlements")) {
+          return "com.apple.security.cs.allow-jit";
+        }
+        if ((target === node || target === dmg) && arguments_[0] === "-dvvv") {
+          return [
+            ...(target === node ? ["flags=0x10000(runtime)"] : []),
+            "Signature=adhoc",
+            "TeamIdentifier=not set",
           ].join("\n");
         }
         return "";

@@ -292,8 +292,9 @@ jobs:
           identity="$(printf '%s\n' "$identities" | awk -F'"' 'NF >= 3 && $2 != "" {print $2; exit}')"
           if [ -z "$identity" ]; then
             printf '%s\n' "$identities" >&2
-            echo "APPLE_CERTIFICATE does not contain a valid code-signing identity with its private key." >&2
-            exit 1
+            echo "The imported certificate is not a currently valid macOS code-signing identity; using a complete ad-hoc signature instead." >&2
+            identity="-"
+            echo "CANTRIP_ALLOW_ADHOC_MACOS_SIGNING=1" >> "$GITHUB_ENV"
           fi
           rm -f "$certificate"
           echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"

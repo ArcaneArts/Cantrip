@@ -79,6 +79,8 @@ test("signs the macOS DMG without invoking Apple notarization", async () => {
 
   assert.match(workflow, /- name: Import macOS signing certificate/u);
   assert.match(workflow, /APPLE_CERTIFICATE/u);
+  assert.match(workflow, /identity="-"/u);
+  assert.match(workflow, /CANTRIP_ALLOW_ADHOC_MACOS_SIGNING=1/u);
   assert.match(workflow, /CANTRIP_REQUIRE_MACOS_SIGNING: "1"/u);
   assert.doesNotMatch(workflow, /APPSTORE_CONNECT_/u);
   assert.doesNotMatch(workflow, /CANTRIP_REQUIRE_MACOS_NOTARIZATION/u);

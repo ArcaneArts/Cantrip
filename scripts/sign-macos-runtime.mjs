@@ -71,7 +71,8 @@ export async function signMacosRuntime({
     throw new Error(`No Mach-O binaries were found in ${directory}.`);
   }
   for (const binary of binaries) {
-    const arguments_ = ["--force", "--sign", identity, "--timestamp"];
+    const arguments_ = ["--force", "--sign", identity];
+    if (identity !== "-") arguments_.push("--timestamp");
     if (((await stat(binary)).mode & 0o111) !== 0) {
       arguments_.push("--options", "runtime");
     }
