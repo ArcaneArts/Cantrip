@@ -88,4 +88,26 @@ describe("model reasoning picker", () => {
       modelReasoningChoices(mandatory).map(({ effort }) => effort),
     ).toEqual(["low", "high"]);
   });
+
+  it("orders the slider from least to most reasoning", () => {
+    const state = chatReasoningStateSchema.parse({
+      modelId: "sol",
+      reasoningEffort: "medium",
+      options: [
+        { effort: "xhigh", description: null },
+        { effort: "high", description: null },
+        { effort: "low", description: null },
+        { effort: "medium", description: null },
+      ],
+      reasoningMandatory: true,
+      incompleteMetadata: false,
+    });
+
+    expect(modelReasoningChoices(state).map(({ effort }) => effort)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
 });
