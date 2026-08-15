@@ -201,6 +201,135 @@ describe("external Codex chat history discovery", () => {
     });
   });
 
+  it("revalidates and reads a selected source thread without mutating it", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const source = sourceWithResponses(
+      [
+        { data: [thread()], nextCursor: null, backwardsCursor: null },
+        {
+          thread: {
+            ...thread(),
+            turns: [
+              {
+                id: "turn-one",
+                status: "completed",
+                startedAt: 1_786_800_000,
+                completedAt: 1_786_800_010,
+                durationMs: 10_000,
+                error: null,
+                items: [
+                  {
+                    type: "userMessage",
+                    id: "user-one",
+                    clientId: null,
+                    content: [{ type: "text", text: "Import this chat" }],
+                  },
+                  {
+                    type: "futureCodexItem",
+                    id: "future-one",
+                  },
+                  {
+                    type: "agentMessage",
+                    id: "agent-one",
+                    text: "Imported safely.",
+                    phase: "final_answer",
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      requests,
+    );
+    const discovered = await source.discover({
+      includeArchived: false,
+      targets: [target],
+    });
+    const sourceId = discovered[0]!.sourceId;
+
+    const result = await source.read({
+      sourceId,
+      sourceThreadId: thread().id,
+      targets: [target],
+    });
+
+    expect(requests.map(({ method }) => method)).toEqual([
+      "initialize",
+      "thread/list",
+      "initialize",
+      "thread/read",
+    ]);
+    expect(requests[3]?.params).toEqual({
+      threadId: thread().id,
+      includeTurns: true,
+    });
+    expect(result.transcript).toMatchObject({
+      sourceId,
+      sourceThreadId: thread().id,
+      metadata: {
+        title: "Codex import",
+        match: { kind: "worktree-path", projectReplicaId: "replica-one" },
+      },
+      sync: { threadId: thread().id, status: "idle" },
+    });
+    expect(result.transcript.sync.turns[0]?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "userMessage",
+          text: "Import this chat",
+        }),
+        expect.objectContaining({
+          type: "agentMessage",
+          text: "Imported safely.",
+        }),
+        expect.objectContaining({
+          type: "activity",
+          activity: expect.objectContaining({
+            type: "notice",
+            level: "warning",
+          }),
+        }),
+      ]),
+    );
+    expect(
+      requests.some(({ method }) =>
+        ["thread/resume", "thread/start", "turn/start"].includes(method),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a source thread whose project match changed", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const source = sourceWithResponses(
+      [
+        { data: [thread()], nextCursor: null, backwardsCursor: null },
+        {
+          thread: {
+            ...thread({
+              cwd: "/elsewhere/project",
+              gitInfo: { sha: null, branch: null, originUrl: null },
+            }),
+            turns: [],
+          },
+        },
+      ],
+      requests,
+    );
+    const discovered = await source.discover({
+      includeArchived: false,
+      targets: [target],
+    });
+
+    await expect(
+      source.read({
+        sourceId: discovered[0]!.sourceId,
+        sourceThreadId: thread().id,
+        targets: [target],
+      }),
+    ).rejects.toThrow(/no longer belongs/iu);
+  });
+
   it("normalizes Windows paths and common Git remote forms", () => {
     expect(normalizeExternalPath("C:\\Users\\TEST\\.codex", "win32")).toBe(
       "c:\\users\\test\\.codex",

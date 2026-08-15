@@ -74,6 +74,10 @@ import {
   chatGoalCreateSchema,
   chatGoalResponseSchema,
   chatGoalUpdateSchema,
+  chatImportCreateSchema,
+  chatImportJobListSchema,
+  chatImportJobRetrySchema,
+  chatImportJobSummarySchema,
   chatInterruptAcceptedSchema,
   chatPlanAcceptedSchema,
   chatPlanAnswerSchema,
@@ -464,6 +468,11 @@ import {
   effectivePermissionProfile,
   scopedCodeProfileId,
 } from "./chats/execution-helpers.js";
+import { canonicalMessagesFromThreadSync } from "./chats/thread-sync.js";
+import {
+  ChatImportJobExecutor,
+  type ChatImportLiveChange,
+} from "./chat-imports/executor.js";
 import {
   ChatRelocationJobExecutor,
   type ChatRelocationLiveChange,
@@ -501,6 +510,10 @@ import {
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
 } from "./models/reasoning.js";
+import {
+  ChatImportJobConflictError,
+  ChatImportJobNotFoundError,
+} from "./db/chat-import-jobs.js";
 import {
   ChatRelocationJobConflictError,
   ChatRelocationJobNotFoundError,
@@ -1852,6 +1865,60 @@ export async function buildApp({
     app.log,
     publishProjectReplicaJobChange,
   );
+  const publishChatImportChange = (change: ChatImportLiveChange): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "chat-import-job",
+        action: "invalidated",
+        entityId: change.job.id,
+        revision: change.job.stateRevision,
+        payload: null,
+      });
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project",
+        action: "invalidated",
+        entityId: change.job.projectId,
+        revision: null,
+        payload: null,
+      });
+      if (change.job.chatId) {
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "project", projectId: change.job.projectId },
+          resource: "chat",
+          action: "invalidated",
+          entityId: change.job.chatId,
+          revision: null,
+          payload: null,
+        });
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "chat", chatId: change.job.chatId },
+          resource: "chat-message",
+          action: "invalidated",
+          entityId: change.job.chatId,
+          revision: null,
+          payload: null,
+        });
+      }
+    } catch (error) {
+      app.log.error(
+        { err: error, chatImportJobId: change.job.id },
+        "Could not publish chat import change",
+      );
+    }
+  };
+  const chatImportJobExecutor = new ChatImportJobExecutor(
+    repository,
+    bridge,
+    app.log,
+    publishChatImportChange,
+  );
   const publishChatRelocationChange = (
     change: ChatRelocationLiveChange,
   ): void => {
@@ -1953,6 +2020,9 @@ export async function buildApp({
   await chatRelocationJobExecutor.recoverAfterRestart(!coordinator);
   chatRelocationJobExecutor.queueAvailable();
   chatRelocationJobExecutor.startRecoverySweep();
+  await chatImportJobExecutor.recoverAfterRestart(!coordinator);
+  chatImportJobExecutor.queueAvailable();
+  chatImportJobExecutor.startRecoverySweep();
   await workflowExecutor.recoverAfterRestart(recoverGlobalStartupState);
   workflowExecutor.startRecoverySweep();
   await workflowExecutor.expireGates();
@@ -17399,80 +17469,29 @@ export async function buildApp({
             worktreeId: syncExecution.worktreeId,
           }
         : undefined;
-      for (const turn of sync.turns) {
-        for (const item of turn.items) {
-          if (item.type === "userMessage") {
-            await upsertLiveChatMessage(
-              applicationOwnerId(),
-              context.chatId,
-              {
-                role: "user",
-                content: [{ type: "text", text: item.text }],
-                idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
-              },
-              syncAttribution,
-            );
-          } else if (item.type === "agentMessage") {
-            await upsertLiveChatMessage(
-              applicationOwnerId(),
-              context.chatId,
-              {
-                role: "assistant",
-                content: [
-                  {
-                    type: "text",
-                    text: item.text,
-                    phase: item.phase,
-                    correlation: item.correlation,
-                  },
-                ],
-                idempotencyKey: `codex-sync:${turn.id}:${item.id}`,
-              },
-              syncAttribution,
-            );
-          } else if (item.type === "activity") {
-            if (item.activity.type === "usage") {
-              const usageTurnId = item.activity.correlation?.turnId ?? turn.id;
-              await recordRuntimeTokenUsage(
-                `chat:${context.chatId}:${usageTurnId}`,
-                context.projectId,
-                context.chatId,
-                runtime,
-                item.activity.last,
-              );
-            }
-            await upsertLiveChatMessage(
-              applicationOwnerId(),
-              context.chatId,
-              {
-                role: "assistant",
-                content: [{ type: "activity", activity: item.activity }],
-                idempotencyKey: `codex-sync:${turn.id}:${item.activity.id}`,
-              },
-              syncAttribution,
-            );
-          }
-        }
-        if (turn.status === "failed" || turn.status === "interrupted") {
-          await upsertLiveChatMessage(
-            applicationOwnerId(),
+      const canonicalMessages = canonicalMessagesFromThreadSync(sync, {
+        idempotencyPrefix: "codex-sync",
+        interruptedMessage: "Turn interrupted in the Codex console.",
+        failedMessage: "The Codex console turn failed.",
+      });
+      for (const entry of canonicalMessages) {
+        if (entry.activity?.type === "usage") {
+          const usageTurnId =
+            entry.activity.correlation?.turnId ?? entry.turnId;
+          await recordRuntimeTokenUsage(
+            `chat:${context.chatId}:${usageTurnId}`,
+            context.projectId,
             context.chatId,
-            {
-              role: "system",
-              content: [
-                {
-                  type: "text",
-                  text:
-                    turn.status === "interrupted"
-                      ? "Turn interrupted in the Codex console."
-                      : "The Codex console turn failed.",
-                },
-              ],
-              idempotencyKey: `codex-sync:${turn.id}:status`,
-            },
-            syncAttribution,
+            runtime,
+            entry.activity.last,
           );
         }
+        await upsertLiveChatMessage(
+          applicationOwnerId(),
+          context.chatId,
+          entry.message,
+          syncAttribution,
+        );
       }
       if (sync.turns.length > 0) {
         if (syncExecution.executionLaneId && sync.status !== "running") {
@@ -19336,6 +19355,12 @@ export async function buildApp({
             "Could not resume chat relocation jobs",
           );
         });
+      void chatImportJobExecutor.workerConnected(workerId).catch((error) => {
+        app.log.error(
+          { err: error, workerId },
+          "Could not resume chat import jobs",
+        );
+      });
       void synchronizeTerminalServicesForWorker(workerId).catch((error) => {
         app.log.error(
           { err: error, workerId },
@@ -19393,6 +19418,112 @@ export async function buildApp({
     },
   );
 
+  app.post<{
+    Params: { projectId: string };
+    Body: unknown;
+  }>("/api/projects/:projectId/chat-imports", async (request, reply) => {
+    const ownerId = applicationOwnerId();
+    const input = chatImportCreateSchema.parse(request.body);
+    try {
+      const prepared = await Promise.all(
+        input.imports.map(async (selection) => {
+          const { placement } =
+            await repository.resolveProjectExecutionPlacement(
+              ownerId,
+              request.params.projectId,
+              "chat",
+              selection.target,
+              (workerId) => bridge.isConnected(workerId),
+            );
+          return { selection, placement };
+        }),
+      );
+      const jobs = [];
+      for (const { selection, placement } of prepared) {
+        jobs.push(
+          await repository.chatImportJobs.create(
+            ownerId,
+            request.params.projectId,
+            {
+              sourceKind: selection.sourceKind,
+              sourceWorkerId: selection.sourceWorkerId,
+              sourceId: selection.sourceId,
+              sourceThreadId: selection.sourceThreadId,
+              targetPlacement: placement,
+              modelId: selection.modelId,
+              permissionProfileId: selection.permissionProfileId,
+              planMode: selection.planMode,
+              idempotencyKey: selection.idempotencyKey,
+            },
+          ),
+        );
+      }
+      for (const job of jobs) {
+        publishChatImportChange({ ownerId, job });
+      }
+      chatImportJobExecutor.queueAvailable();
+      return reply.code(202).send(chatImportJobListSchema.parse(jobs));
+    } catch (error) {
+      if (error instanceof ChatImportJobNotFoundError) {
+        return reply.code(404).send({ error: error.message });
+      }
+      if (
+        error instanceof ChatImportJobConflictError ||
+        error instanceof ExecutionPlacementUnavailableError
+      ) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/chat-imports",
+    async (request, reply) => {
+      const jobs = await repository.chatImportJobs.list(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return jobs
+        ? reply.send(chatImportJobListSchema.parse(jobs))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.get<{ Params: { jobId: string } }>(
+    "/api/chat-imports/:jobId",
+    async (request, reply) => {
+      const job = await repository.chatImportJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      return job
+        ? reply.send(chatImportJobSummarySchema.parse(job))
+        : reply.code(404).send({ error: "Chat import not found." });
+    },
+  );
+
+  app.post<{ Params: { jobId: string }; Body: unknown }>(
+    "/api/chat-imports/:jobId/retry",
+    async (request, reply) => {
+      const input = chatImportJobRetrySchema.parse(request.body);
+      const job = await repository.chatImportJobs.retry(
+        applicationOwnerId(),
+        request.params.jobId,
+        input.stateRevision,
+      );
+      if (!job) {
+        return reply.code(409).send({
+          error:
+            "The import changed or cannot be retried in its current state.",
+        });
+      }
+      publishChatImportChange({ ownerId: applicationOwnerId(), job });
+      chatImportJobExecutor.queueAvailable();
+      return reply.send(chatImportJobSummarySchema.parse(job));
+    },
+  );
+
   app.addHook("onClose", async () => {
     livePublishingEnabled = false;
     unsubscribeLiveCoordination?.();
@@ -19418,6 +19549,7 @@ export async function buildApp({
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
     chatRelocationJobExecutor.stop();
+    chatImportJobExecutor.stop();
     workflowExecutor.stop();
     app.log.info(
       { live: liveHub.stats() },
@@ -19433,6 +19565,7 @@ export async function buildApp({
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
+    await chatImportJobExecutor.drain();
     await workflowExecutor.drain();
     await database.close();
   });

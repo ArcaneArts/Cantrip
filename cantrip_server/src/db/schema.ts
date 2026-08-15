@@ -4,6 +4,9 @@ import type {
   ChatAttachmentKind,
   ChatAttachmentSource,
   ChatAttachmentSummary,
+  ChatImportError,
+  ChatImportProgress,
+  ChatImportState,
   ChatMessageContent,
   ChatRelocationContextPayload,
   ChatRelocationErrorCode,
@@ -28,6 +31,8 @@ import type {
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
   ExecutionPlacement,
+  ExternalChatSourceKind,
+  ExternalChatTranscriptMetadata,
   TunnelDestinationEndpoint,
   TunnelSourceEndpoint,
   WorktreeStatusResult,
@@ -2056,6 +2061,96 @@ export const chatRelocationJobs = pgTable(
     check("chat_relocation_jobs_attempt_check", sql`${table.attempt} >= 0`),
     check(
       "chat_relocation_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const chatImportJobs = pgTable(
+  "chat_import_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    sourceKind: text("source_kind").$type<ExternalChatSourceKind>().notNull(),
+    sourceWorkerId: text("source_worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    sourceId: text("source_id").notNull(),
+    sourceThreadId: text("source_thread_id").notNull(),
+    targetPlacement: jsonb("target_placement")
+      .$type<ExecutionPlacement>()
+      .notNull(),
+    requestedModelId: text("requested_model_id").references(
+      () => modelProfiles.id,
+      { onDelete: "set null" },
+    ),
+    requestedPermissionProfileId: text("requested_permission_profile_id"),
+    requestedPlanMode: text("requested_plan_mode").notNull().default("default"),
+    state: text("state").$type<ChatImportState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadFingerprint: text("payload_fingerprint").notNull(),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    progress: jsonb("progress").$type<ChatImportProgress>().notNull(),
+    sourceMetadata:
+      jsonb("source_metadata").$type<ExternalChatTranscriptMetadata>(),
+    lastErrorCode: text("last_error_code").$type<ChatImportError["code"]>(),
+    lastErrorMessage: text("last_error_message"),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("chat_import_jobs_owner_idempotency_unique").on(
+      table.ownerId,
+      table.idempotencyKey,
+    ),
+    uniqueIndex("chat_import_jobs_source_thread_unique").on(
+      table.ownerId,
+      table.sourceKind,
+      table.sourceWorkerId,
+      table.sourceId,
+      table.sourceThreadId,
+    ),
+    uniqueIndex("chat_import_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    index("chat_import_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("chat_import_jobs_project_created_index").on(
+      table.projectId,
+      table.createdAt,
+    ),
+    check(
+      "chat_import_jobs_state_check",
+      sql`${table.state} IN ('queued', 'reading', 'importing', 'awaiting-hydration', 'hydrating', 'succeeded', 'blocked', 'failed', 'cancelled')`,
+    ),
+    check("chat_import_jobs_revision_check", sql`${table.stateRevision} > 0`),
+    check("chat_import_jobs_attempt_check", sql`${table.attempt} >= 0`),
+    check(
+      "chat_import_jobs_error_shape_check",
       sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
     ),
   ],
