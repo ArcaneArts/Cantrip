@@ -65,13 +65,19 @@ describe("desktop worker bridge", () => {
   it("lists reusable identities without exposing credentials", async () => {
     tauri.isTauri.mockReturnValue(true);
     tauri.invoke.mockResolvedValue([
-      "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+      {
+        repositoryCount: 2,
+        workerId: "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+      },
     ]);
 
     await expect(
       listDesktopWorkerCandidates("https://cantrip.example"),
     ).resolves.toEqual([
-      "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+      {
+        repositoryCount: 2,
+        workerId: "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+      },
     ]);
     expect(tauri.invoke).toHaveBeenCalledWith(
       "list_desktop_worker_candidates",
