@@ -1,0 +1,299 @@
+name: Release native bundles
+
+on:
+  push:
+    branches:
+      - release
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  server:
+    name: Server (${{ matrix.target }})
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: blacksmith-6vcpu-macos-15
+            target: darwin-arm64
+          - runner: blacksmith-2vcpu-windows-2025
+            target: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:server --target ${{ matrix.target }}
+      - run: node scripts/archive-distribution.mjs server --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-server-${{ matrix.target }}
+          path: artifacts/bundles/${{ matrix.target }}/cantrip-server-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  worker:
+    name: Worker (${{ matrix.target }})
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: blacksmith-6vcpu-macos-15
+            target: darwin-arm64
+          - runner: blacksmith-8vcpu-windows-2025
+            target: win32-x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enable long Windows paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - name: Install Windows native prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install nasm --no-progress --yes
+          nasm -v
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: worker-${{ matrix.target }}
+          workspaces: cantrip_cli -> target
+      - name: Restore verified Codex runtime
+        uses: actions/cache@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/bundle
+          key: cantrip-codex-bundle-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream.json', 'cantrip_codex/upstream.files.json', 'cantrip_codex/patches/**', 'scripts/cantrip-codex/**') }}
+      - name: Restore Codex rusty_v8 downloads
+        uses: actions/cache@v4
+        with:
+          path: cantrip_codex/.build/${{ matrix.target }}/rusty-v8
+          key: cantrip-codex-rusty-v8-${{ matrix.target }}-${{ hashFiles('cantrip_codex/upstream/codex-rs/Cargo.lock') }}
+          restore-keys: |
+            cantrip-codex-rusty-v8-${{ matrix.target }}-
+      - name: Resolve Cantrip Code build fingerprint
+        id: code-fingerprint
+        shell: bash
+        run: |
+          fingerprint="$(node --input-type=module -e "import { calculateBuildFingerprint } from './scripts/cantrip-code/build-lib.mjs'; process.stdout.write(await calculateBuildFingerprint('${{ matrix.target }}'))")"
+          echo "value=$fingerprint" >> "$GITHUB_OUTPUT"
+      - name: Restore verified Cantrip Code distribution
+        uses: actions/cache@v4
+        with:
+          path: .cantrip-code/cache/builds/${{ matrix.target }}/${{ steps.code-fingerprint.outputs.value }}
+          key: cantrip-code-build-${{ matrix.target }}-${{ steps.code-fingerprint.outputs.value }}
+      - name: Restore Cantrip Code build downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cantrip-code/cache/npm
+            .cantrip-code/cache/toolchains
+          key: cantrip-code-dependencies-${{ matrix.target }}-${{ hashFiles('cantrip_code/upstream/.nvmrc', 'cantrip_code/upstream/package-lock.json') }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package:worker --target ${{ matrix.target }}
+      - run: node scripts/archive-distribution.mjs worker --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-worker-${{ matrix.target }}
+          path: artifacts/bundles/${{ matrix.target }}/cantrip-worker-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  client:
+    name: Desktop (${{ matrix.target }})
+    needs: [server, worker]
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: blacksmith-6vcpu-macos-15
+            target: darwin-arm64
+            installer: artifacts/bundles/darwin-arm64/*.dmg
+          - runner: blacksmith-4vcpu-windows-2025
+            target: win32-x64
+            installer: artifacts/bundles/win32-x64/*.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enable long Windows paths
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: git config --global core.longpaths true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          shared-key: desktop-${{ matrix.target }}
+          workspaces: cantrip_app/src-tauri -> target
+      - uses: actions/download-artifact@v4
+        with:
+          name: cantrip-server-${{ matrix.target }}
+          path: artifacts/incoming/server
+      - uses: actions/download-artifact@v4
+        with:
+          name: cantrip-worker-${{ matrix.target }}
+          path: artifacts/incoming/worker
+      - name: Materialize embedded services
+        shell: bash
+        run: |
+          tar -xzf "artifacts/incoming/server/cantrip-server-${{ matrix.target }}.tar.gz" -C artifacts
+          tar -xzf "artifacts/incoming/worker/cantrip-worker-${{ matrix.target }}.tar.gz" -C artifacts
+      - run: pnpm install --frozen-lockfile
+      - name: Import macOS Developer ID certificate
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE:?Configure the APPLE_CERTIFICATE Actions secret.}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Configure the APPLE_CERTIFICATE_PASSWORD Actions secret.}"
+          : "${KEYCHAIN_PASSWORD:?Configure the KEYCHAIN_PASSWORD Actions secret.}"
+          certificate="$RUNNER_TEMP/cantrip-developer-id.p12"
+          keychain="$RUNNER_TEMP/cantrip-signing.keychain-db"
+          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A -out "$certificate"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security default-keychain -s "$keychain"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -t 3600 -u "$keychain"
+          security import "$certificate" \
+            -k "$keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          if [ -z "$identity" ]; then
+            echo "The imported certificate does not contain a Developer ID Application identity." >&2
+            exit 1
+          fi
+          rm -f "$certificate"
+          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "CANTRIP_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+      - name: Package signed macOS DMG
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          CANTRIP_REQUIRE_MACOS_SIGNING: "1"
+        run: |
+          unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          unset APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+          pnpm package:app --target ${{ matrix.target }} --from-artifacts
+      - name: Package Windows NSIS installer
+        if: matrix.target == 'win32-x64'
+        env:
+          CANTRIP_WINDOWS_BUNDLE: nsis
+        run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
+      - run: node scripts/archive-distribution.mjs client --target ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-desktop-${{ matrix.target }}
+          path: ${{ matrix.installer }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove temporary signing keychain
+        if: always() && matrix.target == 'darwin-arm64'
+        shell: bash
+        run: |
+          if [ -n "${CANTRIP_SIGNING_KEYCHAIN:-}" ]; then
+            security delete-keychain "$CANTRIP_SIGNING_KEYCHAIN" || true
+          fi
+
+  release:
+    name: Publish GitHub release
+    needs: [server, worker, client]
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cantrip-*
+          merge-multiple: true
+          path: release-assets
+      - name: Create versioned release and upload native artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node scripts/version.mjs)"
+          tag="v${version}"
+          mapfile -d '' files < <(find release-assets -type f -print0 | sort -z)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release assets were downloaded." >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            target="$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)"
+            if [ "$target" != "$GITHUB_SHA" ]; then
+              echo "Release $tag already targets $target instead of $GITHUB_SHA." >&2
+              exit 1
+            fi
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" \
+              --generate-notes \
+              --target "$GITHUB_SHA" \
+              --title "Cantrip ${version}"
+          fi
