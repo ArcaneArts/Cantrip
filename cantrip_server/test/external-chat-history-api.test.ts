@@ -613,6 +613,25 @@ describe.sequential("external Codex chat history discovery API", () => {
     ).toHaveLength(1);
   });
 
+  it("annotates metadata with durable already-imported state", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/external-chat-history`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const result = projectExternalChatDiscoverySchema.parse(response.json());
+    expect(
+      result.workers.find(({ workerId }) => workerId === "local-worker")
+        ?.sources[0]?.threads[0]?.existingImport,
+    ).toMatchObject({
+      projectId,
+      projectName: "Cantrip",
+      chatId: expect.any(String),
+      state: "succeeded",
+    });
+  });
+
   it("relays safe media and keeps unavailable media as visible placeholders", async () => {
     requests.length = 0;
     attachmentUploads.clear();

@@ -1,4 +1,7 @@
-import type { ChatImportJobSummary } from "@cantrip/protocol";
+import type {
+  ChatImportJobSummary,
+  ExternalChatImportReference,
+} from "@cantrip/protocol";
 import {
   Archive,
   CircleAlert,
@@ -22,6 +25,18 @@ const updatedDate = new Intl.DateTimeFormat(undefined, {
   timeStyle: "short",
 });
 
+function externalImportReferenceLabel(
+  reference: ExternalChatImportReference,
+): string {
+  if (reference.state === "succeeded") {
+    return `Imported to ${reference.projectName}`;
+  }
+  if (["blocked", "failed", "cancelled"].includes(reference.state)) {
+    return `Import needs attention in ${reference.projectName}`;
+  }
+  return `Importing in ${reference.projectName}`;
+}
+
 export function ExternalChatCandidateRow({
   candidate,
   checked,
@@ -36,6 +51,7 @@ export function ExternalChatCandidateRow({
   onCheckedChange(checked: boolean): void;
 }) {
   const job = candidate.existingJob;
+  const importReference = !job ? candidate.existingImport : null;
   return (
     <label
       className={cn(
@@ -66,6 +82,11 @@ export function ExternalChatCandidateRow({
               className="text-[9px]"
             >
               {importStateLabel(job)}
+            </Badge>
+          ) : null}
+          {importReference ? (
+            <Badge variant="outline" className="text-[9px]">
+              {externalImportReferenceLabel(importReference)}
             </Badge>
           ) : null}
         </span>

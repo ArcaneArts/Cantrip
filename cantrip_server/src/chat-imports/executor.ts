@@ -36,6 +36,7 @@ import {
 
 interface ChatImportLogger {
   error(context: Record<string, unknown>, message: string): void;
+  info(context: Record<string, unknown>, message: string): void;
   warn(context: Record<string, unknown>, message: string): void;
 }
 
@@ -268,7 +269,7 @@ export class ChatImportJobExecutor {
               claimed.commandId,
               mapped,
             );
-      this.onChanged({ ownerId: claimed.ownerId, job: settled });
+      this.#publishFailure(claimed, settled);
     } finally {
       clearInterval(renewalTimer);
     }
@@ -285,7 +286,7 @@ export class ChatImportJobExecutor {
         claimed.commandId,
         importError(new WorkerUnavailableError("Source worker is offline.")),
       );
-      this.onChanged({ ownerId: claimed.ownerId, job: blocked });
+      this.#publishFailure(claimed, blocked);
       return;
     }
     if (!worker.externalCodexHistory) {
@@ -298,7 +299,7 @@ export class ChatImportJobExecutor {
           retryable: false,
         },
       );
-      this.onChanged({ ownerId: claimed.ownerId, job: blocked });
+      this.#publishFailure(claimed, blocked);
       return;
     }
     const context = await this.repository.chatImportJobs.readContext(
@@ -315,7 +316,7 @@ export class ChatImportJobExecutor {
           retryable: false,
         },
       );
-      this.onChanged({ ownerId: claimed.ownerId, job: failed });
+      this.#publishFailure(claimed, failed);
       return;
     }
     const result = externalChatReadWorkerResultSchema.parse(
@@ -556,7 +557,7 @@ export class ChatImportJobExecutor {
           retryable: false,
         },
       );
-      this.onChanged({ ownerId: claimed.ownerId, job: blocked });
+      this.#publishFailure(claimed, blocked);
       return;
     }
     const missingMethods = REQUIRED_HYDRATION_METHODS.filter(
@@ -572,7 +573,7 @@ export class ChatImportJobExecutor {
           retryable: false,
         },
       );
-      this.onChanged({ ownerId: claimed.ownerId, job: blocked });
+      this.#publishFailure(claimed, blocked);
       return;
     }
     const hydration = await this.repository.chatImportJobs.hydrationContext(
@@ -631,7 +632,41 @@ export class ChatImportJobExecutor {
         providerAccountId: runtime.provider.accountId,
       },
     );
+    this.logger.info(
+      {
+        attachmentCount: completed.attachmentCount,
+        attachmentWarningCount: completed.attachmentWarningCount,
+        attempt: completed.attempt,
+        chatId: completed.chatId,
+        chatImportJobId: completed.id,
+        projectId: completed.projectId,
+        sourceWorkerId: completed.sourceWorkerId,
+        targetWorkerId: completed.targetPlacement.workerId,
+      },
+      "Chat import completed",
+    );
     this.onChanged({ ownerId: claimed.ownerId, job: completed });
+  }
+
+  #publishFailure(
+    claimed: ClaimedChatImportJob,
+    settled: ChatImportJobSummary,
+  ): void {
+    this.logger.warn(
+      {
+        attempt: settled.attempt,
+        chatImportJobId: settled.id,
+        errorCode: settled.error?.code ?? "unknown",
+        projectId: settled.projectId,
+        sourceWorkerId: settled.sourceWorkerId,
+        state: settled.state,
+        targetWorkerId: settled.targetPlacement.workerId,
+      },
+      settled.state === "blocked"
+        ? "Chat import needs attention"
+        : "Chat import failed",
+    );
+    this.onChanged({ ownerId: claimed.ownerId, job: settled });
   }
 
   async #selectRuntime(

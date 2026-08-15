@@ -6774,6 +6774,26 @@ export const externalChatThreadStatusSchema = z.enum([
   "system-error",
 ]);
 
+export const chatImportStateSchema = z.enum([
+  "queued",
+  "reading",
+  "importing",
+  "awaiting-hydration",
+  "hydrating",
+  "succeeded",
+  "blocked",
+  "failed",
+  "cancelled",
+]);
+
+export const externalChatImportReferenceSchema = z.object({
+  jobId: z.string().uuid(),
+  projectId: z.string().min(1).max(200),
+  projectName: z.string().min(1).max(200),
+  chatId: z.string().min(1).max(200).nullable(),
+  state: chatImportStateSchema,
+});
+
 export const externalChatThreadMatchSchema = z.object({
   kind: z.enum(["worktree-path", "replica-path", "git-origin"]),
   projectReplicaId: z.string().min(1).max(200),
@@ -6800,6 +6820,7 @@ export const externalChatThreadMetadataSchema = z.object({
     })
     .nullable(),
   match: externalChatThreadMatchSchema,
+  existingImport: externalChatImportReferenceSchema.nullable().default(null),
 });
 
 export const externalChatSourceSchema = z.object({
@@ -6871,7 +6892,10 @@ export const externalChatDiscoveryWorkerResultSchema = z.object({
 });
 
 export const externalChatTranscriptMetadataSchema =
-  externalChatThreadMetadataSchema.omit({ archived: true });
+  externalChatThreadMetadataSchema.omit({
+    archived: true,
+    existingImport: true,
+  });
 
 export const externalChatAttachmentSchema = z
   .object({
@@ -6997,18 +7021,6 @@ export const externalChatAttachmentReadResultSchema = z.discriminatedUnion(
     }),
   ],
 );
-
-export const chatImportStateSchema = z.enum([
-  "queued",
-  "reading",
-  "importing",
-  "awaiting-hydration",
-  "hydrating",
-  "succeeded",
-  "blocked",
-  "failed",
-  "cancelled",
-]);
 
 export const chatImportErrorSchema = z.object({
   code: z.enum([
@@ -9459,6 +9471,9 @@ export type ExternalChatSourceAvailability = z.infer<
 >;
 export type ExternalChatThreadStatus = z.infer<
   typeof externalChatThreadStatusSchema
+>;
+export type ExternalChatImportReference = z.infer<
+  typeof externalChatImportReferenceSchema
 >;
 export type ExternalChatThreadMatch = z.infer<
   typeof externalChatThreadMatchSchema

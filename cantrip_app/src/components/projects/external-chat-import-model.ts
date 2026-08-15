@@ -1,5 +1,6 @@
 import type {
   ChatImportJobSummary,
+  ExternalChatImportReference,
   ExternalChatSource,
   ExternalChatThreadMetadata,
   ProjectExternalChatDiscovery,
@@ -16,6 +17,7 @@ export const activeImportStates = new Set<ChatImportJobSummary["state"]>([
 ]);
 
 export interface ExternalChatImportCandidate {
+  existingImport: ExternalChatImportReference | null;
   existingJob: ChatImportJobSummary | null;
   key: string;
   source: ExternalChatSource;
@@ -57,6 +59,7 @@ export function externalChatImportCandidates(
             thread.sourceThreadId,
           );
           return {
+            existingImport: thread.existingImport,
             existingJob: jobsBySource.get(key) ?? null,
             key,
             source,
@@ -89,6 +92,7 @@ export function filterExternalChatImportCandidates(
       thread.preview,
       thread.cwd,
       thread.modelProvider,
+      thread.existingImport?.projectName,
       thread.git?.branch,
       thread.git?.originUrl,
     ].some((value) => value?.toLowerCase().includes(normalized)),
@@ -99,7 +103,10 @@ export function selectableExternalChatCandidateKeys(
   candidates: ExternalChatImportCandidate[],
 ): string[] {
   return candidates
-    .filter(({ existingJob }) => existingJob === null)
+    .filter(
+      ({ existingImport, existingJob }) =>
+        existingImport === null && existingJob === null,
+    )
     .slice(0, 50)
     .map(({ key }) => key);
 }

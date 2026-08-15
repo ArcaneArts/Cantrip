@@ -16,7 +16,10 @@ import {
   selectableExternalChatCandidateKeys,
   summarizeChatImportJobs,
 } from "./external-chat-import-model";
-import { ImportJobRow } from "./external-chat-import-rows";
+import {
+  ExternalChatCandidateRow,
+  ImportJobRow,
+} from "./external-chat-import-rows";
 
 const now = "2026-08-15T12:00:00.000Z";
 const project = {
@@ -148,6 +151,7 @@ const discovery = {
                 projectReplicaId: "replica-one",
                 worktreeId: worktree.id,
               },
+              existingImport: null,
             },
             {
               sourceThreadId: "thread-two",
@@ -167,6 +171,7 @@ const discovery = {
                 projectReplicaId: "replica-one",
                 worktreeId: null,
               },
+              existingImport: null,
             },
           ],
         },
@@ -200,6 +205,34 @@ describe("external Codex chat import settings", () => {
     expect(chatImportIdempotencyKey(candidates[1]!).length).toBeLessThanOrEqual(
       200,
     );
+
+    const importedElsewhere: ProjectExternalChatDiscovery =
+      structuredClone(discovery);
+    importedElsewhere.workers[0]!.sources[0]!.threads[1]!.existingImport = {
+      jobId: "00000000-0000-4000-8000-000000000009",
+      projectId: "project-two",
+      projectName: "Cantrip Mirror",
+      chatId: "chat-two",
+      state: "succeeded",
+    };
+    const crossProjectCandidates = externalChatImportCandidates(
+      importedElsewhere,
+      [importJob()],
+    );
+    expect(selectableExternalChatCandidateKeys(crossProjectCandidates)).toEqual(
+      [],
+    );
+    expect(
+      renderToStaticMarkup(
+        <ExternalChatCandidateRow
+          candidate={crossProjectCandidates[1]!}
+          checked={false}
+          disabled
+          matchedWorktreeLabel="Matched by Git origin"
+          onCheckedChange={vi.fn()}
+        />,
+      ),
+    ).toContain("Imported to Cantrip Mirror");
   });
 
   it("summarizes live progress and exposes retry and navigation actions", () => {

@@ -122,6 +122,78 @@ describe("external Codex chat history discovery", () => {
     ]);
   });
 
+  it("discovers the default Windows user history without a CODEX_HOME override", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const openedHomes: string[] = [];
+    const source = new CodexExternalChatHistorySource({
+      binary: "C:\\Cantrip\\codex.exe",
+      environment: {},
+      homeDirectory: "C:\\Users\\Tester",
+      managedDataDirectory: "C:\\Users\\Tester\\AppData\\Roaming\\Cantrip",
+      platform: "win32",
+      pathExists: async () => true,
+      resolvePath: async (candidate) => candidate,
+      resolveGitOrigin: async () => null,
+      readRuntimeVersion: async () => "codex-cli 0.147.0",
+      createClient: (codexHome) => {
+        openedHomes.push(codexHome);
+        return {
+          async request(method, params) {
+            requests.push({ method, params });
+            if (method === "initialize") {
+              return {
+                id: 1,
+                result: {
+                  userAgent: "codex-cli/0.147.0",
+                  platformFamily: "windows",
+                  platformOs: "windows",
+                },
+              };
+            }
+            return {
+              id: 2,
+              result: {
+                data: [],
+                nextCursor: null,
+                backwardsCursor: null,
+              },
+            };
+          },
+          notify() {},
+          close() {},
+        };
+      },
+    });
+
+    const result = await source.discover({
+      includeArchived: false,
+      targets: [
+        {
+          ...target,
+          path: "C:\\src\\Cantrip",
+          worktrees: [
+            {
+              worktreeId: "worktree-primary",
+              path: "C:\\src\\Cantrip",
+              isPrimary: true,
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(openedHomes).toEqual(["C:\\Users\\Tester\\.codex"]);
+    expect(requests.map(({ method }) => method)).toEqual([
+      "initialize",
+      "thread/list",
+    ]);
+    expect(result[0]).toMatchObject({
+      availability: "available",
+      homeLabel: "~/.codex",
+      platform: "win32",
+    });
+  });
+
   it("paginates metadata-only listing and matches paths and Git origins", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
     const source = sourceWithResponses(

@@ -66,6 +66,14 @@ The probe deliberately sends invalid parameters, so discovering a mutation
 method cannot install a plugin, change a skill, import configuration, or start
 OAuth.
 
+External ChatGPT Codex history import uses the same pinned version boundary but
+runs a separate source App Server against the external data home. Discovery is
+limited to state-database-only `thread/list`; a selected import uses read-only
+`thread/read` with turns. Cantrip never resumes or mutates that source thread.
+Destination hydration additionally requires `thread/start`, `thread/read`, and
+`thread/inject_items`; missing methods produce a durable, explicit import
+compatibility state. See [the import contract](CODEX_CHAT_IMPORT.md).
+
 ## Compatibility states
 
 - `compatible`: the version is in range, initialization validates, every core

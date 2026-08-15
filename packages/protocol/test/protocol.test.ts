@@ -3459,6 +3459,7 @@ describe("Cantrip protocol", () => {
       truncated: false,
     });
     expect(workerResult.sources[0]?.threads).toHaveLength(1);
+    expect(workerResult.sources[0]?.threads[0]?.existingImport).toBeNull();
     expect(
       projectExternalChatDiscoverySchema.parse({
         projectId: "project-one",
@@ -3471,12 +3472,38 @@ describe("Cantrip protocol", () => {
             workerName: "Worker One",
             platform: "darwin",
             status: "ok",
-            sources: workerResult.sources,
+            sources: workerResult.sources.map((source) => ({
+              ...source,
+              threads: source.threads.map((thread) => ({
+                ...thread,
+                existingImport: {
+                  jobId: "00000000-0000-4000-8000-000000000001",
+                  projectId: "project-one",
+                  projectName: "Cantrip",
+                  chatId: "chat-one",
+                  state: "succeeded",
+                },
+              })),
+            })),
             error: null,
           },
         ],
-      }).workers[0]?.status,
-    ).toBe("ok");
+      }).workers[0],
+    ).toMatchObject({
+      status: "ok",
+      sources: [
+        {
+          threads: [
+            {
+              existingImport: {
+                projectName: "Cantrip",
+                state: "succeeded",
+              },
+            },
+          ],
+        },
+      ],
+    });
   });
 
   it("validates Cantrip Code capabilities, durable tabs, and worker commands", () => {

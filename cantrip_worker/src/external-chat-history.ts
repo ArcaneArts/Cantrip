@@ -502,6 +502,7 @@ function toMetadata(
     cliVersion: thread.cliVersion || null,
     git: thread.gitInfo,
     match,
+    existingImport: null,
   };
 }
 
@@ -729,7 +730,11 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
         sourceThread.cwd,
         attachmentIdsByItemId,
       );
-      const { archived: _archived, ...transcriptMetadata } = metadata;
+      const {
+        archived: _archived,
+        existingImport: _existingImport,
+        ...transcriptMetadata
+      } = metadata;
       return externalChatReadWorkerResultSchema.parse({
         transcript: {
           sourceId: resolvedSourceId,

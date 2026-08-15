@@ -14924,9 +14924,43 @@ export async function buildApp({
             }
           }),
       );
+      const importReferences =
+        await repository.chatImportJobs.listSourceReferences(
+          ownerId,
+          results.map(({ workerId }) => workerId),
+        );
+      const importsBySource = new Map(
+        importReferences.map((entry) => [
+          [
+            entry.sourceKind,
+            entry.sourceWorkerId,
+            entry.sourceId,
+            entry.sourceThreadId,
+          ].join("\0"),
+          entry.reference,
+        ]),
+      );
+      const annotatedResults = results.map((result) => ({
+        ...result,
+        sources: result.sources.map((source) => ({
+          ...source,
+          threads: source.threads.map((thread) => ({
+            ...thread,
+            existingImport:
+              importsBySource.get(
+                [
+                  source.kind,
+                  result.workerId,
+                  source.sourceId,
+                  thread.sourceThreadId,
+                ].join("\0"),
+              ) ?? null,
+          })),
+        })),
+      }));
       const truncated =
         fleetTruncated ||
-        results.some((result) =>
+        annotatedResults.some((result) =>
           result.sources.some((source) => source.truncated),
         );
       return reply.send(
@@ -14935,7 +14969,7 @@ export async function buildApp({
           observedAt: new Date().toISOString(),
           partial:
             truncated ||
-            results.some(
+            annotatedResults.some(
               (result) =>
                 result.status !== "ok" ||
                 result.sources.some(
@@ -14943,7 +14977,7 @@ export async function buildApp({
                 ),
             ),
           truncated,
-          workers: results,
+          workers: annotatedResults,
         }),
       );
     },
@@ -19474,6 +19508,22 @@ export async function buildApp({
       for (const job of jobs) {
         publishChatImportChange({ ownerId, job });
       }
+      app.log.info(
+        {
+          chatImportJobIds: jobs.map(({ id }) => id),
+          importCount: jobs.length,
+          projectId: request.params.projectId,
+          sourceWorkerIds: [
+            ...new Set(jobs.map(({ sourceWorkerId }) => sourceWorkerId)),
+          ],
+          targetWorkerIds: [
+            ...new Set(
+              jobs.map(({ targetPlacement }) => targetPlacement.workerId),
+            ),
+          ],
+        },
+        "Chat imports created",
+      );
       chatImportJobExecutor.queueAvailable();
       return reply.code(202).send(chatImportJobListSchema.parse(jobs));
     } catch (error) {
