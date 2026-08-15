@@ -60,8 +60,10 @@ await run(process.execPath, [
 ]);
 
 // Native Windows dependencies still include build tools that are not reliably
-// long-path aware. Keep the disposable source tree below the OS temp directory
-// instead of nesting it under the repository plus a 64-character fingerprint.
+// long-path aware. Keep the disposable source tree below a short host-local
+// directory instead of the repository plus a 64-character fingerprint. On
+// Windows this deliberately avoids Temp because MSBuild rejects native outputs
+// there; other hosts use their ordinary temporary directory.
 const preparationRoot = await createBuildWorkspace(target.id);
 const source = path.join(preparationRoot, "source");
 const gulpOutput = path.join(
