@@ -7,6 +7,10 @@ import type {
 } from "react";
 
 import { InlineRenameLabel } from "@/components/workspace/surface-tab-controls";
+import {
+  closeTabOnMiddleClick,
+  preventMiddleMouseDefault,
+} from "@/lib/tab-middle-click";
 import { cn } from "@/lib/utils";
 
 export function openSidebarActionsMenu(event: ReactMouseEvent<HTMLElement>) {
@@ -24,6 +28,7 @@ export function SortableSidebarSurfaceRow({
   editing,
   icon,
   onCancelRename,
+  onClose,
   onRename,
   onSelect,
   onSubmitRename,
@@ -40,6 +45,7 @@ export function SortableSidebarSurfaceRow({
   editing: boolean;
   icon: ReactNode;
   onCancelRename(): void;
+  onClose(): void;
   onRename(value: string): void;
   onSelect(): void;
   onSubmitRename(): void;
@@ -64,6 +70,8 @@ export function SortableSidebarSurfaceRow({
       onContextMenu={
         openActionsOnContextMenu && actions ? openSidebarActionsMenu : undefined
       }
+      onAuxClick={(event) => closeTabOnMiddleClick(event, onClose)}
+      onMouseDown={preventMiddleMouseDefault}
       className={cn(
         "group flex min-w-0 items-center rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground",
         active && "bg-muted text-foreground",

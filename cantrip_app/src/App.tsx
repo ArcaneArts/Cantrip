@@ -4608,6 +4608,13 @@ export function App() {
       deleteCodeTabMutation.mutate(surface.tabId);
     else deleteProjectViewMutation.mutate(surface.tabId);
   };
+  const deleteSurfaceImmediately = (surface: ProjectSurface) => {
+    if (surface.kind === "explorer") {
+      deleteExplorerMutation.mutate(surface.tabId);
+      return;
+    }
+    deleteSurface(surface);
+  };
   const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
     ...(newChat.isPending ? (["chat"] as const) : []),
     ...(newTerminal.isPending ? (["terminal"] as const) : []),
@@ -4934,6 +4941,9 @@ export function App() {
                   renameExplorerMutation.mutate({ explorerId, title })
                 }
                 onDeleteExplorer={requestDeleteExplorer}
+                onCloseExplorer={(explorerId) =>
+                  deleteExplorerMutation.mutate(explorerId)
+                }
                 onRenameProjectView={(viewId, title) =>
                   renameProjectViewMutation.mutate({ viewId, title })
                 }
@@ -5394,6 +5404,7 @@ export function App() {
             creatingKinds={creatingSurfaceKinds}
             surfaces={selectedGroupSurfaces}
             onCreate={createSurfaceInSelectedGroup}
+            onClose={deleteSurfaceImmediately}
             onDelete={deleteSurface}
             onDuplicate={(surface) => {
               if (surface.kind === "chat") {

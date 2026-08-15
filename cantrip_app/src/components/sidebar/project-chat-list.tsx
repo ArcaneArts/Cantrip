@@ -95,6 +95,7 @@ function SortableChat({
   active,
   chat,
   editing,
+  onClose,
   onDelete,
   onDuplicate,
   onRename,
@@ -110,6 +111,7 @@ function SortableChat({
   active: boolean;
   chat: ChatSummary;
   editing: boolean;
+  onClose(): void;
   onDelete(): void;
   onDuplicate(): void;
   onRename(): void;
@@ -152,6 +154,7 @@ function SortableChat({
       title={chat.title}
       renameValue={renameValue}
       onCancelRename={onRename}
+      onClose={onClose}
       onRename={setRenameValue}
       onSelect={onSelect}
       onSubmitRename={submitRename}
@@ -176,6 +179,7 @@ function StandardSidebarSurfaceTab({
   active,
   editing,
   icon,
+  onClose,
   onDelete,
   onRename,
   onSelect,
@@ -190,6 +194,7 @@ function StandardSidebarSurfaceTab({
   active: boolean;
   editing: boolean;
   icon: ReactNode;
+  onClose(): void;
   onDelete(): void;
   onRename(): void;
   onSelect(): void;
@@ -220,6 +225,7 @@ function StandardSidebarSurfaceTab({
       trailing={trailing}
       renameValue={renameValue}
       onCancelRename={onRename}
+      onClose={onClose}
       onRename={setRenameValue}
       onSelect={onSelect}
       onSubmitRename={submitRename}
@@ -231,6 +237,7 @@ function GroupedSidebarTab({
   active,
   count,
   editing,
+  onClose,
   onDelete,
   onDuplicate,
   onRename,
@@ -245,6 +252,7 @@ function GroupedSidebarTab({
   active: boolean;
   count: number;
   editing: boolean;
+  onClose(): void;
   onDelete(): void;
   onDuplicate?: () => void;
   onRename(): void;
@@ -267,6 +275,7 @@ function GroupedSidebarTab({
       title={title}
       renameValue={renameValue}
       onCancelRename={onRename}
+      onClose={onClose}
       onRename={setRenameValue}
       onSelect={onSelect}
       onSubmitRename={submitRename}
@@ -461,6 +470,7 @@ export function ProjectChatList({
   onDeleteBrowser,
   onDeleteCode,
   onDeleteExplorer,
+  onCloseExplorer,
   onDeleteProjectView,
   onDuplicateChat,
   onOpenChatExplorer,
@@ -509,6 +519,7 @@ export function ProjectChatList({
   onDeleteBrowser(browserId: string): void;
   onDeleteCode(codeTabId: string): void;
   onDeleteExplorer(explorerId: string): void;
+  onCloseExplorer(explorerId: string): void;
   onDeleteProjectView(viewId: string): void;
   onDuplicateChat(chatId: string): void;
   onOpenChatExplorer(chat: ChatSummary): void;
@@ -787,6 +798,14 @@ export function ProjectChatList({
     else if (tab.kind === "code") setDeleteCodeTarget(tab.codeTab);
     else setDeleteProjectViewTarget(tab.view);
   };
+  const closeTabImmediately = (tab: SidebarTab) => {
+    if (tab.kind === "chat") onDeleteChat(tab.chat.id);
+    else if (tab.kind === "terminal") onDeleteTerminal(tab.terminal.id);
+    else if (tab.kind === "explorer") onCloseExplorer(tab.explorer.id);
+    else if (tab.kind === "browser") onDeleteBrowser(tab.browser.id);
+    else if (tab.kind === "code") onDeleteCode(tab.codeTab.id);
+    else onDeleteProjectView(tab.view.id);
+  };
   const sidebarDrop = useDroppable({
     id: workspaceSidebarDropId(selectedProjectId ?? "none"),
     disabled: !selectedProjectId || !tabLayout,
@@ -880,6 +899,7 @@ export function ProjectChatList({
                               active={group.id === selectedGroupId}
                               count={group.members.length}
                               editing={tabIsEditing(tab)}
+                              onClose={() => closeTabImmediately(tab)}
                               onDelete={() => requestTabDelete(tab)}
                               onDuplicate={
                                 tab.kind === "chat"
@@ -914,6 +934,7 @@ export function ProjectChatList({
                             onSelect={selectGroup}
                             onRename={() => beginRename(tab.chat)}
                             onDuplicate={() => onDuplicateChat(tab.chat.id)}
+                            onClose={() => closeTabImmediately(tab)}
                             onDelete={() => setDeleteTarget(tab.chat)}
                             workers={workers}
                             worktree={worktreeById.get(
@@ -976,6 +997,7 @@ export function ProjectChatList({
                             }
                             onSelect={selectGroup}
                             onRename={() => beginTerminalRename(tab.terminal)}
+                            onClose={() => closeTabImmediately(tab)}
                             onDelete={() =>
                               setDeleteTerminalTarget(tab.terminal)
                             }
@@ -1006,6 +1028,7 @@ export function ProjectChatList({
                             }
                             onSelect={selectGroup}
                             onRename={() => beginExplorerRename(tab.explorer)}
+                            onClose={() => closeTabImmediately(tab)}
                             onDelete={() =>
                               setDeleteExplorerTarget(tab.explorer)
                             }
@@ -1036,6 +1059,7 @@ export function ProjectChatList({
                             }
                             onSelect={selectGroup}
                             onRename={() => beginBrowserRename(tab.browser)}
+                            onClose={() => closeTabImmediately(tab)}
                             onDelete={() => setDeleteBrowserTarget(tab.browser)}
                             trailing={
                               <WorkerPlacementIndicator
@@ -1071,6 +1095,7 @@ export function ProjectChatList({
                             submitRename={() => finishCodeRename(tab.codeTab)}
                             onSelect={selectGroup}
                             onRename={() => beginCodeRename(tab.codeTab)}
+                            onClose={() => closeTabImmediately(tab)}
                             onDelete={() => setDeleteCodeTarget(tab.codeTab)}
                             trailing={
                               <WorktreeIndicator
@@ -1105,6 +1130,7 @@ export function ProjectChatList({
                             }
                             onSelect={selectGroup}
                             onRename={() => beginProjectViewRename(tab.view)}
+                            onClose={() => closeTabImmediately(tab)}
                             onDelete={() =>
                               setDeleteProjectViewTarget(tab.view)
                             }

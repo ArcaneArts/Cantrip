@@ -33,6 +33,10 @@ import {
 } from "@/components/ui/dialog";
 import { nextProjectTabAfterRemoval } from "@/lib/project-tab-group";
 import type { ProjectSurface } from "@/lib/project-surface";
+import {
+  closeTabOnMiddleClick,
+  preventMiddleMouseDefault,
+} from "@/lib/tab-middle-click";
 import { cn } from "@/lib/utils";
 import {
   type WorkspaceDndData,
@@ -44,6 +48,7 @@ export interface ProjectTabBarProps {
   activeTabKey: string;
   creatingKinds?: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
+  onClose(surface: ProjectSurface): void;
   onDelete(surface: ProjectSurface): void;
   onDuplicate?(surface: ProjectSurface): void;
   onRename(surface: ProjectSurface, title: string): void;
@@ -56,6 +61,7 @@ export function ProjectTabBar({
   activeTabKey,
   creatingKinds,
   onCreate,
+  onClose,
   onDelete,
   onDuplicate,
   onRename,
@@ -90,6 +96,13 @@ export function ProjectTabBar({
     setEditingTabKey(null);
     if (title && title !== surface.title) onRename(surface, title);
   };
+  const closeImmediately = (surface: ProjectSurface) => {
+    if (surface.tabKey === activeTabKey) {
+      const nextTabKey = nextProjectTabAfterRemoval(surfaces, surface.tabKey);
+      if (nextTabKey) onSelect(nextTabKey);
+    }
+    onClose(surface);
+  };
 
   return (
     <>
@@ -122,6 +135,12 @@ export function ProjectTabBar({
                     <ContextMenu.Trigger asChild>
                       <div
                         data-project-tab-key={surface.tabKey}
+                        onAuxClick={(event) =>
+                          closeTabOnMiddleClick(event, () =>
+                            closeImmediately(surface),
+                          )
+                        }
+                        onMouseDown={preventMiddleMouseDefault}
                         className={cn(
                           "group relative flex min-w-0 max-w-56 shrink-0 items-center rounded-t-md text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                           active && "bg-muted text-foreground",
