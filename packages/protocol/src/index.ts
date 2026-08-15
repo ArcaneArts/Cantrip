@@ -445,6 +445,7 @@ export const workerHeartbeatSchema = z.object({
     unavailableProjectReplicaCapabilities,
   ),
   chatRelocation: z.boolean().default(false),
+  externalCodexHistory: z.boolean().default(false),
   startedAt: z.string().datetime(),
 });
 
@@ -6746,6 +6747,116 @@ export const agentThreadSyncSchema = z.object({
   ),
 });
 
+export const externalChatSourceKindSchema = z.enum(["chatgpt-codex"]);
+
+export const externalChatSourceAvailabilitySchema = z.enum([
+  "available",
+  "unavailable",
+  "incompatible",
+]);
+
+export const externalChatThreadStatusSchema = z.enum([
+  "not-loaded",
+  "idle",
+  "system-error",
+]);
+
+export const externalChatThreadMatchSchema = z.object({
+  kind: z.enum(["worktree-path", "replica-path", "git-origin"]),
+  projectReplicaId: z.string().min(1).max(200),
+  worktreeId: z.string().min(1).max(200).nullable(),
+});
+
+export const externalChatThreadMetadataSchema = z.object({
+  sourceThreadId: z.string().min(1).max(200),
+  title: z.string().min(1).max(500),
+  preview: z.string().max(2_000),
+  cwd: z.string().min(1).max(8_192),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  archived: z.boolean(),
+  source: z.enum(["cli", "vscode"]),
+  status: externalChatThreadStatusSchema,
+  modelProvider: z.string().min(1).max(200),
+  cliVersion: z.string().max(100).nullable(),
+  git: z
+    .object({
+      branch: z.string().max(1_000).nullable(),
+      sha: z.string().max(200).nullable(),
+      originUrl: z.string().max(4_000).nullable(),
+    })
+    .nullable(),
+  match: externalChatThreadMatchSchema,
+});
+
+export const externalChatSourceSchema = z.object({
+  kind: externalChatSourceKindSchema,
+  sourceId: z.string().regex(/^[0-9a-f]{64}$/u),
+  name: z.string().min(1).max(200),
+  platform: z.enum(["darwin", "win32"]),
+  homeLabel: z.string().min(1).max(500),
+  availability: externalChatSourceAvailabilitySchema,
+  message: z.string().min(1).max(2_000).nullable(),
+  runtimeVersion: z.string().max(100).nullable(),
+  threads: z.array(externalChatThreadMetadataSchema).max(5_000),
+  truncated: z.boolean(),
+});
+
+export const externalChatDiscoveryWorkerStatusSchema = z.enum([
+  "ok",
+  "offline",
+  "unsupported",
+  "timed-out",
+  "error",
+]);
+
+export const externalChatDiscoveryWorkerSchema = z.object({
+  workerId: z.string().min(1).max(200),
+  workerName: z.string().min(1).max(200),
+  platform: z.string().min(1).max(100),
+  status: externalChatDiscoveryWorkerStatusSchema,
+  sources: z.array(externalChatSourceSchema).max(8),
+  error: z
+    .object({
+      code: z.enum([
+        "worker-offline",
+        "capability-missing",
+        "worker-timeout",
+        "worker-error",
+      ]),
+      message: z.string().min(1).max(2_000),
+    })
+    .nullable(),
+});
+
+export const projectExternalChatDiscoverySchema = z.object({
+  projectId: z.string().min(1).max(200),
+  observedAt: z.string().datetime(),
+  partial: z.boolean(),
+  truncated: z.boolean(),
+  workers: z.array(externalChatDiscoveryWorkerSchema).max(64),
+});
+
+export const externalChatDiscoveryTargetSchema = z.object({
+  projectReplicaId: z.string().min(1).max(200),
+  path: z.string().min(1).max(8_192),
+  repositoryFingerprint: z.string().min(1).max(500).nullable(),
+  worktrees: z
+    .array(
+      z.object({
+        worktreeId: z.string().min(1).max(200),
+        path: z.string().min(1).max(8_192),
+        isPrimary: z.boolean(),
+      }),
+    )
+    .max(512),
+});
+
+export const externalChatDiscoveryWorkerResultSchema = z.object({
+  sources: z.array(externalChatSourceSchema).max(8),
+  truncated: z.boolean(),
+});
+
 const workerRuntimeModelSchema = z.object({
   id: z.string().min(1),
   routeId: z.string().min(1),
@@ -7126,6 +7237,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project.repository-stats"),
     cwd: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("external.chat-history.discover"),
+    includeArchived: z.boolean().default(false),
+    targets: z.array(externalChatDiscoveryTargetSchema).min(1).max(64),
   }),
   z.object({ type: z.literal("browser.services.discover") }),
   z.object({
@@ -9080,6 +9196,34 @@ export type NormalizedAgentMessage = z.infer<
 >;
 export type AgentThreadSync = z.infer<typeof agentThreadSyncSchema>;
 export type AgentThreadSyncItem = z.infer<typeof agentThreadSyncItemSchema>;
+export type ExternalChatSourceKind = z.infer<
+  typeof externalChatSourceKindSchema
+>;
+export type ExternalChatSourceAvailability = z.infer<
+  typeof externalChatSourceAvailabilitySchema
+>;
+export type ExternalChatThreadStatus = z.infer<
+  typeof externalChatThreadStatusSchema
+>;
+export type ExternalChatThreadMatch = z.infer<
+  typeof externalChatThreadMatchSchema
+>;
+export type ExternalChatThreadMetadata = z.infer<
+  typeof externalChatThreadMetadataSchema
+>;
+export type ExternalChatSource = z.infer<typeof externalChatSourceSchema>;
+export type ExternalChatDiscoveryWorker = z.infer<
+  typeof externalChatDiscoveryWorkerSchema
+>;
+export type ProjectExternalChatDiscovery = z.infer<
+  typeof projectExternalChatDiscoverySchema
+>;
+export type ExternalChatDiscoveryTarget = z.infer<
+  typeof externalChatDiscoveryTargetSchema
+>;
+export type ExternalChatDiscoveryWorkerResult = z.infer<
+  typeof externalChatDiscoveryWorkerResultSchema
+>;
 export type WorkerChatAttachment = z.infer<typeof workerChatAttachmentSchema>;
 export type CustomizationCapability = z.infer<
   typeof customizationCapabilitySchema

@@ -1,10 +1,5 @@
-import {
-  execFile,
-  spawn,
-  type ChildProcessWithoutNullStreams,
-} from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import readline from "node:readline";
 import { promisify } from "node:util";
 
 import {
@@ -13,6 +8,12 @@ import {
   type CodexRuntimeMethodState,
   type CodexRuntimeReport,
 } from "@cantrip/protocol";
+
+import {
+  initializeCodexRpcClient,
+  spawnCodexRpcClient,
+  type CodexRpcClient,
+} from "./rpc-client.js";
 
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 10_000;
@@ -23,6 +24,7 @@ export const CODEX_CORE_METHODS = [
   "initialize",
   "thread/start",
   "thread/resume",
+  "thread/list",
   "thread/read",
   "turn/start",
   "turn/steer",
@@ -100,23 +102,6 @@ export function codexFeatureUsable(
     feature.stage !== "deprecated" &&
     feature.stage !== "removed",
   );
-}
-
-interface RpcError {
-  code: number;
-  message: string;
-}
-
-interface RpcResponse {
-  error?: RpcError;
-  id: number;
-  result?: unknown;
-}
-
-interface PendingProbeRequest {
-  reject(error: Error): void;
-  resolve(response: RpcResponse): void;
-  timeout: ReturnType<typeof setTimeout>;
 }
 
 interface FeaturePage {
@@ -311,117 +296,35 @@ export async function discoverCodexVersion(
   }
 }
 
-class AppServerProbe {
-  readonly #pending = new Map<number, PendingProbeRequest>();
-  #nextId = 1;
-
-  constructor(private readonly child: ChildProcessWithoutNullStreams) {
-    const lines = readline.createInterface({ input: child.stdout });
-    lines.on("line", (line) => this.handleLine(line));
-    child.once("error", (error) => this.rejectAll(error));
-    child.once("exit", (code, signal) =>
-      this.rejectAll(
-        new Error(
-          `Codex app-server probe exited (${signal ?? `code ${String(code)}`}).`,
-        ),
-      ),
-    );
-  }
-
-  request(method: string, params: unknown): Promise<RpcResponse> {
-    const id = this.#nextId++;
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.#pending.delete(id);
-        reject(new Error(`Codex capability probe ${method} timed out.`));
-      }, PROBE_TIMEOUT_MS);
-      this.#pending.set(id, { resolve, reject, timeout });
-      this.child.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
-    });
-  }
-
-  notify(method: string, params?: unknown): void {
-    this.child.stdin.write(`${JSON.stringify({ method, params })}\n`);
-  }
-
-  close(): void {
-    this.rejectAll(new Error("Codex app-server probe closed."));
-    this.child.kill("SIGINT");
-  }
-
-  private handleLine(line: string): void {
-    let value: unknown;
-    try {
-      value = JSON.parse(line) as unknown;
-    } catch {
-      return;
-    }
-    const message = objectValue(value);
-    if (!message || typeof message.id !== "number") return;
-    const pending = this.#pending.get(message.id);
-    if (!pending) return;
-    this.#pending.delete(message.id);
-    clearTimeout(pending.timeout);
-    const error = objectValue(message.error);
-    pending.resolve({
-      id: message.id,
-      result: message.result,
-      ...(error &&
-      typeof error.code === "number" &&
-      typeof error.message === "string"
-        ? { error: { code: error.code, message: error.message } }
-        : {}),
-    });
-  }
-
-  private rejectAll(error: Error): void {
-    for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timeout);
-      pending.reject(error);
-    }
-    this.#pending.clear();
-  }
-}
-
-function spawnProbe(binary: string, codexHome: string): AppServerProbe {
-  return new AppServerProbe(
-    spawn(binary, ["app-server", "--listen", "stdio://"], {
-      env: { ...process.env, CODEX_HOME: codexHome },
-      stdio: ["pipe", "pipe", "pipe"],
-    }),
-  );
-}
-
 async function initializeProbe(
-  probe: AppServerProbe,
+  probe: CodexRpcClient,
   experimentalApi: boolean,
 ): Promise<{ initialize: ProbeInitialize | null; error: string | null }> {
-  const response = await probe.request("initialize", {
-    clientInfo: {
+  let result: unknown;
+  try {
+    result = await initializeCodexRpcClient(probe, {
       name: "cantrip_compatibility_probe",
       title: "Cantrip Compatibility Probe",
       version: "0.0.0",
-    },
-    capabilities: {
       experimentalApi,
-      requestAttestation: false,
-    },
-  });
-  if (response.error) {
-    return { initialize: null, error: response.error.message };
+    });
+  } catch (error) {
+    return {
+      initialize: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
-  const initialize = parseInitializeResponse(response.result, experimentalApi);
+  const initialize = parseInitializeResponse(result, experimentalApi);
   if (!initialize) {
     return {
       initialize: null,
       error: "Codex returned an invalid initialize response.",
     };
   }
-  probe.notify("initialized", {});
   return { initialize, error: null };
 }
 
-async function probeFeaturePages(probe: AppServerProbe): Promise<{
+async function probeFeaturePages(probe: CodexRpcClient): Promise<{
   features: CodexRuntimeFeature[];
   state: CodexRuntimeMethodState;
   errors: string[];
@@ -467,7 +370,9 @@ async function runCapabilityProbe(
   features: CodexRuntimeFeature[];
   errors: string[];
 }> {
-  const probe = spawnProbe(binary, codexHome);
+  const probe = spawnCodexRpcClient(binary, codexHome, {
+    requestTimeoutMs: PROBE_TIMEOUT_MS,
+  });
   try {
     const initialized = await initializeProbe(probe, experimentalApi);
     if (!initialized.initialize) {

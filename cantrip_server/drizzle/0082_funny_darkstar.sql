@@ -1,0 +1,1 @@
+ALTER TABLE "workers" ADD COLUMN "external_codex_history_capability" boolean DEFAULT false NOT NULL;
