@@ -222,14 +222,37 @@ jobs:
           rm -f "$certificate"
           echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
           echo "CANTRIP_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-      - name: Package signed macOS DMG
+      - name: Prepare Apple notarization key
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_KEY }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
+          : "${APPLE_API_PRIVATE_KEY:?Configure the APPSTORE_CONNECT_KEY Actions secret.}"
+          private_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          if [[ "$APPLE_API_PRIVATE_KEY" == *"BEGIN PRIVATE KEY"* ]]; then
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$private_key"
+          else
+            printf '%s' "$APPLE_API_PRIVATE_KEY" | openssl base64 -d -A -out "$private_key"
+          fi
+          openssl pkey -in "$private_key" -noout
+          chmod 600 "$private_key"
+          echo "APPLE_API_KEY_PATH=$private_key" >> "$GITHUB_ENV"
+      - name: Package signed and notarized macOS DMG
         if: matrix.target == 'darwin-arm64'
         shell: bash
         env:
           CANTRIP_REQUIRE_MACOS_SIGNING: "1"
+          CANTRIP_REQUIRE_MACOS_NOTARIZATION: "1"
+          APPLE_API_ISSUER: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
         run: |
-          unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
-          unset APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH
+          set -euo pipefail
+          : "${APPLE_API_ISSUER:?Configure the APPSTORE_CONNECT_ISSUER_ID Actions secret.}"
+          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
           pnpm package:app --target ${{ matrix.target }} --from-artifacts
       - name: Package Windows NSIS installer
         if: matrix.target == 'win32-x64'
@@ -249,6 +272,9 @@ jobs:
         run: |
           if [ -n "${CANTRIP_SIGNING_KEYCHAIN:-}" ]; then
             security delete-keychain "$CANTRIP_SIGNING_KEYCHAIN" || true
+          fi
+          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+            rm -f "$APPLE_API_KEY_PATH"
           fi
 
   release:

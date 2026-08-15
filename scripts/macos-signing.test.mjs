@@ -9,6 +9,7 @@ import {
   isMachOHeader,
   signMacosRuntime,
 } from "./sign-macos-runtime.mjs";
+import { notarizeMacosDistribution } from "./notarize-macos-distribution.mjs";
 import { verifyMacosDistribution } from "./verify-macos-distribution.mjs";
 
 const thinMachO = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]);
@@ -96,6 +97,7 @@ test("verifies the outer app, embedded runtime, and DMG signatures", async () =>
 
     const result = await verifyMacosDistribution({
       bundleDirectory: root,
+      requireNotarization: true,
       runCommand,
     });
     assert.deepEqual(result.apps, [app]);
@@ -105,6 +107,93 @@ test("verifies the outer app, embedded runtime, and DMG signatures", async () =>
       calls.some(
         ({ command, arguments_ }) =>
           command === "hdiutil" && arguments_[0] === "verify",
+      ),
+    );
+    assert.equal(
+      calls.filter(
+        ({ command, arguments_ }) =>
+          command === "xcrun" && arguments_[0] === "stapler",
+      ).length,
+      2,
+    );
+    assert.equal(calls.filter(({ command }) => command === "spctl").length, 2);
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("validates the inner app before notarizing and stapling the DMG", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-notarize-macos-"));
+  try {
+    const app = path.join(root, "macos", "Cantrip.app");
+    const dmg = path.join(root, "dmg", "Cantrip.dmg");
+    await mkdir(app, { recursive: true });
+    await mkdir(path.dirname(dmg), { recursive: true });
+    await writeFile(dmg, "dmg");
+
+    const calls = [];
+    const result = await notarizeMacosDistribution({
+      bundleDirectory: root,
+      issuer: "issuer-id",
+      keyId: "key-id",
+      keyPath: "/tmp/AuthKey_key-id.p8",
+      runCommand: (command, arguments_) => {
+        calls.push({ command, arguments_ });
+        return arguments_[1] === "submit"
+          ? JSON.stringify({ id: "submission-id", status: "Accepted" })
+          : "";
+      },
+    });
+
+    assert.deepEqual(result, { apps: [app], dmgs: [dmg] });
+    assert.deepEqual(
+      calls.map(({ arguments_ }) => arguments_.slice(0, 2)),
+      [
+        ["stapler", "validate"],
+        ["notarytool", "submit"],
+        ["stapler", "staple"],
+        ["stapler", "validate"],
+      ],
+    );
+    const submit = calls[1].arguments_;
+    assert.ok(submit.includes("--wait"));
+    assert.ok(submit.includes("--output-format"));
+    assert.ok(submit.includes("issuer-id"));
+    assert.ok(submit.includes("key-id"));
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("reports an Apple notarization rejection and fetches its log", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-reject-notary-"));
+  try {
+    const app = path.join(root, "macos", "Cantrip.app");
+    const dmg = path.join(root, "dmg", "Cantrip.dmg");
+    await mkdir(app, { recursive: true });
+    await mkdir(path.dirname(dmg), { recursive: true });
+    await writeFile(dmg, "dmg");
+
+    const calls = [];
+    await assert.rejects(
+      notarizeMacosDistribution({
+        bundleDirectory: root,
+        issuer: "issuer-id",
+        keyId: "key-id",
+        keyPath: "/tmp/AuthKey_key-id.p8",
+        runCommand: (command, arguments_) => {
+          calls.push({ command, arguments_ });
+          return arguments_[1] === "submit"
+            ? JSON.stringify({ id: "submission-id", status: "Invalid" })
+            : "";
+        },
+      }),
+      /Apple rejected notarization/u,
+    );
+    assert.ok(
+      calls.some(
+        ({ arguments_ }) =>
+          arguments_[0] === "notarytool" && arguments_[1] === "log",
       ),
     );
   } finally {
