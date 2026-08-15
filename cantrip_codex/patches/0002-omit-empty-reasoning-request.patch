@@ -1,0 +1,103 @@
+diff --git a/codex-rs/codex-api/src/common.rs b/codex-rs/codex-api/src/common.rs
+index 3d8499a1..48addbbe 100644
+--- a/codex-rs/codex-api/src/common.rs
++++ b/codex-rs/codex-api/src/common.rs
+@@ -258,6 +258,7 @@ pub struct ResponsesApiRequest {
+     pub tools: Option<ResponsesApiTools>,
+     pub tool_choice: String,
+     pub parallel_tool_calls: bool,
++    #[serde(skip_serializing_if = "Option::is_none")]
+     pub reasoning: Option<Reasoning>,
+     pub store: bool,
+     pub stream: bool,
+diff --git a/codex-rs/core/src/client.rs b/codex-rs/core/src/client.rs
+index 771d2e2f..c9d5687a 100644
+--- a/codex-rs/core/src/client.rs
++++ b/codex-rs/core/src/client.rs
+@@ -890,9 +890,15 @@ impl ModelClientSession {
+             )
+         };
+         let reasoning = Self::build_reasoning(model_info, effort, summary);
++        let reasoning = (reasoning.effort.is_some()
++            || reasoning.summary.is_some()
++            || reasoning.context.is_some())
++        .then_some(reasoning);
+         let stream_options = (self.state.concurrent_reasoning_summaries_enabled
+             && is_openai
+-            && reasoning.summary.is_some())
++            && reasoning
++                .as_ref()
++                .is_some_and(|reasoning| reasoning.summary.is_some()))
+         .then_some(StreamOptions {
+             reasoning_summary_delivery: codex_api::ReasoningSummaryDelivery::SequentialCutoff,
+         });
+@@ -922,7 +928,7 @@ impl ModelClientSession {
+             tools,
+             tool_choice: "auto".to_string(),
+             parallel_tool_calls: prompt.parallel_tool_calls && !model_info.use_responses_lite,
+-            reasoning: Some(reasoning),
++            reasoning,
+             store: provider.is_azure_responses_endpoint(),
+             stream: true,
+             stream_options,
+diff --git a/codex-rs/core/tests/suite/client.rs b/codex-rs/core/tests/suite/client.rs
+index 74adeac9..5439efeb 100644
+--- a/codex-rs/core/tests/suite/client.rs
++++ b/codex-rs/core/tests/suite/client.rs
+@@ -2514,6 +2514,56 @@ async fn model_without_summary_parameter_support_omits_configured_summary() -> a
+     Ok(())
+ }
+ 
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn model_without_reasoning_configuration_omits_reasoning() -> anyhow::Result<()> {
++    skip_if_no_network!(Ok(()));
++    let server = MockServer::start().await;
++
++    let resp_mock = mount_sse_once(
++        &server,
++        sse(vec![ev_response_created("resp1"), ev_completed("resp1")]),
++    )
++    .await;
++    let mut model_catalog = bundled_models_response().expect("bundled models.json should parse");
++    let model = model_catalog
++        .models
++        .iter_mut()
++        .find(|model| model.slug == "gpt-5.4")
++        .expect("gpt-5.4 exists in bundled models.json");
++    model.default_reasoning_level = None;
++    model.supports_reasoning_summary_parameter = false;
++
++    let TestCodex { codex, .. } = test_codex()
++        .with_model("gpt-5.4")
++        .with_config(move |config| {
++            config.model_catalog = Some(model_catalog);
++            config.model_reasoning_effort = None;
++            config.model_reasoning_summary = Some(ReasoningSummary::Detailed);
++        })
++        .build_with_auto_env(&server)
++        .await?;
++
++    codex
++        .submit(Op::UserInput {
++            items: vec![UserInput::Text {
++                text: "hello".into(),
++                text_elements: Vec::new(),
++            }],
++            final_output_json_schema: None,
++            responsesapi_client_metadata: None,
++            additional_context: Default::default(),
++            thread_settings: Default::default(),
++        })
++        .await?;
++
++    wait_for_event(&codex, |ev| matches!(ev, EventMsg::TurnComplete(_))).await;
++
++    let request_body = resp_mock.single_request().body_json();
++    pretty_assertions::assert_eq!(request_body.get("reasoning"), None);
++
++    Ok(())
++}
++
+ #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+ async fn sequential_cutoff_is_omitted_for_non_openai_provider() -> anyhow::Result<()> {
+     skip_if_no_network!(Ok(()));

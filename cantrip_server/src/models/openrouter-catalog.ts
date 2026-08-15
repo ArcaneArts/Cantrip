@@ -63,6 +63,10 @@ function stringArray(value: unknown): string[] {
   ];
 }
 
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function parseCatalogPayload(payload: unknown): OpenRouterModelRecord[] {
   const data = objectValue(payload)?.data;
   if (!Array.isArray(data)) {
@@ -108,17 +112,32 @@ export function normalizeOpenRouterModel(
   record: OpenRouterModelRecord,
 ): ProviderModelCatalogWrite {
   const architecture = objectValue(record.architecture);
+  const reasoning = objectValue(record.reasoning);
   const topProvider = objectValue(record.top_provider);
   const supportedParameters = new Set(stringArray(record.supported_parameters));
+  const supportedReasoningEfforts = stringArray(
+    reasoning?.supported_efforts,
+  ).map((effort) => ({
+    effort,
+    description: `${effort} reasoning`,
+  }));
+  const advertisedDefaultReasoningEffort = stringValue(
+    reasoning?.default_effort,
+  )?.toLowerCase();
+  const defaultReasoningEffort = supportedReasoningEfforts.some(
+    ({ effort }) => effort === advertisedDefaultReasoningEffort,
+  )
+    ? (advertisedDefaultReasoningEffort ?? null)
+    : null;
   const inputModalities = stringArray(architecture?.input_modalities);
   const outputModalities = stringArray(architecture?.output_modalities);
   const supportsTools =
     supportedParameters.has("tools") || supportedParameters.has("tool_choice");
-  const supportsReasoning = [
-    "include_reasoning",
-    "reasoning",
-    "reasoning_effort",
-  ].some((parameter) => supportedParameters.has(parameter));
+  const supportsReasoning =
+    supportedReasoningEfforts.length > 0 ||
+    ["include_reasoning", "reasoning", "reasoning_effort"].some((parameter) =>
+      supportedParameters.has(parameter),
+    );
   const metadataSource: ProviderModelMetadataSource = "openrouter";
   return {
     nativeModelId: record.id,
@@ -142,9 +161,9 @@ export function normalizeOpenRouterModel(
       supportedParameters.has("structured_outputs"),
     supportsVision: inputModalities.includes("image"),
     supportsReasoning,
-    supportedReasoningEfforts: [],
-    defaultReasoningEffort: null,
-    reasoningMandatory: null,
+    supportedReasoningEfforts,
+    defaultReasoningEffort,
+    reasoningMandatory: booleanValue(reasoning?.mandatory),
     family:
       stringValue(architecture?.instruct_type) ??
       stringValue(architecture?.tokenizer),

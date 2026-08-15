@@ -51,9 +51,9 @@ export function codexCatalogForRuntimeModel(model: RuntimeModel) {
         display_name: catalog.displayName,
         description: catalog.description,
         base_instructions: CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
-        default_reasoning_level: supportsReasoning
-          ? catalog.defaultReasoningEffort
-          : null,
+        // Cantrip's "Default" means the client did not choose an effort. Do
+        // not turn an advertised provider default into an explicit request.
+        default_reasoning_level: null,
         supported_reasoning_levels: supportedReasoningLevels,
         shell_type: supportsTools === false ? "disabled" : "shell_command",
         visibility: "list",
@@ -68,7 +68,9 @@ export function codexCatalogForRuntimeModel(model: RuntimeModel) {
         include_skills_usage_instructions: false,
         include_plugin_usage_instructions: false,
         include_apps_usage_instructions: false,
-        supports_reasoning_summary_parameter: supportsReasoning,
+        // Compatible providers expose reasoning output without implementing
+        // OpenAI's reasoning-summary request parameter.
+        supports_reasoning_summary_parameter: false,
         default_reasoning_summary: "auto",
         support_verbosity: false,
         default_verbosity: null,

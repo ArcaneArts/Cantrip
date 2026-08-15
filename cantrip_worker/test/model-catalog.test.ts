@@ -68,7 +68,8 @@ describe("managed Codex model catalogs", () => {
           shell_type: "shell_command",
           apply_patch_tool_type: "freeform",
           supports_parallel_tool_calls: false,
-          default_reasoning_level: "medium",
+          default_reasoning_level: null,
+          supports_reasoning_summary_parameter: false,
           supported_reasoning_levels: [
             { effort: "medium", description: "Balanced" },
             {
