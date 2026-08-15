@@ -37,6 +37,13 @@ pub struct DesktopWorkerStatus {
     worker_id: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopWorkerCandidate {
+    repository_count: usize,
+    worker_id: String,
+}
+
 enum WorkerLaunch {
     Development { repository: PathBuf, tsx: PathBuf },
     Packaged { directory: PathBuf, node: PathBuf },
@@ -110,6 +117,27 @@ fn read_profiles(path: &Path) -> Vec<DesktopWorkerProfile> {
         eprintln!("Could not read desktop worker registry: {error}");
         Vec::new()
     })
+}
+
+fn repository_count(profile_directory: &Path) -> usize {
+    let Ok(owners) = fs::read_dir(profile_directory.join("repositories")) else {
+        return 0;
+    };
+    owners
+        .flatten()
+        .filter_map(|owner| fs::read_dir(owner.path()).ok())
+        .flat_map(|repositories| repositories.flatten())
+        .filter(|repository| repository.path().join(".git").exists())
+        .count()
+}
+
+fn sort_worker_candidates(candidates: &mut [DesktopWorkerCandidate]) {
+    candidates.sort_by(|left, right| {
+        right
+            .repository_count
+            .cmp(&left.repository_count)
+            .then_with(|| left.worker_id.cmp(&right.worker_id))
+    });
 }
 
 fn write_profiles(path: &Path, profiles: &[DesktopWorkerProfile]) -> Result<(), String> {
@@ -218,7 +246,7 @@ impl DesktopWorkers {
         Ok(())
     }
 
-    fn reusable_worker_ids(&self, server_url: &str) -> Vec<String> {
+    fn reusable_workers(&self, server_url: &str) -> Vec<DesktopWorkerCandidate> {
         let mut candidates = HashSet::new();
         if let Ok(profiles) = self.profiles.lock() {
             candidates.extend(
@@ -247,8 +275,14 @@ impl DesktopWorkers {
                 }
             }
         }
-        let mut candidates = candidates.into_iter().collect::<Vec<_>>();
-        candidates.sort();
+        let mut candidates = candidates
+            .into_iter()
+            .map(|worker_id| DesktopWorkerCandidate {
+                repository_count: repository_count(&self.profile_directory(&worker_id)),
+                worker_id,
+            })
+            .collect::<Vec<_>>();
+        sort_worker_candidates(&mut candidates);
         candidates.truncate(64);
         candidates
     }
@@ -354,9 +388,9 @@ pub fn list_desktop_workers(
 pub fn list_desktop_worker_candidates(
     server_url: String,
     workers: State<'_, DesktopWorkers>,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<DesktopWorkerCandidate>, String> {
     let server_url = normalize_server_url(&server_url)?;
-    Ok(workers.reusable_worker_ids(&server_url))
+    Ok(workers.reusable_workers(&server_url))
 }
 
 #[tauri::command]
@@ -435,7 +469,12 @@ pub fn forget_desktop_worker(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize_server_url, replacement_profile, DesktopWorkerProfile};
+    use std::{fs, path::Path};
+
+    use super::{
+        normalize_server_url, replacement_profile, repository_count, sort_worker_candidates,
+        DesktopWorkerCandidate, DesktopWorkerProfile,
+    };
 
     #[test]
     fn normalizes_server_origins() {
@@ -494,5 +533,41 @@ mod tests {
             replacement.worker_id,
             "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2"
         );
+    }
+
+    #[test]
+    fn counts_only_repository_roots_in_a_retained_profile() {
+        let root =
+            std::env::temp_dir().join(format!("cantrip-worker-candidate-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("repositories/ArcaneArts/Cantrip/.git")).unwrap();
+        fs::create_dir_all(root.join("repositories/ArcaneArts/not-a-repository")).unwrap();
+        fs::create_dir_all(root.join("repositories/VolmitSoftware/Iris")).unwrap();
+        fs::write(
+            root.join("repositories/VolmitSoftware/Iris/.git"),
+            "gitdir: elsewhere",
+        )
+        .unwrap();
+
+        assert_eq!(repository_count(Path::new(&root)), 2);
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ranks_source_owning_worker_identities_first() {
+        let mut candidates = vec![
+            DesktopWorkerCandidate {
+                repository_count: 0,
+                worker_id: "desktop-current".into(),
+            },
+            DesktopWorkerCandidate {
+                repository_count: 2,
+                worker_id: "desktop-source-owner".into(),
+            },
+        ];
+
+        sort_worker_candidates(&mut candidates);
+
+        assert_eq!(candidates[0].worker_id, "desktop-source-owner");
     }
 }

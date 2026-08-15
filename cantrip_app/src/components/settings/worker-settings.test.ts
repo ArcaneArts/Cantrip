@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   canAddThisMachine,
   formatWorkerLastSeen,
+  recoverableDesktopWorkerId,
+  resolveDesktopWorkerPairingId,
   workerPairingCommands,
 } from "./worker-settings";
 
@@ -63,5 +65,39 @@ describe("worker settings helpers", () => {
         serverWorkerIds: ["local-worker"],
       }),
     ).toBe(false);
+  });
+
+  it("recovers a retained source-owning identity instead of an empty replacement", () => {
+    expect(
+      recoverableDesktopWorkerId({
+        candidates: [
+          { repositoryCount: 1, workerId: "desktop-with-projects" },
+          { repositoryCount: 0, workerId: "desktop-current" },
+        ],
+        linkedWorkerId: "desktop-current",
+      }),
+    ).toBe("desktop-with-projects");
+    expect(
+      recoverableDesktopWorkerId({
+        candidates: [{ repositoryCount: 0, workerId: "desktop-stale" }],
+        linkedWorkerId: "desktop-current",
+      }),
+    ).toBeNull();
+  });
+
+  it("prefers server-authorized recovery with a local release-skew fallback", () => {
+    const candidates = [{ workerId: "desktop-source-owner" }];
+    expect(
+      resolveDesktopWorkerPairingId({
+        candidates,
+        serverSelectedWorkerId: "desktop-server-selection",
+      }),
+    ).toBe("desktop-server-selection");
+    expect(
+      resolveDesktopWorkerPairingId({
+        candidates,
+        serverSelectedWorkerId: null,
+      }),
+    ).toBe("desktop-source-owner");
   });
 });

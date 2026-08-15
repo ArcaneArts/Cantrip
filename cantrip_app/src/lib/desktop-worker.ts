@@ -7,6 +7,11 @@ export type DesktopWorkerStatus = {
   workerId: string;
 };
 
+export type DesktopWorkerCandidate = {
+  repositoryCount: number;
+  workerId: string;
+};
+
 export function supportsDesktopWorkers(): boolean {
   return isTauri();
 }
@@ -17,9 +22,11 @@ export async function listDesktopWorkers(): Promise<DesktopWorkerStatus[]> {
 
 export async function listDesktopWorkerCandidates(
   serverUrl: string,
-): Promise<string[]> {
+): Promise<DesktopWorkerCandidate[]> {
   return isTauri()
-    ? invoke<string[]>("list_desktop_worker_candidates", { serverUrl })
+    ? invoke<DesktopWorkerCandidate[]>("list_desktop_worker_candidates", {
+        serverUrl,
+      })
     : [];
 }
 

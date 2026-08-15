@@ -102,6 +102,26 @@ export function canAddThisMachine(input: {
   );
 }
 
+export function recoverableDesktopWorkerId(input: {
+  candidates: Array<{ repositoryCount: number; workerId: string }>;
+  linkedWorkerId: string | null;
+}): string | null {
+  return (
+    input.candidates.find(
+      (candidate) =>
+        candidate.repositoryCount > 0 &&
+        candidate.workerId !== input.linkedWorkerId,
+    )?.workerId ?? null
+  );
+}
+
+export function resolveDesktopWorkerPairingId(input: {
+  candidates: Array<{ workerId: string }>;
+  serverSelectedWorkerId: string | null;
+}): string | null {
+  return input.serverSelectedWorkerId ?? input.candidates[0]?.workerId ?? null;
+}
+
 async function copyText(value: string): Promise<void> {
   await navigator.clipboard.writeText(value);
 }
@@ -272,6 +292,11 @@ export function WorkerSettings() {
     queryKey: ["desktop-workers"],
     refetchInterval: 5_000,
   });
+  const desktopWorkerCandidates = useQuery({
+    enabled: desktopApp && activeConnection.kind === "remote",
+    queryFn: () => listDesktopWorkerCandidates(serverUrl),
+    queryKey: ["desktop-worker-candidates", serverUrl],
+  });
   const desktopAutostart = useQuery({
     enabled: desktopApp,
     queryFn: getDesktopAutostart,
@@ -352,23 +377,47 @@ export function WorkerSettings() {
   });
   const addThisMachine = useMutation({
     mutationFn: async () => {
-      const candidateWorkerIds = await listDesktopWorkerCandidates(serverUrl);
+      const candidates = await listDesktopWorkerCandidates(serverUrl);
       const enrollment = await createWorkerEnrollmentCode({
         label: "This machine",
         expiresInSeconds: 300,
-        candidateWorkerIds,
+        candidateWorkerIds: candidates.map((candidate) => candidate.workerId),
       });
+      // New servers select an account-owned identity. The ordered local
+      // fallback keeps recovery working while a hosted server is one release
+      // behind the desktop client.
+      const workerId = resolveDesktopWorkerPairingId({
+        candidates,
+        serverSelectedWorkerId: enrollment.workerId,
+      });
+      const current = desktopWorkers.data?.find(
+        (worker) => worker.serverUrl === serverUrl,
+      );
+      if (
+        current &&
+        workerId &&
+        current.workerId !== workerId &&
+        (workers.data ?? []).some(
+          (worker) => worker.workerId === current.workerId,
+        )
+      ) {
+        await unlinkWorker(current.workerId);
+      }
       const desktopWorker = await pairDesktopWorker({
         enrollmentCode: enrollment.code,
         name: "This machine",
         serverUrl,
-        workerId: enrollment.workerId,
+        workerId,
       });
       return { desktopWorker, enrollment };
     },
     onSuccess: ({ enrollment }) => {
       setDesktopEnrollment(enrollment);
       void queryClient.invalidateQueries({ queryKey: ["desktop-workers"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["desktop-worker-candidates", serverUrl],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["worker-management"] });
       if (!desktopAutostart.data) updateAutostart.mutate(true);
     },
   });
@@ -467,17 +516,23 @@ export function WorkerSettings() {
   const desktopWorkerForServer = desktopWorkers.data?.find(
     (worker) => worker.serverUrl === serverUrl,
   );
+  const recoverableWorkerId = recoverableDesktopWorkerId({
+    candidates: desktopWorkerCandidates.data ?? [],
+    linkedWorkerId: desktopWorkerForServer?.workerId ?? null,
+  });
   const serverWorkerIds = (workers.data ?? []).map((worker) => worker.workerId);
   const hasInternalWorker = (workers.data ?? []).some(
     (worker) => worker.internal,
   );
-  const offerThisMachine = canAddThisMachine({
-    desktopApp,
-    hasInternalWorker,
-    linkedWorkerId: desktopWorkerForServer?.workerId ?? null,
-    serverIsRemote: activeConnection.kind === "remote",
-    serverWorkerIds,
-  });
+  const offerThisMachine =
+    Boolean(recoverableWorkerId) ||
+    canAddThisMachine({
+      desktopApp,
+      hasInternalWorker,
+      linkedWorkerId: desktopWorkerForServer?.workerId ?? null,
+      serverIsRemote: activeConnection.kind === "remote",
+      serverWorkerIds,
+    });
   const desktopPairing =
     addThisMachine.isPending ||
     desktopEnrollmentStatus.data?.status === "pending";
@@ -523,7 +578,13 @@ export function WorkerSettings() {
             ) : (
               <Laptop className="size-4" />
             )}
-            {desktopPairing ? "Adding this machine…" : "Add this machine"}
+            {desktopPairing
+              ? recoverableWorkerId
+                ? "Restoring this machine…"
+                : "Adding this machine…"
+              : recoverableWorkerId
+                ? "Restore this machine"
+                : "Add this machine"}
           </Button>
         ) : null}
         <Button
@@ -552,7 +613,9 @@ export function WorkerSettings() {
                 {activeConnection.kind === "local"
                   ? "The bundled local worker is detected and managed automatically."
                   : desktopWorkerForServer
-                    ? `${desktopWorkerForServer.name} is ${desktopWorkerForServer.running ? "running" : "stopped"} for ${activeConnection.name}.`
+                    ? recoverableWorkerId
+                      ? `Restore this machine's retained projects to ${activeConnection.name}.`
+                      : `${desktopWorkerForServer.name} is ${desktopWorkerForServer.running ? "running" : "stopped"} for ${activeConnection.name}.`
                     : `Add this machine to run work for ${activeConnection.name} without copying a link code.`}
               </p>
             </div>
