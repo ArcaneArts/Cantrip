@@ -15,10 +15,12 @@ export function ExplorerFileBrowser({
   explorer,
   gitStatus,
   onOpenFile,
+  onOpenTerminal,
 }: {
   explorer: ExplorerSummary;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
+  onOpenTerminal(entry: ExplorerEntry): void;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -80,6 +82,7 @@ export function ExplorerFileBrowser({
                 gitStatus={gitStatus}
                 key={entry.path}
                 onOpenFile={onOpenFile}
+                onOpenTerminal={onOpenTerminal}
                 onToggle={toggle}
               />
             ) : (

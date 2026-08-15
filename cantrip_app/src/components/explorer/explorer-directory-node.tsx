@@ -18,6 +18,7 @@ export function ExplorerDirectoryNode({
   explorerId,
   gitStatus,
   onOpenFile,
+  onOpenTerminal,
   onToggle,
 }: {
   changeByPath: ReadonlyMap<string, ExplorerChangeSummary>;
@@ -28,6 +29,7 @@ export function ExplorerDirectoryNode({
   explorerId: string;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
+  onOpenTerminal(entry: ExplorerEntry): void;
   onToggle(path: string): void;
 }) {
   const expanded = expandedPaths.has(entry.path);
@@ -46,6 +48,7 @@ export function ExplorerDirectoryNode({
         entry={entry}
         expanded={expanded}
         onOpen={() => onToggle(entry.path)}
+        onOpenTerminal={() => onOpenTerminal(entry)}
       />
       {expanded ? (
         <div role="group">
@@ -85,6 +88,7 @@ export function ExplorerDirectoryNode({
                     gitStatus={gitStatus}
                     key={child.path}
                     onOpenFile={onOpenFile}
+                    onOpenTerminal={onOpenTerminal}
                     onToggle={onToggle}
                   />
                 ) : (

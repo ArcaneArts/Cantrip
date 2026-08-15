@@ -1,4 +1,5 @@
 import type { ExplorerEntry, ExplorerLastCommit } from "@cantrip/protocol";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
   ChevronDown,
   ChevronRight,
@@ -7,6 +8,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  SquareTerminal,
 } from "lucide-react";
 
 import {
@@ -14,6 +16,10 @@ import {
   formatExplorerSize,
   type ExplorerChangeSummary,
 } from "@/components/explorer/explorer-entry-metadata";
+import {
+  StyledContextMenuContent,
+  StyledContextMenuItem,
+} from "@/components/ui/styled-menu";
 import { cn } from "@/lib/utils";
 
 function entryIcon(entry: ExplorerEntry, expanded: boolean) {
@@ -43,6 +49,7 @@ export function ExplorerEntryRow({
   entry,
   expanded = false,
   onOpen,
+  onOpenTerminal,
 }: {
   change: ExplorerChangeSummary | null;
   commit: ExplorerLastCommit | null;
@@ -50,6 +57,7 @@ export function ExplorerEntryRow({
   entry: ExplorerEntry;
   expanded?: boolean;
   onOpen(): void;
+  onOpenTerminal?(): void;
 }) {
   const Icon = entryIcon(entry, expanded);
   const metadata = commit ? explorerCommitMetadata(commit) : null;
@@ -62,7 +70,7 @@ export function ExplorerEntryRow({
   ]
     .filter(Boolean)
     .join("\n");
-  return (
+  const row = (
     <button
       type="button"
       aria-disabled={!openable}
@@ -130,5 +138,19 @@ export function ExplorerEntryRow({
         {entry.size !== null ? formatExplorerSize(entry.size) : "—"}
       </span>
     </button>
+  );
+  if (entry.kind !== "directory" || !onOpenTerminal) return row;
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <StyledContextMenuContent className="min-w-44">
+          <StyledContextMenuItem onSelect={onOpenTerminal}>
+            <SquareTerminal className="size-4" />
+            Open in Terminal
+          </StyledContextMenuItem>
+        </StyledContextMenuContent>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }

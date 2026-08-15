@@ -41,6 +41,7 @@ export function PersistentExplorerViews({
   onHeaderChange,
   onLifecycleChange,
   onOpenFile,
+  onOpenTerminal,
 }: {
   activeExplorer: ExplorerSummary | null;
   gitStatuses: Readonly<Record<string, GitStatus | undefined>>;
@@ -54,6 +55,7 @@ export function PersistentExplorerViews({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
   ): void | Promise<void>;
+  onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
 }) {
   const [dirtyIds, setDirtyIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -104,6 +106,7 @@ export function PersistentExplorerViews({
         onHeaderChange={active ? onHeaderChange : undefined}
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={onOpenFile}
+        onOpenTerminal={onOpenTerminal}
       />
     );
   });

@@ -554,6 +554,13 @@
       "when": 1786807158187,
       "tag": "0078_sturdy_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1786808428982,
+      "tag": "0079_true_ender_wiggin",
+      "breakpoints": true
     }
   ]
 }

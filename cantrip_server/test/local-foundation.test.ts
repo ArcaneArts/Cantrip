@@ -3161,7 +3161,10 @@ describe("local server foundation", () => {
         await firstApp.inject({
           method: "POST",
           url: `/api/projects/${project.id}/terminals`,
-          payload: { title: "Dev shell" },
+          payload: {
+            title: "Dev shell",
+            directoryPath: "packages/app",
+          },
         })
       ).json(),
     );
@@ -3209,6 +3212,7 @@ describe("local server foundation", () => {
       expect.objectContaining({
         terminalId: terminal.id,
         command: "pnpm dev",
+        cwd: `${primaryWorktree!.path}/packages/app`,
       }),
     ]);
     expect(

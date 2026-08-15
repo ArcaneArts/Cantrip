@@ -2906,15 +2906,27 @@ export function App() {
   const newTerminal = useMutation({
     mutationFn: ({
       projectId,
+      directoryPath,
       tabGroupId,
+      title,
       worktreeId,
       target,
     }: {
       projectId: string;
+      directoryPath?: string;
       tabGroupId?: string;
+      title?: string;
       worktreeId?: string;
       target?: ExecutionTarget;
-    }) => createTerminal(projectId, "Terminal", worktreeId, tabGroupId, target),
+    }) =>
+      createTerminal(
+        projectId,
+        title ?? "Terminal",
+        worktreeId,
+        tabGroupId,
+        target,
+        directoryPath,
+      ),
     onSuccess: (terminal) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
@@ -5465,6 +5477,22 @@ export function App() {
             onHeaderChange={setExplorerHeader}
             onLifecycleChange={handleExplorerLifecycleChange}
             onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
+            onOpenTerminal={(explorer, entry) => {
+              if (!selectedSurface || selectedSurface.kind !== "explorer") {
+                return;
+              }
+              newTerminal.mutate({
+                projectId: explorer.projectId,
+                directoryPath: entry.path,
+                tabGroupId: selectedSurface.groupId,
+                title: `Terminal · ${entry.name}`,
+                target: {
+                  kind: "worktree",
+                  projectId: explorer.projectId,
+                  worktreeId: explorer.worktreeId,
+                },
+              });
+            }}
           />
         </Suspense>
 

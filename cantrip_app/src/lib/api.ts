@@ -2260,6 +2260,7 @@ export async function createTerminal(
   worktreeId?: string,
   tabGroupId?: string,
   target?: ExecutionTarget,
+  directoryPath?: string,
 ) {
   return terminalSummarySchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
@@ -2267,6 +2268,7 @@ export async function createTerminal(
       ...(worktreeId ? { worktreeId } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
       ...(target ? { target } : {}),
+      ...(directoryPath ? { directoryPath } : {}),
     }),
   );
 }

@@ -171,6 +171,7 @@ export function ExplorerView({
   onHeaderChange,
   onLifecycleChange,
   onOpenFile,
+  onOpenTerminal,
   transientFile,
 }: {
   active?: boolean;
@@ -186,6 +187,7 @@ export function ExplorerView({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
   ): void | Promise<void>;
+  onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   transientFile?: TransientExplorerFile;
 }) {
   const [selectedPath, setSelectedPath] = useState(() =>
@@ -712,6 +714,7 @@ export function ExplorerView({
             explorer={explorer}
             gitStatus={gitStatus}
             onOpenFile={openEntry}
+            onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
           />
         </div>
       )}
