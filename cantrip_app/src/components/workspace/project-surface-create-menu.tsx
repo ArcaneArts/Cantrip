@@ -46,8 +46,7 @@ export const projectSurfaceCreateDefinitions = [
   { kind: "explorer", label: "Explorer" },
   { kind: "code", label: "Code" },
   { kind: "browser", label: "Browser" },
-  { kind: "history", label: "History" },
-  { kind: "issues", label: "Issues" },
+  { kind: "history", label: "Git" },
   { kind: "remote-desktop", label: "Remote Desktop" },
 ] as const satisfies readonly ProjectSurfaceCreateDefinition[];
 

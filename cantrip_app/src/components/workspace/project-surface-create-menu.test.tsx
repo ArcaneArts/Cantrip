@@ -123,20 +123,19 @@ describe("project surface creation menu", () => {
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },
       { kind: "browser", label: "Browser" },
-      { kind: "history", label: "History" },
-      { kind: "issues", label: "Issues" },
+      { kind: "history", label: "Git" },
       { kind: "remote-desktop", label: "Remote Desktop" },
     ]);
   });
 
   it("marks only actively creating surface kinds as disabled", () => {
     const options = projectSurfaceCreateOptions(
-      new Set(["terminal", "issues"]),
+      new Set(["terminal", "history"]),
     );
 
     expect(
       options.filter(({ disabled }) => disabled).map(({ kind }) => kind),
-    ).toEqual(["terminal", "issues"]);
+    ).toEqual(["terminal", "history"]);
     expect(options.find(({ kind }) => kind === "chat")?.disabled).toBe(false);
   });
 
