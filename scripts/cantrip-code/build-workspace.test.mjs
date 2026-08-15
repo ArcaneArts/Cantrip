@@ -8,7 +8,48 @@ import {
   createBuildWorkspace,
   initializeBuildWorkspaceRepository,
   removeBuildWorkspace,
+  resolveBuildWorkspaceRoot,
 } from "./build-workspace.mjs";
+
+test("keeps Windows native builds short and outside the Temporary directory", () => {
+  const homeDirectory = "C:\\Users\\runneradmin";
+  const temporaryDirectory = `${homeDirectory}\\AppData\\Local\\Temp`;
+  const root = resolveBuildWorkspaceRoot({
+    platform: "win32",
+    homeDirectory,
+    temporaryDirectory,
+  });
+
+  assert.equal(root, homeDirectory);
+  const deepestReportedOutput = path.win32.join(
+    root,
+    "cantrip-code-",
+    "win32-x64-XXXXXX",
+    "source",
+    "remote",
+    "node_modules",
+    "@vscode",
+    "windows-process-tree",
+    "build",
+    "Release",
+    "obj",
+    "windows_process_tree",
+    "src",
+    "process_commandline.nativecodeanalysis.xml",
+  );
+  assert.ok(deepestReportedOutput.length < 260);
+});
+
+test("uses the ordinary temporary root on non-Windows hosts", () => {
+  assert.equal(
+    resolveBuildWorkspaceRoot({
+      platform: "darwin",
+      homeDirectory: "/Users/runner",
+      temporaryDirectory: "/private/tmp",
+    }),
+    "/private/tmp",
+  );
+});
 
 test("creates disposable Code sources below a short temporary root", async () => {
   const temporaryRoot = await mkdtemp(

@@ -8,9 +8,23 @@ import { promisify } from "node:util";
 const PREPARATION_PREFIX = "cantrip-code-";
 const execFileAsync = promisify(execFile);
 
+export function resolveBuildWorkspaceRoot({
+  platform = process.platform,
+  configuredRoot = process.env.CANTRIP_CODE_TEMP_DIR,
+  homeDirectory = os.homedir(),
+  temporaryDirectory = os.tmpdir(),
+} = {}) {
+  if (configuredRoot) return path.resolve(configuredRoot);
+
+  // MSBuild warns against native intermediate/output directories below the
+  // Windows Temporary directory and can race with scanners over its tlog files.
+  // The user profile is still short, writable, and outside that special tree.
+  return platform === "win32" ? homeDirectory : temporaryDirectory;
+}
+
 export async function createBuildWorkspace(
   targetId,
-  { temporaryRoot = process.env.CANTRIP_CODE_TEMP_DIR ?? os.tmpdir() } = {},
+  { temporaryRoot = resolveBuildWorkspaceRoot() } = {},
 ) {
   const parent = path.join(temporaryRoot, PREPARATION_PREFIX);
   await mkdir(parent, { recursive: true });
