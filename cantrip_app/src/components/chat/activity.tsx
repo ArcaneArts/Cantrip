@@ -335,6 +335,20 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
 }
 
 export function Activity({ activity }: { activity: AgentActivity }) {
+  if (activity.type === "reasoning") {
+    return activity.summary.length > 0 ? (
+      <div className="min-w-0 space-y-2 py-1 text-xs leading-5 text-muted-foreground">
+        {activity.summary.map((part, index) => (
+          <p
+            key={`${index}:${part.slice(0, 24)}`}
+            className="whitespace-pre-wrap"
+          >
+            {part}
+          </p>
+        ))}
+      </div>
+    ) : null;
+  }
   if (activity.type === "worktree") {
     return (
       <div className="flex min-w-0 items-center gap-2 py-1 text-sm">
@@ -394,27 +408,25 @@ export function Activity({ activity }: { activity: AgentActivity }) {
         ? Boolean(
             activity.text || activity.explanation || activity.steps.length,
           )
-        : activity.type === "reasoning"
-          ? activity.summary.length > 0
-          : activity.type === "mcpToolCall"
-            ? Boolean(activity.error || activity.durationMs !== null)
-            : activity.type === "dynamicToolCall"
-              ? activity.success !== null || activity.durationMs !== null
-              : activity.type === "collabToolCall"
-                ? Boolean(
-                    activity.prompt ||
-                    activity.receiverThreadIds.length ||
-                    activity.agentStates.length,
-                  )
-                : activity.type === "webSearch"
-                  ? Boolean(activity.action)
-                  : activity.type === "reviewMode"
-                    ? Boolean(activity.review)
-                    : activity.type === "notice"
-                      ? Boolean(activity.details || activity.willRetry !== null)
-                      : activity.type === "contextCompaction"
-                        ? false
-                        : true;
+        : activity.type === "mcpToolCall"
+          ? Boolean(activity.error || activity.durationMs !== null)
+          : activity.type === "dynamicToolCall"
+            ? activity.success !== null || activity.durationMs !== null
+            : activity.type === "collabToolCall"
+              ? Boolean(
+                  activity.prompt ||
+                  activity.receiverThreadIds.length ||
+                  activity.agentStates.length,
+                )
+              : activity.type === "webSearch"
+                ? Boolean(activity.action)
+                : activity.type === "reviewMode"
+                  ? Boolean(activity.review)
+                  : activity.type === "notice"
+                    ? Boolean(activity.details || activity.willRetry !== null)
+                    : activity.type === "contextCompaction"
+                      ? false
+                      : true;
     return (
       <details
         className="group min-w-0 py-1 text-sm"

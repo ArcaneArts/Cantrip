@@ -114,7 +114,10 @@ import {
   insertSkillMention,
   skillMentionSegments,
 } from "@/components/chat/skill-mentions";
-import { buildChatTimeline } from "@/components/chat/timeline";
+import {
+  buildChatTimeline,
+  formatTurnMetadata,
+} from "@/components/chat/timeline";
 import {
   slashCommandQuery,
   type SlashCommandSuggestion,
@@ -1645,6 +1648,7 @@ function ChatTranscript({
               );
             }
             const message = entry.message;
+            const turnMetadata = formatTurnMetadata(entry.turnMetadata);
             const user = message.role === "user";
             const system = message.role === "system";
             const assistantText =
@@ -1738,6 +1742,11 @@ function ChatTranscript({
                           Fork agent from this response
                         </span>
                       </Button>
+                      {turnMetadata ? (
+                        <span className="ml-1 text-[10px] tabular-nums text-muted-foreground/70">
+                          {turnMetadata}
+                        </span>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>

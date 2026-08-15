@@ -1,7 +1,11 @@
 import type { ChatMessage } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { buildChatTimeline, formatElapsedTime } from "./timeline";
+import {
+  buildChatTimeline,
+  formatElapsedTime,
+  formatTurnMetadata,
+} from "./timeline";
 
 function message(
   id: string,
@@ -151,7 +155,7 @@ describe("chat activity timeline", () => {
     });
   });
 
-  it("folds trailing turn metrics into the activity group before the final answer", () => {
+  it("attaches trailing turn metrics to the final answer", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [
         { type: "text", text: "Inspect the runtime" },
@@ -190,16 +194,45 @@ describe("chat activity timeline", () => {
           },
         },
       ]),
+      message("usage", "assistant", "2026-08-07T12:00:04.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "usage",
+            id: "turn:turn-1:usage",
+            status: "completed",
+            total: {
+              totalTokens: 12_345,
+              inputTokens: 10_000,
+              cachedInputTokens: 2_000,
+              cacheWriteInputTokens: 0,
+              outputTokens: 2_345,
+              reasoningOutputTokens: 1_000,
+            },
+            last: {
+              totalTokens: 12_345,
+              inputTokens: 10_000,
+              cachedInputTokens: 2_000,
+              cacheWriteInputTokens: 0,
+              outputTokens: 2_345,
+              reasoningOutputTokens: 1_000,
+            },
+            modelContextWindow: 100_000,
+            contextUsedPercent: 12.3,
+          },
+        },
+      ]),
     ]);
 
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
-      activities: [{ type: "command" }, { type: "turnSummary" }],
+      activities: [{ type: "command" }],
     });
     expect(timeline[2]).toMatchObject({
       type: "message",
       message: { id: "answer" },
+      turnMetadata: { durationMs: 2_000, totalTokens: 12_345 },
     });
 
     const simpleTimeline = buildChatTimeline([
@@ -225,8 +258,53 @@ describe("chat activity timeline", () => {
     ]);
     expect(simpleTimeline.map((entry) => entry.type)).toEqual([
       "message",
-      "activityGroup",
       "message",
     ]);
+    expect(simpleTimeline[1]).toMatchObject({
+      type: "message",
+      message: { id: "simple-answer" },
+      turnMetadata: { durationMs: 2_000, totalTokens: null },
+    });
+  });
+
+  it("formats compact final-answer metadata", () => {
+    expect(
+      formatTurnMetadata({ durationMs: 12_345, totalTokens: 12_345 }),
+    ).toBe("12,345tok · 12.3s");
+    expect(formatTurnMetadata({ durationMs: 62_000, totalTokens: null })).toBe(
+      "1m 2s",
+    );
+    expect(formatTurnMetadata(null)).toBeNull();
+  });
+
+  it("carries metrics emitted before the final answer onto that answer", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Say hello" },
+      ]),
+      message("summary", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "turnSummary",
+            id: "turn:early:summary",
+            status: "completed",
+            durationMs: 1_000,
+            startedAt: 1_786_104_000,
+            completedAt: 1_786_104_001,
+          },
+        },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:02.000Z", [
+        { type: "text", text: "Hello", phase: "final_answer" },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(2);
+    expect(timeline[1]).toMatchObject({
+      type: "message",
+      message: { id: "answer" },
+      turnMetadata: { durationMs: 1_000, totalTokens: null },
+    });
   });
 });
