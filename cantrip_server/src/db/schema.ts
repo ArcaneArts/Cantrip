@@ -338,6 +338,16 @@ export const modelProviderAccounts = pgTable(
      * while the pooled-account migration moves them without losing auth.
      */
     credentialHomeKey: text("credential_home_key").notNull(),
+    credentialEnvelope: text("credential_envelope"),
+    credentialRevision: integer("credential_revision").notNull().default(0),
+    credentialState: text("credential_state").notNull().default("signed-out"),
+    credentialSubject: text("credential_subject"),
+    credentialExpiresAt: timestamp("credential_expires_at", {
+      withTimezone: true,
+    }),
+    credentialUpdatedAt: timestamp("credential_updated_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -353,6 +363,14 @@ export const modelProviderAccounts = pgTable(
     uniqueIndex("model_provider_accounts_provider_home_unique").on(
       table.providerId,
       table.credentialHomeKey,
+    ),
+    check(
+      "model_provider_accounts_credential_state_check",
+      sql`${table.credentialState} IN ('signed-out', 'migration-needed', 'signed-in', 'reauth-required', 'conflict')`,
+    ),
+    check(
+      "model_provider_accounts_credential_revision_check",
+      sql`${table.credentialRevision} >= 0`,
     ),
   ],
 );

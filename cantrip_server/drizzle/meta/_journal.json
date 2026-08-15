@@ -561,6 +561,13 @@
       "when": 1786808428982,
       "tag": "0079_true_ender_wiggin",
       "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1786809977883,
+      "tag": "0080_flimsy_captain_flint",
+      "breakpoints": true
     }
   ]
 }
