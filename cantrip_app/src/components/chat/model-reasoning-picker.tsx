@@ -6,10 +6,10 @@ import type {
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Brain, Check, Search } from "lucide-react";
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
-  useEffect,
   type ChangeEvent,
   type KeyboardEvent,
 } from "react";
@@ -24,6 +24,25 @@ import { cn } from "@/lib/utils";
 interface ReasoningChoice {
   effort: ReasoningEffort | null;
   label: string;
+}
+
+const REASONING_EFFORT_ORDER = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+  "ultra",
+] as const;
+
+function reasoningEffortRank(effort: ReasoningEffort): number {
+  const normalized = effort.trim().toLocaleLowerCase().replaceAll(/[-_ ]/g, "");
+  const index = REASONING_EFFORT_ORDER.indexOf(
+    normalized as (typeof REASONING_EFFORT_ORDER)[number],
+  );
+  return index === -1 ? REASONING_EFFORT_ORDER.length : index;
 }
 
 export interface ModelReasoningPickerProps {
@@ -54,11 +73,20 @@ export function modelReasoningChoices(
   state?: ChatReasoningState,
 ): ReasoningChoice[] {
   if (!state) return [];
+  const orderedOptions = state.options
+    .map((option, index) => ({ index, option }))
+    .sort((left, right) => {
+      const rankDifference =
+        reasoningEffortRank(left.option.effort) -
+        reasoningEffortRank(right.option.effort);
+      return rankDifference || left.index - right.index;
+    })
+    .map(({ option }) => option);
   return [
     ...(state.reasoningMandatory
       ? []
       : [{ effort: null, label: "Provider default" } as const]),
-    ...state.options.map((option) => ({
+    ...orderedOptions.map((option) => ({
       effort: option.effort,
       label: option.effort,
     })),
@@ -92,7 +120,12 @@ export function ModelReasoningPicker({
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState<"models" | "reasoning">("models");
   const [query, setQuery] = useState("");
+  const [reasoningDraftIndex, setReasoningDraftIndex] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const reasoningDraggingRef = useRef(false);
+  const pendingReasoningEffortRef = useRef<ReasoningEffort | null>(
+    reasoningEffort,
+  );
   const selectedModel = models.find(({ id }) => id === selectedModelId);
   const choices = useMemo(
     () => modelReasoningChoices(reasoningState),
@@ -113,6 +146,12 @@ export function ModelReasoningPicker({
     return () => window.cancelAnimationFrame(frame);
   }, [open, panel]);
 
+  useEffect(() => {
+    pendingReasoningEffortRef.current = reasoningEffort;
+    if (reasoningPending || reasoningDraggingRef.current) return;
+    setReasoningDraftIndex(selectedReasoningIndex);
+  }, [reasoningEffort, reasoningPending, selectedReasoningIndex]);
+
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (nextOpen) {
@@ -126,8 +165,13 @@ export function ModelReasoningPicker({
   };
 
   const handleReasoningChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const choice = choices[Number(event.target.value)];
-    if (choice && choice.effort !== reasoningEffort) {
+    setReasoningDraftIndex(Number(event.target.value));
+  };
+
+  const commitReasoningIndex = (index: number) => {
+    const choice = choices[index];
+    if (choice && choice.effort !== pendingReasoningEffortRef.current) {
+      pendingReasoningEffortRef.current = choice.effort;
       onSelectReasoning(choice.effort);
     }
   };
@@ -175,7 +219,7 @@ export function ModelReasoningPicker({
                 <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
                   <span className="font-medium">Reasoning effort</span>
                   <span className="truncate text-muted-foreground">
-                    {choices[selectedReasoningIndex]?.label ?? "Default"}
+                    {choices[reasoningDraftIndex]?.label ?? "Default"}
                   </span>
                 </div>
                 <input
@@ -183,9 +227,40 @@ export function ModelReasoningPicker({
                   min={0}
                   max={Math.max(0, choices.length - 1)}
                   step={1}
-                  value={selectedReasoningIndex}
+                  value={reasoningDraftIndex}
                   disabled={reasoningPending}
                   onChange={handleReasoningChange}
+                  onPointerDown={() => {
+                    reasoningDraggingRef.current = true;
+                  }}
+                  onPointerUp={(event) => {
+                    reasoningDraggingRef.current = false;
+                    commitReasoningIndex(Number(event.currentTarget.value));
+                  }}
+                  onPointerCancel={() => {
+                    reasoningDraggingRef.current = false;
+                    setReasoningDraftIndex(selectedReasoningIndex);
+                  }}
+                  onKeyUp={(event) => {
+                    if (
+                      [
+                        "ArrowLeft",
+                        "ArrowRight",
+                        "ArrowDown",
+                        "ArrowUp",
+                        "Home",
+                        "End",
+                        "PageDown",
+                        "PageUp",
+                      ].includes(event.key)
+                    ) {
+                      commitReasoningIndex(Number(event.currentTarget.value));
+                    }
+                  }}
+                  onBlur={(event) => {
+                    reasoningDraggingRef.current = false;
+                    commitReasoningIndex(Number(event.currentTarget.value));
+                  }}
                   aria-label="Reasoning effort"
                   className="h-2 w-full cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
                 />
@@ -241,7 +316,17 @@ export function ModelReasoningPicker({
                       key={model.id}
                       disabled={modelSelectionDisabled || modelPending}
                       onSelect={() => onSelectModel(model.id)}
-                      className="justify-between gap-3"
+                      onPointerMove={(event) => {
+                        if (event.pointerType === "mouse") {
+                          event.preventDefault();
+                        }
+                      }}
+                      onPointerLeave={(event) => {
+                        if (event.pointerType === "mouse") {
+                          event.preventDefault();
+                        }
+                      }}
+                      className="justify-between gap-3 hover:bg-accent"
                     >
                       <span className="min-w-0">
                         <span className="block truncate font-medium">
