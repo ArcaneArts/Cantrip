@@ -31,6 +31,10 @@ import {
   chatMessageListSchema,
   chatSummarySchema,
   chatCompactAcceptedSchema,
+  chatImportCreateSchema,
+  chatImportJobListSchema,
+  chatImportJobRetrySchema,
+  chatImportJobSummarySchema,
   chatInterruptAcceptedSchema,
   chatPlanAcceptedSchema,
   chatPlanAnswerSchema,
@@ -157,6 +161,7 @@ import {
   mcpServerSummarySchema,
   orderedIdsSchema,
   projectListSchema,
+  projectExternalChatDiscoverySchema,
   projectPreferredWorkerUpdateSchema,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
@@ -231,6 +236,7 @@ import type {
   ChatAttachmentSource,
   ChatGoalCreate,
   ChatGoalUpdate,
+  ChatImportCreate,
   ChatPlanAnswer,
   ChatPlanUpdate,
   ChatRelocationCreate,
@@ -2094,6 +2100,56 @@ export async function updateProjectPreferredWorker(
 export async function getChats(projectId: string) {
   return chatListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/chats`),
+  );
+}
+
+export async function getExternalChatHistory(
+  projectId: string,
+  includeArchived = false,
+) {
+  const query = includeArchived ? "?includeArchived=true" : "";
+  return projectExternalChatDiscoverySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/external-chat-history${query}`,
+    ),
+  );
+}
+
+export async function createChatImports(
+  projectId: string,
+  input: ChatImportCreate,
+) {
+  return chatImportJobListSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/chat-imports`,
+      chatImportCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getChatImports(projectId: string) {
+  return chatImportJobListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/chat-imports`,
+    ),
+  );
+}
+
+export async function getChatImport(jobId: string) {
+  return chatImportJobSummarySchema.parse(
+    await request(`/api/chat-imports/${encodeURIComponent(jobId)}`),
+  );
+}
+
+export async function retryChatImport(
+  jobId: string,
+  input: { stateRevision: number },
+) {
+  return chatImportJobSummarySchema.parse(
+    await post(
+      `/api/chat-imports/${encodeURIComponent(jobId)}/retry`,
+      chatImportJobRetrySchema.parse(input),
+    ),
   );
 }
 

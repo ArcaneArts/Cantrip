@@ -78,6 +78,7 @@ import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
+import { ExternalChatImportSettings } from "./external-chat-import";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
 import {
@@ -208,6 +209,7 @@ function DetailRow({
 export function ProjectSettingsPage({
   chats,
   codeTabs,
+  desktopRuntime,
   explorers,
   initialSection = "general",
   initialWorkflowId,
@@ -218,6 +220,7 @@ export function ProjectSettingsPage({
   onCreateTerminal,
   onRestoreChat,
   onOpenTunnelOwner,
+  onOpenImportedChat,
   project,
   projectViews,
   statuses,
@@ -227,6 +230,7 @@ export function ProjectSettingsPage({
 }: {
   chats: ChatSummary[];
   codeTabs: CodeTabSummary[];
+  desktopRuntime: boolean;
   explorers: ExplorerSummary[];
   initialSection?: ProjectSettingsSection;
   initialWorkflowId?: string | null;
@@ -237,6 +241,7 @@ export function ProjectSettingsPage({
   onCreateTerminal(worktreeId: string): void;
   onRestoreChat?(chat: ChatSummary): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
+  onOpenImportedChat(chatId: string): void;
   project: ProjectSummary;
   projectViews: ProjectViewSummary[];
   statuses: WorktreeStatusMap;
@@ -508,6 +513,16 @@ export function ProjectSettingsPage({
               </DetailRow>
             </dl>
           </section>
+        ) : null}
+
+        {section === "general" ? (
+          <ExternalChatImportSettings
+            desktopRuntime={desktopRuntime}
+            project={project}
+            workers={workers}
+            worktrees={worktrees}
+            onOpenChat={onOpenImportedChat}
+          />
         ) : null}
 
         {section === "worktrees" ? (

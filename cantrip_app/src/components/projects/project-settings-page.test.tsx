@@ -217,6 +217,7 @@ describe("project settings", () => {
       return renderToStaticMarkup(
         <QueryClientProvider client={queryClient}>
           <ProjectSettingsPage
+            desktopRuntime={false}
             initialSection={initialSection}
             project={project}
             chats={[]}
@@ -232,6 +233,7 @@ describe("project settings", () => {
             onCreateTerminal={() => undefined}
             onCreateExplorer={() => undefined}
             onCreateHistory={() => undefined}
+            onOpenImportedChat={() => undefined}
           />
         </QueryClientProvider>,
       );

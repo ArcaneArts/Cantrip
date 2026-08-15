@@ -5544,6 +5544,7 @@ export function App() {
           <ServerAdminPage />
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
+            desktopRuntime={desktopRuntime && projectRevealLabel !== null}
             initialWorkflowId={selectedWorkflowIntentId}
             project={selectedProject}
             chats={chats.data ?? []}
@@ -5590,6 +5591,9 @@ export function App() {
               openCreatedTab(chat.projectId, "chat", chat.id)
             }
             onOpenTunnelOwner={openTunnelOwner}
+            onOpenImportedChat={(chatId) =>
+              openCreatedTab(selectedProject.id, "chat", chatId)
+            }
           />
         ) : showImporter ? (
           <RepositoryImporter
