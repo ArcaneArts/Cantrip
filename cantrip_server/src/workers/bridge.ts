@@ -1,20 +1,19 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  decodeWorkerServerEnvelope,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
+  encodeWorkerRequestEnvelope,
   encodeRemoteSurfaceFrame,
   encodeTunnelDataPlaneFrame,
   isTunnelDataPlaneFrame,
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
   type WorkerCommand,
-  workerEventEnvelopeSchema,
   type WorkerEvent,
-  workerNotificationEnvelopeSchema,
   type WorkerNotification,
-  workerRequestEnvelopeSchema,
-  workerResponseEnvelopeSchema,
+  type WorkerServerEnvelope,
 } from "@cantrip/protocol";
 
 interface WorkerSocket {
@@ -128,6 +127,23 @@ function workerFrameBytes(data: unknown): Uint8Array {
   throw new Error("Worker sent an unsupported binary frame type.");
 }
 
+function subscribeKeyedListener<T>(
+  registry: Map<string, Set<T>>,
+  workerId: string,
+  listener: T,
+): () => void {
+  let listeners = registry.get(workerId);
+  if (!listeners) {
+    listeners = new Set();
+    registry.set(workerId, listeners);
+  }
+  listeners.add(listener);
+  return () => {
+    listeners?.delete(listener);
+    if (listeners?.size === 0) registry.delete(workerId);
+  };
+}
+
 export class WorkerBridge implements WorkerCommandBus {
   readonly #disconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
   readonly #pending = new Map<string, PendingRequest>();
@@ -156,95 +172,114 @@ export class WorkerBridge implements WorkerCommandBus {
     this.#sockets.set(workerId, socket);
     this.clearDisconnectTimer(workerId);
 
-    socket.on("message", (data, isBinary) => {
-      if (isBinary) {
-        try {
-          const bytes = workerFrameBytes(data);
-          if (isTunnelDataPlaneFrame(bytes)) {
-            const frame = decodeTunnelDataPlaneFrame(bytes);
-            for (const listener of this.#tunnelDataPlaneListeners.get(
-              workerId,
-            ) ?? []) {
-              listener(frame.header, frame.payload);
-            }
-          } else {
-            const frame = decodeRemoteSurfaceFrame(bytes);
-            for (const listener of this.#surfaceListeners.get(workerId) ?? []) {
-              listener(frame.header, frame.payload);
-            }
-          }
-        } catch {
-          // Malformed binary data is isolated to the worker connection.
-        }
-        return;
-      }
-      let payload: unknown;
-      try {
-        payload = JSON.parse(String(data));
-      } catch {
-        return;
-      }
-      const response = workerResponseEnvelopeSchema.safeParse(payload);
-      if (!response.success) {
-        const notification =
-          workerNotificationEnvelopeSchema.safeParse(payload);
-        if (notification.success) {
-          for (const listener of this.#notificationListeners.get(workerId) ??
-            []) {
-            void Promise.resolve(
-              listener(notification.data.notification),
-            ).catch(() => undefined);
-          }
-          return;
-        }
-        const event = workerEventEnvelopeSchema.safeParse(payload);
-        if (!event.success) {
-          return;
-        }
-        const pending = this.#pending.get(event.data.requestId);
-        if (!pending || pending.workerId !== workerId || !pending.onEvent) {
-          return;
-        }
-        pending.eventQueue = pending.eventQueue.then(() =>
-          pending.onEvent?.(event.data.event),
-        );
-        return;
-      }
-      const pending = this.#pending.get(response.data.requestId);
-      if (!pending || pending.workerId !== workerId) {
-        return;
-      }
-      this.#pending.delete(response.data.requestId);
-      if (pending.timeout) clearTimeout(pending.timeout);
-      void pending.eventQueue.then(
-        () => {
-          if (response.data.ok) {
-            pending.resolve(response.data.result);
-          } else {
-            pending.reject(new Error(response.data.error.message));
-          }
-        },
-        (error: unknown) => {
-          pending.reject(
-            error instanceof Error ? error : new Error(String(error)),
-          );
-        },
-      );
-    });
+    socket.on("message", (data, isBinary) =>
+      this.handleSocketMessage(workerId, data, Boolean(isBinary)),
+    );
 
-    const disconnect = () => {
-      if (this.#sockets.get(workerId) !== socket) {
-        return;
-      }
-      this.#sockets.delete(workerId);
-      for (const listener of this.#workerDisconnectListeners.get(workerId) ??
-        []) {
-        listener();
-      }
-      this.scheduleDisconnectedRequestRejection(workerId);
-    };
+    const disconnect = () => this.handleSocketDisconnect(workerId, socket);
     socket.on("close", disconnect);
     socket.on("error", disconnect);
+  }
+
+  private handleSocketMessage(
+    workerId: string,
+    data: unknown,
+    isBinary: boolean,
+  ): void {
+    if (isBinary) {
+      this.handleBinaryFrame(workerId, data);
+      return;
+    }
+    const decoded = decodeWorkerServerEnvelope(String(data));
+    if (decoded.success) this.handleServerEnvelope(workerId, decoded.data);
+  }
+
+  private handleBinaryFrame(workerId: string, data: unknown): void {
+    try {
+      const bytes = workerFrameBytes(data);
+      if (isTunnelDataPlaneFrame(bytes)) {
+        const frame = decodeTunnelDataPlaneFrame(bytes);
+        for (const listener of this.#tunnelDataPlaneListeners.get(workerId) ??
+          []) {
+          listener(frame.header, frame.payload);
+        }
+        return;
+      }
+      const frame = decodeRemoteSurfaceFrame(bytes);
+      for (const listener of this.#surfaceListeners.get(workerId) ?? []) {
+        listener(frame.header, frame.payload);
+      }
+    } catch {
+      // Malformed binary data is isolated to the worker connection.
+    }
+  }
+
+  private handleServerEnvelope(
+    workerId: string,
+    envelope: WorkerServerEnvelope,
+  ): void {
+    switch (envelope.kind) {
+      case "notification":
+        this.deliverNotification(workerId, envelope.notification);
+        return;
+      case "event":
+        this.queueRequestEvent(workerId, envelope.requestId, envelope.event);
+        return;
+      case "response":
+        this.completeRequest(workerId, envelope);
+    }
+  }
+
+  private deliverNotification(
+    workerId: string,
+    notification: WorkerNotification,
+  ): void {
+    for (const listener of this.#notificationListeners.get(workerId) ?? []) {
+      void Promise.resolve(listener(notification)).catch(() => undefined);
+    }
+  }
+
+  private queueRequestEvent(
+    workerId: string,
+    requestId: string,
+    event: WorkerEvent,
+  ): void {
+    const pending = this.#pending.get(requestId);
+    if (!pending || pending.workerId !== workerId || !pending.onEvent) return;
+    pending.eventQueue = pending.eventQueue.then(() =>
+      pending.onEvent?.(event),
+    );
+  }
+
+  private completeRequest(
+    workerId: string,
+    response: Extract<WorkerServerEnvelope, { kind: "response" }>,
+  ): void {
+    const pending = this.#pending.get(response.requestId);
+    if (!pending || pending.workerId !== workerId) return;
+    this.#pending.delete(response.requestId);
+    if (pending.timeout) clearTimeout(pending.timeout);
+    void pending.eventQueue.then(
+      () => {
+        if (response.ok) pending.resolve(response.result);
+        else pending.reject(new Error(response.error.message));
+      },
+      (error: unknown) => {
+        pending.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      },
+    );
+  }
+
+  private handleSocketDisconnect(workerId: string, socket: WorkerSocket): void {
+    if (this.#sockets.get(workerId) !== socket) return;
+    this.#sockets.delete(workerId);
+    for (const listener of this.#workerDisconnectListeners.get(workerId) ??
+      []) {
+      listener();
+    }
+    this.scheduleDisconnectedRequestRejection(workerId);
   }
 
   disconnect(
@@ -279,16 +314,11 @@ export class WorkerBridge implements WorkerCommandBus {
     workerId: string,
     listener: WorkerNotificationListener,
   ): () => void {
-    let listeners = this.#notificationListeners.get(workerId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#notificationListeners.set(workerId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-      if (listeners?.size === 0) this.#notificationListeners.delete(workerId);
-    };
+    return subscribeKeyedListener(
+      this.#notificationListeners,
+      workerId,
+      listener,
+    );
   }
 
   sendSurfaceFrame(
@@ -336,52 +366,29 @@ export class WorkerBridge implements WorkerCommandBus {
     workerId: string,
     listener: WorkerSurfaceFrameListener,
   ): () => void {
-    let listeners = this.#surfaceListeners.get(workerId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#surfaceListeners.set(workerId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-      if (listeners?.size === 0) this.#surfaceListeners.delete(workerId);
-    };
+    return subscribeKeyedListener(this.#surfaceListeners, workerId, listener);
   }
 
   subscribeTunnelDataPlaneFrames(
     workerId: string,
     listener: WorkerTunnelDataPlaneFrameListener,
   ): () => void {
-    let listeners = this.#tunnelDataPlaneListeners.get(workerId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#tunnelDataPlaneListeners.set(workerId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-      if (listeners?.size === 0) {
-        this.#tunnelDataPlaneListeners.delete(workerId);
-      }
-    };
+    return subscribeKeyedListener(
+      this.#tunnelDataPlaneListeners,
+      workerId,
+      listener,
+    );
   }
 
   subscribeWorkerDisconnect(
     workerId: string,
     listener: () => void,
   ): () => void {
-    let listeners = this.#workerDisconnectListeners.get(workerId);
-    if (!listeners) {
-      listeners = new Set();
-      this.#workerDisconnectListeners.set(workerId, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      listeners?.delete(listener);
-      if (listeners?.size === 0) {
-        this.#workerDisconnectListeners.delete(workerId);
-      }
-    };
+    return subscribeKeyedListener(
+      this.#workerDisconnectListeners,
+      workerId,
+      listener,
+    );
   }
 
   request(
@@ -397,7 +404,7 @@ export class WorkerBridge implements WorkerCommandBus {
     }
 
     const requestId = randomUUID();
-    const envelope = workerRequestEnvelopeSchema.parse({
+    const envelope = encodeWorkerRequestEnvelope({
       kind: "request",
       requestId,
       command,
@@ -424,7 +431,7 @@ export class WorkerBridge implements WorkerCommandBus {
       });
 
       try {
-        socket.send(JSON.stringify(envelope));
+        socket.send(envelope);
       } catch (error) {
         if (timeout) clearTimeout(timeout);
         this.#pending.delete(requestId);

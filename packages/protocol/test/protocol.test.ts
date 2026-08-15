@@ -36,9 +36,13 @@ import {
   codeRuntimeStatusSchema,
   codeTabSummarySchema,
   codeAdapterRequestHeadSchema,
+  decodeWorkerRequestEnvelope,
+  decodeWorkerServerEnvelope,
   decodeRemoteSurfaceFrame,
   desktopStreamSettingsSchema,
   encodeRemoteSurfaceFrame,
+  encodeWorkerRequestEnvelope,
+  encodeWorkerServerEnvelope,
   executionPlacementSchema,
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
@@ -155,6 +159,41 @@ import {
   workerNotificationEnvelopeSchema,
   workerCliCommandCallSchema,
 } from "../src/index.js";
+
+describe("worker channel JSON codec", () => {
+  it("round-trips request and server envelopes", () => {
+    const request = {
+      kind: "request" as const,
+      requestId: "request-codec",
+      command: { type: "code.probe" as const },
+    };
+    const response = {
+      kind: "response" as const,
+      requestId: "request-codec",
+      ok: true as const,
+      result: { available: true },
+    };
+
+    expect(
+      decodeWorkerRequestEnvelope(encodeWorkerRequestEnvelope(request)),
+    ).toEqual({ data: request, success: true });
+    expect(
+      decodeWorkerServerEnvelope(encodeWorkerServerEnvelope(response)),
+    ).toEqual({ data: response, success: true });
+  });
+
+  it("distinguishes invalid JSON from an invalid worker envelope", () => {
+    expect(decodeWorkerServerEnvelope("{")).toEqual({
+      reason: "invalid-json",
+      success: false,
+    });
+    expect(decodeWorkerServerEnvelope('{"kind":"unknown"}')).toEqual({
+      reason: "invalid-message",
+      success: false,
+      value: { kind: "unknown" },
+    });
+  });
+});
 
 describe("model catalog protocol", () => {
   it("accepts settings from servers that predate managed model catalogs", () => {

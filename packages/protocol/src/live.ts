@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  decodeJsonMessage,
+  encodeJsonMessage,
+  type JsonMessageDecodeResult,
+} from "./json-message.js";
 import { workflowJsonObjectSchema } from "./workflows.js";
 
 export const appLiveProtocolVersionSchema = z.literal(1);
@@ -273,3 +278,27 @@ export type AppLiveClientMessage = z.infer<typeof appLiveClientMessageSchema>;
 export type AppLiveResyncReason = z.infer<typeof appLiveResyncReasonSchema>;
 export type AppLiveErrorCode = z.infer<typeof appLiveErrorCodeSchema>;
 export type AppLiveServerMessage = z.infer<typeof appLiveServerMessageSchema>;
+
+export function decodeAppLiveClientMessage(
+  encoded: string,
+): JsonMessageDecodeResult<AppLiveClientMessage> {
+  return decodeJsonMessage(encoded, appLiveClientMessageSchema);
+}
+
+export function decodeAppLiveServerMessage(
+  encoded: string,
+): JsonMessageDecodeResult<AppLiveServerMessage> {
+  return decodeJsonMessage(encoded, appLiveServerMessageSchema);
+}
+
+export function encodeAppLiveClientMessage(
+  message: AppLiveClientMessage,
+): string {
+  return encodeJsonMessage(message, appLiveClientMessageSchema);
+}
+
+export function encodeAppLiveServerMessage(
+  message: AppLiveServerMessage,
+): string {
+  return encodeJsonMessage(message, appLiveServerMessageSchema);
+}

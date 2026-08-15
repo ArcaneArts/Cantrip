@@ -1,6 +1,14 @@
 import { z } from "zod";
 
 import {
+  decodeJsonMessage,
+  encodeJsonMessage,
+  type JsonMessageDecodeResult,
+} from "./json-message.js";
+
+export * from "./json-message.js";
+
+import {
   directBrokerAdvertisementSchema,
   directCapabilityPrepareCommandSchema,
   directCapabilityRenewCommandSchema,
@@ -8057,6 +8065,12 @@ export const workerNotificationEnvelopeSchema = z.object({
   notification: workerNotificationSchema,
 });
 
+export const workerServerEnvelopeSchema = z.union([
+  workerResponseEnvelopeSchema,
+  workerEventEnvelopeSchema,
+  workerNotificationEnvelopeSchema,
+]);
+
 export type DatabaseEngine = z.infer<typeof databaseEngineSchema>;
 export type DeploymentMode = z.infer<typeof deploymentModeSchema>;
 export type BootstrapMode = z.infer<typeof bootstrapModeSchema>;
@@ -9067,3 +9081,28 @@ export type WorkerNotification = z.infer<typeof workerNotificationSchema>;
 export type WorkerNotificationEnvelope = z.infer<
   typeof workerNotificationEnvelopeSchema
 >;
+export type WorkerServerEnvelope = z.infer<typeof workerServerEnvelopeSchema>;
+
+export function decodeWorkerRequestEnvelope(
+  encoded: string,
+): JsonMessageDecodeResult<WorkerRequestEnvelope> {
+  return decodeJsonMessage(encoded, workerRequestEnvelopeSchema);
+}
+
+export function decodeWorkerServerEnvelope(
+  encoded: string,
+): JsonMessageDecodeResult<WorkerServerEnvelope> {
+  return decodeJsonMessage(encoded, workerServerEnvelopeSchema);
+}
+
+export function encodeWorkerRequestEnvelope(
+  envelope: WorkerRequestEnvelope,
+): string {
+  return encodeJsonMessage(envelope, workerRequestEnvelopeSchema);
+}
+
+export function encodeWorkerServerEnvelope(
+  envelope: WorkerServerEnvelope,
+): string {
+  return encodeJsonMessage(envelope, workerServerEnvelopeSchema);
+}
