@@ -27,8 +27,12 @@ Settings are stored by the server for the current Cantrip identity rather than i
 
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
-- Isolated ChatGPT account providers authenticated through Codex, including account status and available usage information when Codex exposes it.
-- Isolated Grok and SuperGrok OAuth accounts, with worker-owned rotating credentials, subscription model discovery, and multi-account fallback routing through xAI's subscription proxy.
+- Portable ChatGPT account providers authenticated through Codex. Durable OAuth
+  credentials and refresh authority live in the encrypted server vault; workers
+  receive only short-lived access leases and account metadata.
+- Portable Grok and SuperGrok OAuth accounts, with server-owned rotating
+  credentials, subscription model discovery, and multi-account fallback routing
+  through a worker-local xAI subscription proxy.
 
 Models are logical profiles with one or more ordered provider routes. A profile
 such as `GPT-5.6 Sol` can prefer one ChatGPT account, fall back to another when
@@ -86,13 +90,13 @@ The React frontend is the control surface. Vite provides the browser development
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations plus project-wide logical branch leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations plus project-wide logical branch leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout. It also keeps ChatGPT and Grok OAuth credentials in its encrypted account vault, serializes refreshes, and issues bounded access-token leases to authenticated owner-bound workers.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts.
+The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts. Server-managed ChatGPT and Grok access leases remain in memory; normal operation does not create worker-local `auth.json` or `grok-auth.json` credentials.
 
 Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
 
@@ -105,6 +109,9 @@ Codex App Server versions and negotiated features follow the explicit policy in
 The normalized transcript surface and its reasoning/secret boundary are
 documented in
 [`docs/CODEX_EVENT_NORMALIZATION.md`](docs/CODEX_EVENT_NORMALIZATION.md).
+Portable provider authentication, migration, lifecycle, threat boundaries, and
+manual cross-platform validation are documented in
+[`docs/PROVIDER_AUTHENTICATION.md`](docs/PROVIDER_AUTHENTICATION.md).
 
 ## Current deployment model
 
@@ -114,7 +121,7 @@ The account area in the main sidebar is also the server switcher. Its **Add serv
 
 Signed-in users can choose **Sign in mobile device** from the same server menu. Cantrip displays a two-minute QR grant containing the server identity, its phone-reachable origin, and an opaque one-use code. The mobile sign-in screen scans and verifies that identity, saves the server profile, consumes the code once, and receives a normal independently revocable HttpOnly session. Passwords and existing session cookies are never encoded in the QR.
 
-Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, independently revocable worker enrollment, versioned encryption of provider API keys and MCP secret values at rest, fail-closed hosted HTTP/origin/proxy configuration, account/worker traffic quotas, liveness/readiness probes, protected Prometheus metrics, active-session visibility, owner-scoped append-only security audit events, Redis-backed multi-instance worker/live routing, and database-fenced scheduled automation claims that recover after a replica crash.
+Standalone server and worker packages establish the deployable boundary for the hosted control plane. The server supports anonymous loopback mode, protected single-user password sessions, email/password account sessions, tenant ownership, independently revocable worker enrollment, versioned encryption of provider API keys, portable provider-account OAuth credentials, and MCP secret values at rest, fail-closed hosted HTTP/origin/proxy configuration, account/worker traffic quotas, liveness/readiness probes, protected Prometheus metrics, active-session visibility, owner-scoped append-only security audit events, Redis-backed multi-instance worker/live routing, and database-fenced scheduled automation claims that recover after a replica crash.
 
 Production Linux server/worker images, PostgreSQL/Redis Compose services,
 Caddy and Nginx proxy examples, explicit migrations, and backup/restore guidance

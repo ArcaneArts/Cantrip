@@ -3,6 +3,7 @@ import {
   execFile,
   spawn,
   type ChildProcessWithoutNullStreams,
+  type ProcessEnvOptions,
 } from "node:child_process";
 import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
@@ -99,6 +100,18 @@ import {
   type ExternalChatGptAuthSession,
   type RuntimeProvider,
 } from "./external-chatgpt-auth.js";
+
+export type CodexProcessLauncher = (
+  binary: string,
+  arguments_: string[],
+  options: ProcessEnvOptions,
+) => ChildProcessWithoutNullStreams;
+
+const launchCodexProcess: CodexProcessLauncher = (
+  binary,
+  arguments_,
+  options,
+) => spawn(binary, arguments_, { ...options, stdio: ["pipe", "pipe", "pipe"] });
 
 export interface RpcError {
   code: number;
@@ -1917,6 +1930,7 @@ export class CodexAppServer implements CodexRuntime {
       ProviderAccessTokenClient,
       "get"
     >,
+    private readonly launchCodex: CodexProcessLauncher = launchCodexProcess,
   ) {}
 
   diagnostics(): CodexRuntimeDiagnostic[] {
@@ -3386,7 +3400,7 @@ export class CodexAppServer implements CodexRuntime {
           runtimeProvider,
         )
       : null;
-    const child = spawn(
+    const child = this.launchCodex(
       this.codexBinary,
       [
         "app-server",
@@ -3415,7 +3429,6 @@ export class CodexAppServer implements CodexRuntime {
           CODEX_HOME: this.codexHome,
           ...providerConfiguration.environment,
         },
-        stdio: ["pipe", "pipe", "pipe"],
       },
     );
     this.#child = child;

@@ -2,7 +2,7 @@
 
 - Status: Accepted foundation contract
 - Last updated: 2026-08-12
-- Related decisions: [ADR 0001](adr/0001-agent-managed-worktree-execution.md), [ADR 0002](adr/0002-worker-owned-remote-surfaces.md), [ADR 0003](adr/0003-worker-owned-chat-attachments.md), and [ADR 0006](adr/0006-multi-worker-project-replicas.md)
+- Related decisions: [ADR 0001](adr/0001-agent-managed-worktree-execution.md), [ADR 0002](adr/0002-worker-owned-remote-surfaces.md), [ADR 0003](adr/0003-worker-owned-chat-attachments.md), [ADR 0006](adr/0006-multi-worker-project-replicas.md), and the [provider authentication contract](PROVIDER_AUTHENTICATION.md)
 
 ## Purpose
 
@@ -58,6 +58,15 @@ A source worker may therefore read a selected local transcript while another
 worker receives its bounded attachments and hydrates the new Cantrip-managed
 thread. Durable already-imported references remain owner-scoped across projects
 and workers. See [the Codex chat import guide](CODEX_CHAT_IMPORT.md).
+
+Provider authentication deliberately does not follow runtime placement.
+ChatGPT and Grok/SuperGrok OAuth accounts, quota state, and catalog availability
+belong to the server account. Any compatible enrolled worker may request a
+short-lived access lease and recreate a selected provider route without a local
+provider sign-in. Chat relocation therefore preserves the logical model,
+concrete route, provider account, reasoning selection, and credential-home key
+while the target runtime obtains its own lease. Worker scope remains correct for
+machine-local providers such as Ollama.
 
 ## Current replica read contract
 
@@ -292,16 +301,17 @@ fences.
 
 ## Authority boundaries
 
-| Concern                                      | App                            | Server                         | Worker                        |
-| -------------------------------------------- | ------------------------------ | ------------------------------ | ----------------------------- |
-| Project, replica, placement, and job records | Render and request             | Authoritative                  | Reports observations          |
-| Ownership and authorization                  | Supplies authenticated session | Authoritative                  | Enforces command binding      |
-| Target resolution and routing                | Supplies an untrusted selector | Authoritative                  | Accepts only routed commands  |
-| Paths, symlinks, files, Git, and dirty state | Never dereferences             | Stores bounded observations    | Authoritative                 |
-| Conversation transcript and relocation state | Render and request             | Authoritative                  | Hosts worker-specific runtime |
-| Codex rollout files and processes            | Never accesses directly        | Stores runtime association     | Authoritative                 |
-| PTYs, Code, browser, and desktop processes   | Attaches through server        | Owns durable surface lifecycle | Authoritative                 |
-| Credentials and machine capabilities         | Displays redacted state        | Owns enrollment and policy     | Owns runtime/provider secrets |
+| Concern                                         | App                            | Server                                      | Worker                                 |
+| ----------------------------------------------- | ------------------------------ | ------------------------------------------- | -------------------------------------- |
+| Project, replica, placement, and job records    | Render and request             | Authoritative                               | Reports observations                   |
+| Ownership and authorization                     | Supplies authenticated session | Authoritative                               | Enforces command binding               |
+| Target resolution and routing                   | Supplies an untrusted selector | Authoritative                               | Accepts only routed commands           |
+| Paths, symlinks, files, Git, and dirty state    | Never dereferences             | Stores bounded observations                 | Authoritative                          |
+| Conversation transcript and relocation state    | Render and request             | Authoritative                               | Hosts worker-specific runtime          |
+| Codex rollout files and processes               | Never accesses directly        | Stores runtime association                  | Authoritative                          |
+| PTYs, Code, browser, and desktop processes      | Attaches through server        | Owns durable surface lifecycle              | Authoritative                          |
+| Provider OAuth credentials/status/catalog       | Displays redacted state        | Encrypted durable state and lease authority | Uses ephemeral access leases           |
+| Enrollment credentials and machine capabilities | Displays redacted state        | Owns enrollment and policy                  | Owns machine identity and capabilities |
 
 The app connects only to the server. Worker commands use the authenticated,
 versioned server-to-worker protocol. A server may fan an operation out to many
