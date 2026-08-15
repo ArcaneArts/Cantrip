@@ -8380,6 +8380,24 @@ export class ServerRepository {
             "Chat relocation is active. Cancel it before starting another turn on the source placement.",
           );
         }
+        const incompleteImports = await transaction
+          .select({ state: schema.chatImportJobs.state })
+          .from(schema.chatImportJobs)
+          .where(
+            and(
+              eq(schema.chatImportJobs.chatId, chatId),
+              notInArray(schema.chatImportJobs.state, [
+                "succeeded",
+                "cancelled",
+              ]),
+            ),
+          )
+          .limit(1);
+        if (incompleteImports[0]) {
+          throw new ExecutionLaneConflictError(
+            "This imported chat must finish runtime hydration before it can continue.",
+          );
+        }
 
         const claimed = await transaction
           .update(schema.chats)

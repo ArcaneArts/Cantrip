@@ -30,6 +30,7 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import * as schema from "./schema.js";
+import { encodeCanonicalChatPayload } from "../chats/hydration.js";
 import {
   acquireChatLogicalBranchLease,
   LogicalBranchLeaseConflictError,
@@ -177,24 +178,10 @@ function payloadFingerprint(
     .digest("hex");
 }
 
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
-  }
-  const record = value as Record<string, unknown>;
-  return `{${Object.keys(record)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-    .join(",")}}`;
-}
-
 export function encodeChatRelocationPayload(
   payload: ChatRelocationContextPayload,
 ): Buffer {
-  return Buffer.from(canonicalJson(payload), "utf8");
+  return encodeCanonicalChatPayload(payload);
 }
 
 function isUniqueViolation(error: unknown): boolean {

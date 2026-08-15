@@ -2088,6 +2088,15 @@ export const chatImportJobs = pgTable(
     targetPlacement: jsonb("target_placement")
       .$type<ExecutionPlacement>()
       .notNull(),
+    managedThreadId: text("managed_thread_id"),
+    targetModelRouteId: text("target_model_route_id").references(
+      () => modelRoutes.id,
+      { onDelete: "set null" },
+    ),
+    targetProviderAccountId: text("target_provider_account_id").references(
+      () => modelProviderAccounts.id,
+      { onDelete: "set null" },
+    ),
     requestedModelId: text("requested_model_id").references(
       () => modelProfiles.id,
       { onDelete: "set null" },

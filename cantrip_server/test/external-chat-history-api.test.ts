@@ -18,7 +18,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
+import {
+  DEFAULT_MODEL_ID,
+  DEFAULT_MODEL_ROUTE_ID,
+  LOCAL_USER_ID,
+} from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
@@ -40,6 +44,9 @@ const config: ServerConfig = {
 
 const connectedWorkers = new Set(["local-worker"]);
 const requests: Array<{ workerId: string; command: WorkerCommand }> = [];
+const hydrationDigests = new Map<string, string>();
+const hydrationChunks = new Map<string, Buffer[]>();
+let hydrationFailure: Error | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -57,6 +64,32 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(workerId, command) {
     requests.push({ workerId, command });
+    if (command.type === "chat.relocation.hydration.begin") {
+      if (hydrationFailure) throw hydrationFailure;
+      hydrationDigests.set(command.snapshotId, command.transcriptSha256);
+      hydrationChunks.set(command.snapshotId, []);
+      return { status: "upload" };
+    }
+    if (command.type === "chat.relocation.hydration.chunk") {
+      hydrationChunks.get(command.snapshotId)![command.chunkIndex] =
+        Buffer.from(command.data, "base64");
+      return { accepted: true };
+    }
+    if (command.type === "chat.relocation.hydration.complete") {
+      return {
+        snapshotId: command.snapshotId,
+        transcriptSha256: hydrationDigests.get(command.snapshotId),
+        threadId: `managed-${command.snapshotId}`,
+        reused: false,
+      };
+    }
+    if (command.type === "chat.sync") {
+      return {
+        threadId: command.threadId,
+        status: "idle",
+        turns: [],
+      };
+    }
     if (command.type === "external.chat-history.read") {
       const target = command.targets[0]!;
       return externalChatReadWorkerResultSchema.parse({
@@ -177,7 +210,29 @@ async function recordWorker(
     platform: "darwin",
     architecture: "arm64",
     codexVersion: "0.147.0",
-    codexRuntime: unprobedCodexRuntimeReport,
+    codexRuntime: {
+      ...unprobedCodexRuntimeReport,
+      compatibility: "compatible",
+      version: { raw: "0.147.0", semantic: "0.147.0" },
+      initialize: {
+        userAgent: "cantrip-test",
+        platformFamily: "unix",
+        platformOs: "darwin",
+        experimentalApi: true,
+      },
+      methods: Object.fromEntries(
+        [
+          "thread/start",
+          "thread/read",
+          "thread/inject_items",
+          "skills/list",
+          "permissionProfile/list",
+          "collaborationMode/list",
+          "thread/settings/update",
+        ].map((method) => [method, "available"] as const),
+      ),
+      degradedReasons: [],
+    },
     externalCodexHistory,
     startedAt: new Date().toISOString(),
   });
@@ -210,9 +265,28 @@ beforeAll(async () => {
       },
     );
   }
-  primaryWorktreeId = (
+  const primaryWorktree = (
     await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
-  ).find((worktree) => worktree.workerId === "local-worker")!.id;
+  ).find((worktree) => worktree.workerId === "local-worker")!;
+  primaryWorktreeId = primaryWorktree.id;
+  await database.repository.observeProjectWorktree(
+    LOCAL_USER_ID,
+    projectId,
+    primaryWorktree.id,
+    {
+      path: primaryWorktree.path,
+      head: "a".repeat(40),
+      branch: "main",
+      detached: false,
+      isPrimary: true,
+      managed: true,
+      locked: false,
+      lockReason: null,
+      prunable: false,
+      pruneReason: null,
+      missing: false,
+    },
+  );
   app = await buildApp({ config, database, logger: false, workerBridge });
 });
 
@@ -309,6 +383,8 @@ describe.sequential("external Codex chat history discovery API", () => {
               projectId,
               worktreeId: primaryWorktreeId,
             },
+            modelId: DEFAULT_MODEL_ID,
+            modelRouteId: DEFAULT_MODEL_ROUTE_ID,
           },
         ],
       },
@@ -325,13 +401,15 @@ describe.sequential("external Codex chat history discovery API", () => {
         url: `/api/chat-imports/${created!.id}`,
       });
       job = chatImportJobSummarySchema.parse(response.json());
-      if (job.state === "awaiting-hydration") break;
+      if (job.state === "succeeded") break;
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
     expect(job).toMatchObject({
-      state: "awaiting-hydration",
+      state: "succeeded",
       chatId: expect.any(String),
+      managedThreadId: expect.stringMatching(/^managed-/u),
+      targetModelRouteId: DEFAULT_MODEL_ROUTE_ID,
       sourceMetadata: { title: "Import this chat" },
     });
     expect(
@@ -362,6 +440,46 @@ describe.sequential("external Codex chat history discovery API", () => {
     );
     expect(messages).toHaveLength(2);
     expect(messages.map(({ role }) => role)).toEqual(["user", "assistant"]);
+    expect(
+      await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        job.chatId!,
+      ),
+    ).toMatchObject({
+      threadId: job.managedThreadId,
+      workerId: "local-worker",
+      worktreeId: primaryWorktreeId,
+    });
+    const resumed = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      job.chatId!,
+      "user",
+      "Continue imported chat",
+    );
+    expect(resumed).toMatchObject({
+      threadId: job.managedThreadId,
+      workerId: "local-worker",
+      worktreeId: primaryWorktreeId,
+    });
+    await database.repository.finishChatExecutionLane(
+      job.chatId!,
+      resumed!.executionLaneId,
+      "idle",
+    );
+    const hydratedPayload = JSON.parse(
+      Buffer.concat(hydrationChunks.get(job.id) ?? []).toString("utf8"),
+    ) as { messages: Array<{ role: string }> };
+    expect(hydratedPayload.messages.map(({ role }) => role)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(
+      requests.some(
+        ({ command }) =>
+          command.type === "chat.sync" &&
+          command.threadId === job.managedThreadId,
+      ),
+    ).toBe(true);
 
     const duplicate = await app.inject({
       method: "POST",
@@ -379,6 +497,8 @@ describe.sequential("external Codex chat history discovery API", () => {
               projectId,
               worktreeId: primaryWorktreeId,
             },
+            modelId: DEFAULT_MODEL_ID,
+            modelRouteId: DEFAULT_MODEL_ROUTE_ID,
           },
         ],
       },
@@ -390,6 +510,37 @@ describe.sequential("external Codex chat history discovery API", () => {
         ({ command }) => command.type === "external.chat-history.read",
       ),
     ).toHaveLength(1);
+  });
+
+  it("rejects model routes and provider accounts outside the selected owner route", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chat-imports`,
+      payload: {
+        imports: [
+          {
+            sourceKind: "chatgpt-codex",
+            sourceWorkerId: "local-worker",
+            sourceId: "e".repeat(64),
+            sourceThreadId: "source-thread-invalid-account",
+            idempotencyKey: "import-source-thread-invalid-account",
+            target: {
+              kind: "worktree",
+              projectId,
+              worktreeId: primaryWorktreeId,
+            },
+            modelId: DEFAULT_MODEL_ID,
+            modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+            providerAccountId: "00000000-0000-4000-8000-000000000099",
+          },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: expect.stringMatching(/provider account/iu),
+    });
   });
 
   it("blocks while the source worker is offline and resumes on retry", async () => {
@@ -451,16 +602,116 @@ describe.sequential("external Codex chat history discovery API", () => {
             })
           ).json(),
         );
-        if (job.state === "awaiting-hydration") break;
+        if (job.state === "succeeded") break;
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
       expect(job).toMatchObject({
-        state: "awaiting-hydration",
+        state: "succeeded",
         chatId: expect.any(String),
+        managedThreadId: expect.stringMatching(/^managed-/u),
         error: null,
       });
     } finally {
       connectedWorkers.delete("offline-worker");
+    }
+  });
+
+  it("retains the canonical transcript when hydration fails and retries without rereading the source", async () => {
+    requests.length = 0;
+    hydrationFailure = new Error("Hydration transport failed.");
+    try {
+      const create = await app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/chat-imports`,
+        payload: {
+          imports: [
+            {
+              sourceKind: "chatgpt-codex",
+              sourceWorkerId: "local-worker",
+              sourceId: "c".repeat(64),
+              sourceThreadId: "source-thread-hydration-retry",
+              idempotencyKey: "import-source-thread-hydration-retry",
+              target: {
+                kind: "worktree",
+                projectId,
+                worktreeId: primaryWorktreeId,
+              },
+            },
+          ],
+        },
+      });
+      expect(create.statusCode).toBe(202);
+      const [created] = chatImportJobListSchema.parse(create.json());
+      let job = created!;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        job = chatImportJobSummarySchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: `/api/chat-imports/${created!.id}`,
+            })
+          ).json(),
+        );
+        if (job.state === "blocked") break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(job).toMatchObject({
+        state: "blocked",
+        chatId: expect.any(String),
+        error: { code: "worker-error", retryable: true },
+      });
+      expect(
+        chatMessageListSchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: `/api/chats/${job.chatId}/messages`,
+            })
+          ).json(),
+        ),
+      ).toHaveLength(2);
+      await expect(
+        database.repository.startChatExecutionLane(
+          LOCAL_USER_ID,
+          job.chatId!,
+          "user",
+          "Must not continue before hydration",
+        ),
+      ).rejects.toThrow(/must finish runtime hydration/iu);
+
+      hydrationFailure = null;
+      const retry = await app.inject({
+        method: "POST",
+        url: `/api/chat-imports/${job.id}/retry`,
+        payload: { stateRevision: job.stateRevision },
+      });
+      expect(retry.statusCode).toBe(200);
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        job = chatImportJobSummarySchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: `/api/chat-imports/${created!.id}`,
+            })
+          ).json(),
+        );
+        if (job.state === "succeeded") break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(job).toMatchObject({
+        state: "succeeded",
+        managedThreadId: expect.stringMatching(/^managed-/u),
+        error: null,
+      });
+      expect(
+        requests.filter(
+          ({ command }) =>
+            command.type === "external.chat-history.read" &&
+            command.sourceThreadId === "source-thread-hydration-retry",
+        ),
+      ).toHaveLength(1);
+    } finally {
+      hydrationFailure = null;
     }
   });
 });

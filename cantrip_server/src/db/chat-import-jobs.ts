@@ -3,9 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chatImportJobListSchema,
   chatImportJobSummarySchema,
+  chatRelocationContextPayloadSchema,
   type ChatImportError,
   type ChatImportJobSummary,
   type ChatImportProgress,
+  type ChatRelocationContextPayload,
   type ExecutionPlacement,
   type ExternalChatDiscoveryTarget,
   type ExternalChatSourceKind,
@@ -38,6 +40,8 @@ export interface CreateChatImportJobInput {
   sourceThreadId: string;
   targetPlacement: ExecutionPlacement;
   modelId: string | null;
+  modelRouteId: string | null;
+  providerAccountId: string | null;
   permissionProfileId: string | null;
   planMode: PlanMode;
   idempotencyKey: string;
@@ -51,6 +55,10 @@ export interface ClaimedChatImportJob {
 
 export interface ChatImportReadContext {
   targets: ExternalChatDiscoveryTarget[];
+}
+
+export interface ChatImportHydrationContext {
+  payload: ChatRelocationContextPayload;
 }
 
 function toISOString(value: Date): string {
@@ -76,6 +84,9 @@ function toJob(row: ChatImportJobRow): ChatImportJobSummary {
     sourceId: row.sourceId,
     sourceThreadId: row.sourceThreadId,
     targetPlacement: row.targetPlacement,
+    managedThreadId: row.managedThreadId,
+    targetModelRouteId: row.targetModelRouteId,
+    targetProviderAccountId: row.targetProviderAccountId,
     state: row.state,
     stateRevision: row.stateRevision,
     idempotencyKey: row.idempotencyKey,
@@ -111,6 +122,8 @@ function payloadFingerprint(
         sourceThreadId: input.sourceThreadId,
         targetPlacement: input.targetPlacement,
         modelId: input.modelId,
+        modelRouteId: input.modelRouteId,
+        providerAccountId: input.providerAccountId,
         permissionProfileId: input.permissionProfileId,
         planMode: input.planMode,
       }),
@@ -167,80 +180,126 @@ export class ChatImportJobRepository {
     const now = new Date();
     try {
       const created = await this.database.transaction(async (transaction) => {
-        const [projectRows, sourceRows, targetRows, modelRows] =
-          await Promise.all([
-            transaction
-              .select({ id: schema.projects.id })
-              .from(schema.projects)
-              .where(
-                and(
-                  eq(schema.projects.id, projectId),
-                  eq(schema.projects.ownerId, ownerId),
-                ),
-              )
-              .limit(1),
-            transaction
-              .select({ id: schema.projectSources.id })
-              .from(schema.projectSources)
-              .innerJoin(
-                schema.workers,
-                and(
-                  eq(schema.workers.id, schema.projectSources.workerId),
-                  eq(schema.workers.ownerId, ownerId),
-                  isNull(schema.workers.unlinkedAt),
-                ),
-              )
-              .where(
-                and(
-                  eq(schema.projectSources.projectId, projectId),
-                  eq(schema.projectSources.workerId, input.sourceWorkerId),
-                  isNull(schema.projectSources.removedAt),
-                ),
-              )
-              .limit(1),
-            input.targetPlacement.worktreeId
-              ? transaction
-                  .select({ id: schema.projectWorktrees.id })
-                  .from(schema.projectWorktrees)
-                  .innerJoin(
-                    schema.projectSources,
-                    and(
-                      eq(
-                        schema.projectSources.id,
-                        schema.projectWorktrees.projectSourceId,
-                      ),
-                      eq(schema.projectSources.projectId, projectId),
-                      eq(
-                        schema.projectSources.workerId,
-                        input.targetPlacement.workerId,
-                      ),
-                      isNull(schema.projectSources.removedAt),
+        const [
+          projectRows,
+          sourceRows,
+          targetRows,
+          modelRows,
+          routeRows,
+          accountRows,
+        ] = await Promise.all([
+          transaction
+            .select({ id: schema.projects.id })
+            .from(schema.projects)
+            .where(
+              and(
+                eq(schema.projects.id, projectId),
+                eq(schema.projects.ownerId, ownerId),
+              ),
+            )
+            .limit(1),
+          transaction
+            .select({ id: schema.projectSources.id })
+            .from(schema.projectSources)
+            .innerJoin(
+              schema.workers,
+              and(
+                eq(schema.workers.id, schema.projectSources.workerId),
+                eq(schema.workers.ownerId, ownerId),
+                isNull(schema.workers.unlinkedAt),
+              ),
+            )
+            .where(
+              and(
+                eq(schema.projectSources.projectId, projectId),
+                eq(schema.projectSources.workerId, input.sourceWorkerId),
+                isNull(schema.projectSources.removedAt),
+              ),
+            )
+            .limit(1),
+          input.targetPlacement.worktreeId
+            ? transaction
+                .select({ id: schema.projectWorktrees.id })
+                .from(schema.projectWorktrees)
+                .innerJoin(
+                  schema.projectSources,
+                  and(
+                    eq(
+                      schema.projectSources.id,
+                      schema.projectWorktrees.projectSourceId,
                     ),
-                  )
-                  .where(
-                    and(
-                      eq(
-                        schema.projectWorktrees.id,
-                        input.targetPlacement.worktreeId,
-                      ),
-                      eq(schema.projectWorktrees.lifecycleState, "ready"),
+                    eq(schema.projectSources.projectId, projectId),
+                    eq(
+                      schema.projectSources.workerId,
+                      input.targetPlacement.workerId,
                     ),
-                  )
-                  .limit(1)
-              : Promise.resolve([]),
-            input.modelId
-              ? transaction
-                  .select({ id: schema.modelProfiles.id })
-                  .from(schema.modelProfiles)
-                  .where(
-                    and(
-                      eq(schema.modelProfiles.id, input.modelId),
-                      eq(schema.modelProfiles.ownerId, ownerId),
+                    isNull(schema.projectSources.removedAt),
+                  ),
+                )
+                .where(
+                  and(
+                    eq(
+                      schema.projectWorktrees.id,
+                      input.targetPlacement.worktreeId,
                     ),
-                  )
-                  .limit(1)
-              : Promise.resolve([{ id: null }]),
-          ]);
+                    eq(schema.projectWorktrees.lifecycleState, "ready"),
+                  ),
+                )
+                .limit(1)
+            : Promise.resolve([]),
+          input.modelId
+            ? transaction
+                .select({ id: schema.modelProfiles.id })
+                .from(schema.modelProfiles)
+                .where(
+                  and(
+                    eq(schema.modelProfiles.id, input.modelId),
+                    eq(schema.modelProfiles.ownerId, ownerId),
+                  ),
+                )
+                .limit(1)
+            : Promise.resolve([{ id: null }]),
+          input.modelRouteId
+            ? transaction
+                .select({
+                  id: schema.modelRoutes.id,
+                  modelId: schema.modelRoutes.modelId,
+                  providerId: schema.modelRoutes.providerId,
+                })
+                .from(schema.modelRoutes)
+                .innerJoin(
+                  schema.modelProfiles,
+                  and(
+                    eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+                    eq(schema.modelProfiles.ownerId, ownerId),
+                  ),
+                )
+                .where(eq(schema.modelRoutes.id, input.modelRouteId))
+                .limit(1)
+            : Promise.resolve([]),
+          input.providerAccountId
+            ? transaction
+                .select({
+                  id: schema.modelProviderAccounts.id,
+                  providerId: schema.modelProviderAccounts.providerId,
+                })
+                .from(schema.modelProviderAccounts)
+                .innerJoin(
+                  schema.modelProviders,
+                  and(
+                    eq(
+                      schema.modelProviders.id,
+                      schema.modelProviderAccounts.providerId,
+                    ),
+                    eq(schema.modelProviders.ownerId, ownerId),
+                  ),
+                )
+                .where(
+                  eq(schema.modelProviderAccounts.id, input.providerAccountId),
+                )
+                .limit(1)
+            : Promise.resolve([]),
+        ]);
         if (!projectRows[0]) {
           throw new ChatImportJobNotFoundError("Project not found.");
         }
@@ -265,6 +324,23 @@ export class ChatImportJobRepository {
             "The selected model profile was not found.",
           );
         }
+        if (
+          input.modelRouteId &&
+          (!input.modelId || routeRows[0]?.modelId !== input.modelId)
+        ) {
+          throw new ChatImportJobConflictError(
+            "The selected model route does not belong to the selected model profile.",
+          );
+        }
+        if (
+          input.providerAccountId &&
+          (!routeRows[0] ||
+            accountRows[0]?.providerId !== routeRows[0].providerId)
+        ) {
+          throw new ChatImportJobConflictError(
+            "The selected provider account does not belong to the selected model route.",
+          );
+        }
         const rows = await transaction
           .insert(schema.chatImportJobs)
           .values({
@@ -276,6 +352,8 @@ export class ChatImportJobRepository {
             sourceId: input.sourceId,
             sourceThreadId: input.sourceThreadId,
             targetPlacement: input.targetPlacement,
+            targetModelRouteId: input.modelRouteId,
+            targetProviderAccountId: input.providerAccountId,
             requestedModelId: input.modelId,
             requestedPermissionProfileId: input.permissionProfileId,
             requestedPlanMode: input.planMode,
@@ -368,7 +446,16 @@ export class ChatImportJobRepository {
   }
 
   async recoverInterrupted(force = true, now = new Date()): Promise<number> {
-    const rows = await this.database
+    const interrupted = force
+      ? inArray(schema.chatImportJobs.state, [...RUNNING_STATES])
+      : and(
+          inArray(schema.chatImportJobs.state, [...RUNNING_STATES]),
+          or(
+            isNull(schema.chatImportJobs.leaseExpiresAt),
+            lte(schema.chatImportJobs.leaseExpiresAt, now),
+          ),
+        );
+    const preCanonical = await this.database
       .update(schema.chatImportJobs)
       .set({
         state: "queued",
@@ -387,19 +474,30 @@ export class ChatImportJobRepository {
         errorRetryable: null,
         updatedAt: now,
       })
-      .where(
-        force
-          ? inArray(schema.chatImportJobs.state, [...RUNNING_STATES])
-          : and(
-              inArray(schema.chatImportJobs.state, [...RUNNING_STATES]),
-              or(
-                isNull(schema.chatImportJobs.leaseExpiresAt),
-                lte(schema.chatImportJobs.leaseExpiresAt, now),
-              ),
-            ),
-      )
+      .where(and(interrupted, isNull(schema.chatImportJobs.chatId)))
       .returning({ id: schema.chatImportJobs.id });
-    return rows.length;
+    const postCanonical = await this.database
+      .update(schema.chatImportJobs)
+      .set({
+        state: "awaiting-hydration",
+        stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
+        commandId: null,
+        leaseExpiresAt: null,
+        availableAt: now,
+        progress: progress(
+          "awaiting-hydration",
+          75,
+          "Recovered runtime hydration after the server restarted.",
+          now,
+        ),
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        errorRetryable: null,
+        updatedAt: now,
+      })
+      .where(and(interrupted, sql`${schema.chatImportJobs.chatId} IS NOT NULL`))
+      .returning({ id: schema.chatImportJobs.id });
+    return preCanonical.length + postCanonical.length;
   }
 
   async claimNext(): Promise<ClaimedChatImportJob | null> {
@@ -410,7 +508,10 @@ export class ChatImportJobRepository {
         .from(schema.chatImportJobs)
         .where(
           and(
-            eq(schema.chatImportJobs.state, "queued"),
+            inArray(schema.chatImportJobs.state, [
+              "queued",
+              "awaiting-hydration",
+            ]),
             lte(schema.chatImportJobs.availableAt, now),
           ),
         )
@@ -423,21 +524,25 @@ export class ChatImportJobRepository {
       const candidate = candidates[0];
       if (!candidate) return null;
       const commandId = randomUUID();
+      const nextState = candidate.chatId ? "hydrating" : "reading";
       const rows = await transaction
         .update(schema.chatImportJobs)
         .set({
-          state: "reading",
+          state: nextState,
           stateRevision: candidate.stateRevision + 1,
           attempt: candidate.attempt + 1,
           commandId,
           leaseExpiresAt: new Date(now.getTime() + CHAT_IMPORT_JOB_LEASE_MS),
           startedAt: candidate.startedAt ?? now,
-          progress: progress(
-            "reading",
-            10,
-            "Reading source chat history.",
-            now,
-          ),
+          progress:
+            nextState === "reading"
+              ? progress("reading", 10, "Reading source chat history.", now)
+              : progress(
+                  "hydrating",
+                  80,
+                  "Creating a managed Codex thread.",
+                  now,
+                ),
           lastErrorCode: null,
           lastErrorMessage: null,
           errorRetryable: null,
@@ -446,7 +551,7 @@ export class ChatImportJobRepository {
         .where(
           and(
             eq(schema.chatImportJobs.id, candidate.id),
-            eq(schema.chatImportJobs.state, "queued"),
+            eq(schema.chatImportJobs.state, candidate.state),
             eq(schema.chatImportJobs.stateRevision, candidate.stateRevision),
           ),
         )
@@ -759,6 +864,187 @@ export class ChatImportJobRepository {
     return toJob(completed);
   }
 
+  async hydrationContext(
+    jobId: string,
+    commandId: string,
+  ): Promise<ChatImportHydrationContext | null> {
+    const jobs = await this.database
+      .select({ chatId: schema.chatImportJobs.chatId })
+      .from(schema.chatImportJobs)
+      .where(
+        and(
+          eq(schema.chatImportJobs.id, jobId),
+          eq(schema.chatImportJobs.commandId, commandId),
+          eq(schema.chatImportJobs.state, "hydrating"),
+        ),
+      )
+      .limit(1);
+    const chatId = jobs[0]?.chatId;
+    if (!chatId) return null;
+    const messages = await this.database
+      .select()
+      .from(schema.chatMessages)
+      .where(eq(schema.chatMessages.chatId, chatId))
+      .orderBy(asc(schema.chatMessages.sequence));
+    if (messages.length > 100_000) {
+      throw new ChatImportJobConflictError(
+        "The imported transcript is too large to hydrate safely.",
+      );
+    }
+    if (
+      messages.some((message) =>
+        message.content.some((item) => item.type === "attachment"),
+      )
+    ) {
+      throw new ChatImportJobConflictError(
+        "Imported attachments must be staged before runtime hydration.",
+      );
+    }
+    return {
+      payload: chatRelocationContextPayloadSchema.parse({
+        version: 1,
+        messages: messages.map((message) => ({
+          sequence: message.sequence,
+          role: message.role,
+          mode: message.mode,
+          reasoningEffort: message.reasoningEffort,
+          content: message.content,
+          createdAt: toISOString(message.createdAt),
+        })),
+        attachments: [],
+      }),
+    };
+  }
+
+  async completeHydration(
+    jobId: string,
+    commandId: string,
+    attempt: number,
+    input: {
+      modelId: string;
+      modelRouteId: string;
+      providerAccountId: string | null;
+      threadId: string;
+    },
+  ): Promise<ChatImportJobSummary> {
+    const now = new Date();
+    const completed = await this.database.transaction(async (transaction) => {
+      const jobs = await transaction
+        .select()
+        .from(schema.chatImportJobs)
+        .where(eq(schema.chatImportJobs.id, jobId))
+        .for("update")
+        .limit(1);
+      const job = jobs[0];
+      if (
+        !job ||
+        !job.chatId ||
+        job.commandId !== commandId ||
+        job.attempt !== attempt ||
+        job.state !== "hydrating"
+      ) {
+        throw new ChatImportJobStaleAttemptError("Import attempt is stale.");
+      }
+      if (input.threadId === job.sourceThreadId) {
+        throw new ChatImportJobConflictError(
+          "The external source thread cannot be adopted as a Cantrip-managed runtime.",
+        );
+      }
+      const sessions = await transaction
+        .select()
+        .from(schema.chatRuntimeSessions)
+        .where(
+          and(
+            eq(schema.chatRuntimeSessions.chatId, job.chatId),
+            eq(
+              schema.chatRuntimeSessions.workerId,
+              job.targetPlacement.workerId,
+            ),
+            job.targetPlacement.worktreeId
+              ? eq(
+                  schema.chatRuntimeSessions.worktreeId,
+                  job.targetPlacement.worktreeId,
+                )
+              : sql`false`,
+          ),
+        )
+        .limit(1);
+      const session = sessions[0];
+      if (!session) {
+        throw new ChatImportJobConflictError(
+          "The imported chat runtime session no longer exists.",
+        );
+      }
+      await transaction
+        .update(schema.chatRuntimeSessions)
+        .set({
+          codexThreadId: input.threadId,
+          modelRouteId: input.modelRouteId,
+          providerAccountId: input.providerAccountId,
+          status: "attached",
+          updatedAt: now,
+        })
+        .where(eq(schema.chatRuntimeSessions.id, session.id));
+      await transaction
+        .update(schema.chatExecutionLanes)
+        .set({
+          codexThreadId: input.threadId,
+          runtimeSessionId: session.id,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.chatId, job.chatId),
+            eq(schema.chatExecutionLanes.runtimeSessionId, session.id),
+            eq(schema.chatExecutionLanes.state, "suspended"),
+          ),
+        );
+      await transaction
+        .update(schema.chats)
+        .set({
+          modelId: input.modelId,
+          status: "idle",
+          updatedAt: now,
+        })
+        .where(eq(schema.chats.id, job.chatId));
+      const rows = await transaction
+        .update(schema.chatImportJobs)
+        .set({
+          state: "succeeded",
+          stateRevision: job.stateRevision + 1,
+          commandId: null,
+          leaseExpiresAt: null,
+          managedThreadId: input.threadId,
+          targetModelRouteId: input.modelRouteId,
+          targetProviderAccountId: input.providerAccountId,
+          progress: progress(
+            "succeeded",
+            100,
+            "Chat history is imported and ready to continue.",
+            now,
+          ),
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          errorRetryable: null,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.chatImportJobs.id, jobId),
+            eq(schema.chatImportJobs.commandId, commandId),
+            eq(schema.chatImportJobs.state, "hydrating"),
+          ),
+        )
+        .returning();
+      if (!rows[0]) {
+        throw new ChatImportJobStaleAttemptError("Import attempt is stale.");
+      }
+      return rows[0];
+    });
+    return toJob(completed);
+  }
+
   async block(
     jobId: string,
     commandId: string,
@@ -820,37 +1106,60 @@ export class ChatImportJobRepository {
     stateRevision: number,
   ): Promise<ChatImportJobSummary | null> {
     const now = new Date();
-    const rows = await this.database
-      .update(schema.chatImportJobs)
-      .set({
-        state: "queued",
-        stateRevision: stateRevision + 1,
-        commandId: null,
-        leaseExpiresAt: null,
-        availableAt: now,
-        completedAt: null,
-        progress: progress("queued", 0, "Retry requested.", now),
-        lastErrorCode: null,
-        lastErrorMessage: null,
-        errorRetryable: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(schema.chatImportJobs.id, jobId),
-          eq(schema.chatImportJobs.ownerId, ownerId),
-          eq(schema.chatImportJobs.stateRevision, stateRevision),
-          inArray(schema.chatImportJobs.state, ["blocked", "failed"]),
-          isNull(schema.chatImportJobs.chatId),
-        ),
-      )
-      .returning();
+    const rows = await this.database.transaction(async (transaction) => {
+      const candidates = await transaction
+        .select()
+        .from(schema.chatImportJobs)
+        .where(
+          and(
+            eq(schema.chatImportJobs.id, jobId),
+            eq(schema.chatImportJobs.ownerId, ownerId),
+            eq(schema.chatImportJobs.stateRevision, stateRevision),
+            inArray(schema.chatImportJobs.state, ["blocked", "failed"]),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const candidate = candidates[0];
+      if (!candidate) return [];
+      const nextState = candidate.chatId ? "awaiting-hydration" : "queued";
+      return transaction
+        .update(schema.chatImportJobs)
+        .set({
+          state: nextState,
+          stateRevision: stateRevision + 1,
+          commandId: null,
+          leaseExpiresAt: null,
+          availableAt: now,
+          completedAt: null,
+          progress:
+            nextState === "queued"
+              ? progress("queued", 0, "Retry requested.", now)
+              : progress(
+                  "awaiting-hydration",
+                  75,
+                  "Runtime hydration retry requested.",
+                  now,
+                ),
+          lastErrorCode: null,
+          lastErrorMessage: null,
+          errorRetryable: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.chatImportJobs.id, jobId),
+            eq(schema.chatImportJobs.stateRevision, stateRevision),
+          ),
+        )
+        .returning();
+    });
     return rows[0] ? toJob(rows[0]) : null;
   }
 
   async requeueRetryableForWorker(workerId: string): Promise<number> {
     const now = new Date();
-    const rows = await this.database
+    const preCanonical = await this.database
       .update(schema.chatImportJobs)
       .set({
         state: "queued",
@@ -876,6 +1185,32 @@ export class ChatImportJobRepository {
         ),
       )
       .returning({ id: schema.chatImportJobs.id });
-    return rows.length;
+    const postCanonical = await this.database
+      .update(schema.chatImportJobs)
+      .set({
+        state: "awaiting-hydration",
+        stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
+        availableAt: now,
+        progress: progress(
+          "awaiting-hydration",
+          75,
+          "Destination worker reconnected; retrying hydration.",
+          now,
+        ),
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        errorRetryable: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          sql`${schema.chatImportJobs.targetPlacement}->>'workerId' = ${workerId}`,
+          eq(schema.chatImportJobs.state, "blocked"),
+          eq(schema.chatImportJobs.errorRetryable, true),
+          sql`${schema.chatImportJobs.chatId} IS NOT NULL`,
+        ),
+      )
+      .returning({ id: schema.chatImportJobs.id });
+    return preCanonical.length + postCanonical.length;
   }
 }
