@@ -1069,6 +1069,38 @@ export const codexDeviceLoginSchema = z.object({
   userCode: z.string().min(1),
 });
 
+export const providerAccessTokenLeaseRequestSchema = z.object({
+  forceRefresh: z.boolean().default(false),
+  minimumValiditySeconds: z.number().int().min(30).max(600).default(120),
+});
+
+/**
+ * Worker-only, short-lived OAuth material. Refresh and identity tokens are
+ * intentionally absent so workers never receive durable provider secrets.
+ */
+export const providerAccessTokenLeaseSchema = z.object({
+  accessToken: z.string().min(1).max(1_000_000),
+  credentialRevision: z.number().int().nonnegative(),
+  expiresAt: z.string().datetime({ offset: true }).nullable(),
+  issuedAt: z.string().datetime({ offset: true }),
+  leaseExpiresAt: z.string().datetime({ offset: true }),
+  planType: z.string().max(1_024).nullable(),
+  providerAccountId: z.string().min(1).max(512),
+  providerId: z.string().min(1).max(512),
+  providerIdentity: z.discriminatedUnion("kind", [
+    z.object({
+      accountId: z.string().min(1).max(512),
+      kind: z.literal("chatgpt"),
+      userId: z.string().min(1).max(512).nullable(),
+    }),
+    z.object({
+      kind: z.literal("grok"),
+      userId: z.string().min(1).max(512),
+    }),
+  ]),
+  providerKind: z.enum(["chatgpt", "grok"]),
+});
+
 /**
  * Codex model-provider URLs are API roots. Codex adds the Responses endpoint
  * itself, so accepting a pasted chat/completions or responses URL would create
@@ -8169,6 +8201,12 @@ export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;
 export type CodexDeviceLogin = z.infer<typeof codexDeviceLoginSchema>;
+export type ProviderAccessTokenLeaseRequest = z.infer<
+  typeof providerAccessTokenLeaseRequestSchema
+>;
+export type ProviderAccessTokenLease = z.infer<
+  typeof providerAccessTokenLeaseSchema
+>;
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
 export type ModelReasoningEffortOption = z.infer<
   typeof modelReasoningEffortOptionSchema
