@@ -42,6 +42,28 @@ describe("ChatGPT account homes", () => {
     );
   });
 
+  it("reuses one app-server writer when reasoning effort changes", () => {
+    const provider = {
+      id: "chatgpt-provider",
+      name: "ChatGPT",
+      kind: "chatgpt" as const,
+      baseUrl: "https://chatgpt.com/backend-api",
+      apiKey: null,
+      accountId: "personal-account",
+      credentialHomeKey: "personal-home",
+    };
+    const model = {
+      id: "logical-model",
+      routeId: "provider-route",
+      name: "gpt-test",
+      reasoningEffort: "medium" as const,
+    };
+
+    expect(codexRuntimeId(model, provider)).toBe(
+      codexRuntimeId({ ...model, reasoningEffort: "high" }, provider),
+    );
+  });
+
   it("restarts a custom-provider runtime when managed metadata changes", () => {
     const provider = {
       id: "ollama-provider",

@@ -936,6 +936,12 @@ export interface RuntimeChatAttachment extends WorkerChatAttachment {
   path: string;
 }
 
+export function codexReasoningEffortParams(
+  model: RunAgentTurnOptions["model"],
+): { effort?: NonNullable<RunAgentTurnOptions["model"]["reasoningEffort"]> } {
+  return model.reasoningEffort ? { effort: model.reasoningEffort } : {};
+}
+
 export type GoalRuntimeOptions = Pick<
   RunAgentTurnOptions,
   | "cwd"
@@ -1240,11 +1246,13 @@ export function codexRuntimeId(
   model: RunAgentTurnOptions["model"],
   provider: RunAgentTurnOptions["provider"],
 ): string {
+  // Reasoning effort is a thread/turn override. Including it here would spawn
+  // another app-server against the same Codex home, so resuming the thread
+  // after an effort change would contend with its existing writer.
   const configuration = createHash("sha256")
     .update(
       JSON.stringify({
         modelName: model.name,
-        reasoningEffort: model.reasoningEffort,
         modelCatalog: model.catalog ?? null,
         providerName: provider.name,
         providerKind: provider.kind,
@@ -1931,6 +1939,7 @@ export class CodexAppServer implements CodexRuntime {
         }),
       ],
       model: options.model.name,
+      ...codexReasoningEffortParams(options.model),
       ...(collaborationMode ? { collaborationMode } : {}),
     })) as TurnStartResponse;
     if (!activeTurn) {
@@ -3003,6 +3012,7 @@ export class CodexAppServer implements CodexRuntime {
         const resumed = (await this.request("thread/resume", {
           threadId,
           model: options.model.name,
+          ...codexReasoningEffortParams(options.model),
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
           approvalPolicy: "on-request",
@@ -3032,6 +3042,7 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId && create) {
       const started = (await this.request("thread/start", {
         model: options.model.name,
+        ...codexReasoningEffortParams(options.model),
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
         approvalPolicy: "on-request",
@@ -3094,6 +3105,7 @@ export class CodexAppServer implements CodexRuntime {
         const resumed = (await this.request("thread/resume", {
           threadId,
           model: options.model.name,
+          ...codexReasoningEffortParams(options.model),
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
           approvalPolicy,
@@ -3109,6 +3121,7 @@ export class CodexAppServer implements CodexRuntime {
     if (!threadId) {
       const started = (await this.request("thread/start", {
         model: options.model.name,
+        ...codexReasoningEffortParams(options.model),
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
         approvalPolicy,
@@ -3302,13 +3315,10 @@ export class CodexAppServer implements CodexRuntime {
         ...(modelCatalogPath
           ? ["-c", `model_catalog_json=${JSON.stringify(modelCatalogPath)}`]
           : []),
+        // Keep effort off the process configuration so one route runtime owns
+        // its threads across composer changes. Thread and turn requests carry
+        // the selected effort explicitly.
         ...(model ? ["-c", `model=${JSON.stringify(model.name)}`] : []),
-        ...(model?.reasoningEffort
-          ? [
-              "-c",
-              `model_reasoning_effort=${JSON.stringify(model.reasoningEffort)}`,
-            ]
-          : []),
         "--listen",
         "ws://127.0.0.1:0",
       ],
