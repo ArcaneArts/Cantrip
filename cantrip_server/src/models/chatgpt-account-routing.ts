@@ -1,16 +1,6 @@
-import { codexAuthStatusSchema } from "@cantrip/protocol";
-
 import type { ModelRuntime, ServerRepository } from "../db/repository.js";
-import type { WorkerCommandBus } from "../workers/bridge.js";
-import {
-  accountProviderLabel,
-  isAccountProviderKind,
-} from "./account-provider.js";
+import { isAccountProviderKind } from "./account-provider.js";
 import { accountProviderSupportsModel } from "./model-route-availability.js";
-
-interface AccountRoutingLogger {
-  warn(context: Record<string, unknown>, message: string): void;
-}
 
 export interface AccountProviderRoutingResult {
   runtimes: ModelRuntime[];
@@ -18,8 +8,6 @@ export interface AccountProviderRoutingResult {
 }
 
 export async function resolveAccountProviderRuntimes(input: {
-  bridge: WorkerCommandBus;
-  logger: AccountRoutingLogger;
   ownerId: string;
   preferredAccountId?: string | null;
   repository: ServerRepository;
@@ -62,64 +50,42 @@ export async function resolveAccountProviderRuntimes(input: {
       runtimes: [],
       unavailable: [
         hasEnabledAccounts
-          ? `${runtime.model.name} is not available to any ${runtime.provider.name} account on this worker`
+          ? `${runtime.model.name} is not available to any ${runtime.provider.name} account`
           : `${runtime.provider.name} has no enabled accounts`,
       ],
     };
   }
 
-  const inspected = await Promise.all(
-    orderedAccounts.map(async (account) => {
-      try {
-        const status = codexAuthStatusSchema.parse(
-          await input.bridge.request(input.workerId, {
-            type: "codex.auth.status",
-            providerId: runtime.provider.id,
-            providerKind,
-            credentialHomeKey: account.credentialHomeKey,
-          }),
-        );
-        await input.repository.recordModelProviderAccountStatus(
-          account.accountId,
-          input.workerId,
-          status,
-        );
-        return { account, status };
-      } catch (error) {
-        input.logger.warn(
-          {
-            accountId: account.accountId,
-            err: error,
-            providerId: runtime.provider.id,
-          },
-          `Could not preflight a ${accountProviderLabel(providerKind)} account`,
-        );
-        return { account, status: null };
-      }
-    }),
-  );
-  const healthy: typeof inspected = [];
-  const unknown: typeof inspected = [];
+  const healthy: typeof orderedAccounts = [];
+  const legacy: typeof orderedAccounts = [];
   const unavailable: string[] = [];
-  for (const candidate of inspected) {
-    const { account, status } = candidate;
-    if (!status) {
-      if (account.authState !== "signed-out") unknown.push(candidate);
+  for (const account of orderedAccounts) {
+    if (account.credentialState === "migration-needed") {
+      if (account.legacyWorkerAuthenticated) {
+        legacy.push(account);
+      } else {
+        unavailable.push(
+          `${runtime.provider.name} account ${account.label} must be migrated; reconnect its original worker`,
+        );
+      }
       continue;
     }
-    if (!status.authenticated || status.authMode !== providerKind) {
+    if (account.credentialState !== "signed-in") {
       unavailable.push(
-        `${runtime.provider.name} account ${account.label} is not signed in`,
+        account.credentialState === "conflict"
+          ? `${runtime.provider.name} account ${account.label} has a credential identity conflict`
+          : `${runtime.provider.name} account ${account.label} requires sign-in`,
       );
       continue;
     }
-    const remainingPercent = status.weeklyUsage
-      ? Math.max(0, 100 - status.weeklyUsage.usedPercent)
-      : null;
+    const remainingPercent =
+      account.weeklyUsageUsedPercent === null
+        ? null
+        : Math.max(0, 100 - account.weeklyUsageUsedPercent);
     if (remainingPercent === null) {
-      healthy.push(candidate);
+      healthy.push(account);
     } else if (remainingPercent > runtime.provider.weeklyUsageReservePercent) {
-      healthy.push(candidate);
+      healthy.push(account);
     } else if (remainingPercent > 0) {
       unavailable.push(
         `${runtime.provider.name} account ${account.label} is below its ${runtime.provider.weeklyUsageReservePercent}% weekly usage reserve`,
@@ -132,7 +98,7 @@ export async function resolveAccountProviderRuntimes(input: {
   }
 
   return {
-    runtimes: [...healthy, ...unknown].map(({ account }) => ({
+    runtimes: [...healthy, ...legacy].map((account) => ({
       ...runtime,
       provider: {
         ...runtime.provider,

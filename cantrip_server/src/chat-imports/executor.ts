@@ -699,8 +699,6 @@ export class ChatImportJobExecutor {
     for (const runtime of ordered) {
       if (isAccountProviderKind(runtime.provider.kind)) {
         const accountRouting = await resolveAccountProviderRuntimes({
-          bridge: this.bridge,
-          logger: this.logger,
           ownerId: claimed.ownerId,
           preferredAccountId:
             claimed.job.targetProviderAccountId ?? context.providerAccountId,

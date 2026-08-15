@@ -25,7 +25,7 @@ export function accountProviderSupportsModel(
   availability: ProviderModelAvailability["state"] | null,
 ) {
   // Explicit custom IDs have no catalog row to consult. Once a route is bound
-  // to a discovered model, that account/worker scope is authoritative.
+  // to a discovered model, that provider-account scope is authoritative.
   return providerModelId === null || availability === "available";
 }
 

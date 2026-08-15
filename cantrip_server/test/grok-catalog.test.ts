@@ -55,11 +55,13 @@ describe("Grok catalog", () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
     const commands: unknown[] = [];
+    const commandWorkers: string[] = [];
     const bridge = {
       attach() {},
       close() {},
       isConnected: () => true,
-      request: async (_workerId, command) => {
+      request: async (workerId, command) => {
+        commandWorkers.push(workerId);
         commands.push(command);
         return {
           models: [model("grok-4", true), model("grok-code-fast-1")],
@@ -91,6 +93,9 @@ describe("Grok catalog", () => {
         ) VALUES (
           'worker-1', '${LOCAL_USER_ID}', 'Local Worker', 'darwin', 'arm64',
           now(), now()
+        ), (
+          'worker-2', '${LOCAL_USER_ID}', 'Fresh Worker', 'win32', 'x64',
+          now(), now()
         );
       `);
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
@@ -108,6 +113,21 @@ describe("Grok catalog", () => {
         { label: "Backup Grok" },
       );
       for (const account of [first, second!]) {
+        await repository.storeModelProviderAccountCredential(
+          LOCAL_USER_ID,
+          provider.id,
+          account.id,
+          {
+            accessToken: `access-${account.id}`,
+            email: `${account.id}@example.com`,
+            expiresAt: Date.now() + 3_600_000,
+            kind: "grok",
+            planType: "SuperGrok",
+            refreshToken: `refresh-${account.id}`,
+            userId: `user-${account.id}`,
+            version: 1,
+          },
+        );
         await repository.recordModelProviderAccountStatus(
           account.id,
           "worker-1",
@@ -129,6 +149,12 @@ describe("Grok catalog", () => {
       );
       expect(catalog?.models).toHaveLength(2);
       expect(catalog?.availability).toHaveLength(4);
+      expect(
+        catalog?.availability.every(({ workerId }) => workerId === null),
+      ).toBe(true);
+      expect(
+        catalog?.syncStates.every(({ workerId }) => workerId === null),
+      ).toBe(true);
       expect(
         new Set(
           catalog?.availability.map(({ providerAccountId }) =>
@@ -165,6 +191,18 @@ describe("Grok catalog", () => {
         { name: "grok-4" },
         { name: "grok-code-fast-1" },
       ]);
+      await service.getProviderCatalog(
+        LOCAL_USER_ID,
+        provider.id,
+        "worker-2",
+        true,
+        first.id,
+      );
+      expect(commandWorkers.at(-1)).toBe("worker-2");
+      expect(commands.at(-1)).toMatchObject({
+        type: "model.grok.catalog",
+        provider: { accountId: first.id },
+      });
     } finally {
       await client.close();
     }

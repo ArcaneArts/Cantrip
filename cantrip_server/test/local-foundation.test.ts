@@ -1877,6 +1877,32 @@ describe("local server foundation", () => {
         position: 0,
       }),
     ]);
+    const primaryChatGptAccount = chatGptProvider.accounts[0]!;
+    await firstDatabase.repository.storeModelProviderAccountCredential(
+      LOCAL_USER_ID,
+      chatGptProvider.id,
+      primaryChatGptAccount.id,
+      {
+        accessToken: "server-owned-access-token",
+        accountId: "upstream-workspace",
+        email: "test@example.com",
+        expiresAt: Date.now() + 3_600_000,
+        idToken: "server-owned-identity-token",
+        kind: "chatgpt",
+        planType: "plus",
+        refreshToken: "server-owned-refresh-token",
+        userId: "upstream-user",
+        version: 1,
+      },
+    );
+    await firstDatabase.repository.recordModelProviderAccountUsage({
+      accountId: primaryChatGptAccount.id,
+      ownerId: LOCAL_USER_ID,
+      planType: "plus",
+      providerId: chatGptProvider.id,
+      resetsAt: null,
+      usedPercent: 37,
+    });
 
     expect(
       await firstApp.inject({
@@ -1955,7 +1981,7 @@ describe("local server foundation", () => {
       (
         await firstApp.inject({
           method: "GET",
-          url: `/api/codex/auth/status?workerId=test-worker&providerId=${chatGptProvider.id}`,
+          url: `/api/codex/auth/status?providerId=${chatGptProvider.id}`,
         })
       ).json(),
     ).toMatchObject({
@@ -1985,17 +2011,12 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 204 });
-    expect(authProviderIds).toEqual([
-      chatGptProvider.id,
-      chatGptProvider.id,
-      chatGptProvider.id,
-    ]);
+    expect(authProviderIds).toEqual([chatGptProvider.id, chatGptProvider.id]);
     expect(authCredentialHomeKeys).toEqual([
       chatGptProvider.id,
       chatGptProvider.id,
-      chatGptProvider.id,
     ]);
-    expect(authProviderKinds).toEqual(["chatgpt", "chatgpt", "chatgpt"]);
+    expect(authProviderKinds).toEqual(["chatgpt", "chatgpt"]);
     const additionalAccount = (
       await firstApp.inject({
         method: "POST",
@@ -2007,10 +2028,10 @@ describe("local server foundation", () => {
     expect(
       await firstApp.inject({
         method: "GET",
-        url: `/api/codex/auth/status?workerId=test-worker&providerId=${chatGptProvider.id}&accountId=${additionalAccount.id}`,
+        url: `/api/codex/auth/status?providerId=${chatGptProvider.id}&accountId=${additionalAccount.id}`,
       }),
     ).toMatchObject({ statusCode: 200 });
-    expect(authCredentialHomeKeys.at(-1)).toBe(additionalAccount.id);
+    expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
     const pooledSettings = settingsBundleSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
     );
@@ -2019,14 +2040,9 @@ describe("local server foundation", () => {
         .find((provider) => provider.id === chatGptProvider.id)
         ?.accounts.find((account) => account.id === additionalAccount.id),
     ).toMatchObject({
-      email: "test@example.com",
-      workerBindings: [
-        {
-          authState: "signed-in",
-          weeklyUsageUsedPercent: 37,
-          workerId: "test-worker",
-        },
-      ],
+      credentialState: "signed-out",
+      email: null,
+      workerBindings: [],
     });
     expect(
       await firstApp.inject({
@@ -2055,11 +2071,26 @@ describe("local server foundation", () => {
     expect(grokProvider.accounts).toEqual([
       expect.objectContaining({ label: "Grok account", position: 0 }),
     ]);
+    await firstDatabase.repository.storeModelProviderAccountCredential(
+      LOCAL_USER_ID,
+      grokProvider.id,
+      grokProvider.accounts[0]!.id,
+      {
+        accessToken: "server-owned-grok-access-token",
+        email: "grok@example.com",
+        expiresAt: Date.now() + 3_600_000,
+        kind: "grok",
+        planType: "SuperGrok",
+        refreshToken: "server-owned-grok-refresh-token",
+        userId: "grok-user",
+        version: 1,
+      },
+    );
     expect(
       (
         await firstApp.inject({
           method: "GET",
-          url: `/api/codex/auth/status?workerId=test-worker&providerId=${grokProvider.id}`,
+          url: `/api/codex/auth/status?providerId=${grokProvider.id}`,
         })
       ).json(),
     ).toMatchObject({
@@ -2069,8 +2100,8 @@ describe("local server foundation", () => {
       planType: "SuperGrok",
       weeklyUsage: null,
     });
-    expect(authProviderKinds.at(-1)).toBe("grok");
-    expect(authCredentialHomeKeys.at(-1)).toBe(grokProvider.id);
+    expect(authProviderKinds.at(-1)).toBe("chatgpt");
+    expect(authCredentialHomeKeys.at(-1)).toBe(chatGptProvider.id);
     expect(
       (
         await firstApp.inject({
@@ -5012,6 +5043,39 @@ describe("local server foundation", () => {
 
     authUsageByCredentialHomeKey.set(chatGptProvider.id, 98);
     authUsageByCredentialHomeKey.set(additionalAccount.id, 37);
+    await firstDatabase.repository.recordModelProviderAccountUsage({
+      accountId: primaryChatGptAccount.id,
+      ownerId: LOCAL_USER_ID,
+      planType: "plus",
+      providerId: chatGptProvider.id,
+      resetsAt: null,
+      usedPercent: 98,
+    });
+    await firstDatabase.repository.storeModelProviderAccountCredential(
+      LOCAL_USER_ID,
+      chatGptProvider.id,
+      additionalAccount.id,
+      {
+        accessToken: "server-owned-work-access-token",
+        accountId: "upstream-work-workspace",
+        email: "work@example.com",
+        expiresAt: Date.now() + 3_600_000,
+        idToken: "server-owned-work-identity-token",
+        kind: "chatgpt",
+        planType: "plus",
+        refreshToken: "server-owned-work-refresh-token",
+        userId: "upstream-work-user",
+        version: 1,
+      },
+    );
+    await firstDatabase.repository.recordModelProviderAccountUsage({
+      accountId: additionalAccount.id,
+      ownerId: LOCAL_USER_ID,
+      planType: "plus",
+      providerId: chatGptProvider.id,
+      resetsAt: null,
+      usedPercent: 37,
+    });
     const pooledChat = chatSummarySchema.parse(
       (
         await firstApp.inject({
@@ -5079,6 +5143,22 @@ describe("local server foundation", () => {
 
     authUsageByCredentialHomeKey.set(chatGptProvider.id, 50);
     authUsageByCredentialHomeKey.set(additionalAccount.id, 98);
+    await firstDatabase.repository.recordModelProviderAccountUsage({
+      accountId: primaryChatGptAccount.id,
+      ownerId: LOCAL_USER_ID,
+      planType: "plus",
+      providerId: chatGptProvider.id,
+      resetsAt: null,
+      usedPercent: 50,
+    });
+    await firstDatabase.repository.recordModelProviderAccountUsage({
+      accountId: additionalAccount.id,
+      ownerId: LOCAL_USER_ID,
+      planType: "plus",
+      providerId: chatGptProvider.id,
+      resetsAt: null,
+      usedPercent: 98,
+    });
     const switchedTurn = await firstApp.inject({
       method: "POST",
       url: `/api/chats/${pooledChat.id}/turns`,
@@ -5165,6 +5245,16 @@ describe("local server foundation", () => {
     });
 
     exhaustedProviderIds.add(chatGptProvider.id);
+    for (const accountId of [primaryChatGptAccount.id, additionalAccount.id]) {
+      await firstDatabase.repository.recordModelProviderAccountUsage({
+        accountId,
+        ownerId: LOCAL_USER_ID,
+        planType: "plus",
+        providerId: chatGptProvider.id,
+        resetsAt: null,
+        usedPercent: 100,
+      });
+    }
     const routedChat = chatSummarySchema.parse(
       (
         await firstApp.inject({

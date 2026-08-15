@@ -516,10 +516,11 @@ export interface ModelRuntime {
 
 export interface ModelProviderAccountRuntime {
   accountId: string;
-  authState: ModelProviderAccountSummary["workerBindings"][number]["authState"];
+  credentialState: ModelProviderAccountSummary["credentialState"];
   credentialHomeKey: string;
   enabled: boolean;
   label: string;
+  legacyWorkerAuthenticated: boolean;
   modelAvailability: ProviderModelAvailability["state"] | null;
   position: number;
   weeklyUsageUsedPercent: number | null;
@@ -1573,6 +1574,18 @@ function toProviderAccountSummary(
     planType: account.planType,
     position: account.position,
     enabled: account.enabled,
+    credentialState:
+      account.credentialState as ModelProviderAccountSummary["credentialState"],
+    weeklyUsageUsedPercent:
+      account.weeklyUsageUsedBasisPoints === null
+        ? null
+        : account.weeklyUsageUsedBasisPoints / 100,
+    weeklyUsageResetsAt: account.weeklyUsageResetsAt
+      ? toISOString(account.weeklyUsageResetsAt)
+      : null,
+    authLastSyncedAt: account.authLastSyncedAt
+      ? toISOString(account.authLastSyncedAt)
+      : null,
     workerBindings: workerBindings.map((binding) => ({
       workerId: binding.workerId,
       authState:
@@ -3233,6 +3246,7 @@ export class ServerRepository {
             : {}),
           email: credential.email,
           planType: credential.planType,
+          authLastSyncedAt: updatedAt,
           updatedAt,
         })
         .where(
@@ -3446,6 +3460,9 @@ export class ServerRepository {
           credentialLastRefreshError: null,
           email: null,
           planType: null,
+          weeklyUsageUsedBasisPoints: null,
+          weeklyUsageResetsAt: null,
+          authLastSyncedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(
@@ -3614,6 +3631,17 @@ export class ServerRepository {
           ...(status.authenticated
             ? { email: status.email, planType: status.planType }
             : {}),
+          ...(status.weeklyUsage
+            ? {
+                weeklyUsageUsedBasisPoints: Math.round(
+                  status.weeklyUsage.usedPercent * 100,
+                ),
+                weeklyUsageResetsAt: status.weeklyUsage.resetsAt
+                  ? new Date(status.weeklyUsage.resetsAt * 1_000)
+                  : null,
+              }
+            : {}),
+          authLastSyncedAt: now,
           updatedAt: now,
         })
         .where(eq(schema.modelProviderAccounts.id, accountId));
@@ -3652,6 +3680,50 @@ export class ServerRepository {
           },
         });
     });
+  }
+
+  async recordModelProviderAccountUsage(input: {
+    accountId: string;
+    ownerId: string;
+    planType: string | null;
+    providerId: string;
+    resetsAt: number | null;
+    usedPercent: number;
+  }): Promise<boolean> {
+    if (!Number.isFinite(input.usedPercent)) return false;
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.modelProviderAccounts)
+      .set({
+        ...(input.planType ? { planType: input.planType } : {}),
+        weeklyUsageUsedBasisPoints: Math.round(
+          Math.min(100, Math.max(0, input.usedPercent)) * 100,
+        ),
+        weeklyUsageResetsAt: input.resetsAt
+          ? new Date(input.resetsAt * 1_000)
+          : null,
+        authLastSyncedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, input.accountId),
+          eq(schema.modelProviderAccounts.providerId, input.providerId),
+          exists(
+            this.database
+              .select({ id: schema.modelProviders.id })
+              .from(schema.modelProviders)
+              .where(
+                and(
+                  eq(schema.modelProviders.id, input.providerId),
+                  eq(schema.modelProviders.ownerId, input.ownerId),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning({ id: schema.modelProviderAccounts.id });
+    return Boolean(rows[0]);
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {
@@ -4521,6 +4593,7 @@ export class ServerRepository {
               providerAccountId:
                 schema.providerModelAvailability.providerAccountId,
               state: schema.providerModelAvailability.state,
+              workerId: schema.providerModelAvailability.workerId,
             })
             .from(schema.providerModelAvailability)
             .where(
@@ -4529,31 +4602,42 @@ export class ServerRepository {
                   schema.providerModelAvailability.providerModelId,
                   providerModelId,
                 ),
-                eq(schema.providerModelAvailability.workerId, workerId),
+                or(
+                  isNull(schema.providerModelAvailability.workerId),
+                  eq(schema.providerModelAvailability.workerId, workerId),
+                ),
               ),
             )
         : Promise.resolve([]),
     ]);
-    const availabilityByAccount = new Map(
-      availability.flatMap(({ providerAccountId, state }) =>
-        providerAccountId ? [[providerAccountId, state]] : [],
-      ),
-    );
+    const availabilityByAccount = new Map<
+      string,
+      { state: ProviderModelAvailability["state"]; workerId: string | null }
+    >();
+    for (const row of availability) {
+      if (!row.providerAccountId) continue;
+      const current = availabilityByAccount.get(row.providerAccountId);
+      if (!current || row.workerId === null) {
+        availabilityByAccount.set(row.providerAccountId, {
+          state: row.state as ProviderModelAvailability["state"],
+          workerId: row.workerId,
+        });
+      }
+    }
     return accounts.map(({ account, binding }) => ({
       accountId: account.id,
-      authState: (binding?.authState ??
-        "unknown") as ModelProviderAccountRuntime["authState"],
+      credentialState:
+        account.credentialState as ModelProviderAccountRuntime["credentialState"],
       credentialHomeKey: account.credentialHomeKey,
       enabled: account.enabled,
       label: account.label,
-      modelAvailability:
-        (availabilityByAccount.get(account.id) as
-          ProviderModelAvailability["state"] | undefined) ?? null,
+      legacyWorkerAuthenticated: binding?.authState === "signed-in",
+      modelAvailability: availabilityByAccount.get(account.id)?.state ?? null,
       position: account.position,
       weeklyUsageUsedPercent:
-        binding?.weeklyUsageUsedBasisPoints === null || !binding
+        account.weeklyUsageUsedBasisPoints === null
           ? null
-          : binding.weeklyUsageUsedBasisPoints / 100,
+          : account.weeklyUsageUsedBasisPoints / 100,
     }));
   }
 

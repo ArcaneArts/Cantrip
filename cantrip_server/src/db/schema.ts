@@ -362,6 +362,13 @@ export const modelProviderAccounts = pgTable(
       withTimezone: true,
     }),
     credentialLastRefreshError: text("credential_last_refresh_error"),
+    weeklyUsageUsedBasisPoints: integer("weekly_usage_used_basis_points"),
+    weeklyUsageResetsAt: timestamp("weekly_usage_resets_at", {
+      withTimezone: true,
+    }),
+    authLastSyncedAt: timestamp("auth_last_synced_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -385,6 +392,10 @@ export const modelProviderAccounts = pgTable(
     check(
       "model_provider_accounts_credential_revision_check",
       sql`${table.credentialRevision} >= 0`,
+    ),
+    check(
+      "model_provider_accounts_usage_check",
+      sql`${table.weeklyUsageUsedBasisPoints} IS NULL OR ${table.weeklyUsageUsedBasisPoints} BETWEEN 0 AND 10000`,
     ),
     check(
       "model_provider_accounts_refresh_lease_pair_check",

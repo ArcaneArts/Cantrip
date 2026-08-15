@@ -1,6 +1,5 @@
 import {
   chatGptModelInventorySchema,
-  codexAuthStatusSchema,
   type ChatGptModelInventoryItem,
   type ProviderModelCatalogResult,
 } from "@cantrip/protocol";
@@ -11,15 +10,13 @@ import type {
   ServerRepository,
 } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import { accountProviderCatalogScope } from "./account-provider.js";
 
 const FRESHNESS_WINDOW_MS = 15 * 60_000;
 const DISCOVERY_TIMEOUT_MS = 2 * 60_000;
 
-export function chatGptAccountScope(
-  workerId: string,
-  accountId: string,
-): string {
-  return `worker:${workerId}:chatgpt-account:${accountId}`;
+export function chatGptAccountScope(accountId: string): string {
+  return accountProviderCatalogScope("chatgpt", accountId);
 }
 
 export function normalizeChatGptModel(
@@ -84,20 +81,19 @@ export class ChatGptCatalogService {
   async markAccountUnavailable(
     ownerId: string,
     providerId: string,
-    workerId: string,
     accountId: string,
   ): Promise<void> {
-    const scopeKey = chatGptAccountScope(workerId, accountId);
+    const scopeKey = chatGptAccountScope(accountId);
     await this.#repository.reconcileProviderModelCatalog(ownerId, providerId, {
       models: [],
       availabilityScope: scopeKey,
-      availabilityWorkerId: workerId,
+      availabilityWorkerId: null,
       availabilityProviderAccountId: accountId,
       availableNativeModelIds: new Set(),
     });
     await this.#repository.setProviderCatalogSyncState(providerId, {
       scopeKey,
-      workerId,
+      workerId: null,
       providerAccountId: accountId,
       status: "current",
       error: null,
@@ -141,7 +137,7 @@ export class ChatGptCatalogService {
     let succeeded = 0;
     let lastError: unknown = null;
     for (const account of selectedAccounts) {
-      const scopeKey = chatGptAccountScope(workerId, account.id);
+      const scopeKey = chatGptAccountScope(account.id);
       const sync = existing?.syncStates.find(
         (state) => state.scopeKey === scopeKey,
       );
@@ -166,38 +162,17 @@ export class ChatGptCatalogService {
         const knownBinding = account.workerBindings.find(
           (binding) => binding.workerId === workerId,
         );
-        if (knownBinding?.authState !== "signed-in") {
-          const status = codexAuthStatusSchema.parse(
-            await this.#bridge.request(
-              workerId,
-              {
-                type: "codex.auth.status",
-                providerId,
-                providerKind: "chatgpt",
-                credentialHomeKey: runtime.credentialHomeKey,
-              },
-              { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
-            ),
-          );
-          await this.#repository.recordModelProviderAccountStatus(
-            account.id,
-            workerId,
-            status,
-          );
-          if (!status.authenticated) {
-            await this.markAccountUnavailable(
-              ownerId,
-              providerId,
-              workerId,
-              account.id,
-            );
-            continue;
-          }
+        const legacyAvailable =
+          account.credentialState === "migration-needed" &&
+          knownBinding?.authState === "signed-in";
+        if (account.credentialState !== "signed-in" && !legacyAvailable) {
+          await this.markAccountUnavailable(ownerId, providerId, account.id);
+          continue;
         }
 
         await this.#repository.setProviderCatalogSyncState(providerId, {
           scopeKey,
-          workerId,
+          workerId: null,
           providerAccountId: account.id,
           status: "refreshing",
           error: null,
@@ -229,7 +204,7 @@ export class ChatGptCatalogService {
           {
             models,
             availabilityScope: scopeKey,
-            availabilityWorkerId: workerId,
+            availabilityWorkerId: null,
             availabilityProviderAccountId: account.id,
             availableNativeModelIds: new Set(
               models.map((model) => model.nativeModelId),
@@ -244,7 +219,7 @@ export class ChatGptCatalogService {
         );
         await this.#repository.setProviderCatalogSyncState(providerId, {
           scopeKey,
-          workerId,
+          workerId: null,
           providerAccountId: account.id,
           status: "current",
           error: null,
@@ -255,7 +230,7 @@ export class ChatGptCatalogService {
         lastError = error;
         await this.#repository.setProviderCatalogSyncState(providerId, {
           scopeKey,
-          workerId,
+          workerId: null,
           providerAccountId: account.id,
           status: existing?.models.length ? "stale" : "failed",
           error: error instanceof Error ? error.message : String(error),
@@ -270,8 +245,6 @@ export class ChatGptCatalogService {
       );
     }
     if (lastError) throw lastError;
-    throw new Error(
-      "No signed-in ChatGPT account is available on this worker.",
-    );
+    throw new Error("No signed-in ChatGPT account is available.");
   }
 }

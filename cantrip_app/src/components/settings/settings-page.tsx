@@ -252,17 +252,13 @@ function ProviderRow({
     catalog.data?.syncStates.find(({ error }) => error)?.error ??
     null;
   const enabledAccounts = provider.accounts.filter(({ enabled }) => enabled);
-  const signedInBindings = enabledAccounts.flatMap((account) =>
-    account.workerBindings.filter(
-      (binding) =>
-        binding.authState === "signed-in" &&
-        (!workerId || binding.workerId === workerId),
-    ),
+  const signedInAccounts = enabledAccounts.filter(
+    (account) => account.credentialState === "signed-in",
   );
-  const remainingUsage = signedInBindings.flatMap((binding) =>
-    binding.weeklyUsageUsedPercent === null
+  const remainingUsage = signedInAccounts.flatMap((account) =>
+    account.weeklyUsageUsedPercent === null
       ? []
-      : [Math.max(0, 100 - binding.weeklyUsageUsedPercent)],
+      : [Math.max(0, 100 - account.weeklyUsageUsedPercent)],
   );
   const lowestRemaining = remainingUsage.length
     ? Math.min(...remainingUsage)
@@ -1517,11 +1513,7 @@ export function SettingsPage({
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {accountProvider.accounts.map((account) => {
-                    const signedIn = account.workerBindings.some(
-                      (binding) =>
-                        binding.authState === "signed-in" &&
-                        (!worker || binding.workerId === worker.workerId),
-                    );
+                    const signedIn = account.credentialState === "signed-in";
                     return (
                       <Button
                         key={account.id}

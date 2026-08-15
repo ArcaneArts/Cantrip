@@ -1271,6 +1271,14 @@ export const modelProviderAccountWorkerSchema = z.object({
   lastSyncedAt: z.string().datetime().nullable(),
 });
 
+export const providerCredentialStateSchema = z.enum([
+  "signed-out",
+  "migration-needed",
+  "signed-in",
+  "reauth-required",
+  "conflict",
+]);
+
 export const modelProviderAccountSummarySchema = z.object({
   id: z.string().min(1),
   providerId: z.string().min(1),
@@ -1279,6 +1287,10 @@ export const modelProviderAccountSummarySchema = z.object({
   planType: z.string().max(160).nullable(),
   position: z.number().int().nonnegative(),
   enabled: z.boolean(),
+  credentialState: providerCredentialStateSchema.default("signed-out"),
+  weeklyUsageUsedPercent: z.number().min(0).max(100).nullable().default(null),
+  weeklyUsageResetsAt: z.string().datetime().nullable().default(null),
+  authLastSyncedAt: z.string().datetime().nullable().default(null),
   workerBindings: z.array(modelProviderAccountWorkerSchema),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

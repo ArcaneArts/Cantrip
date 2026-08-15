@@ -120,14 +120,9 @@ export function catalogScopeLabel(
     return `${count} worker${count === 1 ? "" : "s"}`;
   }
   if (provider.kind === "chatgpt" || provider.kind === "grok") {
-    const accounts = provider.accounts.filter((account) => {
-      if (!account.enabled) return false;
-      return account.workerBindings.some(
-        (binding) =>
-          binding.authState === "signed-in" &&
-          (!workerId || binding.workerId === workerId),
-      );
-    });
+    const accounts = provider.accounts.filter(
+      (account) => account.enabled && account.credentialState === "signed-in",
+    );
     return `${accounts.length} signed-in account${accounts.length === 1 ? "" : "s"}`;
   }
   return provider.hasApiKey ? "Account + global" : "Global";
