@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { Activity, activityLabel } from "./activity";
 
 describe("rich Codex activity", () => {
-  it("renders supported reasoning summaries without a private-content surface", () => {
+  it("renders reasoning summaries inline without a disclosure", () => {
     const activity: AgentActivity = {
       type: "reasoning",
       id: "reasoning-1",
@@ -21,9 +21,11 @@ describe("rich Codex activity", () => {
     };
 
     const markup = renderToStaticMarkup(<Activity activity={activity} />);
-    expect(markup).toContain("Reasoned");
     expect(markup).toContain("Compared the supported runtime methods.");
-    expect(markup).toContain("session-1:8");
+    expect(markup).not.toContain("Reasoned");
+    expect(markup).not.toContain("&lt;details");
+    expect(markup).not.toContain("<details");
+    expect(markup).not.toContain("session-1:8");
     expect(markup).not.toContain("private");
   });
 

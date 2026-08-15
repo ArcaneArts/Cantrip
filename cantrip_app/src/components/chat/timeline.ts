@@ -1,7 +1,16 @@
 import type { AgentActivity, ChatMessage } from "@cantrip/protocol";
 
+export interface ChatTurnMetadata {
+  durationMs: number | null;
+  totalTokens: number | null;
+}
+
 export type ChatTimelineEntry =
-  | { type: "message"; message: ChatMessage }
+  | {
+      type: "message";
+      message: ChatMessage;
+      turnMetadata: ChatTurnMetadata | null;
+    }
   | {
       type: "activityGroup";
       key: string;
@@ -52,16 +61,60 @@ function trailingTurnMetadata(activities: AgentActivity[]): boolean {
   );
 }
 
+function activityTurnMetadata(
+  activities: AgentActivity[],
+): ChatTurnMetadata | null {
+  const usage = [...activities]
+    .reverse()
+    .find((activity) => activity.type === "usage");
+  const summary = [...activities]
+    .reverse()
+    .find(
+      (activity) =>
+        activity.type === "turnSummary" && activity.status !== "running",
+    );
+  const metadata = {
+    durationMs: summary?.type === "turnSummary" ? summary.durationMs : null,
+    totalTokens: usage?.type === "usage" ? usage.last.totalTokens : null,
+  };
+  return metadata.durationMs !== null || metadata.totalTokens !== null
+    ? metadata
+    : null;
+}
+
+function mergeTurnMetadata(
+  current: ChatTurnMetadata | null,
+  next: ChatTurnMetadata | null,
+): ChatTurnMetadata | null {
+  if (!next) return current;
+  return {
+    durationMs: next.durationMs ?? current?.durationMs ?? null,
+    totalTokens: next.totalTokens ?? current?.totalTokens ?? null,
+  };
+}
+
+function visibleActivities(activities: AgentActivity[]): AgentActivity[] {
+  return activities.filter(
+    (activity) => activity.type !== "usage" && activity.type !== "turnSummary",
+  );
+}
+
 export function buildChatTimeline(
   messages: ChatMessage[],
 ): ChatTimelineEntry[] {
   const entries: ChatTimelineEntry[] = [];
+  const pendingTurnMetadata = new Map<string, ChatTurnMetadata>();
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (!message) continue;
     const firstActivities = activities(message);
     if (!firstActivities) {
-      entries.push({ type: "message", message });
+      entries.push({
+        type: "message",
+        message,
+        turnMetadata: pendingTurnMetadata.get(message.id) ?? null,
+      });
+      pendingTurnMetadata.delete(message.id);
       continue;
     }
 
@@ -76,6 +129,8 @@ export function buildChatTimeline(
       endIndex += 1;
     }
     const followingMessage = messages[endIndex + 1];
+    const metadata = activityTurnMetadata(grouped);
+    const displayedActivities = visibleActivities(grouped);
     const turnSummary = [...grouped]
       .reverse()
       .find(
@@ -95,13 +150,20 @@ export function buildChatTimeline(
       previousMessageEntry?.type === "message" &&
       terminalMessage(previousMessageEntry.message)
     ) {
-      if (previousActivityEntry?.type === "activityGroup") {
-        previousActivityEntry.activities.push(...grouped);
-      } else {
+      previousMessageEntry.turnMetadata = mergeTurnMetadata(
+        previousMessageEntry.turnMetadata,
+        metadata,
+      );
+      if (
+        displayedActivities.length > 0 &&
+        previousActivityEntry?.type === "activityGroup"
+      ) {
+        previousActivityEntry.activities.push(...displayedActivities);
+      } else if (displayedActivities.length > 0) {
         entries.splice(entries.length - 1, 0, {
           type: "activityGroup",
           key: `activities:${message.id}`,
-          activities: grouped,
+          activities: displayedActivities,
           startedAt: precedingTurnStart(messages, index),
           endedAt: previousMessageEntry.message.createdAt,
         });
@@ -110,16 +172,48 @@ export function buildChatTimeline(
       continue;
     }
 
-    entries.push({
-      type: "activityGroup",
-      key: `activities:${message.id}`,
-      activities: grouped,
-      startedAt: precedingTurnStart(messages, index),
-      endedAt,
-    });
+    if (followingMessage && terminalMessage(followingMessage) && metadata) {
+      pendingTurnMetadata.set(
+        followingMessage.id,
+        mergeTurnMetadata(
+          pendingTurnMetadata.get(followingMessage.id) ?? null,
+          metadata,
+        )!,
+      );
+    }
+    if (displayedActivities.length > 0) {
+      entries.push({
+        type: "activityGroup",
+        key: `activities:${message.id}`,
+        activities: displayedActivities,
+        startedAt: precedingTurnStart(messages, index),
+        endedAt,
+      });
+    }
     index = endIndex;
   }
   return entries;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1_000) return `${durationMs}ms`;
+  if (durationMs < 60_000) {
+    return `${Math.round(durationMs / 100) / 10}s`;
+  }
+  return `${Math.floor(durationMs / 60_000)}m ${Math.round((durationMs % 60_000) / 1_000)}s`;
+}
+
+export function formatTurnMetadata(
+  metadata: ChatTurnMetadata | null,
+): string | null {
+  if (!metadata) return null;
+  const parts = [
+    metadata.totalTokens === null
+      ? null
+      : `${metadata.totalTokens.toLocaleString()}tok`,
+    metadata.durationMs === null ? null : formatDuration(metadata.durationMs),
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 export function formatElapsedTime(startedAt: string, endedAt: string): string {
