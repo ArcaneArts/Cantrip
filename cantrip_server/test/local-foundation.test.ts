@@ -143,6 +143,7 @@ const openedProjectShares: Array<
 const closedProjectShareIds: string[] = [];
 const authProviderIds: string[] = [];
 const authCredentialHomeKeys: string[] = [];
+const authProviderKinds: Array<"chatgpt" | "grok"> = [];
 const exhaustedProviderIds = new Set<string>();
 const authUsageByCredentialHomeKey = new Map<string, number>();
 const steeredPrompts: string[] = [];
@@ -352,35 +353,47 @@ const workerBridge = {
         return { accepted: true };
       case "codex.auth.status":
         authProviderIds.push(command.providerId);
+        authProviderKinds.push(command.providerKind);
         {
           const credentialHomeKey =
             command.credentialHomeKey ?? command.providerId;
           authCredentialHomeKeys.push(credentialHomeKey);
           return {
             authenticated: true,
-            authMode: "chatgpt",
-            email: "test@example.com",
-            planType: "plus",
-            weeklyUsage: {
-              usedPercent:
-                authUsageByCredentialHomeKey.get(credentialHomeKey) ??
-                (exhaustedProviderIds.has(command.providerId) ? 100 : 37),
-              resetsAt: 1_786_665_600,
-            },
+            authMode: command.providerKind,
+            email:
+              command.providerKind === "grok"
+                ? "grok@example.com"
+                : "test@example.com",
+            planType: command.providerKind === "grok" ? "SuperGrok" : "plus",
+            weeklyUsage:
+              command.providerKind === "grok"
+                ? null
+                : {
+                    usedPercent:
+                      authUsageByCredentialHomeKey.get(credentialHomeKey) ??
+                      (exhaustedProviderIds.has(command.providerId) ? 100 : 37),
+                    resetsAt: 1_786_665_600,
+                  },
           };
         }
       case "codex.auth.login.start":
         authProviderIds.push(command.providerId);
+        authProviderKinds.push(command.providerKind);
         authCredentialHomeKeys.push(
           command.credentialHomeKey ?? command.providerId,
         );
         return {
           loginId: "login-1",
-          verificationUrl: "https://auth.openai.com/codex/device",
+          verificationUrl:
+            command.providerKind === "grok"
+              ? "https://auth.x.ai/activate"
+              : "https://auth.openai.com/codex/device",
           userCode: "TEST-CODE",
         };
       case "codex.auth.logout":
         authProviderIds.push(command.providerId);
+        authProviderKinds.push(command.providerKind);
         authCredentialHomeKeys.push(
           command.credentialHomeKey ?? command.providerId,
         );
@@ -1982,6 +1995,7 @@ describe("local server foundation", () => {
       chatGptProvider.id,
       chatGptProvider.id,
     ]);
+    expect(authProviderKinds).toEqual(["chatgpt", "chatgpt", "chatgpt"]);
     const additionalAccount = (
       await firstApp.inject({
         method: "POST",
@@ -2022,6 +2036,58 @@ describe("local server foundation", () => {
           name: "Another ChatGPT",
           kind: "chatgpt",
           baseUrl: "https://api.openai.com/v1",
+        },
+      }),
+    ).toMatchObject({ statusCode: 409 });
+    const grokProvider = modelProviderSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/settings/providers",
+          payload: {
+            name: "SuperGrok",
+            kind: "grok",
+            baseUrl: "https://cli-chat-proxy.grok.com/v1",
+          },
+        })
+      ).json(),
+    );
+    expect(grokProvider.accounts).toEqual([
+      expect.objectContaining({ label: "Grok account", position: 0 }),
+    ]);
+    expect(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/codex/auth/status?workerId=test-worker&providerId=${grokProvider.id}`,
+        })
+      ).json(),
+    ).toMatchObject({
+      authenticated: true,
+      authMode: "grok",
+      email: "grok@example.com",
+      planType: "SuperGrok",
+      weeklyUsage: null,
+    });
+    expect(authProviderKinds.at(-1)).toBe("grok");
+    expect(authCredentialHomeKeys.at(-1)).toBe(grokProvider.id);
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/settings/providers/${grokProvider.id}/accounts`,
+          payload: { label: "Backup Grok" },
+        })
+      ).json(),
+    ).toMatchObject({ label: "Backup Grok", position: 1 });
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: "/api/settings/providers",
+        payload: {
+          name: "Another Grok",
+          kind: "grok",
+          baseUrl: "https://cli-chat-proxy.grok.com/v1",
         },
       }),
     ).toMatchObject({ statusCode: 409 });
@@ -5040,6 +5106,59 @@ describe("local server foundation", () => {
       ).toBe("idle");
     });
     authUsageByCredentialHomeKey.clear();
+
+    const grokModel = modelProfileSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/settings/models",
+          payload: {
+            name: "Grok subscription model",
+            routes: [
+              {
+                providerId: grokProvider.id,
+                modelName: "grok-4",
+                enabled: true,
+              },
+            ],
+          },
+        })
+      ).json(),
+    );
+    const grokChat = chatSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/projects/${project.id}/chats`,
+          payload: { title: "Grok account routing" },
+        })
+      ).json(),
+    );
+    const grokTurn = await firstApp.inject({
+      method: "POST",
+      url: `/api/chats/${grokChat.id}/turns`,
+      payload: {
+        text: "Use the SuperGrok subscription.",
+        idempotencyKey: "grok-account-turn",
+        modelId: grokModel.id,
+      },
+    });
+    expect(grokTurn.statusCode).toBe(202);
+    await vi.waitFor(() =>
+      expect(turnProviderIds.at(-1)).toBe(grokProvider.id),
+    );
+    expect(turnProviderAccountIds.at(-1)).toBe(grokProvider.accounts[0]!.id);
+    expect(turnCredentialHomeKeys.at(-1)).toBe(grokProvider.id);
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await firstDatabase.repository.getChatExecutionContext(
+            LOCAL_USER_ID,
+            grokChat.id,
+          )
+        )?.status,
+      ).toBe("idle");
+    });
 
     exhaustedProviderIds.add(chatGptProvider.id);
     const routedChat = chatSummarySchema.parse(

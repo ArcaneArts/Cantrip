@@ -311,6 +311,9 @@ export const modelProviders = pgTable(
     uniqueIndex("model_providers_owner_chatgpt_unique")
       .on(table.ownerId)
       .where(sql`${table.kind} = 'chatgpt'`),
+    uniqueIndex("model_providers_owner_grok_unique")
+      .on(table.ownerId)
+      .where(sql`${table.kind} = 'grok'`),
     check(
       "model_providers_weekly_usage_reserve_percent_check",
       sql`${table.weeklyUsageReservePercent} BETWEEN 0 AND 100`,
@@ -453,7 +456,7 @@ export const providerModels = pgTable(
     index("provider_models_canonical_index").on(table.canonicalModelId),
     check(
       "provider_models_metadata_source_check",
-      sql`${table.metadataSource} IN ('ollama', 'openrouter', 'codex', 'compatible-api', 'manual')`,
+      sql`${table.metadataSource} IN ('ollama', 'openrouter', 'codex', 'grok', 'compatible-api', 'manual')`,
     ),
     check(
       "provider_models_context_window_check",

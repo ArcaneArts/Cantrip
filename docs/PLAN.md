@@ -324,7 +324,7 @@ The database is the source of truth for Cantrip entities. Exact columns can evol
 | `chat_inputs` | Durable prompt queue with mode, ordering key, idempotency key, delivery state, and optional expected turn ID. |
 | `chat_events` | Append-only normalized event log with per-chat ordering, raw payload, and deduplication key. |
 | `pending_requests` | Approvals, user-input prompts, or elicitation requests awaiting a client response. |
-| `model_providers` | Independent API endpoints or isolated ChatGPT accounts, including server-held endpoint configuration and worker-held authentication identity. |
+| `model_providers` | Independent API endpoints or isolated ChatGPT, Grok, and SuperGrok accounts, including server-held endpoint configuration and worker-held authentication identity. |
 | `model_profiles` | Logical user-facing models selected by chats and queued prompts, with a default reasoning effort and routing policy. |
 | `model_routes` | Ordered provider bindings for a logical model: provider-specific model name, enabled state, priority, and optional reasoning override. |
 | `tunnels` | Owner-scoped logical routes with explicit source and destination endpoints, optional organizational project association, management policy, desired/observed state, and aggregate traffic counters. |
@@ -480,13 +480,13 @@ The worker proxies Codex app-server's account methods through a narrow server AP
 
 For local desktop use, the browser callback flow is acceptable. For a phone controlling a private or headless worker, device-code login is the preferred path because the browser callback listener exists on the worker. The app displays the verification URL and one-time code while the worker owns token persistence and refresh.
 
-ChatGPT tokens stay in the worker's isolated Codex credential store. The server stores only account display metadata, auth status, and quota snapshots needed for the UI. It must never store or relay raw ChatGPT access/refresh tokens.
+ChatGPT tokens stay in the worker's isolated Codex credential store. Grok OAuth access and rotating refresh tokens stay in an equivalent owner-only worker account home and are injected through a loopback-only proxy to xAI's subscription endpoint. The server stores only account display metadata, auth status, model availability, and quota snapshots needed for the UI. It must never store or relay raw ChatGPT or Grok access/refresh tokens.
 
 ### 9.3 Model profiles and provider routes
 
-A provider contains an endpoint or isolated ChatGPT account and its secret reference. A logical model profile contains one or more ordered provider routes. Each route supplies the provider-specific model name, enabled state, priority, and optional reasoning override. A one-provider model is represented by one route rather than a separate model type.
+A provider contains an endpoint or isolated ChatGPT, Grok, or SuperGrok account and its secret reference. A logical model profile contains one or more ordered provider routes. Each route supplies the provider-specific model name, enabled state, priority, and optional reasoning override. A one-provider model is represented by one route rather than a separate model type.
 
-The initial routing policy is deterministic priority failover. Before a turn, the server skips disabled routes, ChatGPT accounts known to be signed out or out of weekly usage, and routes in a short failure cooldown. The selected route is fixed for the turn. Cantrip may automatically try the next route after a quota, authentication, availability, or connection failure only when the failed route produced no command or file activity. Once activity begins, retrying is an explicit user action so work cannot be executed twice. Queued prompts retain the logical model and resolve their route only when dispatched.
+The initial routing policy is deterministic priority failover. Before a turn, the server skips disabled routes, account-backed providers known to be signed out or missing the selected model, ChatGPT accounts out of weekly usage, and routes in a short failure cooldown. The selected route is fixed for the turn. Cantrip may automatically try the next route after a quota, authentication, availability, or connection failure only when the failed route produced no command or file activity. Once activity begins, retrying is an explicit user action so work cannot be executed twice. Queued prompts retain the logical model and resolve their route only when dispatched.
 
 When routing changes to a different Codex runtime, the server starts a new underlying thread and hydrates it from server-owned conversation history. Compaction, steering, interruption, synchronization, and the linked console continue using the concrete route attached to the active runtime session.
 

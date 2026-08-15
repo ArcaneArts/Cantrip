@@ -2,18 +2,22 @@ import { codexAuthStatusSchema } from "@cantrip/protocol";
 
 import type { ModelRuntime, ServerRepository } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
-import { chatGptAccountSupportsModel } from "./model-route-availability.js";
+import {
+  accountProviderLabel,
+  isAccountProviderKind,
+} from "./account-provider.js";
+import { accountProviderSupportsModel } from "./model-route-availability.js";
 
 interface AccountRoutingLogger {
   warn(context: Record<string, unknown>, message: string): void;
 }
 
-export interface ChatGptAccountRoutingResult {
+export interface AccountProviderRoutingResult {
   runtimes: ModelRuntime[];
   unavailable: string[];
 }
 
-export async function resolveChatGptAccountRuntimes(input: {
+export async function resolveAccountProviderRuntimes(input: {
   bridge: WorkerCommandBus;
   logger: AccountRoutingLogger;
   ownerId: string;
@@ -21,9 +25,10 @@ export async function resolveChatGptAccountRuntimes(input: {
   repository: ServerRepository;
   runtime: ModelRuntime;
   workerId: string;
-}): Promise<ChatGptAccountRoutingResult> {
+}): Promise<AccountProviderRoutingResult> {
   const { runtime } = input;
-  if (runtime.provider.kind !== "chatgpt") {
+  const providerKind = runtime.provider.kind;
+  if (!isAccountProviderKind(providerKind)) {
     return { runtimes: [runtime], unavailable: [] };
   }
 
@@ -37,7 +42,7 @@ export async function resolveChatGptAccountRuntimes(input: {
     .filter(
       (account) =>
         account.enabled &&
-        chatGptAccountSupportsModel(
+        accountProviderSupportsModel(
           runtime.model.providerModelId,
           account.modelAvailability,
         ),
@@ -70,6 +75,7 @@ export async function resolveChatGptAccountRuntimes(input: {
           await input.bridge.request(input.workerId, {
             type: "codex.auth.status",
             providerId: runtime.provider.id,
+            providerKind,
             credentialHomeKey: account.credentialHomeKey,
           }),
         );
@@ -86,7 +92,7 @@ export async function resolveChatGptAccountRuntimes(input: {
             err: error,
             providerId: runtime.provider.id,
           },
-          "Could not preflight a ChatGPT account",
+          `Could not preflight a ${accountProviderLabel(providerKind)} account`,
         );
         return { account, status: null };
       }
@@ -101,7 +107,7 @@ export async function resolveChatGptAccountRuntimes(input: {
       if (account.authState !== "signed-out") unknown.push(candidate);
       continue;
     }
-    if (!status.authenticated || status.authMode !== "chatgpt") {
+    if (!status.authenticated || status.authMode !== providerKind) {
       unavailable.push(
         `${runtime.provider.name} account ${account.label} is not signed in`,
       );

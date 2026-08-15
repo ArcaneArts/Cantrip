@@ -492,10 +492,7 @@ const workerEnrollmentCodeSchema = z
 export const workerEnrollmentCodeCreateSchema = z.object({
   label: z.string().trim().min(1).max(120).nullable().default(null),
   expiresInSeconds: z.number().int().min(60).max(1_800).default(600),
-  candidateWorkerIds: z
-    .array(z.string().min(1).max(255))
-    .max(64)
-    .default([]),
+  candidateWorkerIds: z.array(z.string().min(1).max(255)).max(64).default([]),
 });
 
 export const workerEnrollmentCodeResultSchema = z.object({
@@ -1038,13 +1035,14 @@ export const sidebarWidthPreferenceSchema = z
   .max(MAX_SIDEBAR_WIDTH);
 export const modelProviderKindSchema = z.enum([
   "chatgpt",
+  "grok",
   "ollama",
   "openai-compatible",
 ]);
 
 export const codexAuthStatusSchema = z.object({
   authenticated: z.boolean(),
-  authMode: z.enum(["chatgpt", "apiKey", "other"]).nullable(),
+  authMode: z.enum(["chatgpt", "grok", "apiKey", "other"]).nullable(),
   email: z.string().nullable(),
   planType: z.string().nullable(),
   weeklyUsage: z
@@ -1053,6 +1051,8 @@ export const codexAuthStatusSchema = z.object({
       resetsAt: z.number().int().nullable(),
     })
     .nullable(),
+  loginPending: z.boolean().default(false),
+  loginError: z.string().max(2_000).nullable().default(null),
 });
 
 export const codexDeviceLoginSchema = z.object({
@@ -1094,6 +1094,7 @@ export const providerModelMetadataSourceSchema = z.enum([
   "ollama",
   "openrouter",
   "codex",
+  "grok",
   "compatible-api",
   "manual",
 ]);
@@ -1203,7 +1204,7 @@ export const modelProviderAccountListSchema = z.array(
 );
 
 export const modelProviderAccountCreateSchema = z.object({
-  label: z.string().trim().min(1).max(160).default("ChatGPT account"),
+  label: z.string().trim().min(1).max(160).default("Provider account"),
 });
 
 export const modelProviderAccountUpdateSchema = z.object({
@@ -6771,6 +6772,27 @@ export const chatGptModelInventorySchema = z.object({
   observedAt: z.string().datetime(),
 });
 
+export const grokModelInventoryItemSchema = z.object({
+  id: z.string().trim().min(1).max(500),
+  displayName: z.string().trim().min(1).max(500),
+  description: z.string().max(20_000).nullable(),
+  contextWindow: z.number().int().positive().nullable(),
+  maxOutputTokens: z.number().int().positive().nullable(),
+  inputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
+  outputModalities: z.array(z.string().trim().min(1).max(80)).max(32),
+  supportedReasoningEfforts: z.array(modelReasoningEffortOptionSchema).max(32),
+  defaultReasoningEffort: reasoningEffortSchema.nullable(),
+  supportsReasoning: z.boolean(),
+  hidden: z.boolean(),
+  isDefault: z.boolean(),
+  rawMetadata: z.record(z.string(), z.unknown()),
+});
+
+export const grokModelInventorySchema = z.object({
+  models: z.array(grokModelInventoryItemSchema).max(1_000),
+  observedAt: z.string().datetime(),
+});
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
@@ -6794,18 +6816,29 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    type: z.literal("model.grok.catalog"),
+    provider: workerRuntimeProviderSchema.extend({
+      kind: z.literal("grok"),
+      accountId: z.string().min(1),
+      credentialHomeKey: z.string().min(1).max(500),
+    }),
+  }),
+  z.object({
     type: z.literal("codex.auth.status"),
     providerId: z.string().min(1),
+    providerKind: z.enum(["chatgpt", "grok"]).default("chatgpt"),
     credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
   z.object({
     type: z.literal("codex.auth.login.start"),
     providerId: z.string().min(1),
+    providerKind: z.enum(["chatgpt", "grok"]).default("chatgpt"),
     credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
   z.object({
     type: z.literal("codex.auth.logout"),
     providerId: z.string().min(1),
+    providerKind: z.enum(["chatgpt", "grok"]).default("chatgpt"),
     credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
   z.object({ type: z.literal("github.auth.status") }),
@@ -8991,6 +9024,10 @@ export type ChatGptModelInventoryItem = z.infer<
   typeof chatGptModelInventoryItemSchema
 >;
 export type ChatGptModelInventory = z.infer<typeof chatGptModelInventorySchema>;
+export type GrokModelInventoryItem = z.infer<
+  typeof grokModelInventoryItemSchema
+>;
+export type GrokModelInventory = z.infer<typeof grokModelInventorySchema>;
 export type ProjectShareAdapterRequestHead = z.infer<
   typeof projectShareAdapterRequestHeadSchema
 >;

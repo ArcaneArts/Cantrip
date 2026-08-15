@@ -10,7 +10,13 @@ export type CatalogDisplayStatus =
   "current" | "failed" | "manual" | "refreshing" | "stale" | "unknown";
 
 export function providerSupportsCatalog(provider: ModelProviderSummary) {
-  if (provider.kind === "ollama" || provider.kind === "chatgpt") return true;
+  if (
+    provider.kind === "ollama" ||
+    provider.kind === "chatgpt" ||
+    provider.kind === "grok"
+  ) {
+    return true;
+  }
   try {
     return new URL(provider.baseUrl).hostname.toLowerCase() === "openrouter.ai";
   } catch {
@@ -113,7 +119,7 @@ export function catalogScopeLabel(
     const count = workers.size || (workerId ? 1 : 0);
     return `${count} worker${count === 1 ? "" : "s"}`;
   }
-  if (provider.kind === "chatgpt") {
+  if (provider.kind === "chatgpt" || provider.kind === "grok") {
     const accounts = provider.accounts.filter((account) => {
       if (!account.enabled) return false;
       return account.workerBindings.some(

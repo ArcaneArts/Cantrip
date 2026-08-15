@@ -1758,6 +1758,9 @@ export class CodexAppServer implements CodexRuntime {
     private readonly onDiagnostic?: (
       diagnostic: CodexRuntimeDiagnostic,
     ) => void,
+    private readonly resolveProvider?: (
+      provider: RunAgentTurnOptions["provider"],
+    ) => Promise<RunAgentTurnOptions["provider"]>,
   ) {}
 
   diagnostics(): CodexRuntimeDiagnostic[] {
@@ -3272,9 +3275,16 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<void> {
     this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
-    const providerConfiguration = codexProviderConfiguration(provider);
+    const runtimeProvider = this.resolveProvider
+      ? await this.resolveProvider(provider)
+      : provider;
+    const providerConfiguration = codexProviderConfiguration(runtimeProvider);
     const modelCatalogPath = model
-      ? await writeManagedCodexModelCatalog(this.dataDirectory, model, provider)
+      ? await writeManagedCodexModelCatalog(
+          this.dataDirectory,
+          model,
+          runtimeProvider,
+        )
       : null;
     const child = spawn(
       this.codexBinary,

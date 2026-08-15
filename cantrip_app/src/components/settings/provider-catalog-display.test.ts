@@ -85,6 +85,49 @@ describe("provider catalog presentation", () => {
         baseUrl: "https://api.x.ai/v1",
       }),
     ).toBe(false);
+    expect(
+      providerSupportsCatalog({
+        ...provider,
+        kind: "grok",
+        baseUrl: "https://cli-chat-proxy.grok.com/v1",
+      }),
+    ).toBe(true);
+  });
+
+  it("summarizes signed-in Grok account scope", () => {
+    expect(
+      catalogScopeLabel(
+        {
+          ...provider,
+          kind: "grok",
+          baseUrl: "https://cli-chat-proxy.grok.com/v1",
+          accounts: [
+            {
+              id: "grok-account",
+              providerId: provider.id,
+              label: "SuperGrok",
+              email: "grok@example.com",
+              planType: "SuperGrok",
+              position: 0,
+              enabled: true,
+              workerBindings: [
+                {
+                  workerId: "a",
+                  authState: "signed-in",
+                  weeklyUsageUsedPercent: null,
+                  weeklyUsageResetsAt: null,
+                  lastSyncedAt: "2026-08-14T00:00:00.000Z",
+                },
+              ],
+              createdAt: "2026-08-14T00:00:00.000Z",
+              updatedAt: "2026-08-14T00:00:00.000Z",
+            },
+          ],
+        },
+        catalog,
+        "a",
+      ),
+    ).toBe("1 signed-in account");
   });
 
   it("keeps worker-local inventory separate", () => {

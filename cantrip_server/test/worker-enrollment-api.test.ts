@@ -395,7 +395,10 @@ describe("per-worker enrollment credentials", () => {
             payload: {
               label: "Studio Mac",
               expiresInSeconds: 300,
-              candidateWorkerIds: ["worker-owned-by-someone-else", "worker-one"],
+              candidateWorkerIds: [
+                "worker-owned-by-someone-else",
+                "worker-one",
+              ],
             },
           })
         ).json(),

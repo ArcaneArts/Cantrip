@@ -700,6 +700,20 @@ describe("codexModelProviderName", () => {
     ).toBe("ollama");
   });
 
+  it("routes Grok subscription traffic through Cantrip's credential proxy", () => {
+    expect(
+      codexModelProviderName({
+        id: "supergrok",
+        name: "SuperGrok",
+        kind: "grok",
+        baseUrl: "http://127.0.0.1:54321/v1",
+        apiKey: null,
+        accountId: "grok-account",
+        credentialHomeKey: "grok-account-home",
+      }),
+    ).toBe("cantrip_runtime");
+  });
+
   it("keeps other compatible APIs on Cantrip's configured provider", () => {
     expect(
       codexModelProviderName({

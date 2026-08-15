@@ -30,7 +30,8 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "../workers/bridge.js";
-import { resolveChatGptAccountRuntimes } from "../models/chatgpt-account-routing.js";
+import { resolveAccountProviderRuntimes } from "../models/chatgpt-account-routing.js";
+import { isAccountProviderKind } from "../models/account-provider.js";
 
 interface ChatRelocationLogger {
   error(context: Record<string, unknown>, message: string): void;
@@ -855,8 +856,8 @@ export class ChatRelocationJobExecutor {
     ];
     const unavailable: string[] = [];
     for (const runtime of ordered) {
-      if (runtime.provider.kind === "chatgpt") {
-        const accountRouting = await resolveChatGptAccountRuntimes({
+      if (isAccountProviderKind(runtime.provider.kind)) {
+        const accountRouting = await resolveAccountProviderRuntimes({
           bridge: this.bridge,
           logger: this.logger,
           ownerId: claimed.ownerId,

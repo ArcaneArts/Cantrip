@@ -160,6 +160,11 @@ import {
   exactOpenRouterAliases,
 } from "../models/catalog-enrichment.js";
 import {
+  accountProviderLabel,
+  defaultAccountLabel,
+  isAccountProviderKind,
+} from "../models/account-provider.js";
+import {
   mcpServerSecretContext,
   modelProviderSecretContext,
   type SecretVault,
@@ -2749,20 +2754,20 @@ export class ServerRepository {
   ): Promise<ModelProviderSummary> {
     const id = randomUUID();
     return this.database.transaction(async (transaction) => {
-      if (input.kind === "chatgpt") {
+      if (isAccountProviderKind(input.kind)) {
         const existing = await transaction
           .select({ id: schema.modelProviders.id })
           .from(schema.modelProviders)
           .where(
             and(
               eq(schema.modelProviders.ownerId, ownerId),
-              eq(schema.modelProviders.kind, "chatgpt"),
+              eq(schema.modelProviders.kind, input.kind),
             ),
           )
           .limit(1);
         if (existing[0]) {
           throw new Error(
-            "A ChatGPT provider already exists. Add another sign-in to that provider instead.",
+            `A ${accountProviderLabel(input.kind)} provider already exists. Add another sign-in to that provider instead.`,
           );
         }
       }
@@ -2785,20 +2790,24 @@ export class ServerRepository {
         })
         .returning();
       const provider = firstOrThrow(result, "creating a model provider");
-      if (input.kind !== "chatgpt") return toProviderSummary(provider);
+      if (!isAccountProviderKind(input.kind))
+        return toProviderSummary(provider);
       const accountRows = await transaction
         .insert(schema.modelProviderAccounts)
         .values({
           id: randomUUID(),
           providerId: id,
-          label: "ChatGPT account",
+          label: defaultAccountLabel(input.kind),
           position: 0,
           credentialHomeKey: id,
         })
         .returning();
       return toProviderSummary(provider, ZERO_TOKEN_USAGE, [
         toProviderAccountSummary(
-          firstOrThrow(accountRows, "creating a ChatGPT account"),
+          firstOrThrow(
+            accountRows,
+            `creating a ${accountProviderLabel(input.kind)} account`,
+          ),
         ),
       ]);
     });
@@ -2838,7 +2847,7 @@ export class ServerRepository {
         ),
       )
       .limit(1);
-    if (!provider[0] || provider[0].kind !== "chatgpt") return null;
+    if (!provider[0] || !isAccountProviderKind(provider[0].kind)) return null;
     const [accounts, bindings] = await Promise.all([
       this.database
         .select()
@@ -2885,7 +2894,7 @@ export class ServerRepository {
           ),
         )
         .limit(1);
-      if (provider[0]?.kind !== "chatgpt") return null;
+      if (!provider[0] || !isAccountProviderKind(provider[0].kind)) return null;
       const positions = await transaction
         .select({ position: schema.modelProviderAccounts.position })
         .from(schema.modelProviderAccounts)
@@ -2904,7 +2913,10 @@ export class ServerRepository {
         })
         .returning();
       return toProviderAccountSummary(
-        firstOrThrow(rows, "creating a ChatGPT account"),
+        firstOrThrow(
+          rows,
+          `creating a ${accountProviderLabel(provider[0].kind)} account`,
+        ),
       );
     });
   }
@@ -2930,7 +2942,7 @@ export class ServerRepository {
                 and(
                   eq(schema.modelProviders.id, providerId),
                   eq(schema.modelProviders.ownerId, ownerId),
-                  eq(schema.modelProviders.kind, "chatgpt"),
+                  inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
                 ),
               ),
           ),
@@ -2959,7 +2971,7 @@ export class ServerRepository {
                 and(
                   eq(schema.modelProviders.id, providerId),
                   eq(schema.modelProviders.ownerId, ownerId),
-                  eq(schema.modelProviders.kind, "chatgpt"),
+                  inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
                 ),
               ),
           ),
@@ -2980,7 +2992,7 @@ export class ServerRepository {
     const filters = [
       eq(schema.modelProviderAccounts.providerId, providerId),
       eq(schema.modelProviders.ownerId, ownerId),
-      eq(schema.modelProviders.kind, "chatgpt"),
+      inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
       ...(accountId
         ? [eq(schema.modelProviderAccounts.id, accountId)]
         : [eq(schema.modelProviderAccounts.enabled, true)]),
@@ -3905,7 +3917,7 @@ export class ServerRepository {
               schema.modelProviderAccounts.providerId,
             ),
             eq(schema.modelProviders.ownerId, ownerId),
-            eq(schema.modelProviders.kind, "chatgpt"),
+            inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
           ),
         )
         .leftJoin(

@@ -570,7 +570,12 @@ import { OpenRouterCatalogService } from "./models/openrouter-catalog.js";
 import { OpenRouterRuntimeCatalogHydrator } from "./models/openrouter-runtime-catalog.js";
 import { OllamaCatalogService } from "./models/ollama-catalog.js";
 import { ChatGptCatalogService } from "./models/chatgpt-catalog.js";
-import { resolveChatGptAccountRuntimes } from "./models/chatgpt-account-routing.js";
+import { GrokCatalogService } from "./models/grok-catalog.js";
+import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
+import {
+  accountProviderLabel,
+  isAccountProviderKind,
+} from "./models/account-provider.js";
 import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
 
 export interface BuildAppOptions {
@@ -955,6 +960,7 @@ export async function buildApp({
   });
   const ollamaCatalogService = new OllamaCatalogService(repository, bridge);
   const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
+  const grokCatalogService = new GrokCatalogService(repository, bridge);
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -2535,7 +2541,7 @@ export async function buildApp({
   const progressingWorktreeTransitions = new Set<string>();
   const routeCooldowns = new Map<string, number>();
   const runtimeCooldownKey = (runtime: ModelRuntime): string =>
-    runtime.provider.kind === "chatgpt" && runtime.provider.accountId
+    isAccountProviderKind(runtime.provider.kind) && runtime.provider.accountId
       ? `${runtime.routeId}:account:${runtime.provider.accountId}`
       : runtime.routeId;
   const surfaceAttachmentCounts = new Map<string, number>();
@@ -4526,7 +4532,7 @@ export async function buildApp({
     const available: ModelRuntime[] = [];
     const unavailable: string[] = [];
     for (const runtime of runtimes) {
-      if (runtime.provider.kind !== "chatgpt") {
+      if (!isAccountProviderKind(runtime.provider.kind)) {
         const catalogAvailability = runtime.model.providerModelId
           ? await repository.listProviderModelAvailability(
               applicationOwnerId(),
@@ -4555,7 +4561,7 @@ export async function buildApp({
         continue;
       }
 
-      const accountRouting = await resolveChatGptAccountRuntimes({
+      const accountRouting = await resolveAccountProviderRuntimes({
         bridge,
         logger: app.log,
         ownerId: applicationOwnerId(),
@@ -7202,7 +7208,7 @@ export async function buildApp({
       );
       return accounts
         ? reply.send(modelProviderAccountListSchema.parse(accounts))
-        : reply.code(404).send({ error: "ChatGPT provider not found." });
+        : reply.code(404).send({ error: "Account provider not found." });
     },
   );
 
@@ -7221,7 +7227,7 @@ export async function buildApp({
     );
     return account
       ? reply.code(201).send(modelProviderAccountSummarySchema.parse(account))
-      : reply.code(404).send({ error: "ChatGPT provider not found." });
+      : reply.code(404).send({ error: "Account provider not found." });
   });
 
   app.patch<{
@@ -7242,7 +7248,7 @@ export async function buildApp({
       );
       return account
         ? reply.send(modelProviderAccountSummarySchema.parse(account))
-        : reply.code(404).send({ error: "ChatGPT account not found." });
+        : reply.code(404).send({ error: "Provider account not found." });
     },
   );
 
@@ -7257,15 +7263,16 @@ export async function buildApp({
         request.params.accountId,
       ))
         ? reply.code(204).send()
-        : reply.code(404).send({ error: "ChatGPT account not found." }),
+        : reply.code(404).send({ error: "Provider account not found." }),
   );
 
-  const resolveChatGptAuthTarget = async (
+  const resolveAccountAuthTarget = async (
     providerId: string,
     workerId: string,
     accountId?: string,
   ) => {
-    const [account, worker] = await Promise.all([
+    const [provider, account, worker] = await Promise.all([
+      repository.getModelProvider(applicationOwnerId(), providerId),
       repository.getModelProviderAccountRuntime(
         applicationOwnerId(),
         providerId,
@@ -7273,9 +7280,11 @@ export async function buildApp({
       ),
       repository.getWorker(applicationOwnerId(), workerId),
     ]);
-    if (!account) throw new Error("ChatGPT account not found.");
+    if (!provider || !isAccountProviderKind(provider.kind) || !account) {
+      throw new Error("Provider account not found.");
+    }
     if (!worker) throw new Error("Worker not found.");
-    return account;
+    return { ...account, providerKind: provider.kind };
   };
 
   app.get<{
@@ -7292,7 +7301,7 @@ export async function buildApp({
         .send({ error: "workerId and providerId are required" });
     }
     try {
-      const account = await resolveChatGptAuthTarget(
+      const account = await resolveAccountAuthTarget(
         providerId,
         workerId,
         accountId,
@@ -7301,6 +7310,7 @@ export async function buildApp({
         await bridge.request(workerId, {
           type: "codex.auth.status",
           providerId,
+          providerKind: account.providerKind,
           credentialHomeKey: account.credentialHomeKey,
         }),
       );
@@ -7338,7 +7348,7 @@ export async function buildApp({
         .send({ error: "workerId and providerId are required" });
     }
     try {
-      const account = await resolveChatGptAuthTarget(
+      const account = await resolveAccountAuthTarget(
         providerId,
         workerId,
         accountId,
@@ -7348,6 +7358,7 @@ export async function buildApp({
           await bridge.request(workerId, {
             type: "codex.auth.login.start",
             providerId,
+            providerKind: account.providerKind,
             credentialHomeKey: account.credentialHomeKey,
           }),
         ),
@@ -7371,7 +7382,7 @@ export async function buildApp({
         .send({ error: "workerId and providerId are required" });
     }
     try {
-      const account = await resolveChatGptAuthTarget(
+      const account = await resolveAccountAuthTarget(
         providerId,
         workerId,
         accountId,
@@ -7379,6 +7390,7 @@ export async function buildApp({
       await bridge.request(workerId, {
         type: "codex.auth.logout",
         providerId,
+        providerKind: account.providerKind,
         credentialHomeKey: account.credentialHomeKey,
       });
       await repository.recordModelProviderAccountStatus(
@@ -7391,7 +7403,11 @@ export async function buildApp({
           weeklyUsage: null,
         },
       );
-      await chatGptCatalogService.markAccountUnavailable(
+      await (
+        account.providerKind === "grok"
+          ? grokCatalogService
+          : chatGptCatalogService
+      ).markAccountUnavailable(
         applicationOwnerId(),
         providerId,
         workerId,
@@ -7411,7 +7427,9 @@ export async function buildApp({
     const ownerId = applicationOwnerId();
     const settings = await repository.getSettings(ownerId);
     for (const provider of settings.providers) {
-      if (provider.kind !== "ollama" && provider.kind !== "chatgpt") continue;
+      if (provider.kind !== "ollama" && !isAccountProviderKind(provider.kind)) {
+        continue;
+      }
       void loadProviderCatalog(ownerId, provider.id, undefined, false).catch(
         () => undefined,
       );
@@ -7702,7 +7720,7 @@ export async function buildApp({
       providerId,
     );
     if (!provider) return null;
-    if (provider.kind !== "ollama" && provider.kind !== "chatgpt") {
+    if (provider.kind !== "ollama" && !isAccountProviderKind(provider.kind)) {
       const catalog = await providerCatalogService.getProviderCatalog(
         ownerId,
         providerId,
@@ -7727,12 +7745,22 @@ export async function buildApp({
         undefined;
     }
     if (!selectedWorkerId) {
-      throw new Error(
-        `No worker is available for ${provider.kind === "chatgpt" ? "ChatGPT" : "Ollama"} discovery.`,
-      );
+      const label = isAccountProviderKind(provider.kind)
+        ? accountProviderLabel(provider.kind)
+        : "Ollama";
+      throw new Error(`No worker is available for ${label} discovery.`);
     }
     if (provider.kind === "chatgpt") {
       return chatGptCatalogService.getProviderCatalog(
+        ownerId,
+        providerId,
+        selectedWorkerId,
+        force,
+        accountId,
+      );
+    }
+    if (provider.kind === "grok") {
+      return grokCatalogService.getProviderCatalog(
         ownerId,
         providerId,
         selectedWorkerId,
@@ -7758,7 +7786,7 @@ export async function buildApp({
       settings.providers
         .filter(
           (provider) =>
-            provider.kind === "chatgpt" || provider.kind === "ollama",
+            isAccountProviderKind(provider.kind) || provider.kind === "ollama",
         )
         .map((provider) =>
           loadProviderCatalog(ownerId, provider.id, workerId, false),
@@ -7780,14 +7808,16 @@ export async function buildApp({
     if (
       message.includes("not an OpenRouter") ||
       message.includes("not an Ollama") ||
-      message.includes("not a ChatGPT")
+      message.includes("not a ChatGPT") ||
+      message.includes("not a Grok")
     ) {
       return 409;
     }
     if (
       message.includes("worker is available") ||
       message.includes("offline") ||
-      message.includes("signed-in ChatGPT")
+      message.includes("signed-in ChatGPT") ||
+      message.includes("signed-in Grok")
     ) {
       return 503;
     }

@@ -46,7 +46,7 @@ describe("account settings", () => {
       "Logical models with ordered provider failover routes.",
     );
     expect(models).toContain(
-      "Ollama, compatible APIs, and isolated ChatGPT accounts.",
+      "Ollama, compatible APIs, and isolated ChatGPT or Grok accounts.",
     );
     expect(models).not.toContain("System follows the operating system.");
   });
