@@ -90,6 +90,7 @@ import {
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
+import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import {
   activeChatRelocationJob,
   ChatRelocationDialog,
@@ -105,7 +106,6 @@ import {
 } from "@/components/chat/command-palette";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import type { CodeHeaderState } from "@/components/code/code-view";
-import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
   activeSkillMention,
   filterSkills,
@@ -213,7 +213,6 @@ import {
   getChats,
   getChatGoal,
   getChatPlan,
-  getChatPermissionProfiles,
   getChatReasoning,
   getChatRelocations,
   getBrowsers,
@@ -259,7 +258,6 @@ import {
   syncChat,
   updateChatModel,
   updateChatGoal,
-  updateChatPermissionProfile,
   updateChatReasoning,
   updateChatWorktree,
   updateBrowser,
@@ -1010,12 +1008,6 @@ function ChatTranscript({
     refetchInterval: chatRefreshInterval,
     retry: false,
   });
-  const permissionProfiles = useQuery({
-    queryFn: () => getChatPermissionProfiles(chat.id),
-    queryKey: ["permission-profiles", chat.id, selectedModelId],
-    retry: false,
-    staleTime: 30_000,
-  });
   const reasoningState = useQuery({
     enabled: Boolean(selectedModelId),
     queryFn: () => getChatReasoning(chat.id),
@@ -1409,19 +1401,6 @@ function ChatTranscript({
       setRespondingRequestId(null);
     }
   };
-  const selectPermissionProfile = useMutation({
-    mutationFn: (id: string) => updateChatPermissionProfile(chat.id, id),
-    onSuccess: async (state) => {
-      queryClient.setQueryData(
-        ["permission-profiles", chat.id, selectedModelId],
-        state,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: ["chats", chat.projectId],
-      });
-    },
-  });
-
   useEffect(() => {
     setSelectedCommandIndex(0);
   }, [slashQuery]);
@@ -2235,7 +2214,7 @@ function ChatTranscript({
                   )}
                 />
               </div>
-              <div className="flex min-w-0 items-center gap-2 border-t px-1 pt-2">
+              <div className="flex min-w-0 items-center gap-1 border-t px-1 pt-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -2313,42 +2292,17 @@ function ChatTranscript({
                     </option>
                   ))}
                 </select>
-                <PermissionProfileControl
-                  state={permissionProfiles.data}
-                  disabled={
-                    relocationActive ||
-                    chat.status === "running" ||
-                    chat.status === "waiting-for-approval"
-                  }
-                  pending={selectPermissionProfile.isPending}
-                  onChange={(id) => selectPermissionProfile.mutate(id)}
-                />
-                <select
-                  aria-label="Message mode"
-                  value={composerMode}
+                <ChatModeControl
+                  mode={composerMode}
                   disabled={relocationActive}
-                  onChange={(event) =>
-                    setComposerMode(event.target.value as ChatTurnMode)
-                  }
-                  className={cn(
-                    "h-7 shrink-0 rounded-md border bg-transparent px-2 text-xs font-medium outline-none",
-                    composerMode === "goal"
-                      ? "border-violet-500/30 text-violet-600 dark:text-violet-400"
-                      : composerMode === "plan"
-                        ? "border-sky-500/30 text-sky-600 dark:text-sky-400"
-                        : "text-muted-foreground",
-                  )}
-                >
-                  <option value="default">Mode: Default</option>
-                  <option value="plan">Mode: Plan</option>
-                  <option value="goal">Mode: Goal</option>
-                </select>
+                  onChange={setComposerMode}
+                />
                 <Button
                   type="button"
-                  size="sm"
+                  size="icon"
                   variant={chat.automationPaused ? "outline" : "ghost"}
                   className={cn(
-                    "h-7 px-2 text-xs",
+                    "size-7 shrink-0",
                     chat.automationPaused
                       ? "border-amber-500/40 text-amber-700 dark:text-amber-300"
                       : "text-muted-foreground",
@@ -2370,7 +2324,9 @@ function ChatTranscript({
                   ) : (
                     <Pause className="size-3.5" />
                   )}
-                  {chat.automationPaused ? "Resume" : "Pause"}
+                  <span className="sr-only">
+                    {chat.automationPaused ? "Resume" : "Pause"}
+                  </span>
                 </Button>
               </div>
             </div>
@@ -2435,8 +2391,7 @@ function ChatTranscript({
           removePrompt.isError ||
           steerPrompt.isError ||
           reorderPrompts.isError ||
-          setAutomationPaused.isError ||
-          selectPermissionProfile.isError ? (
+          setAutomationPaused.isError ? (
             <p className="mt-2 text-xs text-destructive">
               {errorText(
                 send.error ??
@@ -2447,8 +2402,7 @@ function ChatTranscript({
                   removePrompt.error ??
                   steerPrompt.error ??
                   reorderPrompts.error ??
-                  setAutomationPaused.error ??
-                  selectPermissionProfile.error,
+                  setAutomationPaused.error,
               )}
             </p>
           ) : editingPrompt ? (
