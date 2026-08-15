@@ -47,6 +47,7 @@ import {
   executionTargetResolveRequestSchema,
   executionTargetSchema,
   modelProviderAccountSummarySchema,
+  settingsBundleSchema,
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
   explorerFileWriteSchema,
@@ -156,6 +157,66 @@ import {
 } from "../src/index.js";
 
 describe("model catalog protocol", () => {
+  it("accepts settings from servers that predate managed model catalogs", () => {
+    const parsed = settingsBundleSchema.parse({
+      preferences: {
+        theme: "system",
+        highContrast: false,
+        proMode: false,
+        proModeOpacity: 80,
+        sidebarWidth: 288,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: "model-1",
+      },
+      providers: [
+        {
+          id: "provider-1",
+          name: "Ollama",
+          kind: "ollama",
+          baseUrl: "http://127.0.0.1:11434/v1",
+          hasApiKey: false,
+          createdAt: "2026-08-01T00:00:00.000Z",
+          updatedAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+      models: [
+        {
+          id: "model-1",
+          name: "gemma4:12b",
+          routingPolicy: "priority",
+          routes: [
+            {
+              id: "route-1",
+              providerId: "provider-1",
+              providerName: "Ollama",
+              modelName: "gemma4:12b",
+              enabled: true,
+              position: 0,
+            },
+          ],
+          createdAt: "2026-08-01T00:00:00.000Z",
+          updatedAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(parsed.providers[0]).toMatchObject({
+      weeklyUsageReservePercent: 3,
+      accounts: [],
+    });
+    expect(parsed.models[0]).toMatchObject({
+      canonicalModelId: null,
+      discoveryManaged: false,
+      routes: [
+        expect.objectContaining({
+          providerModelId: null,
+          discoveryManaged: false,
+        }),
+      ],
+    });
+  });
+
   it("accepts native ChatGPT Codex model inventory", () => {
     const inventory = chatGptModelInventorySchema.parse({
       models: [
