@@ -33,6 +33,10 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
+import {
+  captureLegacyProviderCredential,
+  purgeLegacyProviderCredential,
+} from "./legacy-provider-credentials.js";
 import { workerLogger } from "./logger.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
@@ -320,6 +324,16 @@ async function start(): Promise<void> {
     return runtime;
   };
 
+  const closeAccountRuntimes = (credentialHomeKey: string) => {
+    for (const [runtimeId, runtime] of codexRuntimes) {
+      if (!runtimeId.startsWith(`${credentialHomeKey}:`)) continue;
+      runtime.close();
+      codexRuntimes.delete(runtimeId);
+    }
+    codexCatalogRuntimes.get(credentialHomeKey)?.close();
+    codexCatalogRuntimes.delete(credentialHomeKey);
+  };
+
   const handleCommand = async (
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
@@ -374,6 +388,7 @@ async function start(): Promise<void> {
               command.credentialHomeKey ?? command.providerId,
             ).startDeviceLogin();
       case "codex.auth.logout":
+        closeAccountRuntimes(command.credentialHomeKey ?? command.providerId);
         if (command.providerKind === "grok") {
           await grokFor(
             command.credentialHomeKey ?? command.providerId,
@@ -383,23 +398,30 @@ async function start(): Promise<void> {
             command.credentialHomeKey ?? command.providerId,
           ).logout();
         }
-        for (const [runtimeId, runtime] of codexRuntimes) {
-          if (
-            !runtimeId.startsWith(
-              `${command.credentialHomeKey ?? command.providerId}:`,
-            )
-          )
-            continue;
-          runtime.close();
-          codexRuntimes.delete(runtimeId);
-        }
-        codexCatalogRuntimes
-          .get(command.credentialHomeKey ?? command.providerId)
-          ?.close();
-        codexCatalogRuntimes.delete(
-          command.credentialHomeKey ?? command.providerId,
-        );
         return { accepted: true };
+      case "provider.auth.legacy.capture":
+        return captureLegacyProviderCredential(
+          accountHomeFor(command.credentialHomeKey),
+          command.providerKind,
+        );
+      case "provider.auth.legacy.purge": {
+        closeAccountRuntimes(command.credentialHomeKey);
+        if (command.providerKind === "grok") {
+          grokAuthClients.get(command.credentialHomeKey)?.close();
+          grokAuthClients.delete(command.credentialHomeKey);
+        } else {
+          // Deliberately stop and remove the local file without account/logout;
+          // Codex logout revokes the shared OAuth credential on the provider.
+          codexAuthClients.get(command.credentialHomeKey)?.close();
+          codexAuthClients.delete(command.credentialHomeKey);
+        }
+        return purgeLegacyProviderCredential(
+          accountHomeFor(command.credentialHomeKey),
+          command.providerKind,
+          command.expectedSubject,
+          command.serverCredentialRevision,
+        );
+      }
       case "github.auth.status":
         return github.authStatus();
       case "github.repositories.cached":

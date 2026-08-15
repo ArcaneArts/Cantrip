@@ -581,6 +581,7 @@ import {
   ProviderAccessTokenError,
   ProviderAccessTokenService,
 } from "./models/provider-access-tokens.js";
+import { ProviderCredentialMigrationCoordinator } from "./models/provider-credential-migrations.js";
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
   accountProviderLabel,
@@ -599,6 +600,7 @@ export interface BuildAppOptions {
   coordinator?: RelayCoordinator;
   providerCatalogService?: OpenRouterCatalogService;
   providerAccessTokens?: ProviderAccessTokenService;
+  providerCredentialMigrations?: ProviderCredentialMigrationCoordinator;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -852,6 +854,7 @@ export async function buildApp({
   projectShareTunnel: providedProjectShareTunnel,
   providerCatalogService: providedProviderCatalogService,
   providerAccessTokens: providedProviderAccessTokens,
+  providerCredentialMigrations: providedProviderCredentialMigrations,
   relayQuotas: providedRelayQuotas,
   coordinator,
   workerBridge,
@@ -978,6 +981,9 @@ export async function buildApp({
   const grokCatalogService = new GrokCatalogService(repository, bridge);
   const providerAccessTokens =
     providedProviderAccessTokens ?? new ProviderAccessTokenService(repository);
+  const providerCredentialMigrations =
+    providedProviderCredentialMigrations ??
+    new ProviderCredentialMigrationCoordinator(repository, bridge);
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -19117,6 +19123,27 @@ export async function buildApp({
         return;
       }
       catalogWorkers.set(workerId, workerAuth.ownerId);
+      void providerCredentialMigrations
+        .migrateWorker(workerAuth.ownerId, workerId)
+        .then((summary) => {
+          if (
+            summary.captured > 0 ||
+            summary.conflicts > 0 ||
+            summary.failed > 0 ||
+            summary.malformed > 0
+          ) {
+            app.log.info(
+              { migration: summary, workerId },
+              "Provider credential migration pass completed",
+            );
+          }
+        })
+        .catch(() => {
+          app.log.warn(
+            { workerId },
+            "Provider credential migration pass could not start",
+          );
+        });
       void refreshWorkerScopedCatalogs(workerAuth.ownerId, workerId).catch(
         () => undefined,
       );
