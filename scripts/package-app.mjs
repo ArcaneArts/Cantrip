@@ -52,6 +52,26 @@ run(process.execPath, runtimeArguments);
 if (target.platform === "darwin") {
   const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
   const signingRequired = process.env.CANTRIP_REQUIRE_MACOS_SIGNING === "1";
+  const notarizationRequired =
+    process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1";
+  if (notarizationRequired && !signingRequired) {
+    throw new Error(
+      "CANTRIP_REQUIRE_MACOS_NOTARIZATION=1 also requires CANTRIP_REQUIRE_MACOS_SIGNING=1.",
+    );
+  }
+  if (notarizationRequired) {
+    for (const variable of [
+      "APPLE_API_ISSUER",
+      "APPLE_API_KEY",
+      "APPLE_API_KEY_PATH",
+    ]) {
+      if (!process.env[variable]?.trim()) {
+        throw new Error(
+          `CANTRIP_REQUIRE_MACOS_NOTARIZATION=1 requires ${variable}.`,
+        );
+      }
+    }
+  }
   if (signingRequired && !identity) {
     throw new Error(
       "CANTRIP_REQUIRE_MACOS_SIGNING=1 requires APPLE_SIGNING_IDENTITY.",
@@ -69,6 +89,14 @@ if (target.platform === "darwin") {
 }
 const appBuild = pnpmCommand(["--filter", "@cantrip/app", "tauri:build"]);
 run(appBuild.command, appBuild.arguments);
+if (
+  target.platform === "darwin" &&
+  process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1"
+) {
+  run(process.execPath, [
+    path.join(root, "scripts", "notarize-macos-distribution.mjs"),
+  ]);
+}
 if (
   target.platform === "darwin" &&
   process.env.CANTRIP_REQUIRE_MACOS_SIGNING === "1"

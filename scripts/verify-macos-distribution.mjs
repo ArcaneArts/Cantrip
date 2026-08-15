@@ -25,7 +25,7 @@ function run(command, arguments_) {
   return output;
 }
 
-async function findArtifacts(directory) {
+export async function findMacosArtifacts(directory) {
   const apps = [];
   const dmgs = [];
   async function visit(current) {
@@ -60,9 +60,10 @@ function assertDeveloperId(details, description) {
 
 export async function verifyMacosDistribution({
   bundleDirectory,
+  requireNotarization = false,
   runCommand = run,
 }) {
-  const { apps, dmgs } = await findArtifacts(bundleDirectory);
+  const { apps, dmgs } = await findMacosArtifacts(bundleDirectory);
   if (apps.length === 0) {
     throw new Error(`No macOS app bundle was found in ${bundleDirectory}.`);
   }
@@ -94,6 +95,16 @@ export async function verifyMacosDistribution({
     }
     if (/com\.apple\.security\.app-sandbox/u.test(details)) {
       throw new Error(`${app} unexpectedly enables App Sandbox.`);
+    }
+    if (requireNotarization) {
+      runCommand("xcrun", ["stapler", "validate", "-v", app]);
+      runCommand("spctl", [
+        "--assess",
+        "--type",
+        "execute",
+        "--verbose=2",
+        app,
+      ]);
     }
 
     const runtime = path.join(app, "Contents", "Resources", "runtime");
@@ -136,6 +147,18 @@ export async function verifyMacosDistribution({
     runCommand("hdiutil", ["verify", dmg]);
     runCommand("codesign", ["--verify", "--strict", "--verbose=2", dmg]);
     assertDeveloperId(runCommand("codesign", ["-dvvv", dmg]), dmg);
+    if (requireNotarization) {
+      runCommand("xcrun", ["stapler", "validate", "-v", dmg]);
+      runCommand("spctl", [
+        "--assess",
+        "--type",
+        "open",
+        "--context",
+        "context:primary-signature",
+        "--verbose=2",
+        dmg,
+      ]);
+    }
   }
 
   return { apps, dmgs, runtimeBinaryCount };
@@ -154,8 +177,9 @@ if (isMain) {
       "release",
       "bundle",
     ),
+    requireNotarization: process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1",
   });
   console.log(
-    `Verified ${result.apps.length} Developer ID app, ${result.dmgs.length} signed DMG, and ${result.runtimeBinaryCount} embedded runtime binaries.`,
+    `Verified ${result.apps.length} Developer ID app, ${result.dmgs.length} signed DMG, and ${result.runtimeBinaryCount} embedded runtime binaries${process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1" ? " with stapled Apple notarization tickets" : ""}.`,
   );
 }

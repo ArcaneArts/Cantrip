@@ -40,3 +40,29 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
   assert.match(workflow, /version="\$\(node scripts\/version\.mjs\)"/u);
   assert.match(workflow, /tag="v\$\{version\}"/u);
 });
+
+test("fails closed while signing and notarizing both the macOS app and DMG", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  assert.match(
+    workflow,
+    /APPLE_CERTIFICATE: \$\{\{ secrets\.APPLE_CERTIFICATE \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /APPLE_API_ISSUER: \$\{\{ secrets\.APPSTORE_CONNECT_ISSUER_ID \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /APPLE_API_KEY: \$\{\{ secrets\.APPSTORE_CONNECT_KEY_ID \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /APPLE_API_PRIVATE_KEY: \$\{\{ secrets\.APPSTORE_CONNECT_KEY \}\}/u,
+  );
+  assert.match(workflow, /CANTRIP_REQUIRE_MACOS_NOTARIZATION: "1"/u);
+  assert.doesNotMatch(workflow, /unset APPLE_API_ISSUER/u);
+});

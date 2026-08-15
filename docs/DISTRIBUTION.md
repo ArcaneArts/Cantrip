@@ -83,7 +83,7 @@ repository so jobs with `blacksmith-*` runner labels can be provisioned. The
 first run for each platform is expected to be cold; later releases reuse cache
 entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
 
-### macOS direct-distribution signing
+### macOS direct-distribution signing and notarization
 
 The macOS Client job fails closed unless the repository has these Actions
 secrets:
@@ -93,7 +93,20 @@ secrets:
 - `APPLE_CERTIFICATE_PASSWORD`: the password used when exporting that `.p12`;
   and
 - `KEYCHAIN_PASSWORD`: an arbitrary strong password used only for the
-  job-scoped temporary keychain.
+  job-scoped temporary keychain;
+- `APPSTORE_CONNECT_ISSUER_ID`: the issuer UUID shown above the App Store
+  Connect API keys table;
+- `APPSTORE_CONNECT_KEY_ID`: the key ID for an App Store Connect API key with
+  Developer access; and
+- `APPSTORE_CONNECT_KEY`: either the raw contents or base64-encoded contents of
+  that key's `.p8` private key.
+
+An existing Developer ID Application certificate may be reused across apps
+owned by the same Apple Developer team. It is not scoped to one bundle ID. The
+exported `.p12` must include its private key. An existing App Store Connect API
+key may likewise be reused if it has Developer access and its one-time-download
+`.p8` file is still available. Do not revoke working credentials merely to make
+Cantrip-specific ones.
 
 Export the certificate from Keychain Access and encode it with:
 
@@ -102,32 +115,57 @@ openssl base64 -A -in DeveloperIDApplication.p12 \
   -out DeveloperIDApplication.p12.base64
 ```
 
+Create or inspect the notarization key under **App Store Connect → Users and
+Access → Integrations → Team Keys**. Record its issuer ID and key ID, download
+the private key while Apple still offers the one-time download, and encode it
+with:
+
+```shell
+openssl base64 -A -in AuthKey_EXAMPLE123.p8 \
+  -out AuthKey_EXAMPLE123.p8.base64
+```
+
+Store the resulting single-line text as `APPSTORE_CONNECT_KEY`, or store the
+raw PEM text directly. Cantrip maps these repository secret names to Tauri's
+`APPLE_API_ISSUER`, `APPLE_API_KEY`, and `APPLE_API_KEY_PATH` environment
+variables during the job. Never commit the `.p8`, `.p12`, their passwords, or
+their base64 encodings. See
+[Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/) and
+[Apple's notarytool migration guide](https://developer.apple.com/documentation/technotes/tn3147-migrating-to-the-latest-notarization-tool)
+for the upstream credential definitions.
+
 The workflow imports that identity into an ephemeral keychain. Before Tauri
 seals the app, packaging signs every embedded Mach-O executable and native
 module, including the bundled Node and Codex runtimes. Node receives the JIT
 entitlements it needs without the development-only `get-task-allow`
-entitlement. Tauri then signs the Hardened Runtime app and DMG. Packaging
-rejects an ad-hoc signature, the wrong bundle identifier, an enabled App
-Sandbox entitlement, unsigned embedded native code, a missing Node JIT
-entitlement, or an unsigned/corrupt DMG before anything is archived.
+entitlement. Tauri then signs the Hardened Runtime app, submits it to Apple's
+notary service, waits for acceptance, staples its ticket, and creates the DMG.
+Cantrip separately submits that final DMG, waits for acceptance, and staples
+the DMG ticket. Packaging rejects an ad-hoc signature, the wrong bundle
+identifier, an enabled App Sandbox entitlement, unsigned embedded native code,
+a missing Node JIT entitlement, an unsigned/corrupt DMG, a missing stapled
+ticket, or a failed Gatekeeper assessment before anything is archived.
 
-For a signed local package, install the Developer ID certificate in the login
-keychain, find its exact identity, and require the same verification:
+For a signed and notarized local package, install the Developer ID certificate
+in the login keychain, find its exact identity, and provide the downloaded API
+key directly:
 
 ```shell
 security find-identity -v -p codesigning
 APPLE_SIGNING_IDENTITY='Developer ID Application: Example (TEAMID)' \
   CANTRIP_REQUIRE_MACOS_SIGNING=1 \
+  CANTRIP_REQUIRE_MACOS_NOTARIZATION=1 \
+  APPLE_API_ISSUER='issuer-uuid' \
+  APPLE_API_KEY='EXAMPLE123' \
+  APPLE_API_KEY_PATH="$PWD/AuthKey_EXAMPLE123.p8" \
   pnpm package:app --target darwin-arm64
 ```
 
-This milestone intentionally does **not** notarize or staple the build. The
-workflow explicitly removes Apple notarization credentials before invoking
-Tauri. A downloaded build may therefore still require explicit approval in
-System Settings → Privacy & Security. Signing does not enable App Sandbox, and
-the normal installation flow remains dragging Cantrip from the read-only DMG
-into `/Applications`. Notarization is the remaining step for a normal
-first-launch Gatekeeper experience.
+Signing does not enable App Sandbox, and the normal installation flow remains
+dragging Cantrip from the read-only DMG into `/Applications`. Notarization can
+take materially longer on a team's first submission. The workflow waits rather
+than publishing an unnotarized artifact, and Apple rejection details are
+printed in the job log.
 
 From a clean, synchronized `main` checkout, start that workflow with:
 
