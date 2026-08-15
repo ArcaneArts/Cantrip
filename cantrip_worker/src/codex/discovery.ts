@@ -53,6 +53,7 @@ export const CODEX_CUSTOMIZATION_METHODS = {
 } as const;
 
 export const CODEX_OPTIONAL_METHODS = [
+  "account/login/start",
   "thread/compact/start",
   "model/list",
   "experimentalFeature/list",

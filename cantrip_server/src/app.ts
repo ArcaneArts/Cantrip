@@ -583,6 +583,7 @@ import {
   ProviderAccessTokenError,
   ProviderAccessTokenService,
 } from "./models/provider-access-tokens.js";
+import { ChatGptCredentialRefresher } from "./models/chatgpt-credential-refresher.js";
 import { ProviderCredentialMigrationCoordinator } from "./models/provider-credential-migrations.js";
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
@@ -984,10 +985,17 @@ export async function buildApp({
   const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
   const grokCatalogService = new GrokCatalogService(repository, bridge);
   const providerAccessTokens =
-    providedProviderAccessTokens ?? new ProviderAccessTokenService(repository);
+    providedProviderAccessTokens ??
+    new ProviderAccessTokenService(repository, {
+      refreshLeaseDurationMs: 7_500,
+      refreshWaitMs: 8_500,
+      refreshers: { chatgpt: new ChatGptCredentialRefresher() },
+    });
   const providerCredentialMigrations =
     providedProviderCredentialMigrations ??
-    new ProviderCredentialMigrationCoordinator(repository, bridge);
+    new ProviderCredentialMigrationCoordinator(repository, bridge, {
+      purgeEnabledKinds: new Set(["chatgpt"]),
+    });
   const directAttachments = new DirectAttachmentCoordinator(bridge);
   const revokedWorkerCredentialIds = new Set<string>();
   const codeSurface = resolveCodeSurfaceConfig(config);
@@ -18756,6 +18764,7 @@ export async function buildApp({
           providerAccessTokenLeaseSchema.parse(
             await providerAccessTokens.issue({
               accountId: request.params.accountId,
+              credentialRevision: input.data.credentialRevision,
               forceRefresh: input.data.forceRefresh,
               minimumValidityMs: input.data.minimumValiditySeconds * 1_000,
               ownerId: workerAuth.ownerId,

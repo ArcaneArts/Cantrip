@@ -11,6 +11,38 @@ const CACHE_EXPIRY_BUFFER_MS = 30_000;
 export interface ProviderAccessTokenClientOptions {
   fetch?: typeof fetch;
   now?: () => number;
+  requestTimeoutMs?: number;
+}
+
+export type ProviderAccessTokenRequestErrorCode =
+  | "credential-unavailable"
+  | "migration-needed"
+  | "reauth-required"
+  | "identity-conflict"
+  | "refresh-unavailable"
+  | "refresh-failed"
+  | "refresh-timeout";
+
+const ERROR_CODES = new Set<ProviderAccessTokenRequestErrorCode>([
+  "credential-unavailable",
+  "migration-needed",
+  "reauth-required",
+  "identity-conflict",
+  "refresh-unavailable",
+  "refresh-failed",
+  "refresh-timeout",
+]);
+
+export class ProviderAccessTokenRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: ProviderAccessTokenRequestErrorCode | null,
+  ) {
+    super(
+      `Cantrip Server could not issue a provider access lease (HTTP ${status}${code ? `, ${code}` : ""}).`,
+    );
+    this.name = "ProviderAccessTokenRequestError";
+  }
 }
 
 /**
@@ -22,6 +54,7 @@ export class ProviderAccessTokenClient {
   readonly #fetch: typeof fetch;
   readonly #inflight = new Map<string, Promise<ProviderAccessTokenLease>>();
   readonly #now: () => number;
+  readonly #requestTimeoutMs: number;
 
   constructor(
     private readonly config: Pick<
@@ -32,14 +65,25 @@ export class ProviderAccessTokenClient {
   ) {
     this.#fetch = options.fetch ?? fetch;
     this.#now = options.now ?? Date.now;
+    this.#requestTimeoutMs = options.requestTimeoutMs ?? 9_000;
   }
 
   async get(
     providerId: string,
     providerAccountId: string,
-    options: { forceRefresh?: boolean; minimumValiditySeconds?: number } = {},
+    options: {
+      credentialRevision?: number;
+      forceRefresh?: boolean;
+      minimumValiditySeconds?: number;
+    } = {},
   ): Promise<ProviderAccessTokenLease> {
     const request = providerAccessTokenLeaseRequestSchema.parse({
+      credentialRevision: options.forceRefresh
+        ? (options.credentialRevision ??
+          this.#cache.get(`${providerId}:${providerAccountId}`)
+            ?.credentialRevision ??
+          null)
+        : null,
       forceRefresh: options.forceRefresh,
       minimumValiditySeconds: options.minimumValiditySeconds,
     });
@@ -52,7 +96,9 @@ export class ProviderAccessTokenClient {
     ) {
       return cached;
     }
-    const requestKey = `${key}:${request.forceRefresh ? "refresh" : "lease"}`;
+    const requestKey = request.forceRefresh
+      ? `${key}:refresh:${request.credentialRevision ?? "unknown"}`
+      : `${key}:lease`;
     const existing = this.#inflight.get(requestKey);
     if (existing) return existing;
     const pending = this.#request(
@@ -66,7 +112,10 @@ export class ProviderAccessTokenClient {
     });
     this.#inflight.set(requestKey, pending);
     const lease = await pending;
-    this.#cache.set(key, lease);
+    const current = this.#cache.get(key);
+    if (!current || lease.credentialRevision >= current.credentialRevision) {
+      this.#cache.set(key, lease);
+    }
     return lease;
   }
 
@@ -99,7 +148,11 @@ export class ProviderAccessTokenClient {
   async #request(
     providerId: string,
     providerAccountId: string,
-    request: { forceRefresh: boolean; minimumValiditySeconds: number },
+    request: {
+      credentialRevision: number | null;
+      forceRefresh: boolean;
+      minimumValiditySeconds: number;
+    },
   ): Promise<ProviderAccessTokenLease> {
     const url = new URL(
       `/api/internal/workers/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(providerAccountId)}/access-lease`,
@@ -113,11 +166,22 @@ export class ProviderAccessTokenClient {
         "content-type": "application/json",
       },
       method: "POST",
+      signal: AbortSignal.timeout(this.#requestTimeoutMs),
     });
     if (!response.ok) {
-      throw new Error(
-        `Cantrip Server could not issue a provider access lease (HTTP ${response.status}).`,
-      );
+      let code: ProviderAccessTokenRequestErrorCode | null = null;
+      try {
+        const body = (await response.json()) as { code?: unknown };
+        if (
+          typeof body.code === "string" &&
+          ERROR_CODES.has(body.code as ProviderAccessTokenRequestErrorCode)
+        ) {
+          code = body.code as ProviderAccessTokenRequestErrorCode;
+        }
+      } catch {
+        // Error response bodies may contain provider details; never echo them.
+      }
+      throw new ProviderAccessTokenRequestError(response.status, code);
     }
     return providerAccessTokenLeaseSchema.parse(await response.json());
   }

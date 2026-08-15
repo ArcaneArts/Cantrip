@@ -135,6 +135,7 @@ export class ProviderAccessTokenService {
 
   async issue(input: {
     accountId: string;
+    credentialRevision?: number | null;
     forceRefresh: boolean;
     minimumValidityMs: number;
     ownerId: string;
@@ -149,9 +150,30 @@ export class ProviderAccessTokenService {
         "Provider access token validity is outside the supported range.",
       );
     }
+    if (
+      input.credentialRevision !== undefined &&
+      input.credentialRevision !== null &&
+      (!Number.isSafeInteger(input.credentialRevision) ||
+        input.credentialRevision < 0)
+    ) {
+      throw new Error("Provider credential revision is invalid.");
+    }
     let record = await this.#readAvailable(input);
     if (
-      input.forceRefresh ||
+      input.forceRefresh &&
+      input.credentialRevision !== undefined &&
+      input.credentialRevision !== null &&
+      record.revision < input.credentialRevision
+    ) {
+      throw new ProviderAccessTokenError("refresh-failed");
+    }
+    const alreadyRefreshed =
+      input.forceRefresh &&
+      input.credentialRevision !== null &&
+      input.credentialRevision !== undefined &&
+      record.revision > input.credentialRevision;
+    if (
+      (input.forceRefresh && !alreadyRefreshed) ||
       !this.#isUsable(record, input.minimumValidityMs)
     ) {
       const startingRevision = record.revision;
@@ -210,6 +232,7 @@ export class ProviderAccessTokenService {
   #refreshSingleFlight(
     input: {
       accountId: string;
+      credentialRevision?: number | null;
       forceRefresh: boolean;
       minimumValidityMs: number;
       ownerId: string;
@@ -232,6 +255,7 @@ export class ProviderAccessTokenService {
   async #refreshAcrossInstances(
     input: {
       accountId: string;
+      credentialRevision?: number | null;
       forceRefresh: boolean;
       minimumValidityMs: number;
       ownerId: string;
@@ -290,6 +314,7 @@ export class ProviderAccessTokenService {
   async #refreshOwned(
     input: {
       accountId: string;
+      credentialRevision?: number | null;
       forceRefresh: boolean;
       minimumValidityMs: number;
       ownerId: string;

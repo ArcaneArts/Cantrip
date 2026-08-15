@@ -1071,6 +1071,7 @@ export const codexDeviceLoginSchema = z.object({
 });
 
 export const providerAccessTokenLeaseRequestSchema = z.object({
+  credentialRevision: z.number().int().nonnegative().nullable().default(null),
   forceRefresh: z.boolean().default(false),
   minimumValiditySeconds: z.number().int().min(30).max(600).default(120),
 });
@@ -1132,6 +1133,7 @@ export const providerLegacyCredentialCaptureResultSchema = z.discriminatedUnion(
     z.object({ status: z.literal("malformed") }),
     z.object({
       credential: providerLegacyCredentialSchema,
+      serverManagedAuth: z.boolean().default(false),
       status: z.literal("available"),
     }),
   ],
