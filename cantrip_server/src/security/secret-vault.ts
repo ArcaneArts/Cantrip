@@ -204,6 +204,15 @@ export function modelProviderSecretContext(
   return `cantrip:model-provider-api-key:${ownerId}:${providerId}`;
 }
 
+export function modelProviderAccountSecretContext(
+  ownerId: string,
+  providerId: string,
+  accountId: string,
+  kind: "chatgpt" | "grok",
+): string {
+  return `cantrip:model-provider-account:${kind}:${ownerId}:${providerId}:${accountId}`;
+}
+
 export function mcpServerSecretContext(
   ownerId: string,
   serverId: string,

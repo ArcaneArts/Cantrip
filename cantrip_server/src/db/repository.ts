@@ -167,7 +167,16 @@ import {
   isAccountProviderKind,
 } from "../models/account-provider.js";
 import {
+  parseProviderCredential,
+  providerCredentialSubject,
+  redactProviderCredential,
+  serializeProviderCredential,
+  type ProviderCredential,
+  type RedactedProviderCredential,
+} from "../models/provider-credentials.js";
+import {
   mcpServerSecretContext,
+  modelProviderAccountSecretContext,
   modelProviderSecretContext,
   type SecretVault,
 } from "../security/secret-vault.js";
@@ -513,6 +522,38 @@ export interface ModelProviderAccountRuntime {
   modelAvailability: ProviderModelAvailability["state"] | null;
   position: number;
   weeklyUsageUsedPercent: number | null;
+}
+
+export type ProviderAccountCredentialState =
+  | "signed-out"
+  | "migration-needed"
+  | "signed-in"
+  | "reauth-required"
+  | "conflict";
+
+/** Internal secret-bearing record. Never return this object from an API. */
+export interface ProviderAccountCredentialRecord {
+  accountId: string;
+  credential: ProviderCredential;
+  metadata: RedactedProviderCredential;
+  providerId: string;
+  revision: number;
+  state: ProviderAccountCredentialState;
+  updatedAt: string | null;
+}
+
+export class ProviderCredentialIdentityConflictError extends Error {
+  constructor() {
+    super("The provider account identity does not match the stored identity.");
+    this.name = "ProviderCredentialIdentityConflictError";
+  }
+}
+
+export class ProviderCredentialRevisionConflictError extends Error {
+  constructor() {
+    super("The provider account credential changed before it could be saved.");
+    this.name = "ProviderCredentialRevisionConflictError";
+  }
 }
 
 export interface TokenUsageRecordInput {
@@ -1768,6 +1809,75 @@ export class ServerRepository {
     }
   }
 
+  async migrateProviderAccountCredentialSecrets(): Promise<void> {
+    const rows = await this.database
+      .select({
+        account: schema.modelProviderAccounts,
+        kind: schema.modelProviders.kind,
+        ownerId: schema.modelProviders.ownerId,
+      })
+      .from(schema.modelProviderAccounts)
+      .innerJoin(
+        schema.modelProviders,
+        eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+      )
+      .where(isNotNull(schema.modelProviderAccounts.credentialEnvelope));
+
+    for (const { account, kind, ownerId } of rows) {
+      if (!isAccountProviderKind(kind) || !account.credentialEnvelope) {
+        throw new Error(
+          "Stored provider account credential has an invalid provider kind.",
+        );
+      }
+      const context = modelProviderAccountSecretContext(
+        ownerId,
+        account.providerId,
+        account.id,
+        kind,
+      );
+      const credential = parseProviderCredential(
+        this.secretVault.decrypt(account.credentialEnvelope, context),
+        kind,
+      );
+      const subject = providerCredentialSubject(credential);
+      if (account.credentialSubject && account.credentialSubject !== subject) {
+        throw new ProviderCredentialIdentityConflictError();
+      }
+      const needsRotation = this.secretVault.needsRotation(
+        account.credentialEnvelope,
+      );
+      if (
+        !needsRotation &&
+        account.credentialSubject === subject &&
+        account.email === credential.email &&
+        account.planType === credential.planType &&
+        (account.credentialExpiresAt?.getTime() ?? null) ===
+          credential.expiresAt
+      ) {
+        continue;
+      }
+      await this.database
+        .update(schema.modelProviderAccounts)
+        .set({
+          credentialSubject: subject,
+          credentialExpiresAt: credential.expiresAt
+            ? new Date(credential.expiresAt)
+            : null,
+          email: credential.email,
+          planType: credential.planType,
+          ...(needsRotation
+            ? {
+                credentialEnvelope: this.secretVault.encrypt(
+                  serializeProviderCredential(credential),
+                  context,
+                ),
+              }
+            : {}),
+        })
+        .where(eq(schema.modelProviderAccounts.id, account.id));
+    }
+  }
+
   async migrateMcpServerSecrets(): Promise<void> {
     const servers = await this.database.select().from(schema.mcpServers);
     for (const server of servers) {
@@ -2910,6 +3020,219 @@ export class ServerRepository {
           .map(({ binding }) => binding),
       ),
     );
+  }
+
+  async getModelProviderAccountCredential(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+  ): Promise<ProviderAccountCredentialRecord | null> {
+    const rows = await this.database
+      .select({
+        account: schema.modelProviderAccounts,
+        kind: schema.modelProviders.kind,
+        ownerId: schema.modelProviders.ownerId,
+      })
+      .from(schema.modelProviderAccounts)
+      .innerJoin(
+        schema.modelProviders,
+        eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+      )
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, accountId),
+          eq(schema.modelProviderAccounts.providerId, providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+          inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row?.account.credentialEnvelope || !isAccountProviderKind(row.kind)) {
+      return null;
+    }
+    const credential = parseProviderCredential(
+      this.secretVault.decrypt(
+        row.account.credentialEnvelope,
+        modelProviderAccountSecretContext(
+          row.ownerId,
+          providerId,
+          accountId,
+          row.kind,
+        ),
+      ),
+      row.kind,
+    );
+    const subject = providerCredentialSubject(credential);
+    if (
+      row.account.credentialSubject &&
+      row.account.credentialSubject !== subject
+    ) {
+      throw new ProviderCredentialIdentityConflictError();
+    }
+    return {
+      accountId,
+      credential,
+      metadata: redactProviderCredential(credential),
+      providerId,
+      revision: row.account.credentialRevision,
+      state: row.account.credentialState as ProviderAccountCredentialState,
+      updatedAt: row.account.credentialUpdatedAt
+        ? toISOString(row.account.credentialUpdatedAt)
+        : null,
+    };
+  }
+
+  async storeModelProviderAccountCredential(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+    input: ProviderCredential,
+    expectedRevision?: number,
+  ): Promise<ProviderAccountCredentialRecord | null> {
+    const credential = parseProviderCredential(input, input.kind);
+    const subject = providerCredentialSubject(credential);
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({
+          account: schema.modelProviderAccounts,
+          kind: schema.modelProviders.kind,
+        })
+        .from(schema.modelProviderAccounts)
+        .innerJoin(
+          schema.modelProviders,
+          eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+        )
+        .where(
+          and(
+            eq(schema.modelProviderAccounts.id, accountId),
+            eq(schema.modelProviderAccounts.providerId, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+            inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row || !isAccountProviderKind(row.kind)) return null;
+      if (row.kind !== credential.kind) {
+        throw new ProviderCredentialIdentityConflictError();
+      }
+      if (
+        row.account.credentialSubject &&
+        row.account.credentialSubject !== subject
+      ) {
+        throw new ProviderCredentialIdentityConflictError();
+      }
+      if (
+        expectedRevision !== undefined &&
+        row.account.credentialRevision !== expectedRevision
+      ) {
+        throw new ProviderCredentialRevisionConflictError();
+      }
+
+      const revision = row.account.credentialRevision + 1;
+      const updatedAt = new Date();
+      const updated = await transaction
+        .update(schema.modelProviderAccounts)
+        .set({
+          credentialEnvelope: this.secretVault.encrypt(
+            serializeProviderCredential(credential),
+            modelProviderAccountSecretContext(
+              ownerId,
+              providerId,
+              accountId,
+              row.kind,
+            ),
+          ),
+          credentialRevision: revision,
+          credentialState: "signed-in",
+          credentialSubject: subject,
+          credentialExpiresAt: credential.expiresAt
+            ? new Date(credential.expiresAt)
+            : null,
+          credentialUpdatedAt: updatedAt,
+          email: credential.email,
+          planType: credential.planType,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(schema.modelProviderAccounts.id, accountId),
+            eq(schema.modelProviderAccounts.providerId, providerId),
+            eq(
+              schema.modelProviderAccounts.credentialRevision,
+              row.account.credentialRevision,
+            ),
+          ),
+        )
+        .returning({
+          revision: schema.modelProviderAccounts.credentialRevision,
+        });
+      if (!updated[0]) throw new ProviderCredentialRevisionConflictError();
+      return {
+        accountId,
+        credential,
+        metadata: redactProviderCredential(credential),
+        providerId,
+        revision,
+        state: "signed-in",
+        updatedAt: toISOString(updatedAt),
+      };
+    });
+  }
+
+  async clearModelProviderAccountCredential(
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+    expectedRevision?: number,
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select({ revision: schema.modelProviderAccounts.credentialRevision })
+        .from(schema.modelProviderAccounts)
+        .innerJoin(
+          schema.modelProviders,
+          eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+        )
+        .where(
+          and(
+            eq(schema.modelProviderAccounts.id, accountId),
+            eq(schema.modelProviderAccounts.providerId, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+            inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+          ),
+        )
+        .limit(1);
+      const row = rows[0];
+      if (!row) return false;
+      if (expectedRevision !== undefined && row.revision !== expectedRevision) {
+        throw new ProviderCredentialRevisionConflictError();
+      }
+      const updated = await transaction
+        .update(schema.modelProviderAccounts)
+        .set({
+          credentialEnvelope: null,
+          credentialRevision: row.revision + 1,
+          credentialState: "signed-out",
+          credentialSubject: null,
+          credentialExpiresAt: null,
+          credentialUpdatedAt: new Date(),
+          email: null,
+          planType: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.modelProviderAccounts.id, accountId),
+            eq(schema.modelProviderAccounts.providerId, providerId),
+            eq(schema.modelProviderAccounts.credentialRevision, row.revision),
+          ),
+        )
+        .returning({ id: schema.modelProviderAccounts.id });
+      if (!updated[0]) throw new ProviderCredentialRevisionConflictError();
+      return true;
+    });
   }
 
   async createModelProviderAccount(

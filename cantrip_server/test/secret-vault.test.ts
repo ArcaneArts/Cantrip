@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ServerConfig } from "../src/config.js";
 import {
+  modelProviderAccountSecretContext,
   resolveSecretVault,
   SecretVault,
 } from "../src/security/secret-vault.js";
@@ -41,6 +42,33 @@ describe("secret envelope encryption", () => {
 
     expect(rotatingVault.decrypt(encrypted, "provider:one")).toBe("rotate-me");
     expect(rotatingVault.needsRotation(encrypted)).toBe(true);
+  });
+
+  it("binds provider account secrets to owner, provider, account, and kind", () => {
+    const vault = new SecretVault({
+      activeKeyId: "primary",
+      keys: [{ id: "primary", key: key(9) }],
+    });
+    const context = modelProviderAccountSecretContext(
+      "owner-one",
+      "provider-one",
+      "account-one",
+      "chatgpt",
+    );
+    const encrypted = vault.encrypt("oauth-secret", context);
+
+    expect(vault.decrypt(encrypted, context)).toBe("oauth-secret");
+    expect(() =>
+      vault.decrypt(
+        encrypted,
+        modelProviderAccountSecretContext(
+          "owner-one",
+          "provider-one",
+          "account-one",
+          "grok",
+        ),
+      ),
+    ).toThrow();
   });
 
   it("persists a private local development key", async () => {
