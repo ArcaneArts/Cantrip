@@ -3011,7 +3011,7 @@ export function App() {
         projectId,
         kind,
         kind === "history"
-          ? "History"
+          ? "Git"
           : kind === "issues"
             ? "Issues"
             : "Remote Desktop",
