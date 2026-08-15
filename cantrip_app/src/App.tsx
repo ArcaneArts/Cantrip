@@ -6036,7 +6036,7 @@ export function App() {
 
       {activeChat ? (
         <CustomizationPanel
-          key={activeChat.id}
+          key={`customization:${activeChat.id}`}
           chatId={activeChat.id}
           chatTitle={activeChat.title}
           open={showCustomizations}
@@ -6046,7 +6046,7 @@ export function App() {
 
       {activeChat && selectedPlacementContext ? (
         <ChatRelocationDialog
-          key={activeChat.id}
+          key={`relocation:${activeChat.id}`}
           available={Boolean(bootstrap.data?.capabilities.workerSwitching)}
           chat={activeChat}
           jobs={chatRelocations.data ?? []}
