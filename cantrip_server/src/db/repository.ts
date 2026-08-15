@@ -1625,6 +1625,7 @@ function toModelSummary(
     id: model.id,
     name: model.name,
     canonicalModelId: model.canonicalModelId,
+    defaultReasoningEffort: model.defaultReasoningEffort,
     discoveryManaged: model.discoveryManaged,
     routingPolicy: "priority",
     routes,
@@ -11103,6 +11104,7 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: ChatModelUpdate,
+    reasoningEffort?: ReasoningEffort | null,
   ): Promise<ChatSummary | null> {
     const model = await this.getModelRuntime(ownerId, input.modelId);
     if (!model) {
@@ -11126,7 +11128,11 @@ export class ServerRepository {
     }
     const result = await this.database
       .update(schema.chats)
-      .set({ modelId: input.modelId, updatedAt: new Date() })
+      .set({
+        modelId: input.modelId,
+        ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.chats.id, chatId))
       .returning();
     return toChatSummary(firstOrThrow(result, "selecting a chat model"));
@@ -11154,6 +11160,74 @@ export class ServerRepository {
       )
       .returning();
     return result[0] ? toChatSummary(result[0]) : null;
+  }
+
+  async getModelReasoningDefault(
+    ownerId: string,
+    modelId: string,
+  ): Promise<ReasoningEffort | null | undefined> {
+    const rows = await this.database
+      .select({
+        defaultReasoningEffort: schema.modelProfiles.defaultReasoningEffort,
+      })
+      .from(schema.modelProfiles)
+      .where(
+        and(
+          eq(schema.modelProfiles.id, modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.defaultReasoningEffort ?? (rows[0] ? null : undefined);
+  }
+
+  async setChatReasoningEffortAndRememberDefault(
+    ownerId: string,
+    chatId: string,
+    modelId: string,
+    reasoningEffort: ReasoningEffort | null,
+  ): Promise<ChatSummary | null> {
+    return this.database.transaction(async (transaction) => {
+      const ownedModels = await transaction
+        .select({ id: schema.modelProfiles.id })
+        .from(schema.modelProfiles)
+        .where(
+          and(
+            eq(schema.modelProfiles.id, modelId),
+            eq(schema.modelProfiles.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!ownedModels[0]) return null;
+
+      const result = await transaction
+        .update(schema.chats)
+        .set({
+          modelId,
+          reasoningEffort,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.chats.id, chatId),
+            inArray(
+              schema.chats.projectId,
+              transaction
+                .select({ id: schema.projects.id })
+                .from(schema.projects)
+                .where(eq(schema.projects.ownerId, ownerId)),
+            ),
+          ),
+        )
+        .returning();
+      if (!result[0]) return null;
+
+      await transaction
+        .update(schema.modelProfiles)
+        .set({ defaultReasoningEffort: reasoningEffort, updatedAt: new Date() })
+        .where(eq(schema.modelProfiles.id, modelId));
+      return toChatSummary(result[0]);
+    });
   }
 
   async setChatPermissionProfile(

@@ -371,6 +371,7 @@ import type {
   GitManagedOperationRecord,
   GitManagedOperationWorkerState,
   ProjectWorktreeSummary,
+  ReasoningEffort,
   WorkerNotification,
   WorkerSummary,
   WorktreeStatusResult,
@@ -4621,11 +4622,12 @@ export async function buildApp({
   const reasoningStateForContext = async (
     context: ChatExecutionContext,
     requestedModelId?: string,
+    requestedReasoningEffort: ReasoningEffort | null = context.reasoningEffort,
   ) => {
     const modelId = requestedModelId ?? (await resolveModelId(context));
     return reasoningStateForRuntimes(
       modelId,
-      context.reasoningEffort,
+      requestedReasoningEffort,
       await availableModelRuntimes(context, modelId),
     );
   };
@@ -5121,9 +5123,12 @@ export async function buildApp({
           reasoningAdjusted: preparedRuntimes[0]!.adjusted,
         },
       );
-      await repository.setChatModel(applicationOwnerId(), execution.chatId, {
-        modelId,
-      });
+      await repository.setChatModel(
+        applicationOwnerId(),
+        execution.chatId,
+        { modelId },
+        requestedReasoningEffort,
+      );
     } catch (error) {
       await repository.finishChatExecutionLane(
         execution.chatId,
@@ -17964,9 +17969,15 @@ export async function buildApp({
       }
       let reasoning: ChatReasoningState;
       try {
+        const rememberedReasoningEffort =
+          await repository.getModelReasoningDefault(
+            applicationOwnerId(),
+            input.data.modelId,
+          );
         reasoning = await reasoningStateForContext(
           { ...context, modelId: input.data.modelId },
           input.data.modelId,
+          rememberedReasoningEffort ?? null,
         );
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -17975,19 +17986,12 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.chatId,
         input.data,
+        reasoning.reasoningEffort,
       );
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
       }
-      const selected =
-        context.reasoningEffort === reasoning.reasoningEffort
-          ? result
-          : await repository.setChatReasoningEffort(
-              applicationOwnerId(),
-              request.params.chatId,
-              reasoning.reasoningEffort,
-            );
-      return reply.send(chatSummarySchema.parse(selected ?? result));
+      return reply.send(chatSummarySchema.parse(result));
     },
   );
 
@@ -18002,9 +18006,20 @@ export async function buildApp({
         return reply.code(404).send({ error: "Chat source not found." });
       }
       try {
+        const resolvedModelId = await resolveModelId(context);
+        const initialReasoningEffort = context.modelId
+          ? context.reasoningEffort
+          : ((await repository.getModelReasoningDefault(
+              applicationOwnerId(),
+              resolvedModelId,
+            )) ?? null);
         return reply.send(
           chatReasoningStateSchema.parse(
-            await reasoningStateForContext(context),
+            await reasoningStateForContext(
+              context,
+              resolvedModelId,
+              initialReasoningEffort,
+            ),
           ),
         );
       } catch (error) {
@@ -18044,9 +18059,10 @@ export async function buildApp({
             "That reasoning effort is not supported by every eligible provider route.",
         });
       }
-      const updated = await repository.setChatReasoningEffort(
+      const updated = await repository.setChatReasoningEffortAndRememberDefault(
         applicationOwnerId(),
         context.chatId,
+        current.modelId,
         input.data.reasoningEffort,
       );
       if (!updated) {

@@ -577,6 +577,7 @@ export const modelProfiles = pgTable("model_profiles", {
     .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   canonicalModelId: text("canonical_model_id"),
+  defaultReasoningEffort: text("default_reasoning_effort"),
   discoveryManaged: boolean("discovery_managed").notNull().default(false),
   routingPolicy: text("routing_policy").notNull().default("priority"),
   createdAt: timestamp("created_at", { withTimezone: true })

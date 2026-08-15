@@ -547,6 +547,13 @@
       "when": 1786807015137,
       "tag": "0077_wise_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1786807158187,
+      "tag": "0078_sturdy_ikaris",
+      "breakpoints": true
     }
   ]
 }

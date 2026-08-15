@@ -1277,6 +1277,7 @@ export const modelProfileUpdateSchema = modelProfileCreateSchema;
 export const modelProfileSummarySchema = modelProfileCreateSchema.extend({
   id: z.string().min(1),
   canonicalModelId: z.string().min(1).nullable().default(null),
+  defaultReasoningEffort: reasoningEffortSchema.nullable().default(null),
   discoveryManaged: z.boolean().default(false),
   routingPolicy: z.literal("priority"),
   routes: z.array(modelRouteSummarySchema).min(1),

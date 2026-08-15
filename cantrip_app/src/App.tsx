@@ -91,6 +91,7 @@ import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
+import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import {
   activeChatRelocationJob,
   ChatRelocationDialog,
@@ -1303,7 +1304,9 @@ function ChatTranscript({
       });
     },
     onError: () => {
-      setComposerReasoningEffort(chat.reasoningEffort);
+      setComposerReasoningEffort(
+        reasoningState.data?.reasoningEffort ?? chat.reasoningEffort,
+      );
     },
   });
   const fork = useMutation({
@@ -2247,58 +2250,28 @@ function ChatTranscript({
                   <Plus className="size-4" />
                   <span className="sr-only">Attach files</span>
                 </Button>
-                <select
-                  aria-label="Agent model"
-                  value={selectedModelId}
-                  disabled={
-                    relocationActive ||
+                <ModelReasoningPicker
+                  disabled={relocationActive}
+                  models={settings?.models ?? []}
+                  selectedModelId={selectedModelId}
+                  modelSelectionDisabled={
                     chat.status === "running" ||
-                    chat.status === "waiting-for-approval" ||
-                    selectModel.isPending
+                    chat.status === "waiting-for-approval"
                   }
-                  onChange={(event) => selectModel.mutate(event.target.value)}
-                  className="min-w-0 max-w-64 truncate rounded-md bg-transparent px-1 py-1 text-xs font-medium outline-none disabled:cursor-not-allowed"
-                >
-                  {(settings?.models ?? []).map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {modelDisplayName(model)}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  aria-label="Reasoning effort"
-                  value={composerReasoningEffort ?? ""}
-                  disabled={
-                    relocationActive ||
-                    reasoningState.isLoading ||
-                    selectReasoning.isPending
+                  modelPending={selectModel.isPending}
+                  reasoningEffort={composerReasoningEffort}
+                  reasoningPending={
+                    reasoningState.isLoading || selectReasoning.isPending
                   }
-                  title={
-                    reasoningState.data?.incompleteMetadata
-                      ? "Some provider routes have incomplete reasoning metadata"
-                      : "Reasoning effort for the next message"
-                  }
-                  onChange={(event) => {
-                    const reasoningEffort = event.target.value || null;
+                  reasoningState={reasoningState.data}
+                  onSelectModel={(modelId) => selectModel.mutate(modelId)}
+                  onSelectReasoning={(reasoningEffort) => {
                     setComposerReasoningEffort(reasoningEffort);
                     if (!editingPrompt) {
                       selectReasoning.mutate(reasoningEffort);
                     }
                   }}
-                  className="min-w-0 max-w-48 truncate rounded-md bg-transparent px-1 py-1 text-xs font-medium outline-none disabled:cursor-not-allowed"
-                >
-                  <option value="">
-                    Reasoning: Default
-                    {reasoningState.data?.reasoningMandatory
-                      ? " (required)"
-                      : ""}
-                  </option>
-                  {(reasoningState.data?.options ?? []).map((option) => (
-                    <option key={option.effort} value={option.effort}>
-                      Reasoning: {option.effort}
-                    </option>
-                  ))}
-                </select>
+                />
                 <ChatModeControl
                   mode={composerMode}
                   disabled={relocationActive}
