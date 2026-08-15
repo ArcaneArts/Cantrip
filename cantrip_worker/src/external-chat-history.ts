@@ -13,9 +13,16 @@ import {
   type ExternalChatDiscoveryWorkerResult,
   type ExternalChatReadWorkerResult,
   type ExternalChatSource,
+  type ExternalChatAttachment,
   type ExternalChatThreadMatch,
   type ExternalChatThreadMetadata,
 } from "@cantrip/protocol";
+
+import {
+  ExternalChatAttachmentStagingStore,
+  MAX_EXTERNAL_CHAT_ATTACHMENT_BYTES,
+  type ExternalChatAttachmentCandidate,
+} from "./external-chat-attachments.js";
 
 import {
   normalizeCodexThreadReadResponse,
@@ -105,6 +112,72 @@ interface CodexExternalChatHistoryOptions {
   resolvePath?: (candidate: string) => Promise<string>;
   resolveGitOrigin?: (candidate: string) => Promise<string | null>;
   pathExists?: (candidate: string) => Promise<boolean>;
+  attachmentStore?: ExternalChatAttachmentStagingStore;
+}
+
+function attachmentId(
+  sourceId: string,
+  threadId: string,
+  itemId: string,
+  contentIndex: number,
+): string {
+  return createHash("sha256")
+    .update(`${sourceId}\0${threadId}\0${itemId}\0${contentIndex}`)
+    .digest("hex");
+}
+
+function externalAttachmentCandidates(
+  rawThread: Record<string, unknown>,
+  sourceId: string,
+  sourceThreadId: string,
+  cwd: string,
+  platform: NodeJS.Platform,
+): ExternalChatAttachmentCandidate[] {
+  const turns = Array.isArray(rawThread.turns) ? rawThread.turns : [];
+  const candidates: ExternalChatAttachmentCandidate[] = [];
+  for (const rawTurn of turns) {
+    const turn = objectValue(rawTurn);
+    const items = Array.isArray(turn?.items) ? turn.items : [];
+    for (const rawItem of items) {
+      const item = objectValue(rawItem);
+      if (item?.type !== "userMessage" || typeof item.id !== "string") {
+        continue;
+      }
+      const content = Array.isArray(item.content) ? item.content : [];
+      for (const [contentIndex, rawContent] of content.entries()) {
+        if (candidates.length >= 20) return candidates;
+        const entry = objectValue(rawContent);
+        if (!entry) continue;
+        const kind =
+          entry.type === "localImage" || entry.type === "image"
+            ? "image"
+            : entry.type === "localAudio" || entry.type === "audio"
+              ? "audio"
+              : null;
+        if (!kind) continue;
+        const local =
+          entry.type === "localImage" || entry.type === "localAudio";
+        const referencedPath =
+          local && typeof entry.path === "string" ? entry.path : null;
+        const api = pathApi(platform);
+        const candidatePath = referencedPath
+          ? api.isAbsolute(referencedPath)
+            ? referencedPath
+            : api.resolve(cwd, referencedPath)
+          : null;
+        const remoteUrl =
+          !local && typeof entry.url === "string" ? entry.url : null;
+        candidates.push({
+          id: attachmentId(sourceId, sourceThreadId, item.id, contentIndex),
+          itemId: item.id.slice(0, 500),
+          kind,
+          path: candidatePath,
+          remoteUrl,
+        });
+      }
+    }
+  }
+  return candidates;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -465,6 +538,7 @@ async function listSourceThreads(
 }
 
 export class CodexExternalChatHistorySource implements ExternalChatHistorySource {
+  readonly #attachments: ExternalChatAttachmentStagingStore;
   readonly #binary: string;
   readonly #createClient: NonNullable<
     CodexExternalChatHistoryOptions["createClient"]
@@ -504,6 +578,9 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
     this.#resolveGitOrigin =
       options.resolveGitOrigin ?? defaultResolveGitOrigin;
     this.#pathExists = options.pathExists ?? defaultPathExists;
+    this.#attachments =
+      options.attachmentStore ??
+      new ExternalChatAttachmentStagingStore(options.managedDataDirectory);
   }
 
   async discover(input: {
@@ -613,17 +690,53 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
         );
       }
       const canonicalHome = await this.#resolvePath(selected.path);
+      const resolvedSourceId = sourceFingerprint(canonicalHome, this.#platform);
+      await this.#attachments.cleanupExpired();
+      await this.#attachments.release(resolvedSourceId, sourceThread.id);
+      const descriptors: ExternalChatAttachment[] = [];
+      let remainingAttachmentBytes = MAX_EXTERNAL_CHAT_ATTACHMENT_BYTES;
+      const allowedRoots = input.targets.flatMap((target) => [
+        target.path,
+        ...target.worktrees.map((worktree) => worktree.path),
+      ]);
+      for (const candidate of externalAttachmentCandidates(
+        rawThread,
+        resolvedSourceId,
+        sourceThread.id,
+        sourceThread.cwd,
+        this.#platform,
+      )) {
+        const descriptor = await this.#attachments.stage(
+          resolvedSourceId,
+          sourceThread.id,
+          candidate,
+          allowedRoots,
+          remainingAttachmentBytes,
+        );
+        descriptors.push(descriptor);
+        if (descriptor.status === "available") {
+          remainingAttachmentBytes -= descriptor.sizeBytes;
+        }
+      }
+      const attachmentIdsByItemId = new Map<string, string[]>();
+      for (const descriptor of descriptors) {
+        const ids = attachmentIdsByItemId.get(descriptor.itemId) ?? [];
+        ids.push(descriptor.id);
+        attachmentIdsByItemId.set(descriptor.itemId, ids);
+      }
       const sync = normalizeCodexThreadReadResponse(
         { thread: rawThread } as unknown as CodexThreadReadResponse,
         sourceThread.cwd,
+        attachmentIdsByItemId,
       );
       const { archived: _archived, ...transcriptMetadata } = metadata;
       return externalChatReadWorkerResultSchema.parse({
         transcript: {
-          sourceId: sourceFingerprint(canonicalHome, this.#platform),
+          sourceId: resolvedSourceId,
           sourceThreadId: sourceThread.id,
           metadata: transcriptMetadata,
           sync,
+          attachments: descriptors,
         },
       });
     } finally {

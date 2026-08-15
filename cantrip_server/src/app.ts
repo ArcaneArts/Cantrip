@@ -18076,6 +18076,13 @@ export async function buildApp({
       if (!attachment) {
         return reply.code(404).send({ error: "Attachment not found." });
       }
+      if (attachment.status === "failed") {
+        return reply.code(409).send({
+          error:
+            attachment.previewText ??
+            "The original attachment was unavailable during import.",
+        });
+      }
       if (!bridge.isConnected(attachment.workerId)) {
         return reply.code(503).send({ error: "Attachment worker is offline." });
       }

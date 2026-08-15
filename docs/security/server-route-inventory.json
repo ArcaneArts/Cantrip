@@ -17,7 +17,7 @@
     "total": 348,
     "websocket": 5,
     "workerCredentialRoutes": 7,
-    "workerCommands": 184,
+    "workerCommands": 186,
     "liveResources": 31,
     "repositoryMethods": 314,
     "repositoryOwnerEvidence": {
@@ -111,7 +111,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18146,
+      "line": 18153,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/attachments/:attachmentId",
@@ -239,7 +239,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 19499,
+      "line": 19506,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chat-imports/:jobId",
@@ -247,7 +247,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 19512,
+      "line": 19519,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chat-imports/:jobId/retry",
@@ -479,7 +479,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18171,
+      "line": 18178,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/model",
@@ -503,7 +503,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18309,
+      "line": 18316,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/permission-profile",
@@ -511,7 +511,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18295,
+      "line": 18302,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/permission-profiles",
@@ -543,7 +543,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18393,
+      "line": 18400,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/queue",
@@ -551,7 +551,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18407,
+      "line": 18414,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/queue",
@@ -559,7 +559,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18451,
+      "line": 18458,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/queue/order",
@@ -567,7 +567,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18213,
+      "line": 18220,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/reasoning",
@@ -575,7 +575,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18246,
+      "line": 18253,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/reasoning",
@@ -623,7 +623,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18655,
+      "line": 18662,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/chats/:chatId/turns",
@@ -895,7 +895,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 19096,
+      "line": 19103,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/cli",
@@ -903,7 +903,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18862,
+      "line": 18869,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/automations",
@@ -911,7 +911,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18898,
+      "line": 18905,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/automations/:automationId/dispatch",
@@ -919,7 +919,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 19279,
+      "line": 19286,
       "method": "GET",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/connect",
@@ -927,7 +927,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18808,
+      "line": 18815,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/enroll",
@@ -935,7 +935,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 19226,
+      "line": 19233,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/heartbeat",
@@ -943,7 +943,7 @@
     },
     {
       "boundary": "worker-control",
-      "line": 18745,
+      "line": 18752,
       "method": "POST",
       "ownerEvidence": "worker-credential",
       "path": "/api/internal/workers/providers/:providerId/accounts/:accountId/access-lease",
@@ -1087,7 +1087,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 19486,
+      "line": 19493,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chat-imports",
@@ -1095,7 +1095,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 19425,
+      "line": 19432,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/chat-imports",
@@ -1567,7 +1567,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 19392,
+      "line": 19399,
       "method": "GET",
       "ownerEvidence": "request-principal",
       "path": "/api/projects/:projectId/worktrees/:worktreeId/git/commits/:revision/signature",
@@ -2055,7 +2055,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18524,
+      "line": 18531,
       "method": "DELETE",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId",
@@ -2063,7 +2063,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18469,
+      "line": 18476,
       "method": "PATCH",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId",
@@ -2071,7 +2071,7 @@
     },
     {
       "boundary": "application-principal",
-      "line": 18537,
+      "line": 18544,
       "method": "POST",
       "ownerEvidence": "request-principal",
       "path": "/api/queued-prompts/:promptId/steer",
@@ -2870,6 +2870,8 @@
     "explorer.directory.list",
     "explorer.file.read",
     "explorer.file.write",
+    "external.chat-history.attachment.read",
+    "external.chat-history.attachments.release",
     "external.chat-history.discover",
     "external.chat-history.read",
     "git.action",

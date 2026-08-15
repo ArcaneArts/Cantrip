@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -46,6 +47,16 @@ const connectedWorkers = new Set(["local-worker"]);
 const requests: Array<{ workerId: string; command: WorkerCommand }> = [];
 const hydrationDigests = new Map<string, string>();
 const hydrationChunks = new Map<string, Buffer[]>();
+const attachmentUploads = new Map<string, Buffer[]>();
+const attachmentFiles = new Map<string, Buffer>();
+const importedAttachmentBytes = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4,
+]);
+const importedAttachmentSha256 = createHash("sha256")
+  .update(importedAttachmentBytes)
+  .digest("hex");
+const availableExternalAttachmentId = "1".repeat(64);
+const missingExternalAttachmentId = "2".repeat(64);
 let hydrationFailure: Error | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
@@ -64,6 +75,62 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(workerId, command) {
     requests.push({ workerId, command });
+    if (command.type === "attachment.upload.begin") {
+      attachmentUploads.set(command.attachmentId, []);
+      return { accepted: true };
+    }
+    if (command.type === "attachment.upload.chunk") {
+      attachmentUploads.get(command.attachmentId)![command.chunkIndex] =
+        Buffer.from(command.data, "base64");
+      return { accepted: true };
+    }
+    if (command.type === "attachment.upload.complete") {
+      const bytes = Buffer.concat(
+        attachmentUploads.get(command.attachmentId) ?? [],
+      );
+      attachmentUploads.delete(command.attachmentId);
+      attachmentFiles.set(command.attachmentId, bytes);
+      return {
+        path: `/managed/${command.chatId}/${command.attachmentId}`,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+        sizeBytes: bytes.byteLength,
+      };
+    }
+    if (command.type === "attachment.delete") {
+      attachmentUploads.delete(command.attachmentId);
+      attachmentFiles.delete(command.attachmentId);
+      return { accepted: true };
+    }
+    if (command.type === "attachment.read") {
+      const content = attachmentFiles.get(command.attachmentId);
+      if (!content) throw new Error("Attachment was not found.");
+      const bytes = content.subarray(
+        command.offset,
+        command.offset + command.limit,
+      );
+      return {
+        data: bytes.toString("base64"),
+        eof: command.offset + bytes.byteLength >= content.byteLength,
+        sizeBytes: content.byteLength,
+      };
+    }
+    if (command.type === "external.chat-history.attachment.read") {
+      const bytes = importedAttachmentBytes.subarray(
+        command.offset,
+        command.offset + command.limit,
+      );
+      return {
+        status: "available",
+        data: bytes.toString("base64"),
+        eof:
+          command.offset + bytes.byteLength >= importedAttachmentBytes.length,
+        sizeBytes: importedAttachmentBytes.length,
+        sha256: importedAttachmentSha256,
+      };
+    }
+    if (command.type === "external.chat-history.attachments.release") {
+      return { released: true };
+    }
     if (command.type === "chat.relocation.hydration.begin") {
       if (hydrationFailure) throw hydrationFailure;
       hydrationDigests.set(command.snapshotId, command.transcriptSha256);
@@ -92,6 +159,8 @@ const workerBridge: WorkerCommandBus = {
     }
     if (command.type === "external.chat-history.read") {
       const target = command.targets[0]!;
+      const withAttachments =
+        command.sourceThreadId === "source-thread-attachments";
       return externalChatReadWorkerResultSchema.parse({
         transcript: {
           sourceId: command.sourceId,
@@ -129,6 +198,12 @@ const workerBridge: WorkerCommandBus = {
                     type: "userMessage",
                     id: "user-one",
                     text: "Please continue this work.",
+                    externalAttachmentIds: withAttachments
+                      ? [
+                          availableExternalAttachmentId,
+                          missingExternalAttachmentId,
+                        ]
+                      : [],
                   },
                   {
                     type: "agentMessage",
@@ -147,6 +222,32 @@ const workerBridge: WorkerCommandBus = {
               },
             ],
           },
+          attachments: withAttachments
+            ? [
+                {
+                  id: availableExternalAttachmentId,
+                  itemId: "user-one",
+                  fileName: "reference.png",
+                  mimeType: "image/png",
+                  sizeBytes: importedAttachmentBytes.length,
+                  kind: "image",
+                  status: "available",
+                  sha256: importedAttachmentSha256,
+                  warning: null,
+                },
+                {
+                  id: missingExternalAttachmentId,
+                  itemId: "user-one",
+                  fileName: "missing.png",
+                  mimeType: "application/x-image",
+                  sizeBytes: 0,
+                  kind: "image",
+                  status: "missing",
+                  sha256: null,
+                  warning: "The original attachment file no longer exists.",
+                },
+              ]
+            : [],
         },
       });
     }
@@ -510,6 +611,135 @@ describe.sequential("external Codex chat history discovery API", () => {
         ({ command }) => command.type === "external.chat-history.read",
       ),
     ).toHaveLength(1);
+  });
+
+  it("relays safe media and keeps unavailable media as visible placeholders", async () => {
+    requests.length = 0;
+    attachmentUploads.clear();
+    attachmentFiles.clear();
+    const create = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/chat-imports`,
+      payload: {
+        imports: [
+          {
+            sourceKind: "chatgpt-codex",
+            sourceWorkerId: "local-worker",
+            sourceId: "a".repeat(64),
+            sourceThreadId: "source-thread-attachments",
+            idempotencyKey: "import-source-thread-attachments",
+            target: {
+              kind: "worktree",
+              projectId,
+              worktreeId: primaryWorktreeId,
+            },
+            modelId: DEFAULT_MODEL_ID,
+            modelRouteId: DEFAULT_MODEL_ROUTE_ID,
+          },
+        ],
+      },
+    });
+
+    expect(create.statusCode).toBe(202);
+    const [created] = chatImportJobListSchema.parse(create.json());
+    let job = created!;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      job = chatImportJobSummarySchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/chat-imports/${created!.id}`,
+          })
+        ).json(),
+      );
+      if (job.state === "succeeded") break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    expect(job).toMatchObject({
+      state: "succeeded",
+      attachmentCount: 2,
+      attachmentWarningCount: 1,
+    });
+    const messages = chatMessageListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/chats/${job.chatId}/messages`,
+        })
+      ).json(),
+    );
+    const attachments = messages.flatMap((message) =>
+      message.content.flatMap((item) =>
+        item.type === "attachment" ? [item.attachment] : [],
+      ),
+    );
+    expect(attachments).toHaveLength(2);
+    const ready = attachments.find(({ status }) => status === "ready")!;
+    const missing = attachments.find(({ status }) => status === "failed")!;
+    expect(ready).toMatchObject({
+      fileName: "reference.png",
+      sizeBytes: importedAttachmentBytes.length,
+    });
+    expect(missing).toMatchObject({
+      fileName: "missing.png",
+      previewText: "The original attachment file no longer exists.",
+    });
+    expect(
+      requests.filter(
+        ({ command }) =>
+          command.type === "external.chat-history.attachment.read",
+      ),
+    ).toHaveLength(1);
+    expect(
+      requests.filter(
+        ({ command }) =>
+          command.type === "external.chat-history.attachments.release",
+      ),
+    ).toHaveLength(1);
+    expect(attachmentFiles.get(ready.id)).toEqual(importedAttachmentBytes);
+
+    const hydratedPayload = JSON.parse(
+      Buffer.concat(hydrationChunks.get(job.id) ?? []).toString("utf8"),
+    ) as {
+      attachments: Array<{
+        attachment: { id: string; status: string };
+        availableWorkerIds: string[];
+      }>;
+    };
+    expect(hydratedPayload.attachments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          attachment: expect.objectContaining({
+            id: ready.id,
+            status: "ready",
+          }),
+          availableWorkerIds: ["local-worker"],
+        }),
+        expect.objectContaining({
+          attachment: expect.objectContaining({
+            id: missing.id,
+            status: "failed",
+          }),
+          availableWorkerIds: [],
+        }),
+      ]),
+    );
+
+    const readyContent = await app.inject({
+      method: "GET",
+      url: `/api/attachments/${ready.id}/content`,
+    });
+    expect(readyContent.statusCode).toBe(200);
+    expect(readyContent.rawPayload).toEqual(importedAttachmentBytes);
+    const missingContent = await app.inject({
+      method: "GET",
+      url: `/api/attachments/${missing.id}/content`,
+    });
+    expect(missingContent.statusCode).toBe(409);
+    expect(missingContent.json()).toMatchObject({
+      error: "The original attachment file no longer exists.",
+    });
   });
 
   it("rejects model routes and provider accounts outside the selected owner route", async () => {

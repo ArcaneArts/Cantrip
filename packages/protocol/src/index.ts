@@ -6720,11 +6720,21 @@ export const normalizedAgentMessageSchema = z.object({
 });
 
 export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("userMessage"),
-    id: z.string().min(1),
-    text: z.string().min(1),
-  }),
+  z
+    .object({
+      type: z.literal("userMessage"),
+      id: z.string().min(1),
+      text: z.string(),
+      externalAttachmentIds: z
+        .array(z.string().regex(/^[0-9a-f]{64}$/u))
+        .max(20)
+        .default([]),
+    })
+    .refine(
+      (item) =>
+        item.text.trim().length > 0 || item.externalAttachmentIds.length > 0,
+      { message: "User messages require text or an external attachment." },
+    ),
   z.object({
     type: z.literal("agentMessage"),
     ...normalizedAgentMessageSchema.shape,
@@ -6863,16 +6873,130 @@ export const externalChatDiscoveryWorkerResultSchema = z.object({
 export const externalChatTranscriptMetadataSchema =
   externalChatThreadMetadataSchema.omit({ archived: true });
 
-export const externalChatTranscriptSchema = z.object({
-  sourceId: externalChatSourceSchema.shape.sourceId,
-  sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
-  metadata: externalChatTranscriptMetadataSchema,
-  sync: agentThreadSyncSchema,
-});
+export const externalChatAttachmentSchema = z
+  .object({
+    id: z.string().regex(/^[0-9a-f]{64}$/u),
+    itemId: z.string().min(1).max(500),
+    fileName: chatAttachmentSummarySchema.shape.fileName,
+    mimeType: chatAttachmentSummarySchema.shape.mimeType,
+    sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+    kind: z.enum(["audio", "image"]),
+    status: z.enum(["available", "missing", "unsafe", "unsupported"]),
+    sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/u)
+      .nullable(),
+    warning: z.string().min(1).max(1_000).nullable(),
+  })
+  .superRefine((attachment, context) => {
+    const available = attachment.status === "available";
+    if (available !== (attachment.sha256 !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Available external attachments require a content digest.",
+      });
+    }
+    if (available && attachment.sizeBytes === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Available external attachments cannot be empty.",
+        path: ["sizeBytes"],
+      });
+    }
+    if (available === (attachment.warning !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Unavailable external attachments require a warning.",
+      });
+    }
+  });
+
+export const externalChatTranscriptSchema = z
+  .object({
+    sourceId: externalChatSourceSchema.shape.sourceId,
+    sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
+    metadata: externalChatTranscriptMetadataSchema,
+    sync: agentThreadSyncSchema,
+    attachments: z.array(externalChatAttachmentSchema).max(20).default([]),
+  })
+  .superRefine((transcript, context) => {
+    const descriptors = new Map(
+      transcript.attachments.map((attachment) => [attachment.id, attachment]),
+    );
+    if (descriptors.size !== transcript.attachments.length) {
+      context.addIssue({
+        code: "custom",
+        message: "External attachment ids must be unique.",
+        path: ["attachments"],
+      });
+    }
+    const references = new Map<string, string>();
+    for (const [turnIndex, turn] of transcript.sync.turns.entries()) {
+      for (const [itemIndex, item] of turn.items.entries()) {
+        if (item.type !== "userMessage") continue;
+        for (const attachmentId of item.externalAttachmentIds) {
+          if (references.has(attachmentId)) {
+            context.addIssue({
+              code: "custom",
+              message: "An external attachment may be referenced only once.",
+              path: [
+                "sync",
+                "turns",
+                turnIndex,
+                "items",
+                itemIndex,
+                "externalAttachmentIds",
+              ],
+            });
+          }
+          references.set(attachmentId, item.id);
+        }
+      }
+    }
+    for (const [
+      attachmentIndex,
+      attachment,
+    ] of transcript.attachments.entries()) {
+      if (references.get(attachment.id) !== attachment.itemId) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Every external attachment must reference its originating user message.",
+          path: ["attachments", attachmentIndex, "itemId"],
+        });
+      }
+    }
+    for (const attachmentId of references.keys()) {
+      if (!descriptors.has(attachmentId)) {
+        context.addIssue({
+          code: "custom",
+          message: "External attachment references require a descriptor.",
+          path: ["sync"],
+        });
+      }
+    }
+  });
 
 export const externalChatReadWorkerResultSchema = z.object({
   transcript: externalChatTranscriptSchema,
 });
+
+export const externalChatAttachmentReadResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z.object({
+      status: z.literal("available"),
+      data: z.string().max(400_000),
+      eof: z.boolean(),
+      sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+      sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+    }),
+    z.object({
+      status: z.literal("unavailable"),
+      warning: z.string().min(1).max(1_000),
+    }),
+  ],
+);
 
 export const chatImportStateSchema = z.enum([
   "queued",
@@ -6928,6 +7052,8 @@ export const chatImportJobSummarySchema = z.object({
   progress: chatImportProgressSchema,
   error: chatImportErrorSchema.nullable(),
   sourceMetadata: externalChatTranscriptMetadataSchema.nullable(),
+  attachmentCount: z.number().int().nonnegative(),
+  attachmentWarningCount: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   startedAt: z.string().datetime().nullable(),
@@ -7352,6 +7478,25 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     sourceId: externalChatSourceSchema.shape.sourceId,
     sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
     targets: z.array(externalChatDiscoveryTargetSchema).min(1).max(64),
+  }),
+  z.object({
+    type: z.literal("external.chat-history.attachment.read"),
+    sourceKind: externalChatSourceKindSchema,
+    sourceId: externalChatSourceSchema.shape.sourceId,
+    sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
+    attachmentId: externalChatAttachmentSchema.shape.id,
+    offset: z.number().int().nonnegative(),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(256 * 1_024),
+  }),
+  z.object({
+    type: z.literal("external.chat-history.attachments.release"),
+    sourceKind: externalChatSourceKindSchema,
+    sourceId: externalChatSourceSchema.shape.sourceId,
+    sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
   }),
   z.object({ type: z.literal("browser.services.discover") }),
   z.object({
@@ -9339,6 +9484,12 @@ export type ExternalChatTranscriptMetadata = z.infer<
 >;
 export type ExternalChatTranscript = z.infer<
   typeof externalChatTranscriptSchema
+>;
+export type ExternalChatAttachment = z.infer<
+  typeof externalChatAttachmentSchema
+>;
+export type ExternalChatAttachmentReadResult = z.infer<
+  typeof externalChatAttachmentReadResultSchema
 >;
 export type ExternalChatReadWorkerResult = z.infer<
   typeof externalChatReadWorkerResultSchema
