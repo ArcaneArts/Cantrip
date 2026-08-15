@@ -259,77 +259,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build desktop workspace dependencies
         run: pnpm --filter @cantrip/protocol build
-      - name: Import macOS Developer ID certificate
+      - name: Package macOS DMG
         if: matrix.target == 'darwin-arm64'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          set -euo pipefail
-          : "${APPLE_CERTIFICATE:?Configure the APPLE_CERTIFICATE Actions secret.}"
-          : "${APPLE_CERTIFICATE_PASSWORD:?Configure the APPLE_CERTIFICATE_PASSWORD Actions secret.}"
-          : "${KEYCHAIN_PASSWORD:?Configure the KEYCHAIN_PASSWORD Actions secret.}"
-          certificate="$RUNNER_TEMP/cantrip-developer-id.p12"
-          keychain="$RUNNER_TEMP/cantrip-signing.keychain-db"
-          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A -out "$certificate"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security default-keychain -s "$keychain"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
-          security set-keychain-settings -t 3600 -u "$keychain"
-          security import "$certificate" \
-            -k "$keychain" \
-            -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "$KEYCHAIN_PASSWORD" \
-            "$keychain"
-          identities="$(security find-identity -v -p codesigning "$keychain" || true)"
-          identity="$(printf '%s\n' "$identities" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
-          if [ -z "$identity" ]; then
-            printf '%s\n' "$identities" >&2
-            echo "APPLE_CERTIFICATE does not contain a valid Developer ID Application identity." >&2
-            echo "Export APPLE_DEVELOPER_ID_APPLICATION_CERTIFICATE with its private key; do not use APPLE_MAC_APP_CERTIFICATE or an Apple Distribution/App Store certificate." >&2
-            exit 1
-          fi
-          rm -f "$certificate"
-          echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
-          echo "CANTRIP_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-      - name: Prepare Apple notarization key
-        if: matrix.target == 'darwin-arm64'
-        shell: bash
-        env:
-          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
-          APPLE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_KEY }}
-        run: |
-          set -euo pipefail
-          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
-          : "${APPLE_API_PRIVATE_KEY:?Configure the APPSTORE_CONNECT_KEY Actions secret.}"
-          private_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
-          if [[ "$APPLE_API_PRIVATE_KEY" == *"BEGIN PRIVATE KEY"* ]]; then
-            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$private_key"
-          else
-            printf '%s' "$APPLE_API_PRIVATE_KEY" | openssl base64 -d -A -out "$private_key"
-          fi
-          openssl pkey -in "$private_key" -noout
-          chmod 600 "$private_key"
-          echo "APPLE_API_KEY_PATH=$private_key" >> "$GITHUB_ENV"
-      - name: Package signed and notarized macOS DMG
-        if: matrix.target == 'darwin-arm64'
-        shell: bash
-        env:
-          CANTRIP_REQUIRE_MACOS_SIGNING: "1"
-          CANTRIP_REQUIRE_MACOS_NOTARIZATION: "1"
-          APPLE_API_ISSUER: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
-          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
-        run: |
-          set -euo pipefail
-          : "${APPLE_API_ISSUER:?Configure the APPSTORE_CONNECT_ISSUER_ID Actions secret.}"
-          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
-          pnpm package:app --target ${{ matrix.target }} --from-artifacts
+        run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
       - name: Package Windows NSIS installer
         if: matrix.target == 'win32-x64'
         env:
@@ -342,16 +274,6 @@ jobs:
           path: ${{ matrix.installer }}
           if-no-files-found: error
           retention-days: 14
-      - name: Remove temporary signing keychain
-        if: always() && matrix.target == 'darwin-arm64'
-        shell: bash
-        run: |
-          if [ -n "${CANTRIP_SIGNING_KEYCHAIN:-}" ]; then
-            security delete-keychain "$CANTRIP_SIGNING_KEYCHAIN" || true
-          fi
-          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
-            rm -f "$APPLE_API_KEY_PATH"
-          fi
 
   release:
     name: Publish GitHub release
