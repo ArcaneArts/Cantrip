@@ -28,6 +28,7 @@ import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
   monacoModelPath,
+  structuredFileFormatForPath,
 } from "@/components/explorer/explorer-file-language";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +41,11 @@ import { cn } from "@/lib/utils";
 const MonacoFileEditor = lazy(async () => {
   const module = await import("@/components/explorer/monaco-file-editor");
   return { default: module.MonacoFileEditor };
+});
+
+const StructuredFileVisual = lazy(async () => {
+  const module = await import("@/components/explorer/structured-file-visual");
+  return { default: module.StructuredFileVisual };
 });
 
 const languageByExtension: Record<string, Language> = {
@@ -131,6 +137,7 @@ function SourceView({ code, path }: { code: string; path: string }) {
 
 export interface ExplorerHeaderState {
   canEdit: boolean;
+  canVisual: boolean;
   directoryPath: string;
   dirty: boolean;
   fileMode: ExplorerFileMode;
@@ -214,6 +221,9 @@ export function ExplorerView({
   const resetSaveFile = saveFile.reset;
   const editableLanguage = selectedPath
     ? monacoLanguageForPath(selectedPath)
+    : null;
+  const structuredFormat = selectedPath
+    ? structuredFileFormatForPath(selectedPath)
     : null;
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
@@ -449,7 +459,13 @@ export function ExplorerView({
   const changeFileMode = useCallback(
     (mode: ExplorerFileMode) => {
       const path = selectedPathRef.current;
-      if (!path || (mode === "edit" && !monacoLanguageForPath(path))) return;
+      if (
+        !path ||
+        (mode === "edit" && !monacoLanguageForPath(path)) ||
+        (mode === "visual" && !structuredFileFormatForPath(path))
+      ) {
+        return;
+      }
       void persistViewState({ selectedPath: path, fileMode: mode });
     },
     [persistViewState],
@@ -460,6 +476,7 @@ export function ExplorerView({
     onHeaderChange?.({
       back,
       canEdit: editableLanguage !== null,
+      canVisual: structuredFormat !== null,
       directoryPath: selectedPath ?? "",
       dirty,
       fileMode,
@@ -488,6 +505,7 @@ export function ExplorerView({
     saveDraft,
     saveFilePending,
     selectedPath,
+    structuredFormat,
     viewStatePending,
   ]);
 
@@ -530,7 +548,7 @@ export function ExplorerView({
     resetSaveFile();
     void persistViewState({
       selectedPath: entry.path,
-      fileMode: defaultExplorerFileMode(),
+      fileMode: defaultExplorerFileMode(entry.path),
     });
   };
 
@@ -574,8 +592,26 @@ export function ExplorerView({
                   ? file.error.message
                   : "File could not be loaded."}
               </p>
+            ) : file.data && fileMode === "visual" && structuredFormat ? (
+              <Suspense
+                fallback={
+                  <div className="grid h-full place-items-center text-muted-foreground">
+                    <Loader2 className="size-5 animate-spin" />
+                  </div>
+                }
+              >
+                <StructuredFileVisual
+                  content={draftVersion === null ? file.data.content : draft}
+                  format={structuredFormat}
+                  onChange={setDraft}
+                  onSave={() => void saveDraft()}
+                  path={file.data.path}
+                />
+              </Suspense>
             ) : file.data &&
-              (fileMode === "preview" || editableLanguage === null) ? (
+              (fileMode === "preview" ||
+                editableLanguage === null ||
+                fileMode === "visual") ? (
               <div className="h-full overflow-auto">
                 {file.data.markdown ? (
                   <article className="mx-auto max-w-4xl p-6 sm:p-10">

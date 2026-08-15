@@ -2790,7 +2790,7 @@ export const explorerUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
 
-export const explorerFileModeSchema = z.enum(["preview", "edit"]);
+export const explorerFileModeSchema = z.enum(["preview", "visual", "edit"]);
 
 export const explorerViewStateUpdateSchema = z.object({
   selectedPath: z.string().min(1).max(8_192).nullable(),

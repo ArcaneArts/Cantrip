@@ -2111,11 +2111,11 @@ describe.sequential("server worktree control plane", () => {
           await app.inject({
             method: "PATCH",
             url: `/api/explorers/${explorer.id}/view-state`,
-            payload: { selectedPath: "README.md", fileMode: "edit" },
+            payload: { selectedPath: "package.json", fileMode: "visual" },
           })
         ).json(),
       ),
-    ).toMatchObject({ selectedPath: "README.md", fileMode: "edit" });
+    ).toMatchObject({ selectedPath: "package.json", fileMode: "visual" });
     const retargetedExplorer = explorerSummarySchema.parse(
       (
         await app.inject({

@@ -17,6 +17,7 @@ import {
   Save,
   ServerCog,
   SquareTerminal,
+  TableProperties,
   WandSparkles,
   X,
 } from "lucide-react";
@@ -155,7 +156,13 @@ function ExplorerHeaderActions({
   compact: boolean;
   header: ExplorerHeaderState;
 }) {
-  const ModeIcon = header.fileMode === "preview" ? Eye : Pencil;
+  const mode =
+    header.fileMode === "preview"
+      ? { icon: Eye, label: "Preview" }
+      : header.fileMode === "visual"
+        ? { icon: TableProperties, label: "Visual" }
+        : { icon: Pencil, label: "Edit" };
+  const ModeIcon = mode.icon;
   return (
     <div className="flex items-center gap-1">
       {header.selectedPath ? (
@@ -163,10 +170,10 @@ function ExplorerHeaderActions({
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
               <Button
-                aria-label={`${header.fileMode === "preview" ? "Preview" : "Edit"} mode`}
+                aria-label={`${mode.label} mode`}
                 className="size-8"
                 size="icon"
-                title={`${header.fileMode === "preview" ? "Preview" : "Edit"} mode`}
+                title={`${mode.label} mode`}
                 variant="ghost"
               >
                 <ModeIcon className="size-4" />
@@ -183,6 +190,19 @@ function ExplorerHeaderActions({
                     Preview
                   </span>
                   {header.fileMode === "preview" ? (
+                    <Check className="size-3.5" />
+                  ) : null}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem
+                  className="justify-between"
+                  disabled={!header.canVisual}
+                  onSelect={() => header.setFileMode("visual")}
+                >
+                  <span className="flex items-center gap-2">
+                    <TableProperties className="size-3.5" />
+                    Visual
+                  </span>
+                  {header.fileMode === "visual" ? (
                     <Check className="size-3.5" />
                   ) : null}
                 </StyledDropdownMenuItem>
