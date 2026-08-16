@@ -21,6 +21,7 @@ import {
   KeyRound,
   Layers3,
   Loader2,
+  Lock,
   LogOut,
   Monitor,
   Moon,
@@ -46,6 +47,10 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  BUILTIN_PERMISSION_PROFILES,
+  permissionProfileLabel,
+} from "@/components/chat/permission-profile-control";
 import { formatTokenCount } from "@/components/projects/token-usage-analytics";
 import {
   Dialog,
@@ -582,7 +587,14 @@ export function SettingsPage({
     queryClient.invalidateQueries({ queryKey: ["settings"] });
   const preferences = useMutation({
     mutationFn: updateSettings,
-    onSuccess: (value) => queryClient.setQueryData(["settings"], value),
+    onSuccess: (value, input) => {
+      queryClient.setQueryData(["settings"], value);
+      if (input.defaultPermissionProfileId !== undefined) {
+        void queryClient.invalidateQueries({
+          queryKey: ["permission-profiles"],
+        });
+      }
+    },
   });
   const savedProModeOpacity = settings.data?.preferences.proModeOpacity ?? 80;
   useEffect(() => {
@@ -816,6 +828,12 @@ export function SettingsPage({
       generalSearch,
       "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp",
     );
+  const permissionDefaultsMatch =
+    !generalSearch ||
+    matchesSearch(
+      generalSearch,
+      "default new agent chat permissions sandbox read only workspace full access yolo approvals",
+    );
   const desktopUpdateMatches =
     desktopUpdatesAvailable &&
     (!generalSearch ||
@@ -866,7 +884,10 @@ export function SettingsPage({
   const hasSearchResults =
     section === "models"
       ? providersMatch || modelsMatch
-      : appearanceMatches || desktopStreamingMatches || desktopUpdateMatches;
+      : appearanceMatches ||
+        permissionDefaultsMatch ||
+        desktopStreamingMatches ||
+        desktopUpdateMatches;
 
   useEffect(() => {
     setSection(initialSection);
@@ -990,6 +1011,49 @@ export function SettingsPage({
                           &quot;Pro&quot; Mode
                         </label>
                       ) : null}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+
+              {section === "general" && permissionDefaultsMatch ? (
+                <section>
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3">
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <Lock className="size-4 shrink-0 text-muted-foreground" />
+                      <div>
+                        <h2 className="text-sm font-semibold">
+                          Default agent permissions
+                        </h2>
+                        <p className="text-xs text-muted-foreground">
+                          Agents set to Default follow this permission profile.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-end gap-1 rounded-md bg-muted/50 p-0.5">
+                      {BUILTIN_PERMISSION_PROFILES.map((profile) => (
+                        <Button
+                          key={profile.id}
+                          type="button"
+                          size="sm"
+                          className="h-7 px-2.5 text-xs"
+                          variant={
+                            settings.data?.preferences
+                              .defaultPermissionProfileId === profile.id
+                              ? "default"
+                              : "ghost"
+                          }
+                          disabled={preferences.isPending}
+                          title={profile.description}
+                          onClick={() =>
+                            preferences.mutate({
+                              defaultPermissionProfileId: profile.id,
+                            })
+                          }
+                        >
+                          {permissionProfileLabel(profile.id)}
+                        </Button>
+                      ))}
                     </div>
                   </div>
                 </section>

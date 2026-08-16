@@ -2938,7 +2938,10 @@ export async function getChatPermissionProfiles(chatId: string) {
   );
 }
 
-export async function updateChatPermissionProfile(chatId: string, id: string) {
+export async function updateChatPermissionProfile(
+  chatId: string,
+  id: string | null,
+) {
   return chatPermissionProfileStateSchema.parse(
     await request(
       `/api/chats/${encodeURIComponent(chatId)}/permission-profile`,

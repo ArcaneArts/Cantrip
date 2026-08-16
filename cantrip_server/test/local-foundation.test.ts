@@ -1723,6 +1723,7 @@ describe("local server foundation", () => {
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
       defaultModelId: expect.any(String),
+      defaultPermissionProfileId: ":workspace",
       mobileProjectTabConfigurations: {},
     });
     const providerResponse = await firstApp.inject({
@@ -1825,6 +1826,7 @@ describe("local server foundation", () => {
             desktopFrameRate: 60,
             desktopStreamQuality: "balanced",
             defaultModelId: selectedModel.id,
+            defaultPermissionProfileId: ":read-only",
             mobileProjectTabConfigurations: {
               "project-1": ["group-1", null],
             },
@@ -1841,6 +1843,7 @@ describe("local server foundation", () => {
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
+      defaultPermissionProfileId: ":read-only",
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
       automaticReplicaSynchronization: "off",
@@ -3398,14 +3401,40 @@ describe("local server foundation", () => {
     );
     expect(initialPermissionProfiles).toMatchObject({
       available: true,
-      selectedId: ":workspace",
-      effectiveId: ":workspace",
+      selectedId: ":read-only",
+      effectiveId: ":read-only",
+      defaultId: ":read-only",
+      usesDefault: true,
       forcedByWorktreePolicy: false,
     });
     expect(initialPermissionProfiles.profiles).toContainEqual({
       id: ":yolo",
       description: "Unrestricted access without approval prompts",
       allowed: true,
+    });
+    await firstApp.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      payload: { defaultPermissionProfileId: ":workspace" },
+    });
+    expect(
+      chatPermissionProfileStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "GET",
+            url: `/api/chats/${chat.id}/permission-profiles`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      selectedId: ":workspace",
+      defaultId: ":workspace",
+      usesDefault: true,
+    });
+    await firstApp.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      payload: { defaultPermissionProfileId: ":read-only" },
     });
     const selectedPermissionProfile = chatPermissionProfileStateSchema.parse(
       (
@@ -3526,15 +3555,21 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject([{ id: approval.id, status: "pending" }]);
-    expect(
-      (
-        await firstApp.inject({
-          method: "PATCH",
-          url: `/api/chats/${chat.id}/permission-profile`,
-          payload: { id: ":workspace" },
-        })
-      ).statusCode,
-    ).toBe(409);
+    const permissionChangedDuringApproval =
+      chatPermissionProfileStateSchema.parse(
+        (
+          await firstApp.inject({
+            method: "PATCH",
+            url: `/api/chats/${chat.id}/permission-profile`,
+            payload: { id: null },
+          })
+        ).json(),
+      );
+    expect(permissionChangedDuringApproval).toMatchObject({
+      selectedId: ":read-only",
+      defaultId: ":read-only",
+      usesDefault: true,
+    });
 
     expect(
       (
@@ -3979,7 +4014,7 @@ describe("local server foundation", () => {
     });
     expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
-    expect(turnPermissionProfileIds[0]).toBe(":yolo");
+    expect(turnPermissionProfileIds[0]).toBe(":read-only");
     expect(
       await firstApp.inject({
         method: "POST",
@@ -5991,6 +6026,7 @@ describe("local server foundation", () => {
       desktopFrameRate: 60,
       desktopStreamQuality: "balanced",
       defaultModelId: selectedModel.id,
+      defaultPermissionProfileId: ":read-only",
       defaultWorkerId: "test-worker",
       automaticReplicaProvisioning: true,
       automaticReplicaSynchronization: "fast-forward-primary",

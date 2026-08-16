@@ -689,6 +689,9 @@ export const userSettings = pgTable(
         onDelete: "set null",
       },
     ),
+    defaultPermissionProfileId: text("default_permission_profile_id")
+      .notNull()
+      .default(":workspace"),
     defaultWorkerId: text("default_worker_id").references(() => workers.id, {
       onDelete: "set null",
     }),
@@ -717,6 +720,10 @@ export const userSettings = pgTable(
     check(
       "user_settings_replica_synchronization_check",
       sql`${table.automaticReplicaSynchronization} IN ('off', 'verify-only', 'fast-forward-primary')`,
+    ),
+    check(
+      "user_settings_default_permission_profile_check",
+      sql`${table.defaultPermissionProfileId} IN (':read-only', ':workspace', ':danger-full-access', ':yolo')`,
     ),
   ],
 );

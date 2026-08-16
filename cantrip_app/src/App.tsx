@@ -1349,7 +1349,7 @@ function ChatTranscript({
     },
   });
   const selectPermissionProfile = useMutation({
-    mutationFn: (id: string) => updateChatPermissionProfile(chat.id, id),
+    mutationFn: (id: string | null) => updateChatPermissionProfile(chat.id, id),
     onSuccess: async (state) => {
       queryClient.setQueryData(
         ["permission-profiles", chat.id, selectedModelId],
@@ -2361,11 +2361,6 @@ function ChatTranscript({
                   }}
                 />
                 <PermissionProfileControl
-                  disabled={
-                    relocationActive ||
-                    chat.status === "running" ||
-                    chat.status === "waiting-for-approval"
-                  }
                   pending={
                     permissionProfiles.isLoading ||
                     selectPermissionProfile.isPending
