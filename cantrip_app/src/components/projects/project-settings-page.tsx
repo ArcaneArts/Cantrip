@@ -425,7 +425,7 @@ export function ProjectSettingsPage({
         />
       ) : null}
       {section === "workflows" ? (
-        <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+        <div className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <WorkflowCenter
             chats={chats}
             initialWorkflowId={initialWorkflowId}
@@ -439,7 +439,7 @@ export function ProjectSettingsPage({
       ) : null}
       <div
         className={cn(
-          "mx-auto min-h-0 w-full max-w-6xl flex-1 space-y-4 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8",
+          "min-h-0 w-full flex-1 space-y-4 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8",
           section !== "general" && section !== "worktrees" && "hidden",
         )}
       >
@@ -854,7 +854,7 @@ export function ProjectSettingsPage({
         </div>
       ) : null}
       {section === "mcp" ? (
-        <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+        <div className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <McpServerSettings
             scope={{ kind: "project", projectId: project.id }}
           />

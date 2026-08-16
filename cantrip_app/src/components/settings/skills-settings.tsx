@@ -315,7 +315,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
   );
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold">

@@ -956,7 +956,7 @@ export function SettingsPage({
         className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
       >
         <div
-          className={`${section === "general" || section === "models" ? "grid" : "hidden"} mx-auto w-full min-w-0 max-w-6xl gap-4`}
+          className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
         >
           <SettingsSearchField
             ariaLabel="Search settings"
@@ -1419,7 +1419,7 @@ export function SettingsPage({
           ) : null}
         </div>
         {section === "workspaces" ? (
-          <div className="mx-auto w-full min-w-0 max-w-6xl">
+          <div className="w-full min-w-0">
             <WorkspaceSettings />
           </div>
         ) : null}
@@ -1430,7 +1430,7 @@ export function SettingsPage({
         ) : null}
         {section === "skills" ? <SkillsSettings /> : null}
         {section === "mcp" ? (
-          <div className="mx-auto w-full min-w-0 max-w-6xl">
+          <div className="w-full min-w-0">
             <McpServerSettings scope={{ kind: "global" }} />
           </div>
         ) : null}

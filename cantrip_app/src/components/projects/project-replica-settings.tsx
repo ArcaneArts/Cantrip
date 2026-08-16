@@ -223,7 +223,7 @@ export function ProjectReplicaSettings({
   const canonicalRevision = canonicalReplicaRevision(project);
 
   return (
-    <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-0 w-full flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
       <section aria-labelledby="replica-placement-title">
         <div className="mb-3">
           <h2 id="replica-placement-title" className="font-semibold">
