@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { readdir, stat } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -132,10 +132,7 @@ export async function verifyMacosDistribution({
         allowAdhoc,
         requireDeveloperId: requireNotarization,
       });
-      if (
-        ((await stat(binary)).mode & 0o111) !== 0 &&
-        !/flags=.*\bruntime\b/u.test(binaryDetails)
-      ) {
+      if (!/flags=.*\bruntime\b/u.test(binaryDetails)) {
         throw new Error(`${binary} does not enable Hardened Runtime.`);
       }
       if (path.basename(binary) === "node") {
@@ -164,6 +161,7 @@ export async function verifyMacosDistribution({
 
   for (const dmg of dmgs) {
     runCommand("hdiutil", ["verify", dmg]);
+    if (allowAdhoc) continue;
     runCommand("codesign", ["--verify", "--strict", "--verbose=2", dmg]);
     assertSigningIdentity(runCommand("codesign", ["-dvvv", dmg]), dmg, {
       allowAdhoc,
@@ -204,6 +202,6 @@ if (isMain) {
     requireNotarization: process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1",
   });
   console.log(
-    `Verified ${result.apps.length} ${allowAdhoc ? "sealed" : "certificate-signed"} app, ${result.dmgs.length} signed DMG, and ${result.runtimeBinaryCount} embedded runtime binaries${process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1" ? " with Developer ID and stapled Apple notarization tickets" : ""}.`,
+    `Verified ${result.apps.length} ${allowAdhoc ? "sealed" : "certificate-signed"} app, ${result.dmgs.length} ${allowAdhoc ? "mountable unsigned" : "signed"} DMG, and ${result.runtimeBinaryCount} embedded runtime binaries${process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1" ? " with Developer ID and stapled Apple notarization tickets" : ""}.`,
   );
 }
