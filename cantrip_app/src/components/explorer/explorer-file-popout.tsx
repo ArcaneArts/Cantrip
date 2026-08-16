@@ -13,6 +13,7 @@ import {
   desktopPopoutTitlebarLeftInset,
   updateDesktopWindowTitle,
 } from "@/lib/desktop-popout";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { cn } from "@/lib/utils";
 
 function fileName(path: string): string {
@@ -40,7 +41,13 @@ export function ExplorerFilePopout({
   const title = fileName(path);
   const close = useCallback(() => {
     void closeCurrentDesktopWindow().catch((closeError: unknown) => {
-      console.error("Could not close the Explorer file window", closeError);
+      clientLogger.warn("Explorer file pop-out did not close", {
+        event: "surface.explorer.popout.close.failed",
+        operation: "close-popout",
+        status: "failed",
+        subsystem: "explorer",
+        ...operationalErrorMetadata(closeError),
+      });
     });
   }, []);
   const transientFile = useMemo(() => ({ close, path }), [close, path]);
@@ -50,10 +57,13 @@ export function ExplorerFilePopout({
       .filter(Boolean)
       .join(" — ");
     void updateDesktopWindowTitle(windowTitle).catch((titleError: unknown) => {
-      console.error(
-        "Could not update the Explorer file window title",
-        titleError,
-      );
+      clientLogger.warn("Explorer file pop-out title did not update", {
+        event: "surface.explorer.popout.title.failed",
+        operation: "update-popout-title",
+        status: "failed",
+        subsystem: "explorer",
+        ...operationalErrorMetadata(titleError),
+      });
     });
   }, [projectTitle, title]);
 

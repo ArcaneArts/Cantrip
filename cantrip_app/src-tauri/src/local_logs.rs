@@ -3,12 +3,14 @@ use std::{
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Mutex, OnceLock},
 };
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{App, Manager, State};
+use url::Url;
 
 use crate::desktop_worker::DesktopWorkers;
 
@@ -16,6 +18,148 @@ const MAX_BYTES: usize = 5 * 1024 * 1024;
 const MAX_ENTRIES: usize = 10_000;
 const MAX_FILES: usize = 3;
 const MAX_RECORD_BYTES: usize = 16 * 1024;
+const MAX_CONTEXT_DEPTH: usize = 6;
+const MAX_CONTEXT_ENTRIES: usize = 100;
+const REDACTED: &str = "[REDACTED]";
+
+fn secret_field_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(
+            r"(?i)^(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|passphrase|secret|client-secret|api-key|apikey|token|access-token|refresh-token|id-token|bearer-token|provider-token|private-key|credential|csrf|csrf-token|xsrf-token|device-code|oauth-code|pairing-code|enrollment-code|signed-url)$",
+        )
+        .expect("secret field regex must compile")
+    })
+}
+
+fn named_secret_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(
+            r#"(?i)\b(authorization|proxy[_-]?authorization|cookie|set[_-]?cookie|password|passwd|passphrase|secret|client[_-]?secret|api[_-]?key|apikey|token|access[_-]?token|refresh[_-]?token|id[_-]?token|provider[_-]?token|private[_-]?key|credential|csrf(?:[_-]?token)?|xsrf[_-]?token|device[_-]?code|oauth[_-]?code|pairing[_-]?code|enrollment[_-]?code|signed[_-]?url)(\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}&]+)"#,
+        )
+        .expect("named secret regex must compile")
+    })
+}
+
+fn provider_token_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(r"\b(?:sk|gh[opusr]|xox[baprs]|pat)[-_][A-Za-z0-9_-]{8,}\b")
+            .expect("provider token regex must compile")
+    })
+}
+
+fn url_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| Regex::new(r#"https?://[^\s\"'<>]+"#).expect("URL regex must compile"))
+}
+
+fn normalize_field_name(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_was_lowercase_or_digit = false;
+    for character in value.chars() {
+        if character.is_ascii_uppercase() {
+            if previous_was_lowercase_or_digit && !normalized.ends_with('-') {
+                normalized.push('-');
+            }
+            normalized.push(character.to_ascii_lowercase());
+            previous_was_lowercase_or_digit = false;
+        } else if matches!(character, '_' | '.' | ' ') {
+            if !normalized.is_empty() && !normalized.ends_with('-') {
+                normalized.push('-');
+            }
+            previous_was_lowercase_or_digit = false;
+        } else {
+            normalized.push(character.to_ascii_lowercase());
+            previous_was_lowercase_or_digit =
+                character.is_ascii_lowercase() || character.is_ascii_digit();
+        }
+    }
+    normalized
+}
+
+fn is_secret_field(value: &str) -> bool {
+    secret_field_pattern().is_match(&normalize_field_name(value))
+}
+
+fn is_signed_url_query(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "signature"
+            | "sig"
+            | "x-amz-signature"
+            | "x-amz-credential"
+            | "x-amz-security-token"
+            | "x-goog-signature"
+            | "x-goog-credential"
+    )
+}
+
+fn redact_url(candidate: &str) -> String {
+    let Ok(mut url) = Url::parse(candidate) else {
+        return candidate.to_string();
+    };
+    if !url.username().is_empty() {
+        let _ = url.set_username("redacted");
+    }
+    if url.password().is_some() {
+        let _ = url.set_password(Some("redacted"));
+    }
+    let original_pairs = url
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect::<Vec<_>>();
+    let signed_url = original_pairs
+        .iter()
+        .any(|(key, _)| is_signed_url_query(key));
+    let pairs = original_pairs
+        .into_iter()
+        .map(|(key, value)| {
+            let value = if signed_url || is_secret_field(&key) {
+                REDACTED.to_string()
+            } else {
+                value
+            };
+            (key, value)
+        })
+        .collect::<Vec<_>>();
+    if !pairs.is_empty() {
+        url.query_pairs_mut().clear().extend_pairs(pairs);
+    }
+    url.to_string()
+}
+
+fn sanitize_context(value: Value, depth: usize) -> Value {
+    if depth >= MAX_CONTEXT_DEPTH {
+        return Value::String("[Truncated]".into());
+    }
+    match value {
+        Value::String(value) => Value::String(sanitize_text(&value)),
+        Value::Array(values) => Value::Array(
+            values
+                .into_iter()
+                .take(MAX_CONTEXT_ENTRIES)
+                .map(|value| sanitize_context(value, depth + 1))
+                .collect(),
+        ),
+        Value::Object(values) => Value::Object(
+            values
+                .into_iter()
+                .take(MAX_CONTEXT_ENTRIES)
+                .map(|(key, value)| {
+                    let value = if is_secret_field(&key) {
+                        Value::String(REDACTED.into())
+                    } else {
+                        sanitize_context(value, depth + 1)
+                    };
+                    (key, value)
+                })
+                .collect(),
+        ),
+        value => value,
+    }
+}
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,6 +277,7 @@ impl SourceTail {
         };
         disk.message = sanitize_text(&disk.message);
         disk.system = sanitize_text(&disk.system);
+        disk.context = disk.context.map(|context| sanitize_context(context, 0));
         if disk.message.len() > MAX_RECORD_BYTES {
             disk.message.truncate(MAX_RECORD_BYTES);
         }
@@ -329,7 +474,7 @@ impl RotatingJsonlWriter {
             system: "client".into(),
             level,
             message: sanitize_text(&message),
-            context,
+            context: context.map(|context| sanitize_context(context, 0)),
         };
         let mut line = serde_json::to_vec(&record)
             .map_err(|error| format!("Could not encode client log: {error}"))?;
@@ -392,6 +537,7 @@ impl LocalServiceLogs {
             _ => ServiceLogLevel::Info,
         };
         let message = sanitize_text(&message.into());
+        let context = context.map(|context| sanitize_context(context, 0));
         let encoded_context = context
             .as_ref()
             .and_then(|value| serde_json::to_string(value).ok())
@@ -497,9 +643,21 @@ pub fn read_local_service_logs(
 }
 
 fn sanitize_text(value: &str) -> String {
-    value
+    let controlled = value
         .chars()
         .filter(|character| matches!(character, '\n' | '\t') || !character.is_control())
+        .take(MAX_RECORD_BYTES)
+        .collect::<String>();
+    let named = named_secret_pattern()
+        .replace_all(&controlled, |captures: &regex::Captures<'_>| {
+            format!("{}{}{}", &captures[1], &captures[2], REDACTED)
+        });
+    let tokens = provider_token_pattern().replace_all(&named, REDACTED);
+    url_pattern()
+        .replace_all(&tokens, |captures: &regex::Captures<'_>| {
+            redact_url(&captures[0])
+        })
+        .chars()
         .take(MAX_RECORD_BYTES)
         .collect()
 }
@@ -573,6 +731,69 @@ mod tests {
         assert_eq!(record.system, "client");
         assert_eq!(record.message, "client failed");
         assert!(contents.len() < MAX_RECORD_BYTES);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn native_records_redact_nested_credentials_and_url_secrets() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-native-log-redaction-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let path = root.join("client.jsonl");
+        let mut writer = RotatingJsonlWriter::new(path.clone()).unwrap();
+        writer
+            .append(
+                ServiceLogLevel::Warn,
+                "refresh failed token=ghp_abcdefghijk".into(),
+                Some(json!({
+                    "authorization": "Bearer private-token",
+                    "API_KEY": "private-api-key",
+                    "endpoint": "https://user:pass@example.test/models?access_token=unsafe&view=all",
+                    "signed": "https://download.test/artifact?signature=private-signature&expires=private-expiry",
+                    "nested": {
+                        "deviceCode": "private-device-code",
+                        "safe": "kept"
+                    }
+                })),
+            )
+            .unwrap();
+        let contents = fs::read_to_string(path).unwrap();
+        assert!(!contents.contains("ghp_abcdefghijk"));
+        assert!(!contents.contains("private-token"));
+        assert!(!contents.contains("private-api-key"));
+        assert!(!contents.contains("private-device-code"));
+        assert!(!contents.contains("user:pass"));
+        assert!(!contents.contains("access_token=unsafe"));
+        assert!(!contents.contains("private-signature"));
+        assert!(!contents.contains("private-expiry"));
+        let record = serde_json::from_str::<DiskServiceLogRecord>(contents.trim()).unwrap();
+        assert_eq!(record.context.unwrap()["nested"]["safe"], "kept");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn local_tail_resanitizes_untrusted_disk_context() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-local-tail-redaction-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let path = root.join("service.jsonl");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            &path,
+            concat!(
+                "{\"cursor\":1,\"timestamp\":\"2026-08-16T00:00:00.000Z\",\"system\":\"worker\",\"level\":\"warn\",\"message\":\"token=unsafe\",\"context\":{\"cookie\":\"session=unsafe\",\"safe\":\"kept\"}}\n",
+            ),
+        )
+        .unwrap();
+        let mut tail = SourceTail::new(path);
+        tail.refresh().unwrap();
+        let result = tail.read(0, 10, ServiceLogLevel::Trace);
+        let encoded = serde_json::to_string(&result.records).unwrap();
+        assert!(!encoded.contains("session=unsafe"));
+        assert!(!encoded.contains("token=unsafe"));
+        assert!(encoded.contains("kept"));
         let _ = fs::remove_dir_all(root);
     }
 }

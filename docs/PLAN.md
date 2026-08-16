@@ -656,7 +656,20 @@ Configuration uses validated environment variables and config files with documen
 
 ## 14. Observability and operations
 
-Use structured logs with request, command, worker, project, chat, turn, and item correlation IDs. Logs must be redacted at the boundary rather than relying on callers. The server now exposes protected aggregate Prometheus metrics for HTTP/database health, connected workers, command activity, live connections, tunnel/relay traffic, quota rejection, scheduler throughput/lag, and scheduler lease contention/recovery. Extend them with active turns, queue latency, event lag, Codex process restarts, approval wait time, provider errors, and WebSocket reconnects as those runtime counters become available.
+Cantrip now uses a shared structured operational-log contract with request,
+command, worker, project, chat, turn, workflow/run, and surface correlation IDs.
+Server and worker records are sanitized once before they fan out to the colored
+console, bounded service buffer, and rotated JSONL sink. Deliberate client and
+native Tauri lifecycle events use the same vocabulary and reach the desktop
+console plus Settings → Logs. Remote worker reads remain owner-authorized and
+server-routed; embedded-server logs remain local to their owning Tauri
+installation. Noise controls summarize repeated failures and sample only
+explicit high-volume diagnostics. Prompts, transcripts, terminal I/O,
+browser/desktop contents, diffs, raw RPC, and credentials remain outside the
+contract. `docs/SERVICE_LOGS.md` is the source, retention, redaction, and
+operator runbook.
+
+The server also exposes protected aggregate Prometheus metrics for HTTP/database health, connected workers, command activity, live connections, tunnel/relay traffic, quota rejection, scheduler throughput/lag, and scheduler lease contention/recovery. Extend them with active turns, queue latency, event lag, Codex process restarts, approval wait time, provider errors, and WebSocket reconnects as those runtime counters become available.
 
 `/healthz` distinguishes process liveness from database and optional Redis coordination readiness. Redis-backed worker leases, routed commands/data planes, and live invalidation fanout support multiple relay instances, with a configured replica ceiling conservatively partitioning global quotas. Scheduled workflow and project-automation occurrences use PostgreSQL leases plus fencing tokens, allowing crash recovery without accepting a stale dispatcher's completion. Future probes should add migration status and explicit required-worker readiness. Worker health reports should distinguish server connectivity, Codex availability, provider auth, runtime crash loops, disk pressure, and source availability.
 

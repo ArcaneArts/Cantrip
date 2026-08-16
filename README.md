@@ -26,7 +26,7 @@ Cantrip organizes work into GitHub-backed projects. Import an existing repositor
 
 Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
-Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers; see the [service log guide](docs/SERVICE_LOGS.md) for source availability, redaction, retention, and remote-worker behavior. Provider support currently includes:
+Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, workflow/run, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
 
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
@@ -439,6 +439,15 @@ pnpm devtop
 `devtop` runs the same protocol, server, and worker development stack, but launches the frontend inside the Tauri desktop window instead of asking you to open the standalone browser app. Tauri starts its Vite hot-reload server on <http://127.0.0.1:1420>, separately from the browser-development port.
 
 In development builds, webview `console.*` output, failed HTTP requests, uncaught errors, unhandled promise rejections, failed resource loads, and Content Security Policy violations are forwarded to the `desktop` lane in the `devtop` terminal. Entries use a `[client:<window>:<level>]` prefix and include source context when the webview provides it, so failures in the main window and pop-outs can be distinguished without opening Web Inspector. Request query strings and embedded URL credentials are removed before logging.
+
+The server and worker lanes also write their normalized records to
+`.cantrip/dev/logs/`, and the desktop lane persists client/native records there.
+Open **Settings → Logs** to compare those same component events, inspect a
+remote worker from another client, or export a filtered diagnostic. The server
+source appears only for the matching embedded local server; Cantrip never
+exposes hosted-server process logs through an HTTP endpoint. See
+[docs/SERVICE_LOGS.md](docs/SERVICE_LOGS.md) for the correlation and smoke-test
+runbook.
 
 Do not run the complete `pnpm dev` and `pnpm devtop` stacks simultaneously with the default configuration because they still share the Cantrip server and worker. A separately running browser Vite process on port 5173 no longer prevents `devtop` from starting. Press `Ctrl+C` in the `devtop` terminal to stop the Tauri app and all processes it started.
 

@@ -5,6 +5,19 @@ import { createServiceLogEmitter } from "../src/core.js";
 const start = new Date("2026-08-16T12:00:00.000Z");
 
 describe("service log emitter", () => {
+  it("stays silent while idle, including an empty repetition flush", () => {
+    const records: unknown[] = [];
+    const logger = createServiceLogEmitter("worker", {
+      now: () => start,
+      output: (record) => records.push(record),
+      onRecord: (record) => records.push(record),
+    });
+
+    logger.flushRepeated();
+
+    expect(records).toEqual([]);
+  });
+
   it("fans the same sanitized record to output and storage", () => {
     const output: unknown[] = [];
     const stored: unknown[] = [];

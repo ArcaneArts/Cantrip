@@ -167,6 +167,9 @@ describe("client log relay", () => {
     context.console.error(
       "https://user:password@example.test/failure?token=secret",
     );
+    context.console.error(
+      "https://download.example.test/artifact?signature=private-signature&expires=private-expiry",
+    );
     await context.window.fetch(
       "https://user:password@example.test/failure?token=secret#private",
     );
@@ -205,5 +208,7 @@ describe("client log relay", () => {
     expect(JSON.stringify(invocations)).not.toContain("open-sesame");
     expect(JSON.stringify(invocations)).not.toContain("user:password");
     expect(JSON.stringify(invocations)).not.toContain("token=secret");
+    expect(JSON.stringify(invocations)).not.toContain("private-signature");
+    expect(JSON.stringify(invocations)).not.toContain("private-expiry");
   });
 });

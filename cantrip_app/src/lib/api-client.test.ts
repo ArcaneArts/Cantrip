@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { request } from "./api-client";
+import { apiRouteTemplate, request } from "./api-client";
 import {
   clearClientSession,
   getClientSession,
@@ -23,6 +23,17 @@ afterEach(() => {
 });
 
 describe("authenticated API client", () => {
+  it("reduces operational request metadata to a query-free route template", () => {
+    expect(
+      apiRouteTemplate(
+        "https://winterhold.cantrip.test/api/projects/11a148ef-be4b-4d61-a23e-53682c891f45/chats/42?access_token=unsafe#private",
+      ),
+    ).toBe("/api/projects/:id/chats/:id");
+    expect(apiRouteTemplate("/api/workers/desktop-local/logs?cursor=8")).toBe(
+      "/api/workers/desktop-local/logs",
+    );
+  });
+
   it("keeps CSRF material in memory and sends it only on mutations", async () => {
     setClientSession({
       authMode: "accounts",
