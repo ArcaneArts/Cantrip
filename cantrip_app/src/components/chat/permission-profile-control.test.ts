@@ -18,7 +18,6 @@ describe("permissionProfileLabel", () => {
   it("renders a compact icon trigger instead of a native select", () => {
     const markup = renderToStaticMarkup(
       createElement(PermissionProfileControl, {
-        disabled: false,
         pending: false,
         state: {
           available: true,
@@ -36,6 +35,8 @@ describe("permissionProfileLabel", () => {
           ],
           selectedId: ":workspace",
           effectiveId: ":workspace",
+          defaultId: ":workspace",
+          usesDefault: false,
           forcedByWorktreePolicy: false,
           reason: null,
         },
@@ -45,5 +46,18 @@ describe("permissionProfileLabel", () => {
 
     expect(markup).toContain("Agent permissions: Workspace");
     expect(markup).not.toContain("<select");
+  });
+
+  it("keeps the permission menu available while Codex starts", () => {
+    const markup = renderToStaticMarkup(
+      createElement(PermissionProfileControl, {
+        pending: true,
+        state: undefined,
+        onChange: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain("Agent permissions: Permissions");
+    expect(markup).not.toContain(' disabled=""');
   });
 });

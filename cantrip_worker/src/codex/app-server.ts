@@ -2580,6 +2580,7 @@ export class CodexAppServer implements CodexRuntime {
   async listPermissionProfiles(
     options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
   ): Promise<PermissionProfileCapability> {
+    await this.ensureStarted(options.model, options.provider);
     if (!this.permissionProfilesSupported()) {
       return permissionProfileCapabilitySchema.parse({
         available: false,
@@ -2588,7 +2589,6 @@ export class CodexAppServer implements CodexRuntime {
           "The installed Codex runtime does not advertise permission profiles; Cantrip is using its legacy sandbox policy.",
       });
     }
-    await this.ensureStarted(options.model, options.provider);
     const profiles: PermissionProfileCapability["profiles"] = [];
     let cursor: string | null = null;
     do {

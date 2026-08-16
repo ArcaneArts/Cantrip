@@ -1487,6 +1487,14 @@ export const mobileProjectTabConfigurationsSchema = z
     message: "Mobile tab configurations cannot contain more than 200 projects.",
   });
 
+export const DEFAULT_PERMISSION_PROFILE_ID = ":workspace" as const;
+export const configurablePermissionProfileIdSchema = z.enum([
+  ":read-only",
+  ":workspace",
+  ":danger-full-access",
+  ":yolo",
+]);
+
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
@@ -1496,6 +1504,9 @@ export const userSettingsSchema = z.object({
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
   defaultModelId: z.string().min(1).nullable(),
+  defaultPermissionProfileId: configurablePermissionProfileIdSchema.default(
+    DEFAULT_PERMISSION_PROFILE_ID,
+  ),
   defaultWorkerId: z.string().min(1).nullable().default(null),
   automaticReplicaProvisioning: z.boolean().default(false),
   automaticReplicaSynchronization: z
@@ -1506,7 +1517,16 @@ export const userSettingsSchema = z.object({
   ),
 });
 
-export const userSettingsUpdateSchema = userSettingsSchema.partial();
+export const userSettingsUpdateSchema = userSettingsSchema.partial().extend({
+  defaultPermissionProfileId: configurablePermissionProfileIdSchema.optional(),
+  defaultWorkerId: z.string().min(1).nullable().optional(),
+  automaticReplicaProvisioning: z.boolean().optional(),
+  automaticReplicaSynchronization: z
+    .enum(["off", "verify-only", "fast-forward-primary"])
+    .optional(),
+  mobileProjectTabConfigurations:
+    mobileProjectTabConfigurationsSchema.optional(),
+});
 
 export const settingsBundleSchema = z.object({
   preferences: userSettingsSchema,
@@ -2804,11 +2824,13 @@ export const chatPermissionProfileStateSchema =
   permissionProfileCapabilitySchema.extend({
     selectedId: permissionProfileIdSchema,
     effectiveId: permissionProfileIdSchema,
+    defaultId: permissionProfileIdSchema.default(DEFAULT_PERMISSION_PROFILE_ID),
+    usesDefault: z.boolean().default(false),
     forcedByWorktreePolicy: z.boolean(),
   });
 
 export const chatPermissionProfileUpdateSchema = z.object({
-  id: permissionProfileIdSchema,
+  id: permissionProfileIdSchema.nullable(),
 });
 
 export const repositoryRelativePathSchema = z

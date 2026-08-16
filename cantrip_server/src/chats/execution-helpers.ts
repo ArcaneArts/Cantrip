@@ -1,28 +1,30 @@
 import { createHash } from "node:crypto";
 
-import type {
-  AgentActivity,
-  ChatMessage,
-  ChatSummary,
+import {
+  DEFAULT_PERMISSION_PROFILE_ID,
+  type AgentActivity,
+  type ChatMessage,
+  type ChatSummary,
 } from "@cantrip/protocol";
 
 import type { ChatExecutionContext } from "../db/repository.js";
 import { errorMessage } from "../http/request-helpers.js";
-
-const DEFAULT_PERMISSION_PROFILE_ID = ":workspace";
 
 export function chatIsExecuting(status: ChatSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";
 }
 
 export function effectivePermissionProfile(context: ChatExecutionContext) {
-  const selectedId =
-    context.permissionProfileId ?? DEFAULT_PERMISSION_PROFILE_ID;
+  const defaultId =
+    context.defaultPermissionProfileId ?? DEFAULT_PERMISSION_PROFILE_ID;
+  const selectedId = context.permissionProfileId ?? defaultId;
   const forcedByWorktreePolicy =
     context.isPrimary && context.worktreePolicy === "required-for-writes";
   return {
     selectedId,
     effectiveId: forcedByWorktreePolicy ? ":read-only" : selectedId,
+    defaultId,
+    usesDefault: context.permissionProfileId === null,
     forcedByWorktreePolicy,
   };
 }

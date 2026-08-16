@@ -150,6 +150,7 @@ import {
   tabGroupOrderSchema,
   unprobedCodexRuntimeReport,
   userSettingsSchema,
+  userSettingsUpdateSchema,
   workerCommandSchema,
   workerEventSchema,
   workerProjectShareOpenResultSchema,
@@ -2778,6 +2779,8 @@ describe("Cantrip protocol", () => {
         ],
         selectedId: ":workspace",
         effectiveId: ":read-only",
+        defaultId: ":workspace",
+        usesDefault: false,
         forcedByWorktreePolicy: true,
         reason: null,
       }),
@@ -3838,6 +3841,7 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({
       desktopFrameRate: 30,
+      defaultPermissionProfileId: ":workspace",
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
       automaticReplicaSynchronization: "off",
@@ -3885,6 +3889,22 @@ describe("Cantrip protocol", () => {
         defaultModelId: null,
       }).success,
     ).toBe(false);
+    expect(
+      userSettingsSchema.safeParse({
+        theme: "system",
+        highContrast: false,
+        proMode: false,
+        proModeOpacity: 80,
+        sidebarWidth: MIN_SIDEBAR_WIDTH,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+        defaultPermissionProfileId: ":unknown",
+      }).success,
+    ).toBe(false);
+    expect(userSettingsUpdateSchema.parse({ theme: "dark" })).toEqual({
+      theme: "dark",
+    });
   });
 
   it("validates revisioned project tab layouts and unique order mutations", () => {

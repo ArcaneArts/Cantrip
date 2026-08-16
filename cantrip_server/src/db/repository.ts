@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DEFAULT_PERMISSION_PROFILE_ID,
   MCP_SECRET_MASK,
   agentInteractionRequestSchema,
   normalizeResponsesBaseUrl,
@@ -324,6 +325,7 @@ export interface ChatExecutionContext {
   automationPaused: boolean;
   chatId: string;
   cwd: string;
+  defaultPermissionProfileId?: UserSettings["defaultPermissionProfileId"];
   executionLaneId: string | null;
   isPrimary: boolean;
   status: ChatSummary["status"];
@@ -2581,6 +2583,7 @@ export class ServerRepository {
         desktopFrameRate: 30,
         desktopStreamQuality: "adaptive",
         defaultModelId: DEFAULT_MODEL_ID,
+        defaultPermissionProfileId: DEFAULT_PERMISSION_PROFILE_ID,
       })
       .onConflictDoNothing({ target: schema.userSettings.userId });
     await this.database.execute(sql`
@@ -2638,6 +2641,7 @@ export class ServerRepository {
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
       defaultModelId: modelId,
+      defaultPermissionProfileId: DEFAULT_PERMISSION_PROFILE_ID,
     });
   }
 
@@ -2775,6 +2779,8 @@ export class ServerRepository {
         desktopStreamQuality:
           settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
         defaultModelId: settings.defaultModelId,
+        defaultPermissionProfileId:
+          settings.defaultPermissionProfileId as UserSettings["defaultPermissionProfileId"],
         defaultWorkerId: settings.defaultWorkerId,
         automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
         automaticReplicaSynchronization:
@@ -3055,6 +3061,8 @@ export class ServerRepository {
       desktopStreamQuality:
         settings.desktopStreamQuality as UserSettings["desktopStreamQuality"],
       defaultModelId: settings.defaultModelId,
+      defaultPermissionProfileId:
+        settings.defaultPermissionProfileId as UserSettings["defaultPermissionProfileId"],
       defaultWorkerId: settings.defaultWorkerId,
       automaticReplicaProvisioning: settings.automaticReplicaProvisioning,
       automaticReplicaSynchronization:
@@ -8666,6 +8674,7 @@ export class ServerRepository {
           .select({
             chat: schema.chats,
             project: schema.projects,
+            settings: schema.userSettings,
             worktree: schema.projectWorktrees,
             runtime: schema.chatRuntimeSessions,
           })
@@ -8676,6 +8685,10 @@ export class ServerRepository {
               eq(schema.projects.id, schema.chats.projectId),
               eq(schema.projects.ownerId, ownerId),
             ),
+          )
+          .leftJoin(
+            schema.userSettings,
+            eq(schema.userSettings.userId, schema.projects.ownerId),
           )
           .innerJoin(
             schema.projectWorktrees,
@@ -8849,6 +8862,10 @@ export class ServerRepository {
           automationPaused: row.chat.automationPaused,
           chatId,
           cwd: row.worktree.absolutePath,
+          defaultPermissionProfileId:
+            (row.settings?.defaultPermissionProfileId as
+              UserSettings["defaultPermissionProfileId"] | undefined) ??
+            DEFAULT_PERMISSION_PROFILE_ID,
           executionLaneId: lane.id,
           isPrimary: row.worktree.isPrimary,
           status: "running",
@@ -12176,7 +12193,7 @@ export class ServerRepository {
   async setChatPermissionProfile(
     ownerId: string,
     chatId: string,
-    permissionProfileId: string,
+    permissionProfileId: string | null,
   ): Promise<ChatSummary | null> {
     const chats = await this.database
       .select({ chat: schema.chats })
@@ -12194,12 +12211,7 @@ export class ServerRepository {
     const result = await this.database
       .update(schema.chats)
       .set({ permissionProfileId, updatedAt: new Date() })
-      .where(
-        and(
-          eq(schema.chats.id, chatId),
-          notInArray(schema.chats.status, ["running", "waiting-for-approval"]),
-        ),
-      )
+      .where(eq(schema.chats.id, chatId))
       .returning();
     return result[0] ? toChatSummary(result[0]) : null;
   }
@@ -12285,6 +12297,7 @@ export class ServerRepository {
         chat: schema.chats,
         lane: schema.chatExecutionLanes,
         project: schema.projects,
+        settings: schema.userSettings,
         worktree: schema.projectWorktrees,
         runtime: schema.chatRuntimeSessions,
       })
@@ -12295,6 +12308,10 @@ export class ServerRepository {
           eq(schema.projects.id, schema.chats.projectId),
           eq(schema.projects.ownerId, ownerId),
         ),
+      )
+      .leftJoin(
+        schema.userSettings,
+        eq(schema.userSettings.userId, schema.projects.ownerId),
       )
       .innerJoin(
         schema.projectWorktrees,
@@ -12328,6 +12345,10 @@ export class ServerRepository {
       automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
       cwd: row.worktree.absolutePath,
+      defaultPermissionProfileId:
+        (row.settings?.defaultPermissionProfileId as
+          UserSettings["defaultPermissionProfileId"] | undefined) ??
+        DEFAULT_PERMISSION_PROFILE_ID,
       executionLaneId: row.lane?.id ?? null,
       isPrimary: row.worktree.isPrimary,
       modelId: row.chat.modelId,

@@ -35,6 +35,8 @@ describe("account settings", () => {
   it("separates general preferences from model and provider management", () => {
     const general = renderSettings("general");
     expect(general).toContain("System follows the operating system.");
+    expect(general).toContain("Default agent permissions");
+    expect(general).toContain("YOLO mode");
     expect(general).toContain("Search general settings");
     expect(general).not.toContain("Cantrip updates");
     expect(general).not.toContain(

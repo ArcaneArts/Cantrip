@@ -1,0 +1,2 @@
+ALTER TABLE "user_settings" ADD COLUMN "default_permission_profile_id" text DEFAULT ':workspace' NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_settings" ADD CONSTRAINT "user_settings_default_permission_profile_check" CHECK ("user_settings"."default_permission_profile_id" IN (':read-only', ':workspace', ':danger-full-access', ':yolo'));
