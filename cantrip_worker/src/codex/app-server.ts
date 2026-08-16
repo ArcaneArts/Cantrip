@@ -65,7 +65,7 @@ import {
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
-import { captureWorkerDiagnostic, workerLogger } from "../logger.js";
+import { workerLogError, workerLogger } from "../logger.js";
 import {
   ProviderAccessTokenRequestError,
   type ProviderAccessTokenClient,
@@ -136,8 +136,10 @@ export interface RpcMessage {
 }
 
 interface PendingRpcRequest {
+  method: string;
   reject(error: Error): void;
   resolve(result: unknown): void;
+  startedAtMs: number;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -157,6 +159,8 @@ interface ActiveTurn {
   interactionMode: "interactive" | "preauthorized";
   latestUsage: TokenUsageBreakdown | null;
   model: RunAgentTurnOptions["model"];
+  providerId: string;
+  providerKind: string;
   onActivity?: (activity: AgentActivity) => void;
   onMessage?: (message: NormalizedAgentMessage) => void;
   onInteractionCleared?: (requestKey: string) => void;
@@ -177,6 +181,8 @@ interface ActiveTurn {
   threadId: string;
   timeout: ReturnType<typeof setTimeout> | null;
   workflowOutputSchema: Record<string, unknown> | null;
+  workflowRunId: string | null;
+  workflowNodeId: string | null;
 }
 
 type FileActivityChange = Extract<
@@ -1507,6 +1513,30 @@ export function codexRuntimeId(
   return `${provider.credentialHomeKey ?? provider.id}:${model.routeId}:${configuration}`;
 }
 
+function safeProviderOrigin(provider: RuntimeProvider): string | null {
+  try {
+    return provider.baseUrl ? new URL(provider.baseUrl).origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function codexProviderLogContext(provider: RuntimeProvider) {
+  return {
+    providerId: provider.id,
+    providerKind: provider.kind,
+    providerOrigin: safeProviderOrigin(provider),
+  };
+}
+
+function codexDiagnosticClass(line: string): string {
+  const normalized = line.toLowerCase();
+  if (normalized.includes("panic")) return "panic";
+  if (normalized.includes("error")) return "error";
+  if (normalized.includes("warn")) return "warning";
+  return "diagnostic";
+}
+
 function activityStatus(
   status: "inProgress" | "completed" | "failed" | "declined",
 ): AgentActivity["status"] {
@@ -2318,6 +2348,7 @@ export class CodexAppServer implements CodexRuntime {
   #externalChatGptAuth: ExternalChatGptAuthSession | null = null;
   #remoteUrl: string | null = null;
   #runtimeId: string | null = null;
+  #runtimeStartedAtMs: number | null = null;
   #nextDiagnosticSequence = 1;
   #nextId = 1;
   #socket: WebSocket | null = null;
@@ -2382,7 +2413,16 @@ export class CodexAppServer implements CodexRuntime {
     const active = [...this.#activeTurns.entries()].find(
       ([, turn]) => turn.executionKind === "chat" && turn.chatId === chatId,
     );
-    if (!active) return false;
+    if (!active) {
+      workerLogger.event("debug", "Codex chat pause state stored", {
+        event: "codex.turn.pause",
+        subsystem: "codex",
+        operation: paused ? "pause" : "resume",
+        status: "deferred",
+        chatId,
+      });
+      return false;
+    }
     try {
       await this.request("turn/pause", {
         threadId: active[1].threadId,
@@ -2393,6 +2433,15 @@ export class CodexAppServer implements CodexRuntime {
       if (!this.#activeTurns.has(active[0])) return false;
       throw error;
     }
+    workerLogger.event("info", `Codex turn ${paused ? "paused" : "resumed"}`, {
+      event: "codex.turn.pause",
+      subsystem: "codex",
+      operation: paused ? "pause" : "resume",
+      status: "completed",
+      chatId,
+      turnId: active[0],
+      threadId: active[1].threadId,
+    });
     return true;
   }
 
@@ -2402,33 +2451,102 @@ export class CodexAppServer implements CodexRuntime {
       { type: "model.chatgpt.catalog" }
     >["provider"],
   ): Promise<ChatGptModelInventory> {
-    await this.ensureCatalogStarted(provider);
-    const models: ChatGptModelInventory["models"] = [];
-    const seenCursors = new Set<string>();
-    let cursor: string | null = null;
-    do {
-      const response = (await this.request("model/list", {
-        cursor,
-        includeHidden: true,
-        limit: 100,
-      })) as { data?: unknown[]; nextCursor?: string | null };
-      if (!Array.isArray(response.data)) {
-        throw new Error("Codex model/list returned an invalid model page.");
-      }
-      const page = chatGptModelInventorySchema.shape.models.parse(
-        response.data,
-      );
-      models.push(...page);
-      const nextCursor = response.nextCursor ?? null;
-      if (nextCursor && seenCursors.has(nextCursor)) {
-        throw new Error("Codex model/list repeated a pagination cursor.");
-      }
-      if (nextCursor) seenCursors.add(nextCursor);
-      cursor = nextCursor;
-    } while (cursor && models.length < 1_000);
-    let quotaSnapshot: ProviderQuotaSnapshot | null = null;
+    const startedAtMs = Date.now();
+    workerLogger.event("debug", "ChatGPT model catalog refresh started", {
+      event: "provider.catalog.refresh",
+      subsystem: "provider",
+      operation: "chatgpt-catalog",
+      status: "started",
+      ...codexProviderLogContext(provider),
+    });
     try {
-      quotaSnapshot = quotaSnapshotFromRateLimits(
+      await this.ensureCatalogStarted(provider);
+      const models: ChatGptModelInventory["models"] = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | null = null;
+      do {
+        const response = (await this.request("model/list", {
+          cursor,
+          includeHidden: true,
+          limit: 100,
+        })) as { data?: unknown[]; nextCursor?: string | null };
+        if (!Array.isArray(response.data)) {
+          throw new Error("Codex model/list returned an invalid model page.");
+        }
+        const page = chatGptModelInventorySchema.shape.models.parse(
+          response.data,
+        );
+        models.push(...page);
+        const nextCursor = response.nextCursor ?? null;
+        if (nextCursor && seenCursors.has(nextCursor)) {
+          throw new Error("Codex model/list repeated a pagination cursor.");
+        }
+        if (nextCursor) seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      } while (cursor && models.length < 1_000);
+      let quotaSnapshot: ProviderQuotaSnapshot | null = null;
+      try {
+        quotaSnapshot = quotaSnapshotFromRateLimits(
+          (await this.request(
+            "account/rateLimits/read",
+            undefined,
+          )) as AccountRateLimitsResult,
+          {
+            workerVersion: cantripVersion.version,
+            codexVersion: this.compatibility.version?.raw ?? null,
+          },
+        );
+      } catch {
+        // Model discovery remains useful when quota reporting is unavailable.
+      }
+      const weekly = quotaSnapshot?.windows.find(
+        (window) => window.isWeeklyProjection,
+      );
+      const inventory = chatGptModelInventorySchema.parse({
+        models,
+        observedAt: new Date().toISOString(),
+        weeklyUsage: weekly
+          ? { resetsAt: weekly.resetsAt, usedPercent: weekly.usedPercent }
+          : null,
+        quotaSnapshot,
+      });
+      workerLogger.event("info", "ChatGPT model catalog refreshed", {
+        event: "provider.catalog.refresh",
+        subsystem: "provider",
+        operation: "chatgpt-catalog",
+        status: "completed",
+        durationMs: Date.now() - startedAtMs,
+        counts: {
+          models: inventory.models.length,
+          quotaWindows: inventory.quotaSnapshot?.windows.length ?? 0,
+        },
+        ...codexProviderLogContext(provider),
+      });
+      return inventory;
+    } catch (error) {
+      workerLogger.event("warn", "ChatGPT model catalog refresh failed", {
+        event: "provider.catalog.refresh",
+        subsystem: "provider",
+        operation: "chatgpt-catalog",
+        status: "failed",
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+        ...codexProviderLogContext(provider),
+      });
+      throw error;
+    }
+  }
+
+  async readQuotaSnapshot(
+    provider: Extract<
+      WorkerCommand,
+      { type: "provider.quota.read" }
+    >["provider"] & { kind: "chatgpt" },
+  ): Promise<ProviderQuotaSnapshot> {
+    const startedAtMs = Date.now();
+    try {
+      await this.ensureCatalogStarted(provider);
+      const snapshot = quotaSnapshotFromRateLimits(
         (await this.request(
           "account/rateLimits/read",
           undefined,
@@ -2438,39 +2556,39 @@ export class CodexAppServer implements CodexRuntime {
           codexVersion: this.compatibility.version?.raw ?? null,
         },
       );
-    } catch {
-      // Model discovery remains useful when quota reporting is unavailable.
+      workerLogger.sampled(
+        `provider-quota:${provider.id}`,
+        10,
+        "debug",
+        "ChatGPT quota snapshot refreshed",
+        {
+          event: "provider.quota.refresh",
+          subsystem: "provider",
+          operation: "chatgpt-quota",
+          status: "completed",
+          durationMs: Date.now() - startedAtMs,
+          counts: { windows: snapshot.windows.length },
+          ...codexProviderLogContext(provider),
+        },
+      );
+      return snapshot;
+    } catch (error) {
+      workerLogger.rateLimited(
+        `provider-quota-failed:${provider.id}`,
+        "warn",
+        "ChatGPT quota refresh failed",
+        {
+          event: "provider.quota.refresh",
+          subsystem: "provider",
+          operation: "chatgpt-quota",
+          status: "failed",
+          durationMs: Date.now() - startedAtMs,
+          error: workerLogError(error),
+          ...codexProviderLogContext(provider),
+        },
+      );
+      throw error;
     }
-    const weekly = quotaSnapshot?.windows.find(
-      (window) => window.isWeeklyProjection,
-    );
-    return chatGptModelInventorySchema.parse({
-      models,
-      observedAt: new Date().toISOString(),
-      weeklyUsage: weekly
-        ? { resetsAt: weekly.resetsAt, usedPercent: weekly.usedPercent }
-        : null,
-      quotaSnapshot,
-    });
-  }
-
-  async readQuotaSnapshot(
-    provider: Extract<
-      WorkerCommand,
-      { type: "provider.quota.read" }
-    >["provider"] & { kind: "chatgpt" },
-  ): Promise<ProviderQuotaSnapshot> {
-    await this.ensureCatalogStarted(provider);
-    return quotaSnapshotFromRateLimits(
-      (await this.request(
-        "account/rateLimits/read",
-        undefined,
-      )) as AccountRateLimitsResult,
-      {
-        workerVersion: cantripVersion.version,
-        codexVersion: this.compatibility.version?.raw ?? null,
-      },
-    );
   }
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
@@ -2552,6 +2670,8 @@ export class CodexAppServer implements CodexRuntime {
         interactionMode: "interactive",
         latestUsage: null,
         model: options.model,
+        providerId: options.provider.id,
+        providerKind: options.provider.kind,
         onActivity: options.onActivity,
         onMessage: options.onMessage,
         onInteractionCleared: options.onInteractionCleared,
@@ -2568,6 +2688,8 @@ export class CodexAppServer implements CodexRuntime {
         threadId,
         timeout: null,
         workflowOutputSchema: null,
+        workflowRunId: null,
+        workflowNodeId: null,
       };
     });
 
@@ -2609,6 +2731,22 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Could not initialize the Codex turn.");
     }
     this.#activeTurns.set(response.turn.id, activeTurn);
+    workerLogger.event("info", "Codex chat turn started", {
+      event: "codex.turn.lifecycle",
+      subsystem: "codex",
+      operation: "chat-turn",
+      status: "started",
+      chatId: options.chatId,
+      threadId,
+      turnId: response.turn.id,
+      providerId: options.provider.id,
+      providerKind: options.provider.kind,
+      model: options.model.name,
+      counts: {
+        attachments: options.attachments?.length ?? 0,
+        skills: options.skillNames.length,
+      },
+    });
     return agentTurnResultSchema.parse(await completion);
   }
 
@@ -2667,6 +2805,8 @@ export class CodexAppServer implements CodexRuntime {
         interactionMode: options.approvalMode,
         latestUsage: null,
         model: options.model,
+        providerId: options.provider.id,
+        providerKind: options.provider.kind,
         onActivity: options.onActivity,
         onMessage: options.onMessage,
         onInteractionCleared: options.onInteractionCleared,
@@ -2680,6 +2820,8 @@ export class CodexAppServer implements CodexRuntime {
         threadId,
         timeout: null,
         workflowOutputSchema: options.outputSchema,
+        workflowRunId: options.workflowRunId,
+        workflowNodeId: options.runNodeId,
       };
     });
 
@@ -2709,6 +2851,21 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error("Could not initialize the Codex workflow turn.");
     }
     this.#activeTurns.set(response.turn.id, activeTurn);
+    workerLogger.event("info", "Codex workflow turn started", {
+      event: "codex.turn.lifecycle",
+      subsystem: "codex",
+      operation: "workflow-turn",
+      status: "started",
+      runId: options.workflowRunId,
+      nodeId: options.runNodeId,
+      attemptId: options.attemptId,
+      threadId,
+      turnId: response.turn.id,
+      providerId: options.provider.id,
+      providerKind: options.provider.kind,
+      model: options.model.name,
+      counts: { skills: options.skillNames.length },
+    });
     options.onActivity?.(
       turnSummaryActivity(
         {
@@ -2742,6 +2899,18 @@ export class CodexAppServer implements CodexRuntime {
           `Workflow node execution timed out after ${options.timeoutMs}ms.`,
         ),
       );
+      workerLogger.event("warn", "Codex workflow turn timed out", {
+        event: "codex.turn.timeout",
+        subsystem: "codex",
+        operation: "workflow-turn",
+        status: "timed-out",
+        runId: options.workflowRunId,
+        nodeId: options.runNodeId,
+        attemptId: options.attemptId,
+        threadId,
+        turnId: response.turn.id,
+        durationMs: options.timeoutMs,
+      });
     }, options.timeoutMs);
     activeTurn.timeout.unref();
     return workflowNodeExecutionResultSchema.parse(await completion);
@@ -3108,6 +3277,7 @@ export class CodexAppServer implements CodexRuntime {
   async compactThread(
     options: CompactAgentThreadOptions,
   ): Promise<{ accepted: true }> {
+    const startedAtMs = Date.now();
     await this.ensureStarted(options.model, options.provider);
     const threadId = await this.loadThread(options, false);
     if (!threadId) {
@@ -3119,6 +3289,15 @@ export class CodexAppServer implements CodexRuntime {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
     }
     await this.request("thread/compact/start", { threadId });
+    workerLogger.event("info", "Codex thread compaction accepted", {
+      event: "codex.thread.compact",
+      subsystem: "codex",
+      operation: "compact-thread",
+      status: "accepted",
+      threadId,
+      durationMs: Date.now() - startedAtMs,
+      ...codexProviderLogContext(options.provider),
+    });
     return { accepted: true };
   }
 
@@ -3407,6 +3586,16 @@ export class CodexAppServer implements CodexRuntime {
     );
     if (!active) return { interrupted: false };
     await this.request("turn/interrupt", { threadId, turnId: active[0] });
+    workerLogger.event("info", "Codex turn interrupt accepted", {
+      event: "codex.turn.interrupt",
+      subsystem: "codex",
+      operation: "interrupt-turn",
+      status: "accepted",
+      chatId: active[1].chatId ?? undefined,
+      runId: active[1].workflowRunId ?? undefined,
+      threadId,
+      turnId: active[0],
+    });
     return { interrupted: true };
   }
 
@@ -3417,6 +3606,15 @@ export class CodexAppServer implements CodexRuntime {
     const active = findActiveChatTurn(this.#activeTurns, chatId, threadId);
     if (!active) return { interrupted: false };
     await this.request("turn/interrupt", {
+      threadId: active[1].threadId,
+      turnId: active[0],
+    });
+    workerLogger.event("info", "Codex chat turn interrupt accepted", {
+      event: "codex.turn.interrupt",
+      subsystem: "codex",
+      operation: "interrupt-chat-turn",
+      status: "accepted",
+      chatId,
       threadId: active[1].threadId,
       turnId: active[0],
     });
@@ -3449,10 +3647,32 @@ export class CodexAppServer implements CodexRuntime {
       ),
       expectedTurnId: active[0],
     })) as { turnId: string };
+    workerLogger.event("info", "Codex turn steering accepted", {
+      event: "codex.turn.steer",
+      subsystem: "codex",
+      operation: "steer-turn",
+      status: "accepted",
+      chatId,
+      threadId: activeThreadId,
+      turnId: result.turnId,
+      expectedTurnId: active[0],
+      counts: { attachments: attachments.length },
+    });
     return { steered: true, turnId: result.turnId };
   }
 
   close(): void {
+    workerLogger.event("info", "Codex app-server stopping", {
+      event: "codex.runtime.lifecycle",
+      subsystem: "codex",
+      operation: "stop",
+      status: "started",
+      runtimeId: this.#runtimeId,
+      counts: {
+        activeTurns: this.#activeTurns.size,
+        pendingRequests: this.#pending.size,
+      },
+    });
     this.handleExit(new Error("Codex app-server stopped."));
     this.#socket?.close();
     this.#socket = null;
@@ -3460,6 +3680,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#child = null;
     this.#remoteUrl = null;
     this.#runtimeId = null;
+    this.#runtimeStartedAtMs = null;
     this.#externalChatGptAuth = null;
     this.#diagnosticSecrets.clear();
     this.#starting = null;
@@ -3569,6 +3790,17 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
     this.#runtimeId = runtimeId;
+    const startedAtMs = Date.now();
+    workerLogger.event("info", "Codex app-server startup started", {
+      event: "codex.runtime.lifecycle",
+      subsystem: "codex",
+      operation: "start",
+      status: "started",
+      runtimeId,
+      model: model.name,
+      codexVersion: this.compatibility.version?.raw ?? null,
+      ...codexProviderLogContext(provider),
+    });
     const starting = this.start(model, provider);
     this.#starting = starting;
     try {
@@ -3577,6 +3809,16 @@ export class CodexAppServer implements CodexRuntime {
       if (this.#starting === starting) {
         this.stopFailedStart();
       }
+      workerLogger.event("error", "Codex app-server startup failed", {
+        event: "codex.runtime.lifecycle",
+        subsystem: "codex",
+        operation: "start",
+        status: "failed",
+        runtimeId,
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+        ...codexProviderLogContext(provider),
+      });
       throw error;
     } finally {
       if (this.#starting === starting) this.#starting = null;
@@ -3609,12 +3851,32 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
     this.#runtimeId = runtimeId;
+    const startedAtMs = Date.now();
+    workerLogger.event("debug", "Codex catalog app-server startup started", {
+      event: "codex.runtime.lifecycle",
+      subsystem: "codex",
+      operation: "start-catalog",
+      status: "started",
+      runtimeId,
+      codexVersion: this.compatibility.version?.raw ?? null,
+      ...codexProviderLogContext(provider),
+    });
     const starting = this.start(null, provider);
     this.#starting = starting;
     try {
       await starting;
     } catch (error) {
       if (this.#starting === starting) this.stopFailedStart();
+      workerLogger.event("warn", "Codex catalog app-server startup failed", {
+        event: "codex.runtime.lifecycle",
+        subsystem: "codex",
+        operation: "start-catalog",
+        status: "failed",
+        runtimeId,
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+        ...codexProviderLogContext(provider),
+      });
       throw error;
     } finally {
       if (this.#starting === starting) this.#starting = null;
@@ -3628,6 +3890,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#child = null;
     this.#remoteUrl = null;
     this.#runtimeId = null;
+    this.#runtimeStartedAtMs = null;
     this.#externalChatGptAuth = null;
     this.#diagnosticSecrets.clear();
     this.#loadedThreads.clear();
@@ -3676,6 +3939,16 @@ export class CodexAppServer implements CodexRuntime {
           this.#mcpConfigFingerprintsByThread.get(threadId) !==
             mcpConfigFingerprint))
     ) {
+      const requestedThreadId = threadId;
+      const startedAtMs = Date.now();
+      workerLogger.event("debug", "Codex chat thread resume started", {
+        event: "codex.thread.resume",
+        subsystem: "codex",
+        operation: "resume-chat-thread",
+        status: "started",
+        threadId: requestedThreadId,
+        ...codexProviderLogContext(options.provider),
+      });
       try {
         if (
           this.#loadedThreads.has(threadId) &&
@@ -3712,13 +3985,34 @@ export class CodexAppServer implements CodexRuntime {
           );
         }
         this.#threadKinds.set(threadId, "chat");
-      } catch {
+        workerLogger.event("info", "Codex chat thread resumed", {
+          event: "codex.thread.resume",
+          subsystem: "codex",
+          operation: "resume-chat-thread",
+          status: "completed",
+          threadId,
+          durationMs: Date.now() - startedAtMs,
+          ...codexProviderLogContext(options.provider),
+        });
+      } catch (error) {
         // Codex thread state is local to its worker/runtime. A normal turn can
         // recover from replacement by starting a new thread; compaction cannot.
+        workerLogger.event("warn", "Codex chat thread resume fell back", {
+          event: "codex.thread.resume",
+          subsystem: "codex",
+          operation: "resume-chat-thread",
+          status: "recovering",
+          reasonCode: "thread-resume-failed",
+          threadId: requestedThreadId,
+          durationMs: Date.now() - startedAtMs,
+          error: workerLogError(error),
+          ...codexProviderLogContext(options.provider),
+        });
         threadId = null;
       }
     }
     if (!threadId && create) {
+      const startedAtMs = Date.now();
       const started = (await this.request("thread/start", {
         model: options.model.name,
         ...codexReasoningEffortParams(options.model),
@@ -3742,6 +4036,15 @@ export class CodexAppServer implements CodexRuntime {
         this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
       }
       this.#threadKinds.set(threadId, "chat");
+      workerLogger.event("info", "Codex chat thread started", {
+        event: "codex.thread.start",
+        subsystem: "codex",
+        operation: "start-chat-thread",
+        status: "completed",
+        threadId,
+        durationMs: Date.now() - startedAtMs,
+        ...codexProviderLogContext(options.provider),
+      });
     }
     return threadId;
   }
@@ -3776,6 +4079,8 @@ export class CodexAppServer implements CodexRuntime {
     }
 
     if (threadId) {
+      const requestedThreadId = threadId;
+      const startedAtMs = Date.now();
       try {
         if (
           this.#loadedThreads.has(threadId) &&
@@ -3796,11 +4101,36 @@ export class CodexAppServer implements CodexRuntime {
           config: mcpConfig,
         })) as ThreadResponse;
         threadId = resumed.thread.id;
-      } catch {
+        workerLogger.event("info", "Codex workflow thread resumed", {
+          event: "codex.thread.resume",
+          subsystem: "codex",
+          operation: "resume-workflow-thread",
+          status: "completed",
+          runId: options.workflowRunId,
+          nodeId: options.runNodeId,
+          threadId,
+          durationMs: Date.now() - startedAtMs,
+          ...codexProviderLogContext(options.provider),
+        });
+      } catch (error) {
+        workerLogger.event("warn", "Codex workflow thread resume fell back", {
+          event: "codex.thread.resume",
+          subsystem: "codex",
+          operation: "resume-workflow-thread",
+          status: "recovering",
+          reasonCode: "thread-resume-failed",
+          runId: options.workflowRunId,
+          nodeId: options.runNodeId,
+          threadId: requestedThreadId,
+          durationMs: Date.now() - startedAtMs,
+          error: workerLogError(error),
+          ...codexProviderLogContext(options.provider),
+        });
         threadId = null;
       }
     }
     if (!threadId) {
+      const startedAtMs = Date.now();
       const started = (await this.request("thread/start", {
         model: options.model.name,
         ...codexReasoningEffortParams(options.model),
@@ -3812,6 +4142,17 @@ export class CodexAppServer implements CodexRuntime {
         config: mcpConfig,
       })) as ThreadResponse;
       threadId = started.thread.id;
+      workerLogger.event("info", "Codex workflow thread started", {
+        event: "codex.thread.start",
+        subsystem: "codex",
+        operation: "start-workflow-thread",
+        status: "completed",
+        runId: options.workflowRunId,
+        nodeId: options.runNodeId,
+        threadId,
+        durationMs: Date.now() - startedAtMs,
+        ...codexProviderLogContext(options.provider),
+      });
     }
 
     this.#loadedThreads.add(threadId);
@@ -3907,6 +4248,7 @@ export class CodexAppServer implements CodexRuntime {
     model: RunAgentTurnOptions["model"] | null,
     provider: RunAgentTurnOptions["provider"],
   ): Promise<void> {
+    const startedAtMs = Date.now();
     this.#appServerSessionId = randomUUID();
     await mkdir(this.codexHome, { recursive: true });
     const runtimeProvider = this.resolveProvider
@@ -3954,6 +4296,20 @@ export class CodexAppServer implements CodexRuntime {
       },
     );
     this.#child = child;
+    this.#runtimeStartedAtMs = startedAtMs;
+    const processRuntimeId = this.#runtimeId;
+    const processStartedAtMs = startedAtMs;
+    workerLogger.event("debug", "Codex app-server process launched", {
+      event: "codex.runtime.process",
+      subsystem: "codex",
+      operation: "spawn",
+      status: "started",
+      runtimeId: processRuntimeId,
+      processId: child.pid ?? null,
+      catalogOnly: model === null,
+      externalAccountLease: externalChatGptLease !== null,
+      ...codexProviderLogContext(runtimeProvider),
+    });
 
     const stdoutLines = readline.createInterface({ input: child.stdout });
     const stderrLines = readline.createInterface({ input: child.stderr });
@@ -3961,13 +4317,22 @@ export class CodexAppServer implements CodexRuntime {
     let startupComplete = false;
     stderrLines.on("line", (line) => {
       if (line.trimStart().startsWith("listening on:")) return;
-      const redacted = String(
-        redactCodexDiagnosticPayload(line, this.#diagnosticSecrets),
+      const diagnosticClass = codexDiagnosticClass(line);
+      workerLogger.rateLimited(
+        `codex-subprocess:${processRuntimeId ?? "starting"}:${diagnosticClass}`,
+        diagnosticClass === "panic" || diagnosticClass === "error"
+          ? "warn"
+          : "debug",
+        "Codex app-server emitted a subprocess diagnostic",
+        {
+          event: "codex.runtime.diagnostic",
+          subsystem: "codex",
+          operation: "subprocess-stderr",
+          status: diagnosticClass,
+          runtimeId: processRuntimeId,
+          diagnosticClass,
+        },
       );
-      process.stderr.write(`[codex] ${redacted}\n`);
-      captureWorkerDiagnostic("debug", `[codex] ${redacted}`, {
-        subsystem: "codex",
-      });
       if (!startupComplete) {
         startupStderr.push(line);
         if (startupStderr.length > 20) startupStderr.shift();
@@ -4003,6 +4368,14 @@ export class CodexAppServer implements CodexRuntime {
       });
     });
     this.#remoteUrl = remoteUrl;
+    workerLogger.event("debug", "Codex app-server endpoint announced", {
+      event: "codex.runtime.endpoint",
+      subsystem: "codex",
+      operation: "discover-endpoint",
+      status: "completed",
+      runtimeId: processRuntimeId,
+      durationMs: Date.now() - startedAtMs,
+    });
     const socket = new WebSocket(remoteUrl);
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(
@@ -4024,16 +4397,37 @@ export class CodexAppServer implements CodexRuntime {
       });
     });
     this.#socket = socket;
+    workerLogger.event("debug", "Codex app-server transport connected", {
+      event: "codex.runtime.transport",
+      subsystem: "codex",
+      operation: "connect-websocket",
+      status: "connected",
+      runtimeId: processRuntimeId,
+      durationMs: Date.now() - startedAtMs,
+    });
     socket.on("message", (data: RawData) => this.handleSocketMessage(data));
     socket.on("error", (error) => {
       this.handleExit(error);
     });
     socket.on("close", () => {
       if (this.#socket !== socket) return;
+      workerLogger.event("warn", "Codex app-server transport closed", {
+        event: "codex.runtime.transport",
+        subsystem: "codex",
+        operation: "connect-websocket",
+        status: "disconnected",
+        runtimeId: processRuntimeId,
+        durationMs: Date.now() - processStartedAtMs,
+        counts: {
+          activeTurns: this.#activeTurns.size,
+          pendingRequests: this.#pending.size,
+        },
+      });
       this.handleExit(new Error("Codex app-server WebSocket closed."));
       this.#socket = null;
       this.#remoteUrl = null;
       this.#runtimeId = null;
+      this.#runtimeStartedAtMs = null;
       this.#externalChatGptAuth = null;
       this.#diagnosticSecrets.clear();
       this.#starting = null;
@@ -4052,6 +4446,29 @@ export class CodexAppServer implements CodexRuntime {
       this.#child = null;
     });
     child.once("exit", (code, signal) => {
+      workerLogger.event(
+        code === 0 || signal === "SIGINT" || signal === "SIGTERM"
+          ? "info"
+          : "error",
+        "Codex app-server process exited",
+        {
+          event: "codex.runtime.process",
+          subsystem: "codex",
+          operation: "spawn",
+          status:
+            code === 0 || signal === "SIGINT" || signal === "SIGTERM"
+              ? "stopped"
+              : "failed",
+          runtimeId: processRuntimeId,
+          exitCode: code,
+          signal,
+          durationMs: Date.now() - processStartedAtMs,
+          counts: {
+            activeTurns: this.#activeTurns.size,
+            pendingRequests: this.#pending.size,
+          },
+        },
+      );
       this.handleExit(
         new Error(
           `Codex app-server exited (${signal ?? `code ${String(code)}`}).`,
@@ -4061,6 +4478,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#socket = null;
       this.#remoteUrl = null;
       this.#runtimeId = null;
+      this.#runtimeStartedAtMs = null;
       this.#externalChatGptAuth = null;
       this.#diagnosticSecrets.clear();
       this.#starting = null;
@@ -4101,6 +4519,17 @@ export class CodexAppServer implements CodexRuntime {
         externalChatGptLease,
       );
     }
+    workerLogger.event("info", "Codex app-server ready", {
+      event: "codex.runtime.lifecycle",
+      subsystem: "codex",
+      operation: model ? "start" : "start-catalog",
+      status: "ready",
+      runtimeId: this.#runtimeId,
+      durationMs: Date.now() - startedAtMs,
+      catalogOnly: model === null,
+      codexVersion: this.compatibility.version?.raw ?? null,
+      ...codexProviderLogContext(runtimeProvider),
+    });
   }
 
   private async resolveExternalChatGptLease(
@@ -4151,11 +4580,31 @@ export class CodexAppServer implements CodexRuntime {
     const id = this.#nextId;
     this.#nextId += 1;
     return new Promise((resolve, reject) => {
+      const startedAtMs = Date.now();
       const timeout = setTimeout(() => {
         this.#pending.delete(id);
+        workerLogger.rateLimited(
+          `codex-rpc-timeout:${method}`,
+          "warn",
+          "Codex app-server request timed out",
+          {
+            event: "codex.rpc.timeout",
+            subsystem: "codex",
+            operation: method,
+            status: "timed-out",
+            runtimeId: this.#runtimeId,
+            durationMs: Date.now() - startedAtMs,
+          },
+        );
         reject(new Error(`Codex request ${method} timed out.`));
       }, CODEX_RPC_TIMEOUT_MS);
-      this.#pending.set(id, { reject, resolve, timeout });
+      this.#pending.set(id, {
+        method,
+        reject,
+        resolve,
+        startedAtMs,
+        timeout,
+      });
       this.send({ id, method, params });
     });
   }
@@ -4232,6 +4681,20 @@ export class CodexAppServer implements CodexRuntime {
       this.#pending.delete(id);
       clearTimeout(pending.timeout);
       if (message.error) {
+        workerLogger.rateLimited(
+          `codex-rpc-failed:${pending.method}:${message.error.code}`,
+          "warn",
+          "Codex app-server request failed",
+          {
+            event: "codex.rpc.failed",
+            subsystem: "codex",
+            operation: pending.method,
+            status: "failed",
+            runtimeId: this.#runtimeId,
+            durationMs: Date.now() - pending.startedAtMs,
+            reasonCode: `rpc-${message.error.code}`,
+          },
+        );
         pending.reject(
           new Error(
             String(
@@ -4243,6 +4706,20 @@ export class CodexAppServer implements CodexRuntime {
           ),
         );
       } else {
+        workerLogger.sampled(
+          `codex-rpc-completed:${pending.method}`,
+          100,
+          "trace",
+          "Codex app-server request completed",
+          {
+            event: "codex.rpc.completed",
+            subsystem: "codex",
+            operation: pending.method,
+            status: "completed",
+            runtimeId: this.#runtimeId,
+            durationMs: Date.now() - pending.startedAtMs,
+          },
+        );
         pending.resolve(message.result);
       }
       return;
@@ -4934,9 +5411,42 @@ export class CodexAppServer implements CodexRuntime {
               : {}),
           })) as TurnStartResponse;
           this.#activeTurns.set(continued.turn.id, active);
+          workerLogger.event("info", "Codex goal turn continued", {
+            event: "codex.turn.continuation",
+            subsystem: "codex",
+            operation: "goal-continuation",
+            status: "started",
+            chatId: active.chatId ?? undefined,
+            threadId: active.threadId,
+            turnId: continued.turn.id,
+            previousTurnId: turnId,
+            providerId: active.providerId,
+            providerKind: active.providerKind,
+          });
           return;
         }
       }
+      workerLogger.event("info", "Codex turn completed", {
+        event: "codex.turn.lifecycle",
+        subsystem: "codex",
+        operation:
+          active.executionKind === "workflow" ? "workflow-turn" : "chat-turn",
+        status: "completed",
+        chatId: active.chatId ?? undefined,
+        runId: active.workflowRunId ?? undefined,
+        nodeId: active.workflowNodeId ?? undefined,
+        threadId: active.threadId,
+        turnId,
+        providerId: active.providerId,
+        providerKind: active.providerKind,
+        model: active.model.name,
+        durationMs: active.durationMs ?? Date.now() - active.startedAtMs,
+        counts: {
+          changedFiles: active.diffChanges.length,
+          inputTokens: active.latestUsage?.inputTokens ?? 0,
+          outputTokens: active.latestUsage?.outputTokens ?? 0,
+        },
+      });
       active.resolve(
         active.executionKind === "workflow"
           ? workflowNodeExecutionResultSchema.parse({
@@ -4962,6 +5472,22 @@ export class CodexAppServer implements CodexRuntime {
       );
     } catch (error) {
       clearTurnInspectionTelemetry(active);
+      workerLogger.event("error", "Codex turn completion failed", {
+        event: "codex.turn.lifecycle",
+        subsystem: "codex",
+        operation:
+          active.executionKind === "workflow" ? "workflow-turn" : "chat-turn",
+        status: "failed",
+        chatId: active.chatId ?? undefined,
+        runId: active.workflowRunId ?? undefined,
+        nodeId: active.workflowNodeId ?? undefined,
+        threadId: active.threadId,
+        turnId,
+        providerId: active.providerId,
+        providerKind: active.providerKind,
+        durationMs: Date.now() - active.startedAtMs,
+        error: workerLogError(error),
+      });
       active.reject(error instanceof Error ? error : new Error(String(error)));
     }
   }
@@ -5010,6 +5536,23 @@ export class CodexAppServer implements CodexRuntime {
       );
     } finally {
       clearTurnInspectionTelemetry(active);
+      workerLogger.event("error", "Codex turn failed", {
+        event: "codex.turn.lifecycle",
+        subsystem: "codex",
+        operation:
+          active.executionKind === "workflow" ? "workflow-turn" : "chat-turn",
+        status: "failed",
+        chatId: active.chatId ?? undefined,
+        runId: active.workflowRunId ?? undefined,
+        nodeId: active.workflowNodeId ?? undefined,
+        threadId: active.threadId,
+        turnId,
+        providerId: active.providerId,
+        providerKind: active.providerKind,
+        durationMs: active.durationMs ?? Date.now() - active.startedAtMs,
+        counts: { changedFiles: active.diffChanges.length },
+        error,
+      });
       active.reject(error);
     }
   }

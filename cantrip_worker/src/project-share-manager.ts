@@ -9,6 +9,8 @@ import {
 } from "@cantrip/protocol";
 import { v2 as webdav } from "webdav-server";
 
+import { workerLogError, workerLogger } from "./logger.js";
+
 const LOOPBACK_HOST = "127.0.0.1" as const;
 const SHARE_REALM = "Cantrip Project Share";
 const DEFAULT_MAX_SHARES = 8;
@@ -41,6 +43,7 @@ interface ManagedProjectShare {
   listener: Server;
   root: string;
   server: webdav.WebDAVServer;
+  startedAtMs: number;
 }
 
 export interface ProjectShareOpenInput {
@@ -119,6 +122,7 @@ export class ProjectShareManager {
   async open(
     input: ProjectShareOpenInput,
   ): Promise<WorkerProjectShareOpenResult> {
+    const startedAtMs = Date.now();
     const publicBasePath = projectSharePublicBasePathSchema.parse(
       input.publicBasePath,
     );
@@ -142,6 +146,13 @@ export class ProjectShareManager {
           "Project share identity is already bound to another root or public endpoint.",
         );
       }
+      workerLogger.event("debug", "Project share reused", {
+        event: "project-share.reused",
+        subsystem: "project-share",
+        operation: "open",
+        status: "completed",
+        surfaceId: input.shareId,
+      });
       return existing.descriptor;
     }
 
@@ -152,6 +163,19 @@ export class ProjectShareManager {
     }
 
     if (this.#shares.size + this.#opening.size >= this.#maxShares) {
+      workerLogger.event("warn", "Project share limit reached", {
+        event: "project-share.rejected",
+        subsystem: "project-share",
+        operation: "open",
+        reasonCode: "session-limit",
+        status: "rejected",
+        surfaceId: input.shareId,
+        counts: {
+          active: this.#shares.size,
+          opening: this.#opening.size,
+          limit: this.#maxShares,
+        },
+      });
       throw new Error(
         `Worker project share limit of ${this.#maxShares} sessions reached.`,
       );
@@ -165,7 +189,29 @@ export class ProjectShareManager {
     });
     this.#opening.set(input.shareId, pending);
     try {
-      return await pending;
+      const descriptor = await pending;
+      workerLogger.event("info", "Project share opened", {
+        event: "project-share.opened",
+        subsystem: "project-share",
+        operation: "open",
+        status: "completed",
+        surfaceId: input.shareId,
+        durationMs: Date.now() - startedAtMs,
+        counts: { active: this.#shares.size },
+      });
+      return descriptor;
+    } catch (error) {
+      workerLogger.event("error", "Project share failed to open", {
+        event: "project-share.open-failed",
+        subsystem: "project-share",
+        operation: "open",
+        reasonCode: "open-failed",
+        status: "failed",
+        surfaceId: input.shareId,
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+      });
+      throw error;
     } finally {
       this.#opening.delete(input.shareId);
     }
@@ -184,6 +230,15 @@ export class ProjectShareManager {
     const stopped = share.server.stopAsync();
     share.listener.closeAllConnections?.();
     await stopped;
+    workerLogger.event("info", "Project share closed", {
+      event: "project-share.closed",
+      subsystem: "project-share",
+      operation: "close",
+      status: "completed",
+      surfaceId: shareId,
+      durationMs: Math.max(0, Date.now() - share.startedAtMs),
+      counts: { active: this.#shares.size },
+    });
     return true;
   }
 
@@ -255,6 +310,7 @@ export class ProjectShareManager {
       listener,
       root: input.root,
       server,
+      startedAtMs: Date.now(),
     });
     return descriptor;
   }

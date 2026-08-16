@@ -5,6 +5,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { WorkerConfig } from "./config.js";
+import { workerLogger } from "./logger.js";
 
 const CACHE_EXPIRY_BUFFER_MS = 30_000;
 
@@ -103,6 +104,20 @@ export class ProviderAccessTokenClient {
       cached &&
       this.#usable(cached, request.minimumValiditySeconds)
     ) {
+      workerLogger.sampled(
+        `provider-access-cache-hit:${providerId}:${providerAccountId}`,
+        20,
+        "debug",
+        "Provider access lease cache hit",
+        {
+          event: "provider.access-lease.cache-hit",
+          subsystem: "provider-auth",
+          operation: "lease",
+          status: "cached",
+          providerId,
+          accountId: providerAccountId,
+        },
+      );
       return cached;
     }
     const requestKey = request.forceRefresh
@@ -110,7 +125,23 @@ export class ProviderAccessTokenClient {
       : `${key}:lease`;
     const generation = this.#generationFor(key);
     const existing = this.#inflight.get(requestKey);
-    if (existing?.generation === generation) return existing.promise;
+    if (existing?.generation === generation) {
+      workerLogger.sampled(
+        `provider-access-inflight:${providerId}:${providerAccountId}`,
+        20,
+        "debug",
+        "Provider access lease request joined in flight",
+        {
+          event: "provider.access-lease.joined",
+          subsystem: "provider-auth",
+          operation: "lease",
+          status: "pending",
+          providerId,
+          accountId: providerAccountId,
+        },
+      );
+      return existing.promise;
+    }
     const pending = this.#request(providerId, providerAccountId, request)
       .then((lease) => {
         if (this.#generationFor(key) !== generation) {
@@ -144,6 +175,13 @@ export class ProviderAccessTokenClient {
       this.#globalGeneration += 1;
       this.#cache.clear();
       this.#inflight.clear();
+      workerLogger.event("debug", "Provider access lease cache cleared", {
+        event: "provider.access-lease.cache-cleared",
+        subsystem: "provider-auth",
+        operation: "clear-leases",
+        status: "completed",
+        counts: { providers: 0 },
+      });
       return;
     }
     if (providerAccountId) {
@@ -194,6 +232,7 @@ export class ProviderAccessTokenClient {
       minimumValiditySeconds: number;
     },
   ): Promise<ProviderAccessTokenLease> {
+    const startedAtMs = this.#now();
     const url = new URL(
       `/api/internal/workers/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(providerAccountId)}/access-lease`,
       this.config.serverUrl,
@@ -221,8 +260,44 @@ export class ProviderAccessTokenClient {
       } catch {
         // Error response bodies may contain provider details; never echo them.
       }
-      throw new ProviderAccessTokenRequestError(response.status, code);
+      const error = new ProviderAccessTokenRequestError(response.status, code);
+      workerLogger.rateLimited(
+        `provider-access-failed:${providerId}:${providerAccountId}:${response.status}:${code ?? "unknown"}`,
+        "warn",
+        "Provider access lease request failed",
+        {
+          event: "provider.access-lease.failed",
+          subsystem: "provider-auth",
+          operation: request.forceRefresh ? "refresh-lease" : "lease",
+          reasonCode: code ?? `http-${response.status}`,
+          status: "failed",
+          durationMs: Math.max(0, this.#now() - startedAtMs),
+          workerId: this.config.workerId,
+          providerId,
+          accountId: providerAccountId,
+          httpStatus: response.status,
+        },
+      );
+      throw error;
     }
-    return providerAccessTokenLeaseSchema.parse(await response.json());
+    const lease = providerAccessTokenLeaseSchema.parse(await response.json());
+    workerLogger.sampled(
+      `provider-access-completed:${providerId}:${providerAccountId}`,
+      20,
+      "debug",
+      "Provider access lease issued to worker",
+      {
+        event: "provider.access-lease.completed",
+        subsystem: "provider-auth",
+        operation: request.forceRefresh ? "refresh-lease" : "lease",
+        status: "completed",
+        durationMs: Math.max(0, this.#now() - startedAtMs),
+        workerId: this.config.workerId,
+        providerId,
+        accountId: providerAccountId,
+        credentialRevision: lease.credentialRevision,
+      },
+    );
+    return lease;
   }
 }

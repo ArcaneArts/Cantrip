@@ -1,5 +1,6 @@
 import {
   createServiceLogger,
+  normalizeLogError,
   RotatingJsonlLog,
   ServiceLogBuffer,
   type ServiceLogContext,
@@ -22,6 +23,10 @@ function storeWorkerLogRecord(record: ServiceLogRecordInput) {
 export const workerLogger = createServiceLogger("worker", {
   onRecord: storeWorkerLogRecord,
 });
+
+export function workerLogError(error: unknown) {
+  return normalizeLogError(error);
+}
 
 /**
  * Mirrors an already-emitted worker diagnostic into the service log stream.
