@@ -214,10 +214,8 @@ jobs:
         include:
           - runner: blacksmith-6vcpu-macos-15
             target: darwin-arm64
-            installer: artifacts/bundles/darwin-arm64/*.dmg
           - runner: blacksmith-4vcpu-windows-2025
             target: win32-x64
-            installer: artifacts/bundles/win32-x64/*.exe
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -259,7 +257,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build desktop workspace dependencies
         run: pnpm --filter @cantrip/protocol build
-      - name: Import macOS signing certificate
+      - name: Require updater signing material
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${TAURI_SIGNING_PRIVATE_KEY:?Configure the TAURI_SIGNING_PRIVATE_KEY Actions secret.}"
+          : "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:?Configure the TAURI_SIGNING_PRIVATE_KEY_PASSWORD Actions secret.}"
+      - name: Import macOS Developer ID certificate
         if: matrix.target == 'darwin-arm64'
         shell: bash
         env:
@@ -289,31 +296,76 @@ jobs:
             -k "$KEYCHAIN_PASSWORD" \
             "$keychain"
           identities="$(security find-identity -v -p codesigning "$keychain" || true)"
-          identity="$(printf '%s\n' "$identities" | awk -F'"' 'NF >= 3 && $2 != "" {print $2; exit}')"
+          identity="$(printf '%s\n' "$identities" | awk -F'"' '/Developer ID Application/{print $2; exit}')"
           if [ -z "$identity" ]; then
             printf '%s\n' "$identities" >&2
-            echo "The imported certificate is not a currently valid macOS code-signing identity; using a complete ad-hoc signature instead." >&2
-            identity="-"
-            echo "CANTRIP_ALLOW_ADHOC_MACOS_SIGNING=1" >> "$GITHUB_ENV"
+            echo "APPLE_CERTIFICATE must contain a valid Developer ID Application identity and private key." >&2
+            exit 1
           fi
           rm -f "$certificate"
           echo "APPLE_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
           echo "CANTRIP_SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-      - name: Package signed macOS DMG
+      - name: Prepare Apple notarization key
         if: matrix.target == 'darwin-arm64'
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_KEY }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
+          : "${APPLE_API_PRIVATE_KEY:?Configure the APPSTORE_CONNECT_KEY Actions secret.}"
+          private_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          if [[ "$APPLE_API_PRIVATE_KEY" == *"BEGIN PRIVATE KEY"* ]]; then
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$private_key"
+          else
+            printf '%s' "$APPLE_API_PRIVATE_KEY" | openssl base64 -d -A -out "$private_key"
+          fi
+          openssl pkey -in "$private_key" -noout
+          chmod 600 "$private_key"
+          echo "APPLE_API_KEY_PATH=$private_key" >> "$GITHUB_ENV"
+      - name: Package signed and notarized macOS updater and DMG
+        if: matrix.target == 'darwin-arm64'
+        shell: bash
         env:
           CANTRIP_REQUIRE_MACOS_SIGNING: "1"
-        run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
-      - name: Package Windows NSIS installer
+          CANTRIP_REQUIRE_MACOS_NOTARIZATION: "1"
+          APPLE_API_ISSUER: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_API_ISSUER:?Configure the APPSTORE_CONNECT_ISSUER_ID Actions secret.}"
+          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
+          pnpm package:app --target ${{ matrix.target }} --from-artifacts
+      - name: Package signed Windows NSIS updater and installer
         if: matrix.target == 'win32-x64'
         env:
           CANTRIP_WINDOWS_BUNDLE: nsis
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm package:app --target ${{ matrix.target }} --from-artifacts
       - run: node scripts/archive-distribution.mjs client --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@v4
+      - name: Upload macOS desktop artifacts
+        if: matrix.target == 'darwin-arm64'
+        uses: actions/upload-artifact@v4
         with:
           name: cantrip-desktop-${{ matrix.target }}
-          path: ${{ matrix.installer }}
+          path: |
+            artifacts/bundles/darwin-arm64/*.dmg
+            artifacts/bundles/darwin-arm64/*.app.tar.gz
+            artifacts/bundles/darwin-arm64/*.app.tar.gz.sig
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload Windows desktop artifacts
+        if: matrix.target == 'win32-x64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-desktop-${{ matrix.target }}
+          path: |
+            artifacts/bundles/win32-x64/*-setup.exe
+            artifacts/bundles/win32-x64/*-setup.exe.sig
           if-no-files-found: error
           retention-days: 14
       - name: Remove temporary signing keychain
@@ -322,6 +374,9 @@ jobs:
         run: |
           if [ -n "${CANTRIP_SIGNING_KEYCHAIN:-}" ]; then
             security delete-keychain "$CANTRIP_SIGNING_KEYCHAIN" || true
+          fi
+          if [ -n "${APPLE_API_KEY_PATH:-}" ]; then
+            rm -f "$APPLE_API_KEY_PATH"
           fi
 
   release:
@@ -352,21 +407,44 @@ jobs:
           set -euo pipefail
           version="$(node scripts/version.mjs)"
           tag="v${version}"
-          mapfile -d '' files < <(find release-assets -type f -print0 | sort -z)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No release assets were downloaded." >&2
-            exit 1
-          fi
+          release_notes="$RUNNER_TEMP/cantrip-release-notes.md"
+          published_at="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
           if gh release view "$tag" >/dev/null 2>&1; then
             target="$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)"
             if [ "$target" != "$GITHUB_SHA" ]; then
               echo "Release $tag already targets $target instead of $GITHUB_SHA." >&2
               exit 1
             fi
+            gh release view "$tag" --json body --jq '.body // ""' > "$release_notes"
+          else
+            gh api --method POST "repos/$GH_REPO/releases/generate-notes" \
+              -f "tag_name=$tag" \
+              -f "target_commitish=$GITHUB_SHA" \
+              --jq .body > "$release_notes"
+          fi
+          node scripts/generate-updater-manifest.mjs \
+            --assets release-assets \
+            --base-url "https://github.com/$GH_REPO/releases/download/$tag" \
+            --notes "$release_notes" \
+            --output release-assets/latest.json \
+            --published-at "$published_at" \
+            --version "$version"
+          mapfile -d '' files < <(find release-assets -type f ! -name latest.json -print0 | sort -z)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No release assets were downloaded." >&2
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --notes-file "$release_notes"
             gh release upload "$tag" "${files[@]}" --clobber
           else
             gh release create "$tag" "${files[@]}" \
-              --generate-notes \
+              --draft \
+              --notes-file "$release_notes" \
               --target "$GITHUB_SHA" \
               --title "Cantrip ${version}"
+          fi
+          gh release upload "$tag" release-assets/latest.json --clobber
+          if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "$tag" --draft=false
           fi

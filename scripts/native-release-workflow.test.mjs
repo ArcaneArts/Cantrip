@@ -34,7 +34,12 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
   );
   assert.match(workflow, /CANTRIP_WINDOWS_BUNDLE: nsis/u);
   assert.match(workflow, /artifacts\/bundles\/darwin-arm64\/\*\.dmg/u);
-  assert.match(workflow, /artifacts\/bundles\/win32-x64\/\*\.exe/u);
+  assert.match(
+    workflow,
+    /artifacts\/bundles\/darwin-arm64\/\*\.app\.tar\.gz\.sig/u,
+  );
+  assert.match(workflow, /artifacts\/bundles\/win32-x64\/\*-setup\.exe/u);
+  assert.match(workflow, /artifacts\/bundles\/win32-x64\/\*-setup\.exe\.sig/u);
   assert.match(workflow, /cantrip-server-\$\{\{ matrix\.target \}\}\.tar\.gz/u);
   assert.match(workflow, /cantrip-worker-\$\{\{ matrix\.target \}\}\.tar\.gz/u);
   assert.match(workflow, /version="\$\(node scripts\/version\.mjs\)"/u);
@@ -71,20 +76,48 @@ test("installs the native libraries required by Windows Code modules", async () 
   assert.match(workflow, /Visual Studio Spectre libraries found at/u);
 });
 
-test("signs the macOS DMG without invoking Apple notarization", async () => {
+test("fails closed while signing and notarizing the macOS updater and DMG", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
     "utf8",
   );
 
-  assert.match(workflow, /- name: Import macOS signing certificate/u);
+  assert.match(workflow, /- name: Import macOS Developer ID certificate/u);
   assert.match(workflow, /APPLE_CERTIFICATE/u);
-  assert.match(workflow, /identity="-"/u);
-  assert.match(workflow, /CANTRIP_ALLOW_ADHOC_MACOS_SIGNING=1/u);
+  assert.match(workflow, /Developer ID Application/u);
   assert.match(workflow, /CANTRIP_REQUIRE_MACOS_SIGNING: "1"/u);
-  assert.doesNotMatch(workflow, /APPSTORE_CONNECT_/u);
-  assert.doesNotMatch(workflow, /CANTRIP_REQUIRE_MACOS_NOTARIZATION/u);
-  assert.doesNotMatch(workflow, /Developer ID Application/u);
+  assert.match(workflow, /APPSTORE_CONNECT_ISSUER_ID/u);
+  assert.match(workflow, /APPSTORE_CONNECT_KEY_ID/u);
+  assert.match(workflow, /APPSTORE_CONNECT_KEY/u);
+  assert.match(workflow, /CANTRIP_REQUIRE_MACOS_NOTARIZATION: "1"/u);
+  assert.doesNotMatch(workflow, /CANTRIP_ALLOW_ADHOC_MACOS_SIGNING/u);
+});
+
+test("requires updater secrets and publishes the static manifest last", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  assert.match(
+    workflow,
+    /TAURI_SIGNING_PRIVATE_KEY: \$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /TAURI_SIGNING_PRIVATE_KEY_PASSWORD: \$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY_PASSWORD \}\}/u,
+  );
+  assert.match(workflow, /generate-updater-manifest\.mjs/u);
+  assert.match(workflow, /releases\/generate-notes/u);
+  assert.match(workflow, /--notes-file "\$release_notes"/u);
+  const assetsUpload = workflow.lastIndexOf(
+    'gh release upload "$tag" "${files[@]}" --clobber',
+  );
+  const manifestUpload = workflow.lastIndexOf(
+    'gh release upload "$tag" release-assets/latest.json --clobber',
+  );
+  assert.ok(assetsUpload >= 0);
+  assert.ok(manifestUpload > assetsUpload);
 });
 
 test("builds generated desktop dependencies before packaging installers", async () => {
@@ -96,9 +129,11 @@ test("builds generated desktop dependencies before packaging installers", async 
   const protocolBuild = workflow.indexOf(
     "- name: Build desktop workspace dependencies",
   );
-  const macosPackage = workflow.indexOf("- name: Package signed macOS DMG");
+  const macosPackage = workflow.indexOf(
+    "- name: Package signed and notarized macOS updater and DMG",
+  );
   const windowsPackage = workflow.indexOf(
-    "- name: Package Windows NSIS installer",
+    "- name: Package signed Windows NSIS updater and installer",
   );
   assert.ok(protocolBuild >= 0);
   assert.match(

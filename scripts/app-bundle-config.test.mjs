@@ -27,6 +27,24 @@ test("packaged apps declare the native icon assets", async () => {
   await Promise.all(icons.map((icon) => access(path.join(tauriDir, icon))));
 });
 
+test("packaged apps use signed static updater artifacts", async () => {
+  const config = JSON.parse(
+    await readFile(path.join(tauriDir, "tauri.conf.json"), "utf8"),
+  );
+  const updater = config.plugins?.updater;
+
+  assert.equal(config.bundle?.createUpdaterArtifacts, true);
+  assert.deepEqual(updater?.endpoints, [
+    "https://github.com/ArcaneArts/Cantrip/releases/latest/download/latest.json",
+  ]);
+  assert.match(updater?.pubkey ?? "", /^[A-Za-z0-9+/]+=*$/u);
+  assert.match(
+    Buffer.from(updater.pubkey, "base64").toString("utf8"),
+    /minisign public key/u,
+  );
+  assert.equal(updater?.windows?.installMode, "passive");
+});
+
 test("macOS DMGs use the branded installer background", async () => {
   const config = JSON.parse(
     await readFile(path.join(tauriDir, "tauri.macos.conf.json"), "utf8"),

@@ -63,10 +63,11 @@ ordinary `main` pushes, and manual dispatches do not run native packaging. The
 workflow uses Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64
 runners. Server and Worker jobs run in parallel for both platforms. Desktop
 jobs then download those exact native service archives, embed them alongside
-the runner's Node.js runtime, and build a signed macOS DMG or Windows NSIS
-installer. A final job creates a GitHub release tagged
-`v<major>.<minor>.<commit-count>` and uploads the DMG, NSIS executable, and both
-standalone Server and Worker archives for both platforms.
+the runner's Node.js runtime, and build a signed and notarized macOS DMG or a
+Windows NSIS installer. A final job creates a GitHub release tagged
+`v<major>.<minor>.<commit-count>` and uploads the DMG, NSIS executable, signed
+Tauri updater artifacts, and both standalone Server and Worker archives for
+both platforms.
 
 Release caches are content-addressed and platform-specific. They retain the
 verified final Codex runtime bundle and exact-fingerprint Cantrip Code
@@ -85,26 +86,25 @@ entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
 
 ### macOS distribution
 
-The release workflow creates and uploads a signed, unnotarized Apple-silicon
-DMG. It signs the embedded native runtimes, app bundle, and disk image with the
-certificate supplied through these Actions secrets:
+The macOS client job fails closed unless the repository has these Actions
+secrets:
 
-- `APPLE_CERTIFICATE`: a base64-encoded `.p12` containing a valid macOS
-  code-signing identity and its private key;
-- `APPLE_CERTIFICATE_PASSWORD`: the password used to export that `.p12`; and
-- `KEYCHAIN_PASSWORD`: an arbitrary password for the job-scoped temporary
-  keychain.
+- `APPLE_CERTIFICATE`: a base64-encoded `.p12` containing a **Developer ID
+  Application** certificate and its private key;
+- `APPLE_CERTIFICATE_PASSWORD`: the password used to export that `.p12`;
+- `KEYCHAIN_PASSWORD`: an arbitrary strong password used only for the
+  job-scoped temporary keychain;
+- `APPSTORE_CONNECT_ISSUER_ID`: the App Store Connect API issuer UUID;
+- `APPSTORE_CONNECT_KEY_ID`: the App Store Connect API key ID; and
+- `APPSTORE_CONNECT_KEY`: the raw or base64-encoded `.p8` private key.
 
-The hosted workflow does not use App Store Connect credentials and does not
-submit the app or DMG for notarization. A Developer ID certificate is therefore
-not required by the workflow, although macOS may still warn users that the
-unnotarized app has not been checked by Apple. If macOS imports the `.p12` but
-reports no currently valid identity, packaging falls back to a complete ad-hoc
-app signature rather than failing the release. The fallback still seals and
-verifies every native runtime and the app bundle. It deliberately leaves the
-outer DMG unsigned because macOS blocks ad-hoc-signed disk images before they
-can mount. Certificate-backed releases still sign and verify the DMG. The
-fallback does not establish an Apple-verified developer identity.
+The workflow imports the identity into an ephemeral keychain, signs every
+embedded native runtime and the app bundle, submits the app to Apple, staples
+its ticket, creates and signs the DMG, then submits and staples the final DMG.
+Packaging rejects an ad-hoc or non-Developer-ID identity, unsigned embedded
+native code, a missing notarization ticket, or a failed Gatekeeper assessment.
+The temporary certificate keychain and notarization key are removed even when
+the job fails.
 
 For a signed and notarized local package, install the Developer ID certificate
 in the login keychain, find its exact identity, and provide the downloaded API
@@ -123,6 +123,56 @@ APPLE_SIGNING_IDENTITY='Developer ID Application: Example (TEAMID)' \
 
 Signing does not enable App Sandbox, and the normal installation flow remains
 dragging Cantrip from the read-only DMG into `/Applications`.
+
+### Desktop updater signing and recovery
+
+Tauri update signatures are independent from Apple Developer ID and Windows
+installer signatures. The public key embedded in `tauri.conf.json` verifies
+every downloaded application bundle. Release jobs read the encrypted private
+key from `TAURI_SIGNING_PRIVATE_KEY` and its password from
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; packaging fails before building the
+desktop bundle when either secret is absent.
+
+The current private-key recovery copy is stored outside the repository at
+`~/Library/Application Support/Cantrip/release-signing/cantrip-updater.key`
+with mode `0600`. Its password is stored in macOS Keychain under service
+`art.cantrip.updater-signing` and account
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Back up the encrypted key and its
+password to separate organization-controlled secure stores. Never commit,
+attach, log, or paste the private key or password into a pull request.
+
+To restore the repository secrets from the recovery copy without writing the
+password to a shell-history argument:
+
+```shell
+gh secret set TAURI_SIGNING_PRIVATE_KEY \
+  < "$HOME/Library/Application Support/Cantrip/release-signing/cantrip-updater.key"
+security find-generic-password \
+  -a TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+  -s art.cantrip.updater-signing -w \
+  | gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+```
+
+Losing this private key prevents every already-installed updater-enabled build
+from accepting future updates. Replacing the embedded public key therefore
+requires distributing another manual installer; it is not a routine rotation
+mechanism.
+
+With updater artifacts enabled, Tauri emits `Cantrip.app.tar.gz` plus its
+signature on macOS and reuses the NSIS `*-setup.exe` plus its signature on
+Windows. The release job validates that exactly one complete pair exists for
+each platform, generates the GitHub release Markdown once, and embeds those
+same notes in `latest.json`. It uploads all referenced artifacts before
+uploading `latest.json`, and a new release remains a draft until that final
+manifest is present. The stable endpoint is:
+
+```text
+https://github.com/ArcaneArts/Cantrip/releases/latest/download/latest.json
+```
+
+Builds installed before updater support do not contain the public key or native
+updater code. Those users must perform one final manual DMG or NSIS installation
+of an updater-enabled release before the in-app update flow can be used.
 
 From a clean, synchronized `main` checkout, start that workflow with:
 

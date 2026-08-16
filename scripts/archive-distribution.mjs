@@ -24,6 +24,7 @@ const installerExtensions = new Set([
   ".sig",
   ".zip",
 ]);
+const updaterSuffixes = [".app.tar.gz"];
 
 async function requirePath(absolute, description) {
   try {
@@ -55,7 +56,11 @@ async function copyInstallers(source, destination) {
       continue;
     }
     if (!entry.isFile()) continue;
-    if (!installerExtensions.has(path.extname(entry.name).toLowerCase())) {
+    const normalizedName = entry.name.toLowerCase();
+    if (
+      !installerExtensions.has(path.extname(normalizedName)) &&
+      !updaterSuffixes.some((suffix) => normalizedName.endsWith(suffix))
+    ) {
       continue;
     }
     await cp(absolute, path.join(destination, entry.name));
