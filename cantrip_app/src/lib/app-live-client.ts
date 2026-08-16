@@ -11,6 +11,8 @@ import type {
   AppLiveServerMessage,
 } from "@cantrip/protocol";
 
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
+
 const OPEN_SOCKET_STATE = 1;
 const RESUME_STORAGE_VERSION = 1;
 const MIN_RECONNECT_DELAY_MS = 500;
@@ -152,6 +154,7 @@ export class AppLiveClient {
   readonly #webSocketFactory: (url: string) => AppLiveClientSocket;
   #heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   #connectTimer: ReturnType<typeof setTimeout> | null = null;
+  #connectStartedAt = 0;
   #lastCursor: number | null = null;
   #lastError: string | null = null;
   #reconnectAttempt = 0;
@@ -186,6 +189,12 @@ export class AppLiveClient {
   start(): void {
     if (this.#running) return;
     this.#running = true;
+    clientLogger.info("Application live channel started", {
+      counts: { desiredScopes: this.#scopeReferences.size },
+      event: "live.channel.started",
+      operation: "connect",
+      subsystem: "live-channel",
+    });
     this.#connect();
   }
 
@@ -204,6 +213,12 @@ export class AppLiveClient {
     this.#snapshotBarrierCount = 0;
     this.#lastCursor = this.#safeCursor;
     this.#setStatus("stopped");
+    clientLogger.info("Application live channel stopped", {
+      event: "live.channel.stopped",
+      operation: "disconnect",
+      status: "stopped",
+      subsystem: "live-channel",
+    });
   }
 
   reconnectNow(): void {
@@ -271,6 +286,14 @@ export class AppLiveClient {
     if (!this.#running || this.#socket) return;
     this.#setStatus("connecting");
     this.#lastError = null;
+    this.#connectStartedAt = performance.now();
+    clientLogger.debug("Connecting application live channel", {
+      attempt: this.#reconnectAttempt + 1,
+      counts: { desiredScopes: this.#scopeReferences.size },
+      event: "live.channel.connecting",
+      operation: "connect",
+      subsystem: "live-channel",
+    });
     let socket: AppLiveClientSocket;
     try {
       socket = this.#webSocketFactory(this.#options.url);
@@ -278,11 +301,43 @@ export class AppLiveClient {
       this.#lastError =
         error instanceof Error ? error.message : "Could not open live socket.";
       this.#scheduleReconnect();
+      clientLogger.rateLimited(
+        "live-channel-open-failed",
+        "warn",
+        "Application live channel could not be opened",
+        {
+          attempt: this.#reconnectAttempt + 1,
+          durationMs: Math.round(performance.now() - this.#connectStartedAt),
+          error:
+            error instanceof Error
+              ? error
+              : new Error("Socket creation failed"),
+          event: "live.channel.connect.failed",
+          operation: "connect",
+          reasonCode: "socket-create-failed",
+          status: "failed",
+          subsystem: "live-channel",
+        },
+      );
       return;
     }
     this.#socket = socket;
     this.#connectTimer = setTimeout(() => {
       if (this.#socket === socket) {
+        clientLogger.rateLimited(
+          "live-channel-timeout",
+          "warn",
+          "Application live channel connection timed out",
+          {
+            attempt: this.#reconnectAttempt + 1,
+            durationMs: CONNECT_TIMEOUT_MS,
+            event: "live.channel.connect.failed",
+            operation: "connect",
+            reasonCode: "timeout",
+            status: "failed",
+            subsystem: "live-channel",
+          },
+        );
         socket.close(1013, "Application live connection timed out");
       }
     }, CONNECT_TIMEOUT_MS);
@@ -295,6 +350,13 @@ export class AppLiveClient {
   #handleSocketOpen(socket: AppLiveClientSocket): void {
     if (this.#socket !== socket || !this.#running) return;
     this.#setStatus("initializing");
+    clientLogger.debug("Application live socket opened", {
+      attempt: this.#reconnectAttempt + 1,
+      durationMs: Math.round(performance.now() - this.#connectStartedAt),
+      event: "live.channel.socket-opened",
+      operation: "initialize",
+      subsystem: "live-channel",
+    });
     this.#send({
       type: "initialize",
       protocolVersion: 1,
@@ -318,6 +380,18 @@ export class AppLiveClient {
     if (this.#socket !== socket || !this.#running) return;
     this.#lastError = "The application live connection encountered an error.";
     this.#emit();
+    clientLogger.rateLimited(
+      "live-channel-socket-error",
+      "warn",
+      "Application live socket encountered an error",
+      {
+        attempt: this.#reconnectAttempt + 1,
+        event: "live.channel.socket-error",
+        operation: "connect",
+        reasonCode: "socket-error",
+        subsystem: "live-channel",
+      },
+    );
   }
 
   #handleSocketClose(
@@ -335,11 +409,31 @@ export class AppLiveClient {
     this.#lastCursor = this.#safeCursor;
     this.#resyncGeneration += 1;
     this.#resyncRunning = false;
+    clientLogger.debug("Application live socket disconnected", {
+      closeCode: event.code,
+      event: "live.channel.disconnected",
+      operation: "disconnect",
+      reasonCode:
+        event.code === 1000
+          ? "normal"
+          : event.code === 1008
+            ? "policy"
+            : "transport",
+      subsystem: "live-channel",
+    });
     if (!this.#running) return;
     if (event.code === 1008 && /auth|session|sign[ -]?in/i.test(event.reason)) {
       this.#options.onAuthenticationRequired?.(
         event.reason || "Your Cantrip session has expired.",
       );
+      clientLogger.warn("Application live authentication expired", {
+        closeCode: event.code,
+        event: "live.channel.authentication-required",
+        operation: "authenticate",
+        reasonCode: "session-expired",
+        status: "stopped",
+        subsystem: "live-channel",
+      });
       this.stop();
       return;
     }
@@ -389,6 +483,15 @@ export class AppLiveClient {
         this.#reconnectAttempt = 0;
         this.#setStatus("live");
         this.#syncScopes();
+        clientLogger.info("Application live channel caught up", {
+          attempt: this.#reconnectAttempt + 1,
+          counts: { activeScopes: this.#activeScopes.size },
+          durationMs: Math.round(performance.now() - this.#connectStartedAt),
+          event: "live.channel.ready",
+          operation: "replay",
+          status: "live",
+          subsystem: "live-channel",
+        });
         return;
       case "pong":
         if (this.#resumeMode === null) this.#advanceCursor(message.cursor);
@@ -413,6 +516,19 @@ export class AppLiveClient {
           retryable: message.retryable,
         });
         this.#emit();
+        clientLogger.rateLimited(
+          `live-protocol:${message.code}`,
+          message.retryable ? "warn" : "error",
+          "Application live protocol reported an error",
+          {
+            event: "live.channel.protocol-error",
+            operation: failedRequest?.kind ?? "protocol",
+            reasonCode: message.code,
+            retryable: message.retryable,
+            status: "failed",
+            subsystem: "live-channel",
+          },
+        );
         if (message.retryable) {
           this.#socket?.close(1012, "Retrying after live protocol error");
         } else {
@@ -433,6 +549,15 @@ export class AppLiveClient {
     this.#blockedScopes.clear();
     this.#pendingRequests.clear();
     this.#startHeartbeat(message.heartbeatIntervalMs);
+    clientLogger.info("Application live channel initialized", {
+      attempt: this.#reconnectAttempt + 1,
+      counts: { desiredScopes: this.#scopeReferences.size },
+      durationMs: Math.round(performance.now() - this.#connectStartedAt),
+      event: "live.channel.initialized",
+      operation: "initialize",
+      resumeMode: message.resume,
+      subsystem: "live-channel",
+    });
     if (message.resume === "replaying") this.#setStatus("replaying");
     else if (message.resume === "resync-required") this.#setStatus("resyncing");
     this.#syncScopes();
@@ -492,6 +617,14 @@ export class AppLiveClient {
     this.#snapshotBarrierCount += 1;
     this.#advanceCursor(cursor);
     this.#setStatus("resyncing");
+    const startedAt = performance.now();
+    clientLogger.debug("Refreshing application live scopes", {
+      counts: { scopes: scopes.length },
+      event: "live.channel.resync.started",
+      operation: "scope-refresh",
+      reasonCode: "scope-changed",
+      subsystem: "live-channel",
+    });
     void Promise.resolve(this.#options.onResync(scopes, "scope-changed")).then(
       () => {
         if (
@@ -510,6 +643,14 @@ export class AppLiveClient {
         this.#reconnectAttempt = 0;
         this.#setStatus("live");
         this.#syncScopes();
+        clientLogger.info("Application live scopes refreshed", {
+          counts: { scopes: scopes.length },
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "live.channel.resync.completed",
+          operation: "scope-refresh",
+          status: "completed",
+          subsystem: "live-channel",
+        });
       },
       (error: unknown) => {
         if (this.#socket !== socket || !this.#running) return;
@@ -520,6 +661,16 @@ export class AppLiveClient {
             ? error.message
             : "Could not refresh live query state.";
         socket?.close(1012, "Live snapshot refresh failed");
+        clientLogger.warn("Application live scope refresh failed", {
+          counts: { scopes: scopes.length },
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "live.channel.resync.failed",
+          operation: "scope-refresh",
+          reasonCode: "snapshot-refresh-failed",
+          status: "failed",
+          subsystem: "live-channel",
+        });
       },
     );
   }
@@ -531,6 +682,14 @@ export class AppLiveClient {
     this.#resyncRunning = true;
     this.#resumeMode = "resync-required";
     this.#setStatus("resyncing");
+    const startedAt = performance.now();
+    clientLogger.info("Application live resynchronization started", {
+      counts: { desiredScopes: this.#scopeReferences.size },
+      event: "live.channel.resync.started",
+      operation: "resync",
+      reasonCode: message.reason,
+      subsystem: "live-channel",
+    });
     for (const [requestId, pending] of this.#pendingRequests) {
       if (pending.kind === "resync") this.#pendingRequests.delete(requestId);
     }
@@ -551,6 +710,14 @@ export class AppLiveClient {
           this.#advanceCursor(message.cursor);
           this.#resumeMode = null;
           this.#setStatus("live");
+          clientLogger.info("Application live resynchronization completed", {
+            counts: { scopes: 0 },
+            durationMs: Math.round(performance.now() - startedAt),
+            event: "live.channel.resync.completed",
+            operation: "resync",
+            status: "completed",
+            subsystem: "live-channel",
+          });
           return;
         }
         const requestId = this.#nextRequestId();
@@ -561,6 +728,16 @@ export class AppLiveClient {
           cursor: message.cursor,
           scopes,
         });
+        clientLogger.debug(
+          "Application live resynchronization snapshot completed",
+          {
+            counts: { scopes: scopes.length },
+            durationMs: Math.round(performance.now() - startedAt),
+            event: "live.channel.resync.snapshot-ready",
+            operation: "resync",
+            subsystem: "live-channel",
+          },
+        );
       },
       (error: unknown) => {
         if (this.#socket !== socket || !this.#running) return;
@@ -570,6 +747,15 @@ export class AppLiveClient {
             ? error.message
             : "Could not recover application live state.";
         socket?.close(1012, "Live resynchronization failed");
+        clientLogger.warn("Application live resynchronization failed", {
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "live.channel.resync.failed",
+          operation: "resync",
+          reasonCode: "snapshot-refresh-failed",
+          status: "failed",
+          subsystem: "live-channel",
+        });
       },
     );
   }
@@ -684,6 +870,19 @@ export class AppLiveClient {
     );
     const random = this.#options.random?.() ?? Math.random();
     const delay = Math.round(baseDelay * (0.8 + random * 0.4));
+    clientLogger.rateLimited(
+      "live-channel-reconnect",
+      "info",
+      "Application live reconnect scheduled",
+      {
+        attempt: this.#reconnectAttempt,
+        delayMs: delay,
+        event: "live.channel.reconnect-scheduled",
+        operation: "reconnect",
+        subsystem: "live-channel",
+      },
+      { summaryEvery: 10, windowMs: 30_000 },
+    );
     this.#reconnectTimer = setTimeout(() => {
       this.#reconnectTimer = null;
       this.#connect();
@@ -705,6 +904,13 @@ export class AppLiveClient {
   #protocolFailure(message: string): void {
     this.#lastError = message;
     this.#emit();
+    clientLogger.error("Application live frame failed validation", {
+      event: "live.channel.protocol-error",
+      operation: "decode",
+      reasonCode: "invalid-frame",
+      status: "failed",
+      subsystem: "live-channel",
+    });
     this.#socket?.close(1002, "Invalid application live protocol");
   }
 

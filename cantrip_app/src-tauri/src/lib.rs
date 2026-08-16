@@ -8,9 +8,10 @@ use std::{
         Mutex,
     },
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use serde_json::json;
 #[cfg(target_os = "macos")]
 use tauri::menu::MenuItemKind;
 use tauri::{
@@ -36,8 +37,14 @@ use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
 
 struct ManagedRuntime {
-    children: Mutex<Vec<Child>>,
+    children: Mutex<Vec<ManagedChild>>,
     server_url: String,
+}
+
+struct ManagedChild {
+    child: Child,
+    exit_reported: bool,
+    service: &'static str,
 }
 
 #[cfg(desktop)]
@@ -67,7 +74,17 @@ pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
         let runtime = app.state::<ManagedRuntime>();
         if let Ok(mut children) = runtime.children.lock() {
             for child in children.iter_mut().rev() {
-                terminate_child(child);
+                app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                    "info",
+                    "Stopping bundled desktop service",
+                    Some(json!({
+                        "event": "desktop.child.stop.started",
+                        "operation": "stop-child",
+                        "service": child.service,
+                        "subsystem": "desktop-runtime"
+                    })),
+                );
+                terminate_child(&mut child.child);
             }
             children.clear();
         };
@@ -150,13 +167,26 @@ fn set_macos_pro_mode(window: tauri::WebviewWindow, enabled: bool) -> Result<boo
             .run_on_main_thread(move || {
                 let _ = window_vibrancy::clear_vibrancy(&effect_window);
                 if enabled {
-                    if let Err(error) = window_vibrancy::apply_vibrancy(
+                    if let Err(_error) = window_vibrancy::apply_vibrancy(
                         &effect_window,
                         window_vibrancy::NSVisualEffectMaterial::Sidebar,
                         Some(window_vibrancy::NSVisualEffectState::FollowsWindowActiveState),
                         None,
                     ) {
-                        eprintln!("Could not apply macOS Pro Mode: {error}");
+                        effect_window
+                            .app_handle()
+                            .state::<local_logs::LocalServiceLogs>()
+                            .runtime_event(
+                                "warn",
+                                "Could not apply macOS Pro Mode",
+                                Some(json!({
+                                    "event": "desktop.pro-mode.failed",
+                                    "operation": "apply-vibrancy",
+                                    "reasonCode": "native-effect-error",
+                                    "subsystem": "desktop-window",
+                                    "reasonCode": "native-effect-error"
+                                })),
+                            );
                     }
                 }
             })
@@ -299,9 +329,21 @@ fn set_desktop_autostart(app: tauri::AppHandle, enabled: bool) -> Result<bool, S
                 .disable()
                 .map_err(|error| format!("Could not disable launch-at-login: {error}"))?;
         }
-        manager
+        let result = manager
             .is_enabled()
-            .map_err(|error| format!("Could not verify launch-at-login: {error}"))
+            .map_err(|error| format!("Could not verify launch-at-login: {error}"))?;
+        app.state::<local_logs::LocalServiceLogs>().runtime_event(
+            "info",
+            "Desktop launch-at-login preference changed",
+            Some(json!({
+                "enabled": result,
+                "event": "desktop.autostart.updated",
+                "operation": "set-autostart",
+                "status": "completed",
+                "subsystem": "desktop-runtime"
+            })),
+        );
+        Ok(result)
     }
     #[cfg(not(desktop))]
     {
@@ -316,6 +358,15 @@ fn show_main_window(app: &tauri::AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        app.state::<local_logs::LocalServiceLogs>().runtime_event(
+            "debug",
+            "Main desktop window shown",
+            Some(json!({
+                "event": "desktop.window.shown",
+                "operation": "show-window",
+                "subsystem": "desktop-window"
+            })),
+        );
     }
 }
 
@@ -328,6 +379,16 @@ fn close_desktop_windows(app: &tauri::AppHandle) {
             let _ = window.close();
         }
     }
+    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+        "info",
+        "Desktop windows closed while runtime remains active",
+        Some(json!({
+            "event": "desktop.windows.closed",
+            "operation": "close-windows",
+            "status": "background",
+            "subsystem": "desktop-window"
+        })),
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -359,6 +420,15 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
     }
 
     show_main_window(app);
+    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+        "info",
+        "Desktop quit confirmation requested",
+        Some(json!({
+            "event": "desktop.quit.confirmation-requested",
+            "operation": "request-exit",
+            "subsystem": "desktop-runtime"
+        })),
+    );
     let app_handle = app.clone();
     let mut dialog = app
         .dialog()
@@ -378,6 +448,17 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
         let exit_state = app_handle.state::<DesktopExitState>();
         exit_state.confirmation_open.store(false, Ordering::SeqCst);
         if confirmed {
+            app_handle
+                .state::<local_logs::LocalServiceLogs>()
+                .runtime_event(
+                    "info",
+                    "Desktop shutdown approved",
+                    Some(json!({
+                        "event": "desktop.quit.approved",
+                        "operation": "request-exit",
+                        "subsystem": "desktop-runtime"
+                    })),
+                );
             exit_state.approved.store(true, Ordering::SeqCst);
             app_handle.exit(0);
         }
@@ -415,13 +496,35 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 }
 
 fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
+    let runtime_started_at = Instant::now();
+    let service_logs = app.state::<local_logs::LocalServiceLogs>();
     if cfg!(mobile) {
+        service_logs.runtime_event(
+            "info",
+            "Mobile client uses an external Cantrip server",
+            Some(json!({
+                "event": "desktop.runtime.external",
+                "operation": "bootstrap-runtime",
+                "runtimeKind": "mobile",
+                "subsystem": "desktop-runtime"
+            })),
+        );
         return Ok(ManagedRuntime {
             children: Mutex::new(Vec::new()),
             server_url: std::env::var("CANTRIP_SERVER_URL").unwrap_or_default(),
         });
     }
     if cfg!(debug_assertions) {
+        service_logs.runtime_event(
+            "info",
+            "Development client uses externally managed local services",
+            Some(json!({
+                "event": "desktop.runtime.external",
+                "operation": "bootstrap-runtime",
+                "runtimeKind": "development",
+                "subsystem": "desktop-runtime"
+            })),
+        );
         return Ok(ManagedRuntime {
             children: Mutex::new(Vec::new()),
             server_url: std::env::var("CANTRIP_SERVER_URL")
@@ -434,6 +537,16 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         .resource_dir()
         .map_err(|error| format!("Could not resolve bundled resources: {error}"))?
         .join("runtime");
+    service_logs.runtime_event(
+        "info",
+        "Bundled desktop runtime startup began",
+        Some(json!({
+            "event": "desktop.runtime.started",
+            "operation": "bootstrap-runtime",
+            "runtimeKind": "bundled",
+            "subsystem": "desktop-runtime"
+        })),
+    );
     let data = match std::env::var_os("CANTRIP_DESKTOP_DATA_DIR") {
         Some(directory) => directory.into(),
         None => app
@@ -491,10 +604,45 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
             ),
         ],
     )?;
+    service_logs.runtime_event(
+        "info",
+        "Bundled Cantrip Server process started",
+        Some(json!({
+            "event": "desktop.child.started",
+            "operation": "start-child",
+            "service": "server",
+            "subsystem": "desktop-runtime"
+        })),
+    );
     if let Err(error) = wait_for_server(&mut server, port) {
+        service_logs.runtime_event(
+            "error",
+            "Bundled Cantrip Server failed readiness",
+            Some(json!({
+                "durationMs": runtime_started_at.elapsed().as_millis(),
+                "event": "desktop.child.readiness.failed",
+                "operation": "wait-ready",
+                "reasonCode": "readiness-timeout",
+                "service": "server",
+                "status": "failed",
+                "subsystem": "desktop-runtime"
+            })),
+        );
         terminate_child(&mut server);
         return Err(error);
     }
+    service_logs.runtime_event(
+        "info",
+        "Bundled Cantrip Server is ready",
+        Some(json!({
+            "durationMs": runtime_started_at.elapsed().as_millis(),
+            "event": "desktop.child.ready",
+            "operation": "wait-ready",
+            "service": "server",
+            "status": "ready",
+            "subsystem": "desktop-runtime"
+        })),
+    );
 
     let worker = match spawn_node_service(
         &node,
@@ -525,10 +673,80 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         }
     };
 
+    service_logs.runtime_event(
+        "info",
+        "Bundled Cantrip Worker process started",
+        Some(json!({
+            "durationMs": runtime_started_at.elapsed().as_millis(),
+            "event": "desktop.child.started",
+            "operation": "start-child",
+            "service": "worker",
+            "subsystem": "desktop-runtime"
+        })),
+    );
+
     Ok(ManagedRuntime {
-        children: Mutex::new(vec![server, worker]),
+        children: Mutex::new(vec![
+            ManagedChild {
+                child: server,
+                exit_reported: false,
+                service: "server",
+            },
+            ManagedChild {
+                child: worker,
+                exit_reported: false,
+                service: "worker",
+            },
+        ]),
         server_url,
     })
+}
+
+#[cfg(desktop)]
+fn monitor_owned_runtime(app: tauri::AppHandle) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(2));
+        let runtime = app.state::<ManagedRuntime>();
+        let Ok(mut children) = runtime.children.lock() else {
+            continue;
+        };
+        for managed in children.iter_mut() {
+            if managed.exit_reported {
+                continue;
+            }
+            match managed.child.try_wait() {
+                Ok(Some(status)) => {
+                    managed.exit_reported = true;
+                    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                        "error",
+                        "Bundled desktop service exited unexpectedly",
+                        Some(json!({
+                            "event": "desktop.child.exited",
+                            "exitCode": status.code(),
+                            "operation": "monitor-child",
+                            "service": managed.service,
+                            "status": "failed",
+                            "subsystem": "desktop-runtime"
+                        })),
+                    );
+                }
+                Ok(None) => {}
+                Err(_error) => {
+                    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                        "warn",
+                        "Bundled desktop service could not be inspected",
+                        Some(json!({
+                            "event": "desktop.child.monitor.failed",
+                            "operation": "monitor-child",
+                            "reasonCode": "process-inspection-failed",
+                            "service": managed.service,
+                            "subsystem": "desktop-runtime"
+                        })),
+                    );
+                }
+            }
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -579,18 +797,47 @@ pub fn run() {
                 Some(vec!["--background"]),
             ))?;
             let local_logs = local_logs::build(app).map_err(std::io::Error::other)?;
+            app.manage(local_logs);
             let runtime = build_runtime(app).map_err(|error| {
-                local_logs.runtime_error(format!("Local runtime startup failed: {error}"));
+                app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                    "fatal",
+                    "Local runtime startup failed",
+                    Some(json!({
+                        "event": "desktop.runtime.failed",
+                        "operation": "bootstrap-runtime",
+                        "reasonCode": "runtime-startup-failed",
+                        "status": "failed",
+                        "subsystem": "desktop-runtime"
+                    })),
+                );
                 std::io::Error::other(error)
             })?;
             let desktop_workers = desktop_worker::build(app).map_err(|error| {
-                local_logs.runtime_error(format!("Desktop worker startup failed: {error}"));
+                app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                    "error",
+                    "Desktop worker manager startup failed",
+                    Some(json!({
+                        "event": "desktop.worker-manager.failed",
+                        "operation": "bootstrap-worker-manager",
+                        "reasonCode": "worker-manager-startup-failed",
+                        "status": "failed",
+                        "subsystem": "desktop-worker"
+                    })),
+                );
                 std::io::Error::other(error)
             })?;
-            local_logs.runtime_info("Cantrip desktop runtime initialized");
+            app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                "info",
+                "Cantrip desktop runtime initialized",
+                Some(json!({
+                    "event": "desktop.runtime.ready",
+                    "operation": "bootstrap-runtime",
+                    "status": "ready",
+                    "subsystem": "desktop-runtime"
+                })),
+            );
             app.manage(runtime);
             app.manage(desktop_workers);
-            app.manage(local_logs);
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
             app.manage(desktop_update::DesktopUpdateCoordinator::default());
@@ -612,6 +859,8 @@ pub fn run() {
                     }
                 }
             }
+            #[cfg(desktop)]
+            monitor_owned_runtime(app.handle().clone());
             Ok(())
         });
     let builder = builder.append_invoke_initialization_script(include_str!("client_log_relay.js"));
@@ -635,6 +884,17 @@ pub fn run() {
     app.run(|handle, event| {
         #[cfg(target_os = "macos")]
         if let RunEvent::Reopen { .. } = &event {
+            handle
+                .state::<local_logs::LocalServiceLogs>()
+                .runtime_event(
+                    "debug",
+                    "macOS requested the main window reopen",
+                    Some(json!({
+                        "event": "desktop.window.reopen",
+                        "operation": "show-window",
+                        "subsystem": "desktop-window"
+                    })),
+                );
             show_main_window(handle);
         }
         #[cfg(desktop)]
@@ -660,6 +920,17 @@ pub fn run() {
             }
         }
         if matches!(event, RunEvent::Exit) {
+            handle
+                .state::<local_logs::LocalServiceLogs>()
+                .runtime_event(
+                    "info",
+                    "Cantrip desktop runtime is exiting",
+                    Some(json!({
+                        "event": "desktop.runtime.exit",
+                        "operation": "shutdown-runtime",
+                        "subsystem": "desktop-runtime"
+                    })),
+                );
             #[cfg(desktop)]
             shutdown_owned_runtime(handle);
         }

@@ -5,6 +5,7 @@ import {
   readServerConnectionPayloads,
   writeServerConnectionPayload,
 } from "@/lib/server-connection-storage";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 
 export type ServerConnection = {
   id: string;
@@ -147,6 +148,13 @@ async function refreshServerConnections(): Promise<void> {
       : (local?.id ?? connections[0]?.id ?? ""),
     connections,
   };
+  clientLogger.debug("Restored newer server connection state", {
+    counts: { connections: connections.length },
+    event: "server.connections.refreshed",
+    operation: "restore",
+    status: "completed",
+    subsystem: "server-connections",
+  });
 }
 
 async function persist(): Promise<void> {
@@ -160,6 +168,7 @@ async function persist(): Promise<void> {
 }
 
 export async function initializeServerConnections(): Promise<void> {
+  const startedAt = performance.now();
   const stored = newestStoredConnections(await readServerConnectionPayloads());
   const desktopApp = isTauri();
   let localUrl = "";
@@ -189,6 +198,19 @@ export async function initializeServerConnections(): Promise<void> {
     updatedAt: stored?.updatedAt ?? 0,
     version: 1,
   };
+  clientLogger.info("Server connections initialized", {
+    counts: {
+      connections: connections.length,
+      remoteConnections: connections.filter(({ kind }) => kind === "remote")
+        .length,
+    },
+    durationMs: Math.round(performance.now() - startedAt),
+    event: "server.connections.initialized",
+    operation: "restore",
+    serverKind: getActiveServerConnection()?.kind ?? "none",
+    status: "completed",
+    subsystem: "server-connections",
+  });
 }
 
 export function getServerConnections(): readonly ServerConnection[] {
@@ -235,8 +257,25 @@ export async function saveServerConnection(input: {
     await persist();
   } catch (error) {
     state = previousState;
+    clientLogger.error("Saving a server connection rolled back", {
+      ...operationalErrorMetadata(error),
+      event: "server.connection.save.failed",
+      operation: "save",
+      reasonCode: "storage-failure",
+      serverKind: "remote",
+      status: "rolled-back",
+      subsystem: "server-connections",
+    });
     throw error;
   }
+  clientLogger.info("Server connection saved", {
+    event: "server.connection.saved",
+    operation: existing ? "update" : "create",
+    serverId: connection.id,
+    serverKind: connection.kind,
+    status: "completed",
+    subsystem: "server-connections",
+  });
   return connection;
 }
 
@@ -246,13 +285,33 @@ export async function selectServerConnection(id: string): Promise<void> {
     throw new Error("That server connection no longer exists.");
   }
   const previousState = state;
+  const selected = state.connections.find(
+    (connection) => connection.id === id,
+  )!;
   state = { ...state, activeId: id, updatedAt: nextUpdatedAt() };
   try {
     await persist();
   } catch (error) {
     state = previousState;
+    clientLogger.error("Switching servers rolled back", {
+      ...operationalErrorMetadata(error),
+      event: "server.connection.switch.failed",
+      operation: "switch",
+      reasonCode: "storage-failure",
+      serverId: id,
+      status: "rolled-back",
+      subsystem: "server-connections",
+    });
     throw error;
   }
+  clientLogger.info("Active server connection changed", {
+    event: "server.connection.switched",
+    operation: "switch",
+    serverId: id,
+    serverKind: selected.kind,
+    status: "completed",
+    subsystem: "server-connections",
+  });
 }
 
 export async function removeServerConnection(id: string): Promise<void> {
@@ -281,8 +340,24 @@ export async function removeServerConnection(id: string): Promise<void> {
     await persist();
   } catch (error) {
     state = previousState;
+    clientLogger.error("Removing a server connection rolled back", {
+      ...operationalErrorMetadata(error),
+      event: "server.connection.remove.failed",
+      operation: "remove",
+      reasonCode: "storage-failure",
+      serverId: id,
+      status: "rolled-back",
+      subsystem: "server-connections",
+    });
     throw error;
   }
+  clientLogger.info("Server connection removed", {
+    event: "server.connection.removed",
+    operation: "remove",
+    serverId: id,
+    status: "completed",
+    subsystem: "server-connections",
+  });
 }
 
 export async function testServerConnection(
@@ -290,6 +365,13 @@ export async function testServerConnection(
   timeoutMs = 8_000,
 ): Promise<ServerBootstrap> {
   const url = normalizeServerUrl(input);
+  const startedAt = performance.now();
+  clientLogger.info("Testing a server connection", {
+    event: "server.connection.test.started",
+    operation: "test",
+    serverKind: "remote",
+    subsystem: "server-connections",
+  });
   if (
     typeof window !== "undefined" &&
     window.location?.protocol === "https:" &&
@@ -313,18 +395,36 @@ export async function testServerConnection(
       new URL(url).protocol === "https:" &&
       /certificate|ssl|tls|secure connection/i.test(message)
     ) {
-      throw new ServerConnectionError(
+      const failure = new ServerConnectionError(
         "The server's TLS certificate could not be verified.",
         "tls",
       );
+      clientLogger.warn("Server connection test failed", {
+        durationMs: Math.round(performance.now() - startedAt),
+        event: "server.connection.test.failed",
+        operation: "test",
+        reasonCode: failure.kind,
+        status: "failed",
+        subsystem: "server-connections",
+      });
+      throw failure;
     }
-    throw new ServerConnectionError(
+    const failure = new ServerConnectionError(
       error instanceof DOMException &&
         ["AbortError", "TimeoutError"].includes(error.name)
         ? "The server connection timed out."
         : "The server could not be reached. Check its address and network access.",
       "network",
     );
+    clientLogger.warn("Server connection test failed", {
+      durationMs: Math.round(performance.now() - startedAt),
+      event: "server.connection.test.failed",
+      operation: "test",
+      reasonCode: failure.kind,
+      status: "failed",
+      subsystem: "server-connections",
+    });
+    throw failure;
   }
   if (!response.ok) {
     const kind: ServerConnectionFailureKind =
@@ -349,5 +449,12 @@ export async function testServerConnection(
       "compatibility",
     );
   }
+  clientLogger.info("Server connection test completed", {
+    durationMs: Math.round(performance.now() - startedAt),
+    event: "server.connection.test.completed",
+    operation: "test",
+    status: "completed",
+    subsystem: "server-connections",
+  });
   return parsed.data;
 }

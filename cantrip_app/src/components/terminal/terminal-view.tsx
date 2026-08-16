@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { terminalWebSocketUrl } from "@/lib/api";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
   startDirectDesktopTerminal,
@@ -126,6 +127,15 @@ export function TerminalView({
     }
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setError(null);
+    const connectionStartedAt = performance.now();
+    clientLogger.info("Terminal surface connection started", {
+      attempt: reconnectAttemptRef.current + 1,
+      event: "surface.terminal.connecting",
+      operation: "connect",
+      status: reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting",
+      subsystem: "terminal",
+      surfaceId: terminal.id,
+    });
 
     const xterm = new Terminal({
       allowProposedApi: false,
@@ -154,6 +164,20 @@ export function TerminalView({
       const delay = Math.min(500 * 2 ** reconnectAttemptRef.current, 5_000);
       reconnectAttemptRef.current += 1;
       setState("reconnecting");
+      clientLogger.rateLimited(
+        `terminal-reconnect:${terminal.id}`,
+        "info",
+        "Terminal surface reconnect scheduled",
+        {
+          attempt: reconnectAttemptRef.current,
+          delayMs: delay,
+          event: "surface.terminal.reconnect-scheduled",
+          operation: "reconnect",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+        },
+        { summaryEvery: 10, windowMs: 30_000 },
+      );
       reconnectTimer = setTimeout(
         () => setConnectionKey((key) => key + 1),
         delay,
@@ -215,6 +239,18 @@ export function TerminalView({
           message = terminalServerMessageSchema.parse(JSON.parse(event.data));
         } catch {
           setError("The server sent an invalid terminal frame.");
+          clientLogger.rateLimited(
+            `terminal-frame:${terminal.id}`,
+            "warn",
+            "Terminal surface received an invalid frame",
+            {
+              event: "surface.terminal.protocol-error",
+              operation: "decode-frame",
+              reasonCode: "invalid-frame",
+              subsystem: "terminal",
+              surfaceId: terminal.id,
+            },
+          );
           return;
         }
         if (message.type === "ready") {
@@ -223,6 +259,16 @@ export function TerminalView({
           loadedTerminalIds.add(terminal.id);
           setLoadedTerminalId(terminal.id);
           setState("ready");
+          clientLogger.info("Terminal surface is ready", {
+            attempt: reconnectAttemptRef.current + 1,
+            durationMs: Math.round(performance.now() - connectionStartedAt),
+            event: "surface.terminal.ready",
+            operation: "connect",
+            status: "ready",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+            transport: direct ? "direct" : "relay",
+          });
           requestAnimationFrame(() => {
             resize();
             xterm.focus();
@@ -232,6 +278,14 @@ export function TerminalView({
         } else if (message.type === "exit") {
           ready = false;
           exited = true;
+          clientLogger.info("Terminal process exited", {
+            event: "surface.terminal.exited",
+            exitCode: message.exitCode,
+            operation: "process-exit",
+            status: "exited",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+          });
           if (onExitRef.current) {
             onExitRef.current();
             nextSocket.close(1000, "Terminal process exited");
@@ -246,6 +300,14 @@ export function TerminalView({
           ready = false;
           setError(message.message);
           scheduleReconnect();
+          clientLogger.warn("Terminal surface reported an error", {
+            event: "surface.terminal.remote-error",
+            operation: "terminal-session",
+            reasonCode: "remote-error",
+            status: "failed",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+          });
         }
       });
       const fail = () => {
@@ -254,12 +316,36 @@ export function TerminalView({
         ready = false;
         if (direct && !directFallbackStarted) {
           directFallbackStarted = true;
+          clientLogger.warn("Terminal direct transport fell back to relay", {
+            event: "surface.terminal.transport-fallback",
+            operation: "select-transport",
+            reasonCode: "direct-unavailable",
+            status: "fallback",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+          });
           releaseDirect();
           if (wasReady) scheduleReconnect();
           else connectSocket(terminalWebSocketUrl(terminal.id), false);
           return;
         }
         setError("Could not connect to the terminal session.");
+        clientLogger.rateLimited(
+          `terminal-connect:${terminal.id}`,
+          "warn",
+          "Terminal surface connection failed",
+          {
+            attempt: reconnectAttemptRef.current + 1,
+            durationMs: Math.round(performance.now() - connectionStartedAt),
+            event: "surface.terminal.connect.failed",
+            operation: "connect",
+            reasonCode: "transport-error",
+            status: "failed",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+            transport: direct ? "direct" : "relay",
+          },
+        );
         scheduleReconnect();
       };
       nextSocket.addEventListener("close", fail);
@@ -272,12 +358,28 @@ export function TerminalView({
           return;
         }
         directConnection = connection;
+        clientLogger.debug("Terminal surface transport selected", {
+          event: "surface.terminal.transport-selected",
+          operation: "select-transport",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+          transport: connection ? "direct" : "relay",
+        });
         connectSocket(
           connection?.url ?? terminalWebSocketUrl(terminal.id),
           Boolean(connection),
         );
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        clientLogger.warn("Terminal direct transport discovery failed", {
+          ...operationalErrorMetadata(error),
+          event: "surface.terminal.direct-discovery.failed",
+          operation: "discover-direct",
+          reasonCode: "discovery-failed",
+          status: "fallback",
+          subsystem: "terminal",
+          surfaceId: terminal.id,
+        });
         if (!disposed) connectSocket(terminalWebSocketUrl(terminal.id), false);
       });
 
@@ -291,6 +393,13 @@ export function TerminalView({
       resizeObserver.disconnect();
       themeObserver.disconnect();
       socket?.close(1000, "Terminal view closed");
+      clientLogger.info("Terminal surface view closed", {
+        event: "surface.terminal.closed",
+        operation: "disconnect",
+        status: "closed",
+        subsystem: "terminal",
+        surfaceId: terminal.id,
+      });
       releaseDirect();
       xterm.dispose();
     };

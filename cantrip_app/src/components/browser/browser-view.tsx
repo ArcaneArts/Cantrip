@@ -332,6 +332,7 @@ export function BrowserView({
 
   const { activeTransport, connectionState, error, sendFrame, setError } =
     useRemoteSurfaceTransport({
+      surfaceKind: "browser",
       surfaceId: browser.id,
       webSocketUrl: () =>
         remoteSurfaceWebSocketUrl(browser.id, viewportRef.current),

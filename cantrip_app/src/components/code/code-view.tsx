@@ -19,6 +19,7 @@ import {
   stopCodeTab,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   directCodeAttachmentHealthy,
   preferDirectCodeAttachment,
@@ -99,7 +100,20 @@ function logCodeEvent(
   event: string,
   details: Record<string, unknown>,
 ): void {
-  console[level](`[Cantrip Code] ${event}`, details);
+  const { error, lastError, url: _url, ...metadata } = details;
+  const failure = error ?? lastError;
+  clientLogger.event(level, `Cantrip Code ${event}`, {
+    ...metadata,
+    ...(failure === undefined || failure === null
+      ? {}
+      : operationalErrorMetadata(failure)),
+    ...(lastError === undefined || lastError === null
+      ? {}
+      : { runtimeErrorPresent: true }),
+    event: `surface.code.${event.replaceAll(" ", "-")}`,
+    operation: "code-surface",
+    subsystem: "code",
+  });
 }
 
 function errorText(error: unknown): string {

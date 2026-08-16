@@ -382,15 +382,37 @@ impl LocalServiceLogs {
         }
     }
 
-    pub fn runtime_error(&self, message: impl Into<String>) {
-        if let Ok(mut writer) = self.client.lock() {
-            let _ = writer.append(ServiceLogLevel::Error, message.into(), None);
+    pub fn runtime_event(&self, level: &str, message: impl Into<String>, context: Option<Value>) {
+        let level = match level {
+            "trace" => ServiceLogLevel::Trace,
+            "debug" => ServiceLogLevel::Debug,
+            "warn" => ServiceLogLevel::Warn,
+            "error" => ServiceLogLevel::Error,
+            "fatal" => ServiceLogLevel::Fatal,
+            _ => ServiceLogLevel::Info,
+        };
+        let message = sanitize_text(&message.into());
+        let encoded_context = context
+            .as_ref()
+            .and_then(|value| serde_json::to_string(value).ok())
+            .unwrap_or_default();
+        let suffix = if encoded_context.is_empty() {
+            String::new()
+        } else {
+            format!(" {encoded_context}")
+        };
+        if matches!(
+            level,
+            ServiceLogLevel::Warn | ServiceLogLevel::Error | ServiceLogLevel::Fatal
+        ) {
+            eprintln!("[desktop] {} {message}{suffix}", level_label(level));
+        } else {
+            println!("[desktop] {} {message}{suffix}", level_label(level));
         }
-    }
-
-    pub fn runtime_info(&self, message: impl Into<String>) {
         if let Ok(mut writer) = self.client.lock() {
-            let _ = writer.append(ServiceLogLevel::Info, message.into(), None);
+            if let Err(error) = writer.append(level, message, context) {
+                eprintln!("[desktop] ERROR Could not persist native client event: {error}");
+            }
         }
     }
 
@@ -480,6 +502,17 @@ fn sanitize_text(value: &str) -> String {
         .filter(|character| matches!(character, '\n' | '\t') || !character.is_control())
         .take(MAX_RECORD_BYTES)
         .collect()
+}
+
+fn level_label(level: ServiceLogLevel) -> &'static str {
+    match level {
+        ServiceLogLevel::Trace => "TRACE",
+        ServiceLogLevel::Debug => "DEBUG",
+        ServiceLogLevel::Info => "INFO",
+        ServiceLogLevel::Warn => "WARN",
+        ServiceLogLevel::Error => "ERROR",
+        ServiceLogLevel::Fatal => "FATAL",
+    }
 }
 
 fn timestamp_now() -> String {

@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { logout, logoutAll } from "@/lib/api";
+import { clientLogger } from "@/lib/client-log-relay";
 import { clearClientSession, getClientSession } from "@/lib/client-session";
 import {
   getActiveServerConnection,
@@ -72,8 +73,34 @@ export function ServerSwitcher({
     setSigningOut(true);
     setError(null);
     try {
-      if (everywhere) await logoutAll();
-      else await logout();
+      const startedAt = performance.now();
+      clientLogger.info("Sign-out started", {
+        event: "session.logout.started",
+        operation: everywhere ? "logout-all" : "logout",
+        subsystem: "authentication",
+      });
+      try {
+        if (everywhere) await logoutAll();
+        else await logout();
+        clientLogger.info("Sign-out completed", {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "session.logout.completed",
+          operation: everywhere ? "logout-all" : "logout",
+          status: "signed-out",
+          subsystem: "authentication",
+        });
+      } catch (error) {
+        clientLogger.warn("Sign-out failed", {
+          durationMs: Math.round(performance.now() - startedAt),
+          error: error instanceof Error ? error : new Error("Sign-out failed"),
+          event: "session.logout.failed",
+          operation: everywhere ? "logout-all" : "logout",
+          reasonCode: "request-failed",
+          status: "failed",
+          subsystem: "authentication",
+        });
+        throw error;
+      }
       clearClientSession();
       window.location.reload();
     } catch (signOutError) {

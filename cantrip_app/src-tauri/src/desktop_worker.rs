@@ -9,7 +9,8 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tauri::{App, Manager, State};
+use serde_json::json;
+use tauri::{App, AppHandle, Manager, State};
 use url::Url;
 use uuid::Uuid;
 
@@ -420,8 +421,19 @@ pub fn build(app: &App) -> Result<DesktopWorkers, String> {
     };
     for profile in profiles {
         if manager.has_stored_credential(&profile.worker_id) {
-            if let Err(error) = manager.ensure_running(&profile, None) {
-                eprintln!("Could not reconnect linked desktop worker: {error}");
+            if let Err(_error) = manager.ensure_running(&profile, None) {
+                app.state::<crate::local_logs::LocalServiceLogs>()
+                    .runtime_event(
+                        "warn",
+                        "Linked desktop worker failed to reconnect",
+                        Some(json!({
+                            "event": "desktop.linked-worker.reconnect.failed",
+                            "operation": "reconnect-worker",
+                            "reasonCode": "process-startup-failed",
+                            "subsystem": "desktop-worker",
+                            "workerId": profile.worker_id
+                        })),
+                    );
             }
         }
     }
@@ -430,6 +442,7 @@ pub fn build(app: &App) -> Result<DesktopWorkers, String> {
 
 #[tauri::command]
 pub fn list_desktop_workers(
+    app: AppHandle,
     workers: State<'_, DesktopWorkers>,
 ) -> Result<Vec<DesktopWorkerStatus>, String> {
     let profiles = workers
@@ -439,8 +452,19 @@ pub fn list_desktop_workers(
         .clone();
     for profile in &profiles {
         if workers.has_stored_credential(&profile.worker_id) {
-            if let Err(error) = workers.ensure_running(profile, None) {
-                eprintln!("Could not keep linked desktop worker running: {error}");
+            if let Err(_error) = workers.ensure_running(profile, None) {
+                app.state::<crate::local_logs::LocalServiceLogs>()
+                    .runtime_event(
+                        "warn",
+                        "Linked desktop worker supervision failed",
+                        Some(json!({
+                            "event": "desktop.linked-worker.supervision.failed",
+                            "operation": "supervise-worker",
+                            "reasonCode": "process-startup-failed",
+                            "subsystem": "desktop-worker",
+                            "workerId": profile.worker_id
+                        })),
+                    );
             }
         }
     }
@@ -476,6 +500,7 @@ pub fn list_desktop_worker_candidates(
 
 #[tauri::command]
 pub fn pair_desktop_worker(
+    app: AppHandle,
     enrollment_code: String,
     name: String,
     server_url: String,
@@ -526,6 +551,18 @@ pub fn pair_desktop_worker(
         write_profiles(&workers.profiles_path, &profiles)?;
     }
     workers.ensure_running(&profile, Some(&enrollment_code))?;
+    app.state::<crate::local_logs::LocalServiceLogs>()
+        .runtime_event(
+            "info",
+            "Linked desktop worker paired and started",
+            Some(json!({
+                "event": "desktop.linked-worker.paired",
+                "operation": "pair-worker",
+                "status": "running",
+                "subsystem": "desktop-worker",
+                "workerId": profile.worker_id
+            })),
+        );
     Ok(DesktopWorkerStatus {
         name: profile.name,
         running: true,
@@ -536,6 +573,7 @@ pub fn pair_desktop_worker(
 
 #[tauri::command]
 pub fn forget_desktop_worker(
+    app: AppHandle,
     worker_id: String,
     workers: State<'_, DesktopWorkers>,
 ) -> Result<(), String> {
@@ -545,7 +583,19 @@ pub fn forget_desktop_worker(
         .lock()
         .map_err(|_| "The desktop worker registry is unavailable.".to_string())?;
     profiles.retain(|profile| profile.worker_id != worker_id);
-    write_profiles(&workers.profiles_path, &profiles)
+    write_profiles(&workers.profiles_path, &profiles)?;
+    app.state::<crate::local_logs::LocalServiceLogs>()
+        .runtime_event(
+            "info",
+            "Linked desktop worker removed",
+            Some(json!({
+                "event": "desktop.linked-worker.removed",
+                "operation": "forget-worker",
+                "subsystem": "desktop-worker",
+                "workerId": worker_id
+            })),
+        );
+    Ok(())
 }
 
 #[cfg(test)]

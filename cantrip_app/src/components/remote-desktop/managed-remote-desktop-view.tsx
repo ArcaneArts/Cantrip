@@ -287,6 +287,7 @@ export function ManagedRemoteDesktopView({
     sendFrame,
     setError,
   } = useRemoteSurfaceTransport({
+    surfaceKind: "remote-desktop",
     surfaceId: desktop.id,
     webSocketUrl: () =>
       remoteSurfaceWebSocketUrl(desktop.id, viewportRef.current),
