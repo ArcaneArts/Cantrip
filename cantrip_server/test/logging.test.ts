@@ -29,4 +29,50 @@ describe("server logging", () => {
     );
     expect(lines[0]).not.toMatch(/hostname|pid|reqId|request completed/u);
   });
+
+  it("fans the same query-free request event to console and service storage", async () => {
+    const lines: string[] = [];
+    const records: Array<{
+      context?: unknown;
+      level: string;
+      message: string;
+      system: string;
+    }> = [];
+    const app = Fastify({
+      logger: {
+        stream: createServerLogStream({
+          colors: false,
+          output: (line) => lines.push(line),
+          onRecord: (record) => records.push(record),
+        }),
+      },
+    });
+    app.get("/api/projects/:projectId/chats", async () => ({ ok: true }));
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/projects/project-one/chats?access_token=unsafe&cursor=5",
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(lines).toHaveLength(1);
+    expect(records).toMatchObject([
+      {
+        system: "server",
+        level: "info",
+        message: expect.stringContaining(
+          "GET /api/projects/project-one/chats -> 200 OK",
+        ),
+        context: expect.objectContaining({
+          event: "http.request.completed",
+          operation: "GET",
+          status: "completed",
+          subsystem: "http",
+        }),
+      },
+    ]);
+    expect(JSON.stringify({ lines, records })).not.toContain("unsafe");
+    expect(lines[0]).toContain(records[0]!.message);
+  });
 });

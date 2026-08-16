@@ -67,6 +67,8 @@ const LEVEL_WEIGHT: Record<ServiceLogLevel, number> = {
 
 const SECRET_FIELD_SEGMENT =
   /^(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|passphrase|secret|client-secret|api-key|apikey|token|access-token|refresh-token|id-token|bearer-token|provider-token|private-key|credential|csrf|csrf-token|xsrf-token|device-code|oauth-code|pairing-code|enrollment-code|signed-url)$/iu;
+const SIGNED_URL_QUERY_SEGMENT =
+  /^(?:signature|sig|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)$/iu;
 const AUTH_HEADER =
   /\bauthorization(\s*[=:]\s*)(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+/giu;
 const AUTH_VALUE = /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+/giu;
@@ -113,8 +115,10 @@ function redactUrl(candidate: string): string {
       url.username = "redacted";
       url.password = "redacted";
     }
-    for (const key of [...url.searchParams.keys()]) {
-      if (isSecretField(key)) url.searchParams.set(key, REDACTED);
+    const keys = [...url.searchParams.keys()];
+    const signedUrl = keys.some((key) => SIGNED_URL_QUERY_SEGMENT.test(key));
+    for (const key of keys) {
+      if (signedUrl || isSecretField(key)) url.searchParams.set(key, REDACTED);
     }
     return url.toString();
   } catch {

@@ -39,6 +39,54 @@ describe("structured service logs", () => {
     );
   });
 
+  it("redacts the complete remotely readable credential boundary", () => {
+    const sanitized = sanitizeLogContext({
+      cookie: "session=private-cookie",
+      credential: "provider-credential",
+      csrfToken: "private-csrf",
+      deviceCode: "private-device-code",
+      enrollmentCode: "private-enrollment-code",
+      oauthCode: "private-oauth-code",
+      pairingCode: "private-pairing-code",
+      privateKey: "private-key-material",
+      refreshToken: "private-refresh-token",
+      signedUrl: "https://download.test/artifact?signature=private",
+      nested: {
+        endpoint:
+          "https://reader:password@example.test/path?access_token=private-access&view=all",
+        error: Object.assign(
+          new Error("Authorization: Bearer private-bearer"),
+          {
+            cause: new Error("password=private-password"),
+            responseBody: "private provider body",
+          },
+        ),
+        safe: "kept",
+      },
+    });
+    const encoded = JSON.stringify(sanitized);
+    for (const privateValue of [
+      "private-cookie",
+      "provider-credential",
+      "private-csrf",
+      "private-device-code",
+      "private-enrollment-code",
+      "private-oauth-code",
+      "private-pairing-code",
+      "private-key-material",
+      "private-refresh-token",
+      "signature=private",
+      "reader:password",
+      "private-access",
+      "private-bearer",
+      "private-password",
+      "private provider body",
+    ]) {
+      expect(encoded).not.toContain(privateValue);
+    }
+    expect(sanitized).toMatchObject({ nested: { safe: "kept" } });
+  });
+
   it("strips terminal control sequences while preserving readable text", () => {
     expect(sanitizeLogText("\u001b[31merror\u001b[0m\u0000 ok")).toBe(
       "error ok",

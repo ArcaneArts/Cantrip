@@ -412,6 +412,7 @@ dependencies = [
  "ctrlc",
  "ed25519-dalek",
  "futures-util",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

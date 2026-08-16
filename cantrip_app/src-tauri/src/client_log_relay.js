@@ -54,6 +54,10 @@
     /^(?:authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|password|passwd|passphrase|secret|client[-_]?secret|api[-_]?key|apikey|token|access[-_]?token|refresh[-_]?token|id[-_]?token|provider[-_]?token|private[-_]?key|credential|csrf(?:[-_]?token)?|xsrf[-_]?token|device[-_]?code|oauth[-_]?code|pairing[-_]?code|enrollment[-_]?code|signed[-_]?url)$/iu.test(
       value,
     );
+  const signedUrlQuery = (value) =>
+    /^(?:signature|sig|x-amz-signature|x-amz-credential|x-amz-security-token|x-goog-signature|x-goog-credential)$/iu.test(
+      value,
+    );
 
   const sanitizeUrl = (candidate) => {
     try {
@@ -62,8 +66,12 @@
         url.username = "redacted";
         url.password = "redacted";
       }
-      for (const key of [...url.searchParams.keys()]) {
-        if (secretName(key)) url.searchParams.set(key, "[REDACTED]");
+      const keys = [...url.searchParams.keys()];
+      const signedUrl = keys.some(signedUrlQuery);
+      for (const key of keys) {
+        if (signedUrl || secretName(key)) {
+          url.searchParams.set(key, "[REDACTED]");
+        }
       }
       return url.toString();
     } catch {
