@@ -7,6 +7,7 @@ import {
   CircleAlert,
   Eye,
   ExternalLink,
+  Info,
   Loader2,
   Bot,
   Palette,
@@ -51,6 +52,7 @@ interface PopoutAction {
 interface ChatHeaderActions {
   consoleActive: boolean;
   consolePending: boolean;
+  inspectActive: boolean;
   inspectCustomizations(): void;
   relocation: {
     active: boolean;
@@ -60,6 +62,7 @@ interface ChatHeaderActions {
     show(): void;
   };
   toggleConsole(): void;
+  toggleInspect(): void;
 }
 
 export interface ContentHeaderActionsProps {
@@ -441,6 +444,22 @@ export function ContentHeaderActions({
             )}
             <span className="sr-only">
               {chat.consoleActive ? "Show agent" : "Show Codex console"}
+            </span>
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-pressed={chat.inspectActive}
+            onClick={chat.toggleInspect}
+            title={
+              chat.inspectActive ? "Close agent Inspect" : "Open agent Inspect"
+            }
+          >
+            <Info className="size-4" />
+            <span className="sr-only">
+              {chat.inspectActive
+                ? "Close agent Inspect"
+                : "Open agent Inspect"}
             </span>
           </Button>
         </>
