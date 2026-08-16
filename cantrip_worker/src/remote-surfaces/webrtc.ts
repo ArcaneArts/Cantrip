@@ -8,6 +8,8 @@ import {
 } from "@cantrip/protocol";
 import { RTCPeerConnection, type RTCDataChannel } from "werift";
 
+import { workerLogger } from "../logger.js";
+
 const CONTROL_CHANNEL = "cantrip-control-v1";
 const VISUAL_CHANNEL = "cantrip-visual-v1";
 const MAX_BUFFERED_BYTES = 4 * 1_024 * 1_024;
@@ -48,6 +50,7 @@ export class WorkerWebRtcAttachment {
   readonly #surfaceId: string;
   #answerSent = false;
   #closed = false;
+  #connectedLogged = false;
   #control: RTCDataChannel | null = null;
   #pendingCandidates: RemoteSurfaceWebRtcSignal[] = [];
   #visual: RTCDataChannel | null = null;
@@ -60,6 +63,14 @@ export class WorkerWebRtcAttachment {
     this.#peer = new RTCPeerConnection({
       iceServers: options.configuration.iceServers,
       iceTransportPolicy: options.configuration.iceTransportPolicy,
+    });
+    workerLogger.event("debug", "Remote Surface WebRTC negotiation started", {
+      event: "surface.webrtc.negotiating",
+      subsystem: "remote-surface",
+      operation: "connect-webrtc",
+      status: "started",
+      surfaceId: this.#surfaceId,
+      attachmentId: this.#attachmentId,
     });
 
     this.#peer.onIceCandidate.subscribe((candidate) => {
@@ -130,12 +141,14 @@ export class WorkerWebRtcAttachment {
     const target = disposable ? this.#visual : this.#control;
     if (!target || target.readyState !== "open") return "unavailable";
     if (target.bufferedAmount > MAX_BUFFERED_BYTES) {
+      if (disposable) this.logDroppedFrame(channel, "backpressure");
       return disposable ? "dropped" : "unavailable";
     }
     try {
       target.send(Buffer.from(frame));
       return "sent";
     } catch {
+      if (disposable) this.logDroppedFrame(channel, "send-failed");
       return disposable ? "dropped" : "unavailable";
     }
   }
@@ -146,6 +159,14 @@ export class WorkerWebRtcAttachment {
     this.#control?.close();
     this.#visual?.close();
     await this.#peer.close();
+    workerLogger.event("info", "Remote Surface WebRTC transport closed", {
+      event: "surface.webrtc.closed",
+      subsystem: "remote-surface",
+      operation: "connect-webrtc",
+      status: "completed",
+      surfaceId: this.#surfaceId,
+      attachmentId: this.#attachmentId,
+    });
     if (notify) {
       this.#emitSignal({
         type: "transport-state",
@@ -186,6 +207,17 @@ export class WorkerWebRtcAttachment {
 
   private notifyConnected(): void {
     if (!this.connected) return;
+    if (!this.#connectedLogged) {
+      this.#connectedLogged = true;
+      workerLogger.event("info", "Remote Surface WebRTC transport connected", {
+        event: "surface.webrtc.connected",
+        subsystem: "remote-surface",
+        operation: "connect-webrtc",
+        status: "completed",
+        surfaceId: this.#surfaceId,
+        attachmentId: this.#attachmentId,
+      });
+    }
     this.#emitSignal({
       type: "transport-state",
       state: "connected",
@@ -199,9 +231,48 @@ export class WorkerWebRtcAttachment {
   ): void {
     if (this.#closed) return;
     this.#closed = true;
+    workerLogger.event(
+      state === "failed" ? "warn" : "info",
+      "Remote Surface WebRTC transport ended",
+      {
+        event:
+          state === "failed"
+            ? "surface.webrtc.failed"
+            : "surface.webrtc.closed",
+        subsystem: "remote-surface",
+        operation: "connect-webrtc",
+        reasonCode:
+          state === "failed" ? "transport-failed" : "transport-closed",
+        status: state === "failed" ? "degraded" : "completed",
+        surfaceId: this.#surfaceId,
+        attachmentId: this.#attachmentId,
+      },
+    );
     this.#emitSignal({ type: "transport-state", state, message });
     this.#control?.close();
     this.#visual?.close();
     void this.#peer.close();
+  }
+
+  private logDroppedFrame(
+    channel: RemoteSurfaceChannel,
+    reasonCode: string,
+  ): void {
+    workerLogger.sampled(
+      `surface-webrtc-frame-dropped:${this.#surfaceId}:${this.#attachmentId}:${reasonCode}`,
+      100,
+      "trace",
+      "Remote Surface WebRTC frame dropped",
+      {
+        event: "surface.webrtc.frame-dropped",
+        subsystem: "remote-surface",
+        operation: "send-frame",
+        reasonCode,
+        status: "dropped",
+        surfaceId: this.#surfaceId,
+        attachmentId: this.#attachmentId,
+        channel,
+      },
+    );
   }
 }

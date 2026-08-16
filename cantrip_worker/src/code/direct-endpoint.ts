@@ -14,7 +14,7 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
-import { workerLogger } from "../logger.js";
+import { workerLogError, workerLogger } from "../logger.js";
 import type { CodeSupervisor } from "./supervisor.js";
 import {
   codeEditorRequestHeaders,
@@ -114,10 +114,19 @@ export class CodeDirectEndpointManager {
     );
     endpoint.server.on("upgrade", (request, socket, head) => {
       if (!this.#validPath(request.url)) {
-        workerLogger.warn("Cantrip Code direct WebSocket path rejected", {
-          path: request.url ?? null,
-          sessionId,
-        });
+        workerLogger.rateLimited(
+          `code-direct-path-rejected:${sessionId}`,
+          "warn",
+          "Cantrip Code direct WebSocket path rejected",
+          {
+            event: "code.direct.websocket-rejected",
+            subsystem: "code",
+            operation: "open-websocket",
+            reasonCode: "invalid-path",
+            status: "rejected",
+            sessionId,
+          },
+        );
         socket.destroy();
         return;
       }
@@ -143,9 +152,12 @@ export class CodeDirectEndpointManager {
       throw new Error("Direct Code endpoint did not bind a loopback port.");
     }
     this.#endpoints.set(capabilityId, endpoint);
-    workerLogger.info("Cantrip Code direct endpoint prepared", {
+    workerLogger.event("info", "Cantrip Code direct endpoint prepared", {
+      event: "code.direct.prepared",
+      subsystem: "code",
+      operation: "prepare-direct-endpoint",
+      status: "completed",
       capabilityId,
-      port: address.port,
       sessionId,
     });
     return { kind: "tcp", host: "127.0.0.1", port: address.port };
@@ -295,12 +307,14 @@ export class CodeDirectEndpointManager {
       const queued: Array<{ data: Buffer; binary: boolean }> = [];
       let queuedBytes = 0;
       let authenticationForwarded = false;
-      const details = {
-        path: request.url ?? null,
-        sessionId,
-        targetPath: `${target.pathname}${target.search}`,
-      };
-      workerLogger.info("Cantrip Code direct WebSocket accepted", details);
+      const details = { sessionId };
+      workerLogger.event("debug", "Cantrip Code direct WebSocket accepted", {
+        event: "code.direct.websocket-accepted",
+        subsystem: "code",
+        operation: "open-websocket",
+        status: "completed",
+        ...details,
+      });
       const closeBoth = (code = 1011, reason = "Cantrip Code disconnected") => {
         if (client.readyState === WebSocket.OPEN) client.close(code, reason);
         if (upstream.readyState === WebSocket.OPEN)
@@ -315,9 +329,16 @@ export class CodeDirectEndpointManager {
               editorAuthenticatedPayload(payload, proxy.connectionToken),
             );
             authenticationForwarded = true;
-            workerLogger.info(
+            workerLogger.event(
+              "debug",
               "Cantrip Code direct WebSocket authentication forwarded",
-              details,
+              {
+                event: "code.direct.authentication-forwarded",
+                subsystem: "code",
+                operation: "authenticate-websocket",
+                status: "completed",
+                ...details,
+              },
             );
           }
           if (upstream.readyState !== WebSocket.OPEN) {
@@ -336,18 +357,34 @@ export class CodeDirectEndpointManager {
           }
           upstream.send(payload, { binary });
         } catch (error) {
-          workerLogger.warn("Cantrip Code direct WebSocket input rejected", {
-            ...details,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          workerLogger.event(
+            "warn",
+            "Cantrip Code direct WebSocket input rejected",
+            {
+              event: "code.direct.websocket-rejected",
+              subsystem: "code",
+              operation: "forward-websocket",
+              reasonCode: "invalid-authentication-frame",
+              status: "rejected",
+              ...details,
+              error: workerLogError(error),
+            },
+          );
           closeBoth(1008, "Invalid Code authentication frame");
         }
       };
       client.on("message", forward);
       upstream.once("open", () => {
-        workerLogger.info(
+        workerLogger.event(
+          "debug",
           "Cantrip Code direct editor WebSocket opened",
-          details,
+          {
+            event: "code.direct.websocket-opened",
+            subsystem: "code",
+            operation: "open-websocket",
+            status: "completed",
+            ...details,
+          },
         );
         for (const item of queued.splice(0)) {
           upstream.send(item.data, { binary: item.binary });
@@ -366,11 +403,18 @@ export class CodeDirectEndpointManager {
         client.send(payload, { binary });
       });
       client.once("close", (code, reason) => {
-        workerLogger.info("Cantrip Code direct client WebSocket closed", {
-          ...details,
-          code,
-          reason: reason.toString().slice(0, 256),
-        });
+        workerLogger.event(
+          "debug",
+          "Cantrip Code direct client WebSocket closed",
+          {
+            event: "code.direct.client-closed",
+            subsystem: "code",
+            operation: "forward-websocket",
+            status: "completed",
+            ...details,
+            code,
+          },
+        );
         endStream();
         if (upstream.readyState === WebSocket.OPEN) {
           const forwarded = forwardableCodeWebSocketClose(code, reason);
@@ -378,19 +422,35 @@ export class CodeDirectEndpointManager {
         } else upstream.terminate();
       });
       client.once("error", (error) => {
-        workerLogger.warn("Cantrip Code direct client WebSocket failed", {
-          ...details,
-          error: error.message,
-        });
+        workerLogger.event(
+          "warn",
+          "Cantrip Code direct client WebSocket failed",
+          {
+            event: "code.direct.client-failed",
+            subsystem: "code",
+            operation: "forward-websocket",
+            reasonCode: "client-error",
+            status: "degraded",
+            ...details,
+            error: workerLogError(error),
+          },
+        );
         endStream();
         closeBoth();
       });
       upstream.once("close", (code, reason) => {
-        workerLogger.info("Cantrip Code direct editor WebSocket closed", {
-          ...details,
-          code,
-          reason: reason.toString().slice(0, 256),
-        });
+        workerLogger.event(
+          "debug",
+          "Cantrip Code direct editor WebSocket closed",
+          {
+            event: "code.direct.editor-closed",
+            subsystem: "code",
+            operation: "forward-websocket",
+            status: "completed",
+            ...details,
+            code,
+          },
+        );
         endStream();
         if (client.readyState === WebSocket.OPEN) {
           const forwarded = forwardableCodeWebSocketClose(code, reason);
@@ -398,10 +458,19 @@ export class CodeDirectEndpointManager {
         }
       });
       upstream.once("error", (error) => {
-        workerLogger.warn("Cantrip Code direct editor WebSocket failed", {
-          ...details,
-          error: error.message,
-        });
+        workerLogger.event(
+          "warn",
+          "Cantrip Code direct editor WebSocket failed",
+          {
+            event: "code.direct.editor-failed",
+            subsystem: "code",
+            operation: "forward-websocket",
+            reasonCode: "editor-error",
+            status: "degraded",
+            ...details,
+            error: workerLogError(error),
+          },
+        );
         endStream();
         closeBoth();
       });

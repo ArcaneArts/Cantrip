@@ -21,7 +21,7 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
-import { workerLogger } from "./logger.js";
+import { workerLogError, workerLogger } from "./logger.js";
 
 type PrepareCommand = Extract<
   WorkerCommand,
@@ -142,6 +142,13 @@ export class DirectBroker {
       publicKey: publicKey.toString("base64url"),
       fingerprint: createHash("sha256").update(publicKey).digest("hex"),
     };
+    workerLogger.event("info", "Direct capability broker started", {
+      event: "direct.broker.started",
+      subsystem: "direct-broker",
+      operation: "start",
+      status: "completed",
+      protocol: "ws-v1",
+    });
     return this.#advertisement;
   }
 
@@ -199,6 +206,17 @@ export class DirectBroker {
       timer,
       tunnelRoute,
     });
+    workerLogger.event("debug", "Direct capability prepared", {
+      event: "direct.capability.prepared",
+      subsystem: "direct-broker",
+      operation: "prepare",
+      status: "completed",
+      capabilityId: command.binding.capabilityId,
+      resourceKind: command.binding.resourceKind,
+      attachmentId: command.binding.attachmentId,
+      tunnelRouted: tunnelRoute !== null,
+      counts: { prepared: this.#prepared.size, active: this.#active.size },
+    });
     return directCapabilityPrepareResultSchema.parse({
       accepted: true,
       capabilityId: command.binding.capabilityId,
@@ -236,6 +254,17 @@ export class DirectBroker {
       revoked = true;
     }
     if (revoked) this.#revokeCapability(capabilityId, reason);
+    if (revoked) {
+      workerLogger.event("debug", "Direct capability revoked", {
+        event: "direct.capability.revoked",
+        subsystem: "direct-broker",
+        operation: "revoke",
+        status: "completed",
+        capabilityId,
+        reasonCode: "capability-revoked",
+        counts: { prepared: this.#prepared.size, active: this.#active.size },
+      });
+    }
     return revoked;
   }
 
@@ -318,6 +347,12 @@ export class DirectBroker {
     if (server) {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+    workerLogger.event("info", "Direct capability broker stopped", {
+      event: "direct.broker.stopped",
+      subsystem: "direct-broker",
+      operation: "stop",
+      status: "completed",
+    });
   }
 
   #accept(socket: WebSocket): void {
@@ -367,6 +402,16 @@ export class DirectBroker {
           tunnelRoute: capability.tunnelRoute,
         };
         this.#active.set(capability.binding.capabilityId, active);
+        workerLogger.event("info", "Direct capability connected", {
+          event: "direct.capability.connected",
+          subsystem: "direct-broker",
+          operation: "connect",
+          status: "completed",
+          capabilityId: capability.binding.capabilityId,
+          resourceKind: capability.binding.resourceKind,
+          attachmentId: capability.binding.attachmentId,
+          counts: { active: this.#active.size },
+        });
         socket.send(
           JSON.stringify(
             directBrokerReadySchema.parse({
@@ -400,11 +445,14 @@ export class DirectBroker {
             "Direct connection closed",
           );
         });
-        socket.once("close", (code, reason) => {
-          workerLogger.info("Direct capability connection closed", {
+        socket.once("close", (code) => {
+          workerLogger.event("info", "Direct capability connection closed", {
+            event: "direct.capability.disconnected",
+            subsystem: "direct-broker",
+            operation: "connect",
+            status: "completed",
             capabilityId: capability.binding.capabilityId,
             code,
-            reason: reason.toString().slice(0, 256),
             resourceKind: capability.binding.resourceKind,
           });
         });
@@ -415,7 +463,20 @@ export class DirectBroker {
           }
           this.#handleDirectFrame(active, data);
         });
-      } catch {
+      } catch (error) {
+        workerLogger.rateLimited(
+          "direct-capability-initialization-rejected",
+          "warn",
+          "Direct capability initialization rejected",
+          {
+            event: "direct.capability.rejected",
+            subsystem: "direct-broker",
+            operation: "connect",
+            reasonCode: "invalid-initialization",
+            status: "rejected",
+            error: workerLogError(error),
+          },
+        );
         socket.close(1008, "Direct initialization is invalid");
       }
     });
@@ -473,11 +534,21 @@ export class DirectBroker {
       }
       this.#handleTunnelFrame(routed, frame.payload);
     } catch (error) {
-      workerLogger.warn("Direct tunnel frame rejected", {
-        capabilityId: active.capabilityId,
-        error: error instanceof Error ? error.message : String(error),
-        resourceKind: active.binding.resourceKind,
-      });
+      workerLogger.rateLimited(
+        `direct-frame-rejected:${active.capabilityId}`,
+        "warn",
+        "Direct tunnel frame rejected",
+        {
+          event: "direct.frame.rejected",
+          subsystem: "direct-broker",
+          operation: "route-frame",
+          reasonCode: "invalid-frame",
+          status: "rejected",
+          capabilityId: active.capabilityId,
+          error: workerLogError(error),
+          resourceKind: active.binding.resourceKind,
+        },
+      );
       active.socket.close(1003, "Invalid direct tunnel frame");
     }
   }

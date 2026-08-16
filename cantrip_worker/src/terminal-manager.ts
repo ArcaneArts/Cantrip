@@ -1,4 +1,5 @@
 import { chmodSync, existsSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -14,6 +15,7 @@ import {
 import * as pty from "node-pty";
 
 import { codexProviderConfiguration } from "./codex/provider-config.js";
+import { workerLogError, workerLogger } from "./logger.js";
 
 const MAX_SCROLLBACK_CHARS = 2_000_000;
 let spawnHelperChecked = false;
@@ -51,8 +53,10 @@ interface TerminalSession {
   process: pty.IPty | null;
   removeAfterExit: boolean;
   restartDelayOverride: number | null;
+  restartCount: number;
   restartTimer: ReturnType<typeof setTimeout> | null;
   rows: number;
+  startedAtMs: number | null;
   subscribers: Map<string, (event: WorkerEvent) => void>;
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
@@ -174,6 +178,7 @@ export class TerminalManager {
   readonly #environment: Record<string, string>;
   readonly #serviceRestartDelayMs: number;
   #closing = false;
+  #serviceFingerprint = "";
 
   constructor(options: TerminalManagerOptions = {}) {
     this.#environment = { ...options.environment };
@@ -193,12 +198,37 @@ export class TerminalManager {
       if (!desired.has(terminalId)) this.#disableService(terminalId);
     }
     for (const service of desired.values()) this.#configureService(service);
+    const fingerprint = [...desired.values()]
+      .map((service) =>
+        createHash("sha256")
+          .update(`${service.terminalId}\0${service.cwd}\0${service.command}`)
+          .digest("hex"),
+      )
+      .sort()
+      .join("|");
+    if (fingerprint !== this.#serviceFingerprint) {
+      this.#serviceFingerprint = fingerprint;
+      workerLogger.event("info", "Terminal services reconciled", {
+        event: "terminal.service.reconciled",
+        subsystem: "terminal",
+        operation: "reconcile-services",
+        status: "completed",
+        counts: { configured: services.length },
+      });
+    }
   }
 
   restartService(terminalId: string): void {
     const service = this.#services.get(terminalId);
     if (!service)
       throw new Error(`Terminal service ${terminalId} is disabled.`);
+    workerLogger.event("info", "Terminal service restart requested", {
+      event: "terminal.service.restart-requested",
+      subsystem: "terminal",
+      operation: "restart-service",
+      status: "started",
+      terminalId,
+    });
     const session = this.#sessions.get(terminalId);
     if (!session) {
       this.#startService(service);
@@ -239,7 +269,14 @@ export class TerminalManager {
       } else if (!serviceSession.process && !serviceSession.restartTimer) {
         this.#startService(service, serviceSession);
       }
-      return this.#attach(serviceSession, attachmentId, cols, rows, emit);
+      return this.#attach(
+        terminalId,
+        serviceSession,
+        attachmentId,
+        cols,
+        rows,
+        emit,
+      );
     }
 
     let session = this.#sessions.get(terminalId);
@@ -258,8 +295,10 @@ export class TerminalManager {
         process: null,
         removeAfterExit: false,
         restartDelayOverride: null,
+        restartCount: 0,
         restartTimer: null,
         rows,
+        startedAtMs: null,
         subscribers: new Map(),
         waiters: new Map(),
       };
@@ -270,7 +309,7 @@ export class TerminalManager {
     }
 
     if (session.exited) return Promise.resolve(session.exited);
-    return this.#attach(session, attachmentId, cols, rows, emit);
+    return this.#attach(terminalId, session, attachmentId, cols, rows, emit);
   }
 
   detach(terminalId: string, attachmentId: string): TerminalOpenResult {
@@ -280,6 +319,15 @@ export class TerminalManager {
     session.subscribers.delete(attachmentId);
     session.waiters.get(attachmentId)?.(result);
     session.waiters.delete(attachmentId);
+    workerLogger.event("debug", "Terminal client detached", {
+      event: "terminal.client.detached",
+      subsystem: "terminal",
+      operation: "detach",
+      status: "completed",
+      terminalId,
+      attachmentId,
+      counts: { clients: session.subscribers.size },
+    });
     return result;
   }
 
@@ -295,7 +343,7 @@ export class TerminalManager {
       throw new Error(`Terminal ${terminalId} is not running.`);
     }
     if (session.exited) return Promise.resolve(session.exited);
-    return this.#attach(session, attachmentId, cols, rows, emit);
+    return this.#attach(terminalId, session, attachmentId, cols, rows, emit);
   }
 
   input(terminalId: string, data: string): void {
@@ -337,9 +385,19 @@ export class TerminalManager {
   }
 
   close(terminalId: string): void {
+    const service = this.#services.has(terminalId);
     this.#services.delete(terminalId);
     const session = this.#sessions.get(terminalId);
     if (!session) return;
+    workerLogger.event("info", "Terminal session stopping", {
+      event: "terminal.session.stopping",
+      subsystem: "terminal",
+      operation: "close",
+      status: "started",
+      terminalId,
+      service,
+      counts: { clients: session.subscribers.size },
+    });
     if (session.restartTimer) {
       clearTimeout(session.restartTimer);
       session.restartTimer = null;
@@ -358,6 +416,16 @@ export class TerminalManager {
 
   closeAll(): void {
     this.#closing = true;
+    workerLogger.event("info", "Terminal manager stopping", {
+      event: "terminal.manager.stopping",
+      subsystem: "terminal",
+      operation: "close-all",
+      status: "started",
+      counts: {
+        sessions: this.#sessions.size,
+        services: this.#services.size,
+      },
+    });
     this.#services.clear();
     for (const terminalId of [...this.#sessions.keys()]) this.close(terminalId);
   }
@@ -371,6 +439,7 @@ export class TerminalManager {
   }
 
   #attach(
+    terminalId: string,
     session: TerminalSession,
     attachmentId: string,
     cols: number,
@@ -381,6 +450,15 @@ export class TerminalManager {
     session.rows = rows;
     if (session.process) session.process.resize(cols, rows);
     session.subscribers.set(attachmentId, emit);
+    workerLogger.event("debug", "Terminal client attached", {
+      event: "terminal.client.attached",
+      subsystem: "terminal",
+      operation: "attach",
+      status: "completed",
+      terminalId,
+      attachmentId,
+      counts: { clients: session.subscribers.size },
+    });
     emit({ type: "terminal.ready" });
     if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
     return new Promise((resolve) => session.waiters.set(attachmentId, resolve));
@@ -453,8 +531,10 @@ export class TerminalManager {
       process: null,
       removeAfterExit: false,
       restartDelayOverride: null,
+      restartCount: 0,
       restartTimer: null,
       rows: 24,
+      startedAtMs: null,
       subscribers: new Map(),
       waiters: new Map(),
     };
@@ -470,6 +550,22 @@ export class TerminalManager {
     try {
       this.#spawn(service.terminalId, session);
     } catch (error) {
+      workerLogger.rateLimited(
+        `terminal-service-start-failed:${service.terminalId}`,
+        "warn",
+        "Terminal service failed to start; retry scheduled",
+        {
+          event: "terminal.service.start-failed",
+          subsystem: "terminal",
+          operation: "start-service",
+          reasonCode: "spawn-failed",
+          status: "retrying",
+          terminalId: service.terminalId,
+          attempt: session.restartCount + 1,
+          reconnectDelayMs: this.#serviceRestartDelayMs,
+          error: workerLogError(error),
+        },
+      );
       this.#appendOutput(
         session,
         `\r\n\x1b[31m[Service failed to start: ${error instanceof Error ? error.message : String(error)}]\x1b[0m\r\n`,
@@ -499,6 +595,17 @@ export class TerminalManager {
               args: [],
               env: environment,
             };
+    const startedAtMs = Date.now();
+    workerLogger.event("info", "Terminal process starting", {
+      event: "terminal.process.starting",
+      subsystem: "terminal",
+      operation: "spawn",
+      status: "started",
+      terminalId,
+      launchType: session.launch.type,
+      service: this.#services.has(terminalId),
+      attempt: session.restartCount + 1,
+    });
     const child = pty.spawn(processLaunch.command, processLaunch.args, {
       cols: session.cols,
       rows: session.rows,
@@ -508,6 +615,18 @@ export class TerminalManager {
     });
     session.process = child;
     session.exited = null;
+    session.startedAtMs = startedAtMs;
+    workerLogger.event("info", "Terminal process started", {
+      event: "terminal.process.started",
+      subsystem: "terminal",
+      operation: "spawn",
+      status: "running",
+      terminalId,
+      processId: child.pid,
+      launchType: session.launch.type,
+      service: this.#services.has(terminalId),
+      durationMs: Date.now() - startedAtMs,
+    });
     child.onData((data) => {
       if (session.process !== child) return;
       this.#appendOutput(session, data);
@@ -526,6 +645,26 @@ export class TerminalManager {
         const delay =
           session.restartDelayOverride ?? this.#serviceRestartDelayMs;
         session.restartDelayOverride = null;
+        session.restartCount += 1;
+        workerLogger.event(
+          exitCode === 0 ? "info" : "warn",
+          "Terminal service process exited; restart scheduled",
+          {
+            event: "terminal.service.restart-scheduled",
+            subsystem: "terminal",
+            operation: "restart-service",
+            reasonCode: exitCode === 0 ? "process-exited" : "process-failed",
+            status: "retrying",
+            terminalId,
+            exitCode,
+            signal: signal || null,
+            durationMs: session.startedAtMs
+              ? Date.now() - session.startedAtMs
+              : undefined,
+            reconnectDelayMs: delay,
+            attempt: session.restartCount,
+          },
+        );
         this.#appendOutput(
           session,
           `\r\n\x1b[90m[Service exited ${exitCode}; restarting ${delay === 0 ? "now" : `in ${Math.ceil(delay / 1_000)} seconds`}]\x1b[0m\r\n`,
@@ -533,6 +672,23 @@ export class TerminalManager {
         this.#scheduleServiceRestart(terminalId, session, delay);
         return;
       }
+      workerLogger.event(
+        exitCode === 0 || session.removeAfterExit ? "info" : "warn",
+        "Terminal process exited",
+        {
+          event: "terminal.process.exited",
+          subsystem: "terminal",
+          operation: "spawn",
+          status: "stopped",
+          terminalId,
+          exitCode,
+          signal: signal || null,
+          durationMs: session.startedAtMs
+            ? Date.now() - session.startedAtMs
+            : undefined,
+          counts: { clients: session.subscribers.size },
+        },
+      );
       this.#finalizeSession(terminalId, session, result);
     });
   }
