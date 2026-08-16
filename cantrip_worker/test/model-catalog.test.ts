@@ -108,12 +108,24 @@ describe("managed Codex model catalogs", () => {
     }
   });
 
-  it("does not advertise OpenAI custom tools to compatible providers", () => {
+  it.each(["openai-compatible", "grok"] as const)(
+    "does not advertise OpenAI custom tools to %s providers",
+    (providerKind) => {
+      expect(
+        codexCatalogForRuntimeModel(model, providerKind)?.models[0],
+      ).toMatchObject({
+        shell_type: "shell_command",
+        apply_patch_tool_type: null,
+      });
+    },
+  );
+
+  it("keeps freeform edits available to native local runtimes", () => {
     expect(
-      codexCatalogForRuntimeModel(model, "openai-compatible")?.models[0],
+      codexCatalogForRuntimeModel(model, "ollama")?.models[0],
     ).toMatchObject({
       shell_type: "shell_command",
-      apply_patch_tool_type: null,
+      apply_patch_tool_type: "freeform",
     });
   });
 });
