@@ -7,7 +7,8 @@ backup/restore, TURN, and rolling-upgrade operations are documented in
 Cantrip produces Server, Worker, Desktop, Android, and iOS release outputs. The
 Server and Worker are Node.js deployment trees. Desktop is a native Tauri
 bundle containing the frontend plus those same service trees and the Node.js
-runtime used to build it. Android is an unsigned Capacitor APK attached to the
+runtime used to build it. Android produces a signed Capacitor App Bundle for
+Google Play and a signed APK for direct testing; both are attached to the
 GitHub release. The signed Capacitor iOS archive is uploaded directly to App
 Store Connect for TestFlight processing rather than attached publicly.
 
@@ -66,12 +67,12 @@ workflow uses Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64
 runners for the service and desktop lanes. Server, Worker, Android, and iOS
 jobs start in parallel. Desktop jobs then download the exact native service
 archives, embed them alongside the runner's Node.js runtime, and build a signed
-and notarized macOS DMG or a Windows NSIS installer. Android builds an unsigned
-release APK while iOS archives and uploads to TestFlight. A final job waits for
-every lane, creates a GitHub release tagged
+and notarized macOS DMG or a Windows NSIS installer. Android builds a signed
+App Bundle and APK while iOS archives and uploads to TestFlight. A final job
+waits for every lane, creates a GitHub release tagged
 `v<major>.<minor>.<commit-count>`, and uploads the DMG, NSIS executable, Android
-APK, signed Tauri updater artifacts, and both standalone Server and Worker
-archives for both platforms.
+App Bundle and APK, signed Tauri updater artifacts, and both standalone Server
+and Worker archives for both platforms.
 
 Release caches are content-addressed and platform-specific. They retain the
 verified final Codex runtime bundle and exact-fingerprint Cantrip Code
@@ -91,11 +92,34 @@ entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
 ### Mobile release lanes
 
 The Android lane uses Java 21 and the checked-in Gradle wrapper after running a
-Capacitor sync. The project deliberately has no release signing configuration,
-and CI verifies that Gradle emitted `app-release-unsigned.apk` before renaming
-it to `Cantrip_<version>_android_unsigned.apk`. The artifact is uploaded under
-the `cantrip-android-apk` workflow artifact name, so the final release job
-downloads and publishes it alongside the desktop and service files.
+Capacitor sync. CI restores the upload keystore only for the Android build,
+fails closed when any signing value is missing, and removes the temporary
+keystore even when the job fails. Gradle emits a signed Android App Bundle for
+Google Play and a signed APK for direct testing. They are published as
+`Cantrip_<version>_android.aab` and `Cantrip_<version>_android.apk` under the
+`cantrip-android-release` workflow artifact name.
+
+The Android lane requires these Actions secrets:
+
+- `ANDROID_UPLOAD_KEYSTORE_BASE64`: the base64-encoded upload keystore;
+- `ANDROID_UPLOAD_KEYSTORE_PASSWORD`: the keystore password;
+- `ANDROID_UPLOAD_KEY_ALIAS`: the upload-key alias; and
+- `ANDROID_UPLOAD_KEY_PASSWORD`: the private-key password.
+
+The same recovery values are stored in the production Infisical environment.
+The upload key is not the Play-managed app-signing key: Google Play retains the
+app-signing key while this key authenticates future bundle uploads. Never add a
+keystore, signing password, or decoded secret to the repository.
+
+For the first internal test, create the Play Console app with package ID
+`art.cantrip`, enable Play App Signing, and upload the versioned `.aab` from the
+GitHub release. Add an internal tester email list or Google Group, publish the
+internal release, and share Play Console's opt-in link. Automated Play uploads
+are intentionally deferred until the Play app exists and a Google Play service
+account has been granted release access; that credential is separate from the
+Android upload key configured here. See Google's documentation for
+[app signing](https://developer.android.com/studio/publish/app-signing) and
+[internal testing](https://support.google.com/googleplay/android-developer/answer/9845334).
 
 The iOS lane synchronizes the Capacitor project, archives the `App` scheme for
 the generic iOS destination, and exports with the `upload` destination. The

@@ -205,7 +205,7 @@ jobs:
           retention-days: 14
 
   android:
-    name: Android unsigned APK
+    name: Android signed release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -227,33 +227,66 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: pnpm install --frozen-lockfile
       - name: Build mobile workspace dependencies
-        run: pnpm --filter @cantrip/protocol build
+        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
       - name: Synchronize Android project
         run: pnpm --filter @cantrip/app cap:sync android
-      - name: Build unsigned release APK
+      - name: Restore Android upload keystore
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for value in \
+            "$ANDROID_UPLOAD_KEYSTORE_BASE64" \
+            "$ANDROID_UPLOAD_KEYSTORE_PASSWORD" \
+            "$ANDROID_UPLOAD_KEY_ALIAS" \
+            "$ANDROID_UPLOAD_KEY_PASSWORD"; do
+            if [ -z "$value" ]; then
+              echo "Android upload signing secrets are incomplete." >&2
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" \
+            | base64 --decode \
+            > "$RUNNER_TEMP/cantrip-android-upload.keystore"
+          chmod 600 "$RUNNER_TEMP/cantrip-android-upload.keystore"
+      - name: Build signed Android release
+        env:
+          CANTRIP_ANDROID_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/cantrip-android-upload.keystore
+          CANTRIP_ANDROID_UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+          CANTRIP_ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          CANTRIP_ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
           pushd cantrip_app/android
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon bundleRelease assembleRelease
           popd
-          apk="cantrip_app/android/app/build/outputs/apk/release/app-release-unsigned.apk"
-          if [ ! -f "$apk" ]; then
-            echo "Gradle did not produce the expected unsigned release APK at $apk." >&2
-            find cantrip_app/android/app/build/outputs -type f -name '*.apk' -print >&2 || true
-            exit 1
-          fi
+          bundle="cantrip_app/android/app/build/outputs/bundle/release/app-release.aab"
+          apk="cantrip_app/android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$bundle" || { echo "Gradle did not produce $bundle." >&2; exit 1; }
+          test -f "$apk" || { echo "Gradle did not produce $apk." >&2; exit 1; }
+          jarsigner -verify "$bundle"
           version="$(node scripts/version.mjs)"
-          output="artifacts/mobile/android/Cantrip_${version}_android_unsigned.apk"
-          mkdir -p "$(dirname "$output")"
-          cp "$apk" "$output"
-      - name: Upload unsigned Android APK
+          output="artifacts/mobile/android"
+          mkdir -p "$output"
+          cp "$bundle" "$output/Cantrip_${version}_android.aab"
+          cp "$apk" "$output/Cantrip_${version}_android.apk"
+      - name: Upload signed Android release
         uses: actions/upload-artifact@v4
         with:
-          name: cantrip-android-apk
-          path: artifacts/mobile/android/*.apk
+          name: cantrip-android-release
+          path: |
+            artifacts/mobile/android/*.aab
+            artifacts/mobile/android/*.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Remove Android upload keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/cantrip-android-upload.keystore"
 
   ios:
     name: iOS TestFlight
@@ -273,7 +306,7 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile
       - name: Build mobile workspace dependencies
-        run: pnpm --filter @cantrip/protocol build
+        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
       - name: Synchronize iOS project
         run: pnpm --filter @cantrip/app cap:sync ios
       - name: Import Apple Distribution certificate
