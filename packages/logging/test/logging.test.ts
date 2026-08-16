@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createServiceLogger,
   createPinoServiceLogStream,
   formatDuration,
   formatHttpLog,
@@ -93,5 +94,36 @@ describe("service logging", () => {
     expect(formatted).toContain("\u001b[35m[worker]\u001b[0m");
     expect(formatted).toContain("\u001b[34mDELETE\u001b[0m");
     expect(formatted).toContain("\u001b[31m503 Service Unavailable\u001b[0m");
+  });
+
+  it("emits sanitized structured records without changing console output", () => {
+    const lines: string[] = [];
+    const records: unknown[] = [];
+    const logger = createServiceLogger("worker", {
+      colors: false,
+      now: () => timestamp,
+      output: (line) => lines.push(line),
+      onRecord: (record) => records.push(record),
+    });
+    logger.warn("Credential rejected", {
+      apiKey: "sk-abcdefghijk",
+      endpoint: "https://example.com?token=secret",
+    });
+
+    expect(lines).toEqual([
+      "[worker] 22:15: WARN Credential rejected · apiKey=sk-abcdefghijk endpoint=https://example.com?token=secret",
+    ]);
+    expect(records).toEqual([
+      {
+        timestamp: timestamp.toISOString(),
+        system: "worker",
+        level: "warn",
+        message: "Credential rejected",
+        context: {
+          apiKey: "[REDACTED]",
+          endpoint: "https://example.com/?token=%5BREDACTED%5D",
+        },
+      },
+    ]);
   });
 });

@@ -1,7 +1,15 @@
 import { STATUS_CODES } from "node:http";
 
-export type ServiceLogLevel =
-  "trace" | "debug" | "info" | "warn" | "error" | "fatal";
+import {
+  sanitizeLogRecordInput,
+  type ServiceLogLevel,
+  type ServiceLogRecordInput,
+} from "./records.js";
+
+export * from "./records.js";
+export * from "./rotating-jsonl.js";
+
+export type { ServiceLogLevel } from "./records.js";
 
 export type ServiceLogContext = Error | Record<string, unknown> | unknown;
 
@@ -10,6 +18,7 @@ type LogOutput = (line: string, level: ServiceLogLevel) => void;
 export type ServiceLogFormatterOptions = {
   colors?: boolean;
   now?: () => Date;
+  onRecord?: (record: ServiceLogRecordInput) => void;
   output?: LogOutput;
 };
 
@@ -254,12 +263,14 @@ export function createServiceLogger(
 ) {
   const colors = options.colors ?? environmentUsesColor();
   const now = options.now ?? (() => new Date());
+  const onRecord = options.onRecord;
   const output = options.output ?? defaultOutput;
   const write = (
     level: ServiceLogLevel,
     message: string,
     context?: ServiceLogContext,
   ) => {
+    const timestamp = now();
     output(
       formatServiceLog({
         colors,
@@ -267,9 +278,18 @@ export function createServiceLogger(
         level,
         message,
         system,
-        timestamp: now(),
+        timestamp,
       }),
       level,
+    );
+    onRecord?.(
+      sanitizeLogRecordInput({
+        timestamp: timestamp.toISOString(),
+        system,
+        level,
+        message,
+        ...(context === undefined ? {} : { context }),
+      }),
     );
   };
   return {
@@ -290,6 +310,7 @@ export function createPinoServiceLogStream(
 ): { write(line: string): void } {
   const colors = options.colors ?? environmentUsesColor();
   const now = options.now ?? (() => new Date());
+  const onRecord = options.onRecord;
   const output = options.output ?? defaultOutput;
   const pendingRequests = new Map<string, { method: string; path: string }>();
 
@@ -301,15 +322,24 @@ export function createPinoServiceLogStream(
         try {
           entry = JSON.parse(candidate) as PinoEntry;
         } catch {
+          const timestamp = now();
           output(
             formatServiceLog({
               colors,
               level: "info",
               message: candidate,
               system,
-              timestamp: now(),
+              timestamp,
             }),
             "info",
+          );
+          onRecord?.(
+            sanitizeLogRecordInput({
+              timestamp: timestamp.toISOString(),
+              system,
+              level: "info",
+              message: candidate,
+            }),
           );
           continue;
         }
@@ -353,6 +383,22 @@ export function createPinoServiceLogStream(
             }),
             statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : level,
           );
+          const recordLevel =
+            statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : level;
+          onRecord?.(
+            sanitizeLogRecordInput({
+              timestamp: timestamp.toISOString(),
+              system,
+              level: recordLevel,
+              message: `${request.method} ${request.path} -> ${statusCode} ${STATUS_CODES[statusCode] ?? "Unknown"} (${formatDuration(entry.responseTime)})`,
+              context: {
+                durationMs: entry.responseTime,
+                method: request.method,
+                path: request.path,
+                statusCode,
+              },
+            }),
+          );
           continue;
         }
 
@@ -366,6 +412,15 @@ export function createPinoServiceLogStream(
             timestamp,
           }),
           level,
+        );
+        onRecord?.(
+          sanitizeLogRecordInput({
+            timestamp: timestamp.toISOString(),
+            system,
+            level,
+            message: entry.msg ?? "Log event",
+            context: entry,
+          }),
         );
       }
     },
