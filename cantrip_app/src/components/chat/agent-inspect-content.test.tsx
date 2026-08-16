@@ -1,0 +1,227 @@
+import type { ChatSummary } from "@cantrip/protocol";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
+
+import {
+  AGENT_INSPECT_SCROLLING_CARD_HEIGHT_PX,
+  AgentInspectPresentation,
+  agentInspectorActive,
+  commandOutputIsAtBottom,
+  formatInspectorElapsed,
+  inspectorCommandLayout,
+  inspectorSingleLine,
+  visibleInspectorCommands,
+} from "./agent-inspect-content";
+import type {
+  AgentInspectorCommand,
+  AgentInspectorSnapshot,
+} from "./inspect-model";
+
+function command(
+  id: string,
+  presentation: AgentInspectorCommand["presentation"] = "visible",
+): AgentInspectorCommand {
+  return {
+    id,
+    command: `pnpm run ${id}`,
+    completedAtMs: null,
+    cwd: ".",
+    elapsedMs: 62_000,
+    exitCode: null,
+    output: `output from ${id}`,
+    outputTruncated: false,
+    presentation,
+    startedAtMs: 1_000,
+    status: "running",
+    turnId: "turn-1",
+    updatedAtMs: 2_000,
+  };
+}
+
+function snapshot(
+  input: Partial<AgentInspectorSnapshot> = {},
+): AgentInspectorSnapshot {
+  return {
+    active: true,
+    commands: [],
+    files: [],
+    nextTransitionAtMs: null,
+    recentCommands: [],
+    thought: null,
+    turnId: "turn-1",
+    ...input,
+  };
+}
+
+describe("agent inspector presentation helpers", () => {
+  it("only treats live and approval-blocked turns as active", () => {
+    const statuses: ChatSummary["status"][] = [
+      "idle",
+      "running",
+      "waiting-for-approval",
+      "offline",
+      "failed",
+    ];
+    expect(statuses.map(agentInspectorActive)).toEqual([
+      false,
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it("formats the shared stopwatch without per-card timers", () => {
+    expect(formatInspectorElapsed(-1)).toBe("0:00");
+    expect(formatInspectorElapsed(9_999)).toBe("0:09");
+    expect(formatInspectorElapsed(62_000)).toBe("1:02");
+    expect(formatInspectorElapsed(3_661_000)).toBe("1:01:01");
+  });
+
+  it("keeps commands and file previews on one visual line", () => {
+    expect(inspectorSingleLine("first\r\nsecond\nthird")).toBe(
+      "first ↵ second ↵ third",
+    );
+  });
+
+  it("follows output only while its viewport remains at the newest end", () => {
+    expect(
+      commandOutputIsAtBottom({
+        clientHeight: 100,
+        scrollHeight: 500,
+        scrollTop: 376,
+      }),
+    ).toBe(true);
+    expect(
+      commandOutputIsAtBottom({
+        clientHeight: 100,
+        scrollHeight: 500,
+        scrollTop: 375,
+      }),
+    ).toBe(false);
+  });
+
+  it("filters threshold-hidden cards and selects the required layouts", () => {
+    expect(
+      visibleInspectorCommands([
+        command("hidden", "hidden"),
+        command("visible"),
+        command("exiting", "exiting"),
+      ]).map(({ id }) => id),
+    ).toEqual(["visible", "exiting"]);
+    expect(inspectorCommandLayout(3)).toEqual({
+      cardHeight: "calc((100% - 1rem) / 3)",
+      scrollable: false,
+    });
+    expect(inspectorCommandLayout(4)).toEqual({
+      cardHeight: `${AGENT_INSPECT_SCROLLING_CARD_HEIGHT_PX}px`,
+      scrollable: true,
+    });
+  });
+});
+
+describe("AgentInspectPresentation", () => {
+  it("renders visible thought, file previews, recent commands, and bounded output state", () => {
+    const running = {
+      ...command("serve"),
+      command: "pnpm dev --filter <unsafe>",
+      output: "latest output\ncontinues",
+      outputTruncated: true,
+    };
+    const markup = renderToStaticMarkup(
+      <AgentInspectPresentation
+        snapshot={snapshot({
+          commands: [command("too-fast", "hidden"), running],
+          files: [
+            {
+              id: "file-1",
+              expiresAtMs: 12_000,
+              kind: "update",
+              latestLine: "const latest = '<safe>';",
+              path: "src/path with spaces.ts",
+              turnId: "turn-1",
+              updatedAtMs: 2_000,
+            },
+            {
+              id: "file-2",
+              expiresAtMs: 12_000,
+              kind: "delete",
+              latestLine: null,
+              path: "assets/old image.png",
+              turnId: "turn-1",
+              updatedAtMs: 2_000,
+            },
+          ],
+          recentCommands: [
+            {
+              id: "quick",
+              command: "git status --short",
+              completedAtMs: 2_000,
+              expiresAtMs: 5_000,
+              status: "completed",
+              turnId: "turn-1",
+            },
+          ],
+          thought: {
+            id: "thought-1",
+            kind: "commentary",
+            text: "Checking the live worker state.",
+            turnId: "turn-1",
+            updatedAtMs: 1_500,
+          },
+        })}
+      />,
+    );
+
+    expect(markup).toContain("Latest thought");
+    expect(markup).toContain("Checking the live worker state.");
+    expect(markup).toContain("src/path with spaces.ts");
+    expect(markup).toContain("const latest = &#x27;&lt;safe&gt;&#x27;;");
+    expect(markup).toContain("File deleted");
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup).toContain("whitespace-pre");
+    expect(markup).toContain("git status --short");
+    expect(markup).toContain("latest 256 KiB retained");
+    expect(markup).toContain("latest output");
+    expect(markup).not.toContain("too-fast");
+    expect(markup).toContain("pnpm dev --filter &lt;unsafe&gt;");
+  });
+
+  it("splits one to three cards evenly and scrolls four or more", () => {
+    const equalMarkup = renderToStaticMarkup(
+      <AgentInspectPresentation
+        snapshot={snapshot({
+          commands: [command("one"), command("two"), command("three")],
+        })}
+      />,
+    );
+    expect(equalMarkup).toContain('data-command-layout="equal"');
+    expect(
+      equalMarkup.match(/height:calc\(\(100% - 1rem\) \/ 3\)/gu),
+    ).toHaveLength(3);
+
+    const scrollMarkup = renderToStaticMarkup(
+      <AgentInspectPresentation
+        snapshot={snapshot({
+          commands: [
+            command("one"),
+            command("two"),
+            command("three"),
+            command("four"),
+          ],
+        })}
+      />,
+    );
+    expect(scrollMarkup).toContain('data-command-layout="scroll"');
+    expect(scrollMarkup).toContain("overflow-y-auto");
+    expect(scrollMarkup.match(/height:176px/gu)).toHaveLength(4);
+  });
+
+  it("shows a stable active placeholder while telemetry has not arrived", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectPresentation snapshot={snapshot()} />,
+    );
+    expect(markup).toContain("Watching live activity");
+    expect(markup).not.toContain("Inactive");
+  });
+});

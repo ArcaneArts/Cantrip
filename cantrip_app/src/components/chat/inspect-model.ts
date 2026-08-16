@@ -98,7 +98,10 @@ function activityTime(activity: AgentActivity, message: ChatMessage): number {
 }
 
 function terminalBoundary(message: ChatMessage): boolean {
-  if (message.role === "user" || message.role === "system") return true;
+  if (message.role === "user") return true;
+  if (message.role === "system") {
+    return message.content.some((content) => content.type === "text");
+  }
   if (message.role !== "assistant") return false;
   return message.content.some(
     (content) => content.type === "text" && content.phase !== "commentary",
