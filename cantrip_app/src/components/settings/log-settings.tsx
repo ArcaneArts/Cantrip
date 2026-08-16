@@ -35,7 +35,11 @@ import {
   getWorkerServiceLogs,
   getWorkers,
 } from "@/lib/api";
-import { readClientLogs } from "@/lib/client-log-relay";
+import {
+  clientLogger,
+  operationalErrorMetadata,
+  readClientLogs,
+} from "@/lib/client-log-relay";
 import {
   listDesktopWorkers,
   type DesktopWorkerStatus,
@@ -434,6 +438,7 @@ export function LogSettings() {
     let cancelled = false;
     let timeout: number | undefined;
     let backoff = POLL_INTERVAL_MS;
+    let consecutiveFailures = 0;
 
     const commit = (change: (state: LogSourceState) => LogSourceState) => {
       if (cancelled) return;
@@ -454,6 +459,18 @@ export function LogSettings() {
           selectedSource,
           (transport) => current.cursors[transport] ?? 0,
         );
+        if (consecutiveFailures > 0) {
+          clientLogger.info("Service log stream recovered", {
+            attempt: consecutiveFailures + 1,
+            event: "surface.logs.stream.recovered",
+            operation: "read-logs",
+            sourceKind: selectedSource.kind,
+            status: page.status,
+            subsystem: "logs",
+            workerId: selectedSource.workerId,
+          });
+        }
+        consecutiveFailures = 0;
         backoff = POLL_INTERVAL_MS;
         commit((latest) => ({
           ...latest,
@@ -472,6 +489,7 @@ export function LogSettings() {
         }));
         schedule(page.result.hasMore ? 0 : POLL_INTERVAL_MS);
       } catch (error) {
+        consecutiveFailures += 1;
         const message =
           error instanceof Error ? error.message : "Log stream unavailable.";
         commit((latest) => ({
@@ -479,6 +497,25 @@ export function LogSettings() {
           error: message,
           status: selectedSource.online ? "reconnecting" : "offline",
         }));
+        clientLogger.rateLimited(
+          `logs-stream:${selectedSource.id}`,
+          selectedSource.online ? "warn" : "info",
+          "Service log stream is unavailable",
+          {
+            attempt: consecutiveFailures,
+            ...operationalErrorMetadata(error),
+            event: "surface.logs.stream.failed",
+            operation: "read-logs",
+            reasonCode: selectedSource.online
+              ? "transport-error"
+              : "source-offline",
+            sourceKind: selectedSource.kind,
+            status: selectedSource.online ? "reconnecting" : "offline",
+            subsystem: "logs",
+            workerId: selectedSource.workerId,
+          },
+          { summaryEvery: 10, windowMs: 30_000 },
+        );
         backoff = Math.min(MAX_BACKOFF_MS, Math.max(1_500, backoff * 2));
         schedule(backoff);
       }

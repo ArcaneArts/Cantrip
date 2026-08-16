@@ -37,6 +37,7 @@ import {
   saveExplorerFile,
   updateExplorerViewState,
 } from "@/lib/api";
+import { clientLogger } from "@/lib/client-log-relay";
 import { cn } from "@/lib/utils";
 
 const MonacoFileEditor = lazy(async () => {
@@ -261,10 +262,26 @@ export function ExplorerView({
 
   useEffect(() => {
     mountedRef.current = true;
+    clientLogger.info("Explorer surface opened", {
+      event: "explorer.surface.opened",
+      operation: "open-surface",
+      projectId: explorer.projectId,
+      subsystem: "explorer",
+      surfaceId: explorer.id,
+      worktreeId: explorer.worktreeId,
+    });
     return () => {
       mountedRef.current = false;
+      clientLogger.info("Explorer surface closed", {
+        event: "explorer.surface.closed",
+        operation: "close-surface",
+        projectId: explorer.projectId,
+        subsystem: "explorer",
+        surfaceId: explorer.id,
+        worktreeId: explorer.worktreeId,
+      });
     };
-  }, []);
+  }, [explorer.id, explorer.projectId, explorer.worktreeId]);
 
   useEffect(() => {
     if (
@@ -303,6 +320,13 @@ export function ExplorerView({
           }
           return true;
         } catch (error) {
+          clientLogger.warn("Explorer view state failed to save", {
+            event: "explorer.view-state.save.failed",
+            operation: "save-view-state",
+            reasonCode: "api-request-failed",
+            subsystem: "explorer",
+            surfaceId: explorer.id,
+          });
           if (mountedRef.current) {
             setViewStateError(
               error instanceof Error
@@ -351,6 +375,13 @@ export function ExplorerView({
     const version = draftVersionRef.current;
     if (!path || !version || !dirtyRef.current) return true;
     if (saveFilePending) return false;
+    const startedAt = performance.now();
+    clientLogger.info("Explorer file save started", {
+      event: "explorer.file.save.started",
+      operation: "save-file",
+      subsystem: "explorer",
+      surfaceId: explorer.id,
+    });
     try {
       const savedFile = await mutateSaveFile({
         content: draftRef.current,
@@ -383,8 +414,25 @@ export function ExplorerView({
           ],
         }),
       ]);
+      clientLogger.info("Explorer file save completed", {
+        durationMs: Math.round(performance.now() - startedAt),
+        event: "explorer.file.save.completed",
+        operation: "save-file",
+        status: "completed",
+        subsystem: "explorer",
+        surfaceId: explorer.id,
+      });
       return true;
     } catch {
+      clientLogger.warn("Explorer file save failed", {
+        durationMs: Math.round(performance.now() - startedAt),
+        event: "explorer.file.save.failed",
+        operation: "save-file",
+        reasonCode: "api-request-failed",
+        status: "failed",
+        subsystem: "explorer",
+        surfaceId: explorer.id,
+      });
       return false;
     }
   }, [

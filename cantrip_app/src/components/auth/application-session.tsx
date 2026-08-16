@@ -41,6 +41,7 @@ import {
   setClientSession,
 } from "@/lib/client-session";
 import { errorMessage } from "@/lib/error-message";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   getActiveServerConnection,
   selectServerConnection,
@@ -92,32 +93,73 @@ function connectionFailure(
 }
 
 async function loadApplicationSession(): Promise<ApplicationSessionState> {
+  const startedAt = performance.now();
+  clientLogger.info("Loading the Cantrip application session", {
+    event: "session.load.started",
+    operation: "load-session",
+    subsystem: "authentication",
+  });
   clearClientSession();
-  if (!getActiveServerConnection()) return { kind: "server-required" };
+  if (!getActiveServerConnection()) {
+    clientLogger.info("Application session requires a server", {
+      durationMs: Math.round(performance.now() - startedAt),
+      event: "session.load.completed",
+      operation: "load-session",
+      status: "server-required",
+      subsystem: "authentication",
+    });
+    return { kind: "server-required" };
+  }
   const bootstrap = await getServerBootstrap();
   if (bootstrap.auth.mode === "none") {
     if (!bootstrap.auth.currentUser) {
       throw new Error("The local server did not provide its anonymous user.");
     }
-    return {
+    const state: ApplicationSessionState = {
       kind: "authenticated",
       bootstrap,
       csrfToken: null,
       expiresAt: null,
       user: bootstrap.auth.currentUser,
     };
+    clientLogger.info("Anonymous application session is ready", {
+      durationMs: Math.round(performance.now() - startedAt),
+      event: "session.load.completed",
+      operation: "load-session",
+      serverId: bootstrap.server.id,
+      status: "authenticated",
+      subsystem: "authentication",
+    });
+    return state;
   }
   const session = await getAuthSession();
   if (!session.currentUser || !session.csrfToken) {
+    clientLogger.info("Application session requires sign-in", {
+      durationMs: Math.round(performance.now() - startedAt),
+      event: "session.load.completed",
+      operation: "load-session",
+      serverId: bootstrap.server.id,
+      status: "signed-out",
+      subsystem: "authentication",
+    });
     return { kind: "signed-out", bootstrap, notice: null };
   }
-  return {
+  const state: ApplicationSessionState = {
     kind: "authenticated",
     bootstrap,
     csrfToken: session.csrfToken,
     expiresAt: session.expiresAt,
     user: session.currentUser,
   };
+  clientLogger.info("Authenticated application session is ready", {
+    durationMs: Math.round(performance.now() - startedAt),
+    event: "session.load.completed",
+    operation: "load-session",
+    serverId: bootstrap.server.id,
+    status: "authenticated",
+    subsystem: "authentication",
+  });
+  return state;
 }
 
 function sessionState(
@@ -265,6 +307,17 @@ function AuthenticationScreen({
       return;
     }
     setSubmitting(true);
+    const startedAt = performance.now();
+    clientLogger.info(
+      registering ? "Account registration started" : "Sign-in started",
+      {
+        event: registering
+          ? "session.registration.started"
+          : "session.login.started",
+        operation: registering ? "register" : "login",
+        subsystem: "authentication",
+      },
+    );
     try {
       const session = registering
         ? await registerAccount(
@@ -277,8 +330,34 @@ function AuthenticationScreen({
             ...(accounts ? { email } : {}),
             password,
           });
+      clientLogger.info(
+        registering ? "Account registration completed" : "Sign-in completed",
+        {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: registering
+            ? "session.registration.completed"
+            : "session.login.completed",
+          operation: registering ? "register" : "login",
+          status: "authenticated",
+          subsystem: "authentication",
+        },
+      );
       onAuthenticated(session);
     } catch (submitError) {
+      clientLogger.warn(
+        registering ? "Account registration failed" : "Sign-in failed",
+        {
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(submitError),
+          event: registering
+            ? "session.registration.failed"
+            : "session.login.failed",
+          operation: registering ? "register" : "login",
+          reasonCode: "request-failed",
+          status: "failed",
+          subsystem: "authentication",
+        },
+      );
       setError(errorMessage(submitError));
     } finally {
       setSubmitting(false);
@@ -446,7 +525,14 @@ function AuthenticatedApplication({
       onAuthenticationRequired: notifyAuthenticationRequired,
       onEvent: (event) => queryBridge.handleEvent(event),
       onProtocolError: (error) => {
-        console.error("Cantrip live protocol error", error);
+        clientLogger.error("Cantrip live protocol handler reported an error", {
+          event: "live.channel.protocol-handler-error",
+          operation: "handle-protocol-error",
+          reasonCode: error.code,
+          retryable: error.retryable,
+          status: "failed",
+          subsystem: "live-channel",
+        });
       },
       onResync: (scopes, reason) => queryBridge.recoverScopes(scopes, reason),
       storage: window.localStorage,
@@ -483,6 +569,7 @@ export function ApplicationSession() {
   });
 
   const refresh = useCallback(() => {
+    const startedAt = performance.now();
     setState({ kind: "loading" });
     void loadApplicationSession().then(
       (next) => {
@@ -495,9 +582,28 @@ export function ApplicationSession() {
             user: next.user,
           });
         }
+        clientLogger.info("Application session refresh completed", {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "session.refresh.completed",
+          operation: "refresh-session",
+          status: next.kind,
+          subsystem: "authentication",
+        });
         setState(next);
       },
-      (error) => setState(connectionFailure(error)),
+      (error) => {
+        const failure = connectionFailure(error);
+        clientLogger.warn("Application session refresh failed", {
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "session.refresh.failed",
+          operation: "refresh-session",
+          reasonCode: failure.failureKind,
+          status: "failed",
+          subsystem: "authentication",
+        });
+        setState(failure);
+      },
     );
   }, []);
 
@@ -510,6 +616,13 @@ export function ApplicationSession() {
   useEffect(
     () =>
       onAuthenticationRequired((reason) => {
+        clientLogger.warn("Application session expired", {
+          event: "session.expired",
+          operation: "recover-session",
+          reasonCode: "authentication-required",
+          status: "signed-out",
+          subsystem: "authentication",
+        });
         clearClientSession();
         setState((current) =>
           current.kind === "authenticated" &&

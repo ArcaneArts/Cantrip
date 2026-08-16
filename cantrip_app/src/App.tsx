@@ -180,6 +180,7 @@ import {
 } from "@/components/worktrees/worktree-control";
 import { hasScrolledContent } from "@/lib/scroll-divider";
 import { errorMessage as errorText } from "@/lib/error-message";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
 import {
   assignMobileBottomTab,
@@ -1282,15 +1283,53 @@ function ChatTranscript({
       mode: ChatTurnMode;
       reasoningEffort: ReasoningEffort | null;
       text: string;
-    }) =>
-      startTurn(
+    }) => {
+      const startedAt = performance.now();
+      clientLogger.info("Chat turn submission started", {
+        chatId: chat.id,
+        counts: { attachments: attachmentIds.length },
+        event: "chat.turn.submit.started",
+        mode,
+        operation: "submit-turn",
+        projectId: chat.projectId,
+        subsystem: "chat",
+      });
+      return startTurn(
         chat.id,
         text,
         selectedModelId,
         attachmentIds,
         mode,
         reasoningEffort,
-      ),
+      ).then(
+        (result) => {
+          clientLogger.info("Chat turn submission accepted", {
+            chatId: chat.id,
+            durationMs: Math.round(performance.now() - startedAt),
+            event: "chat.turn.submit.completed",
+            operation: "submit-turn",
+            projectId: chat.projectId,
+            status: "accepted",
+            subsystem: "chat",
+          });
+          return result;
+        },
+        (error: unknown) => {
+          clientLogger.error("Chat turn submission failed", {
+            chatId: chat.id,
+            durationMs: Math.round(performance.now() - startedAt),
+            ...operationalErrorMetadata(error),
+            event: "chat.turn.submit.failed",
+            operation: "submit-turn",
+            projectId: chat.projectId,
+            reasonCode: "request-failed",
+            status: "failed",
+            subsystem: "chat",
+          });
+          throw error;
+        },
+      );
+    },
     onSuccess: async () => {
       setDraft("");
       setComposerMode("default");
@@ -1431,7 +1470,42 @@ function ChatTranscript({
     },
   });
   const interrupt = useMutation({
-    mutationFn: () => interruptChat(chat.id),
+    mutationFn: async () => {
+      const startedAt = performance.now();
+      clientLogger.info("Chat interruption requested", {
+        chatId: chat.id,
+        event: "chat.turn.interrupt.started",
+        operation: "interrupt-turn",
+        projectId: chat.projectId,
+        subsystem: "chat",
+      });
+      try {
+        const result = await interruptChat(chat.id);
+        clientLogger.info("Chat interruption completed", {
+          chatId: chat.id,
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "chat.turn.interrupt.completed",
+          operation: "interrupt-turn",
+          projectId: chat.projectId,
+          status: "completed",
+          subsystem: "chat",
+        });
+        return result;
+      } catch (error) {
+        clientLogger.warn("Chat interruption failed", {
+          chatId: chat.id,
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "chat.turn.interrupt.failed",
+          operation: "interrupt-turn",
+          projectId: chat.projectId,
+          reasonCode: "request-failed",
+          status: "failed",
+          subsystem: "chat",
+        });
+        throw error;
+      }
+    },
     onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
@@ -2674,6 +2748,8 @@ export function App() {
     new Map<string, ExplorerLifecycleActions>(),
   );
   const archiveCleanupRequestedRef = useRef(false);
+  const appResourcesLoggedRef = useRef(false);
+  const projectResourcesLoggedRef = useRef<string | null>(null);
   const [worktreeCreateTarget, setWorktreeCreateTarget] =
     useState<WorktreeBindingTarget | null>(null);
   const [worktreeActionError, setWorktreeActionError] = useState<string | null>(
@@ -2825,14 +2901,31 @@ export function App() {
       return;
     }
     archiveCleanupRequestedRef.current = true;
+    const startedAt = performance.now();
     void cleanupArchivedChats()
       .then(({ deleted }) => {
+        clientLogger.info("Archived chat cleanup completed", {
+          counts: { deleted },
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "archive.cleanup.completed",
+          operation: "cleanup",
+          status: "completed",
+          subsystem: "archive",
+        });
         if (deleted > 0) {
           void queryClient.invalidateQueries({ queryKey: ["archived-chats"] });
         }
       })
       .catch((error) => {
-        console.warn("Could not clean up expired archived chats", error);
+        clientLogger.warn("Archived chat cleanup failed", {
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "archive.cleanup.failed",
+          operation: "cleanup",
+          reasonCode: "request-failed",
+          status: "failed",
+          subsystem: "archive",
+        });
       });
   }, [bootstrap.isSuccess, isPopout, queryClient]);
   const workers = useQuery({
@@ -2855,7 +2948,14 @@ export function App() {
         },
       }),
     onError: (error) => {
-      console.error("Could not save the mobile project tabs", error);
+      clientLogger.warn("Mobile project tab state failed to save", {
+        ...operationalErrorMetadata(error),
+        event: "tabs.mobile.save.failed",
+        operation: "save-layout",
+        reasonCode: "request-failed",
+        status: "rolled-back",
+        subsystem: "tabs",
+      });
     },
     onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
     retry: 2,
@@ -2865,7 +2965,14 @@ export function App() {
     mutationFn: (width: number) => updateSettings({ sidebarWidth: width }),
     onSuccess: (bundle) => queryClient.setQueryData(["settings"], bundle),
     onError: (error) => {
-      console.error("Could not save the sidebar width", error);
+      clientLogger.warn("Sidebar width failed to save", {
+        ...operationalErrorMetadata(error),
+        event: "settings.sidebar-width.save.failed",
+        operation: "save-setting",
+        reasonCode: "request-failed",
+        status: "rolled-back",
+        subsystem: "settings",
+      });
     },
   });
   const projects = useQuery({
@@ -2878,6 +2985,35 @@ export function App() {
           ? false
           : 15_000,
   });
+  useEffect(() => {
+    if (
+      appResourcesLoggedRef.current ||
+      !bootstrap.isSuccess ||
+      !workers.isSuccess ||
+      !settings.isSuccess ||
+      !projects.isSuccess
+    ) {
+      return;
+    }
+    appResourcesLoggedRef.current = true;
+    clientLogger.info("Cantrip application resources loaded", {
+      counts: {
+        projects: projects.data.length,
+        workers: workers.data.length,
+      },
+      event: "client.resources.loaded",
+      operation: "load-resources",
+      status: "ready",
+      subsystem: "bootstrap",
+    });
+  }, [
+    bootstrap.isSuccess,
+    projects.data,
+    projects.isSuccess,
+    settings.isSuccess,
+    workers.data,
+    workers.isSuccess,
+  ]);
   const cloningProjectIds = (projects.data ?? [])
     .filter((project) => project.setupStatus === "cloning")
     .map((project) => project.id);
@@ -2993,6 +3129,61 @@ export function App() {
     queryKey: ["project-views", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
+  useEffect(() => {
+    if (!selectedProjectId) {
+      projectResourcesLoggedRef.current = null;
+      return;
+    }
+    if (
+      projectResourcesLoggedRef.current === selectedProjectId ||
+      !tabLayout.isSuccess ||
+      !worktrees.isSuccess ||
+      !chats.isSuccess ||
+      !terminals.isSuccess ||
+      !explorers.isSuccess ||
+      !browsers.isSuccess ||
+      !codeTabs.isSuccess ||
+      !projectViews.isSuccess
+    ) {
+      return;
+    }
+    projectResourcesLoggedRef.current = selectedProjectId;
+    clientLogger.info("Project surfaces loaded", {
+      counts: {
+        browsers: browsers.data.length,
+        chats: chats.data.length,
+        codeTabs: codeTabs.data.length,
+        explorers: explorers.data.length,
+        tabGroups: tabLayout.data.groups.length,
+        terminals: terminals.data.length,
+        views: projectViews.data.length,
+        worktrees: worktrees.data.length,
+      },
+      event: "project.resources.loaded",
+      operation: "load-project",
+      projectId: selectedProjectId,
+      status: "ready",
+      subsystem: "projects",
+    });
+  }, [
+    browsers.data,
+    browsers.isSuccess,
+    chats.data,
+    chats.isSuccess,
+    codeTabs.data,
+    codeTabs.isSuccess,
+    explorers.data,
+    explorers.isSuccess,
+    projectViews.data,
+    projectViews.isSuccess,
+    selectedProjectId,
+    tabLayout.data,
+    tabLayout.isSuccess,
+    terminals.data,
+    terminals.isSuccess,
+    worktrees.data,
+    worktrees.isSuccess,
+  ]);
   const repositoryStats = useQuery({
     enabled:
       Boolean(selectedProjectId) &&
@@ -3110,7 +3301,15 @@ export function App() {
   const openChatConsole = useMutation({
     mutationFn: (chatId: string) => createChatConsole(chatId),
     onError: (error, chatId) => {
-      console.error("Could not open the Codex console", { chatId, error });
+      clientLogger.error("Codex console failed to open", {
+        chatId,
+        ...operationalErrorMetadata(error),
+        event: "surface.codex-console.open.failed",
+        operation: "open-console",
+        reasonCode: "request-failed",
+        status: "failed",
+        subsystem: "codex-console",
+      });
     },
     onSuccess: (terminal) => {
       queryClient.setQueryData<TerminalSummary[]>(
@@ -4032,10 +4231,15 @@ export function App() {
           }
         }
       } catch (error) {
-        console.error(
-          "Could not refresh the retained Explorer after its pop-out closed",
-          error,
-        );
+        clientLogger.warn("Explorer state recovery after pop-out failed", {
+          ...operationalErrorMetadata(error),
+          event: "surface.explorer.popout-recovery.failed",
+          operation: "recover-state",
+          reasonCode: "refresh-failed",
+          status: "failed",
+          subsystem: "explorer",
+          surfaceId: explorerId ?? undefined,
+        });
       } finally {
         detachedExplorerIdRef.current = null;
         setDetachedGroupId((current) => (current === groupId ? null : current));
@@ -4046,6 +4250,13 @@ export function App() {
   const popOutActiveView = () => {
     if (!activePopout || popoutPending) return;
     void (async () => {
+      const startedAt = performance.now();
+      clientLogger.info("Desktop pop-out preparation started", {
+        event: "window.popout.open.started",
+        operation: "open-popout",
+        projectId: activePopout.target.projectId,
+        subsystem: "desktop-window",
+      });
       const explorerLifecycle = selectedExplorer
         ? explorerLifecycleRef.current.get(selectedExplorer.id)
         : null;
@@ -4073,7 +4284,25 @@ export function App() {
         await openDesktopPopoutGroup(activePopout.target, activePopout.title);
         detachedExplorerIdRef.current = selectedExplorer?.id ?? null;
         setDetachedGroupId(activePopout.target.groupId);
+        clientLogger.info("Desktop pop-out opened", {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "window.popout.open.completed",
+          operation: "open-popout",
+          projectId: activePopout.target.projectId,
+          status: "opened",
+          subsystem: "desktop-window",
+        });
       } catch (error) {
+        clientLogger.error("Desktop pop-out failed to open", {
+          durationMs: Math.round(performance.now() - startedAt),
+          ...operationalErrorMetadata(error),
+          event: "window.popout.open.failed",
+          operation: "open-popout",
+          projectId: activePopout.target.projectId,
+          reasonCode: "native-window-error",
+          status: "failed",
+          subsystem: "desktop-window",
+        });
         setPopoutError(errorText(error));
       } finally {
         setPopoutPending(false);
@@ -4092,7 +4321,14 @@ export function App() {
       .filter(Boolean)
       .join(" — ");
     void updateDesktopWindowTitle(title).catch((error: unknown) => {
-      console.error("Could not update the pop-out window title", error);
+      clientLogger.warn("Desktop pop-out title update failed", {
+        ...operationalErrorMetadata(error),
+        event: "window.popout.title.failed",
+        operation: "set-title",
+        reasonCode: "native-window-error",
+        status: "failed",
+        subsystem: "desktop-window",
+      });
     });
   }, [currentSurface, isPopout, selectedProject]);
   useEffect(() => {
@@ -4111,7 +4347,14 @@ export function App() {
       })
       .catch((error: unknown) => {
         if (!mounted) return;
-        console.error("Could not observe the desktop pop-out window", error);
+        clientLogger.warn("Desktop pop-out observer failed", {
+          ...operationalErrorMetadata(error),
+          event: "window.popout.observe.failed",
+          operation: "observe-window",
+          reasonCode: "native-window-error",
+          status: "recovering",
+          subsystem: "desktop-window",
+        });
         resumeLocally();
       });
     return () => {
@@ -4264,7 +4507,14 @@ export function App() {
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
       void updateDesktopWindowTheme(dark ? "dark" : "light").catch(
         (error: unknown) => {
-          console.error("Could not update the desktop window theme", error);
+          clientLogger.warn("Desktop window theme update failed", {
+            ...operationalErrorMetadata(error),
+            event: "window.theme.failed",
+            operation: "set-theme",
+            reasonCode: "native-window-error",
+            status: "failed",
+            subsystem: "desktop-window",
+          });
         },
       );
     };
@@ -4309,7 +4559,14 @@ export function App() {
           document.documentElement.classList.remove("pro-mode");
           setProModeActive(false);
         }
-        console.error("Could not update macOS Pro Mode", error);
+        clientLogger.warn("macOS Pro Mode update failed", {
+          ...operationalErrorMetadata(error),
+          event: "window.pro-mode.failed",
+          operation: "set-pro-mode",
+          reasonCode: "native-window-error",
+          status: "failed",
+          subsystem: "desktop-window",
+        });
       });
     return () => {
       active = false;
@@ -4525,7 +4782,14 @@ export function App() {
       return;
     }
     void closeCurrentDesktopWindow().catch((error: unknown) => {
-      console.error("Could not close an orphaned pop-out window", error);
+      clientLogger.warn("Orphaned desktop pop-out failed to close", {
+        ...operationalErrorMetadata(error),
+        event: "window.popout.close.failed",
+        operation: "close-popout",
+        reasonCode: "native-window-error",
+        status: "failed",
+        subsystem: "desktop-window",
+      });
     });
   }, [
     popoutTarget,

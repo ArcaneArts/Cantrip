@@ -1,5 +1,6 @@
 import {
   sanitizeLogContext,
+  sanitizeLogText,
   ServiceLogBuffer,
   type ServiceLogLevel,
   type ServiceLogReadOptions,
@@ -98,6 +99,15 @@ function clientConsoleLine(
   return `[client]${label} ${message}${suffix}`;
 }
 
+function safeClientSource(source: string): string {
+  try {
+    const parsed = new URL(source, window.location.origin);
+    return `${parsed.pathname}:${parsed.port || "0"}`;
+  } catch {
+    return source.split(/[?#]/u, 1)[0]?.slice(0, 512) ?? "client";
+  }
+}
+
 /** Deliberate operational logger. Its sanitized record feeds console and Logs. */
 export const clientLogger = createServiceLogEmitter("client", {
   onRecord: (record) => state().buffer.append(record),
@@ -114,6 +124,32 @@ export function logClientEvent(
   context: OperationalLogContext,
 ): void {
   clientLogger.event(level, message, context);
+}
+
+/** Stable failure metadata that deliberately excludes error messages and stacks. */
+export function operationalErrorMetadata(error: unknown): {
+  errorClass: string;
+  errorCode?: string;
+  errorStatus?: number;
+} {
+  const candidate = error && typeof error === "object" ? error : null;
+  const name =
+    error instanceof Error
+      ? error.name
+      : candidate && typeof Reflect.get(candidate, "name") === "string"
+        ? String(Reflect.get(candidate, "name"))
+        : "NonError";
+  const code = candidate ? Reflect.get(candidate, "code") : undefined;
+  const status = candidate ? Reflect.get(candidate, "status") : undefined;
+  return {
+    errorClass: sanitizeLogText(name || "Error"),
+    ...(typeof code === "string" || typeof code === "number"
+      ? { errorCode: sanitizeLogText(String(code)) }
+      : {}),
+    ...(typeof status === "number" && Number.isFinite(status)
+      ? { errorStatus: status }
+      : {}),
+  };
 }
 
 export function recordClientLog(
@@ -174,7 +210,7 @@ export function installClientLogCapture(): void {
           "error",
           ["Uncaught client error", event.error ?? event.message],
           event.filename
-            ? `${event.filename}:${event.lineno}:${event.colno}`
+            ? `${safeClientSource(event.filename)}:${event.lineno}:${event.colno}`
             : undefined,
         );
         return;
@@ -184,9 +220,7 @@ export function installClientLogCapture(): void {
       recordClientLog(
         "error",
         [`Failed to load client resource <${target.tagName.toLowerCase()}>`],
-        target.getAttribute("src") ??
-          target.getAttribute("href") ??
-          window.location.href,
+        `resource:${target.tagName.toLowerCase()}`,
       );
     },
     true,

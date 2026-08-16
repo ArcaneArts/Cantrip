@@ -12,7 +12,7 @@ use std::sync::{
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 #[cfg(all(
     desktop,
     not(debug_assertions),
@@ -37,6 +37,21 @@ enum UpdatePhase {
     Installing,
     Restarting,
     Failed,
+}
+
+impl UpdatePhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Idle => "idle",
+            Self::Checking => "checking",
+            Self::Ready => "ready",
+            Self::Downloading => "downloading",
+            Self::Verifying => "verifying",
+            Self::Installing => "installing",
+            Self::Restarting => "restarting",
+            Self::Failed => "failed",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -301,6 +316,24 @@ fn emit_progress(
     message: Option<String>,
     restarting_current_version: bool,
 ) {
+    if phase != UpdatePhase::Downloading || downloaded_bytes == Some(0) {
+        app.state::<crate::local_logs::LocalServiceLogs>()
+            .runtime_event(
+                if phase == UpdatePhase::Failed {
+                    "error"
+                } else {
+                    "info"
+                },
+                "Desktop update phase changed",
+                Some(serde_json::json!({
+                    "event": "desktop.update.phase.changed",
+                    "operation": "desktop-update",
+                    "phase": phase.label(),
+                    "restartingCurrentVersion": restarting_current_version,
+                    "subsystem": "desktop-update"
+                })),
+            );
+    }
     let _ = app.emit(
         UPDATE_EVENT,
         DesktopUpdateProgress {
@@ -319,6 +352,18 @@ fn set_failed(
     error: &DesktopUpdateError,
     restarting_current_version: bool,
 ) {
+    app.state::<crate::local_logs::LocalServiceLogs>()
+        .runtime_event(
+            "error",
+            "Desktop update operation failed",
+            Some(serde_json::json!({
+                "event": "desktop.update.failed",
+                "operation": "desktop-update",
+                "reasonCode": error.code,
+                "retryable": error.retryable,
+                "subsystem": "desktop-update"
+            })),
+        );
     if let Ok(mut state) = coordinator.state.lock() {
         state.phase = UpdatePhase::Failed;
     }
@@ -670,9 +715,22 @@ pub async fn install_desktop_update(
 
 #[tauri::command]
 pub fn cancel_desktop_update(
+    app: AppHandle,
     coordinator: State<'_, DesktopUpdateCoordinator>,
 ) -> Result<bool, DesktopUpdateError> {
-    request_cancellation(&coordinator)
+    let cancelled = request_cancellation(&coordinator)?;
+    app.state::<crate::local_logs::LocalServiceLogs>()
+        .runtime_event(
+            "info",
+            "Desktop update cancellation requested",
+            Some(serde_json::json!({
+                "accepted": cancelled,
+                "event": "desktop.update.cancel.requested",
+                "operation": "cancel-update",
+                "subsystem": "desktop-update"
+            })),
+        );
+    Ok(cancelled)
 }
 
 #[cfg(test)]

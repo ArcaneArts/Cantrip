@@ -5,6 +5,7 @@ import {
   notifyAuthenticationRequired,
   setClientSession,
 } from "@/lib/client-session";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 
 export class CantripApiError extends Error {
   constructor(
@@ -18,18 +19,64 @@ export class CantripApiError extends Error {
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 let csrfRecovery: Promise<boolean> | null = null;
 
+const identifierSegment =
+  /^(?:[0-9a-f]{8}-[0-9a-f-]{27,}|[0-9a-f]{16,}|\d+)$/iu;
+
+/** Removes origins, queries, and resource identifiers before a route enters logs. */
+export function apiRouteTemplate(path: string): string {
+  let pathname: string;
+  try {
+    pathname = new URL(path, "http://cantrip.invalid").pathname;
+  } catch {
+    return "<invalid-route>";
+  }
+  return pathname
+    .split("/")
+    .map((segment) =>
+      identifierSegment.test(segment) ||
+      (/^[A-Za-z0-9_-]{20,}$/u.test(segment) && !segment.includes("."))
+        ? ":id"
+        : segment,
+    )
+    .join("/");
+}
+
+function responseRequestId(response: Response): string | undefined {
+  return (
+    response.headers.get("x-request-id") ??
+    response.headers.get("x-cantrip-request-id") ??
+    undefined
+  );
+}
+
 async function recoverCsrfSession(): Promise<boolean> {
   if (csrfRecovery) return csrfRecovery;
   const previous = getClientSession();
   if (!previous || previous.authMode === "none") return false;
 
   csrfRecovery = (async () => {
+    const startedAt = performance.now();
+    clientLogger.info("Recovering the client CSRF session", {
+      event: "session.csrf.recovery.started",
+      operation: "recover-session",
+      subsystem: "authentication",
+    });
     try {
       const response = await fetch(`${getActiveServerUrl()}/api/auth/session`, {
         credentials: "include",
         headers: { accept: "application/json" },
       });
-      if (!response.ok) return false;
+      if (!response.ok) {
+        clientLogger.warn("Client CSRF session recovery was rejected", {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "session.csrf.recovery.failed",
+          operation: "recover-session",
+          reasonCode: `http-${response.status}`,
+          status: "failed",
+          subsystem: "authentication",
+        });
+        return false;
+      }
       const body = (await response.json()) as {
         csrfToken?: unknown;
         currentUser?: unknown;
@@ -48,6 +95,14 @@ async function recoverCsrfSession(): Promise<boolean> {
         body.csrfToken.length < 32 ||
         typeof body.expiresAt !== "string"
       ) {
+        clientLogger.warn("Client CSRF session recovery was incompatible", {
+          durationMs: Math.round(performance.now() - startedAt),
+          event: "session.csrf.recovery.failed",
+          operation: "recover-session",
+          reasonCode: "invalid-session-response",
+          status: "failed",
+          subsystem: "authentication",
+        });
         return false;
       }
       setClientSession({
@@ -56,8 +111,24 @@ async function recoverCsrfSession(): Promise<boolean> {
         expiresAt: body.expiresAt,
         user: currentUser,
       });
+      clientLogger.info("Client CSRF session recovered", {
+        durationMs: Math.round(performance.now() - startedAt),
+        event: "session.csrf.recovery.completed",
+        operation: "recover-session",
+        status: "completed",
+        subsystem: "authentication",
+      });
       return true;
-    } catch {
+    } catch (error) {
+      clientLogger.warn("Client CSRF session recovery failed", {
+        durationMs: Math.round(performance.now() - startedAt),
+        ...operationalErrorMetadata(error),
+        event: "session.csrf.recovery.failed",
+        operation: "recover-session",
+        reasonCode: "network-error",
+        status: "failed",
+        subsystem: "authentication",
+      });
       return false;
     }
   })().finally(() => {
@@ -110,7 +181,30 @@ export async function requestResponse(
   const url = /^https?:\/\//u.test(path)
     ? path
     : `${getActiveServerUrl()}${path}`;
-  let response = await sendRequest(url, method, init);
+  const route = apiRouteTemplate(path);
+  const startedAt = performance.now();
+  let response: Response;
+  try {
+    response = await sendRequest(url, method, init);
+  } catch (error) {
+    clientLogger.rateLimited(
+      `api:${method}:${route}:network`,
+      "error",
+      "Cantrip API request failed before a response",
+      {
+        durationMs: Math.round(performance.now() - startedAt),
+        ...operationalErrorMetadata(error),
+        event: "api.request.failed",
+        method,
+        operation: "request",
+        reasonCode: "network-error",
+        route,
+        status: "failed",
+        subsystem: "api",
+      },
+    );
+    throw error;
+  }
 
   if (!response.ok) {
     let body = (await response.json().catch(() => null)) as {
@@ -123,6 +217,15 @@ export async function requestResponse(
       !path.endsWith("/api/auth/session") &&
       (await recoverCsrfSession())
     ) {
+      clientLogger.info("Retrying Cantrip API request after CSRF recovery", {
+        durationMs: Math.round(performance.now() - startedAt),
+        event: "api.request.retry",
+        method,
+        operation: "request",
+        reasonCode: "csrf-recovered",
+        route,
+        subsystem: "api",
+      });
       response = await sendRequest(url, method, init);
       if (response.ok) return response;
       body = (await response.json().catch(() => null)) as {
@@ -134,10 +237,39 @@ export async function requestResponse(
         body?.error ?? "Your Cantrip session has expired.",
       );
     }
+    clientLogger.rateLimited(
+      `api:${method}:${route}:${response.status}`,
+      response.status >= 500 ? "error" : "warn",
+      "Cantrip API request returned an error",
+      {
+        durationMs: Math.round(performance.now() - startedAt),
+        event: "api.request.failed",
+        method,
+        operation: "request",
+        reasonCode: `http-${response.status}`,
+        requestId: responseRequestId(response),
+        route,
+        status: response.status,
+        subsystem: "api",
+      },
+    );
     throw new CantripApiError(
       body?.error ?? `Cantrip Server returned HTTP ${response.status}.`,
       response.status,
     );
+  }
+  const durationMs = Math.round(performance.now() - startedAt);
+  if (durationMs >= 2_000) {
+    clientLogger.debug("Slow Cantrip API request completed", {
+      durationMs,
+      event: "api.request.slow",
+      method,
+      operation: "request",
+      requestId: responseRequestId(response),
+      route,
+      status: response.status,
+      subsystem: "api",
+    });
   }
   return response;
 }

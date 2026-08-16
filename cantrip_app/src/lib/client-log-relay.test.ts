@@ -5,6 +5,7 @@ import {
   clientLogger,
   clearClientLogs,
   formatClientLogArguments,
+  operationalErrorMetadata,
   readClientLogs,
   recordClientLog,
 } from "./client-log-relay";
@@ -75,6 +76,20 @@ describe("client log relay", () => {
         },
       },
     ]);
+  });
+
+  it("reduces operational failures to class, code, and status metadata", () => {
+    const error = Object.assign(
+      new Error("provider response contains private payload text"),
+      { code: "UPSTREAM_FAILED", status: 502 },
+    );
+    const metadata = operationalErrorMetadata(error);
+    expect(metadata).toEqual({
+      errorClass: "Error",
+      errorCode: "UPSTREAM_FAILED",
+      errorStatus: 502,
+    });
+    expect(JSON.stringify(metadata)).not.toContain("private payload");
   });
 
   it("captures pre-bootstrap console and fetch failures without URL secrets", async () => {
