@@ -123,3 +123,36 @@ test("the app build command uses the version-stamping wrapper", async () => {
     "node ../scripts/tauri-build.mjs",
   );
 });
+
+test("Windows release apps and bundled services do not open console windows", async () => {
+  const [main, processEnvironment] = await Promise.all([
+    readFile(
+      path.join(rootDir, "cantrip_app", "src-tauri", "src", "main.rs"),
+      "utf8",
+    ),
+    readFile(
+      path.join(
+        rootDir,
+        "cantrip_app",
+        "src-tauri",
+        "src",
+        "process_environment.rs",
+      ),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(
+    main,
+    /all\(not\(debug_assertions\), target_os = "windows"\)[\s\S]*windows_subsystem = "windows"/u,
+  );
+  assert.match(
+    processEnvironment,
+    /use std::os::windows::process::CommandExt/u,
+  );
+  assert.match(processEnvironment, /CREATE_NO_WINDOW: u32 = 0x0800_0000/u);
+  assert.match(
+    processEnvironment,
+    /command\.creation_flags\(CREATE_NO_WINDOW\)/u,
+  );
+});

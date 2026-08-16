@@ -1,5 +1,8 @@
 use std::process::Command;
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 #[cfg(target_os = "macos")]
 use std::{
     collections::HashSet,
@@ -55,6 +58,9 @@ fn augment_path(current: Option<&OsStr>, home: Option<&Path>) -> OsString {
     env::join_paths(entries).unwrap_or_else(|_| current.unwrap_or_default().to_os_string())
 }
 
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 pub fn configure_desktop_child(command: &mut Command) {
     #[cfg(target_os = "macos")]
     {
@@ -66,7 +72,10 @@ pub fn configure_desktop_child(command: &mut Command) {
         }
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = command;
 }
 
