@@ -481,12 +481,14 @@ Settings → Workers provides the supported onboarding and management surface. T
 Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release
 workflow, which builds separate Server, Worker, and Desktop artifacts for
-macOS ARM64 and Windows x64 before publishing them in a versioned GitHub
-release. The macOS application and DMG are Developer ID signed, notarized, and
-stapled. Both desktop targets publish separately signed Tauri updater payloads;
-the release remains a draft until every platform artifact, signature, and the
-static `latest.json` manifest have been uploaded. Release packaging runs only
-when that branch advances, uses
+macOS ARM64 and Windows x64, an unsigned Android release APK, and an iOS archive
+in parallel. The iOS lane uploads its signed archive to TestFlight, while the
+APK is attached to the same versioned GitHub release as the desktop and service
+artifacts. The macOS application and DMG are Developer ID signed, notarized,
+and stapled. Both desktop targets publish separately signed Tauri updater
+payloads; the release remains a draft until every platform artifact, signature,
+the TestFlight upload, and the static `latest.json` manifest have completed.
+Release packaging runs only when that branch advances, uses
 content-addressed caches for the pinned Codex and Cantrip Code runtimes, and
 tags releases with the repository's `major.minor.commit-count` version. The
 command never force-pushes a divergent release branch. See
@@ -610,6 +612,14 @@ pnpm --filter @cantrip/app cap:sync
 pnpm --filter @cantrip/app cap:open:ios
 pnpm --filter @cantrip/app cap:open:android
 ```
+
+Advancing the `release` branch also runs dedicated mobile CI lanes. Android
+produces an intentionally unsigned `Cantrip_<version>_android_unsigned.apk` and
+adds it to the GitHub release. iOS archives `art.cantrip` with Apple
+Distribution signing and uploads it to App Store Connect for TestFlight
+processing. The GitHub release is not published if either mobile lane fails.
+See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#mobile-release-lanes) for the
+required iOS Actions secrets.
 
 Browser-only and mobile clients cannot bootstrap a Node server or worker. They use the same server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack, while a production desktop bundle supervises its internal server and worker automatically.
 

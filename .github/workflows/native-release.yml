@@ -204,6 +204,211 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  android:
+    name: Android unsigned APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          node-version: 24
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - run: pnpm install --frozen-lockfile
+      - name: Build mobile workspace dependencies
+        run: pnpm --filter @cantrip/protocol build
+      - name: Synchronize Android project
+        run: pnpm --filter @cantrip/app cap:sync android
+      - name: Build unsigned release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          pushd cantrip_app/android
+          ./gradlew --no-daemon assembleRelease
+          popd
+          apk="cantrip_app/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [ ! -f "$apk" ]; then
+            echo "Gradle did not produce the expected unsigned release APK at $apk." >&2
+            find cantrip_app/android/app/build/outputs -type f -name '*.apk' -print >&2 || true
+            exit 1
+          fi
+          version="$(node scripts/version.mjs)"
+          output="artifacts/mobile/android/Cantrip_${version}_android_unsigned.apk"
+          mkdir -p "$(dirname "$output")"
+          cp "$apk" "$output"
+      - name: Upload unsigned Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cantrip-android-apk
+          path: artifacts/mobile/android/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: iOS TestFlight
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - name: Build mobile workspace dependencies
+        run: pnpm --filter @cantrip/protocol build
+      - name: Synchronize iOS project
+        run: pnpm --filter @cantrip/app cap:sync ios
+      - name: Import Apple Distribution certificate
+        shell: bash
+        env:
+          IOS_DISTRIBUTION_CERTIFICATE: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE }}
+          IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${IOS_DISTRIBUTION_CERTIFICATE:?Configure the IOS_DISTRIBUTION_CERTIFICATE Actions secret.}"
+          : "${IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:?Configure the IOS_DISTRIBUTION_CERTIFICATE_PASSWORD Actions secret.}"
+          : "${KEYCHAIN_PASSWORD:?Configure the KEYCHAIN_PASSWORD Actions secret.}"
+          certificate="$RUNNER_TEMP/cantrip-ios-distribution.p12"
+          keychain="$RUNNER_TEMP/cantrip-ios-signing.keychain-db"
+          leaf_certificate="$RUNNER_TEMP/cantrip-ios-distribution-leaf.pem"
+          echo "CANTRIP_IOS_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE" | openssl base64 -d -A -out "$certificate"
+
+          existing_keychains=()
+          while IFS= read -r existing_keychain; do
+            existing_keychain="${existing_keychain//\"/}"
+            existing_keychain="${existing_keychain#"${existing_keychain%%[![:space:]]*}"}"
+            if [ -n "$existing_keychain" ]; then
+              existing_keychains+=("$existing_keychain")
+            fi
+          done < <(security list-keychains -d user)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security list-keychains -d user -s "$keychain" "${existing_keychains[@]}"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -t 3600 -u "$keychain"
+          security import "$certificate" \
+            -k "$keychain" \
+            -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain"
+
+          security find-certificate \
+            -a \
+            -c 'Apple Distribution' \
+            -p \
+            "$keychain" \
+            > "$leaf_certificate"
+          if [ ! -s "$leaf_certificate" ]; then
+            echo "IOS_DISTRIBUTION_CERTIFICATE does not contain an Apple Distribution certificate." >&2
+            exit 1
+          fi
+          team_id="$(
+            openssl x509 -in "$leaf_certificate" -noout -subject -nameopt RFC2253 \
+              | sed -nE 's/.*OU=([^,]+).*/\1/p'
+          )"
+          if [ -z "$team_id" ]; then
+            echo "Could not determine the Apple team ID from the distribution certificate." >&2
+            exit 1
+          fi
+          identities="$(security find-identity -v -p codesigning "$keychain" || true)"
+          if ! printf '%s\n' "$identities" | grep -q 'Apple Distribution:'; then
+            printf '%s\n' "$identities" >&2
+            echo "The imported Apple Distribution certificate and private key did not form a valid code-signing identity." >&2
+            exit 1
+          fi
+          rm -f "$certificate" "$leaf_certificate"
+          echo "CANTRIP_IOS_TEAM_ID=$team_id" >> "$GITHUB_ENV"
+      - name: Prepare App Store Connect API key
+        shell: bash
+        env:
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_KEY }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
+          : "${APPLE_API_PRIVATE_KEY:?Configure the APPSTORE_CONNECT_KEY Actions secret.}"
+          private_key="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          echo "CANTRIP_IOS_API_KEY_PATH=$private_key" >> "$GITHUB_ENV"
+          if [[ "$APPLE_API_PRIVATE_KEY" == *"BEGIN PRIVATE KEY"* ]]; then
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$private_key"
+          else
+            printf '%s' "$APPLE_API_PRIVATE_KEY" | openssl base64 -d -A -out "$private_key"
+          fi
+          openssl pkey -in "$private_key" -noout
+          chmod 600 "$private_key"
+      - name: Archive iOS application
+        shell: bash
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_API_ISSUER:?Configure the APPSTORE_CONNECT_ISSUER_ID Actions secret.}"
+          : "${APPLE_API_KEY:?Configure the APPSTORE_CONNECT_KEY_ID Actions secret.}"
+          xcodebuild \
+            -project cantrip_app/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Cantrip.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$CANTRIP_IOS_API_KEY_PATH" \
+            -authenticationKeyID "$APPLE_API_KEY" \
+            -authenticationKeyIssuerID "$APPLE_API_ISSUER" \
+            DEVELOPMENT_TEAM="$CANTRIP_IOS_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            archive
+      - name: Upload iOS application to TestFlight
+        shell: bash
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
+          APPLE_API_KEY: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$RUNNER_TEMP/Cantrip.xcarchive" \
+            -exportPath "$RUNNER_TEMP/Cantrip-TestFlight" \
+            -exportOptionsPlist cantrip_app/ios/App/TestFlightExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$CANTRIP_IOS_API_KEY_PATH" \
+            -authenticationKeyID "$APPLE_API_KEY" \
+            -authenticationKeyIssuerID "$APPLE_API_ISSUER"
+      - name: Remove temporary iOS signing material
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${CANTRIP_IOS_KEYCHAIN:-}" ]; then
+            security delete-keychain "$CANTRIP_IOS_KEYCHAIN" || true
+          fi
+          if [ -n "${CANTRIP_IOS_API_KEY_PATH:-}" ]; then
+            rm -f "$CANTRIP_IOS_API_KEY_PATH"
+          fi
+
   client:
     name: Desktop (${{ matrix.target }})
     needs: [server, worker]
@@ -437,7 +642,7 @@ jobs:
 
   release:
     name: Publish GitHub release
-    needs: [server, worker, client]
+    needs: [server, worker, client, android, ios]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 20
     permissions:

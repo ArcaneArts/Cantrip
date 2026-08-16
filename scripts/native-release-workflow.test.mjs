@@ -46,6 +46,59 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
   assert.match(workflow, /tag="v\$\{version\}"/u);
 });
 
+test("builds mobile releases in parallel and gates publication on them", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  assert.match(workflow, /^ {2}android:\n {4}name: Android unsigned APK$/mu);
+  assert.match(workflow, /^ {2}ios:\n {4}name: iOS TestFlight$/mu);
+  assert.doesNotMatch(
+    workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "",
+    /^ {4}needs:/mu,
+  );
+  assert.doesNotMatch(
+    workflow.match(/^ {2}ios:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "",
+    /^ {4}needs:/mu,
+  );
+  assert.match(workflow, /needs: \[server, worker, client, android, ios\]/u);
+});
+
+test("publishes an unsigned Android APK and uploads iOS to TestFlight", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+  const exportOptions = await readFile(
+    path.join(
+      root,
+      "cantrip_app",
+      "ios",
+      "App",
+      "TestFlightExportOptions.plist",
+    ),
+    "utf8",
+  );
+
+  assert.match(workflow, /\.\/gradlew --no-daemon assembleRelease/u);
+  assert.match(workflow, /app-release-unsigned\.apk/u);
+  assert.match(workflow, /Cantrip_\$\{version\}_android_unsigned\.apk/u);
+  assert.match(workflow, /name: cantrip-android-apk/u);
+  assert.match(workflow, /IOS_DISTRIBUTION_CERTIFICATE/u);
+  assert.match(workflow, /Apple Distribution/u);
+  assert.match(workflow, /-archivePath "\$RUNNER_TEMP\/Cantrip\.xcarchive"/u);
+  assert.match(
+    workflow,
+    /-exportOptionsPlist cantrip_app\/ios\/App\/TestFlightExportOptions\.plist/u,
+  );
+  assert.match(workflow, /APPSTORE_CONNECT_ISSUER_ID/u);
+  assert.match(workflow, /APPSTORE_CONNECT_KEY_ID/u);
+  assert.match(workflow, /APPSTORE_CONNECT_KEY/u);
+  assert.match(exportOptions, /<string>upload<\/string>/u);
+  assert.match(exportOptions, /<string>app-store-connect<\/string>/u);
+});
+
 test("saves Codex before building Cantrip Code", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
