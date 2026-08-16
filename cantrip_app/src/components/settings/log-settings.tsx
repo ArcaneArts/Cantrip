@@ -1,0 +1,764 @@
+import { isTauri } from "@tauri-apps/api/core";
+import type {
+  ServiceLogLevel,
+  ServiceLogReadResult,
+  WorkerSummary,
+} from "@cantrip/protocol";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowDownToLine,
+  Check,
+  CircleAlert,
+  Clipboard,
+  Cpu,
+  Download,
+  Laptop,
+  Loader2,
+  Pause,
+  Play,
+  Search,
+  Server,
+  Trash2,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+
+import { Button } from "@/components/ui/button";
+import {
+  getServerBootstrap,
+  getWorkerServiceLogs,
+  getWorkers,
+} from "@/lib/api";
+import { readClientLogs } from "@/lib/client-log-relay";
+import {
+  listDesktopWorkers,
+  type DesktopWorkerStatus,
+} from "@/lib/desktop-worker";
+import {
+  getLocalRuntimeServerUrl,
+  readLocalServiceLogs,
+  type LocalServiceLogSource,
+} from "@/lib/local-service-logs";
+import {
+  getActiveServerConnection,
+  getActiveServerUrl,
+} from "@/lib/server-connections";
+import { useCompactLayout } from "@/lib/use-compact-layout";
+import { cn } from "@/lib/utils";
+import {
+  appendServiceLogRecords,
+  canReadLocalServerLogs,
+  filterServiceLogRecords,
+  formatServiceLogRecord,
+  SERVICE_LOG_LEVELS,
+  type ViewerLogRecord,
+} from "./log-viewer-model";
+
+const POLL_INTERVAL_MS = 750;
+const MAX_BACKOFF_MS = 6_000;
+const PAGE_SIZE = 500;
+const ROW_HEIGHT = 22;
+const OVERSCAN_ROWS = 12;
+
+type LogSource = {
+  fallback?: LocalServiceLogSource;
+  id: string;
+  kind: "client" | "server" | "worker";
+  label: string;
+  online: boolean;
+  subtitle: string;
+  workerId?: string;
+};
+
+type LogSourceState = {
+  cursors: Record<string, number>;
+  error: string | null;
+  records: ViewerLogRecord[];
+  status: "connecting" | "live" | "local" | "offline" | "reconnecting";
+  truncated: boolean;
+};
+
+const emptySourceState = (): LogSourceState => ({
+  cursors: {},
+  error: null,
+  records: [],
+  status: "connecting",
+  truncated: false,
+});
+
+function normalizedOrigin(value: string): string | null {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+function localFallbackFor(
+  worker: WorkerSummary,
+  desktopWorkers: readonly DesktopWorkerStatus[],
+  activeServerUrl: string,
+  localServer: boolean,
+): LocalServiceLogSource | undefined {
+  const serverOrigin = normalizedOrigin(activeServerUrl);
+  const linked = desktopWorkers.find(
+    (candidate) =>
+      candidate.workerId === worker.workerId &&
+      normalizedOrigin(candidate.serverUrl) === serverOrigin,
+  );
+  if (linked) return { source: "linkedWorker", workerId: worker.workerId };
+  if (localServer && worker.workerId === "desktop-local") {
+    return { source: "worker" };
+  }
+  return undefined;
+}
+
+async function readSourcePage(
+  source: LogSource,
+  cursorFor: (transport: string) => number,
+): Promise<{
+  result: ServiceLogReadResult;
+  status: "live" | "local";
+  transport: string;
+}> {
+  if (source.kind === "client") {
+    if (isTauri()) {
+      try {
+        const transport = "local:client";
+        return {
+          result: await readLocalServiceLogs(
+            { source: "client" },
+            { afterCursor: cursorFor(transport), limit: PAGE_SIZE },
+          ),
+          status: "local",
+          transport,
+        };
+      } catch {
+        // The permanent in-page buffer remains useful if the native reader is
+        // briefly unavailable during desktop startup.
+      }
+    }
+    const transport = "memory:client";
+    return {
+      result: readClientLogs({
+        afterCursor: cursorFor(transport),
+        limit: PAGE_SIZE,
+      }),
+      status: "live",
+      transport,
+    };
+  }
+
+  if (source.kind === "server") {
+    const transport = "local:server";
+    return {
+      result: await readLocalServiceLogs(
+        { source: "server" },
+        { afterCursor: cursorFor(transport), limit: PAGE_SIZE },
+      ),
+      status: "local",
+      transport,
+    };
+  }
+
+  if (source.workerId && source.online) {
+    const transport = `remote:${source.workerId}`;
+    try {
+      return {
+        result: await getWorkerServiceLogs(source.workerId, {
+          afterCursor: cursorFor(transport),
+          limit: PAGE_SIZE,
+          minimumLevel: "trace",
+        }),
+        status: "live",
+        transport,
+      };
+    } catch (error) {
+      if (!source.fallback) throw error;
+    }
+  }
+
+  if (source.fallback) {
+    const transport = `local:${source.workerId ?? "worker"}`;
+    return {
+      result: await readLocalServiceLogs(source.fallback, {
+        afterCursor: cursorFor(transport),
+        limit: PAGE_SIZE,
+      }),
+      status: "local",
+      transport,
+    };
+  }
+
+  throw new Error(
+    source.online
+      ? "The worker log stream is reconnecting."
+      : "The worker is offline.",
+  );
+}
+
+function sourceIcon(kind: LogSource["kind"]) {
+  if (kind === "client") return Laptop;
+  if (kind === "server") return Server;
+  return Cpu;
+}
+
+function sourceAccent(source: LogSource): string {
+  if (source.kind === "client") return "text-emerald-500";
+  if (source.kind === "server") return "text-sky-500";
+  return "text-fuchsia-500";
+}
+
+function lineAccent(record: ViewerLogRecord): string {
+  if (record.level === "fatal" || record.level === "error") {
+    return "text-red-400";
+  }
+  if (record.level === "warn") return "text-amber-400";
+  if (record.level === "debug" || record.level === "trace") {
+    return "text-muted-foreground";
+  }
+  if (record.system === "server") return "text-sky-300";
+  if (record.system === "worker") return "text-fuchsia-300";
+  if (record.system === "client" || record.system === "desktop") {
+    return "text-emerald-300";
+  }
+  return "text-foreground";
+}
+
+function downloadText(name: string, value: string) {
+  const url = URL.createObjectURL(new Blob([value], { type: "text/plain" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function VirtualLogConsole({
+  followTail,
+  records,
+}: {
+  followTail: boolean;
+  records: readonly ViewerLogRecord[];
+}) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState({ height: 400, scrollTop: 0 });
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const update = () =>
+      setViewport((current) => ({ ...current, height: element.clientHeight }));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element || !followTail) return;
+    element.scrollTop = element.scrollHeight;
+  }, [followTail, records.length]);
+
+  const start = Math.max(
+    0,
+    Math.floor(viewport.scrollTop / ROW_HEIGHT) - OVERSCAN_ROWS,
+  );
+  const end = Math.min(
+    records.length,
+    Math.ceil((viewport.scrollTop + viewport.height) / ROW_HEIGHT) +
+      OVERSCAN_ROWS,
+  );
+  const visible = records.slice(start, end);
+
+  return (
+    <div
+      ref={viewportRef}
+      className="relative min-h-0 flex-1 overflow-auto bg-black/95 font-mono text-[11px] leading-[22px] text-zinc-200 [scrollbar-color:color-mix(in_srgb,currentColor_30%,transparent)_transparent]"
+      role="log"
+      aria-live="off"
+      onScroll={(event) =>
+        setViewport((current) => ({
+          ...current,
+          scrollTop: event.currentTarget.scrollTop,
+        }))
+      }
+    >
+      {records.length ? (
+        <div
+          className="relative min-w-full"
+          style={{ height: records.length * ROW_HEIGHT }}
+        >
+          {visible.map((record, index) => (
+            <div
+              key={record.viewerKey}
+              className={cn(
+                "absolute left-0 min-w-full whitespace-pre px-3 hover:bg-white/[0.04]",
+                lineAccent(record),
+              )}
+              style={{
+                height: ROW_HEIGHT,
+                transform: `translateY(${(start + index) * ROW_HEIGHT}px)`,
+              }}
+              title={formatServiceLogRecord(record)}
+            >
+              {formatServiceLogRecord(record)}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid h-full min-h-56 place-items-center px-6 text-center text-xs text-zinc-500">
+          No matching log records yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function LogSettings() {
+  const compact = useCompactLayout();
+  const tauriRuntime = isTauri();
+  const bootstrap = useQuery({
+    queryFn: getServerBootstrap,
+    queryKey: ["server-bootstrap"],
+  });
+  const workers = useQuery({
+    queryFn: getWorkers,
+    queryKey: ["workers"],
+    refetchInterval: 5_000,
+  });
+  const desktopWorkers = useQuery({
+    enabled: tauriRuntime,
+    queryFn: listDesktopWorkers,
+    queryKey: ["desktop-workers"],
+    refetchInterval: 5_000,
+  });
+  const localServerUrl = useQuery({
+    enabled: tauriRuntime,
+    queryFn: getLocalRuntimeServerUrl,
+    queryKey: ["local-runtime-server-url"],
+  });
+  const activeConnection = getActiveServerConnection();
+  const activeServerUrl = getActiveServerUrl();
+  const localServer = canReadLocalServerLogs({
+    bootstrap: bootstrap.data,
+    connection: activeConnection,
+    localServerUrl: localServerUrl.data,
+    tauriRuntime,
+  });
+  const sources = useMemo<LogSource[]>(() => {
+    const available: LogSource[] = [
+      {
+        id: "client",
+        kind: "client",
+        label: "Client · This device",
+        online: true,
+        subtitle: tauriRuntime
+          ? "Desktop shell and webview"
+          : "This app session",
+      },
+    ];
+    if (localServer) {
+      available.push({
+        id: "server:local",
+        kind: "server",
+        label: "Server · Local internal",
+        online: true,
+        subtitle: "Embedded on this device",
+      });
+    }
+    for (const worker of workers.data ?? []) {
+      available.push({
+        id: `worker:${worker.workerId}`,
+        kind: "worker",
+        label: `Worker · ${worker.name}`,
+        online: worker.online,
+        subtitle: worker.online
+          ? `${worker.platform} · ${worker.architecture}`
+          : "Offline · retained lines remain visible",
+        workerId: worker.workerId,
+        fallback: tauriRuntime
+          ? localFallbackFor(
+              worker,
+              desktopWorkers.data ?? [],
+              activeServerUrl,
+              localServer,
+            )
+          : undefined,
+      });
+    }
+    return available;
+  }, [
+    activeServerUrl,
+    desktopWorkers.data,
+    localServer,
+    tauriRuntime,
+    workers.data,
+  ]);
+  const [selectedSourceId, setSelectedSourceId] = useState("client");
+  const selectedSource =
+    sources.find((source) => source.id === selectedSourceId) ?? sources[0]!;
+  const states = useRef(new Map<string, LogSourceState>());
+  const [, render] = useReducer((value) => value + 1, 0);
+  const [retryToken, retry] = useReducer((value) => value + 1, 0);
+  const [search, setSearch] = useState("");
+  const [minimumLevel, setMinimumLevel] = useState<ServiceLogLevel>("trace");
+  const [followTail, setFollowTail] = useState(true);
+  const [pausedAt, setPausedAt] = useState<Record<string, number>>({});
+  const [copied, setCopied] = useState(false);
+
+  const currentState =
+    states.current.get(selectedSource.id) ?? emptySourceState();
+  const paused = pausedAt[selectedSource.id] !== undefined;
+  const displayedRecords = paused
+    ? currentState.records.slice(0, pausedAt[selectedSource.id])
+    : currentState.records;
+  const filteredRecords = useMemo(
+    () => filterServiceLogRecords(displayedRecords, search, minimumLevel),
+    [displayedRecords, minimumLevel, search],
+  );
+
+  useEffect(() => {
+    if (sources.some(({ id }) => id === selectedSourceId)) return;
+    setSelectedSourceId("client");
+  }, [selectedSourceId, sources]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timeout: number | undefined;
+    let backoff = POLL_INTERVAL_MS;
+
+    const commit = (change: (state: LogSourceState) => LogSourceState) => {
+      if (cancelled) return;
+      const previous =
+        states.current.get(selectedSource.id) ?? emptySourceState();
+      states.current.set(selectedSource.id, change(previous));
+      render();
+    };
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      timeout = window.setTimeout(() => void poll(), delay);
+    };
+    const poll = async () => {
+      const current =
+        states.current.get(selectedSource.id) ?? emptySourceState();
+      try {
+        const page = await readSourcePage(
+          selectedSource,
+          (transport) => current.cursors[transport] ?? 0,
+        );
+        backoff = POLL_INTERVAL_MS;
+        commit((latest) => ({
+          ...latest,
+          cursors: {
+            ...latest.cursors,
+            [page.transport]: page.result.nextCursor,
+          },
+          error: null,
+          records: appendServiceLogRecords(
+            latest.records,
+            page.result.records,
+            page.transport,
+          ),
+          status: page.status,
+          truncated: latest.truncated || page.result.truncated,
+        }));
+        schedule(page.result.hasMore ? 0 : POLL_INTERVAL_MS);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Log stream unavailable.";
+        commit((latest) => ({
+          ...latest,
+          error: message,
+          status: selectedSource.online ? "reconnecting" : "offline",
+        }));
+        backoff = Math.min(MAX_BACKOFF_MS, Math.max(1_500, backoff * 2));
+        schedule(backoff);
+      }
+    };
+
+    commit((state) => ({
+      ...state,
+      error: null,
+      status: state.records.length ? state.status : "connecting",
+    }));
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [retryToken, selectedSource]);
+
+  const visibleText = useMemo(
+    () => filteredRecords.map(formatServiceLogRecord).join("\n"),
+    [filteredRecords],
+  );
+  const clearVisible = useCallback(() => {
+    const removed = new Set(filteredRecords.map(({ viewerKey }) => viewerKey));
+    const state = states.current.get(selectedSource.id) ?? emptySourceState();
+    states.current.set(selectedSource.id, {
+      ...state,
+      records: state.records.filter((record) => !removed.has(record.viewerKey)),
+    });
+    if (paused) {
+      setPausedAt((current) => ({
+        ...current,
+        [selectedSource.id]: Math.max(
+          0,
+          (current[selectedSource.id] ?? 0) - removed.size,
+        ),
+      }));
+    }
+    render();
+  }, [filteredRecords, paused, selectedSource.id]);
+
+  const StatusIcon =
+    currentState.status === "connecting" ||
+    currentState.status === "reconnecting"
+      ? Loader2
+      : currentState.status === "offline"
+        ? CircleAlert
+        : Check;
+  const statusLabel =
+    currentState.status === "local"
+      ? selectedSource.kind === "worker"
+        ? "Local fallback"
+        : "Live · Local"
+      : currentState.status === "live"
+        ? "Live"
+        : currentState.status === "connecting"
+          ? "Connecting"
+          : currentState.status === "reconnecting"
+            ? "Reconnecting"
+            : "Offline";
+
+  return (
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[96rem] flex-col gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        {compact ? (
+          <select
+            aria-label="Log source"
+            className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
+            value={selectedSource.id}
+            onChange={(event) => setSelectedSourceId(event.target.value)}
+          >
+            {sources.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        <div className="relative min-w-40 flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            aria-label="Search logs"
+            className="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-xs outline-none focus:ring-2 focus:ring-ring"
+            placeholder="Search logs"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
+        <select
+          aria-label="Minimum log level"
+          className="h-9 rounded-md border bg-background px-2 text-xs"
+          value={minimumLevel}
+          onChange={(event) =>
+            setMinimumLevel(event.target.value as ServiceLogLevel)
+          }
+        >
+          {SERVICE_LOG_LEVELS.map((level) => (
+            <option key={level} value={level}>
+              {level === "trace" ? "All levels" : `${level}+`}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          size="sm"
+          variant={followTail ? "outline" : "ghost"}
+          className="h-9 px-2.5"
+          onClick={() => setFollowTail((value) => !value)}
+          title="Follow newest records"
+        >
+          <ArrowDownToLine
+            className={cn("size-3.5", followTail && "text-emerald-500")}
+          />
+          <span className="hidden sm:inline">Follow</span>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-9"
+          title={paused ? "Resume display" : "Pause display"}
+          onClick={() =>
+            setPausedAt((current) => {
+              if (current[selectedSource.id] !== undefined) {
+                const next = { ...current };
+                delete next[selectedSource.id];
+                return next;
+              }
+              return {
+                ...current,
+                [selectedSource.id]: currentState.records.length,
+              };
+            })
+          }
+        >
+          {paused ? (
+            <Play className="size-3.5" />
+          ) : (
+            <Pause className="size-3.5" />
+          )}
+          <span className="sr-only">{paused ? "Resume" : "Pause"}</span>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-9"
+          disabled={!visibleText}
+          title="Copy visible output"
+          onClick={() => {
+            void navigator.clipboard
+              .writeText(visibleText)
+              .then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1_500);
+              })
+              .catch(() => undefined);
+          }}
+        >
+          {copied ? (
+            <Check className="size-3.5" />
+          ) : (
+            <Clipboard className="size-3.5" />
+          )}
+          <span className="sr-only">Copy visible output</span>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-9"
+          disabled={!visibleText}
+          title="Export visible output"
+          onClick={() =>
+            downloadText(
+              `cantrip-${selectedSource.id.replaceAll(":", "-")}-${new Date().toISOString().replaceAll(":", "-")}.log`,
+              visibleText,
+            )
+          }
+        >
+          <Download className="size-3.5" />
+          <span className="sr-only">Export visible output</span>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-9"
+          disabled={!filteredRecords.length}
+          title="Clear visible buffer"
+          onClick={clearVisible}
+        >
+          <Trash2 className="size-3.5" />
+          <span className="sr-only">Clear visible buffer</span>
+        </Button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-black/95">
+        {!compact ? (
+          <div className="w-56 shrink-0 overflow-y-auto border-r border-white/10 bg-black/70 p-1.5">
+            {sources.map((source) => {
+              const Icon = sourceIcon(source.kind);
+              const active = source.id === selectedSource.id;
+              return (
+                <button
+                  key={source.id}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-start gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                    active
+                      ? "bg-white/10 text-white"
+                      : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-100",
+                  )}
+                  onClick={() => setSelectedSourceId(source.id)}
+                >
+                  <Icon
+                    className={cn(
+                      "mt-0.5 size-3.5 shrink-0",
+                      sourceAccent(source),
+                    )}
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-xs font-medium">
+                      {source.label}
+                    </span>
+                    <span className="block truncate text-[10px] text-zinc-500">
+                      {source.subtitle}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex min-h-9 items-center gap-2 border-b border-white/10 px-3 text-[11px] text-zinc-400">
+            <StatusIcon
+              className={cn(
+                "size-3.5",
+                (currentState.status === "connecting" ||
+                  currentState.status === "reconnecting") &&
+                  "animate-spin",
+                currentState.status === "offline" && "text-red-400",
+                (currentState.status === "live" ||
+                  currentState.status === "local") &&
+                  "text-emerald-400",
+              )}
+            />
+            <span>{statusLabel}</span>
+            {paused ? <span>· Display paused</span> : null}
+            {currentState.truncated ? (
+              <span className="text-amber-400">· Old records rotated</span>
+            ) : null}
+            <span className="ml-auto tabular-nums">
+              {filteredRecords.length.toLocaleString()} visible ·{" "}
+              {currentState.records.length.toLocaleString()} buffered
+            </span>
+            {currentState.status === "offline" ||
+            currentState.status === "reconnecting" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[11px] text-zinc-300 hover:bg-white/10 hover:text-white"
+                onClick={() => retry()}
+              >
+                Retry now
+              </Button>
+            ) : null}
+          </div>
+          {currentState.error ? (
+            <div className="border-b border-red-500/20 bg-red-500/10 px-3 py-1.5 text-[11px] text-red-300">
+              {currentState.error}
+            </div>
+          ) : null}
+          <VirtualLogConsole
+            followTail={followTail}
+            records={filteredRecords}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}

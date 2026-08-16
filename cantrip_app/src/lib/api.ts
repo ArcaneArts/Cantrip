@@ -178,6 +178,7 @@ import {
   projectWorkspaceUpdateSchema,
   projectTabLayoutSummarySchema,
   projectWorktreeListSchema,
+  serviceLogReadResultSchema,
   projectWorktreeSummarySchema,
   projectViewListSchema,
   projectViewSummarySchema,
@@ -315,6 +316,7 @@ import type {
   WorkerCredentialRotate,
   WorkerEnrollmentCodeCreate,
   WorkerUpdate,
+  ServiceLogLevel,
 } from "@cantrip/protocol";
 import {
   CantripApiError,
@@ -420,6 +422,21 @@ export async function logoutAll() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function getWorkerServiceLogs(
+  workerId: string,
+  options: {
+    afterCursor?: number;
+    limit?: number;
+    minimumLevel?: ServiceLogLevel;
+  } = {},
+) {
+  return serviceLogReadResultSchema.parse(
+    await request(
+      withQuery(`/api/workers/${encodeURIComponent(workerId)}/logs`, options),
+    ),
+  );
 }
 
 export async function createDirectWorkerProbe(workerId: string) {

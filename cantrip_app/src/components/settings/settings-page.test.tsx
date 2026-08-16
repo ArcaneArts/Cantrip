@@ -32,10 +32,12 @@ describe("account settings", () => {
     const general = markup.indexOf(">General<");
     const models = markup.indexOf(">Models<");
     const workers = markup.indexOf(">Workers<");
+    const logs = markup.indexOf(">Logs<");
 
     expect(general).toBeGreaterThanOrEqual(0);
     expect(models).toBeGreaterThan(general);
     expect(workers).toBeGreaterThan(models);
+    expect(logs).toBeGreaterThan(workers);
   });
 
   it("separates general preferences from model and provider management", () => {
