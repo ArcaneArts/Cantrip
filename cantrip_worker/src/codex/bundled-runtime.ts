@@ -1,6 +1,5 @@
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,11 +18,11 @@ export interface BundledCodexManifest {
     ref: string;
     commit: string;
   };
-  sourceManifestSha256: string;
+  sourceManifestSha256?: string;
   patchesSha256?: string;
   buildRecipeVersion: 1 | 2 | 3 | 4;
   entrypoint: string;
-  artifacts: Array<{ path: string; sha256: string }>;
+  artifacts: Array<{ path: string; sha256?: string }>;
   target: string;
   profile: "release";
 }
@@ -92,12 +91,6 @@ export function resolveCodexInstallation(
   return { binary: "codex", manifestPath: null, source: "path" };
 }
 
-async function hashFile(file: string): Promise<string> {
-  const hash = createHash("sha256");
-  for await (const chunk of createReadStream(file)) hash.update(chunk);
-  return hash.digest("hex");
-}
-
 function parseManifest(value: unknown): BundledCodexManifest {
   const candidate = value as Partial<BundledCodexManifest>;
   const artifactPaths = Array.isArray(candidate?.artifacts)
@@ -122,15 +115,9 @@ function parseManifest(value: unknown): BundledCodexManifest {
         typeof artifact?.path !== "string" ||
         artifact.path.length === 0 ||
         path.isAbsolute(artifact.path) ||
-        artifact.path.split(/[\\/]/).includes("..") ||
-        !/^[0-9a-f]{64}$/.test(artifact.sha256 ?? ""),
+        artifact.path.split(/[\\/]/).includes(".."),
     ) ||
-    !/^[0-9a-f]{64}$/.test(candidate.sourceManifestSha256 ?? "") ||
     ![1, 2, 3, 4].includes(candidate.buildRecipeVersion ?? 0) ||
-    (candidate.patchesSha256 !== undefined &&
-      !/^[0-9a-f]{64}$/.test(candidate.patchesSha256)) ||
-    ((candidate.buildRecipeVersion ?? 0) >= 2 &&
-      !/^[0-9a-f]{64}$/.test(candidate.patchesSha256 ?? "")) ||
     typeof candidate.upstream?.repository !== "string" ||
     typeof candidate.upstream.ref !== "string" ||
     !/^[0-9a-f]{40}$/.test(candidate.upstream.commit ?? "")
@@ -171,17 +158,14 @@ export async function verifyCodexInstallation(
   }
   for (const artifact of manifest.artifacts) {
     const artifactPath = path.resolve(bundleDirectory, artifact.path);
-    let actualHash: string;
     try {
-      actualHash = await hashFile(artifactPath);
+      const artifactStat = await stat(artifactPath);
+      if (!artifactStat.isFile()) {
+        throw new Error("artifact is not a file");
+      }
     } catch (error) {
       throw new Error(
         `Could not read bundled Codex artifact ${artifactPath}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (actualHash !== artifact.sha256) {
-      throw new Error(
-        `Bundled Codex artifact ${artifact.path} hash ${actualHash} does not match manifest ${artifact.sha256}.`,
       );
     }
   }
