@@ -43,3 +43,28 @@ test("macOS DMGs use the branded installer background", async () => {
   assert.equal(background.readUInt32BE(16), dmg.windowSize.width);
   assert.equal(background.readUInt32BE(20), dmg.windowSize.height);
 });
+
+test("Windows NSIS installers use Cantrip branding", async () => {
+  const config = JSON.parse(
+    await readFile(path.join(tauriDir, "tauri.windows.conf.json"), "utf8"),
+  );
+  const nsis = config.bundle?.windows?.nsis;
+
+  assert.equal(nsis?.installerIcon, "icons/icon.ico");
+  assert.equal(nsis?.uninstallerIcon, "icons/icon.ico");
+  assert.equal(nsis?.headerImage, "images/nsis-header.bmp");
+  assert.equal(nsis?.uninstallerHeaderImage, nsis.headerImage);
+  assert.equal(nsis?.sidebarImage, "images/nsis-sidebar.bmp");
+  assert.equal(nsis?.installMode, "currentUser");
+
+  const assertBitmap = async (relativePath, width, height) => {
+    const bitmap = await readFile(path.join(tauriDir, relativePath));
+    assert.equal(bitmap.toString("ascii", 0, 2), "BM");
+    assert.equal(bitmap.readUInt32LE(18), width);
+    assert.equal(bitmap.readUInt32LE(22), height);
+    assert.equal(bitmap.readUInt16LE(28), 24);
+  };
+
+  await assertBitmap(nsis.headerImage, 150, 57);
+  await assertBitmap(nsis.sidebarImage, 164, 314);
+});
