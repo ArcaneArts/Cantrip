@@ -41,3 +41,31 @@ worker, turn, applied reasoning effort, runtime versions, and start/completion
 /finalization timestamps. A running row is created before dispatch and updated
 in place as usage snapshots arrive. Terminal status is recorded even when the
 attempt reports no token counters, since failed work may still consume quota.
+
+## Derived quota correlation
+
+Derived analytics are computed from the immutable ledgers; they never update a
+quota observation or usage attempt. Readings are partitioned by exact provider
+account, limit identity, window kind/duration, and reset timestamp. Cantrip does
+not calculate deltas across those reset partitions.
+
+Provider meters often have coarse percentage resolution. A stationary reading
+is retained, while completed attempts continue accumulating from the previous
+actual movement. When the meter next advances, the accumulated exact-account
+attempts form one movement sample. Backwards movement inside the same reset
+window is recorded as a rebaseline/provider correction, never as negative token
+consumption. Meter movement without matching attempts is marked unattributed;
+attempts after the last movement remain pending rather than being forced into a
+sample.
+
+The comparable token value used for an observed tokens-per-percentage estimate
+is `input_tokens + output_tokens`. Cached input and reasoning output remain
+separate breakdowns and are not added again. The provider-reported total is
+also retained as its own series. Effective 100% allowance is an extrapolation
+from observed movement samples, not an official provider limit.
+
+Confidence is lowered when a movement window contains multiple models,
+reasoning efforts, or projects; includes non-completed attempts; or has a large
+worker-observation/server-receipt delay. Movement with no matching usage is low
+confidence and excluded from allowance statistics. Every aggregate includes
+sample counts and distribution statistics so sparse evidence is visible.
