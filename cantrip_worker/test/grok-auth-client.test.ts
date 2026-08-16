@@ -299,7 +299,7 @@ describe("Grok OAuth accounts", () => {
       expect(first?.headers.get("x-grok-conv-id")).toBe("cache-1");
       expect(first?.headers.get("x-grok-req-id")).toBe("turn-1");
       expect(first?.headers.get("x-grok-session-id")).toBe("cache-1");
-      expect(first?.headers.get("x-grok-turn-idx")).toBe("0");
+      expect(first?.headers.get("x-grok-turn-idx")).toBe("1");
       expect(first?.headers.get("x-grok-model-override")).toBe("grok-4");
       expect(first?.headers.get("x-grok-agent-id")).toMatch(/^[0-9a-f-]{36}$/u);
 
@@ -322,7 +322,7 @@ describe("Grok OAuth accounts", () => {
       expect(second?.headers.get("x-grok-conv-id")).toBe("cache-1");
       expect(second?.headers.get("x-grok-req-id")).toBe("turn-1");
       expect(second?.headers.get("x-grok-session-id")).toBe("cache-1");
-      expect(second?.headers.get("x-grok-turn-idx")).toBe("0");
+      expect(second?.headers.get("x-grok-turn-idx")).toBe("1");
       expect(second?.headers.get("x-grok-agent-id")).toBe(
         first?.headers.get("x-grok-agent-id"),
       );
@@ -342,7 +342,7 @@ describe("Grok OAuth accounts", () => {
         }),
       });
       await expect(nextTurn.json()).resolves.toEqual({ id: "response-1" });
-      expect(upstreamRequests[2]?.headers.get("x-grok-turn-idx")).toBe("1");
+      expect(upstreamRequests[2]?.headers.get("x-grok-turn-idx")).toBe("2");
     } finally {
       client.close();
     }
