@@ -7,7 +7,6 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
-  CircleAlert,
   Download,
   HardDrive,
   Loader2,
@@ -34,10 +33,10 @@ import {
   retryChatImport,
 } from "@/lib/api";
 import { useAppLiveStatus } from "@/lib/app-live-react";
-import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
 import {
+  activeImportStates,
   chatImportIdempotencyKey,
   externalChatImportCandidates,
   externalChatWorktreeLabel,
@@ -79,6 +78,9 @@ export function ExternalChatImportSettings({
   const [permissionProfileId, setPermissionProfileId] = useState(":workspace");
   const [planMode, setPlanMode] = useState<"default" | "plan">("default");
   const [consented, setConsented] = useState(false);
+  const [submittedImportIds, setSubmittedImportIds] = useState<string[] | null>(
+    null,
+  );
 
   const discovery = useQuery({
     enabled: desktopRuntime,
@@ -128,19 +130,21 @@ export function ExternalChatImportSettings({
   );
   const accounts =
     selectedProvider?.accounts.filter(({ enabled }) => enabled) ?? [];
-  const recentJobs = [...(jobs.data ?? [])].reverse().slice(0, 20);
-  const summary = summarizeChatImportJobs(jobs.data ?? []);
+  const submittedJobs = (submittedImportIds ?? [])
+    .map((id) => jobs.data?.find((job) => job.id === id))
+    .filter((job): job is ChatImportJobSummary => Boolean(job));
+  const submittedSummary = summarizeChatImportJobs(submittedJobs);
+  const showingProgress = submittedImportIds !== null;
   const importedCount = candidates.filter(
     ({ existingImport, existingJob }) =>
       (existingJob?.state ?? existingImport?.state) === "succeeded",
   ).length;
-  const sourceMessages =
-    discovery.data?.workers.flatMap((worker) => [
-      ...(worker.error ? [worker.error.message] : []),
-      ...worker.sources.flatMap((source) =>
-        source.message ? [`${worker.workerName}: ${source.message}`] : [],
-      ),
-    ]) ?? [];
+  const hasUnavailableSource = Boolean(
+    discovery.data?.workers.some(
+      (worker) =>
+        worker.error || worker.sources.some((source) => source.message),
+    ),
+  );
   const hasSupportedSource = Boolean(
     discovery.data?.workers.some(
       (worker) => worker.status !== "unsupported" || worker.sources.length > 0,
@@ -168,6 +172,7 @@ export function ExternalChatImportSettings({
     setPermissionProfileId(":workspace");
     setPlanMode("default");
     setConsented(false);
+    setSubmittedImportIds(null);
   }, [project.id]);
 
   const createImports = useMutation({
@@ -197,11 +202,13 @@ export function ExternalChatImportSettings({
       };
       return createChatImports(project.id, input);
     },
+    onMutate: () => setSubmittedImportIds([]),
     onSuccess: (created) => {
       queryClient.setQueryData<ChatImportJobSummary[]>(
         ["chat-import-jobs", project.id],
         (current) => mergeChatImportJobs(current, created),
       );
+      setSubmittedImportIds(created.map(({ id }) => id));
       setSelectedKeys(new Set());
       setConsented(false);
     },
@@ -238,7 +245,6 @@ export function ExternalChatImportSettings({
   const allVisibleSelected =
     selectableVisibleKeys.length > 0 &&
     selectableVisibleKeys.every((key) => selectedKeys.has(key));
-  const importError = createImports.error ?? retry.error;
   const importDisabled =
     selectedCandidates.length === 0 ||
     selectedCandidates.length > 50 ||
@@ -250,6 +256,14 @@ export function ExternalChatImportSettings({
     (accountId !== "automatic" &&
       !accounts.some(({ id }) => id === accountId)) ||
     createImports.isPending;
+  const submittedJobsActive = submittedJobs.some(({ state }) =>
+    activeImportStates.has(state),
+  );
+
+  const openImportDialog = () => {
+    if (!submittedJobsActive) setSubmittedImportIds(null);
+    setOpen(true);
+  };
 
   return (
     <>
@@ -285,11 +299,12 @@ export function ExternalChatImportSettings({
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {discovery.isError
-                  ? errorMessage(discovery.error)
+                  ? "Connected workers did not return history. Refresh to try again."
                   : candidates.length
                     ? `${candidates.length} chat${candidates.length === 1 ? "" : "s"} match this project${importedCount ? ` · ${importedCount} imported` : ""}`
-                    : (sourceMessages[0] ??
-                      "No safe root chats currently match this project.")}
+                    : hasUnavailableSource
+                      ? "Available workers did not return a matching chat."
+                      : "No safe root chats currently match this project."}
               </p>
             </div>
           </div>
@@ -308,7 +323,7 @@ export function ExternalChatImportSettings({
             <Button
               size="sm"
               disabled={discovery.isLoading}
-              onClick={() => setOpen(true)}
+              onClick={openImportDialog}
             >
               <Download className="size-4" />
               {candidates.length ? "Import chats" : "Browse chats"}
@@ -320,305 +335,352 @@ export function ExternalChatImportSettings({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-5xl gap-4">
           <DialogHeader>
-            <DialogTitle>Import ChatGPT Codex chats</DialogTitle>
+            <DialogTitle>
+              {showingProgress
+                ? createImports.isPending
+                  ? "Starting chat import"
+                  : createImports.isError
+                    ? "Import could not start"
+                    : submittedJobsActive
+                      ? "Importing chats"
+                      : "Import complete"
+                : "Import ChatGPT Codex chats"}
+            </DialogTitle>
             <DialogDescription>
-              Choose chats to copy into Cantrip. The originals remain untouched;
-              Cantrip stores a canonical history copy and creates a new managed
-              Codex thread for future messages. Credentials and authentication
-              files are never copied.
+              {showingProgress
+                ? "Cantrip preserves each transcript first, then prepares it for future messages when the destination runtime supports that step."
+                : "Choose chats to copy into Cantrip. Originals, credentials, and authentication files remain untouched."}
             </DialogDescription>
           </DialogHeader>
 
-          {sourceMessages.length || discovery.data?.truncated ? (
-            <div className="flex gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-              <CircleAlert className="mt-0.5 size-4 shrink-0" />
-              <span>
-                {sourceMessages.slice(0, 3).join(" ")}
-                {discovery.data?.truncated
-                  ? " The available history list was truncated; refine the source or refresh after reducing its size."
-                  : ""}
-              </span>
-            </div>
-          ) : null}
+          {showingProgress ? (
+            <>
+              <div className="flex items-start gap-3 rounded-lg bg-muted/45 p-4">
+                <div className="rounded-full bg-background p-2">
+                  {createImports.isPending || submittedJobsActive ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Check className="size-4 text-emerald-500" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    {createImports.isPending
+                      ? "Preparing selected chats…"
+                      : createImports.isError
+                        ? "The import request was not started."
+                        : submittedJobsActive
+                          ? `${submittedSummary.succeeded + submittedSummary.failed} of ${submittedImportIds?.length ?? 0} finished`
+                          : `${submittedSummary.succeeded} chat${submittedSummary.succeeded === 1 ? "" : "s"} imported`}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {createImports.isError
+                      ? "Nothing was changed. Return to the chooser and try again."
+                      : submittedJobsActive
+                        ? "Finished transcripts appear below as soon as they are ready."
+                        : submittedSummary.failed
+                          ? `${submittedSummary.failed} chat${submittedSummary.failed === 1 ? " was" : "s were"} not imported.`
+                          : "Transcript history is ready in Cantrip."}
+                  </p>
+                </div>
+              </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-56 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-              <Input
-                aria-label="Search matching Codex chats"
-                className="pl-9"
-                placeholder="Search chats, workers, paths, or branches"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </div>
-            <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-xs">
-              <input
-                type="checkbox"
-                checked={includeArchived}
-                onChange={(event) => {
-                  setIncludeArchived(event.target.checked);
-                  setSelectedKeys(new Set());
-                }}
-              />
-              Include archived
-            </label>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!selectableVisibleKeys.length}
-              onClick={() =>
-                setSelectedKeys((current) => {
-                  const next = new Set(current);
-                  if (allVisibleSelected) {
-                    for (const key of selectableVisibleKeys) next.delete(key);
-                  } else {
-                    for (const key of selectableVisibleKeys) {
-                      if (next.size >= 50) break;
-                      next.add(key);
-                    }
-                  }
-                  return next;
-                })
-              }
-            >
-              {allVisibleSelected ? "Clear visible" : "Select visible"}
-            </Button>
-          </div>
+              {submittedJobs.length ? (
+                <section aria-labelledby="chat-import-results-title">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h3
+                      id="chat-import-results-title"
+                      className="text-sm font-semibold"
+                    >
+                      Import report
+                    </h3>
+                    <p className="text-[10px] text-muted-foreground">
+                      {submittedSummary.active} active ·{" "}
+                      {submittedSummary.succeeded} finished
+                    </p>
+                  </div>
+                  <div className="divide-y border-y">
+                    {submittedJobs.map((job) => (
+                      <ImportJobRow
+                        key={job.id}
+                        job={job}
+                        pendingRetry={
+                          retry.isPending && retry.variables?.id === job.id
+                        }
+                        title={
+                          candidates.find(
+                            (candidate) =>
+                              candidate.sourceWorkerId === job.sourceWorkerId &&
+                              candidate.source.sourceId === job.sourceId &&
+                              candidate.thread.sourceThreadId ===
+                                job.sourceThreadId,
+                          )?.thread.title
+                        }
+                        onOpenChat={onOpenChat}
+                        onRetry={(target) => retry.mutate(target)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
-          <div className="max-h-[min(42vh,28rem)] overflow-y-auto border-y">
-            <div className="divide-y">
-              {visibleCandidates.map((candidate) => (
-                <ExternalChatCandidateRow
-                  key={candidate.key}
-                  candidate={candidate}
-                  checked={selectedKeys.has(candidate.key)}
-                  disabled={
-                    Boolean(
-                      candidate.existingImport || candidate.existingJob,
-                    ) ||
-                    (!selectedKeys.has(candidate.key) &&
-                      selectedKeys.size >= 50)
-                  }
-                  matchedWorktreeLabel={
-                    worktrees.find(
-                      ({ id }) => id === candidate.thread.match.worktreeId,
-                    )?.name ??
-                    (candidate.thread.match.kind === "git-origin"
-                      ? "Matched by Git origin"
-                      : "Project replica")
-                  }
-                  onCheckedChange={(checked) =>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setOpen(false)}>
+                  Close
+                </Button>
+                {!createImports.isPending && !submittedJobsActive ? (
+                  <Button onClick={() => setSubmittedImportIds(null)}>
+                    Import more chats
+                  </Button>
+                ) : null}
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              {discovery.data?.truncated ? (
+                <p className="text-xs text-muted-foreground">
+                  Showing the chats currently available from connected workers.
+                  Refine the search or refresh after reducing the source list to
+                  find older entries.
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-56 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    aria-label="Search matching Codex chats"
+                    className="pl-9"
+                    placeholder="Search chats, workers, paths, or branches"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </div>
+                <label className="flex h-9 items-center gap-2 rounded-md border px-3 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={includeArchived}
+                    onChange={(event) => {
+                      setIncludeArchived(event.target.checked);
+                      setSelectedKeys(new Set());
+                    }}
+                  />
+                  Include archived
+                </label>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!selectableVisibleKeys.length}
+                  onClick={() =>
                     setSelectedKeys((current) => {
                       const next = new Set(current);
-                      if (checked && next.size < 50) next.add(candidate.key);
-                      else next.delete(candidate.key);
+                      if (allVisibleSelected) {
+                        for (const key of selectableVisibleKeys) {
+                          next.delete(key);
+                        }
+                      } else {
+                        for (const key of selectableVisibleKeys) {
+                          if (next.size >= 50) break;
+                          next.add(key);
+                        }
+                      }
                       return next;
                     })
                   }
-                />
-              ))}
-              {!visibleCandidates.length ? (
-                <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                  {discovery.isFetching
-                    ? "Refreshing Codex history…"
-                    : search
-                      ? `No chats match “${search.trim()}”.`
-                      : "No matching chats are available."}
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="grid gap-1.5 text-xs font-medium">
-              Destination
-              <select
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                value={destinationWorktreeId}
-                onChange={(event) =>
-                  setDestinationWorktreeId(event.target.value)
-                }
-              >
-                <option value="automatic">Automatic server placement</option>
-                {readyWorktrees.map((worktree) => (
-                  <option key={worktree.id} value={worktree.id}>
-                    {externalChatWorktreeLabel(worktree, workersById)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium">
-              Cantrip model for future messages
-              <select
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                value={modelId}
-                onChange={(event) => {
-                  setModelId(event.target.value);
-                  setRouteId("automatic");
-                  setAccountId("automatic");
-                }}
-              >
-                {!models.length ? (
-                  <option value="">No model is configured</option>
-                ) : null}
-                {models.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium">
-              Provider route
-              <select
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                value={routeId}
-                disabled={!selectedModel}
-                onChange={(event) => {
-                  setRouteId(event.target.value);
-                  setAccountId("automatic");
-                }}
-              >
-                <option value="automatic">Automatic route</option>
-                {routes.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {route.providerName} · {route.modelName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium">
-              Provider account
-              <select
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                value={accountId}
-                disabled={!selectedRoute || !accounts.length}
-                onChange={(event) => setAccountId(event.target.value)}
-              >
-                <option value="automatic">Automatic account</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.label}
-                    {account.email ? ` · ${account.email}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium">
-              Permissions
-              <select
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                value={permissionProfileId}
-                onChange={(event) => setPermissionProfileId(event.target.value)}
-              >
-                <option value=":workspace">Workspace access</option>
-                <option value=":read-only">Read only</option>
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-medium">
-              Conversation mode
-              <select
-                className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                value={planMode}
-                onChange={(event) =>
-                  setPlanMode(event.target.value as "default" | "plan")
-                }
-              >
-                <option value="default">Default</option>
-                <option value="plan">Plan mode</option>
-              </select>
-            </label>
-          </div>
-
-          {settings.isSuccess && !models.length ? (
-            <p className="flex gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-              <CircleAlert className="size-4 shrink-0" />
-              Configure a model in App Settings → Models before importing.
-            </p>
-          ) : null}
-
-          <label className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs leading-5">
-            <input
-              type="checkbox"
-              className="mt-0.5 size-4 shrink-0"
-              checked={consented}
-              onChange={(event) => setConsented(event.target.checked)}
-            />
-            <span>
-              I understand the selected transcript history and safe available
-              attachments will be copied from the source worker to this Cantrip
-              server. Only selected chats are read in full.
-            </span>
-          </label>
-
-          {importError ? (
-            <p className="flex gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <CircleAlert className="size-4 shrink-0" />
-              {errorMessage(importError)}
-            </p>
-          ) : null}
-
-          {recentJobs.length ? (
-            <section aria-labelledby="chat-import-activity-title">
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3
-                  id="chat-import-activity-title"
-                  className="text-sm font-semibold"
                 >
-                  Import activity
-                </h3>
-                <p className="text-[10px] text-muted-foreground">
-                  {summary.active} active · {summary.succeeded} ready ·{" "}
-                  {summary.failed} needs attention
-                </p>
+                  {allVisibleSelected ? "Clear visible" : "Select visible"}
+                </Button>
               </div>
-              <div className="max-h-48 divide-y overflow-y-auto border-y">
-                {recentJobs.map((job) => (
-                  <ImportJobRow
-                    key={job.id}
-                    job={job}
-                    pendingRetry={
-                      retry.isPending && retry.variables?.id === job.id
-                    }
-                    title={
-                      candidates.find(
-                        (candidate) =>
-                          candidate.sourceWorkerId === job.sourceWorkerId &&
-                          candidate.source.sourceId === job.sourceId &&
-                          candidate.thread.sourceThreadId ===
-                            job.sourceThreadId,
-                      )?.thread.title
-                    }
-                    onOpenChat={onOpenChat}
-                    onRetry={(target) => retry.mutate(target)}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
 
-          <DialogFooter className="items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              {selectedCandidates.length} selected · maximum 50 per import
-            </p>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)}>
-                Close
-              </Button>
-              <Button
-                disabled={importDisabled}
-                onClick={() => createImports.mutate()}
-              >
-                {createImports.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Download className="size-4" />
-                )}
-                Import {selectedCandidates.length || "selected"}
-              </Button>
-            </div>
-          </DialogFooter>
+              <div className="border-y">
+                <div className="divide-y">
+                  {visibleCandidates.map((candidate) => (
+                    <ExternalChatCandidateRow
+                      key={candidate.key}
+                      candidate={candidate}
+                      checked={selectedKeys.has(candidate.key)}
+                      disabled={
+                        Boolean(
+                          candidate.existingImport || candidate.existingJob,
+                        ) ||
+                        (!selectedKeys.has(candidate.key) &&
+                          selectedKeys.size >= 50)
+                      }
+                      matchedWorktreeLabel={
+                        worktrees.find(
+                          ({ id }) => id === candidate.thread.match.worktreeId,
+                        )?.name ??
+                        (candidate.thread.match.kind === "git-origin"
+                          ? "Matched by Git origin"
+                          : "Project replica")
+                      }
+                      onCheckedChange={(checked) =>
+                        setSelectedKeys((current) => {
+                          const next = new Set(current);
+                          if (checked && next.size < 50) {
+                            next.add(candidate.key);
+                          } else {
+                            next.delete(candidate.key);
+                          }
+                          return next;
+                        })
+                      }
+                    />
+                  ))}
+                  {!visibleCandidates.length ? (
+                    <div className="px-4 py-10 text-center text-sm text-muted-foreground">
+                      {discovery.isFetching
+                        ? "Refreshing Codex history…"
+                        : search
+                          ? `No chats match “${search.trim()}”.`
+                          : "No matching chats are available."}
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Destination
+                  <select
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={destinationWorktreeId}
+                    onChange={(event) =>
+                      setDestinationWorktreeId(event.target.value)
+                    }
+                  >
+                    <option value="automatic">Automatic placement</option>
+                    {readyWorktrees.map((worktree) => (
+                      <option key={worktree.id} value={worktree.id}>
+                        {externalChatWorktreeLabel(worktree, workersById)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Model for future messages
+                  <select
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={modelId}
+                    onChange={(event) => {
+                      setModelId(event.target.value);
+                      setRouteId("automatic");
+                      setAccountId("automatic");
+                    }}
+                  >
+                    {!models.length ? (
+                      <option value="">No model is configured</option>
+                    ) : null}
+                    {models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Provider route
+                  <select
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={routeId}
+                    disabled={!selectedModel}
+                    onChange={(event) => {
+                      setRouteId(event.target.value);
+                      setAccountId("automatic");
+                    }}
+                  >
+                    <option value="automatic">Automatic route</option>
+                    {routes.map((route) => (
+                      <option key={route.id} value={route.id}>
+                        {route.providerName} · {route.modelName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Provider account
+                  <select
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={accountId}
+                    disabled={!selectedRoute || !accounts.length}
+                    onChange={(event) => setAccountId(event.target.value)}
+                  >
+                    <option value="automatic">Automatic account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.label}
+                        {account.email ? ` · ${account.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Permissions
+                  <select
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={permissionProfileId}
+                    onChange={(event) =>
+                      setPermissionProfileId(event.target.value)
+                    }
+                  >
+                    <option value=":workspace">Workspace access</option>
+                    <option value=":read-only">Read only</option>
+                  </select>
+                </label>
+                <label className="grid gap-1.5 text-xs font-medium">
+                  Conversation mode
+                  <select
+                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    value={planMode}
+                    onChange={(event) =>
+                      setPlanMode(event.target.value as "default" | "plan")
+                    }
+                  >
+                    <option value="default">Default</option>
+                    <option value="plan">Plan mode</option>
+                  </select>
+                </label>
+              </div>
+
+              {settings.isSuccess && !models.length ? (
+                <p className="rounded-lg bg-muted/45 px-3 py-2 text-xs text-muted-foreground">
+                  Configure a model in App Settings → Models before importing.
+                </p>
+              ) : null}
+
+              <label className="flex items-start gap-2 rounded-lg bg-muted/50 p-3 text-xs leading-5">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0"
+                  checked={consented}
+                  onChange={(event) => setConsented(event.target.checked)}
+                />
+                <span>
+                  Copy the selected transcript history and available attachments
+                  into this Cantrip server. Only selected chats are read in
+                  full.
+                </span>
+              </label>
+
+              <DialogFooter className="items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  {selectedCandidates.length} selected · maximum 50
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    disabled={importDisabled}
+                    onClick={() => createImports.mutate()}
+                  >
+                    <Download className="size-4" />
+                    Import {selectedCandidates.length || "selected"}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </>

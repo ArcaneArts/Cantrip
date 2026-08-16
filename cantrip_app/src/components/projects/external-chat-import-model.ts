@@ -147,9 +147,8 @@ export function importStateLabel(job: ChatImportJobSummary): string {
     case "succeeded":
       return "Ready";
     case "blocked":
-      return "Needs attention";
     case "failed":
-      return "Failed";
+      return job.chatId ? "Imported with limitations" : "Import incomplete";
     case "cancelled":
       return "Cancelled";
   }

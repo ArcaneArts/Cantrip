@@ -2,13 +2,7 @@ import type {
   ChatImportJobSummary,
   ExternalChatImportReference,
 } from "@cantrip/protocol";
-import {
-  Archive,
-  CircleAlert,
-  ExternalLink,
-  Loader2,
-  RotateCcw,
-} from "lucide-react";
+import { Archive, ExternalLink, Loader2, RotateCcw } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +26,9 @@ function externalImportReferenceLabel(
     return `Imported to ${reference.projectName}`;
   }
   if (["blocked", "failed", "cancelled"].includes(reference.state)) {
-    return `Import needs attention in ${reference.projectName}`;
+    return reference.chatId
+      ? `Transcript imported to ${reference.projectName}`
+      : `Import incomplete in ${reference.projectName}`;
   }
   return `Importing in ${reference.projectName}`;
 }
@@ -128,6 +124,13 @@ export function ImportJobRow({
   onRetry(job: ChatImportJobSummary): void;
 }) {
   const active = activeImportStates.has(job.state);
+  const detail = job.error
+    ? job.chatId
+      ? "Transcript history was preserved and can be opened."
+      : job.error.retryable
+        ? "Cantrip will retry when the required worker is available."
+        : "This chat was not imported."
+    : job.progress.message;
   return (
     <div className="space-y-2 px-3 py-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -136,7 +139,7 @@ export function ImportJobRow({
             {job.sourceMetadata?.title ?? title ?? "Codex chat import"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {importStateLabel(job)} · {job.progress.message}
+            {importStateLabel(job)} · {detail}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -175,18 +178,10 @@ export function ImportJobRow({
           />
         </div>
       ) : null}
-      {job.error ? (
-        <p className="flex gap-1.5 text-xs text-destructive">
-          <CircleAlert className="mt-0.5 size-3.5 shrink-0" />
-          {job.error.message}
-        </p>
-      ) : null}
       {job.attachmentWarningCount > 0 ? (
-        <p className="text-xs text-amber-600 dark:text-amber-400">
-          {job.attachmentWarningCount} attachment
-          {job.attachmentWarningCount === 1 ? " was" : "s were"} unavailable and
-          preserved as {job.attachmentWarningCount === 1 ? "a" : ""}
-          placeholder{job.attachmentWarningCount === 1 ? "" : "s"}.
+        <p className="text-xs text-muted-foreground">
+          Text history was preserved. {job.attachmentWarningCount} attachment
+          {job.attachmentWarningCount === 1 ? " was" : "s were"} unavailable.
         </p>
       ) : null}
     </div>

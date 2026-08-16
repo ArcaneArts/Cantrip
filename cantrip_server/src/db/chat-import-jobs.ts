@@ -18,7 +18,18 @@ import {
   type ExternalChatTranscript,
   type PlanMode,
 } from "@cantrip/protocol";
-import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -1257,6 +1268,83 @@ export class ChatImportJobRepository {
       return rows[0];
     });
     return toJob(completed);
+  }
+
+  async completeWithoutHydration(
+    jobId: string,
+    commandId: string,
+    attempt: number,
+  ): Promise<ChatImportJobSummary> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.chatImportJobs)
+      .set({
+        state: "succeeded",
+        stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
+        commandId: null,
+        leaseExpiresAt: null,
+        progress: progress(
+          "succeeded",
+          100,
+          "Chat history is imported. A new runtime will start when you continue.",
+          now,
+        ),
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        errorRetryable: null,
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.chatImportJobs.id, jobId),
+          eq(schema.chatImportJobs.commandId, commandId),
+          eq(schema.chatImportJobs.attempt, attempt),
+          eq(schema.chatImportJobs.state, "hydrating"),
+          isNotNull(schema.chatImportJobs.chatId),
+        ),
+      )
+      .returning();
+    if (!rows[0]) {
+      throw new ChatImportJobStaleAttemptError("Import attempt is stale.");
+    }
+    return toJob(rows[0]);
+  }
+
+  async completeUnsupportedHydrationImports(): Promise<number> {
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.chatImportJobs)
+      .set({
+        state: "succeeded",
+        stateRevision: sql`${schema.chatImportJobs.stateRevision} + 1`,
+        commandId: null,
+        leaseExpiresAt: null,
+        progress: progress(
+          "succeeded",
+          100,
+          "Chat history is imported. A new runtime will start when you continue.",
+          now,
+        ),
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        errorRetryable: null,
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          inArray(schema.chatImportJobs.state, ["blocked", "failed"]),
+          inArray(schema.chatImportJobs.lastErrorCode, [
+            "capability-missing",
+            "runtime-incompatible",
+          ]),
+          isNotNull(schema.chatImportJobs.chatId),
+          isNull(schema.chatImportJobs.managedThreadId),
+        ),
+      )
+      .returning({ id: schema.chatImportJobs.id });
+    return rows.length;
   }
 
   async block(

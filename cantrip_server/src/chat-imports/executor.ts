@@ -135,7 +135,18 @@ export class ChatImportJobExecutor {
   ) {}
 
   async recoverAfterRestart(force = true): Promise<number> {
-    return this.repository.chatImportJobs.recoverInterrupted(force);
+    const completed =
+      await this.repository.chatImportJobs.completeUnsupportedHydrationImports();
+    if (completed > 0) {
+      this.logger.info(
+        { completed },
+        "Completed previously imported canonical chat histories",
+      );
+    }
+    return (
+      completed +
+      (await this.repository.chatImportJobs.recoverInterrupted(force))
+    );
   }
 
   startRecoverySweep(): void {
@@ -257,6 +268,14 @@ export class ChatImportJobExecutor {
         return;
       }
       const mapped = importError(error);
+      if (
+        claimed.job.chatId &&
+        mapped.code === "runtime-incompatible" &&
+        !mapped.retryable
+      ) {
+        await this.#completeWithoutHydration(claimed, mapped.code);
+        return;
+      }
       const settled =
         mapped.retryable && !(error instanceof ChatImportJobConflictError)
           ? await this.repository.chatImportJobs.block(
@@ -548,32 +567,14 @@ export class ChatImportJobExecutor {
       worker.codexRuntime.compatibility === "missing" ||
       worker.codexRuntime.compatibility === "incompatible"
     ) {
-      const blocked = await this.repository.chatImportJobs.block(
-        claimed.job.id,
-        claimed.commandId,
-        {
-          code: "runtime-incompatible",
-          message: `${worker.name} does not have a compatible Codex runtime.`,
-          retryable: false,
-        },
-      );
-      this.#publishFailure(claimed, blocked);
+      await this.#completeWithoutHydration(claimed, "runtime-incompatible");
       return;
     }
     const missingMethods = REQUIRED_HYDRATION_METHODS.filter(
       (method) => worker.codexRuntime.methods[method] !== "available",
     );
     if (missingMethods.length) {
-      const blocked = await this.repository.chatImportJobs.block(
-        claimed.job.id,
-        claimed.commandId,
-        {
-          code: "capability-missing",
-          message: `The destination worker cannot hydrate imported chats because Codex methods are unavailable: ${missingMethods.join(", ")}.`,
-          retryable: false,
-        },
-      );
-      this.#publishFailure(claimed, blocked);
+      await this.#completeWithoutHydration(claimed, "capability-missing");
       return;
     }
     const hydration = await this.repository.chatImportJobs.hydrationContext(
@@ -644,6 +645,29 @@ export class ChatImportJobExecutor {
         targetWorkerId: completed.targetPlacement.workerId,
       },
       "Chat import completed",
+    );
+    this.onChanged({ ownerId: claimed.ownerId, job: completed });
+  }
+
+  async #completeWithoutHydration(
+    claimed: ClaimedChatImportJob,
+    reason: "capability-missing" | "runtime-incompatible",
+  ): Promise<void> {
+    const completed =
+      await this.repository.chatImportJobs.completeWithoutHydration(
+        claimed.job.id,
+        claimed.commandId,
+        claimed.job.attempt,
+      );
+    this.logger.info(
+      {
+        chatId: completed.chatId,
+        chatImportJobId: completed.id,
+        projectId: completed.projectId,
+        reason,
+        targetWorkerId: completed.targetPlacement.workerId,
+      },
+      "Chat import completed with canonical history",
     );
     this.onChanged({ ownerId: claimed.ownerId, job: completed });
   }
