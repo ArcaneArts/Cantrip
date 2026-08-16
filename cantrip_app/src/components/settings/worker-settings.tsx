@@ -116,10 +116,21 @@ export function recoverableDesktopWorkerId(input: {
 }
 
 export function resolveDesktopWorkerPairingId(input: {
-  candidates: Array<{ workerId: string }>;
   serverSelectedWorkerId: string | null;
 }): string | null {
-  return input.serverSelectedWorkerId ?? input.candidates[0]?.workerId ?? null;
+  return input.serverSelectedWorkerId;
+}
+
+export function desktopWorkerEnrollmentStopped(input: {
+  enrollmentPending: boolean;
+  pairingWorkerId: string | null;
+  workers: Array<{ running: boolean; workerId: string }>;
+}): boolean {
+  if (!input.enrollmentPending || !input.pairingWorkerId) return false;
+  return (
+    input.workers.find((worker) => worker.workerId === input.pairingWorkerId)
+      ?.running === false
+  );
 }
 
 async function copyText(value: string): Promise<void> {
@@ -325,6 +336,12 @@ export function WorkerSettings() {
     useState<WorkerManagementSummary | null>(null);
   const [desktopEnrollment, setDesktopEnrollment] =
     useState<WorkerEnrollmentCodeResult | null>(null);
+  const [desktopPairingWorkerId, setDesktopPairingWorkerId] = useState<
+    string | null
+  >(null);
+  const [desktopPairingError, setDesktopPairingError] = useState<string | null>(
+    null,
+  );
 
   const pairing = useMutation({
     mutationFn: () =>
@@ -363,6 +380,8 @@ export function WorkerSettings() {
   });
   useEffect(() => {
     if (desktopEnrollmentStatus.data?.status !== "paired") return;
+    setDesktopPairingWorkerId(null);
+    setDesktopPairingError(null);
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["desktop-workers"] }),
       queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
@@ -383,11 +402,10 @@ export function WorkerSettings() {
         expiresInSeconds: 300,
         candidateWorkerIds: candidates.map((candidate) => candidate.workerId),
       });
-      // New servers select an account-owned identity. The ordered local
-      // fallback keeps recovery working while a hosted server is one release
-      // behind the desktop client.
+      // Only the server can authorize recovery of an existing identity. A
+      // null selection must create a fresh identity because a retained local
+      // candidate may belong to a different account on this server.
       const workerId = resolveDesktopWorkerPairingId({
-        candidates,
         serverSelectedWorkerId: enrollment.workerId,
       });
       const current = desktopWorkers.data?.find(
@@ -411,8 +429,10 @@ export function WorkerSettings() {
       });
       return { desktopWorker, enrollment };
     },
-    onSuccess: ({ enrollment }) => {
+    onSuccess: ({ desktopWorker, enrollment }) => {
       setDesktopEnrollment(enrollment);
+      setDesktopPairingWorkerId(desktopWorker.workerId);
+      setDesktopPairingError(null);
       void queryClient.invalidateQueries({ queryKey: ["desktop-workers"] });
       void queryClient.invalidateQueries({
         queryKey: ["desktop-worker-candidates", serverUrl],
@@ -535,7 +555,33 @@ export function WorkerSettings() {
     });
   const desktopPairing =
     addThisMachine.isPending ||
-    desktopEnrollmentStatus.data?.status === "pending";
+    Boolean(
+      desktopEnrollment &&
+      (!desktopEnrollmentStatus.data ||
+        desktopEnrollmentStatus.data.status === "pending"),
+    );
+  useEffect(() => {
+    if (
+      !desktopWorkerEnrollmentStopped({
+        enrollmentPending: desktopPairing,
+        pairingWorkerId: desktopPairingWorkerId,
+        workers: desktopWorkers.data ?? [],
+      })
+    ) {
+      return;
+    }
+    setDesktopPairingError(
+      "This machine's worker stopped before enrollment completed. Try adding this machine again.",
+    );
+    setDesktopEnrollment(null);
+    setDesktopPairingWorkerId(null);
+    void queryClient.invalidateQueries({ queryKey: ["desktop-workers"] });
+  }, [
+    desktopPairing,
+    desktopPairingWorkerId,
+    desktopWorkers.data,
+    queryClient,
+  ]);
   const commands = pairResult
     ? workerPairingCommands(serverUrl, pairResult.code)
     : null;
@@ -570,6 +616,8 @@ export function WorkerSettings() {
             onClick={() => {
               addThisMachine.reset();
               setDesktopEnrollment(null);
+              setDesktopPairingWorkerId(null);
+              setDesktopPairingError(null);
               addThisMachine.mutate();
             }}
           >
@@ -643,13 +691,15 @@ export function WorkerSettings() {
           </label>
           {addThisMachine.isError ||
           desktopEnrollmentStatus.isError ||
-          updateAutostart.isError ? (
+          updateAutostart.isError ||
+          desktopPairingError ? (
             <p className="border-t px-3 py-2 text-sm text-destructive">
-              {errorMessage(
-                addThisMachine.error ??
-                  desktopEnrollmentStatus.error ??
-                  updateAutostart.error,
-              )}
+              {desktopPairingError ??
+                errorMessage(
+                  addThisMachine.error ??
+                    desktopEnrollmentStatus.error ??
+                    updateAutostart.error,
+                )}
             </p>
           ) : desktopEnrollmentStatus.data?.status === "expired" ? (
             <p className="border-t px-3 py-2 text-sm text-destructive">
