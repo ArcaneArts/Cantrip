@@ -17182,10 +17182,10 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
       }
-      if (
-        !context.threadId ||
-        !["running", "waiting-for-approval"].includes(context.status)
-      ) {
+      const chatCanBeInterrupted =
+        context.status === "running" ||
+        context.status === "waiting-for-approval";
+      if (!chatCanBeInterrupted) {
         return reply.send(
           chatInterruptAcceptedSchema.parse({ interrupted: false }),
         );

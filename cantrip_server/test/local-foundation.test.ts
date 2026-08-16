@@ -153,6 +153,9 @@ const authUsageByCredentialHomeKey = new Map<string, number>();
 const steeredPrompts: string[] = [];
 const steeredAttachmentIds: string[][] = [];
 const pauseCommands: Array<{ chatId: string; paused: boolean }> = [];
+const interruptCommands: Array<
+  Extract<WorkerCommand, { type: "chat.interrupt" }>
+> = [];
 const explorerWrites: Array<{
   content: string;
   path: string;
@@ -1494,7 +1497,8 @@ const workerBridge = {
         pauseCommands.push({ chatId: command.chatId, paused: command.paused });
         return { paused: command.paused };
       case "chat.interrupt":
-        return { interrupted: false };
+        interruptCommands.push(command);
+        return { interrupted: true };
       case "chat.goal.get":
         return { goal: codexGoal };
       case "chat.goal.create":
@@ -4899,6 +4903,24 @@ describe("local server foundation", () => {
       payload: { text: "Hold queue open.", idempotencyKey: "queue-running" },
     });
     await vi.waitFor(() => expect(releaseHeldTurn).not.toBeNull());
+    expect(
+      await firstDatabase.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        queueChat.id,
+      ),
+    ).toMatchObject({ status: "running", threadId: null });
+    expect(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: `/api/chats/${queueChat.id}/interrupt`,
+        })
+      ).json(),
+    ).toEqual({ interrupted: true });
+    expect(interruptCommands.at(-1)).toMatchObject({
+      chatId: queueChat.id,
+      threadId: null,
+    });
 
     const firstQueued = queuedPromptSchema.parse(
       (

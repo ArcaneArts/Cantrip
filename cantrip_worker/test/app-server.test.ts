@@ -21,6 +21,7 @@ import {
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
   failClosedAgentInteractionReply,
+  findActiveChatTurn,
   GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
   isKnownCodexNotificationMethod,
@@ -35,6 +36,34 @@ import {
   planQuestionId,
   workflowMeasuredUsage,
 } from "../src/codex/app-server.js";
+
+describe("active chat turn selection", () => {
+  it("finds a live first turn by chat ID before its thread ID is persisted", () => {
+    const turns = new Map([
+      [
+        "turn-stale",
+        {
+          chatId: "chat-stale",
+          executionKind: "chat" as const,
+          threadId: "thread-stale",
+        },
+      ],
+      [
+        "turn-live",
+        {
+          chatId: "chat-live",
+          executionKind: "chat" as const,
+          threadId: "thread-live",
+        },
+      ],
+    ]);
+
+    expect(findActiveChatTurn(turns, "chat-live", null)?.[0]).toBe("turn-live");
+    expect(findActiveChatTurn(turns, "chat-live", "thread-stale")?.[0]).toBe(
+      "turn-live",
+    );
+  });
+});
 
 const correlation = {
   sourceMethod: "item/completed",

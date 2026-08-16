@@ -169,6 +169,10 @@ export interface CodexRuntime {
     requestKey: string,
     reason: string,
   ): Promise<{ accepted: true }>;
+  interruptChat(
+    chatId: string,
+    threadId: string | null,
+  ): Promise<{ interrupted: boolean }>;
   interruptThread(threadId: string): Promise<{ interrupted: boolean }>;
   steerThread(
     chatId: string,

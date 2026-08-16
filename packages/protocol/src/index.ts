@@ -8293,7 +8293,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("chat.interrupt"),
     chatId: z.string().min(1),
-    threadId: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),

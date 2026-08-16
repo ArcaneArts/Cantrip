@@ -3229,7 +3229,7 @@ describe("Cantrip protocol", () => {
     const compact = workerCommandSchema.parse({
       type: "chat.interrupt",
       chatId: "chat-1",
-      threadId: "thread-1",
+      threadId: null,
       model: {
         id: "model-1",
         routeId: "route-1",
@@ -3245,6 +3245,7 @@ describe("Cantrip protocol", () => {
       },
     });
     expect(compact.type).toBe("chat.interrupt");
+    expect(compact.threadId).toBeNull();
   });
 
   it("validates native Codex goal state and worker commands", () => {

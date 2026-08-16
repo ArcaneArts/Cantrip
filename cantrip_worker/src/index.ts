@@ -1403,7 +1403,10 @@ async function start(): Promise<void> {
           threadId: command.threadId,
         });
       case "chat.interrupt":
-        return runtimeFor(command).interruptThread(command.threadId);
+        return runtimeFor(command).interruptChat(
+          command.chatId,
+          command.threadId,
+        );
       case "chat.goal.get":
         return runtimeFor(command).getGoal({
           cwd: command.cwd,

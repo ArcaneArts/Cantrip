@@ -80,6 +80,7 @@ export function ChatComposerPrimaryActions({
         disabled={stopDisabled}
         title="Stop current operation"
         aria-label="Stop current operation"
+        onPointerDown={(event) => event.preventDefault()}
         onClick={onStop}
       >
         {stopPending ? (
