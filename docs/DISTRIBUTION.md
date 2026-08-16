@@ -4,10 +4,12 @@ Production container, Compose, reverse-proxy, PostgreSQL migration,
 backup/restore, TURN, and rolling-upgrade operations are documented in
 [Hosted deployment and recovery](HOSTED_DEPLOYMENT.md).
 
-Cantrip produces three independent artifacts: Server, Worker, and Desktop. The
+Cantrip produces Server, Worker, Desktop, Android, and iOS release outputs. The
 Server and Worker are Node.js deployment trees. Desktop is a native Tauri
 bundle containing the frontend plus those same service trees and the Node.js
-runtime used to build it.
+runtime used to build it. Android is an unsigned Capacitor APK attached to the
+GitHub release. The signed Capacitor iOS archive is uploaded directly to App
+Store Connect for TestFlight processing rather than attached publicly.
 
 The two browser-only surfaces are deployed separately through DigitalOcean App
 Platform using `.do/app.yaml`. Both static components watch `release` with
@@ -61,13 +63,15 @@ create a GitHub release.
 The only GitHub Actions release trigger is a push to `release`; pull requests,
 ordinary `main` pushes, and manual dispatches do not run native packaging. The
 workflow uses Blacksmith's Apple Silicon macOS 15 and Windows Server 2025 x64
-runners. Server and Worker jobs run in parallel for both platforms. Desktop
-jobs then download those exact native service archives, embed them alongside
-the runner's Node.js runtime, and build a signed and notarized macOS DMG or a
-Windows NSIS installer. A final job creates a GitHub release tagged
-`v<major>.<minor>.<commit-count>` and uploads the DMG, NSIS executable, signed
-Tauri updater artifacts, and both standalone Server and Worker archives for
-both platforms.
+runners for the service and desktop lanes. Server, Worker, Android, and iOS
+jobs start in parallel. Desktop jobs then download the exact native service
+archives, embed them alongside the runner's Node.js runtime, and build a signed
+and notarized macOS DMG or a Windows NSIS installer. Android builds an unsigned
+release APK while iOS archives and uploads to TestFlight. A final job waits for
+every lane, creates a GitHub release tagged
+`v<major>.<minor>.<commit-count>`, and uploads the DMG, NSIS executable, Android
+APK, signed Tauri updater artifacts, and both standalone Server and Worker
+archives for both platforms.
 
 Release caches are content-addressed and platform-specific. They retain the
 verified final Codex runtime bundle and exact-fingerprint Cantrip Code
@@ -83,6 +87,43 @@ Before advancing `release`, install the Blacksmith GitHub App for this
 repository so jobs with `blacksmith-*` runner labels can be provisioned. The
 first run for each platform is expected to be cold; later releases reuse cache
 entries whenever the pinned Codex and Cantrip Code inputs remain unchanged.
+
+### Mobile release lanes
+
+The Android lane uses Java 21 and the checked-in Gradle wrapper after running a
+Capacitor sync. The project deliberately has no release signing configuration,
+and CI verifies that Gradle emitted `app-release-unsigned.apk` before renaming
+it to `Cantrip_<version>_android_unsigned.apk`. The artifact is uploaded under
+the `cantrip-android-apk` workflow artifact name, so the final release job
+downloads and publishes it alongside the desktop and service files.
+
+The iOS lane synchronizes the Capacitor project, archives the `App` scheme for
+the generic iOS destination, and exports with the `upload` destination. The
+repository's commit-count build number keeps App Store Connect build numbers
+monotonic when releases advance normally. The upload enters Apple's normal
+TestFlight processing pipeline; tester-group assignment and external beta
+review remain App Store Connect operations.
+
+The iOS job reuses the App Store Connect API key already required for desktop
+notarization and additionally requires these Actions secrets:
+
+- `IOS_DISTRIBUTION_CERTIFICATE`: a base64-encoded `.p12` containing an
+  **Apple Distribution** certificate and its private key;
+- `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`: the password used to export that
+  `.p12`;
+- `KEYCHAIN_PASSWORD`: the existing arbitrary password for the temporary CI
+  keychain;
+- `APPSTORE_CONNECT_ISSUER_ID`: the App Store Connect API issuer UUID;
+- `APPSTORE_CONNECT_KEY_ID`: the App Store Connect API key ID; and
+- `APPSTORE_CONNECT_KEY`: the raw or base64-encoded `.p8` private key.
+
+The Apple Distribution identity is separate from the Developer ID Application
+identity used by the macOS desktop lane. CI derives the team ID from the iOS
+certificate, uses automatic provisioning authenticated by the API key, and
+deletes the temporary keychain and private key even if archiving or upload
+fails. The final GitHub release waits for the successful TestFlight upload and
+Android artifact, so a published release cannot silently omit either mobile
+track.
 
 ### macOS distribution
 
