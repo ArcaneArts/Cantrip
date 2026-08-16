@@ -137,6 +137,7 @@ function completeTurn(socket, turnId, text) {
 
 server.on("connection", (socket) => {
   let chatGptAuthenticated = false;
+  let freshThreadCompactionRejected = false;
   let pendingChatGptTurn = null;
   socket.on("message", (raw) => {
     const message = JSON.parse(String(raw));
@@ -237,7 +238,17 @@ server.on("connection", (socket) => {
       return;
     }
     if (message.method === "turn/start") {
-      if (message.params.threadId === "stale-thread") {
+      const rejectFreshThreadCompaction =
+        message.params.clientUserMessageId ===
+          "cantrip:grok-fresh-compaction-message" &&
+        !freshThreadCompactionRejected;
+      if (
+        message.params.threadId === "stale-thread" ||
+        rejectFreshThreadCompaction
+      ) {
+        if (rejectFreshThreadCompaction) {
+          freshThreadCompactionRejected = true;
+        }
         socket.send(JSON.stringify({
           id: message.id,
           error: {
@@ -471,9 +482,25 @@ describe("portable provider accounts on a brand-new worker", () => {
       });
       expect(recoveredThreadIds).toEqual(["stale-thread", "portable-thread"]);
 
+      const freshThreadIds: string[] = [];
+      await expect(
+        grokRuntime.runTurn({
+          ...turnOptions(root, grokProvider, "grok-code-fast-1"),
+          chatId: "grok-fresh-compaction-chat",
+          clientMessageId: "grok-fresh-compaction-message",
+          onThreadLoaded: (threadId) => freshThreadIds.push(threadId),
+        }),
+      ).resolves.toMatchObject({
+        status: "completed",
+        text: "Portable Grok turn completed.",
+        threadId: "portable-thread",
+      });
+      expect(freshThreadIds).toEqual(["portable-thread", "portable-thread"]);
+
       expect(await readdir(chatGptHome)).toEqual([]);
       expect(await readdir(grokHome)).toEqual([]);
       expect(grokUpstreamTokens).toEqual([
+        "Bearer grok-access-1",
         "Bearer grok-access-1",
         "Bearer grok-access-1",
         "Bearer grok-access-1",
