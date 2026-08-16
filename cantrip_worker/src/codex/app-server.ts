@@ -2442,19 +2442,27 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
+    let attemptedThreadId = options.threadId;
+    const firstAttemptOptions: RunAgentTurnOptions = {
+      ...options,
+      onThreadLoaded: (threadId) => {
+        attemptedThreadId = threadId;
+        options.onThreadLoaded?.(threadId);
+      },
+    };
     try {
-      return await this.runTurnAttempt(options);
+      return await this.runTurnAttempt(firstAttemptOptions);
     } catch (error) {
-      if (!options.threadId || !isInvalidCompactionBlobError(error)) {
+      if (!attemptedThreadId || !isInvalidCompactionBlobError(error)) {
         throw error;
       }
-      this.forgetThread(options.threadId);
+      this.forgetThread(attemptedThreadId);
       workerLogger.warn(
         "Codex rejected stored compaction state; retrying the turn on a fresh thread",
         {
           chatId: options.chatId,
           providerKind: options.provider.kind,
-          staleThreadId: options.threadId,
+          staleThreadId: attemptedThreadId,
         },
       );
       return this.runTurnAttempt({ ...options, threadId: null });
