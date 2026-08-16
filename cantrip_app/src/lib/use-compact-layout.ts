@@ -10,25 +10,30 @@ export function shouldUseCompactLayout(
   return mediaQueryMatches && !tauriRuntime;
 }
 
-function compactLayoutMatches(): boolean {
-  return shouldUseCompactLayout(
-    window.matchMedia(COMPACT_LAYOUT_MEDIA_QUERY).matches,
-    isTauri(),
-  );
+export function shouldUseDesktopSidebarDrawer(
+  mediaQueryMatches: boolean,
+  tauriRuntime: boolean,
+  popout: boolean,
+): boolean {
+  return mediaQueryMatches && tauriRuntime && !popout;
 }
 
-export function useCompactLayout(): boolean {
-  const [compact, setCompact] = useState(compactLayoutMatches);
+export function useNarrowViewport(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => window.matchMedia(COMPACT_LAYOUT_MEDIA_QUERY).matches,
+  );
 
   useEffect(() => {
     const media = window.matchMedia(COMPACT_LAYOUT_MEDIA_QUERY);
-    const tauriRuntime = isTauri();
-    const update = () =>
-      setCompact(shouldUseCompactLayout(media.matches, tauriRuntime));
+    const update = () => setNarrow(media.matches);
     update();
     media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
   }, []);
 
-  return compact;
+  return narrow;
+}
+
+export function useCompactLayout(): boolean {
+  return shouldUseCompactLayout(useNarrowViewport(), isTauri());
 }

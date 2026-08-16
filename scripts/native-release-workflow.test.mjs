@@ -89,10 +89,7 @@ test("fails closed while signing and notarizing the macOS updater and DMG", asyn
     workflow,
     /security list-keychains -d user -s "\$keychain" "\$\{existing_keychains\[@\]\}"/u,
   );
-  assert.doesNotMatch(
-    workflow,
-    /security default-keychain -s "\$keychain"/u,
-  );
+  assert.doesNotMatch(workflow, /security default-keychain -s "\$keychain"/u);
   assert.match(workflow, /DeveloperIDCA\.cer/u);
   assert.match(workflow, /DeveloperIDG2CA\.cer/u);
   assert.match(

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { shouldUseCompactLayout } from "./use-compact-layout";
+import {
+  shouldUseCompactLayout,
+  shouldUseDesktopSidebarDrawer,
+} from "./use-compact-layout";
 
 describe("compact layout runtime boundary", () => {
   it("uses the compact shell for narrow web browsers", () => {
@@ -13,5 +16,12 @@ describe("compact layout runtime boundary", () => {
 
   it("keeps narrow Tauri windows on the desktop shell", () => {
     expect(shouldUseCompactLayout(true, true)).toBe(false);
+  });
+
+  it("uses a sidebar drawer only for narrow primary Tauri windows", () => {
+    expect(shouldUseDesktopSidebarDrawer(true, true, false)).toBe(true);
+    expect(shouldUseDesktopSidebarDrawer(false, true, false)).toBe(false);
+    expect(shouldUseDesktopSidebarDrawer(true, false, false)).toBe(false);
+    expect(shouldUseDesktopSidebarDrawer(true, true, true)).toBe(false);
   });
 });
