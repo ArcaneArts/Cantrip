@@ -273,9 +273,15 @@ function proxyRequestIdentity(
     payload.prompt_cache_key.trim()
       ? payload.prompt_cache_key.trim()
       : null;
+  // Grok Build uses one canonical session value for prompt_cache_key,
+  // x-grok-conv-id, and x-grok-session-id. Codex exposes both a long-lived
+  // session ID and a thread ID, but its prompt cache key is the session ID.
+  // Mixing the thread ID into only x-grok-conv-id lets the first response
+  // succeed while making Grok reject its encrypted reasoning state on the
+  // following tool continuation.
   const conversationId =
-    stringField(clientMetadata, "thread_id") ??
     promptCacheKey ??
+    stringField(clientMetadata, "session_id", "thread_id") ??
     fallbackConversationId;
   return {
     conversationId,
@@ -284,10 +290,7 @@ function proxyRequestIdentity(
         ? payload.model.trim()
         : null,
     requestId: stringField(clientMetadata, "turn_id") ?? randomUUID(),
-    sessionId:
-      stringField(clientMetadata, "session_id") ??
-      promptCacheKey ??
-      conversationId,
+    sessionId: conversationId,
   };
 }
 
