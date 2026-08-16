@@ -49,6 +49,7 @@ import {
   codeTabUpdateSchema,
   codeThemeUpdateSchema,
   desktopUpdateActiveWorkSummarySchema,
+  serviceLogReadResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexCustomizationInventorySchema,
@@ -349,6 +350,7 @@ import {
   workerCredentialRotateResultSchema,
   workerCredentialRotateSchema,
   workerEnrollmentCodeCreateSchema,
+  workerLogReadQuerySchema,
   workerEnrollmentCodeResultSchema,
   workerEnrollmentCodeStatusSchema,
   workerEnrollmentExchangeSchema,
@@ -6596,6 +6598,47 @@ export async function buildApp({
           type: "worker.version",
         });
         return reply.send(cantripVersionSchema.parse(version));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { workerId: string };
+    Querystring: {
+      afterCursor?: string;
+      limit?: string;
+      minimumLevel?: string;
+    };
+  }>(
+    "/api/workers/:workerId/logs",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const query = workerLogReadQuerySchema.safeParse(request.query);
+      if (!query.success) {
+        return reply.code(400).send(invalidBody(query.error.issues));
+      }
+      const ownerId = principalOwnerId(request);
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (!bridge.isConnected(request.params.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const result = await bridge.request(
+          request.params.workerId,
+          { type: "diagnostics.logs.read", ...query.data },
+          { ownerId, timeoutMs: 5_000 },
+        );
+        return reply
+          .header("cache-control", "no-store")
+          .send(serviceLogReadResultSchema.parse(result));
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }

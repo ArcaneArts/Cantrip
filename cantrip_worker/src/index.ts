@@ -45,7 +45,7 @@ import {
   discardLegacyProviderCredential,
   purgeLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
-import { workerLogger } from "./logger.js";
+import { readWorkerLogs, workerLogger } from "./logger.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
   ProviderAccessTokenClient,
@@ -450,6 +450,8 @@ async function start(): Promise<void> {
         };
       case "worker.version":
         return cantripVersion;
+      case "diagnostics.logs.read":
+        return readWorkerLogs(command);
       case "worker.credential.rotate":
         saveWorkerCredential({
           credential: command.credential,
