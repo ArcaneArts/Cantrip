@@ -7291,10 +7291,32 @@ export const chatGptModelInventoryItemSchema = z.object({
   defaultServiceTier: z.string().max(100).nullable(),
 });
 
+export const providerQuotaWindowObservationSchema = z.object({
+  limitId: z.string().max(500).nullable(),
+  limitName: z.string().max(500).nullable(),
+  planType: z.string().max(500).nullable(),
+  reachedType: z.string().max(500).nullable(),
+  windowKind: z.enum(["primary", "secondary"]),
+  usedPercent: z.number().min(0).max(100),
+  windowDurationMinutes: z.number().int().nonnegative().nullable(),
+  resetsAt: z.number().int().nonnegative().nullable(),
+  isWeeklyProjection: z.boolean(),
+  rawPayload: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const providerQuotaSnapshotSchema = z.object({
+  snapshotId: z.string().min(1).max(200),
+  observedAt: z.string().datetime(),
+  workerVersion: z.string().max(200).nullable(),
+  codexVersion: z.string().max(500).nullable(),
+  windows: z.array(providerQuotaWindowObservationSchema).max(500),
+});
+
 export const chatGptModelInventorySchema = z.object({
   models: z.array(chatGptModelInventoryItemSchema).max(1_000),
   observedAt: z.string().datetime(),
   weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
+  quotaSnapshot: providerQuotaSnapshotSchema.nullable().default(null),
 });
 
 export const grokModelInventoryItemSchema = z.object({
@@ -7317,6 +7339,7 @@ export const grokModelInventorySchema = z.object({
   models: z.array(grokModelInventoryItemSchema).max(1_000),
   observedAt: z.string().datetime(),
   weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
+  quotaSnapshot: providerQuotaSnapshotSchema.nullable().default(null),
 });
 
 export const serviceLogLevelSchema = z.enum([
@@ -7386,6 +7409,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("model.grok.catalog"),
     provider: workerRuntimeProviderSchema.extend({
       kind: z.literal("grok"),
+      accountId: z.string().min(1),
+      credentialHomeKey: z.string().min(1).max(500),
+    }),
+  }),
+  z.object({
+    type: z.literal("provider.quota.read"),
+    provider: workerRuntimeProviderSchema.extend({
+      kind: z.enum(["chatgpt", "grok"]),
       accountId: z.string().min(1),
       credentialHomeKey: z.string().min(1).max(500),
     }),
@@ -9743,6 +9774,10 @@ export type ChatGptModelInventoryItem = z.infer<
   typeof chatGptModelInventoryItemSchema
 >;
 export type ChatGptModelInventory = z.infer<typeof chatGptModelInventorySchema>;
+export type ProviderQuotaSnapshot = z.infer<typeof providerQuotaSnapshotSchema>;
+export type ProviderQuotaWindowObservation = z.infer<
+  typeof providerQuotaWindowObservationSchema
+>;
 export type GrokModelInventoryItem = z.infer<
   typeof grokModelInventoryItemSchema
 >;

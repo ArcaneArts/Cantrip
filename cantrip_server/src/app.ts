@@ -385,6 +385,7 @@ import type {
   GitManagedOperationRecord,
   GitManagedOperationWorkerState,
   ProjectWorktreeSummary,
+  ProviderQuotaSnapshot,
   ReasoningEffort,
   WorkerNotification,
   WorkerSummary,
@@ -616,7 +617,10 @@ import {
   isAccountProviderKind,
 } from "./models/account-provider.js";
 import { providerAccountAuthStatus } from "./models/provider-account-status.js";
-import { weeklyUsageFromRateLimitActivity } from "./models/provider-account-usage.js";
+import {
+  persistProviderRateLimitActivity,
+  readAndPersistProviderQuotaSnapshot,
+} from "./models/provider-quota.js";
 import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
 
 export interface BuildAppOptions {
@@ -4874,6 +4878,130 @@ export async function buildApp({
     }
   };
 
+  const quotaObservationTimers = new Set<NodeJS.Timeout>();
+  const quotaResetObservationKeys = new Set<string>();
+  const captureRuntimeQuota = (
+    runtime: ModelRuntime,
+    execution: ChatExecutionContext,
+    trigger: string,
+    executionAttemptId: string,
+    turnId: string | null = null,
+  ): void => {
+    if (
+      !runtime.provider.accountId ||
+      !runtime.provider.credentialHomeKey ||
+      !isAccountProviderKind(runtime.provider.kind)
+    ) {
+      return;
+    }
+    const accountId = runtime.provider.accountId;
+    void readAndPersistProviderQuotaSnapshot(repository, bridge, {
+      ownerId: applicationOwnerId(),
+      providerId: runtime.provider.id,
+      accountId,
+      accountPlanType: null,
+      workerId: execution.workerId,
+      trigger,
+      chatId: execution.chatId,
+      turnId,
+      executionAttemptId,
+      provider: {
+        name: runtime.provider.name,
+        kind: runtime.provider.kind,
+        baseUrl: runtime.provider.baseUrl,
+        credentialHomeKey: runtime.provider.credentialHomeKey,
+      },
+    })
+      .then(({ snapshot }) => {
+        scheduleKnownResetQuotaSamples(
+          runtime,
+          execution,
+          executionAttemptId,
+          turnId,
+          snapshot,
+        );
+      })
+      .catch((error) => {
+        app.log.debug(
+          {
+            err: error,
+            providerId: runtime.provider.id,
+            providerAccountId: accountId,
+            trigger,
+            workerId: execution.workerId,
+          },
+          "Provider quota sample unavailable",
+        );
+      });
+  };
+
+  function scheduleKnownResetQuotaSamples(
+    runtime: ModelRuntime,
+    execution: ChatExecutionContext,
+    executionAttemptId: string,
+    turnId: string | null,
+    snapshot: ProviderQuotaSnapshot,
+  ): void {
+    if (!runtime.provider.accountId) return;
+    const now = Date.now();
+    for (const window of snapshot.windows) {
+      if (window.resetsAt === null) continue;
+      const resetAtMs = window.resetsAt * 1_000;
+      for (const phase of [
+        { name: "before", atMs: resetAtMs - 5_000 },
+        { name: "after", atMs: resetAtMs + 2_000 },
+      ]) {
+        const delayMs = phase.atMs - now;
+        if (delayMs <= 0 || delayMs > 2_147_000_000) continue;
+        const key = `${runtime.provider.accountId}:${window.limitId ?? "unknown"}:${window.windowKind}:${window.resetsAt}:${phase.name}`;
+        if (quotaResetObservationKeys.has(key)) continue;
+        quotaResetObservationKeys.add(key);
+        const timer = setTimeout(() => {
+          quotaObservationTimers.delete(timer);
+          quotaResetObservationKeys.delete(key);
+          captureRuntimeQuota(
+            runtime,
+            execution,
+            `reset-window-${phase.name}`,
+            executionAttemptId,
+            turnId,
+          );
+        }, delayMs);
+        timer.unref();
+        quotaObservationTimers.add(timer);
+      }
+    }
+  }
+
+  const scheduleRuntimeQuotaSamples = (
+    runtime: ModelRuntime,
+    execution: ChatExecutionContext,
+    executionAttemptId: string,
+    turnId: string | null,
+  ): void => {
+    captureRuntimeQuota(
+      runtime,
+      execution,
+      "turn-completed",
+      executionAttemptId,
+      turnId,
+    );
+    for (const delayMs of [5_000, 15_000, 45_000]) {
+      const timer = setTimeout(() => {
+        quotaObservationTimers.delete(timer);
+        captureRuntimeQuota(
+          runtime,
+          execution,
+          `turn-completed-plus-${delayMs / 1_000}s`,
+          executionAttemptId,
+          turnId,
+        );
+      }, delayMs);
+      timer.unref();
+      quotaObservationTimers.add(timer);
+    }
+  };
+
   const skillSettingsTarget = async (input: {
     projectId: string | null;
     providerId: string;
@@ -5517,6 +5645,8 @@ export async function buildApp({
       try {
         await notifyCodeAgentState(execution, "started");
         for (const [index, runtime] of runtimes.entries()) {
+          const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
+          let quotaFollowupsScheduled = false;
           const preparedReasoning = preparedRuntimes[index]!;
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
@@ -5575,6 +5705,16 @@ export async function buildApp({
             runtime.routeId,
             "starting",
             runtime.provider.accountId,
+          );
+          captureRuntimeQuota(
+            runtime,
+            execution,
+            index > 0 &&
+              runtimes[index - 1]?.provider.accountId !==
+                runtime.provider.accountId
+              ? "account-switch"
+              : "turn-starting",
+            executionAttemptId,
           );
           try {
             const rawResult = await bridge.request(
@@ -5751,32 +5891,30 @@ export async function buildApp({
                       event.activity.type === "rateLimit" &&
                       runtime.provider.accountId
                     ) {
-                      // Other Codex limit buckets have independent weekly windows;
-                      // only the canonical account quota belongs in provider usage.
-                      const weekly = weeklyUsageFromRateLimitActivity(
+                      await persistProviderRateLimitActivity(
+                        repository,
+                        {
+                          ownerId,
+                          providerId: runtime.provider.id,
+                          accountId: runtime.provider.accountId,
+                          accountPlanType: event.activity.planType,
+                          workerId: execution.workerId,
+                          trigger: "live-rate-limit-update",
+                          chatId: execution.chatId,
+                          turnId: event.activity.correlation?.turnId ?? null,
+                          executionAttemptId,
+                        },
                         event.activity,
-                      );
-                      if (weekly) {
-                        await repository
-                          .recordModelProviderAccountUsage({
+                      ).catch((error) => {
+                        app.log.warn(
+                          {
                             accountId: runtime.provider.accountId,
-                            ownerId,
-                            planType: event.activity.planType,
+                            err: error,
                             providerId: runtime.provider.id,
-                            resetsAt: weekly.resetsAt,
-                            usedPercent: weekly.usedPercent,
-                          })
-                          .catch((error) => {
-                            app.log.warn(
-                              {
-                                accountId: runtime.provider.accountId,
-                                err: error,
-                                providerId: runtime.provider.id,
-                              },
-                              "Unable to persist provider account quota",
-                            );
-                          });
-                      }
+                          },
+                          "Unable to persist provider quota observation",
+                        );
+                      });
                     }
                     if (event.activity.type === "fileChange") {
                       for (const change of event.activity.changes) {
@@ -5802,6 +5940,13 @@ export async function buildApp({
               },
             );
             const result = agentTurnResultSchema.parse(rawResult);
+            scheduleRuntimeQuotaSamples(
+              runtime,
+              execution,
+              executionAttemptId,
+              result.turnId ?? null,
+            );
+            quotaFollowupsScheduled = true;
             await notifyCodeAgentState(execution, "completed", changedPaths);
             routeCooldowns.delete(runtimeCooldownKey(runtime));
             await repository.updateChatRuntime(
@@ -5847,6 +5992,15 @@ export async function buildApp({
             }
             return;
           } catch (error) {
+            if (!quotaFollowupsScheduled) {
+              scheduleRuntimeQuotaSamples(
+                runtime,
+                execution,
+                executionAttemptId,
+                null,
+              );
+              quotaFollowupsScheduled = true;
+            }
             const canRetry =
               !attemptActivity &&
               canFailOverRoute(error) &&
@@ -7960,6 +8114,7 @@ export async function buildApp({
           request.query.workerId,
           true,
           account.id,
+          "account-status-refresh",
         ).catch(() => undefined);
       }
       return reply.send(status);
@@ -8393,6 +8548,7 @@ export async function buildApp({
     workerId: string | undefined,
     force: boolean,
     accountId?: string,
+    quotaTrigger?: string,
   ) => {
     const provider = await repository.getModelProviderCatalogRuntime(
       ownerId,
@@ -8436,6 +8592,7 @@ export async function buildApp({
         selectedWorkerId,
         force,
         accountId,
+        quotaTrigger,
       );
     }
     if (provider.kind === "grok") {
@@ -8445,6 +8602,7 @@ export async function buildApp({
         selectedWorkerId,
         force,
         accountId,
+        quotaTrigger,
       );
     }
     return ollamaCatalogService.getProviderCatalog(
@@ -8459,6 +8617,7 @@ export async function buildApp({
   const refreshWorkerScopedCatalogs = async (
     ownerId: string,
     workerId: string,
+    quotaTrigger: "periodic-refresh" | "worker-reconnected",
   ) => {
     const settings = await repository.getSettings(ownerId);
     await Promise.allSettled(
@@ -8471,13 +8630,45 @@ export async function buildApp({
           loadProviderCatalog(ownerId, provider.id, workerId, false),
         ),
     );
+    await Promise.allSettled(
+      settings.providers.flatMap((provider) => {
+        if (!isAccountProviderKind(provider.kind)) return [];
+        const providerKind = provider.kind;
+        return provider.accounts
+          .filter((account) => account.enabled)
+          .map(async (account) => {
+            const runtime = await repository.getModelProviderAccountRuntime(
+              ownerId,
+              provider.id,
+              account.id,
+            );
+            if (!runtime) return;
+            await readAndPersistProviderQuotaSnapshot(repository, bridge, {
+              ownerId,
+              providerId: provider.id,
+              accountId: account.id,
+              accountPlanType: account.planType,
+              workerId,
+              trigger: quotaTrigger,
+              provider: {
+                name: provider.name,
+                kind: providerKind,
+                baseUrl: provider.baseUrl,
+                credentialHomeKey: runtime.credentialHomeKey,
+              },
+            });
+          });
+      }),
+    );
   };
   const workerCatalogRefreshTimer = setInterval(() => {
     for (const [workerId, ownerId] of catalogWorkers) {
       if (!bridge.isConnected(workerId)) continue;
-      void refreshWorkerScopedCatalogs(ownerId, workerId).catch(
-        () => undefined,
-      );
+      void refreshWorkerScopedCatalogs(
+        ownerId,
+        workerId,
+        "periodic-refresh",
+      ).catch(() => undefined);
     }
   }, 15 * 60_000);
   workerCatalogRefreshTimer.unref();
@@ -8537,6 +8728,8 @@ export async function buildApp({
           request.params.providerId,
           request.query.workerId,
           true,
+          undefined,
+          "manual-refresh",
         );
         return catalog
           ? reply.send(providerModelCatalogResultSchema.parse(catalog))
@@ -19929,9 +20122,11 @@ export async function buildApp({
             "Provider credential migration pass could not start",
           );
         });
-      void refreshWorkerScopedCatalogs(workerAuth.ownerId, workerId).catch(
-        () => undefined,
-      );
+      void refreshWorkerScopedCatalogs(
+        workerAuth.ownerId,
+        workerId,
+        "worker-reconnected",
+      ).catch(() => undefined);
       void projectReplicaJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -20144,6 +20339,9 @@ export async function buildApp({
     clearInterval(workflowGateExpiryTimer);
     clearInterval(workflowScheduleTimer);
     clearInterval(workerCatalogRefreshTimer);
+    for (const timer of quotaObservationTimers) clearTimeout(timer);
+    quotaObservationTimers.clear();
+    quotaResetObservationKeys.clear();
     for (const observer of customizationStatusObservers.values()) {
       observer.cancelled = true;
       if (observer.timer) clearTimeout(observer.timer);

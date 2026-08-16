@@ -58,10 +58,12 @@ import {
   type PlanMode,
   type PlanStep,
   type ProviderAccessTokenLease,
+  type ProviderQuotaSnapshot,
   type ThreadGoal,
   type WorkerChatAttachment,
   type WorkerCommand,
 } from "@cantrip/protocol";
+import { cantripVersion } from "@cantrip/version";
 
 import { captureWorkerDiagnostic, workerLogger } from "../logger.js";
 import {
@@ -104,7 +106,7 @@ import {
   type RuntimeProvider,
 } from "./external-chatgpt-auth.js";
 import {
-  weeklyUsageFromRateLimits,
+  quotaSnapshotFromRateLimits,
   type AccountRateLimitsResult,
 } from "./rate-limits.js";
 
@@ -2104,6 +2106,7 @@ export function normalizeRateLimitActivity(
     type: "rateLimit",
     id: `turn:${turnId}:rate-limit`,
     status: params.rateLimits.rateLimitReachedType ? "failed" : "completed",
+    updatedAtMs: Date.now(),
     limitId: params.rateLimits.limitId,
     limitName: params.rateLimits.limitName,
     planType: params.rateLimits.planType,
@@ -2423,22 +2426,51 @@ export class CodexAppServer implements CodexRuntime {
       if (nextCursor) seenCursors.add(nextCursor);
       cursor = nextCursor;
     } while (cursor && models.length < 1_000);
-    let weeklyUsage = null;
+    let quotaSnapshot: ProviderQuotaSnapshot | null = null;
     try {
-      weeklyUsage = weeklyUsageFromRateLimits(
+      quotaSnapshot = quotaSnapshotFromRateLimits(
         (await this.request(
           "account/rateLimits/read",
           undefined,
         )) as AccountRateLimitsResult,
+        {
+          workerVersion: cantripVersion.version,
+          codexVersion: this.compatibility.version?.raw ?? null,
+        },
       );
     } catch {
       // Model discovery remains useful when quota reporting is unavailable.
     }
+    const weekly = quotaSnapshot?.windows.find(
+      (window) => window.isWeeklyProjection,
+    );
     return chatGptModelInventorySchema.parse({
       models,
       observedAt: new Date().toISOString(),
-      weeklyUsage,
+      weeklyUsage: weekly
+        ? { resetsAt: weekly.resetsAt, usedPercent: weekly.usedPercent }
+        : null,
+      quotaSnapshot,
     });
+  }
+
+  async readQuotaSnapshot(
+    provider: Extract<
+      WorkerCommand,
+      { type: "provider.quota.read" }
+    >["provider"] & { kind: "chatgpt" },
+  ): Promise<ProviderQuotaSnapshot> {
+    await this.ensureCatalogStarted(provider);
+    return quotaSnapshotFromRateLimits(
+      (await this.request(
+        "account/rateLimits/read",
+        undefined,
+      )) as AccountRateLimitsResult,
+      {
+        workerVersion: cantripVersion.version,
+        codexVersion: this.compatibility.version?.raw ?? null,
+      },
+    );
   }
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {

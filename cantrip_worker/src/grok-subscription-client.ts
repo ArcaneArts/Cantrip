@@ -5,8 +5,10 @@ import { pipeline } from "node:stream/promises";
 
 import {
   grokModelInventorySchema,
+  providerQuotaSnapshotSchema,
   type GrokModelInventory,
   type GrokModelInventoryItem,
+  type ProviderQuotaSnapshot,
   type ProviderWeeklyUsage,
 } from "@cantrip/protocol";
 
@@ -313,6 +315,7 @@ export class GrokSubscriptionClient {
   #proxyStarting: Promise<string> | null = null;
   #weeklyUsageCache: {
     fetchedAt: number;
+    snapshot: ProviderQuotaSnapshot | null;
     value: ProviderWeeklyUsage | null;
   } | null = null;
 
@@ -350,11 +353,24 @@ export class GrokSubscriptionClient {
   }
 
   async weeklyUsage(): Promise<ProviderWeeklyUsage | null> {
+    const snapshot = await this.quotaSnapshot();
+    const weekly = snapshot?.windows.find(
+      (window) => window.isWeeklyProjection,
+    );
+    return weekly
+      ? { usedPercent: weekly.usedPercent, resetsAt: weekly.resetsAt }
+      : null;
+  }
+
+  async quotaSnapshot(
+    forceRefresh = false,
+  ): Promise<ProviderQuotaSnapshot | null> {
     if (
+      !forceRefresh &&
       this.#weeklyUsageCache &&
       this.#now() - this.#weeklyUsageCache.fetchedAt < WEEKLY_USAGE_CACHE_MS
     ) {
-      return this.#weeklyUsageCache.value;
+      return this.#weeklyUsageCache.snapshot;
     }
     try {
       const response = await this.request("/billing?format=credits");
@@ -362,12 +378,37 @@ export class GrokSubscriptionClient {
         throw new Error(`Grok usage discovery failed (${response.status}).`);
       }
       const value = normalizeGrokWeeklyUsage(await response.json());
-      this.#weeklyUsageCache = { fetchedAt: this.#now(), value };
-      return value;
+      const fetchedAt = this.#now();
+      const snapshot = value
+        ? providerQuotaSnapshotSchema.parse({
+            snapshotId: randomUUID(),
+            observedAt: new Date(fetchedAt).toISOString(),
+            workerVersion: null,
+            codexVersion: null,
+            windows: [
+              {
+                limitId: "grok-subscription",
+                limitName: "Grok subscription credits",
+                planType: null,
+                reachedType: value.usedPercent >= 100 ? "exhausted" : null,
+                windowKind: "primary",
+                usedPercent: value.usedPercent,
+                windowDurationMinutes: 7 * 24 * 60,
+                resetsAt: value.resetsAt,
+                isWeeklyProjection: true,
+                rawPayload: {
+                  source: "billing-credits",
+                  usedPercent: value.usedPercent,
+                  resetsAt: value.resetsAt,
+                },
+              },
+            ],
+          })
+        : null;
+      this.#weeklyUsageCache = { fetchedAt, snapshot, value };
+      return snapshot;
     } catch {
-      const value = this.#weeklyUsageCache?.value ?? null;
-      this.#weeklyUsageCache = { fetchedAt: this.#now(), value };
-      return value;
+      return this.#weeklyUsageCache?.snapshot ?? null;
     }
   }
 
