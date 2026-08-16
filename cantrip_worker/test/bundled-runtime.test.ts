@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -49,7 +48,7 @@ describe("resolveCodexInstallation", () => {
 });
 
 describe("verifyCodexInstallation", () => {
-  it("accepts a matching binary, target, and manifest", async () => {
+  it("accepts a present binary with the expected target and entrypoint", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip-codex-bundle-"),
     );
@@ -75,7 +74,7 @@ describe("verifyCodexInstallation", () => {
         artifacts: [
           {
             path: "codex",
-            sha256: createHash("sha256").update(contents).digest("hex"),
+            sha256: "0".repeat(64),
           },
         ],
         target: "darwin-arm64",
@@ -119,7 +118,7 @@ describe("verifyCodexInstallation", () => {
         artifacts: [
           {
             path: "codex",
-            sha256: createHash("sha256").update(contents).digest("hex"),
+            sha256: "0".repeat(64),
           },
         ],
         target: "darwin-arm64",
@@ -139,7 +138,7 @@ describe("verifyCodexInstallation", () => {
     });
   });
 
-  it("rejects a patched recipe manifest without its patch-set hash", async () => {
+  it("accepts manifests without build-time digest metadata", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip-codex-bundle-"),
     );
@@ -159,13 +158,11 @@ describe("verifyCodexInstallation", () => {
           ref: "rust-v0.147.0",
           commit: "be6e8eac029b183056b7e4402879f15d2c85f61b",
         },
-        sourceManifestSha256: "a".repeat(64),
         buildRecipeVersion: 2,
         entrypoint: "codex",
         artifacts: [
           {
             path: "codex",
-            sha256: createHash("sha256").update(contents).digest("hex"),
           },
         ],
         target: "darwin-arm64",
@@ -179,10 +176,10 @@ describe("verifyCodexInstallation", () => {
         "darwin",
         "arm64",
       ),
-    ).rejects.toThrow("Bundled Codex manifest is invalid");
+    ).resolves.toMatchObject({ version: "0.147.0" });
   });
 
-  it("rejects a binary that does not match its package manifest", async () => {
+  it("accepts a signed binary whose bytes no longer match the build manifest", async () => {
     const directory = await mkdtemp(
       path.join(tmpdir(), "cantrip-codex-bundle-"),
     );
@@ -216,6 +213,42 @@ describe("verifyCodexInstallation", () => {
         "darwin",
         "arm64",
       ),
-    ).rejects.toThrow("does not match manifest");
+    ).resolves.toMatchObject({ version: "0.147.0" });
+  });
+
+  it("rejects a manifest that names a missing artifact", async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-codex-bundle-"),
+    );
+    temporaryDirectories.push(directory);
+    const binary = path.join(directory, "codex");
+    const manifestPath = path.join(directory, "codex-runtime.json");
+    await writeFile(binary, "codex binary");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        component: "codex-cli",
+        version: "0.147.0",
+        upstream: {
+          repository: "https://github.com/openai/codex.git",
+          ref: "rust-v0.147.0",
+          commit: "be6e8eac029b183056b7e4402879f15d2c85f61b",
+        },
+        buildRecipeVersion: 4,
+        entrypoint: "codex",
+        artifacts: [{ path: "codex" }, { path: "missing-helper" }],
+        target: "darwin-arm64",
+        profile: "release",
+      }),
+    );
+
+    await expect(
+      verifyCodexInstallation(
+        { binary, manifestPath, source: "bundle" },
+        "darwin",
+        "arm64",
+      ),
+    ).rejects.toThrow("Could not read bundled Codex artifact");
   });
 });
