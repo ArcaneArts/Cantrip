@@ -296,9 +296,9 @@ describe("Grok OAuth accounts", () => {
       expect(first?.body).toBe(
         '{"model":"grok-4","prompt_cache_key":"cache-1","client_metadata":{"session_id":"session-1","thread_id":"thread-1","turn_id":"turn-1"}}',
       );
-      expect(first?.headers.get("x-grok-conv-id")).toBe("thread-1");
+      expect(first?.headers.get("x-grok-conv-id")).toBe("cache-1");
       expect(first?.headers.get("x-grok-req-id")).toBe("turn-1");
-      expect(first?.headers.get("x-grok-session-id")).toBe("session-1");
+      expect(first?.headers.get("x-grok-session-id")).toBe("cache-1");
       expect(first?.headers.get("x-grok-turn-idx")).toBe("0");
       expect(first?.headers.get("x-grok-model-override")).toBe("grok-4");
       expect(first?.headers.get("x-grok-agent-id")).toMatch(/^[0-9a-f-]{36}$/u);
@@ -319,9 +319,9 @@ describe("Grok OAuth accounts", () => {
       });
       await expect(continuation.json()).resolves.toEqual({ id: "response-1" });
       const second = upstreamRequests[1];
-      expect(second?.headers.get("x-grok-conv-id")).toBe("thread-1");
+      expect(second?.headers.get("x-grok-conv-id")).toBe("cache-1");
       expect(second?.headers.get("x-grok-req-id")).toBe("turn-1");
-      expect(second?.headers.get("x-grok-session-id")).toBe("session-1");
+      expect(second?.headers.get("x-grok-session-id")).toBe("cache-1");
       expect(second?.headers.get("x-grok-turn-idx")).toBe("0");
       expect(second?.headers.get("x-grok-agent-id")).toBe(
         first?.headers.get("x-grok-agent-id"),
