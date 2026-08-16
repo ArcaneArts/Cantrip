@@ -546,8 +546,11 @@ export class GrokSubscriptionClient {
     const turnKey = `${identity.conversationId}\u0000${identity.requestId}`;
     let turnIndex = this.#turnIndexByRequest.get(turnKey);
     if (turnIndex === undefined) {
+      // Grok increments its prompt index before sampling, so the first turn is
+      // one-based. A zero index lets generation start but invalidates the
+      // encrypted reasoning state on the following tool continuation.
       turnIndex =
-        this.#nextTurnIndexByConversation.get(identity.conversationId) ?? 0;
+        this.#nextTurnIndexByConversation.get(identity.conversationId) ?? 1;
       this.#turnIndexByRequest.set(turnKey, turnIndex);
       this.#nextTurnIndexByConversation.set(
         identity.conversationId,
