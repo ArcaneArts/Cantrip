@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   canAddThisMachine,
+  desktopWorkerEnrollmentStopped,
   formatWorkerLastSeen,
   recoverableDesktopWorkerId,
   resolveDesktopWorkerPairingId,
@@ -85,19 +86,44 @@ describe("worker settings helpers", () => {
     ).toBeNull();
   });
 
-  it("prefers server-authorized recovery with a local release-skew fallback", () => {
-    const candidates = [{ workerId: "desktop-source-owner" }];
+  it("only reuses a worker identity authorized by the server", () => {
     expect(
       resolveDesktopWorkerPairingId({
-        candidates,
         serverSelectedWorkerId: "desktop-server-selection",
       }),
     ).toBe("desktop-server-selection");
     expect(
       resolveDesktopWorkerPairingId({
-        candidates,
         serverSelectedWorkerId: null,
       }),
-    ).toBe("desktop-source-owner");
+    ).toBeNull();
+  });
+
+  it("detects an enrollment worker that stopped before pairing", () => {
+    const workers = [
+      { running: false, workerId: "desktop-pairing" },
+      { running: true, workerId: "desktop-other" },
+    ];
+    expect(
+      desktopWorkerEnrollmentStopped({
+        enrollmentPending: true,
+        pairingWorkerId: "desktop-pairing",
+        workers,
+      }),
+    ).toBe(true);
+    expect(
+      desktopWorkerEnrollmentStopped({
+        enrollmentPending: false,
+        pairingWorkerId: "desktop-pairing",
+        workers,
+      }),
+    ).toBe(false);
+    expect(
+      desktopWorkerEnrollmentStopped({
+        enrollmentPending: true,
+        pairingWorkerId: "desktop-other",
+        workers,
+      }),
+    ).toBe(false);
   });
 });

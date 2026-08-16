@@ -162,6 +162,12 @@ impl DesktopWorkers {
         self.data_directory.join(worker_id)
     }
 
+    fn has_stored_credential(&self, worker_id: &str) -> bool {
+        self.profile_directory(worker_id)
+            .join("worker-credential.json")
+            .is_file()
+    }
+
     fn spawn(
         &self,
         profile: &DesktopWorkerProfile,
@@ -342,8 +348,10 @@ pub fn build(app: &App) -> Result<DesktopWorkers, String> {
         profiles_path,
     };
     for profile in profiles {
-        if let Err(error) = manager.ensure_running(&profile, None) {
-            eprintln!("Could not reconnect linked desktop worker: {error}");
+        if manager.has_stored_credential(&profile.worker_id) {
+            if let Err(error) = manager.ensure_running(&profile, None) {
+                eprintln!("Could not reconnect linked desktop worker: {error}");
+            }
         }
     }
     Ok(manager)
@@ -359,8 +367,10 @@ pub fn list_desktop_workers(
         .map_err(|_| "The desktop worker registry is unavailable.".to_string())?
         .clone();
     for profile in &profiles {
-        if let Err(error) = workers.ensure_running(profile, None) {
-            eprintln!("Could not keep linked desktop worker running: {error}");
+        if workers.has_stored_credential(&profile.worker_id) {
+            if let Err(error) = workers.ensure_running(profile, None) {
+                eprintln!("Could not keep linked desktop worker running: {error}");
+            }
         }
     }
     let mut children = workers
@@ -469,11 +479,11 @@ pub fn forget_desktop_worker(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path};
+    use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
     use super::{
         normalize_server_url, replacement_profile, repository_count, sort_worker_candidates,
-        DesktopWorkerCandidate, DesktopWorkerProfile,
+        DesktopWorkerCandidate, DesktopWorkerProfile, DesktopWorkers, WorkerLaunch,
     };
 
     #[test]
@@ -569,5 +579,33 @@ mod tests {
         sort_worker_candidates(&mut candidates);
 
         assert_eq!(candidates[0].worker_id, "desktop-source-owner");
+    }
+
+    #[test]
+    fn only_restarts_profiles_with_a_stored_credential() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-worker-credential-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let worker_id = "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+        let profile_directory = root.join("profiles").join(worker_id);
+        fs::create_dir_all(&profile_directory).unwrap();
+        let manager = DesktopWorkers {
+            children: Mutex::new(HashMap::new()),
+            data_directory: root.join("profiles"),
+            launch: WorkerLaunch::Development {
+                repository: root.clone(),
+                tsx: root.join("tsx"),
+            },
+            logs_directory: root.join("logs"),
+            profiles: Mutex::new(Vec::new()),
+            profiles_path: root.join("desktop-workers.json"),
+        };
+
+        assert!(!manager.has_stored_credential(worker_id));
+        fs::write(profile_directory.join("worker-credential.json"), "{}").unwrap();
+        assert!(manager.has_stored_credential(worker_id));
+
+        fs::remove_dir_all(root).unwrap();
     }
 }
