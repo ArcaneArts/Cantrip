@@ -14,7 +14,11 @@ import { promisify } from "node:util";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { GithubClient, readProjectWorktreePolicy } from "../src/github.js";
+import {
+  GithubClient,
+  parseGithubCloneProgress,
+  readProjectWorktreePolicy,
+} from "../src/github.js";
 
 const directories: string[] = [];
 const originalPath = process.env.PATH;
@@ -157,7 +161,7 @@ describe("GitHub project files", () => {
     });
   });
 
-  it("attaches an unborn managed clone after its origin receives the first commit", async () => {
+  it("provisions an empty repository and attaches it after the first commit", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-empty-replica-recovery-test-"),
     );
@@ -165,6 +169,7 @@ describe("GitHub project files", () => {
     const fakeGithub = path.join(dataDirectory, "github");
     const bareRepository = path.join(fakeGithub, "ArcaneArts", "Cantrip.git");
     const seed = path.join(dataDirectory, "seed");
+    const binDirectory = path.join(dataDirectory, "bin");
     const managed = path.join(
       dataDirectory,
       "repositories",
@@ -181,28 +186,55 @@ describe("GitHub project files", () => {
     process.env.GIT_CONFIG_COUNT = "1";
     process.env.GIT_CONFIG_KEY_0 = `url.${fakeGithub}${path.sep}.insteadOf`;
     process.env.GIT_CONFIG_VALUE_0 = "https://github.com/";
-    await mkdir(path.dirname(managed), { recursive: true });
-    await execFileAsync("git", [
-      "clone",
-      "https://github.com/ArcaneArts/Cantrip.git",
-      managed,
-    ]);
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const { spawnSync } = require("node:child_process");',
+        "const args = process.argv.slice(2);",
+        'if (args[0] !== "repo" || args[1] !== "clone") process.exit(2);',
+        'const result = spawnSync("git", ["clone", `https://github.com/${args[2]}.git`, args[3]], { stdio: "inherit" });',
+        "process.exit(result.status ?? 1);",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
 
     const github = new GithubClient(dataDirectory);
+    const initialStages: string[] = [];
+    await expect(
+      github.provisionReplica(
+        {
+          jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+          attempt: 1,
+          nameWithOwner: "ArcaneArts/Cantrip",
+          expectedRevision: null,
+        },
+        (progress) => initialStages.push(progress.stage),
+      ),
+    ).resolves.toMatchObject({
+      status: "ready",
+      resolvedRevision: null,
+      branch: "main",
+      reused: false,
+    });
+    await expect(access(managed)).resolves.toBeUndefined();
+    expect(initialStages).toEqual(["validating", "materializing", "verifying"]);
+
     await expect(
       github.provisionReplica({
         jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
-        attempt: 1,
+        attempt: 2,
         nameWithOwner: "ArcaneArts/Cantrip",
         expectedRevision: null,
       }),
     ).resolves.toMatchObject({
-      status: "blocked",
-      error: {
-        code: "target-not-found",
-        message: expect.stringContaining("does not have an initial commit"),
-        retryable: true,
-      },
+      status: "ready",
+      resolvedRevision: null,
+      branch: "main",
+      reused: true,
     });
 
     await execFileAsync("git", ["init", "--initial-branch=main", seed]);
@@ -237,7 +269,7 @@ describe("GitHub project files", () => {
       github.provisionReplica(
         {
           jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
-          attempt: 2,
+          attempt: 3,
           nameWithOwner: "ArcaneArts/Cantrip",
           expectedRevision: null,
         },
@@ -258,6 +290,25 @@ describe("GitHub project files", () => {
       "inspecting",
       "verifying",
     ]);
+  });
+
+  it("maps streamed Git clone output to durable progress", () => {
+    expect(
+      parseGithubCloneProgress(
+        "remote: Counting objects: 100%\rReceiving objects: 42% (42/100)",
+      ),
+    ).toEqual({
+      message: "Receiving repository objects (42%).",
+      percent: 47,
+    });
+    expect(
+      parseGithubCloneProgress(
+        "Receiving objects: 100%\rResolving deltas: 50% (10/20)",
+      ),
+    ).toEqual({
+      message: "Resolving repository deltas (50%).",
+      percent: 78,
+    });
   });
 
   it("synchronizes only by policy and removes only fully published replicas", async () => {

@@ -1,5 +1,6 @@
 import type {
   ProjectSummary,
+  ProjectReplicaJobSummary,
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
@@ -24,9 +25,13 @@ import { searchProjects } from "@/lib/project-workspaces";
 function projectStatus(
   project: ProjectSummary,
   workers: readonly WorkerSummary[],
+  setupJob?: ProjectReplicaJobSummary,
 ): { icon?: "error" | "loading" | "offline"; label: string } {
   if (project.setupStatus === "cloning") {
-    return { icon: "loading", label: "Cloning" };
+    return {
+      icon: "loading",
+      label: setupJob ? `Cloning · ${setupJob.progress.percent}%` : "Starting",
+    };
   }
   if (project.setupStatus === "failed") {
     return { icon: "error", label: "Setup failed" };
@@ -54,6 +59,7 @@ export function MobileProjectSelector({
   onOpenSettings,
   onSelectProject,
   onSelectWorkspace,
+  projectSetupJobs,
   projects,
   workers,
   workspaces,
@@ -69,6 +75,7 @@ export function MobileProjectSelector({
   onOpenSettings(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
+  projectSetupJobs?: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projects: ProjectSummary[];
   workers: WorkerSummary[];
   workspaces: ProjectWorkspaceSummary[];
@@ -145,7 +152,11 @@ export function MobileProjectSelector({
         ) : results.length > 0 ? (
           <nav aria-label="Projects" className="space-y-1">
             {results.map(({ memberships, project }) => {
-              const status = projectStatus(project, workers);
+              const status = projectStatus(
+                project,
+                workers,
+                projectSetupJobs?.get(project.id),
+              );
               return (
                 <button
                   key={project.id}

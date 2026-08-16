@@ -5122,7 +5122,7 @@ export const projectReplicaProvisionReadySchema = z.object({
   path: z.string().min(1),
   displayPath: z.string().min(1),
   repositoryFingerprint: z.string().min(1),
-  resolvedRevision: gitObjectRevisionSchema,
+  resolvedRevision: gitObjectRevisionSchema.nullable(),
   branch: z.string().min(1).nullable(),
   reused: z.boolean(),
   worktreePolicy: worktreePolicySchema.nullable().optional(),

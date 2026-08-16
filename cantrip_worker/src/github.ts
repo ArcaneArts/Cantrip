@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   access,
@@ -71,8 +71,10 @@ import {
 const execFileAsync = promisify(execFile);
 const SAFE_REPOSITORY_SEGMENT = /^[A-Za-z0-9_.-]+$/;
 const MAX_PROJECT_POLICY_BYTES = 64 * 1024;
-const EMPTY_REPOSITORY_MESSAGE =
-  "The repository origin does not have an initial commit yet. Create the first commit on GitHub, then retry setup.";
+const CLONE_INACTIVITY_TIMEOUT_MS = 5 * 60_000;
+const CLONE_MAX_DURATION_MS = 2 * 60 * 60_000;
+const CLONE_PROGRESS_HEARTBEAT_MS = 10_000;
+const CLONE_OUTPUT_LIMIT_BYTES = 32 * 1024 * 1024;
 
 async function resolveGitCommit(
   cwd: string,
@@ -137,6 +139,147 @@ async function attachUnbornHeadToOrigin(cwd: string): Promise<string | null> {
     { maxBuffer: 1024 * 1024 },
   );
   return revision;
+}
+
+export function parseGithubCloneProgress(
+  output: string,
+): Pick<ProjectReplicaJobProgressEvent, "message" | "percent"> | null {
+  const matches = [
+    {
+      expression: /Receiving objects:\s+(\d+)%/giu,
+      label: "Receiving repository objects",
+      offset: 30,
+      range: 42,
+    },
+    {
+      expression: /Resolving deltas:\s+(\d+)%/giu,
+      label: "Resolving repository deltas",
+      offset: 72,
+      range: 12,
+    },
+    {
+      expression: /Updating files:\s+(\d+)%/giu,
+      label: "Updating repository files",
+      offset: 84,
+      range: 4,
+    },
+  ] as const;
+  let latest:
+    | (Pick<ProjectReplicaJobProgressEvent, "message" | "percent"> & {
+        index: number;
+      })
+    | null = null;
+  for (const candidate of matches) {
+    for (const match of output.matchAll(candidate.expression)) {
+      const gitPercent = Math.min(100, Math.max(0, Number(match[1])));
+      const index = match.index ?? 0;
+      if (!latest || index >= latest.index) {
+        latest = {
+          index,
+          message: `${candidate.label} (${gitPercent}%).`,
+          percent:
+            candidate.offset + Math.floor((gitPercent * candidate.range) / 100),
+        };
+      }
+    }
+  }
+  return latest ? { message: latest.message, percent: latest.percent } : null;
+}
+
+async function cloneGithubRepository(
+  nameWithOwner: string,
+  target: string,
+  reportProgress: (progress: ProjectReplicaJobProgressEvent) => void,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(
+      "gh",
+      ["repo", "clone", nameWithOwner, target, "--", "--progress"],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "";
+    let outputBytes = 0;
+    let settled = false;
+    let lastActivityAt = Date.now();
+    let terminationError: Error | null = null;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+    let watchdog: ReturnType<typeof setInterval> | null = null;
+    let maxDuration: ReturnType<typeof setTimeout> | null = null;
+    let forceKill: ReturnType<typeof setTimeout> | null = null;
+    let currentProgress: ProjectReplicaJobProgressEvent = {
+      stage: "materializing",
+      percent: 30,
+      message: "Cloning into worker-owned staging storage.",
+    };
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      if (heartbeat) clearInterval(heartbeat);
+      if (watchdog) clearInterval(watchdog);
+      if (maxDuration) clearTimeout(maxDuration);
+      if (forceKill) clearTimeout(forceKill);
+      if (error) reject(error);
+      else resolve();
+    };
+    const terminate = (message: string) => {
+      if (terminationError) return;
+      terminationError = new Error(message);
+      child.kill("SIGTERM");
+      forceKill = setTimeout(() => child.kill("SIGKILL"), 5_000);
+      forceKill.unref();
+    };
+    const capture = (chunk: Buffer) => {
+      lastActivityAt = Date.now();
+      outputBytes += chunk.length;
+      if (outputBytes > CLONE_OUTPUT_LIMIT_BYTES) {
+        terminate("Repository clone output exceeded the 32 MiB safety limit.");
+        return;
+      }
+      output = `${output}${chunk.toString("utf8")}`.slice(-16_384);
+      const parsed = parseGithubCloneProgress(output);
+      if (parsed && parsed.percent >= currentProgress.percent) {
+        currentProgress = { stage: "materializing", ...parsed };
+        reportProgress(currentProgress);
+      }
+    };
+    child.stdout.on("data", capture);
+    child.stderr.on("data", capture);
+    child.once("error", (error) => finish(terminationError ?? error));
+    child.once("close", (code, signal) => {
+      if (settled) return;
+      if (terminationError) {
+        finish(terminationError);
+        return;
+      }
+      if (code === 0) {
+        finish();
+        return;
+      }
+      const detail = output.trim().slice(-4_000);
+      finish(
+        new Error(
+          detail ||
+            `GitHub clone exited with ${signal ? `signal ${signal}` : `code ${code ?? "unknown"}`}.`,
+        ),
+      );
+    });
+    heartbeat = setInterval(() => {
+      reportProgress(currentProgress);
+    }, CLONE_PROGRESS_HEARTBEAT_MS);
+    heartbeat.unref();
+    watchdog = setInterval(() => {
+      if (Date.now() - lastActivityAt >= CLONE_INACTIVITY_TIMEOUT_MS) {
+        terminate(
+          "Repository clone stopped after five minutes without network or Git progress.",
+        );
+      }
+    }, CLONE_PROGRESS_HEARTBEAT_MS);
+    watchdog.unref();
+    maxDuration = setTimeout(() => {
+      terminate("Repository clone exceeded the two-hour safety limit.");
+    }, CLONE_MAX_DURATION_MS);
+    maxDuration.unref();
+  });
 }
 
 export async function readProjectWorktreePolicy(
@@ -1939,9 +2082,6 @@ export class GithubClient {
           );
         } else {
           currentRevision = await attachUnbornHeadToOrigin(target);
-          if (!currentRevision) {
-            return blocked("target-not-found", EMPTY_REPOSITORY_MESSAGE, true);
-          }
         }
       }
       if (
@@ -1963,10 +2103,10 @@ export class GithubClient {
       });
       try {
         await rm(staging, { recursive: true, force: true });
-        await execFileAsync(
-          "gh",
-          ["repo", "clone", input.nameWithOwner, staging],
-          { maxBuffer: 32 * 1024 * 1024 },
+        await cloneGithubRepository(
+          input.nameWithOwner,
+          staging,
+          reportProgress,
         );
         await execFileAsync(
           "git",
@@ -1978,7 +2118,7 @@ export class GithubClient {
         if (input.expectedRevision) {
           reportProgress({
             stage: "resolving-revision",
-            percent: 65,
+            percent: 88,
             message:
               "Resolving and checking out the requested immutable revision.",
           });
@@ -2008,10 +2148,7 @@ export class GithubClient {
             { maxBuffer: 32 * 1024 * 1024 },
           );
         } else if (!(await resolveGitCommit(staging, "HEAD"))) {
-          if (!(await attachUnbornHeadToOrigin(staging))) {
-            await rm(staging, { recursive: true, force: true });
-            return blocked("target-not-found", EMPTY_REPOSITORY_MESSAGE, true);
-          }
+          await attachUnbornHeadToOrigin(staging);
         }
         await rename(staging, target);
       } catch (error) {
@@ -2032,15 +2169,7 @@ export class GithubClient {
       message: "Verifying the materialized repository identity and revision.",
     });
 
-    const resolvedRevision = (
-      await execFileAsync(
-        "git",
-        ["-C", target, "rev-parse", "--verify", "HEAD^{commit}"],
-        { maxBuffer: 1024 * 1024 },
-      )
-    ).stdout
-      .trim()
-      .toLowerCase();
+    const resolvedRevision = await resolveGitCommit(target, "HEAD");
     const branch = (
       await execFileAsync("git", ["-C", target, "branch", "--show-current"], {
         maxBuffer: 1024 * 1024,

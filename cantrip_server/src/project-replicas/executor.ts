@@ -30,6 +30,7 @@ const MAX_CONCURRENT_REPLICA_JOBS = 4;
 const JOB_LEASE_RENEWAL_INTERVAL_MS = 30_000;
 const JOB_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
 export const PROJECT_REPLICA_COMMAND_TIMEOUT_MS = 30 * 60_000;
+const PROJECT_REPLICA_PROVISION_TIMEOUT_MS = 2 * 60 * 60_000 + 60_000;
 
 export class ProjectReplicaJobExecutor {
   readonly #active = new Set<Promise<void>>();
@@ -225,7 +226,10 @@ export class ProjectReplicaJobExecutor {
         }
       };
       const options = {
-        timeoutMs: PROJECT_REPLICA_COMMAND_TIMEOUT_MS,
+        timeoutMs:
+          job.kind === "provision"
+            ? PROJECT_REPLICA_PROVISION_TIMEOUT_MS
+            : PROJECT_REPLICA_COMMAND_TIMEOUT_MS,
         onEvent,
       };
       let settled: ProjectReplicaJobSummary;
