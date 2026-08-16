@@ -97,6 +97,8 @@ import type {
   ProjectSummary,
   ProjectTokenUsage,
   ProviderTelemetryAnalytics,
+  ProviderTelemetryDeleteResult,
+  ProviderTelemetryExport,
   ProjectWorkspaceCreate,
   ProjectWorkspaceSummary,
   ProjectWorkspaceUpdate,
@@ -171,6 +173,7 @@ import {
   sumDetailedTokenUsage,
   summarizeModelBehavior,
 } from "../analytics/telemetry-dashboard.js";
+import { detectTelemetryChanges } from "../analytics/telemetry-change-detection.js";
 import {
   enrichCatalogFromExactOpenRouterMatch,
   exactOpenRouterAliases,
@@ -4935,6 +4938,19 @@ export class ServerRepository {
     const accountBreakdownLabels = new Map(
       [...accountById.values()].map((account) => [account.id, account.label]),
     );
+    const changePoints = detectTelemetryChanges(
+      quota.movementSamples,
+      behaviorRows,
+    ).map((change) => ({
+      ...change,
+      providerAccountLabel: change.providerAccountId
+        ? (accountLabels.get(change.providerAccountId) ??
+          change.providerAccountId)
+        : null,
+      modelLabel: change.modelId
+        ? (modelLabelById.get(change.modelId) ?? change.modelId)
+        : null,
+    }));
     const estimates = quota.movementSamples;
     const attributableEstimates = estimates.filter(
       ({ unattributed }) => !unattributed,
@@ -5027,7 +5043,265 @@ export class ServerRepository {
           (key) => key,
         ),
       },
+      changePoints,
     };
+  }
+
+  async exportProviderTelemetry(
+    ownerId: string,
+    providerId: string,
+  ): Promise<ProviderTelemetryExport | null> {
+    const providerRows = await this.database
+      .select({
+        id: schema.modelProviders.id,
+        name: schema.modelProviders.name,
+      })
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.ownerId, ownerId),
+          eq(schema.modelProviders.id, providerId),
+        ),
+      )
+      .limit(1);
+    const provider = providerRows[0];
+    if (!provider) return null;
+
+    const [quotaRows, tokenRows, behaviorRows, catalogRows] = await Promise.all(
+      [
+        this.database
+          .select()
+          .from(schema.providerQuotaObservations)
+          .where(
+            and(
+              eq(schema.providerQuotaObservations.ownerId, ownerId),
+              eq(schema.providerQuotaObservations.providerId, providerId),
+            ),
+          )
+          .orderBy(asc(schema.providerQuotaObservations.observedAt)),
+        this.database
+          .select()
+          .from(schema.tokenUsageRecords)
+          .where(
+            and(
+              eq(schema.tokenUsageRecords.ownerId, ownerId),
+              eq(schema.tokenUsageRecords.providerId, providerId),
+            ),
+          )
+          .orderBy(asc(schema.tokenUsageRecords.startedAt)),
+        this.database
+          .select()
+          .from(schema.modelBehaviorObservations)
+          .where(
+            and(
+              eq(schema.modelBehaviorObservations.ownerId, ownerId),
+              eq(schema.modelBehaviorObservations.providerId, providerId),
+            ),
+          )
+          .orderBy(asc(schema.modelBehaviorObservations.startedAt)),
+        this.database
+          .select()
+          .from(schema.providerModelCatalogSnapshots)
+          .where(
+            and(
+              eq(schema.providerModelCatalogSnapshots.ownerId, ownerId),
+              eq(schema.providerModelCatalogSnapshots.providerId, providerId),
+            ),
+          )
+          .orderBy(asc(schema.providerModelCatalogSnapshots.observedAt)),
+      ],
+    );
+
+    return {
+      schemaVersion: 1,
+      generatedAt: new Date().toISOString(),
+      provider,
+      privacy: {
+        includesMessageContent: false,
+        rawPayloadsSanitized: true,
+        retention: "owner-controlled-indefinite",
+      },
+      quotaObservations: quotaRows.map((row) => ({
+        id: row.id,
+        eventKey: row.eventKey,
+        observationBatchKey: row.observationBatchKey,
+        providerAccountId: row.providerAccountId,
+        providerAccountLabel: row.providerAccountLabel,
+        workerId: row.workerId,
+        observedAt: row.observedAt.toISOString(),
+        receivedAt: row.receivedAt.toISOString(),
+        usedPercent: row.usedPercentMicros / 1_000_000,
+        resetsAt: row.resetsAt?.toISOString() ?? null,
+        windowDurationMinutes: row.windowDurationMinutes,
+        limitId: row.limitId,
+        limitName: row.limitName,
+        windowKind: row.windowKind,
+        planType: row.planType,
+        reachedType: row.reachedType,
+        observationTrigger: row.observationTrigger,
+        chatId: row.chatId,
+        turnId: row.turnId,
+        executionAttemptId: row.executionAttemptId,
+        workerVersion: row.workerVersion,
+        serverVersion: row.serverVersion,
+        codexVersion: row.codexVersion,
+        sanitizedRawPayload: row.sanitizedRawPayload,
+      })),
+      tokenUsage: tokenRows.map((row) => ({
+        id: row.id,
+        projectId: row.projectId,
+        chatId: row.chatId,
+        sourceKey: row.sourceKey,
+        modelId: row.modelId,
+        modelRouteId: row.modelRouteId,
+        modelName: row.modelName,
+        providerModelName: row.providerModelName,
+        providerAccountId: row.providerAccountId,
+        workerId: row.workerId,
+        turnId: row.turnId,
+        executionAttemptId: row.executionAttemptId,
+        attemptKind: row.attemptKind,
+        attemptStatus: row.attemptStatus,
+        reasoningEffort: row.reasoningEffort,
+        inputTokens: row.inputTokens,
+        cachedInputTokens: row.cachedInputTokens,
+        cacheWriteInputTokens: row.cacheWriteInputTokens,
+        outputTokens: row.outputTokens,
+        reasoningOutputTokens: row.reasoningOutputTokens,
+        visibleOutputTokens: row.visibleOutputTokens,
+        reportedTotalTokens: row.reportedTotalTokens,
+        usageSemantics: row.usageSemantics,
+        sanitizedRawUsage: row.sanitizedRawUsage,
+        startedAt: row.startedAt.toISOString(),
+        completedAt: row.completedAt?.toISOString() ?? null,
+        finalizedAt: row.finalizedAt?.toISOString() ?? null,
+        workerVersion: row.workerVersion,
+        serverVersion: row.serverVersion,
+        codexVersion: row.codexVersion,
+      })),
+      modelBehavior: behaviorRows.map((row) => ({
+        id: row.id,
+        sourceKey: row.sourceKey,
+        projectId: row.projectId,
+        chatId: row.chatId,
+        modelId: row.modelId,
+        modelRouteId: row.modelRouteId,
+        modelName: row.modelName,
+        providerModelName: row.providerModelName,
+        providerAccountId: row.providerAccountId,
+        workerId: row.workerId,
+        turnId: row.turnId,
+        executionAttemptId: row.executionAttemptId,
+        attemptStatus: row.attemptStatus,
+        reasoningEffort: row.reasoningEffort,
+        startedAt: row.startedAt.toISOString(),
+        completedAt: row.completedAt?.toISOString() ?? null,
+        finalizedAt: row.finalizedAt?.toISOString() ?? null,
+        durationMs: row.durationMs,
+        finalAnswerAppeared: row.finalAnswerAppeared,
+        toolCallCount: row.toolCallCount,
+        invalidToolCallCount: row.invalidToolCallCount,
+        retryFailoverCount: row.retryFailoverCount,
+        compactionCount: row.compactionCount,
+        approvalRequestCount: row.approvalRequestCount,
+        inputTokens: row.inputTokens,
+        cachedInputTokens: row.cachedInputTokens,
+        cacheWriteInputTokens: row.cacheWriteInputTokens,
+        outputTokens: row.outputTokens,
+        reasoningOutputTokens: row.reasoningOutputTokens,
+        filesChangedCount: row.filesChangedCount,
+        testCommandCount: row.testCommandCount,
+        testPassCount: row.testPassCount,
+        testFailureCount: row.testFailureCount,
+        userInterrupted: row.userInterrupted,
+        userRetryRegeneration: row.userRetryRegeneration,
+        immediateCorrectiveFollowup: row.immediateCorrectiveFollowup,
+        forkCount: row.forkCount,
+        copyCount: row.copyCount,
+        ratingValue: row.ratingValue,
+        workerVersion: row.workerVersion,
+        serverVersion: row.serverVersion,
+        codexVersion: row.codexVersion,
+        signalAvailability: row.signalAvailability,
+      })),
+      modelCatalogSnapshots: catalogRows.map((row) => ({
+        id: row.id,
+        providerAccountId: row.providerAccountId,
+        workerId: row.workerId,
+        availabilityScope: row.availabilityScope,
+        nativeModelId: row.nativeModelId,
+        canonicalModelId: row.canonicalModelId,
+        metadataSource: row.metadataSource,
+        metadataHash: row.metadataHash,
+        metadata: row.metadata,
+        observedAt: row.observedAt.toISOString(),
+      })),
+    };
+  }
+
+  async deleteProviderTelemetry(
+    ownerId: string,
+    providerId: string,
+  ): Promise<ProviderTelemetryDeleteResult | null> {
+    const provider = await this.database
+      .select({ id: schema.modelProviders.id })
+      .from(schema.modelProviders)
+      .where(
+        and(
+          eq(schema.modelProviders.ownerId, ownerId),
+          eq(schema.modelProviders.id, providerId),
+        ),
+      )
+      .limit(1);
+    if (!provider[0]) return null;
+
+    return this.database.transaction(async (transaction) => {
+      const quotaObservations = await transaction
+        .delete(schema.providerQuotaObservations)
+        .where(
+          and(
+            eq(schema.providerQuotaObservations.ownerId, ownerId),
+            eq(schema.providerQuotaObservations.providerId, providerId),
+          ),
+        )
+        .returning({ id: schema.providerQuotaObservations.id });
+      const tokenUsage = await transaction
+        .delete(schema.tokenUsageRecords)
+        .where(
+          and(
+            eq(schema.tokenUsageRecords.ownerId, ownerId),
+            eq(schema.tokenUsageRecords.providerId, providerId),
+          ),
+        )
+        .returning({ id: schema.tokenUsageRecords.id });
+      const modelBehavior = await transaction
+        .delete(schema.modelBehaviorObservations)
+        .where(
+          and(
+            eq(schema.modelBehaviorObservations.ownerId, ownerId),
+            eq(schema.modelBehaviorObservations.providerId, providerId),
+          ),
+        )
+        .returning({ id: schema.modelBehaviorObservations.id });
+      const modelCatalogSnapshots = await transaction
+        .delete(schema.providerModelCatalogSnapshots)
+        .where(
+          and(
+            eq(schema.providerModelCatalogSnapshots.ownerId, ownerId),
+            eq(schema.providerModelCatalogSnapshots.providerId, providerId),
+          ),
+        )
+        .returning({ id: schema.providerModelCatalogSnapshots.id });
+      return {
+        providerId,
+        deleted: {
+          quotaObservations: quotaObservations.length,
+          tokenUsage: tokenUsage.length,
+          modelBehavior: modelBehavior.length,
+          modelCatalogSnapshots: modelCatalogSnapshots.length,
+        },
+      };
+    });
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {

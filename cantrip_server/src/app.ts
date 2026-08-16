@@ -244,6 +244,8 @@ import {
   providerAccessTokenLeaseSchema,
   providerModelCatalogResultSchema,
   providerTelemetryAnalyticsSchema,
+  providerTelemetryDeleteResultSchema,
+  providerTelemetryExportSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
   mcpServerConfigurationSchema,
@@ -8437,6 +8439,32 @@ export async function buildApp({
     );
     return reply.send(providerTelemetryAnalyticsSchema.parse(analytics));
   });
+
+  app.get<{ Params: { providerId: string } }>(
+    "/api/analytics/provider-telemetry/:providerId/export",
+    async (request, reply) => {
+      const exported = await repository.exportProviderTelemetry(
+        applicationOwnerId(),
+        request.params.providerId,
+      );
+      return exported
+        ? reply.send(providerTelemetryExportSchema.parse(exported))
+        : reply.code(404).send({ error: "Model provider not found." });
+    },
+  );
+
+  app.delete<{ Params: { providerId: string } }>(
+    "/api/analytics/provider-telemetry/:providerId",
+    async (request, reply) => {
+      const result = await repository.deleteProviderTelemetry(
+        applicationOwnerId(),
+        request.params.providerId,
+      );
+      return result
+        ? reply.send(providerTelemetryDeleteResultSchema.parse(result))
+        : reply.code(404).send({ error: "Model provider not found." });
+    },
+  );
 
   app.post<{
     Params: { providerId: string };

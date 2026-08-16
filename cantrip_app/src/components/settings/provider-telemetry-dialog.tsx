@@ -3,17 +3,21 @@ import type {
   ModelProviderSummary,
   ProviderTelemetryAnalytics,
   TelemetryBreakdown,
+  TelemetryChangePoint,
   TelemetryQuotaReading,
   TelemetryValueStatistics,
 } from "@cantrip/protocol";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   Clock3,
+  Download,
   Gauge,
   Loader2,
   RefreshCw,
   ShieldAlert,
+  Trash2,
+  TrendingUp,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -26,7 +30,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getProviderTelemetryAnalytics } from "@/lib/api";
+import {
+  deleteProviderTelemetryHistory,
+  getProviderTelemetryAnalytics,
+  getProviderTelemetryExport,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const colors = ["#22d3ee", "#a78bfa", "#34d399", "#fb7185", "#fbbf24"];
@@ -279,6 +287,118 @@ function BreakdownTable({
   );
 }
 
+const changeMetricLabels: Record<TelemetryChangePoint["metric"], string> = {
+  "tokens-per-percent": "Tokens per 1%",
+  "effective-weekly-allowance": "Weekly allowance",
+  "failure-rate": "Failure rate",
+  "tool-error-rate": "Tool error rate",
+  latency: "Latency",
+  "compaction-frequency": "Compaction frequency",
+  "completion-rate": "Completion rate",
+  "output-reasoning-mix": "Reasoning / output mix",
+};
+
+function formatChangeValue(change: TelemetryChangePoint, value: number) {
+  if (change.unit === "tokens") return formatTokenCount(value);
+  if (change.unit === "milliseconds") return formatDuration(value);
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function ChangePoints({
+  analytics,
+}: {
+  analytics: ProviderTelemetryAnalytics;
+}) {
+  return (
+    <section>
+      <div className="flex items-end justify-between gap-3 pb-2">
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <TrendingUp className="size-4" /> Detected changes
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            Conservative before/after signals, not proof of a provider-side
+            change.
+          </p>
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          {analytics.changePoints.length} signals
+        </span>
+      </div>
+      <div className="overflow-x-auto border-y">
+        <div className="min-w-[760px] divide-y text-xs">
+          <div className="grid grid-cols-[minmax(10rem,1fr)_minmax(8rem,1fr)_minmax(12rem,1.2fr)_7rem_6rem_7rem] gap-3 px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span>Metric</span>
+            <span>Affected</span>
+            <span>Before → after</span>
+            <span className="text-right">Change</span>
+            <span className="text-right">Samples</span>
+            <span className="text-right">Detected</span>
+          </div>
+          {analytics.changePoints.map((change) => (
+            <div
+              key={change.id}
+              className="grid grid-cols-[minmax(10rem,1fr)_minmax(8rem,1fr)_minmax(12rem,1.2fr)_7rem_6rem_7rem] gap-3 px-2 py-1.5"
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    change.impact === "degradation"
+                      ? "bg-destructive"
+                      : change.impact === "improvement"
+                        ? "bg-emerald-500"
+                        : "bg-muted-foreground",
+                  )}
+                />
+                <span className="truncate">
+                  {changeMetricLabels[change.metric]}
+                </span>
+              </span>
+              <span className="truncate text-muted-foreground">
+                {[change.providerAccountLabel, change.modelLabel]
+                  .filter(Boolean)
+                  .join(" · ") || "Provider"}
+              </span>
+              <span className="truncate tabular-nums">
+                {formatChangeValue(change, change.beforeValue)} →{" "}
+                {formatChangeValue(change, change.afterValue)}
+              </span>
+              <span
+                className={cn(
+                  "text-right tabular-nums",
+                  change.impact === "degradation" && "text-destructive",
+                  change.impact === "improvement" && "text-emerald-500",
+                )}
+              >
+                {change.relativeChangePercent === null
+                  ? change.direction
+                  : `${change.relativeChangePercent >= 0 ? "+" : ""}${change.relativeChangePercent.toFixed(1)}%`}
+              </span>
+              <span className="text-right tabular-nums text-muted-foreground">
+                {change.beforeSampleCount}+{change.afterSampleCount} ·{" "}
+                {change.confidence}
+              </span>
+              <span
+                className="text-right text-muted-foreground"
+                title={`${change.beforeStart} – ${change.afterEnd}`}
+              >
+                {new Date(change.detectedAt).toLocaleDateString()}
+              </span>
+            </div>
+          ))}
+          {!analytics.changePoints.length ? (
+            <p className="px-2 py-5 text-center text-xs text-muted-foreground">
+              No change crossed the minimum effect and sample thresholds in this
+              range.
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Behavior({ analytics }: { analytics: ProviderTelemetryAnalytics }) {
   const behavior = analytics.behavior.total;
   const recentDays = analytics.behavior.daily.slice(-14).reverse();
@@ -374,10 +494,12 @@ export function ProviderTelemetryDialog({
   open: boolean;
   provider: ModelProviderSummary | null;
 }) {
+  const queryClient = useQueryClient();
   const [accountId, setAccountId] = useState("");
   const [modelId, setModelId] = useState("");
   const [reasoningEffort, setReasoningEffort] = useState("");
   const [days, setDays] = useState(90);
+  const [actionError, setActionError] = useState<string | null>(null);
   const query = useQuery({
     enabled: open && Boolean(provider),
     queryFn: () =>
@@ -402,6 +524,52 @@ export function ProviderTelemetryDialog({
   );
   const analytics = query.data;
   const latestReset = analytics?.resetBoundaries.at(-1);
+  const deleteHistory = useMutation({
+    mutationFn: () => deleteProviderTelemetryHistory(provider!.id),
+    onSuccess: async () => {
+      setActionError(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["provider-telemetry"] }),
+        queryClient.invalidateQueries({ queryKey: ["settings"] }),
+      ]);
+    },
+    onError: (error) => {
+      setActionError(
+        error instanceof Error ? error.message : "Could not delete telemetry.",
+      );
+    },
+  });
+  const downloadExport = async () => {
+    if (!provider) return;
+    try {
+      setActionError(null);
+      const exported = await getProviderTelemetryExport(provider.id);
+      const href = URL.createObjectURL(
+        new Blob([JSON.stringify(exported, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `${provider.name.toLowerCase().replace(/[^a-z0-9]+/gu, "-")}-telemetry.json`;
+      anchor.click();
+      URL.revokeObjectURL(href);
+    } catch (error) {
+      setActionError(
+        error instanceof Error ? error.message : "Could not export telemetry.",
+      );
+    }
+  };
+  const confirmDelete = () => {
+    if (
+      provider &&
+      window.confirm(
+        `Permanently delete all retained quota, token, behavior, and catalog telemetry for ${provider.name}? Export it first if you may need it later.`,
+      )
+    ) {
+      deleteHistory.mutate();
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] max-w-6xl gap-0 overflow-hidden p-0">
@@ -417,17 +585,44 @@ export function ProviderTelemetryDialog({
                 observations.
               </DialogDescription>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="size-8"
-              onClick={() => query.refetch()}
-              disabled={query.isFetching}
-            >
-              <RefreshCw
-                className={cn("size-3.5", query.isFetching && "animate-spin")}
-              />
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8"
+                onClick={() => void downloadExport()}
+                disabled={!provider}
+                title="Export retained telemetry as JSON"
+              >
+                <Download className="size-3.5" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 text-destructive hover:text-destructive"
+                onClick={confirmDelete}
+                disabled={!provider || deleteHistory.isPending}
+                title="Delete retained telemetry"
+              >
+                {deleteHistory.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8"
+                onClick={() => query.refetch()}
+                disabled={query.isFetching}
+                title="Refresh telemetry"
+              >
+                <RefreshCw
+                  className={cn("size-3.5", query.isFetching && "animate-spin")}
+                />
+              </Button>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <select
@@ -478,6 +673,9 @@ export function ProviderTelemetryDialog({
               <option value={365}>1 year</option>
             </select>
           </div>
+          {actionError ? (
+            <p className="mt-2 text-xs text-destructive">{actionError}</p>
+          ) : null}
         </DialogHeader>
         <div className="min-h-80 overflow-y-auto px-5 py-4">
           {query.isLoading ? (
@@ -588,6 +786,8 @@ export function ProviderTelemetryDialog({
                 </h3>
                 <Behavior analytics={analytics} />
               </section>
+
+              <ChangePoints analytics={analytics} />
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <BreakdownTable

@@ -100,3 +100,51 @@ and native model is deduplicated; a changed record produces a new immutable
 snapshot. Provider and model names are retained with the snapshot so later
 renames or removal do not erase the historical series. Catalog snapshots never
 contain API keys, account credentials, request headers, prompts, or responses.
+
+## Change detection
+
+The provider telemetry view derives conservative before/after signals from the
+raw ledgers. It evaluates exact-account, exact-model, and account/model series
+independently for observed tokens per percentage point, effective weekly
+allowance, failure and completion rates, tool errors, latency, compaction
+frequency, and reasoning/output mix.
+
+Detection requires minimum samples on both sides of a candidate boundary and a
+metric-specific minimum relative and absolute effect. Quota series exclude
+unattributed samples and treat high-confidence movement samples as stronger
+evidence. A signal is marked high confidence only when both sides have larger
+sample sets, the effect materially exceeds the minimum threshold, and at least
+three quarters of the samples are reliable. Otherwise a threshold-crossing
+signal is medium confidence. The detector reports at most one strongest
+boundary for a metric and scope within the selected range.
+
+These are observational signals, not proof that a provider changed a model or
+allowance. They can also reflect workload mix, routing, client/runtime changes,
+or sparse sampling. The UI therefore shows the affected account/model, both
+time ranges, before/after values, sample counts, and confidence instead of
+describing a signal as an official provider policy change.
+
+## Retention, export, and privacy
+
+Telemetry is retained indefinitely by default because longitudinal comparisons
+are the purpose of the ledger. Retention is owner-controlled:
+
+- deleting the owning Cantrip account cascades through all telemetry;
+- deleting a provider does not silently erase its historical quota evidence;
+- the provider telemetry dialog can export all retained rows for that provider
+  as versioned JSON; and
+- the same dialog can explicitly and permanently delete that provider's quota,
+  token, behavior, and catalog history without deleting the provider itself.
+
+Exports contain stable identifiers, timestamps, numeric counters, runtime
+versions, sanitized rate-limit/usage payloads, and sanitized catalog metadata.
+They state that message content is excluded. Telemetry collection must never
+add prompts, responses, file contents, command text/output, credentials,
+authentication payloads, access tokens, request headers, or other secrets.
+Existing conversation storage remains separate and is not copied into an
+analytics export.
+
+No automatic canary requests are enabled. Repeatable paid model checks remain
+deferred until Cantrip can provide an explicit opt-in budget, schedule, stable
+fixture contract, and clear account routing; telemetry must never consume quota
+merely because analytics are enabled.
