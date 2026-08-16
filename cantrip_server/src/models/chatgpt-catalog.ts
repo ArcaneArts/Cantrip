@@ -11,6 +11,7 @@ import type {
 } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 import { accountProviderCatalogScope } from "./account-provider.js";
+import { persistProviderQuotaSnapshot } from "./provider-quota.js";
 
 const FRESHNESS_WINDOW_MS = 15 * 60_000;
 const DISCOVERY_TIMEOUT_MS = 2 * 60_000;
@@ -107,6 +108,7 @@ export class ChatGptCatalogService {
     workerId: string,
     force = false,
     requestedAccountId?: string,
+    quotaTrigger = force ? "manual-refresh" : "catalog-refresh",
   ): Promise<ProviderModelCatalogResult | null> {
     const [provider, worker, accounts] = await Promise.all([
       this.#repository.getModelProviderCatalogRuntime(ownerId, providerId),
@@ -196,7 +198,20 @@ export class ChatGptCatalogService {
             { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
           ),
         );
-        if (inventory.weeklyUsage) {
+        if (inventory.quotaSnapshot) {
+          await persistProviderQuotaSnapshot(
+            this.#repository,
+            {
+              ownerId,
+              providerId,
+              accountId: account.id,
+              accountPlanType: account.planType,
+              workerId,
+              trigger: quotaTrigger,
+            },
+            inventory.quotaSnapshot,
+          );
+        } else if (inventory.weeklyUsage) {
           await this.#repository.recordModelProviderAccountUsage({
             accountId: account.id,
             ownerId,

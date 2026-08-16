@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { weeklyUsageFromRateLimits } from "../src/codex/rate-limits.js";
+import {
+  quotaSnapshotFromRateLimits,
+  weeklyUsageFromRateLimits,
+} from "../src/codex/rate-limits.js";
 
 const weekly = (usedPercent: number) => ({
   usedPercent,
@@ -34,5 +37,69 @@ describe("Codex weekly rate limits", () => {
         rateLimits: { primary: weekly(101), secondary: null },
       }),
     ).toBeNull();
+  });
+
+  it("preserves every returned bucket and marks only the canonical weekly projection", () => {
+    const snapshot = quotaSnapshotFromRateLimits(
+      {
+        rateLimits: {
+          limitId: "codex",
+          limitName: "Codex",
+          planType: "pro",
+          primary: {
+            usedPercent: 8,
+            windowDurationMins: 300,
+            resetsAt: 1_786_000_000,
+          },
+          secondary: weekly(37),
+        },
+        rateLimitsByLimitId: {
+          codex: {
+            limitId: "codex",
+            limitName: "Codex",
+            planType: "pro",
+            primary: {
+              usedPercent: 8,
+              windowDurationMins: 300,
+              resetsAt: 1_786_000_000,
+            },
+            secondary: weekly(37),
+          },
+          reviews: {
+            limitId: "reviews",
+            limitName: "Reviews",
+            planType: "pro",
+            primary: weekly(61),
+            secondary: null,
+          },
+        },
+      },
+      {
+        snapshotId: "snapshot-1",
+        now: () => Date.parse("2026-08-16T12:00:00.000Z"),
+        workerVersion: "1.2.3",
+        codexVersion: "0.147.0",
+      },
+    );
+
+    expect(snapshot).toMatchObject({
+      snapshotId: "snapshot-1",
+      observedAt: "2026-08-16T12:00:00.000Z",
+      workerVersion: "1.2.3",
+      codexVersion: "0.147.0",
+    });
+    expect(snapshot.windows).toHaveLength(3);
+    expect(
+      snapshot.windows.map((window) => [
+        window.limitId,
+        window.windowKind,
+        window.windowDurationMinutes,
+        window.isWeeklyProjection,
+      ]),
+    ).toEqual([
+      ["codex", "primary", 300, false],
+      ["codex", "secondary", 10_080, true],
+      ["reviews", "primary", 10_080, false],
+    ]);
   });
 });

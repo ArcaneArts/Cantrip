@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
+import { persistProviderQuotaSnapshot } from "../src/models/provider-quota.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
@@ -142,12 +143,74 @@ describe("provider quota observation ledger", () => {
       );
 
       await expect(
+        persistProviderQuotaSnapshot(
+          repository,
+          {
+            ownerId: LOCAL_USER_ID,
+            providerId: provider.id,
+            accountId: account.id,
+            accountPlanType: "observed-plan",
+            workerId: "worker-telemetry",
+            trigger: "turn-completed",
+            chatId: "chat-one",
+            turnId: "turn-one",
+            executionAttemptId: "attempt-one",
+          },
+          {
+            snapshotId: "snapshot-all-windows",
+            observedAt: "2026-08-16T12:02:00.000Z",
+            workerVersion: "1.1.520",
+            codexVersion: "0.147.0",
+            windows: [
+              {
+                limitId: "codex",
+                limitName: "Codex",
+                planType: "observed-plan",
+                reachedType: null,
+                windowKind: "primary",
+                usedPercent: 7,
+                windowDurationMinutes: 300,
+                resetsAt: 1_787_000_000,
+                isWeeklyProjection: false,
+                rawPayload: { source: "test" },
+              },
+              {
+                limitId: "codex",
+                limitName: "Codex",
+                planType: "observed-plan",
+                reachedType: null,
+                windowKind: "secondary",
+                usedPercent: 44,
+                windowDurationMinutes: 10_080,
+                resetsAt: 1_787_000_000,
+                isWeeklyProjection: true,
+                rawPayload: { source: "test" },
+              },
+            ],
+          },
+        ),
+      ).resolves.toBe(2);
+      const captured = await client.query<{
+        observation_trigger: string;
+        window_kind: string;
+      }>(`
+        SELECT observation_trigger, window_kind
+        FROM provider_quota_observations
+        WHERE observation_batch_key = 'snapshot-all-windows'
+        ORDER BY window_kind
+      `);
+      expect(captured.rows).toEqual([
+        { observation_trigger: "turn-completed", window_kind: "primary" },
+        { observation_trigger: "turn-completed", window_kind: "secondary" },
+      ]);
+
+      await expect(
         repository.deleteModelProvider(LOCAL_USER_ID, provider.id),
       ).resolves.toBe(true);
       const retained = await client.query<{ count: number }>(`
         SELECT count(*)::integer AS count FROM provider_quota_observations
       `);
-      expect(retained.rows[0]?.count).toBe(3);
+      expect(retained.rows[0]?.count).toBe(5);
     } finally {
       await client.close();
     }

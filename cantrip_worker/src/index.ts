@@ -1,7 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 
-import type { WorkerCommand, WorkerEvent } from "@cantrip/protocol";
+import {
+  providerQuotaSnapshotSchema,
+  type WorkerCommand,
+  type WorkerEvent,
+} from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
@@ -129,10 +133,41 @@ import {
   writeWorkflowRepositoryDocument,
 } from "./workflow-repository.js";
 
-type GrokSubscriptionOperations = Pick<
-  GrokSubscriptionClient,
-  "listModels" | "localProxyBaseUrl" | "weeklyUsage"
->;
+interface GrokSubscriptionOperations {
+  listModels: GrokSubscriptionClient["listModels"];
+  localProxyBaseUrl: GrokSubscriptionClient["localProxyBaseUrl"];
+  quotaSnapshot?: GrokSubscriptionClient["quotaSnapshot"];
+  weeklyUsage: GrokSubscriptionClient["weeklyUsage"];
+}
+
+async function grokQuotaSnapshot(
+  client: GrokSubscriptionOperations,
+  forceRefresh = false,
+): Promise<ReturnType<typeof providerQuotaSnapshotSchema.parse> | null> {
+  if (client.quotaSnapshot) return client.quotaSnapshot(forceRefresh);
+  const weekly = await client.weeklyUsage();
+  if (!weekly) return null;
+  return providerQuotaSnapshotSchema.parse({
+    snapshotId: randomUUID(),
+    observedAt: new Date().toISOString(),
+    workerVersion: null,
+    codexVersion: null,
+    windows: [
+      {
+        limitId: "grok-subscription",
+        limitName: "Grok subscription credits",
+        planType: null,
+        reachedType: weekly.usedPercent >= 100 ? "exhausted" : null,
+        windowKind: "primary",
+        usedPercent: weekly.usedPercent,
+        windowDurationMinutes: 7 * 24 * 60,
+        resetsAt: weekly.resetsAt,
+        isWeeklyProjection: true,
+        rawPayload: { source: "legacy-grok-usage" },
+      },
+    ],
+  });
+}
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
@@ -470,12 +505,51 @@ async function start(): Promise<void> {
         ).listChatGptModels(command.provider);
       case "model.grok.catalog":
         return withGrokSubscription(command.provider, async (client) => {
-          const [inventory, weeklyUsage] = await Promise.all([
+          const [inventory, quotaSnapshot] = await Promise.all([
             client.listModels(),
-            client.weeklyUsage(),
+            grokQuotaSnapshot(client),
           ]);
-          return { ...inventory, weeklyUsage };
+          const snapshot = quotaSnapshot
+            ? providerQuotaSnapshotSchema.parse({
+                ...quotaSnapshot,
+                workerVersion: cantripVersion.version,
+              })
+            : null;
+          const weekly = snapshot?.windows.find(
+            (window) => window.isWeeklyProjection,
+          );
+          return {
+            ...inventory,
+            weeklyUsage: weekly
+              ? {
+                  usedPercent: weekly.usedPercent,
+                  resetsAt: weekly.resetsAt,
+                }
+              : null,
+            quotaSnapshot: snapshot,
+          };
         });
+      case "provider.quota.read":
+        if (command.provider.kind === "grok") {
+          return withGrokSubscription(command.provider, async (client) => {
+            const snapshot = await grokQuotaSnapshot(client, true);
+            return providerQuotaSnapshotSchema.parse({
+              ...(snapshot ?? {
+                snapshotId: randomUUID(),
+                observedAt: new Date().toISOString(),
+                codexVersion: null,
+                windows: [],
+              }),
+              workerVersion: cantripVersion.version,
+            });
+          });
+        }
+        if (command.provider.kind !== "chatgpt") {
+          throw new Error("Quota snapshots require an account provider.");
+        }
+        return catalogRuntimeFor(
+          command.provider.credentialHomeKey,
+        ).readQuotaSnapshot({ ...command.provider, kind: "chatgpt" });
       case "codex.auth.status":
         return command.providerKind === "grok"
           ? grokFor(command.credentialHomeKey ?? command.providerId).status()
