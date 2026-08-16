@@ -8,6 +8,7 @@ import {
   filterServiceLogRecords,
   formatServiceLogRecord,
   MAX_VIEWER_LOG_RECORDS,
+  scheduleLogViewportScroll,
 } from "./log-viewer-model";
 
 const localConnection: ServerConnection = {
@@ -36,6 +37,30 @@ function record(
 }
 
 describe("service log viewer model", () => {
+  it("updates from a captured scroll position without retaining a DOM event", () => {
+    const current = { height: 400, scrollTop: 0 };
+    let targetAvailable = true;
+    const target = {
+      get scrollTop() {
+        if (!targetAvailable) throw new Error("scroll target was released");
+        return 176;
+      },
+    };
+    let pendingUpdate:
+      | ((viewport: typeof current) => typeof current)
+      | undefined;
+
+    scheduleLogViewportScroll(target, (update) => {
+      pendingUpdate = update;
+    });
+    targetAvailable = false;
+
+    const next = pendingUpdate?.(current);
+
+    expect(next).toEqual({ height: 400, scrollTop: 176 });
+    expect(current).toEqual({ height: 400, scrollTop: 0 });
+  });
+
   it("only exposes the embedded server for the matching local Tauri deployment", () => {
     expect(
       canReadLocalServerLogs({

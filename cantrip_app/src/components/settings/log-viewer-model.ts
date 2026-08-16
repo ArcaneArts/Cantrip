@@ -23,6 +23,19 @@ export type ViewerLogRecord = ServiceLogRecord & {
   viewerKey: string;
 };
 
+export type LogViewport = {
+  height: number;
+  scrollTop: number;
+};
+
+export function scheduleLogViewportScroll(
+  target: { readonly scrollTop: number },
+  schedule: (update: (current: LogViewport) => LogViewport) => void,
+): void {
+  const scrollTop = target.scrollTop;
+  schedule((current) => ({ ...current, scrollTop }));
+}
+
 const levelWeight: Record<ServiceLogLevel, number> = {
   trace: 10,
   debug: 20,

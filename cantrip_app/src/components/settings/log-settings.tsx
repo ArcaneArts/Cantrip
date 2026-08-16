@@ -56,6 +56,7 @@ import {
   canReadLocalServerLogs,
   filterServiceLogRecords,
   formatServiceLogRecord,
+  scheduleLogViewportScroll,
   SERVICE_LOG_LEVELS,
   type ViewerLogRecord,
 } from "./log-viewer-model";
@@ -284,12 +285,11 @@ function VirtualLogConsole({
       className="relative min-h-0 flex-1 overflow-auto bg-black/95 font-mono text-[11px] leading-[22px] text-zinc-200 [scrollbar-color:color-mix(in_srgb,currentColor_30%,transparent)_transparent]"
       role="log"
       aria-live="off"
-      onScroll={(event) =>
-        setViewport((current) => ({
-          ...current,
-          scrollTop: event.currentTarget.scrollTop,
-        }))
-      }
+      onScroll={(event) => {
+        // React clears currentTarget after this callback. Snapshot the DOM value
+        // before the state updater runs, especially when WebKit defers it.
+        scheduleLogViewportScroll(event.currentTarget, setViewport);
+      }}
     >
       {records.length ? (
         <div
