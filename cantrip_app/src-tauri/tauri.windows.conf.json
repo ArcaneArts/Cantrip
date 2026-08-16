@@ -1,0 +1,14 @@
+{
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "headerImage": "images/nsis-header.bmp",
+        "sidebarImage": "images/nsis-sidebar.bmp",
+        "uninstallerHeaderImage": "images/nsis-header.bmp",
+        "installMode": "currentUser"
+      }
+    }
+  }
+}
