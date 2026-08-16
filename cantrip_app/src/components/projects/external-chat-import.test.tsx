@@ -280,7 +280,11 @@ describe("external Codex chat import settings", () => {
     );
     expect(markup).toContain("Open transcript");
     expect(markup).toContain("Retry");
-    expect(markup).toContain("The destination worker is offline.");
+    expect(markup).toContain("Imported with limitations");
+    expect(markup).toContain(
+      "Transcript history was preserved and can be opened.",
+    );
+    expect(markup).not.toContain("The destination worker is offline.");
     const activeMarkup = renderToStaticMarkup(
       <ImportJobRow
         job={active}

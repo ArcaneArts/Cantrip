@@ -209,5 +209,53 @@ describe.sequential("chat import job durability", () => {
       "user",
       "assistant",
     ]);
+    const blocked = await database.repository.chatImportJobs.block(
+      created.id,
+      reclaimed!.commandId,
+      {
+        code: "capability-missing",
+        message: "Required hydration methods are unavailable.",
+        retryable: false,
+      },
+    );
+    expect(blocked).toMatchObject({
+      state: "blocked",
+      chatId: canonical.chatId,
+    });
+    expect(
+      await database.repository.chatImportJobs.completeUnsupportedHydrationImports(),
+    ).toBe(1);
+    const completed = await database.repository.chatImportJobs.get(
+      LOCAL_USER_ID,
+      created.id,
+    );
+    expect(completed).toMatchObject({
+      state: "succeeded",
+      chatId: canonical.chatId,
+      managedThreadId: null,
+      error: null,
+      progress: {
+        percent: 100,
+        message:
+          "Chat history is imported. A new runtime will start when you continue.",
+      },
+    });
+    const resumed = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      canonical.chatId!,
+      "user",
+      "Continue best-effort import",
+    );
+    expect(resumed).toMatchObject({
+      chatId: canonical.chatId,
+      threadId: null,
+      workerId: "import-worker",
+      worktreeId,
+    });
+    await database.repository.finishChatExecutionLane(
+      canonical.chatId!,
+      resumed.executionLaneId,
+      "idle",
+    );
   });
 });
