@@ -10,6 +10,7 @@ import {
   MAX_ATTACHMENT_CHUNK_BYTES,
   safeAttachmentFileName,
 } from "../src/attachment-store.js";
+import { readWorkerLogs } from "../src/logger.js";
 
 const directories: string[] = [];
 
@@ -29,6 +30,11 @@ afterEach(async () => {
 
 describe("AttachmentStore", () => {
   it("stages chunked files outside a repository and survives recreation", async () => {
+    const afterCursor = readWorkerLogs({
+      afterCursor: 0,
+      limit: 200,
+      minimumLevel: "trace",
+    }).latestCursor;
     const { directory, store } = await testStore();
     await store.begin("chat-1", "attachment-1", "../notes?.txt", 11);
     await store.append("chat-1", "attachment-1", 0, Buffer.from("hello "));
@@ -55,6 +61,16 @@ describe("AttachmentStore", () => {
 
     await recreated.remove("chat-1", "attachment-1");
     await expect(readFile(completed.path)).rejects.toThrow();
+    const serializedLogs = JSON.stringify(
+      readWorkerLogs({
+        afterCursor,
+        limit: 200,
+        minimumLevel: "trace",
+      }).records,
+    );
+    expect(serializedLogs).not.toContain("hello world");
+    expect(serializedLogs).not.toContain("notes_.txt");
+    expect(serializedLogs).not.toContain(directory);
   });
 
   it("enforces upload order, declared sizes, and chunk limits", async () => {

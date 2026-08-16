@@ -15,10 +15,11 @@ import {
   type WorkerRequestEnvelope,
   type WorkerServerEnvelope,
 } from "@cantrip/protocol";
+import type { OperationalLogContext } from "@cantrip/logging";
 import WebSocket, { type RawData } from "ws";
 
 import type { WorkerConfig } from "./config.js";
-import { workerLogger } from "./logger.js";
+import { workerLogError, workerLogger } from "./logger.js";
 
 type CommandHandler = (
   command: WorkerCommand,
@@ -50,14 +51,17 @@ function rawDataBytes(data: RawData): Uint8Array {
 
 function commandLogContext(
   request: WorkerRequestEnvelope,
-): Record<string, unknown> {
+): OperationalLogContext {
   const command = request.command as WorkerCommand & {
     chatId?: unknown;
     terminalId?: unknown;
   };
   return {
+    event: "worker.command.dispatched",
+    subsystem: "worker-command",
+    operation: command.type,
+    status: "started",
     requestId: request.requestId,
-    command: command.type,
     ...(typeof command.chatId === "string" ? { chatId: command.chatId } : {}),
     ...(typeof command.terminalId === "string"
       ? { terminalId: command.terminalId }
@@ -65,10 +69,24 @@ function commandLogContext(
   };
 }
 
+const HIGH_VOLUME_COMMANDS = new Set<WorkerCommand["type"]>([
+  "diagnostics.logs.read",
+  "surface.configure",
+  "terminal.input",
+  "terminal.resize",
+]);
+
+function commandLevel(command: WorkerCommand): "debug" | "info" | "trace" {
+  if (HIGH_VOLUME_COMMANDS.has(command.type)) return "trace";
+  return command.type === "chat.turn" ||
+    command.type === "workflow.node.execute"
+    ? "info"
+    : "debug";
+}
+
 function commandCompletionLogContext(
   request: WorkerRequestEnvelope,
   result: unknown,
-  emittedEventCount: number,
 ): Record<string, unknown> {
   if (
     request.command.type !== "chat.turn" ||
@@ -80,7 +98,6 @@ function commandCompletionLogContext(
   }
   const value = result as Record<string, unknown>;
   return {
-    emittedEventCount,
     ...(typeof value.status === "string" ? { status: value.status } : {}),
     ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
     ...(typeof value.turnId === "string" ? { turnId: value.turnId } : {}),
@@ -93,6 +110,8 @@ function commandCompletionLogContext(
 export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
+  #connectAttempt = 0;
+  #disconnectStartedAtMs: number | null = null;
   #lastConnectionError: string | null = null;
   #keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   #pendingCommandBytes = 0;
@@ -112,6 +131,14 @@ export class WorkerConnection {
 
   start(): void {
     this.#authenticationRejected = false;
+    this.#disconnectStartedAtMs ??= Date.now();
+    workerLogger.event("info", "Worker command channel starting", {
+      event: "worker.connection.starting",
+      subsystem: "worker-connection",
+      operation: "connect",
+      status: "started",
+      workerId: this.config.workerId,
+    });
     this.connect();
   }
 
@@ -126,6 +153,14 @@ export class WorkerConnection {
     this.#pendingCommandBytes = 0;
     this.#socket?.close(1000, "Worker stopping");
     this.#socket = null;
+    workerLogger.event("info", "Worker command channel stopped", {
+      event: "worker.connection.stopped",
+      subsystem: "worker-connection",
+      operation: "disconnect",
+      status: "completed",
+      workerId: this.config.workerId,
+      counts: { queuedCommands: 0 },
+    });
   }
 
   private connect(): void {
@@ -136,6 +171,17 @@ export class WorkerConnection {
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/api/internal/workers/connect";
     url.searchParams.set("workerId", this.config.workerId);
+
+    this.#connectAttempt += 1;
+    workerLogger.event("debug", "Worker command connection attempted", {
+      event: "worker.connection.attempted",
+      subsystem: "worker-connection",
+      operation: "connect",
+      status: "started",
+      attempt: this.#connectAttempt,
+      workerId: this.config.workerId,
+      serverOrigin: url.origin,
+    });
 
     const socket = new WebSocket(url, {
       headers: { authorization: `Bearer ${this.config.token}` },
@@ -152,18 +198,46 @@ export class WorkerConnection {
   }
 
   private handleSocketOpen(socket: WebSocket): void {
+    const reconnectDurationMs = this.#disconnectStartedAtMs
+      ? Math.max(0, Date.now() - this.#disconnectStartedAtMs)
+      : 0;
     this.#lastConnectionError = null;
     this.startKeepalive(socket);
     this.flushCommandEnvelopes(socket);
-    workerLogger.info("Command channel connected");
+    workerLogger.event("info", "Worker command channel connected", {
+      event: "worker.connection.connected",
+      subsystem: "worker-connection",
+      operation: "connect",
+      status: "completed",
+      attempt: this.#connectAttempt,
+      durationMs: reconnectDurationMs,
+      workerId: this.config.workerId,
+      counts: {
+        queuedCommands: this.#pendingCommandEnvelopes.length,
+        queuedBytes: this.#pendingCommandBytes,
+      },
+    });
+    this.#disconnectStartedAtMs = null;
+    this.#connectAttempt = 0;
   }
 
   private handleSocketError(error: Error): void {
     if (this.#closed || error.message === this.#lastConnectionError) return;
     this.#lastConnectionError = error.message;
-    workerLogger.warn("Command channel unavailable", {
-      error: error.message,
-    });
+    workerLogger.rateLimited(
+      `worker-connection-error:${this.config.workerId}`,
+      "warn",
+      "Worker command channel unavailable",
+      {
+        event: "worker.connection.failed",
+        subsystem: "worker-connection",
+        operation: "connect",
+        status: "retrying",
+        attempt: this.#connectAttempt,
+        workerId: this.config.workerId,
+        error: workerLogError(error),
+      },
+    );
   }
 
   private handleSocketClose(
@@ -173,6 +247,7 @@ export class WorkerConnection {
   ): void {
     const wasCurrent = this.#socket === socket;
     if (wasCurrent) {
+      this.#disconnectStartedAtMs ??= Date.now();
       this.clearKeepalive();
       this.#socket = null;
       this.handleTransportDisconnect();
@@ -182,13 +257,32 @@ export class WorkerConnection {
       const message = reason || "worker authentication rejected";
       if (message !== this.#lastConnectionError) {
         this.#lastConnectionError = message;
-        workerLogger.warn(
+        workerLogger.event(
+          "warn",
           "Command channel authentication rejected; update or re-enroll this worker, then restart it",
-          { error: message },
+          {
+            event: "worker.connection.authentication-rejected",
+            subsystem: "worker-connection",
+            operation: "authenticate",
+            reasonCode: "authentication-rejected",
+            status: "rejected",
+            workerId: this.config.workerId,
+            closeCode: code,
+          },
         );
       }
     }
     if (wasCurrent && !this.#closed && !this.#authenticationRejected) {
+      workerLogger.event("warn", "Worker command channel disconnected", {
+        event: "worker.connection.disconnected",
+        subsystem: "worker-connection",
+        operation: "disconnect",
+        reasonCode: code === 1000 ? "normal-close" : "socket-closed",
+        status: "retrying",
+        workerId: this.config.workerId,
+        closeCode: code,
+        reconnectDelayMs: 1_000,
+      });
       this.#reconnectTimer = setTimeout(() => this.connect(), 1_000);
     }
   }
@@ -233,6 +327,20 @@ export class WorkerConnection {
     ) {
       const removed = this.#pendingCommandEnvelopes.shift()!;
       this.#pendingCommandBytes -= Buffer.byteLength(removed);
+      workerLogger.rateLimited(
+        `worker-command-buffer-evicted:${this.config.workerId}`,
+        "warn",
+        "Queued worker command response evicted by backpressure",
+        {
+          event: "worker.command.response-evicted",
+          subsystem: "worker-command",
+          operation: "buffer-response",
+          reasonCode: "buffer-limit",
+          status: "dropped",
+          workerId: this.config.workerId,
+          counts: { queuedBytes: this.#pendingCommandBytes },
+        },
+      );
     }
     if (bytes > MAX_BUFFERED_COMMAND_BYTES) return "dropped";
     this.#pendingCommandEnvelopes.push(envelope);
@@ -265,11 +373,20 @@ export class WorkerConnection {
         outcome,
       },
     });
-    workerLogger.info("Codex outcome dispatched for durable recovery", {
-      ...commandLogContext(request),
-      delivery,
-      outcome: outcome.ok ? "completed" : "failed",
-    });
+    workerLogger.event(
+      "debug",
+      "Codex outcome dispatched for durable recovery",
+      {
+        event: "codex.turn.outcome-dispatched",
+        subsystem: "worker-command",
+        operation: "dispatch-durable-outcome",
+        status: delivery,
+        requestId: request.requestId,
+        chatId: command.chatId,
+        delivery,
+        outcome: outcome.ok ? "completed" : "failed",
+      },
+    );
   }
 
   private flushCommandEnvelopes(socket: WebSocket): void {
@@ -364,7 +481,22 @@ export class WorkerConnection {
       return;
     }
     const request = decodeWorkerRequestEnvelope(data.toString());
-    if (!request.success) return;
+    if (!request.success) {
+      workerLogger.rateLimited(
+        `worker-command-invalid-envelope:${this.config.workerId}`,
+        "warn",
+        "Worker command envelope was rejected",
+        {
+          event: "worker.command.rejected",
+          subsystem: "worker-command",
+          operation: "decode",
+          reasonCode: "invalid-envelope",
+          status: "rejected",
+          workerId: this.config.workerId,
+        },
+      );
+      return;
+    }
 
     await this.handleRequest(request.data);
   }
@@ -380,15 +512,38 @@ export class WorkerConnection {
         await this.handleSurfaceFrame(frame.header, frame.payload);
       }
     } catch (error) {
-      workerLogger.warn("Rejected worker data frame", error);
+      workerLogger.rateLimited(
+        `worker-data-frame-rejected:${this.config.workerId}`,
+        "warn",
+        "Rejected worker data frame",
+        {
+          event: "worker.transport.frame-rejected",
+          subsystem: "worker-connection",
+          operation: "decode-data-frame",
+          reasonCode: "invalid-frame",
+          status: "rejected",
+          workerId: this.config.workerId,
+          error: workerLogError(error),
+        },
+      );
     }
   }
 
   private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
     const startedAt = performance.now();
     let emittedEventCount = 0;
-    if (request.command.type === "chat.turn") {
-      workerLogger.info("Codex command started", commandLogContext(request));
+    const level = commandLevel(request.command);
+    const logContext = commandLogContext(request);
+    if (level === "trace") {
+      workerLogger.sampled(
+        `worker-command-dispatched:${request.command.type}`,
+        100,
+        "trace",
+        "Worker command dispatched",
+        logContext,
+      );
+    } else {
+      workerLogger.event(level, "Worker command dispatched", logContext);
     }
     try {
       const emit = (event: WorkerEvent) => {
@@ -414,29 +569,61 @@ export class WorkerConnection {
             result: parsedResult.data,
           });
         } else {
-          workerLogger.error("Codex command returned an invalid result", {
-            ...commandLogContext(request),
-            error: parsedResult.error,
-          });
+          workerLogger.event(
+            "error",
+            "Codex command returned an invalid result",
+            {
+              ...commandLogContext(request),
+              event: "worker.command.invalid-result",
+              reasonCode: "schema-validation-failed",
+              status: "failed",
+              counts: { validationIssues: parsedResult.error.issues.length },
+            },
+          );
         }
       }
-      if (
-        request.command.type === "chat.turn" ||
-        request.command.type === "chat.thread.ensure"
-      ) {
-        workerLogger.info("Codex command completed", {
-          ...commandLogContext(request),
-          ...commandCompletionLogContext(request, result, emittedEventCount),
-          durationMs: Math.round(performance.now() - startedAt),
-        });
+      const completedContext = {
+        ...commandLogContext(request),
+        event: "worker.command.completed",
+        status: "completed",
+        ...commandCompletionLogContext(request, result),
+        durationMs: Math.round(performance.now() - startedAt),
+        counts: { emittedEvents: emittedEventCount },
+      };
+      if (level === "trace") {
+        workerLogger.sampled(
+          `worker-command-completed:${request.command.type}`,
+          100,
+          "trace",
+          "Worker command completed",
+          completedContext,
+        );
+      } else {
+        workerLogger.event(level, "Worker command completed", completedContext);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      workerLogger.error("Worker command failed", {
+      const failureContext = {
         ...commandLogContext(request),
+        event: "worker.command.failed",
+        reasonCode: "handler-failed",
+        status: "failed",
         durationMs: Math.round(performance.now() - startedAt),
-        error,
-      });
+        error: workerLogError(error),
+      };
+      if (
+        request.command.type === "chat.turn" ||
+        request.command.type === "workflow.node.execute"
+      ) {
+        workerLogger.event("error", "Worker command failed", failureContext);
+      } else {
+        workerLogger.rateLimited(
+          `worker-command-failed:${request.command.type}`,
+          "error",
+          "Worker command failed",
+          failureContext,
+        );
+      }
       this.sendServerEnvelope({
         kind: "response",
         requestId: request.requestId,

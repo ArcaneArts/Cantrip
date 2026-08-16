@@ -4,6 +4,8 @@ import {
   type OllamaModelInventoryItem,
 } from "@cantrip/protocol";
 
+import { workerLogger } from "./logger.js";
+
 const REQUEST_TIMEOUT_MS = 20_000;
 const SHOW_CONCURRENCY = 4;
 
@@ -104,57 +106,99 @@ export async function discoverOllamaModels(
   apiKey: string | null,
   fetchImplementation: FetchImplementation = globalThis.fetch,
 ): Promise<OllamaModelInventory> {
-  const tagsPayload = objectValue(
-    await requestJson(
-      fetchImplementation,
-      ollamaApiUrl(baseUrl, "tags"),
-      apiKey,
-    ),
-  );
-  if (!Array.isArray(tagsPayload?.models)) {
-    throw new Error("Ollama tags response did not contain a model list.");
+  const startedAtMs = Date.now();
+  const endpointOrigin = new URL(baseUrl).origin;
+  workerLogger.event("debug", "Ollama model catalog refresh began", {
+    event: "provider.catalog.refresh-started",
+    subsystem: "provider-catalog",
+    operation: "ollama-catalog",
+    status: "started",
+    providerKind: "ollama",
+    endpointOrigin,
+  });
+  try {
+    const tagsPayload = objectValue(
+      await requestJson(
+        fetchImplementation,
+        ollamaApiUrl(baseUrl, "tags"),
+        apiKey,
+      ),
+    );
+    if (!Array.isArray(tagsPayload?.models)) {
+      throw new Error("Ollama tags response did not contain a model list.");
+    }
+    const tags = tagsPayload.models.flatMap((value) => {
+      const record = objectValue(value);
+      const name = stringValue(record?.model) ?? stringValue(record?.name);
+      return record && name ? [{ name, record }] : [];
+    });
+
+    const models = await parallelMap(
+      tags.slice(0, 1_000),
+      SHOW_CONCURRENCY,
+      async ({ name, record }): Promise<OllamaModelInventoryItem> => {
+        const show = objectValue(
+          await requestJson(
+            fetchImplementation,
+            ollamaApiUrl(baseUrl, "show"),
+            apiKey,
+            {
+              method: "POST",
+              body: JSON.stringify({ model: name, verbose: false }),
+            },
+          ),
+        );
+        const details =
+          objectValue(show?.details) ?? objectValue(record.details);
+        return {
+          name,
+          modifiedAt: isoDate(show?.modified_at ?? record.modified_at),
+          sizeBytes: nonnegativeInteger(record.size),
+          digest: stringValue(record.digest),
+          family: stringValue(details?.family),
+          families: stringArray(details?.families),
+          parameterSize: stringValue(details?.parameter_size),
+          quantization: stringValue(details?.quantization_level),
+          capabilities: stringArray(show?.capabilities).map((capability) =>
+            capability.toLowerCase(),
+          ),
+          modelInfo: objectValue(show?.model_info) ?? {},
+        };
+      },
+    );
+
+    const inventory = ollamaModelInventorySchema.parse({
+      models,
+      observedAt: new Date().toISOString(),
+    });
+    workerLogger.event("info", "Ollama model catalog refreshed", {
+      event: "provider.catalog.refresh-completed",
+      subsystem: "provider-catalog",
+      operation: "ollama-catalog",
+      status: "completed",
+      providerKind: "ollama",
+      endpointOrigin,
+      durationMs: Date.now() - startedAtMs,
+      counts: { models: inventory.models.length },
+    });
+    return inventory;
+  } catch (error) {
+    workerLogger.rateLimited(
+      `ollama-catalog-failed:${endpointOrigin}`,
+      "warn",
+      "Ollama model catalog refresh failed",
+      {
+        event: "provider.catalog.refresh-failed",
+        subsystem: "provider-catalog",
+        operation: "ollama-catalog",
+        reasonCode: "request-failed",
+        status: "failed",
+        providerKind: "ollama",
+        endpointOrigin,
+        durationMs: Date.now() - startedAtMs,
+        error,
+      },
+    );
+    throw error;
   }
-  const tags = tagsPayload.models.flatMap((value) => {
-    const record = objectValue(value);
-    const name = stringValue(record?.model) ?? stringValue(record?.name);
-    return record && name ? [{ name, record }] : [];
-  });
-
-  const models = await parallelMap(
-    tags.slice(0, 1_000),
-    SHOW_CONCURRENCY,
-    async ({ name, record }): Promise<OllamaModelInventoryItem> => {
-      const show = objectValue(
-        await requestJson(
-          fetchImplementation,
-          ollamaApiUrl(baseUrl, "show"),
-          apiKey,
-          {
-            method: "POST",
-            body: JSON.stringify({ model: name, verbose: false }),
-          },
-        ),
-      );
-      const details = objectValue(show?.details) ?? objectValue(record.details);
-      return {
-        name,
-        modifiedAt: isoDate(show?.modified_at ?? record.modified_at),
-        sizeBytes: nonnegativeInteger(record.size),
-        digest: stringValue(record.digest),
-        family: stringValue(details?.family),
-        families: stringArray(details?.families),
-        parameterSize: stringValue(details?.parameter_size),
-        quantization: stringValue(details?.quantization_level),
-        capabilities: stringArray(show?.capabilities).map((capability) =>
-          capability.toLowerCase(),
-        ),
-        modelInfo: objectValue(show?.model_info) ?? {},
-      };
-    },
-  );
-
-  return ollamaModelInventorySchema.parse({
-    models,
-    observedAt: new Date().toISOString(),
-  });
 }

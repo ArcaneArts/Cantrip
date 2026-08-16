@@ -10,6 +10,8 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
+import { workerLogger } from "./logger.js";
+
 export const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
 export const MAX_ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 
@@ -66,6 +68,7 @@ export class AttachmentStore {
     fileName: string,
     sizeBytes: number,
   ): Promise<void> {
+    const startedAtMs = Date.now();
     this.validateSize(sizeBytes);
     const key = this.uploadKey(chatId, attachmentId);
     if (this.#uploads.has(key)) {
@@ -83,6 +86,16 @@ export class AttachmentStore {
       nextChunkIndex: 0,
       partPath,
       receivedSize: 0,
+    });
+    workerLogger.event("debug", "Attachment upload started", {
+      event: "attachment.upload.started",
+      subsystem: "attachments",
+      operation: "upload",
+      status: "started",
+      chatId,
+      attachmentId,
+      durationMs: Date.now() - startedAtMs,
+      counts: { bytesExpected: sizeBytes },
     });
   }
 
@@ -129,11 +142,24 @@ export class AttachmentStore {
     const bytes = await readFile(upload.partPath);
     await rename(upload.partPath, upload.finalPath);
     this.#uploads.delete(key);
-    return {
+    const result = {
       path: upload.finalPath,
       sha256: createHash("sha256").update(bytes).digest("hex"),
       sizeBytes: bytes.byteLength,
     };
+    workerLogger.event("info", "Attachment upload completed", {
+      event: "attachment.upload.completed",
+      subsystem: "attachments",
+      operation: "upload",
+      status: "completed",
+      chatId,
+      attachmentId,
+      counts: {
+        bytes: result.sizeBytes,
+        chunks: upload.nextChunkIndex,
+      },
+    });
+    return result;
   }
 
   async read(
@@ -168,6 +194,14 @@ export class AttachmentStore {
     const directory = this.attachmentDirectory(chatId, attachmentId);
     this.#uploads.delete(this.uploadKey(chatId, attachmentId));
     await rm(directory, { recursive: true, force: true });
+    workerLogger.event("debug", "Attachment removed", {
+      event: "attachment.removed",
+      subsystem: "attachments",
+      operation: "remove",
+      status: "completed",
+      chatId,
+      attachmentId,
+    });
   }
 
   resolve(chatId: string, attachmentId: string, fileName: string): string {

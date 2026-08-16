@@ -49,7 +49,7 @@ import {
   discardLegacyProviderCredential,
   purgeLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
-import { readWorkerLogs, workerLogger } from "./logger.js";
+import { readWorkerLogs, workerLogError, workerLogger } from "./logger.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
   ProviderAccessTokenClient,
@@ -171,13 +171,81 @@ async function grokQuotaSnapshot(
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 
+async function workerStartupPhase<T>(
+  operation: string,
+  action: () => Promise<T>,
+  context: Record<string, unknown> = {},
+): Promise<T> {
+  const startedAtMs = Date.now();
+  workerLogger.event("debug", "Worker startup phase began", {
+    event: "worker.startup.phase-started",
+    subsystem: "worker-startup",
+    operation,
+    status: "started",
+    ...context,
+  });
+  try {
+    const result = await action();
+    workerLogger.event("debug", "Worker startup phase completed", {
+      event: "worker.startup.phase-completed",
+      subsystem: "worker-startup",
+      operation,
+      status: "completed",
+      durationMs: Date.now() - startedAtMs,
+      ...context,
+    });
+    return result;
+  } catch (error) {
+    workerLogger.event("error", "Worker startup phase failed", {
+      event: "worker.startup.phase-failed",
+      subsystem: "worker-startup",
+      operation,
+      reasonCode: "startup-failed",
+      status: "failed",
+      durationMs: Date.now() - startedAtMs,
+      error: workerLogError(error),
+      ...context,
+    });
+    throw error;
+  }
+}
+
 async function start(): Promise<void> {
+  const startupStartedAtMs = Date.now();
+  workerLogger.event("info", "Cantrip Worker startup began", {
+    event: "worker.startup.started",
+    subsystem: "worker-startup",
+    operation: "start",
+    status: "started",
+    version: cantripVersion.version,
+  });
   const config = readWorkerConfig();
-  const bundledCodex = await verifyCodexInstallation(config.codexInstallation);
+  const serverOrigin = new URL(config.serverUrl).origin;
+  workerLogger.event("info", "Worker configuration loaded", {
+    event: "worker.configuration.loaded",
+    subsystem: "worker-startup",
+    operation: "load-configuration",
+    status: "completed",
+    workerId: config.workerId,
+    serverOrigin,
+    credentialState: config.tokenSource,
+    deploymentMode:
+      config.tokenSource === "development" ? "development" : "enrolled",
+  });
+  const bundledCodex = await workerStartupPhase(
+    "verify-codex-runtime",
+    () => verifyCodexInstallation(config.codexInstallation),
+    { workerId: config.workerId },
+  );
   const codexHome = path.join(config.dataDirectory, "codex-home");
-  const codexRuntime = await discoverCodexRuntime(
-    config.codexBinary,
-    path.join(config.dataDirectory, "codex-compatibility-probe"),
+  const codexRuntime = await workerStartupPhase(
+    "probe-codex-runtime",
+    () =>
+      discoverCodexRuntime(
+        config.codexBinary,
+        path.join(config.dataDirectory, "codex-compatibility-probe"),
+      ),
+    { workerId: config.workerId },
   );
   if (bundledCodex && codexRuntime.version?.semantic !== bundledCodex.version) {
     throw new Error(
@@ -194,8 +262,16 @@ async function start(): Promise<void> {
     undefined,
     new DesktopApplicationIconStore(config.dataDirectory),
   );
-  await desktopAdapter.initialize();
-  const codeDiscovery = await discoverCantripCode();
+  await workerStartupPhase(
+    "initialize-desktop-capture",
+    () => desktopAdapter.initialize(),
+    { workerId: config.workerId },
+  );
+  const codeDiscovery = await workerStartupPhase(
+    "discover-code-runtime",
+    () => discoverCantripCode(),
+    { workerId: config.workerId },
+  );
   const code = new CodeSupervisor({
     capabilities: codeDiscovery.capabilities,
     dataDirectory: config.dataDirectory,
@@ -204,7 +280,9 @@ async function start(): Promise<void> {
     workerId: config.workerId,
     workerName: config.name,
   });
-  await code.start();
+  await workerStartupPhase("start-code-supervisor", () => code.start(), {
+    workerId: config.workerId,
+  });
   const codeTunnel = new CodeTunnelProxy(code);
   const codeDirectEndpoints = new CodeDirectEndpointManager(code);
   const cliBroker = new CantripCliBroker(config);
@@ -245,7 +323,9 @@ async function start(): Promise<void> {
     terminalDirectEndpoints.revoke(capabilityId, reason);
     codeDirectEndpoints.revoke(capabilityId, reason);
   });
-  await directBroker.start();
+  await workerStartupPhase("start-direct-broker", () => directBroker.start(), {
+    workerId: config.workerId,
+  });
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -260,7 +340,13 @@ async function start(): Promise<void> {
     codeDiscovery.capabilities,
     directBroker.advertisement,
   );
-  await enrollWorker(config, heartbeat);
+  await workerStartupPhase(
+    "establish-worker-credential",
+    async () => {
+      await enrollWorker(config, heartbeat);
+    },
+    { workerId: config.workerId },
+  );
   let connected = false;
   let commandChannelStarted = false;
   let heartbeatInFlight: Promise<void> | null = null;
@@ -353,15 +439,64 @@ async function start(): Promise<void> {
       credentialHomeKey: string;
       id: string;
     },
+    operationName: string,
     operation: (client: GrokSubscriptionOperations) => Promise<T>,
   ): Promise<T> => {
+    const startedAtMs = Date.now();
     try {
-      return await operation(
+      const result = await operation(
         serverManagedGrokFor(provider.id, provider.accountId),
       );
+      workerLogger.sampled(
+        `grok-operation:${provider.id}:${operationName}`,
+        10,
+        "debug",
+        "Grok account operation completed",
+        {
+          event: "provider.operation",
+          subsystem: "provider",
+          operation: operationName,
+          status: "completed",
+          providerId: provider.id,
+          providerKind: "grok",
+          accountId: provider.accountId,
+          credentialMode: "server-managed",
+          durationMs: Date.now() - startedAtMs,
+        },
+      );
+      return result;
     } catch (error) {
       if (!legacyGrokFallback(error)) throw error;
-      return operation(grokFor(provider.credentialHomeKey));
+      workerLogger.event(
+        "warn",
+        "Grok account operation using local fallback",
+        {
+          event: "provider.fallback",
+          subsystem: "provider",
+          operation: operationName,
+          status: "recovering",
+          reasonCode: "server-managed-credential-unavailable",
+          providerId: provider.id,
+          providerKind: "grok",
+          accountId: provider.accountId,
+          durationMs: Date.now() - startedAtMs,
+          error: workerLogError(error),
+        },
+      );
+      const fallbackStartedAtMs = Date.now();
+      const result = await operation(grokFor(provider.credentialHomeKey));
+      workerLogger.event("info", "Grok local fallback operation completed", {
+        event: "provider.fallback",
+        subsystem: "provider",
+        operation: operationName,
+        status: "completed",
+        providerId: provider.id,
+        providerKind: "grok",
+        accountId: provider.accountId,
+        credentialMode: "worker-local",
+        durationMs: Date.now() - fallbackStartedAtMs,
+      });
+      return result;
     }
   };
 
@@ -400,6 +535,7 @@ async function start(): Promise<void> {
                           credentialHomeKey: provider.credentialHomeKey,
                           id: provider.id,
                         },
+                        "resolve-local-proxy",
                         (client) => client.localProxyBaseUrl(),
                       )
                     : provider.baseUrl,
@@ -504,45 +640,69 @@ async function start(): Promise<void> {
           command.provider.credentialHomeKey,
         ).listChatGptModels(command.provider);
       case "model.grok.catalog":
-        return withGrokSubscription(command.provider, async (client) => {
-          const [inventory, quotaSnapshot] = await Promise.all([
-            client.listModels(),
-            grokQuotaSnapshot(client),
-          ]);
-          const snapshot = quotaSnapshot
-            ? providerQuotaSnapshotSchema.parse({
-                ...quotaSnapshot,
-                workerVersion: cantripVersion.version,
-              })
-            : null;
-          const weekly = snapshot?.windows.find(
-            (window) => window.isWeeklyProjection,
-          );
-          return {
-            ...inventory,
-            weeklyUsage: weekly
-              ? {
-                  usedPercent: weekly.usedPercent,
-                  resetsAt: weekly.resetsAt,
-                }
-              : null,
-            quotaSnapshot: snapshot,
-          };
-        });
+        return withGrokSubscription(
+          command.provider,
+          "refresh-model-catalog",
+          async (client) => {
+            const startedAtMs = Date.now();
+            const [inventory, quotaSnapshot] = await Promise.all([
+              client.listModels(),
+              grokQuotaSnapshot(client),
+            ]);
+            const snapshot = quotaSnapshot
+              ? providerQuotaSnapshotSchema.parse({
+                  ...quotaSnapshot,
+                  workerVersion: cantripVersion.version,
+                })
+              : null;
+            const weekly = snapshot?.windows.find(
+              (window) => window.isWeeklyProjection,
+            );
+            const result = {
+              ...inventory,
+              weeklyUsage: weekly
+                ? {
+                    usedPercent: weekly.usedPercent,
+                    resetsAt: weekly.resetsAt,
+                  }
+                : null,
+              quotaSnapshot: snapshot,
+            };
+            workerLogger.event("info", "Grok model catalog refreshed", {
+              event: "provider.catalog.refresh",
+              subsystem: "provider",
+              operation: "grok-catalog",
+              status: "completed",
+              providerId: command.provider.id,
+              providerKind: "grok",
+              accountId: command.provider.accountId,
+              durationMs: Date.now() - startedAtMs,
+              counts: {
+                models: inventory.models.length,
+                quotaWindows: snapshot?.windows.length ?? 0,
+              },
+            });
+            return result;
+          },
+        );
       case "provider.quota.read":
         if (command.provider.kind === "grok") {
-          return withGrokSubscription(command.provider, async (client) => {
-            const snapshot = await grokQuotaSnapshot(client, true);
-            return providerQuotaSnapshotSchema.parse({
-              ...(snapshot ?? {
-                snapshotId: randomUUID(),
-                observedAt: new Date().toISOString(),
-                codexVersion: null,
-                windows: [],
-              }),
-              workerVersion: cantripVersion.version,
-            });
-          });
+          return withGrokSubscription(
+            command.provider,
+            "refresh-quota",
+            async (client) => {
+              const snapshot = await grokQuotaSnapshot(client, true);
+              return providerQuotaSnapshotSchema.parse({
+                ...(snapshot ?? {
+                  snapshotId: randomUUID(),
+                  observedAt: new Date().toISOString(),
+                  codexVersion: null,
+                  windows: [],
+                }),
+                workerVersion: cantripVersion.version,
+              });
+            },
+          );
         }
         if (command.provider.kind !== "chatgpt") {
           throw new Error("Quota snapshots require an account provider.");
@@ -1672,39 +1832,94 @@ async function start(): Promise<void> {
       (await directBroker.waitForTunnelCapacity(attachmentId)) ??
       commandConnection.waitForTunnelDataPlaneCapacity(),
   );
-  const cliConnection = await cliBroker.start();
+  const cliConnection = await workerStartupPhase(
+    "start-cli-broker",
+    () => cliBroker.start(),
+    { workerId: config.workerId },
+  );
 
-  workerLogger.info(`Starting ${heartbeat.name}`, {
-    browser: browserAdapter.executable ?? "Chromium not found",
-    cli: `${cliBroker.binary} (${cliConnection.endpoint})`,
-    code: codeDiscovery.capabilities.available
-      ? `${codeDiscovery.capabilities.version} (${codeDiscovery.installation?.source ?? "unknown"})`
-      : `unavailable (${codeDiscovery.capabilities.reason ?? "unknown error"})`,
-    codex: `${codexRuntime.version?.raw ?? "not found"} (${codexRuntime.compatibility}, ${config.codexInstallation.source})`,
-    desktop: desktopAdapter.available
-      ? `${desktopAdapter.frameBackend} capture ready`
-      : `unavailable (${desktopAdapter.initializationError ?? "unknown error"})`,
+  workerLogger.event("info", `Starting ${heartbeat.name}`, {
+    event: "worker.startup.ready",
+    subsystem: "worker-startup",
+    operation: "start",
+    status: "ready",
+    durationMs: Date.now() - startupStartedAtMs,
     workerId: heartbeat.workerId,
+    serverOrigin,
+    runtime: {
+      cliAvailable: Boolean(cliConnection.endpoint),
+      codeAvailable: codeDiscovery.capabilities.available,
+      codeVersion: codeDiscovery.capabilities.version ?? null,
+      codeSource: codeDiscovery.installation?.source ?? null,
+      codexAvailable: codexRuntime.compatibility !== "missing",
+      codexCompatibility: codexRuntime.compatibility,
+      codexSource: config.codexInstallation.source,
+      codexVersion: codexRuntime.version?.raw ?? null,
+    },
+    capabilities: {
+      browser: browserAdapter.available,
+      desktop: desktopAdapter.available,
+      desktopBackend: desktopAdapter.available
+        ? desktopAdapter.frameBackend
+        : null,
+      directBroker: directBroker.advertisement.available,
+    },
   });
 
+  let heartbeatFailureStartedAtMs: number | null = null;
+  let heartbeatFailureAttempts = 0;
   const publishHeartbeat = async () => {
+    const attemptStartedAtMs = Date.now();
     try {
       await sendHeartbeat(config, heartbeat);
       if (!connected) {
-        workerLogger.info("Connected to server", {
-          serverUrl: config.serverUrl,
+        workerLogger.event("info", "Worker heartbeat connected to server", {
+          event: heartbeatFailureStartedAtMs
+            ? "worker.heartbeat.recovered"
+            : "worker.heartbeat.connected",
+          subsystem: "worker-connection",
+          operation: "heartbeat",
+          status: "connected",
+          workerId: config.workerId,
+          serverOrigin,
+          durationMs: heartbeatFailureStartedAtMs
+            ? Date.now() - heartbeatFailureStartedAtMs
+            : Date.now() - attemptStartedAtMs,
+          attempt: Math.max(1, heartbeatFailureAttempts),
         });
       }
       connected = true;
       lastConnectionError = null;
+      heartbeatFailureStartedAtMs = null;
+      heartbeatFailureAttempts = 0;
       if (!commandChannelStarted) {
         commandConnection.start();
         commandChannelStarted = true;
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      heartbeatFailureStartedAtMs ??= Date.now();
+      heartbeatFailureAttempts += 1;
       if (!stopping && (connected || message !== lastConnectionError)) {
-        workerLogger.warn("Waiting for server", { error: message });
+        workerLogger.rateLimited(
+          `worker-heartbeat-failed:${config.workerId}`,
+          "warn",
+          "Worker heartbeat unavailable; retrying",
+          {
+            event: "worker.heartbeat.failed",
+            subsystem: "worker-connection",
+            operation: "heartbeat",
+            reasonCode: /HTTP (?:401|403)\b/u.test(message)
+              ? "authentication-rejected"
+              : "request-failed",
+            status: "retrying",
+            workerId: config.workerId,
+            serverOrigin,
+            attempt: heartbeatFailureAttempts,
+            durationMs: Date.now() - attemptStartedAtMs,
+            error,
+          },
+        );
       }
       connected = false;
       lastConnectionError = message;
@@ -1733,6 +1948,15 @@ async function start(): Promise<void> {
       }
 
       stopping = true;
+      const shutdownStartedAtMs = Date.now();
+      workerLogger.event("info", "Cantrip Worker shutdown began", {
+        event: "worker.shutdown.started",
+        subsystem: "worker-startup",
+        operation: "shutdown",
+        status: "started",
+        workerId: config.workerId,
+        signal,
+      });
       clearInterval(heartbeatTimer);
       automationScheduler.close();
       worktrees.close();
@@ -1756,7 +1980,16 @@ async function start(): Promise<void> {
       for (const runtime of codexCatalogRuntimes.values()) {
         runtime.close();
       }
-      workerLogger.info("Worker stopped", { signal });
+      workerLogger.flushRepeated();
+      workerLogger.event("info", "Cantrip Worker stopped", {
+        event: "worker.shutdown.completed",
+        subsystem: "worker-startup",
+        operation: "shutdown",
+        status: "completed",
+        workerId: config.workerId,
+        signal,
+        durationMs: Date.now() - shutdownStartedAtMs,
+      });
       resolve();
     };
 
@@ -1766,6 +1999,14 @@ async function start(): Promise<void> {
 }
 
 start().catch((error: unknown) => {
-  workerLogger.error("Cantrip Worker failed to start", error);
+  workerLogger.event("fatal", "Cantrip Worker failed to start", {
+    event: "worker.startup.failed",
+    subsystem: "worker-startup",
+    operation: "start",
+    reasonCode: "startup-failed",
+    status: "failed",
+    error: workerLogError(error),
+  });
+  workerLogger.flushRepeated();
   process.exitCode = 1;
 });

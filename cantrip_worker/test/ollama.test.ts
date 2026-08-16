@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { discoverOllamaModels } from "../src/ollama.js";
+import { readWorkerLogs } from "../src/logger.js";
 
 describe("Ollama discovery", () => {
   it("reads tags and bounded show metadata from the worker-local API", async () => {
+    const afterCursor = readWorkerLogs({
+      afterCursor: 0,
+      limit: 200,
+      minimumLevel: "trace",
+    }).latestCursor;
     const requests: Array<{
       authorization: string | null;
       body: unknown;
@@ -86,6 +92,15 @@ describe("Ollama discovery", () => {
         url: "http://127.0.0.1:11434/api/show",
       },
     ]);
+    expect(
+      JSON.stringify(
+        readWorkerLogs({
+          afterCursor,
+          limit: 200,
+          minimumLevel: "trace",
+        }).records,
+      ),
+    ).not.toContain("ollama-secret");
   });
 
   it("rejects malformed tag inventories", async () => {

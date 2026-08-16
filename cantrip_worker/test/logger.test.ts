@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   captureWorkerDiagnostic,
   readWorkerLogs,
+  workerLogError,
   workerLogger,
 } from "../src/logger.js";
 
@@ -63,6 +64,21 @@ describe("worker service log capture", () => {
       ],
       hasMore: false,
       truncated: false,
+    });
+  });
+
+  it("normalizes operational errors without stacks, causes, or arbitrary fields", () => {
+    const cause = new Error("inner token=ghp_abcdefghijk");
+    const error = Object.assign(new Error("outer api_key=sk-abcdefghijk"), {
+      cause,
+      responseBody: "provider payload",
+      code: "E_PROVIDER",
+    });
+
+    expect(workerLogError(error)).toEqual({
+      name: "Error",
+      message: "outer api_key=[REDACTED]",
+      code: "E_PROVIDER",
     });
   });
 });
