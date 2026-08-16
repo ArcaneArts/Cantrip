@@ -617,6 +617,13 @@
       "when": 1786880961425,
       "tag": "0087_strong_guardsmen",
       "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1786905814003,
+      "tag": "0088_wandering_gideon",
+      "breakpoints": true
     }
   ]
 }

@@ -366,6 +366,9 @@ export const modelProviderAccounts = pgTable(
     weeklyUsageResetsAt: timestamp("weekly_usage_resets_at", {
       withTimezone: true,
     }),
+    weeklyUsageObservedAt: timestamp("weekly_usage_observed_at", {
+      withTimezone: true,
+    }),
     authLastSyncedAt: timestamp("auth_last_synced_at", {
       withTimezone: true,
     }),
@@ -418,6 +421,9 @@ export const modelProviderAccountWorkers = pgTable(
     weeklyUsageResetsAt: timestamp("weekly_usage_resets_at", {
       withTimezone: true,
     }),
+    weeklyUsageObservedAt: timestamp("weekly_usage_observed_at", {
+      withTimezone: true,
+    }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -437,6 +443,96 @@ export const modelProviderAccountWorkers = pgTable(
     check(
       "model_provider_account_workers_usage_check",
       sql`${table.weeklyUsageUsedBasisPoints} IS NULL OR ${table.weeklyUsageUsedBasisPoints} BETWEEN 0 AND 10000`,
+    ),
+  ],
+);
+
+/**
+ * Append-only meter readings reported by account-backed model providers.
+ *
+ * Provider, account, worker, and execution identifiers are deliberately stored
+ * as historical dimensions instead of foreign keys. Removing a live provider,
+ * account, worker, or chat must not erase or rewrite the measurements that were
+ * observed while it existed. Deleting the owning Cantrip user still removes the
+ * ledger for privacy.
+ */
+export const providerQuotaObservations = pgTable(
+  "provider_quota_observations",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    eventKey: text("event_key").notNull(),
+    observationBatchKey: text("observation_batch_key").notNull(),
+    providerId: text("provider_id").notNull(),
+    providerName: text("provider_name").notNull(),
+    providerKind: text("provider_kind").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    providerAccountLabel: text("provider_account_label").notNull(),
+    workerId: text("worker_id"),
+    workerName: text("worker_name"),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    usedPercentMicros: integer("used_percent_micros").notNull(),
+    resetsAt: timestamp("resets_at", { withTimezone: true }),
+    windowDurationMinutes: integer("window_duration_minutes"),
+    limitId: text("limit_id"),
+    limitName: text("limit_name"),
+    windowKind: text("window_kind").notNull(),
+    planType: text("plan_type"),
+    reachedType: text("reached_type"),
+    observationTrigger: text("observation_trigger").notNull(),
+    isWeeklyProjection: boolean("is_weekly_projection")
+      .notNull()
+      .default(false),
+    chatId: text("chat_id"),
+    turnId: text("turn_id"),
+    executionAttemptId: text("execution_attempt_id"),
+    workerVersion: text("worker_version"),
+    serverVersion: text("server_version"),
+    codexVersion: text("codex_version"),
+    sanitizedRawPayload: jsonb("sanitized_raw_payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+  },
+  (table) => [
+    uniqueIndex("provider_quota_observations_owner_event_unique").on(
+      table.ownerId,
+      table.eventKey,
+    ),
+    index("provider_quota_observations_account_time_index").on(
+      table.providerAccountId,
+      table.observedAt,
+    ),
+    index("provider_quota_observations_provider_time_index").on(
+      table.providerId,
+      table.observedAt,
+    ),
+    index("provider_quota_observations_reset_window_index").on(
+      table.providerAccountId,
+      table.limitId,
+      table.windowKind,
+      table.resetsAt,
+    ),
+    index("provider_quota_observations_turn_index").on(
+      table.chatId,
+      table.turnId,
+    ),
+    index("provider_quota_observations_worker_time_index").on(
+      table.workerId,
+      table.observedAt,
+    ),
+    check(
+      "provider_quota_observations_used_percent_check",
+      sql`${table.usedPercentMicros} BETWEEN 0 AND 100000000`,
+    ),
+    check(
+      "provider_quota_observations_window_duration_check",
+      sql`${table.windowDurationMinutes} IS NULL OR ${table.windowDurationMinutes} >= 0`,
     ),
   ],
 );
