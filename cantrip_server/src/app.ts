@@ -493,6 +493,7 @@ import {
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { browserTunnelTarget } from "./tunnels/browser-target.js";
+import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
 import {
   TabLayoutConflictError,
@@ -5073,6 +5074,71 @@ export async function buildApp({
     }
   };
 
+  const recordRuntimeModelBehavior = async (
+    sourceKey: string,
+    execution: ChatExecutionContext,
+    runtime: ModelRuntime,
+    tracker: ModelBehaviorTracker,
+    attribution: {
+      executionAttemptId: string;
+      attemptStatus:
+        "running" | "completed" | "failed" | "cancelled" | "interrupted";
+      routeAttemptIndex: number;
+      retryFailoverCount: number;
+      startedAt: Date;
+      completedAt?: Date | null;
+      finalizedAt?: Date | null;
+      durationMs?: number | null;
+      turnId?: string | null;
+      userInterrupted?: boolean;
+      immediateCorrectiveFollowup?: boolean;
+      codexVersion?: string | null;
+    },
+  ): Promise<void> => {
+    try {
+      await repository.recordModelBehaviorObservation(applicationOwnerId(), {
+        sourceKey,
+        projectId: execution.projectId,
+        chatId: execution.chatId,
+        modelRouteId: runtime.routeId,
+        modelName: runtime.model.profileName,
+        providerName: runtime.provider.name,
+        providerModelName: runtime.model.name,
+        providerAccountId: runtime.provider.accountId,
+        workerId: execution.workerId,
+        executionAttemptId: attribution.executionAttemptId,
+        attemptKind: "chat-turn",
+        attemptStatus: attribution.attemptStatus,
+        reasoningEffort: runtime.model.reasoningEffort,
+        routeAttemptIndex: attribution.routeAttemptIndex,
+        retryFailoverCount: attribution.retryFailoverCount,
+        startedAt: attribution.startedAt,
+        completedAt: attribution.completedAt,
+        finalizedAt: attribution.finalizedAt,
+        durationMs: attribution.durationMs,
+        turnId: attribution.turnId,
+        userInterrupted: attribution.userInterrupted,
+        immediateCorrectiveFollowup: attribution.immediateCorrectiveFollowup,
+        workerVersion: null,
+        serverVersion: cantripVersion.version,
+        codexVersion: attribution.codexVersion,
+        signalAvailability: {
+          fork: true,
+          copy: false,
+          rating: false,
+          userRetryRegeneration: false,
+          immediateCorrectiveFollowup: true,
+        },
+        ...tracker.snapshot(),
+      });
+    } catch (error) {
+      app.log.warn(
+        { err: error, sourceKey },
+        "Unable to persist model behavior analytics",
+      );
+    }
+  };
+
   const quotaObservationTimers = new Set<NodeJS.Timeout>();
   const quotaResetObservationKeys = new Set<string>();
   const captureRuntimeQuota = (
@@ -5798,9 +5864,18 @@ export async function buildApp({
     };
     let priorMessages: ChatMessage[];
     let userMessage: ChatMessage;
+    let immediateCorrectiveFollowup = false;
     try {
       await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
       priorMessages = await repository.listMessages(ownerId, execution.chatId);
+      for (let index = priorMessages.length - 1; index >= 0; index -= 1) {
+        const message = priorMessages[index]!;
+        if (message.role !== "assistant") continue;
+        const elapsedMs = turnStartedAtMs - Date.parse(message.createdAt);
+        immediateCorrectiveFollowup =
+          Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs <= 120_000;
+        break;
+      }
       const appended = await repository.appendMessage(
         ownerId,
         execution.chatId,
@@ -5878,9 +5953,12 @@ export async function buildApp({
         for (const [index, runtime] of runtimes.entries()) {
           const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
           const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
+          const behaviorSourceKey = `chat-attempt:${executionAttemptId}`;
+          const behaviorTracker = new ModelBehaviorTracker();
           const attemptStartedAt = new Date();
           let quotaFollowupsScheduled = false;
           const attemptStartedAtMs = Date.now();
+          let behaviorTurnId: string | null = null;
           const preparedReasoning = preparedRuntimes[index]!;
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
@@ -5965,6 +6043,21 @@ export async function buildApp({
               codexVersion: attributedWorker?.codexVersion ?? null,
             },
           );
+          await recordRuntimeModelBehavior(
+            behaviorSourceKey,
+            execution,
+            runtime,
+            behaviorTracker,
+            {
+              executionAttemptId,
+              attemptStatus: "running",
+              routeAttemptIndex: index,
+              retryFailoverCount: index,
+              startedAt: attemptStartedAt,
+              immediateCorrectiveFollowup,
+              codexVersion: attributedWorker?.codexVersion ?? null,
+            },
+          );
           try {
             app.log.debug(
               {
@@ -6019,9 +6112,16 @@ export async function buildApp({
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
                 onEvent: (event) =>
                   runAsOwner(ownerId, async () => {
+                    const observedAt = new Date();
+                    behaviorTracker.markActivity(observedAt);
                     attemptActivity = true;
                     anyActivity = true;
                     if (event.type === "agent.interaction.requested") {
+                      behaviorTurnId = event.request.turnId ?? behaviorTurnId;
+                      behaviorTracker.markApproval(
+                        event.request.requestKey,
+                        observedAt,
+                      );
                       try {
                         await recordLiveAgentInteractionRequest({
                           requestKey: event.request.requestKey,
@@ -6072,6 +6172,13 @@ export async function buildApp({
                     }
                     if (event.type === "agent.message") {
                       const turnId = event.message.correlation?.turnId;
+                      behaviorTurnId = turnId ?? behaviorTurnId;
+                      if (event.message.text.trim()) {
+                        behaviorTracker.markVisibleResponse(
+                          event.message.phase !== "commentary",
+                          observedAt,
+                        );
+                      }
                       await upsertLiveChatMessage(
                         ownerId,
                         execution.chatId,
@@ -6097,6 +6204,8 @@ export async function buildApp({
                     if (event.type === "agent.checkpoint") {
                       if (!event.text.trim()) return;
                       if (finalAgentTurns.has(event.turnId)) return;
+                      behaviorTurnId = event.turnId;
+                      behaviorTracker.markVisibleResponse(true, observedAt);
                       await upsertLiveChatMessage(
                         ownerId,
                         execution.chatId,
@@ -6144,6 +6253,9 @@ export async function buildApp({
                       return;
                     }
                     if (event.type !== "agent.activity") return;
+                    behaviorTurnId =
+                      event.activity.correlation?.turnId ?? behaviorTurnId;
+                    behaviorTracker.observeActivity(event.activity, observedAt);
                     if (event.activity.type === "usage") {
                       const usageTurnId =
                         event.activity.correlation?.turnId ?? event.activity.id;
@@ -6217,6 +6329,10 @@ export async function buildApp({
             );
             const result = agentTurnResultSchema.parse(rawResult);
             const completedAt = new Date();
+            behaviorTurnId = result.turnId ?? behaviorTurnId;
+            if (result.text.trim()) {
+              behaviorTracker.markVisibleResponse(true, completedAt);
+            }
             await recordRuntimeTokenUsage(
               tokenUsageSourceKey,
               execution.projectId,
@@ -6231,6 +6347,25 @@ export async function buildApp({
                 attemptStatus: "completed",
                 completedAt,
                 finalizedAt: completedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            );
+            await recordRuntimeModelBehavior(
+              behaviorSourceKey,
+              execution,
+              runtime,
+              behaviorTracker,
+              {
+                executionAttemptId,
+                attemptStatus: "completed",
+                routeAttemptIndex: index,
+                retryFailoverCount: index,
+                startedAt: attemptStartedAt,
+                completedAt,
+                finalizedAt: completedAt,
+                durationMs: completedAt.getTime() - attemptStartedAtMs,
+                turnId: behaviorTurnId,
+                immediateCorrectiveFollowup,
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
             );
@@ -6316,6 +6451,10 @@ export async function buildApp({
               : failureText.includes("cancel")
                 ? "cancelled"
                 : "failed";
+            const canRetry =
+              !attemptActivity &&
+              canFailOverRoute(error) &&
+              index < runtimes.length - 1;
             await recordRuntimeTokenUsage(
               tokenUsageSourceKey,
               execution.projectId,
@@ -6324,11 +6463,34 @@ export async function buildApp({
               undefined,
               {
                 workerId: execution.workerId,
+                turnId: behaviorTurnId,
                 executionAttemptId,
                 attemptKind: "chat-turn",
                 attemptStatus,
                 completedAt: failedAt,
                 finalizedAt: failedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            );
+            await recordRuntimeModelBehavior(
+              behaviorSourceKey,
+              execution,
+              runtime,
+              behaviorTracker,
+              {
+                executionAttemptId,
+                attemptStatus,
+                routeAttemptIndex: index,
+                retryFailoverCount: index + (canRetry ? 1 : 0),
+                startedAt: attemptStartedAt,
+                completedAt: failedAt,
+                finalizedAt: failedAt,
+                durationMs: failedAt.getTime() - attemptStartedAtMs,
+                turnId: behaviorTurnId,
+                userInterrupted:
+                  attemptStatus === "interrupted" ||
+                  attemptStatus === "cancelled",
+                immediateCorrectiveFollowup,
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
             );
@@ -6341,10 +6503,6 @@ export async function buildApp({
               );
               quotaFollowupsScheduled = true;
             }
-            const canRetry =
-              !attemptActivity &&
-              canFailOverRoute(error) &&
-              index < runtimes.length - 1;
             if (!canRetry) throw error;
             routeCooldowns.set(
               runtimeCooldownKey(runtime),

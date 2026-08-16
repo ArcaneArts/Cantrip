@@ -631,6 +631,13 @@
       "when": 1786907473505,
       "tag": "0089_old_fallen_one",
       "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1786908802611,
+      "tag": "0090_lively_sersi",
+      "breakpoints": true
     }
   ]
 }

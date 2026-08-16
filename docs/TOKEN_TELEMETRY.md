@@ -69,3 +69,34 @@ reasoning efforts, or projects; includes non-completed attempts; or has a large
 worker-observation/server-receipt delay. Movement with no matching usage is low
 confidence and excluded from allowance statistics. Every aggregate includes
 sample counts and distribution statistics so sparse evidence is visible.
+
+## Model behavior observations
+
+Each interactive agent route attempt also has a lifecycle-updated behavior
+observation. It records server-observed time to first activity and first visible
+response, terminal duration/status, whether a final answer appeared, unique
+tool and compaction counts, failed/declined tool outcomes, approval requests,
+file counts, recognized test-command outcomes, context/usage counters, route
+attempt/failover position, interruption state, and runtime attribution. The
+activity reducer deduplicates streamed updates by activity ID.
+
+Behavior telemetry does not copy prompts, responses, command text, command
+output, file contents, or approval payloads. Commands are classified as tests
+in memory and discarded. Copy, rating, and explicit regeneration signals are
+stored as unavailable until their UI actions have a durable server event.
+Forks are counted against the most recent source attempt. The
+`immediate_corrective_followup` field is a deliberately coarse proxy: it is set
+when a user sends another turn within two minutes of the latest assistant
+message. It does not inspect or assert the meaning of either message and should
+be labeled as heuristic in analysis.
+
+## Historical model catalogs
+
+Every catalog reconciliation writes a content-addressed metadata snapshot
+before updating the current catalog projection. The SHA-256 hash is computed
+from recursively key-sorted JSON containing only the already-sanitized model
+catalog record. Identical metadata for the same provider, availability scope,
+and native model is deduplicated; a changed record produces a new immutable
+snapshot. Provider and model names are retained with the snapshot so later
+renames or removal do not erase the historical series. Catalog snapshots never
+contain API keys, account credentials, request headers, prompts, or responses.

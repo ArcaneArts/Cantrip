@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
@@ -624,6 +624,55 @@ export interface TokenUsageRecordInput {
   };
 }
 
+export interface ModelBehaviorObservationInput {
+  sourceKey: string;
+  projectId: string | null;
+  chatId: string | null;
+  modelRouteId: string;
+  modelName: string;
+  providerName: string;
+  providerModelName: string;
+  providerAccountId?: string | null;
+  workerId?: string | null;
+  turnId?: string | null;
+  executionAttemptId: string;
+  attemptKind?: string;
+  attemptStatus:
+    "running" | "completed" | "failed" | "cancelled" | "interrupted";
+  reasoningEffort?: ReasoningEffort | null;
+  routeAttemptIndex?: number;
+  retryFailoverCount?: number;
+  startedAt?: Date;
+  firstActivityAt?: Date | null;
+  firstVisibleResponseAt?: Date | null;
+  completedAt?: Date | null;
+  finalizedAt?: Date | null;
+  durationMs?: number | null;
+  finalAnswerAppeared?: boolean;
+  toolCallCount?: number;
+  invalidToolCallCount?: number;
+  compactionCount?: number;
+  approvalRequestCount?: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+  modelContextWindow?: number | null;
+  contextUsedPercent?: number | null;
+  filesChangedCount?: number;
+  testCommandCount?: number;
+  testPassCount?: number;
+  testFailureCount?: number;
+  userInterrupted?: boolean;
+  userRetryRegeneration?: boolean | null;
+  immediateCorrectiveFollowup?: boolean;
+  workerVersion?: string | null;
+  serverVersion?: string | null;
+  codexVersion?: string | null;
+  signalAvailability?: Record<string, boolean>;
+}
+
 export interface QuotaTokenAnalyticsQuery {
   providerId?: string;
   providerAccountId?: string;
@@ -708,6 +757,30 @@ function firstOrThrow<T>(rows: T[], operation: string): T {
     throw new Error(`Database returned no row after ${operation}.`);
   }
   return row;
+}
+
+const CATALOG_SENSITIVE_METADATA_KEY =
+  /^(?:api[-_]?key|authorization|cookie|set-cookie|password|secret|client[-_]?secret|access[-_]?token|refresh[-_]?token|id[-_]?token|credential|headers?)$/iu;
+
+function stableJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !CATALOG_SENSITIVE_METADATA_KEY.test(key))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stableJsonValue(entry)]),
+  );
+}
+
+function catalogMetadataSnapshot(model: ProviderModelCatalogWrite) {
+  const metadata = stableJsonValue(model) as Record<string, unknown>;
+  return {
+    metadata,
+    metadataHash: createHash("sha256")
+      .update(JSON.stringify(metadata))
+      .digest("hex"),
+  };
 }
 
 function toUserSummary(user: UserRow): UserSummary {
@@ -3026,6 +3099,112 @@ export class ServerRepository {
       });
   }
 
+  async recordModelBehaviorObservation(
+    ownerId: string,
+    input: ModelBehaviorObservationInput,
+  ): Promise<void> {
+    const routeRows = await this.database
+      .select({
+        modelId: schema.modelProfiles.id,
+        modelName: schema.modelProfiles.name,
+        modelRouteId: schema.modelRoutes.id,
+        providerId: schema.modelProviders.id,
+        providerName: schema.modelProviders.name,
+        providerModelName: schema.modelRoutes.modelName,
+      })
+      .from(schema.modelRoutes)
+      .innerJoin(
+        schema.modelProfiles,
+        and(
+          eq(schema.modelProfiles.id, schema.modelRoutes.modelId),
+          eq(schema.modelProfiles.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.modelProviders,
+        and(
+          eq(schema.modelProviders.id, schema.modelRoutes.providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.modelRoutes.id, input.modelRouteId))
+      .limit(1);
+    const route = routeRows[0];
+    const count = (value: number | undefined): number =>
+      Math.max(0, Math.round(value ?? 0));
+    const nullableCount = (value: number | null | undefined): number | null =>
+      typeof value === "number" ? count(value) : null;
+    const contextUsedPercentBasisPoints =
+      typeof input.contextUsedPercent === "number"
+        ? Math.max(0, Math.round(input.contextUsedPercent * 100))
+        : null;
+    const updatedAt = new Date();
+    const values = {
+      projectId: input.projectId,
+      chatId: input.chatId,
+      modelId: route?.modelId ?? null,
+      modelRouteId: route?.modelRouteId ?? null,
+      providerId: route?.providerId ?? null,
+      modelName: route?.modelName ?? input.modelName,
+      providerName: route?.providerName ?? input.providerName,
+      providerModelName: route?.providerModelName ?? input.providerModelName,
+      providerAccountId: input.providerAccountId ?? null,
+      workerId: input.workerId ?? null,
+      turnId: input.turnId ?? null,
+      executionAttemptId: input.executionAttemptId,
+      attemptKind: input.attemptKind ?? "chat-turn",
+      attemptStatus: input.attemptStatus,
+      reasoningEffort: input.reasoningEffort ?? null,
+      routeAttemptIndex: count(input.routeAttemptIndex),
+      retryFailoverCount: count(input.retryFailoverCount),
+      firstActivityAt: input.firstActivityAt ?? null,
+      firstVisibleResponseAt: input.firstVisibleResponseAt ?? null,
+      completedAt: input.completedAt ?? null,
+      finalizedAt: input.finalizedAt ?? null,
+      durationMs: nullableCount(input.durationMs),
+      finalAnswerAppeared: input.finalAnswerAppeared ?? false,
+      toolCallCount: count(input.toolCallCount),
+      invalidToolCallCount: count(input.invalidToolCallCount),
+      compactionCount: count(input.compactionCount),
+      approvalRequestCount: count(input.approvalRequestCount),
+      inputTokens: count(input.inputTokens),
+      cachedInputTokens: count(input.cachedInputTokens),
+      cacheWriteInputTokens: count(input.cacheWriteInputTokens),
+      outputTokens: count(input.outputTokens),
+      reasoningOutputTokens: count(input.reasoningOutputTokens),
+      modelContextWindow: nullableCount(input.modelContextWindow),
+      contextUsedPercentBasisPoints,
+      filesChangedCount: count(input.filesChangedCount),
+      testCommandCount: count(input.testCommandCount),
+      testPassCount: count(input.testPassCount),
+      testFailureCount: count(input.testFailureCount),
+      userInterrupted: input.userInterrupted ?? false,
+      userRetryRegeneration: input.userRetryRegeneration ?? null,
+      immediateCorrectiveFollowup: input.immediateCorrectiveFollowup ?? false,
+      workerVersion: input.workerVersion ?? null,
+      serverVersion: input.serverVersion ?? null,
+      codexVersion: input.codexVersion ?? null,
+      signalAvailability: input.signalAvailability ?? {},
+      updatedAt,
+    };
+    await this.database
+      .insert(schema.modelBehaviorObservations)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        sourceKey: input.sourceKey,
+        startedAt: input.startedAt ?? updatedAt,
+        ...values,
+      })
+      .onConflictDoUpdate({
+        target: [
+          schema.modelBehaviorObservations.ownerId,
+          schema.modelBehaviorObservations.sourceKey,
+        ],
+        set: values,
+      });
+  }
+
   async getProjectTokenUsage(
     ownerId: string,
     projectId: string,
@@ -4626,7 +4805,10 @@ export class ServerRepository {
     },
   ): Promise<boolean> {
     const provider = await this.database
-      .select({ id: schema.modelProviders.id })
+      .select({
+        id: schema.modelProviders.id,
+        name: schema.modelProviders.name,
+      })
       .from(schema.modelProviders)
       .where(
         and(
@@ -4640,6 +4822,29 @@ export class ServerRepository {
     const now = new Date();
     await this.database.transaction(async (transaction) => {
       if (input.models.length > 0) {
+        await transaction
+          .insert(schema.providerModelCatalogSnapshots)
+          .values(
+            input.models.map((model) => {
+              const snapshot = catalogMetadataSnapshot(model);
+              return {
+                id: randomUUID(),
+                ownerId,
+                providerId,
+                providerName: provider[0]!.name,
+                providerAccountId: input.availabilityProviderAccountId ?? null,
+                workerId: input.availabilityWorkerId ?? null,
+                availabilityScope: input.availabilityScope,
+                nativeModelId: model.nativeModelId,
+                canonicalModelId: model.canonicalModelId,
+                metadataSource: model.metadataSource,
+                metadataHash: snapshot.metadataHash,
+                metadata: snapshot.metadata,
+                observedAt: now,
+              };
+            }),
+          )
+          .onConflictDoNothing();
         await transaction
           .insert(schema.providerModels)
           .values(
@@ -12527,6 +12732,28 @@ export class ServerRepository {
             createdAt: message.createdAt,
           })),
         );
+      }
+      const forkBoundary = sourceMessages.at(-1)?.createdAt ?? new Date();
+      const behaviorRows = await transaction
+        .select({ id: schema.modelBehaviorObservations.id })
+        .from(schema.modelBehaviorObservations)
+        .where(
+          and(
+            eq(schema.modelBehaviorObservations.ownerId, ownerId),
+            eq(schema.modelBehaviorObservations.chatId, chatId),
+            lte(schema.modelBehaviorObservations.startedAt, forkBoundary),
+          ),
+        )
+        .orderBy(desc(schema.modelBehaviorObservations.startedAt))
+        .limit(1);
+      if (behaviorRows[0]) {
+        await transaction
+          .update(schema.modelBehaviorObservations)
+          .set({
+            forkCount: sql`${schema.modelBehaviorObservations.forkCount} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.modelBehaviorObservations.id, behaviorRows[0].id));
       }
       return toChatSummary(fork);
     });
