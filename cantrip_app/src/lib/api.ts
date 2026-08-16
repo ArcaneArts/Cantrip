@@ -170,6 +170,8 @@ import {
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   providerTelemetryAnalyticsSchema,
+  providerTelemetryDeleteResultSchema,
+  providerTelemetryExportSchema,
   projectShareAttachmentSchema,
   projectShareDirectCreateSchema,
   projectSummarySchema,
@@ -1830,6 +1832,23 @@ export async function getProviderTelemetryAnalytics(input: {
   }
   return providerTelemetryAnalyticsSchema.parse(
     await request(`/api/analytics/provider-telemetry?${query.toString()}`),
+  );
+}
+
+export async function getProviderTelemetryExport(providerId: string) {
+  return providerTelemetryExportSchema.parse(
+    await request(
+      `/api/analytics/provider-telemetry/${encodeURIComponent(providerId)}/export`,
+    ),
+  );
+}
+
+export async function deleteProviderTelemetryHistory(providerId: string) {
+  return providerTelemetryDeleteResultSchema.parse(
+    await request(
+      `/api/analytics/provider-telemetry/${encodeURIComponent(providerId)}`,
+      { method: "DELETE" },
+    ),
   );
 }
 

@@ -2814,6 +2814,41 @@ export const modelBehaviorDaySchema = modelBehaviorSummarySchema.extend({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
 });
 
+export const telemetryChangeMetricSchema = z.enum([
+  "tokens-per-percent",
+  "effective-weekly-allowance",
+  "failure-rate",
+  "tool-error-rate",
+  "latency",
+  "compaction-frequency",
+  "completion-rate",
+  "output-reasoning-mix",
+]);
+
+export const telemetryChangePointSchema = z.object({
+  id: z.string().min(1),
+  metric: telemetryChangeMetricSchema,
+  scope: z.enum(["account", "model", "account-model"]),
+  providerAccountId: z.string().min(1).nullable(),
+  providerAccountLabel: z.string().min(1).nullable(),
+  modelId: z.string().min(1).nullable(),
+  modelLabel: z.string().min(1).nullable(),
+  detectedAt: z.string().datetime(),
+  beforeStart: z.string().datetime(),
+  beforeEnd: z.string().datetime(),
+  afterStart: z.string().datetime(),
+  afterEnd: z.string().datetime(),
+  beforeValue: z.number().finite(),
+  afterValue: z.number().finite(),
+  relativeChangePercent: z.number().finite().nullable(),
+  beforeSampleCount: z.number().int().positive(),
+  afterSampleCount: z.number().int().positive(),
+  confidence: z.enum(["high", "medium"]),
+  direction: z.enum(["increased", "decreased"]),
+  impact: z.enum(["improvement", "degradation", "neutral"]),
+  unit: z.enum(["tokens", "ratio", "milliseconds"]),
+});
+
 export const providerTelemetryAnalyticsSchema = z.object({
   generatedAt: z.string().datetime(),
   range: z.object({
@@ -2877,6 +2912,151 @@ export const providerTelemetryAnalyticsSchema = z.object({
     accounts: z.array(modelBehaviorBreakdownSchema),
     models: z.array(modelBehaviorBreakdownSchema),
     reasoningEfforts: z.array(modelBehaviorBreakdownSchema),
+  }),
+  changePoints: z.array(telemetryChangePointSchema).max(100),
+});
+
+const telemetryExportQuotaObservationSchema = z.object({
+  id: z.string().min(1),
+  eventKey: z.string().min(1),
+  observationBatchKey: z.string().min(1),
+  providerAccountId: z.string().min(1),
+  providerAccountLabel: z.string().min(1),
+  workerId: z.string().nullable(),
+  observedAt: z.string().datetime(),
+  receivedAt: z.string().datetime(),
+  usedPercent: z.number().finite(),
+  resetsAt: z.string().datetime().nullable(),
+  windowDurationMinutes: z.number().int().nonnegative().nullable(),
+  limitId: z.string().nullable(),
+  limitName: z.string().nullable(),
+  windowKind: z.string().min(1),
+  planType: z.string().nullable(),
+  reachedType: z.string().nullable(),
+  observationTrigger: z.string().min(1),
+  chatId: z.string().nullable(),
+  turnId: z.string().nullable(),
+  executionAttemptId: z.string().nullable(),
+  workerVersion: z.string().nullable(),
+  serverVersion: z.string().nullable(),
+  codexVersion: z.string().nullable(),
+  sanitizedRawPayload: z.record(z.string(), z.unknown()),
+});
+
+const telemetryExportTokenUsageSchema = z.object({
+  id: z.string().min(1),
+  projectId: z.string().nullable(),
+  chatId: z.string().nullable(),
+  sourceKey: z.string().min(1),
+  modelId: z.string().nullable(),
+  modelRouteId: z.string().nullable(),
+  modelName: z.string().min(1),
+  providerModelName: z.string().min(1),
+  providerAccountId: z.string().nullable(),
+  workerId: z.string().nullable(),
+  turnId: z.string().nullable(),
+  executionAttemptId: z.string().nullable(),
+  attemptKind: z.string().min(1),
+  attemptStatus: z.string().min(1),
+  reasoningEffort: z.string().nullable(),
+  inputTokens: z.number().int().nonnegative(),
+  cachedInputTokens: z.number().int().nonnegative(),
+  cacheWriteInputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  reasoningOutputTokens: z.number().int().nonnegative(),
+  visibleOutputTokens: z.number().int().nonnegative().nullable(),
+  reportedTotalTokens: z.number().int().nonnegative().nullable(),
+  usageSemantics: z.string().min(1),
+  sanitizedRawUsage: z.record(z.string(), z.unknown()),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable(),
+  finalizedAt: z.string().datetime().nullable(),
+  workerVersion: z.string().nullable(),
+  serverVersion: z.string().nullable(),
+  codexVersion: z.string().nullable(),
+});
+
+const telemetryExportBehaviorSchema = z.object({
+  id: z.string().min(1),
+  sourceKey: z.string().min(1),
+  projectId: z.string().nullable(),
+  chatId: z.string().nullable(),
+  modelId: z.string().nullable(),
+  modelRouteId: z.string().nullable(),
+  modelName: z.string().min(1),
+  providerModelName: z.string().min(1),
+  providerAccountId: z.string().nullable(),
+  workerId: z.string().nullable(),
+  turnId: z.string().nullable(),
+  executionAttemptId: z.string().min(1),
+  attemptStatus: z.string().min(1),
+  reasoningEffort: z.string().nullable(),
+  startedAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable(),
+  finalizedAt: z.string().datetime().nullable(),
+  durationMs: z.number().int().nonnegative().nullable(),
+  finalAnswerAppeared: z.boolean(),
+  toolCallCount: z.number().int().nonnegative(),
+  invalidToolCallCount: z.number().int().nonnegative(),
+  retryFailoverCount: z.number().int().nonnegative(),
+  compactionCount: z.number().int().nonnegative(),
+  approvalRequestCount: z.number().int().nonnegative(),
+  inputTokens: z.number().int().nonnegative(),
+  cachedInputTokens: z.number().int().nonnegative(),
+  cacheWriteInputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  reasoningOutputTokens: z.number().int().nonnegative(),
+  filesChangedCount: z.number().int().nonnegative(),
+  testCommandCount: z.number().int().nonnegative(),
+  testPassCount: z.number().int().nonnegative(),
+  testFailureCount: z.number().int().nonnegative(),
+  userInterrupted: z.boolean(),
+  userRetryRegeneration: z.boolean().nullable(),
+  immediateCorrectiveFollowup: z.boolean(),
+  forkCount: z.number().int().nonnegative(),
+  copyCount: z.number().int().nonnegative().nullable(),
+  ratingValue: z.number().int().nullable(),
+  workerVersion: z.string().nullable(),
+  serverVersion: z.string().nullable(),
+  codexVersion: z.string().nullable(),
+  signalAvailability: z.record(z.string(), z.unknown()),
+});
+
+const telemetryExportCatalogSnapshotSchema = z.object({
+  id: z.string().min(1),
+  providerAccountId: z.string().nullable(),
+  workerId: z.string().nullable(),
+  availabilityScope: z.string().min(1),
+  nativeModelId: z.string().min(1),
+  canonicalModelId: z.string().nullable(),
+  metadataSource: z.string().min(1),
+  metadataHash: z.string().min(1),
+  metadata: z.record(z.string(), z.unknown()),
+  observedAt: z.string().datetime(),
+});
+
+export const providerTelemetryExportSchema = z.object({
+  schemaVersion: z.literal(1),
+  generatedAt: z.string().datetime(),
+  provider: z.object({ id: z.string().min(1), name: z.string().min(1) }),
+  privacy: z.object({
+    includesMessageContent: z.literal(false),
+    rawPayloadsSanitized: z.literal(true),
+    retention: z.literal("owner-controlled-indefinite"),
+  }),
+  quotaObservations: z.array(telemetryExportQuotaObservationSchema),
+  tokenUsage: z.array(telemetryExportTokenUsageSchema),
+  modelBehavior: z.array(telemetryExportBehaviorSchema),
+  modelCatalogSnapshots: z.array(telemetryExportCatalogSnapshotSchema),
+});
+
+export const providerTelemetryDeleteResultSchema = z.object({
+  providerId: z.string().min(1),
+  deleted: z.object({
+    quotaObservations: z.number().int().nonnegative(),
+    tokenUsage: z.number().int().nonnegative(),
+    modelBehavior: z.number().int().nonnegative(),
+    modelCatalogSnapshots: z.number().int().nonnegative(),
   }),
 });
 
@@ -9087,8 +9267,16 @@ export type TelemetryValueStatistics = z.infer<
 export type TelemetryQuotaReading = z.infer<typeof telemetryQuotaReadingSchema>;
 export type TelemetryBreakdown = z.infer<typeof telemetryBreakdownSchema>;
 export type ModelBehaviorSummary = z.infer<typeof modelBehaviorSummarySchema>;
+export type TelemetryChangeMetric = z.infer<typeof telemetryChangeMetricSchema>;
+export type TelemetryChangePoint = z.infer<typeof telemetryChangePointSchema>;
 export type ProviderTelemetryAnalytics = z.infer<
   typeof providerTelemetryAnalyticsSchema
+>;
+export type ProviderTelemetryExport = z.infer<
+  typeof providerTelemetryExportSchema
+>;
+export type ProviderTelemetryDeleteResult = z.infer<
+  typeof providerTelemetryDeleteResultSchema
 >;
 export type ProjectWorkspaceCreate = z.infer<
   typeof projectWorkspaceCreateSchema

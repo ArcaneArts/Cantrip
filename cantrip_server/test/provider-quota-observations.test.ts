@@ -231,6 +231,41 @@ describe("provider quota observation ledger", () => {
       );
       expect(analytics.estimates.unattributedSamples).toBeGreaterThan(0);
       expect(analytics.tokens.total.totalTokens).toBe(0);
+      expect(analytics.changePoints).toEqual([]);
+
+      const exported = await repository.exportProviderTelemetry(
+        LOCAL_USER_ID,
+        provider.id,
+      );
+      expect(exported).toMatchObject({
+        schemaVersion: 1,
+        privacy: {
+          includesMessageContent: false,
+          rawPayloadsSanitized: true,
+          retention: "owner-controlled-indefinite",
+        },
+      });
+      expect(exported?.quotaObservations).toHaveLength(5);
+      await expect(
+        repository.deleteProviderTelemetry(LOCAL_USER_ID, provider.id),
+      ).resolves.toEqual({
+        providerId: provider.id,
+        deleted: {
+          quotaObservations: 5,
+          tokenUsage: 0,
+          modelBehavior: 0,
+          modelCatalogSnapshots: 0,
+        },
+      });
+      await expect(
+        repository.recordProviderQuotaObservation(LOCAL_USER_ID, {
+          ...base,
+          eventKey: "quota-event-after-history-delete",
+          observationBatchKey: "quota-batch-after-history-delete",
+          observedAt: new Date("2026-08-16T12:03:00.000Z"),
+          usedPercent: 45,
+        }),
+      ).resolves.toBe(true);
 
       await expect(
         repository.deleteModelProvider(LOCAL_USER_ID, provider.id),
@@ -238,7 +273,7 @@ describe("provider quota observation ledger", () => {
       const retained = await client.query<{ count: number }>(`
         SELECT count(*)::integer AS count FROM provider_quota_observations
       `);
-      expect(retained.rows[0]?.count).toBe(5);
+      expect(retained.rows[0]?.count).toBe(1);
     } finally {
       await client.close();
     }
