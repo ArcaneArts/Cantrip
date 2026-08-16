@@ -15,6 +15,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { ProjectShareManager } from "./project-share-manager.js";
+import { workerLogger } from "./logger.js";
 
 type FrameEmitter = (
   header: TunnelDataPlaneFrameHeader,
@@ -37,6 +38,7 @@ interface ProjectShareStream {
   response: IncomingMessage | null;
   share: WorkerProjectShareOpenResult;
   sourceHalfClosed: boolean;
+  startedAtMs: number;
 }
 
 const EMPTY_PAYLOAD = new Uint8Array();
@@ -323,10 +325,20 @@ export class ProjectShareTunnelDestinationAdapter {
   }
 
   disconnect(): void {
+    const count = this.#streams.size;
     for (const stream of [...this.#streams.values()]) {
       this.#remove(stream);
       stream.response?.destroy();
       stream.request?.destroy();
+    }
+    if (count > 0) {
+      workerLogger.event("info", "Project share tunnel streams disconnected", {
+        event: "project-share.tunnel.disconnected-all",
+        subsystem: "project-share",
+        operation: "disconnect",
+        status: "completed",
+        counts: { streams: count },
+      });
     }
   }
 
@@ -344,10 +356,12 @@ export class ProjectShareTunnelDestinationAdapter {
       return;
     }
     if (this.#streams.has(key(header))) {
+      this.#logRejected(header, "protocol-error");
       this.#reject(header, "protocol-error", "Tunnel stream already exists.");
       return;
     }
     if (this.#streams.size >= MAX_STREAMS) {
+      this.#logRejected(header, "limit-exceeded");
       this.#reject(
         header,
         "limit-exceeded",
@@ -357,6 +371,7 @@ export class ProjectShareTunnelDestinationAdapter {
     }
     const share = this.shares.get(header.target.resourceId);
     if (!share) {
+      this.#logRejected(header, "target-unavailable");
       this.#reject(header, "target-unavailable", "Project share is not open.");
       return;
     }
@@ -375,8 +390,20 @@ export class ProjectShareTunnelDestinationAdapter {
       response: null,
       share,
       sourceHalfClosed: false,
+      startedAtMs: Date.now(),
     };
     this.#streams.set(key(header), stream);
+    workerLogger.event("debug", "Project share tunnel stream opened", {
+      event: "project-share.tunnel.opened",
+      subsystem: "project-share",
+      operation: "open-stream",
+      status: "completed",
+      surfaceId: share.shareId,
+      tunnelId: header.tunnelId,
+      attachmentId: header.attachmentId,
+      connectionId: header.connectionId,
+      counts: { streams: this.#streams.size },
+    });
     if (
       !this.#emit(
         {
@@ -634,6 +661,23 @@ export class ProjectShareTunnelDestinationAdapter {
     code: Extract<TunnelDataPlaneFrameHeader, { kind: "close" }>["code"],
   ): void {
     if (!this.#remove(stream)) return;
+    workerLogger.event(
+      code === "normal" ? "debug" : "warn",
+      "Project share tunnel stream closed",
+      {
+        event: "project-share.tunnel.closed",
+        subsystem: "project-share",
+        operation: "proxy-stream",
+        reasonCode: code,
+        status: code === "normal" ? "completed" : "degraded",
+        surfaceId: stream.share.shareId,
+        tunnelId: stream.header.tunnelId,
+        attachmentId: stream.header.attachmentId,
+        connectionId: stream.header.connectionId,
+        durationMs: Date.now() - stream.startedAtMs,
+        counts: { streams: this.#streams.size },
+      },
+    );
     this.#emit(
       { ...responseBase(stream), kind: "close", code, message: null },
       EMPTY_PAYLOAD,
@@ -648,5 +692,28 @@ export class ProjectShareTunnelDestinationAdapter {
     this.#streams.delete(streamKey);
     this.#wakeOutput(stream);
     return true;
+  }
+
+  #logRejected(
+    header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
+    reasonCode: string,
+  ): void {
+    workerLogger.rateLimited(
+      `project-share-tunnel-rejected:${reasonCode}`,
+      "warn",
+      "Project share tunnel stream rejected",
+      {
+        event: "project-share.tunnel.rejected",
+        subsystem: "project-share",
+        operation: "open-stream",
+        reasonCode,
+        status: "rejected",
+        surfaceId:
+          header.target.kind === "adapter" ? header.target.resourceId : null,
+        tunnelId: header.tunnelId,
+        attachmentId: header.attachmentId,
+        connectionId: header.connectionId,
+      },
+    );
   }
 }

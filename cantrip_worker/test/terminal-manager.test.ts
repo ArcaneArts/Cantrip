@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { TerminalManager } from "../src/terminal-manager.js";
+import { readWorkerLogs } from "../src/logger.js";
 
 const directories: string[] = [];
 
@@ -18,6 +19,11 @@ afterEach(async () => {
 
 describe("TerminalManager", () => {
   it("runs an interactive shell in the requested source folder", async () => {
+    const afterCursor = readWorkerLogs({
+      afterCursor: 0,
+      limit: 200,
+      minimumLevel: "trace",
+    }).latestCursor;
     const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
     directories.push(directory);
     const manager = new TerminalManager();
@@ -96,6 +102,17 @@ describe("TerminalManager", () => {
     manager.input("terminal-1", "exit\r");
     await expect(restarted).resolves.toMatchObject({ status: "exited" });
     manager.closeAll();
+    const serializedLogs = JSON.stringify(
+      readWorkerLogs({
+        afterCursor,
+        limit: 200,
+        minimumLevel: "trace",
+      }).records,
+    );
+    expect(serializedLogs).toContain("terminal.process.started");
+    expect(serializedLogs).not.toContain(directory);
+    expect(serializedLogs).not.toContain("CANTRIP_PTY_OK");
+    expect(serializedLogs).not.toContain("printf");
   });
 
   it.skipIf(process.platform === "win32")(

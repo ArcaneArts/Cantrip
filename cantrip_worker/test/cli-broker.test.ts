@@ -16,6 +16,7 @@ import {
   CANTRIP_CLI_CONNECTION_ENV,
   CantripCliBroker,
 } from "../src/cli-broker.js";
+import { readWorkerLogs } from "../src/logger.js";
 import { TerminalManager } from "../src/terminal-manager.js";
 
 const directories: string[] = [];
@@ -173,6 +174,11 @@ describe("Cantrip CLI worker broker", () => {
   });
 
   it("authenticates and relays structured CLI commands", async () => {
+    const afterCursor = readWorkerLogs({
+      afterCursor: 0,
+      limit: 200,
+      minimumLevel: "trace",
+    }).latestCursor;
     const directory = await temporaryDirectory();
     const binary = path.join(
       directory,
@@ -253,6 +259,18 @@ describe("Cantrip CLI worker broker", () => {
     } finally {
       await broker.close();
     }
+    const serializedLogs = JSON.stringify(
+      readWorkerLogs({
+        afterCursor,
+        limit: 200,
+        minimumLevel: "trace",
+      }).records,
+    );
+    expect(serializedLogs).toContain("cli.command.completed");
+    expect(serializedLogs).toContain("worktree.status");
+    expect(serializedLogs).toContain("chat-one");
+    expect(serializedLogs).not.toContain("/workspace/project");
+    expect(serializedLogs).not.toContain("worker-token");
   });
 
   it("reports server transport failures as unavailable", async () => {

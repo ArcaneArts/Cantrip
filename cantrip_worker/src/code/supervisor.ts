@@ -30,7 +30,7 @@ import {
   codeAppearanceSchema,
 } from "@cantrip/protocol";
 
-import { workerLogger } from "../logger.js";
+import { workerLogError, workerLogger } from "../logger.js";
 import type { CantripCodeInstallation } from "./installation.js";
 import { spawnGuardedProcess } from "./process-guard.js";
 import { CodeWorkbenchBridge } from "./workbench-bridge.js";
@@ -254,13 +254,17 @@ export class CodeSupervisor {
   }
 
   async #open(command: CodeOpenCommand): Promise<CodeRuntimeStatus> {
+    const startedAtMs = Date.now();
     this.#assertAvailable();
     if (this.#closed) throw new Error("Cantrip Code supervisor is stopped.");
     const cwd = path.resolve(command.cwd);
-    workerLogger.info("Cantrip Code session open requested", {
+    workerLogger.event("info", "Cantrip Code session open requested", {
+      event: "code.session.opening",
+      subsystem: "code",
+      operation: "open",
+      status: "started",
       appearance: command.appearance,
       codeTabId: command.codeTabId,
-      cwd,
       projectId: command.projectId,
       sessionId: command.sessionId,
       worktreeId: command.worktreeId,
@@ -329,10 +333,15 @@ export class CodeSupervisor {
       const profile = await this.#profile(command.profileId, profileKey);
       profile.sessions.add(command.sessionId);
       await this.#writeWorkspace(session);
-      workerLogger.info("Cantrip Code workspace created", {
+      workerLogger.event("debug", "Cantrip Code workspace prepared", {
+        event: "code.workspace.prepared",
+        subsystem: "code",
+        operation: "prepare-workspace",
+        status: "completed",
         appearance: session.appearance,
         sessionId: session.sessionId,
-        workspacePath: session.workspacePath,
+        projectId: session.projectId,
+        worktreeId: session.worktreeId,
       });
     }
 
@@ -352,21 +361,35 @@ export class CodeSupervisor {
       void this.#bridge
         .setTheme(session.sessionId, session.appearance)
         .catch((error) =>
-          workerLogger.warn("Cantrip Code startup theme delivery failed", {
-            appearance: session.appearance,
-            error,
-            sessionId: session.sessionId,
-          }),
+          workerLogger.event(
+            "warn",
+            "Cantrip Code startup theme delivery failed",
+            {
+              event: "code.theme.delivery-failed",
+              subsystem: "code",
+              operation: "set-theme",
+              reasonCode: "bridge-delivery-failed",
+              status: "degraded",
+              appearance: session.appearance,
+              error: workerLogError(error),
+              sessionId: session.sessionId,
+            },
+          ),
         );
       session.status = "running";
       session.startedAt ??= isoNow();
       session.lastActivityAt = isoNow();
       await this.#persistState();
       const status = this.#status(session);
-      workerLogger.info("Cantrip Code session is running", {
+      workerLogger.event("info", "Cantrip Code session is running", {
+        event: "code.session.running",
+        subsystem: "code",
+        operation: "open",
+        status: "completed",
         appearance: session.appearance,
         bridgeConnected: status.bridgeConnected,
         codeTabId: session.codeTabId,
+        durationMs: Date.now() - startedAtMs,
         processInstanceId: status.processInstanceId,
         sessionId: session.sessionId,
       });
@@ -377,9 +400,15 @@ export class CodeSupervisor {
         error instanceof Error ? error.message : String(error);
       session.lastActivityAt = isoNow();
       await this.#persistState();
-      workerLogger.error("Cantrip Code session failed to open", {
+      workerLogger.event("error", "Cantrip Code session failed to open", {
+        event: "code.session.open-failed",
+        subsystem: "code",
+        operation: "open",
+        reasonCode: "session-start-failed",
+        status: "failed",
         codeTabId: session.codeTabId,
-        error,
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
         sessionId: session.sessionId,
       });
       throw error;
@@ -414,7 +443,11 @@ export class CodeSupervisor {
     session.themeMode = "follow-cantrip";
     session.appearance = appearance;
     session.lastActivityAt = isoNow();
-    workerLogger.info("Cantrip Code theme update requested", {
+    workerLogger.event("debug", "Cantrip Code theme update requested", {
+      event: "code.theme.updating",
+      subsystem: "code",
+      operation: "set-theme",
+      status: "started",
       appearance,
       sessionId,
     });
@@ -422,7 +455,11 @@ export class CodeSupervisor {
     await this.#bridge.setTheme(sessionId, appearance);
     await this.#persistState();
     const status = this.#status(session);
-    workerLogger.info("Cantrip Code theme update persisted", {
+    workerLogger.event("debug", "Cantrip Code theme update persisted", {
+      event: "code.theme.updated",
+      subsystem: "code",
+      operation: "set-theme",
+      status: "completed",
       appearance,
       bridgeConnected: status.bridgeConnected,
       processInstanceId: status.processInstanceId,
@@ -656,12 +693,14 @@ export class CodeSupervisor {
     profile.port = port;
     profile.connectionToken = connectionToken;
     profile.instanceId = instanceId;
-    workerLogger.info("Cantrip Code profile process starting", {
+    workerLogger.event("info", "Cantrip Code profile process starting", {
+      event: "code.profile.starting",
+      subsystem: "code",
+      operation: "start-profile",
+      status: "started",
       instanceId,
-      logPath: profile.logPath,
-      port,
       profileKey: profile.profileKey,
-      sessions: profile.sessions.size,
+      counts: { sessions: profile.sessions.size },
     });
     const args = [
       "--host",
@@ -732,12 +771,14 @@ export class CodeSupervisor {
       profile.logPath,
       `process ${instanceId} ready on loopback port ${port}`,
     );
-    workerLogger.info("Cantrip Code profile process is ready", {
+    workerLogger.event("info", "Cantrip Code profile process is ready", {
+      event: "code.profile.ready",
+      subsystem: "code",
+      operation: "start-profile",
+      status: "completed",
       instanceId,
-      logPath: profile.logPath,
-      port,
       profileKey: profile.profileKey,
-      sessions: profile.sessions.size,
+      counts: { sessions: profile.sessions.size },
     });
   }
 
@@ -789,10 +830,15 @@ export class CodeSupervisor {
       `process exited (${signal ?? code ?? "unknown"})${intentional ? " intentionally" : ""}`,
     );
     const processExitContext = {
+      event: intentional ? "code.profile.stopped" : "code.profile.crashed",
+      subsystem: "code",
+      operation: "run-profile",
+      status: intentional ? "completed" : "failed",
+      reasonCode: intentional ? "requested" : "unexpected-exit",
       code,
       intentional,
       profileKey: profile.profileKey,
-      sessions: profile.sessions.size,
+      counts: { sessions: profile.sessions.size },
       signal,
     };
     if (intentional) {

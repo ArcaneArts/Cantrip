@@ -30,6 +30,7 @@ import {
   CantripServerRequestError,
   invokeCantripCliCommand,
 } from "./cli-client.js";
+import { workerLogError, workerLogger } from "./logger.js";
 
 export const CANTRIP_CLI_CONNECTION_ENV = "CANTRIP_CLI_CONNECTION";
 export const CANTRIP_CLI_CONNECTION_FILE = "cli-connection.json";
@@ -225,6 +226,14 @@ export class CantripCliBroker {
 
   bindCodexThread(threadId: string, context: CantripCliChatContext): void {
     this.#threadContexts.set(threadId, context);
+    workerLogger.event("debug", "Cantrip CLI thread context bound", {
+      event: "cli.context.bound",
+      subsystem: "cli-broker",
+      operation: "bind-thread",
+      status: "completed",
+      chatId: context.chatId,
+      counts: { contexts: this.#threadContexts.size },
+    });
   }
 
   async start(): Promise<CantripCliConnectionDocument> {
@@ -235,6 +244,18 @@ export class CantripCliBroker {
       response.setHeader("cache-control", "no-store");
       response.setHeader("content-type", "application/json; charset=utf-8");
       if (!authorized(request.headers.authorization, this.#sessionToken)) {
+        workerLogger.rateLimited(
+          "cli-broker-unauthorized",
+          "warn",
+          "Cantrip CLI broker rejected an unauthorized request",
+          {
+            event: "cli.request.rejected",
+            subsystem: "cli-broker",
+            operation: "authenticate",
+            reasonCode: "unauthorized",
+            status: "rejected",
+          },
+        );
         sendJson(response, 401, { error: "Unauthorized" });
         return;
       }
@@ -250,10 +271,26 @@ export class CantripCliBroker {
       if (request.method === "POST" && requestUrl.pathname === "/v1/execute") {
         void (async () => {
           let command: CantripCliCommandRequest;
+          const requestId = randomUUID();
+          const startedAtMs = Date.now();
           try {
             const body = await readJsonBody(request);
             command = await cantripCliCommandRequestSchema.parseAsync(body);
           } catch (error) {
+            workerLogger.rateLimited(
+              "cli-broker-invalid-request",
+              "warn",
+              "Cantrip CLI broker rejected an invalid request",
+              {
+                event: "cli.request.rejected",
+                subsystem: "cli-broker",
+                operation: "parse-command",
+                reasonCode: "invalid-request",
+                status: "rejected",
+                requestId,
+                error: workerLogError(error),
+              },
+            );
             sendJson(response, 400, {
               code: "invalid",
               error: error instanceof Error ? error.message : String(error),
@@ -265,11 +302,26 @@ export class CantripCliBroker {
               ? (this.#threadContexts.get(command.context.codexThreadId) ??
                 null)
               : null;
-            const result = await this.#execute(
-              command,
-              randomUUID(),
-              chatContext,
-            );
+            workerLogger.event("debug", "Cantrip CLI command dispatched", {
+              event: "cli.command.dispatched",
+              subsystem: "cli-broker",
+              operation: command.command,
+              status: "started",
+              requestId,
+              ...(chatContext ? { chatId: chatContext.chatId } : {}),
+            });
+            const result = await this.#execute(command, requestId, chatContext);
+            workerLogger.event("debug", "Cantrip CLI command completed", {
+              event: "cli.command.completed",
+              subsystem: "cli-broker",
+              operation: command.command,
+              status: "completed",
+              requestId,
+              durationMs: Date.now() - startedAtMs,
+              mutated: result.mutated,
+              continuationScheduled: result.continuationScheduled,
+              ...(chatContext ? { chatId: chatContext.chatId } : {}),
+            });
             sendJson(
               response,
               200,
@@ -277,12 +329,32 @@ export class CantripCliBroker {
             );
           } catch (error) {
             if (error instanceof CantripServerRequestError) {
+              workerLogger.event("warn", "Cantrip CLI command was rejected", {
+                event: "cli.command.failed",
+                subsystem: "cli-broker",
+                operation: command.command,
+                reasonCode: error.code ?? "server-rejected",
+                status: "failed",
+                requestId,
+                durationMs: Date.now() - startedAtMs,
+                error: workerLogError(error),
+              });
               sendJson(response, error.status, {
                 ...(error.code ? { code: error.code } : {}),
                 error: error.message,
               });
               return;
             }
+            workerLogger.event("error", "Cantrip CLI command failed", {
+              event: "cli.command.failed",
+              subsystem: "cli-broker",
+              operation: command.command,
+              reasonCode: "broker-execution-failed",
+              status: "failed",
+              requestId,
+              durationMs: Date.now() - startedAtMs,
+              error: workerLogError(error),
+            });
             sendJson(response, 502, {
               code: "unavailable",
               error: error instanceof Error ? error.message : String(error),
@@ -321,6 +393,13 @@ export class CantripCliBroker {
     try {
       writeConnectionDocument(this.#connectionPath, document);
       publishEnvironment(this.childEnvironment());
+      workerLogger.event("info", "Cantrip CLI broker started", {
+        event: "cli.broker.started",
+        subsystem: "cli-broker",
+        operation: "start",
+        status: "completed",
+        workerId: this.#config.workerId,
+      });
       return document;
     } catch (error) {
       await this.close();
@@ -346,5 +425,13 @@ export class CantripCliBroker {
     } catch {
       // Missing and stale connection documents do not block worker shutdown.
     }
+    workerLogger.event("info", "Cantrip CLI broker stopped", {
+      event: "cli.broker.stopped",
+      subsystem: "cli-broker",
+      operation: "stop",
+      status: "completed",
+      workerId: this.#config.workerId,
+      counts: { contexts: this.#threadContexts.size },
+    });
   }
 }

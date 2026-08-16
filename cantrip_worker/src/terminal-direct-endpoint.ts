@@ -10,6 +10,7 @@ import {
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
 import type { TerminalManager } from "./terminal-manager.js";
+import { workerLogError, workerLogger } from "./logger.js";
 
 interface Endpoint {
   server: HttpServer;
@@ -70,6 +71,15 @@ export class TerminalDirectEndpointManager {
       throw new Error("Direct terminal endpoint did not bind a loopback port.");
     }
     this.#endpoints.set(capabilityId, endpoint);
+    workerLogger.event("debug", "Direct terminal endpoint prepared", {
+      event: "terminal.direct.prepared",
+      subsystem: "terminal",
+      operation: "prepare-direct-endpoint",
+      status: "completed",
+      capabilityId,
+      terminalId,
+      counts: { endpoints: this.#endpoints.size },
+    });
     return { kind: "tcp", host: "127.0.0.1", port: address.port };
   }
 
@@ -81,6 +91,14 @@ export class TerminalDirectEndpointManager {
     for (const socket of endpoint.sockets) {
       socket.close(1008, reason.slice(0, 123));
     }
+    workerLogger.event("debug", "Direct terminal endpoint revoked", {
+      event: "terminal.direct.revoked",
+      subsystem: "terminal",
+      operation: "revoke-direct-endpoint",
+      status: "completed",
+      capabilityId,
+      counts: { endpoints: this.#endpoints.size },
+    });
   }
 
   close(): void {
@@ -91,6 +109,15 @@ export class TerminalDirectEndpointManager {
 
   #attach(terminalId: string, socket: WebSocket): void {
     const attachmentId = `direct:${randomUUID()}`;
+    const startedAtMs = Date.now();
+    workerLogger.event("info", "Direct terminal client connected", {
+      event: "terminal.direct.connected",
+      subsystem: "terminal",
+      operation: "attach-direct-client",
+      status: "completed",
+      terminalId,
+      attachmentId,
+    });
     let detached = false;
     const send = (message: unknown) => {
       if (socket.readyState === WebSocket.OPEN) {
@@ -101,6 +128,15 @@ export class TerminalDirectEndpointManager {
       if (detached) return;
       detached = true;
       this.terminals.detach(terminalId, attachmentId);
+      workerLogger.event("info", "Direct terminal client disconnected", {
+        event: "terminal.direct.disconnected",
+        subsystem: "terminal",
+        operation: "attach-direct-client",
+        status: "completed",
+        terminalId,
+        attachmentId,
+        durationMs: Date.now() - startedAtMs,
+      });
     };
     socket.on("message", (data, isBinary) => {
       if (isBinary) {
@@ -143,6 +179,16 @@ export class TerminalDirectEndpointManager {
         },
       );
     } catch (error) {
+      workerLogger.event("warn", "Direct terminal attachment failed", {
+        event: "terminal.direct.attach-failed",
+        subsystem: "terminal",
+        operation: "attach-direct-client",
+        reasonCode: "terminal-unavailable",
+        status: "failed",
+        terminalId,
+        attachmentId,
+        error: workerLogError(error),
+      });
       send({
         type: "error",
         message:
@@ -156,6 +202,16 @@ export class TerminalDirectEndpointManager {
         if (result.status === "exited") send({ type: "exit", ...result });
       })
       .catch((error: unknown) => {
+        workerLogger.event("warn", "Direct terminal session disconnected", {
+          event: "terminal.direct.session-failed",
+          subsystem: "terminal",
+          operation: "attach-direct-client",
+          reasonCode: "session-disconnected",
+          status: "failed",
+          terminalId,
+          attachmentId,
+          error: workerLogError(error),
+        });
         send({
           type: "error",
           message:

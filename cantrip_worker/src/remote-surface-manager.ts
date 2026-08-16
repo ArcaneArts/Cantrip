@@ -12,7 +12,7 @@ import {
   WorkerWebRtcAttachment,
   type WorkerWebRtcAttachmentOptions,
 } from "./remote-surfaces/webrtc.js";
-import { workerLogger } from "./logger.js";
+import { workerLogError, workerLogger } from "./logger.js";
 
 type AttachCommand = Extract<WorkerCommand, { type: "surface.attach" }>;
 
@@ -61,6 +61,7 @@ interface ManagedSession {
     }
   >;
   session: RemoteSurfaceSession;
+  startedAtMs: number;
 }
 
 export type WorkerWebRtcAttachmentFactory = (
@@ -101,6 +102,7 @@ export class RemoteSurfaceManager {
     accepted: true;
     transport: RemoteSurfaceTransport;
   }> {
+    const startedAtMs = Date.now();
     let managed = this.#sessions.get(command.surfaceId);
     if (!managed) {
       managed = await this.openSession(command);
@@ -117,6 +119,20 @@ export class RemoteSurfaceManager {
       !managed.attachments.has(command.attachmentId) &&
       managed.attachments.size >= MAX_ATTACHMENTS_PER_SURFACE
     ) {
+      workerLogger.event("warn", "Remote surface attachment limit reached", {
+        event: "surface.attachment.rejected",
+        subsystem: "remote-surface",
+        operation: "attach",
+        reasonCode: "attachment-limit",
+        status: "rejected",
+        surfaceId: command.surfaceId,
+        attachmentId: command.attachmentId,
+        surfaceKind: command.configuration.kind,
+        counts: {
+          attachments: managed.attachments.size,
+          limit: MAX_ATTACHMENTS_PER_SURFACE,
+        },
+      });
       throw new Error(
         `Remote Surface ${command.surfaceId} already has ${MAX_ATTACHMENTS_PER_SURFACE} active attachments.`,
       );
@@ -161,13 +177,38 @@ export class RemoteSurfaceManager {
           // Preserve the original attach failure.
         }
       }
+      workerLogger.event("warn", "Remote surface attachment failed", {
+        event: "surface.attachment.failed",
+        subsystem: "remote-surface",
+        operation: "attach",
+        reasonCode: "adapter-attach-failed",
+        status: "failed",
+        surfaceId: command.surfaceId,
+        attachmentId: command.attachmentId,
+        surfaceKind: command.configuration.kind,
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+      });
       throw error;
     }
+    const transport = managed.attachments.get(command.attachmentId)?.webrtc
+      ? "webrtc"
+      : "websocket";
+    workerLogger.event("info", "Remote surface attached", {
+      event: "surface.attachment.attached",
+      subsystem: "remote-surface",
+      operation: "attach",
+      status: "completed",
+      surfaceId: command.surfaceId,
+      attachmentId: command.attachmentId,
+      surfaceKind: command.configuration.kind,
+      transport,
+      durationMs: Date.now() - startedAtMs,
+      counts: { attachments: managed.attachments.size },
+    });
     return {
       accepted: true,
-      transport: managed.attachments.get(command.attachmentId)?.webrtc
-        ? "webrtc"
-        : "websocket",
+      transport,
     };
   }
 
@@ -179,6 +220,16 @@ export class RemoteSurfaceManager {
     await attachment.webrtc?.close(false);
     this.#outboundSequences.delete(`${surfaceId}:${attachmentId}`);
     await managed.session.detach(attachmentId);
+    workerLogger.event("info", "Remote surface detached", {
+      event: "surface.attachment.detached",
+      subsystem: "remote-surface",
+      operation: "detach",
+      status: "completed",
+      surfaceId,
+      attachmentId,
+      surfaceKind: managed.session.configuration.kind,
+      counts: { attachments: managed.attachments.size },
+    });
   }
 
   async configure(
@@ -194,11 +245,29 @@ export class RemoteSurfaceManager {
   }
 
   async suspend(surfaceId: string): Promise<void> {
-    await this.requiredSession(surfaceId).session.suspend();
+    const managed = this.requiredSession(surfaceId);
+    await managed.session.suspend();
+    workerLogger.event("debug", "Remote surface suspended", {
+      event: "surface.lifecycle.suspended",
+      subsystem: "remote-surface",
+      operation: "suspend",
+      status: "completed",
+      surfaceId,
+      surfaceKind: managed.session.configuration.kind,
+    });
   }
 
   async resume(surfaceId: string): Promise<void> {
-    await this.requiredSession(surfaceId).session.resume();
+    const managed = this.requiredSession(surfaceId);
+    await managed.session.resume();
+    workerLogger.event("debug", "Remote surface resumed", {
+      event: "surface.lifecycle.resumed",
+      subsystem: "remote-surface",
+      operation: "resume",
+      status: "completed",
+      surfaceId,
+      surfaceKind: managed.session.configuration.kind,
+    });
   }
 
   async close(surfaceId: string): Promise<void> {
@@ -214,6 +283,16 @@ export class RemoteSurfaceManager {
       ),
     );
     await managed.session.close();
+    workerLogger.event("info", "Remote surface closed", {
+      event: "surface.lifecycle.closed",
+      subsystem: "remote-surface",
+      operation: "close",
+      status: "completed",
+      surfaceId,
+      surfaceKind: managed.session.configuration.kind,
+      durationMs: Date.now() - managed.startedAtMs,
+      counts: { attachments: managed.attachments.size },
+    });
   }
 
   async closeAll(): Promise<void> {
@@ -226,6 +305,20 @@ export class RemoteSurfaceManager {
     const opening = this.#openingSessions.get(command.surfaceId);
     if (opening) return opening;
     if (this.#sessions.size + this.#openingSessions.size >= this.maxSessions) {
+      workerLogger.event("warn", "Remote surface session limit reached", {
+        event: "surface.lifecycle.rejected",
+        subsystem: "remote-surface",
+        operation: "open",
+        reasonCode: "session-limit",
+        status: "rejected",
+        surfaceId: command.surfaceId,
+        surfaceKind: command.configuration.kind,
+        counts: {
+          sessions: this.#sessions.size,
+          openings: this.#openingSessions.size,
+          limit: this.maxSessions,
+        },
+      });
       throw new Error(
         `Worker Remote Surface limit of ${this.maxSessions} sessions reached.`,
       );
@@ -236,14 +329,49 @@ export class RemoteSurfaceManager {
         `Worker does not support ${command.configuration.kind} Remote Surfaces.`,
       );
     }
+    const startedAtMs = Date.now();
+    workerLogger.event("info", "Remote surface opening", {
+      event: "surface.lifecycle.opening",
+      subsystem: "remote-surface",
+      operation: "open",
+      status: "started",
+      surfaceId: command.surfaceId,
+      surfaceKind: command.configuration.kind,
+      preferredTransport: command.preferredTransport,
+    });
     const next = adapter
       .open(command, (attachmentId, channel, payload) =>
         this.emit(command.surfaceId, attachmentId, channel, payload),
       )
       .then((session) => {
-        const managed = { attachments: new Map(), session };
+        const managed = { attachments: new Map(), session, startedAtMs };
         this.#sessions.set(command.surfaceId, managed);
+        workerLogger.event("info", "Remote surface opened", {
+          event: "surface.lifecycle.opened",
+          subsystem: "remote-surface",
+          operation: "open",
+          status: "ready",
+          surfaceId: command.surfaceId,
+          surfaceKind: command.configuration.kind,
+          transport: session.transport,
+          durationMs: Date.now() - startedAtMs,
+          counts: { sessions: this.#sessions.size },
+        });
         return managed;
+      })
+      .catch((error) => {
+        workerLogger.event("error", "Remote surface failed to open", {
+          event: "surface.lifecycle.open-failed",
+          subsystem: "remote-surface",
+          operation: "open",
+          reasonCode: "adapter-open-failed",
+          status: "failed",
+          surfaceId: command.surfaceId,
+          surfaceKind: command.configuration.kind,
+          durationMs: Date.now() - startedAtMs,
+          error: workerLogError(error),
+        });
+        throw error;
       });
     this.#openingSessions.set(command.surfaceId, next);
     try {
@@ -331,7 +459,22 @@ export class RemoteSurfaceManager {
     try {
       await this.acceptFrame(header, payload);
     } catch (error) {
-      workerLogger.warn("Rejected Remote Surface WebRTC frame", error);
+      workerLogger.rateLimited(
+        `surface-webrtc-frame-rejected:${header.surfaceId}:${header.attachmentId}`,
+        "warn",
+        "Rejected Remote Surface WebRTC frame",
+        {
+          event: "surface.transport.frame-rejected",
+          subsystem: "remote-surface",
+          operation: "receive-webrtc-frame",
+          reasonCode: "invalid-frame",
+          status: "rejected",
+          surfaceId: header.surfaceId,
+          attachmentId: header.attachmentId,
+          channel: header.channel,
+          error: workerLogError(error),
+        },
+      );
     }
   }
 

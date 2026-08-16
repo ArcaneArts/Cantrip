@@ -6,6 +6,8 @@ import {
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
 
+import { workerLogger } from "./logger.js";
+
 type FrameEmitter = (
   header: TunnelDataPlaneFrameHeader,
   payload: Uint8Array,
@@ -23,6 +25,7 @@ interface TcpStream {
   pausedForCredit: boolean;
   socket: Socket;
   sourceHalfClosed: boolean;
+  startedAtMs: number;
 }
 
 const EMPTY_PAYLOAD = new Uint8Array();
@@ -142,9 +145,19 @@ export class TunnelTcpDestinationAdapter {
   }
 
   disconnect(): void {
+    const count = this.#streams.size;
     for (const stream of [...this.#streams.values()]) {
       this.#remove(stream);
       stream.socket.destroy();
+    }
+    if (count > 0) {
+      workerLogger.event("info", "Tunnel destination streams disconnected", {
+        event: "tunnel.destination.disconnected-all",
+        subsystem: "tunnel",
+        operation: "disconnect",
+        status: "completed",
+        counts: { streams: count },
+      });
     }
   }
 
@@ -157,14 +170,17 @@ export class TunnelTcpDestinationAdapter {
   ): void {
     const streamKey = key(header);
     if (this.#streams.has(streamKey)) {
+      this.#logRejected(header, "protocol-error");
       this.#reject(header, "protocol-error", "Tunnel stream already exists.");
       return;
     }
     if (this.#streams.size >= MAX_STREAMS) {
+      this.#logRejected(header, "limit-exceeded");
       this.#reject(header, "limit-exceeded", "Worker stream limit reached.");
       return;
     }
     if (header.target.kind !== "tcp") {
+      this.#logRejected(header, "target-rejected");
       this.#reject(header, "target-rejected", "Unsupported tunnel target.");
       return;
     }
@@ -184,13 +200,34 @@ export class TunnelTcpDestinationAdapter {
       pausedForCredit: false,
       socket,
       sourceHalfClosed: false,
+      startedAtMs: Date.now(),
     };
     this.#streams.set(streamKey, stream);
+    workerLogger.event("debug", "Tunnel destination connection opening", {
+      event: "tunnel.destination.opening",
+      subsystem: "tunnel",
+      operation: "connect",
+      status: "started",
+      tunnelId: header.tunnelId,
+      attachmentId: header.attachmentId,
+      connectionId: header.connectionId,
+      counts: { streams: this.#streams.size },
+    });
     socket.setNoDelay(true);
     socket.setTimeout(CONNECT_TIMEOUT_MS);
     socket.once("connect", () => {
       if (!this.#streams.has(streamKey)) return;
       socket.setTimeout(0);
+      workerLogger.event("info", "Tunnel destination connected", {
+        event: "tunnel.destination.connected",
+        subsystem: "tunnel",
+        operation: "connect",
+        status: "completed",
+        tunnelId: header.tunnelId,
+        attachmentId: header.attachmentId,
+        connectionId: header.connectionId,
+        durationMs: Date.now() - stream.startedAtMs,
+      });
       if (
         !this.#emit(
           {
@@ -207,6 +244,7 @@ export class TunnelTcpDestinationAdapter {
     });
     socket.once("timeout", () => {
       if (!this.#remove(stream)) return;
+      this.#logFailure(stream, "timeout", "target-unavailable");
       this.#emit(
         {
           ...responseBase(stream),
@@ -239,6 +277,7 @@ export class TunnelTcpDestinationAdapter {
     });
     socket.once("error", () => {
       if (!this.#remove(stream)) return;
+      this.#logFailure(stream, "connection-error", "connection-failed");
       this.#emit(
         {
           ...responseBase(stream),
@@ -251,6 +290,17 @@ export class TunnelTcpDestinationAdapter {
     });
     socket.once("close", () => {
       if (!this.#remove(stream)) return;
+      workerLogger.event("debug", "Tunnel destination connection closed", {
+        event: "tunnel.destination.closed",
+        subsystem: "tunnel",
+        operation: "connect",
+        status: "completed",
+        tunnelId: stream.header.tunnelId,
+        attachmentId: stream.header.attachmentId,
+        connectionId: stream.header.connectionId,
+        durationMs: Date.now() - stream.startedAtMs,
+        counts: { streams: this.#streams.size },
+      });
       this.#emit(
         {
           ...responseBase(stream),
@@ -359,5 +409,42 @@ export class TunnelTcpDestinationAdapter {
     if (this.#streams.get(streamKey) !== stream) return false;
     this.#streams.delete(streamKey);
     return true;
+  }
+
+  #logRejected(
+    header: Extract<TunnelDataPlaneFrameHeader, { kind: "connect" }>,
+    reasonCode: string,
+  ): void {
+    workerLogger.rateLimited(
+      `tunnel-connect-rejected:${reasonCode}`,
+      "warn",
+      "Tunnel destination connection rejected",
+      {
+        event: "tunnel.destination.rejected",
+        subsystem: "tunnel",
+        operation: "connect",
+        reasonCode,
+        status: "rejected",
+        tunnelId: header.tunnelId,
+        attachmentId: header.attachmentId,
+        connectionId: header.connectionId,
+      },
+    );
+  }
+
+  #logFailure(stream: TcpStream, reasonCode: string, code: string): void {
+    workerLogger.event("warn", "Tunnel destination connection failed", {
+      event: "tunnel.destination.failed",
+      subsystem: "tunnel",
+      operation: "connect",
+      reasonCode,
+      status: "failed",
+      tunnelId: stream.header.tunnelId,
+      attachmentId: stream.header.attachmentId,
+      connectionId: stream.header.connectionId,
+      code,
+      durationMs: Date.now() - stream.startedAtMs,
+      counts: { streams: this.#streams.size },
+    });
   }
 }

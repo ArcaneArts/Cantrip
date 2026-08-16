@@ -19,6 +19,7 @@ import type {
   RemoteSurfaceAttachment,
   RemoteSurfaceSession,
 } from "../remote-surface-manager.js";
+import { workerLogError, workerLogger } from "../logger.js";
 import {
   assertComputerUseResult,
   computerUseResultObject,
@@ -89,6 +90,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #applicationIcons: DesktopApplicationIconProvider | null;
   #framePipeline: NativeDesktopFramePipeline | null;
   readonly #streamSettings: DesktopStreamSettings;
+  readonly #surfaceId: string;
   readonly #tuner: AdaptiveDesktopStreamTuner;
   #captureTimer: ReturnType<typeof setTimeout> | null = null;
   #capturing = false;
@@ -111,6 +113,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
   #pipelineRevision = 0;
   #statsWindowStarted = performance.now();
   #suspended = false;
+  readonly #startedAtMs = Date.now();
   #switchingTarget = false;
   #targetInventory: RemoteDesktopTargetInventory = {
     monitors: [],
@@ -129,6 +132,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     listTargets: DesktopTargetInventoryFactory;
     applicationIcons: DesktopApplicationIconProvider | null;
     streamSettings: DesktopStreamSettings;
+    surfaceId: string;
   }) {
     this.#client = options.client;
     this.configuration = options.configuration;
@@ -141,6 +145,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#listTargets = options.listTargets;
     this.#applicationIcons = options.applicationIcons;
     this.#streamSettings = options.streamSettings;
+    this.#surfaceId = options.surfaceId;
     this.#tuner = new AdaptiveDesktopStreamTuner(options.streamSettings);
   }
 
@@ -206,7 +211,26 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       await this.publishTargetIcons(attachmentId, message.keys);
       return;
     }
-    await this.enqueue(() => this.applyInput(attachmentId, message));
+    try {
+      await this.enqueue(() => this.applyInput(attachmentId, message));
+    } catch (error) {
+      workerLogger.rateLimited(
+        `desktop-input-rejected:${this.#surfaceId}:${message.type}`,
+        "warn",
+        "Desktop input was rejected",
+        {
+          event: "desktop.input.rejected",
+          subsystem: "desktop",
+          operation: message.type,
+          reasonCode: "input-application-failed",
+          status: "rejected",
+          surfaceId: this.#surfaceId,
+          attachmentId,
+          error: workerLogError(error),
+        },
+      );
+      throw error;
+    }
   }
 
   suspend(): void {
@@ -215,6 +239,14 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#pendingFrame = null;
     this.#nextCaptureAt = 0;
     this.publishState(undefined, "suspended", null);
+    workerLogger.event("debug", "Desktop capture suspended", {
+      event: "desktop.capture.suspended",
+      subsystem: "desktop",
+      operation: "suspend",
+      status: "completed",
+      surfaceId: this.#surfaceId,
+      counts: { attachments: this.#attachments.size },
+    });
   }
 
   resume(): void {
@@ -226,12 +258,33 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#inputTargetError,
     );
     this.scheduleCapture(0);
+    workerLogger.event("debug", "Desktop capture resumed", {
+      event: "desktop.capture.resumed",
+      subsystem: "desktop",
+      operation: "resume",
+      status: "completed",
+      surfaceId: this.#surfaceId,
+      backend: this.#framePipeline ? "native" : "compatibility",
+    });
   }
 
   close(): void {
     this.#closed = true;
     this.clearCaptureTimer();
     this.#pendingFrame = null;
+    workerLogger.event("info", "Desktop capture session closed", {
+      event: "desktop.capture.closed",
+      subsystem: "desktop",
+      operation: "close",
+      status: "completed",
+      surfaceId: this.#surfaceId,
+      durationMs: Date.now() - this.#startedAtMs,
+      backend: this.#framePipeline ? "native" : "compatibility",
+      counts: {
+        attachments: this.#attachments.size,
+        frames: this.#framesEmitted,
+      },
+    });
     this.#attachments.clear();
   }
 
@@ -406,6 +459,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     restoreRequested = false,
   ): Promise<void> {
     try {
+      const startedAtMs = Date.now();
       this.#targetInventory = await this.loadTargets();
       if (
         restoreRequested &&
@@ -415,9 +469,41 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         return;
       }
       this.publishTargets(attachmentId);
+      workerLogger.sampled(
+        `desktop-targets-refreshed:${this.#surfaceId}`,
+        10,
+        "debug",
+        "Desktop target inventory refreshed",
+        {
+          event: "desktop.targets.refreshed",
+          subsystem: "desktop",
+          operation: "list-targets",
+          status: "completed",
+          surfaceId: this.#surfaceId,
+          durationMs: Date.now() - startedAtMs,
+          counts: {
+            monitors: this.#targetInventory.monitors.length,
+            windows: this.#targetInventory.windows.length,
+          },
+        },
+      );
     } catch (error) {
       this.#targetMessage = `Could not refresh desktop targets: ${errorMessage(error)}`;
       this.publishTargets(attachmentId);
+      workerLogger.rateLimited(
+        `desktop-targets-refresh-failed:${this.#surfaceId}`,
+        "warn",
+        "Desktop target inventory refresh failed",
+        {
+          event: "desktop.targets.refresh-failed",
+          subsystem: "desktop",
+          operation: "list-targets",
+          reasonCode: "target-enumeration-failed",
+          status: "failed",
+          surfaceId: this.#surfaceId,
+          error: workerLogError(error),
+        },
+      );
     }
   }
 
@@ -436,6 +522,16 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       return;
     }
     this.#switchingTarget = true;
+    const startedAtMs = Date.now();
+    workerLogger.event("debug", "Desktop capture target switch started", {
+      event: "desktop.target.switching",
+      subsystem: "desktop",
+      operation: "switch-target",
+      status: "started",
+      surfaceId: this.#surfaceId,
+      targetKind: requested.kind,
+      recovering: captureError !== undefined,
+    });
     this.clearCaptureTimer();
     this.#pendingFrame = null;
     try {
@@ -453,6 +549,7 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         this.publishState(undefined, "launching", this.#targetMessage);
         this.publishTargets();
         try {
+          const launchStartedAtMs = Date.now();
           await this.#launchApplication(requested.application);
           const deadline = Date.now() + APPLICATION_LAUNCH_TIMEOUT_MS;
           while (Date.now() < deadline) {
@@ -467,8 +564,33 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
               break;
             }
           }
+          workerLogger.event(
+            "info",
+            "Desktop target application launch completed",
+            {
+              event: "desktop.application.launch-completed",
+              subsystem: "desktop",
+              operation: "launch-application",
+              status: "completed",
+              surfaceId: this.#surfaceId,
+              durationMs: Date.now() - launchStartedAtMs,
+            },
+          );
         } catch (error) {
           this.#targetMessage = `Could not launch ${requested.application}: ${errorMessage(error)}`;
+          workerLogger.event(
+            "warn",
+            "Desktop target application launch failed",
+            {
+              event: "desktop.application.launch-failed",
+              subsystem: "desktop",
+              operation: "launch-application",
+              reasonCode: "launch-failed",
+              status: "failed",
+              surfaceId: this.#surfaceId,
+              error: workerLogError(error),
+            },
+          );
         } finally {
           this.#launchingApplication = null;
         }
@@ -501,6 +623,18 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
         this.#inputTargetError ?? this.#targetMessage,
       );
       await this.refreshTargets();
+      workerLogger.event("info", "Desktop capture target switched", {
+        event: "desktop.target.switched",
+        subsystem: "desktop",
+        operation: "switch-target",
+        status: "completed",
+        surfaceId: this.#surfaceId,
+        requestedKind: requested.kind,
+        activeKind: pipeline.target.kind,
+        exactMatch: desktopTargetMatches(requested, pipeline.target),
+        backend: "native",
+        durationMs: Date.now() - startedAtMs,
+      });
     } catch (error) {
       this.#framePipeline = null;
       this.#pipelineRevision += 1;
@@ -509,6 +643,19 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#targetMessage = `Desktop target unavailable; showing the default display: ${errorMessage(error)}`;
       this.publishState(undefined, "ready", this.#targetMessage);
       this.publishTargets();
+      workerLogger.event("warn", "Desktop capture target switch fell back", {
+        event: "desktop.target.fallback",
+        subsystem: "desktop",
+        operation: "switch-target",
+        reasonCode: "target-unavailable",
+        status: "degraded",
+        surfaceId: this.#surfaceId,
+        requestedKind: requested.kind,
+        activeKind: "monitor",
+        backend: "compatibility",
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+      });
     } finally {
       this.#switchingTarget = false;
       const pending = this.#pendingTarget;
@@ -534,6 +681,20 @@ class ManagedDesktopRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#targetMessage = `Native capture stopped; showing the default display through compatibility capture: ${errorMessage(error)}`;
     this.publishState(undefined, "ready", this.#targetMessage);
     this.publishTargets();
+    workerLogger.event(
+      "warn",
+      "Desktop capture switched to compatibility backend",
+      {
+        event: "desktop.capture.backend-fallback",
+        subsystem: "desktop",
+        operation: "capture",
+        reasonCode: "native-capture-failed",
+        status: "degraded",
+        surfaceId: this.#surfaceId,
+        backend: "compatibility",
+        error: workerLogError(error),
+      },
+    );
   }
 
   private publishTargets(attachmentId?: string): void {
@@ -843,8 +1004,24 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
   }
 
   async initialize(): Promise<void> {
+    const startedAtMs = Date.now();
+    workerLogger.event("info", "Desktop capture initialization started", {
+      event: "desktop.adapter.initializing",
+      subsystem: "desktop",
+      operation: "initialize",
+      status: "started",
+      platform: os.platform(),
+    });
     if (!(["darwin", "linux", "win32"] as string[]).includes(os.platform())) {
       this.#initializationError = `Managed desktop capture is not supported on ${os.platform()}.`;
+      workerLogger.event("warn", "Desktop capture is unsupported", {
+        event: "desktop.adapter.unsupported",
+        subsystem: "desktop",
+        operation: "initialize",
+        reasonCode: "unsupported-platform",
+        status: "unavailable",
+        platform: os.platform(),
+      });
       return;
     }
     try {
@@ -855,14 +1032,42 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
           throw new Error("Native desktop capture returned an invalid size.");
         }
         this.#nativeCaptureAvailable = true;
-      } catch {
+      } catch (error) {
         this.#nativeCaptureAvailable = false;
+        workerLogger.event("warn", "Desktop native capture is unavailable", {
+          event: "desktop.adapter.native-unavailable",
+          subsystem: "desktop",
+          operation: "initialize",
+          reasonCode: "native-capture-unavailable",
+          status: "degraded",
+          platform: os.platform(),
+          error: workerLogError(error),
+        });
       }
       this.#available = true;
       this.#initializationError = null;
+      workerLogger.event("info", "Desktop capture initialization completed", {
+        event: "desktop.adapter.ready",
+        subsystem: "desktop",
+        operation: "initialize",
+        status: "completed",
+        platform: os.platform(),
+        backend: this.frameBackend,
+        durationMs: Date.now() - startedAtMs,
+      });
     } catch (error) {
       this.#available = false;
       this.#initializationError = errorMessage(error);
+      workerLogger.event("warn", "Desktop capture initialization failed", {
+        event: "desktop.adapter.failed",
+        subsystem: "desktop",
+        operation: "initialize",
+        reasonCode: "automation-unavailable",
+        status: "unavailable",
+        platform: os.platform(),
+        durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
+      });
       await this.shutdown();
     }
   }
@@ -905,9 +1110,19 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
         this.#initializationError ?? "Managed desktop capture is unavailable.",
       );
     }
+    const startedAtMs = Date.now();
+    workerLogger.event("debug", "Desktop capture session opening", {
+      event: "desktop.capture.opening",
+      subsystem: "desktop",
+      operation: "open",
+      status: "started",
+      surfaceId: command.surfaceId,
+      backend: this.frameBackend,
+      requestedTargetKind: command.configuration.target?.kind ?? "default",
+    });
     const client = await this.client();
     const display = desktopDisplaySize(await client.getDisplaySize());
-    return new ManagedDesktopRemoteSurfaceSession({
+    const session = new ManagedDesktopRemoteSurfaceSession({
       client,
       configuration: command.configuration,
       createFramePipeline: this.createFramePipeline,
@@ -918,7 +1133,18 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
       listTargets: this.listTargets,
       applicationIcons: this.applicationIcons,
       streamSettings: command.desktopStream ?? DEFAULT_STREAM_SETTINGS,
+      surfaceId: command.surfaceId,
     });
+    workerLogger.event("info", "Desktop capture session opened", {
+      event: "desktop.capture.opened",
+      subsystem: "desktop",
+      operation: "open",
+      status: "completed",
+      surfaceId: command.surfaceId,
+      backend: this.frameBackend,
+      durationMs: Date.now() - startedAtMs,
+    });
+    return session;
   }
 
   async shutdown(): Promise<void> {
@@ -926,6 +1152,14 @@ export class ManagedDesktopRemoteSurfaceAdapter implements RemoteSurfaceAdapter 
     this.#client = null;
     this.#nativeCaptureAvailable = false;
     await client?.close().catch(() => undefined);
+    if (client) {
+      workerLogger.event("info", "Desktop capture adapter stopped", {
+        event: "desktop.adapter.stopped",
+        subsystem: "desktop",
+        operation: "shutdown",
+        status: "completed",
+      });
+    }
   }
 
   private async client(): Promise<DesktopAutomationClient> {

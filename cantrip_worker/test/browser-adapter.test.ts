@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { BrowserRemoteSurfaceAdapter } from "../src/browser/browser-adapter.js";
 import { findChromiumExecutable } from "../src/browser/chromium.js";
+import { readWorkerLogs } from "../src/logger.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -47,6 +48,11 @@ describe("BrowserRemoteSurfaceAdapter", () => {
   it.skipIf(!findChromiumExecutable())(
     "adopts an active Cantrip browser profile instead of relaunching it",
     async () => {
+      const afterCursor = readWorkerLogs({
+        afterCursor: 0,
+        limit: 200,
+        minimumLevel: "trace",
+      }).latestCursor;
       const server = createServer((_request, response) => {
         response.setHeader("content-type", "text/html; charset=utf-8");
         response.end("<title>Adopted</title><p>Still running</p>");
@@ -128,6 +134,16 @@ describe("BrowserRemoteSurfaceAdapter", () => {
         await firstSession.close();
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
+      const serializedLogs = JSON.stringify(
+        readWorkerLogs({
+          afterCursor,
+          limit: 200,
+          minimumLevel: "trace",
+        }).records,
+      );
+      expect(serializedLogs).toContain("browser.runtime.ready");
+      expect(serializedLogs).not.toContain(root);
+      expect(serializedLogs).not.toContain("Adopted");
     },
     30_000,
   );

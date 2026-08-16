@@ -54,7 +54,15 @@ function commandLogContext(
 ): OperationalLogContext {
   const command = request.command as WorkerCommand & {
     chatId?: unknown;
+    projectId?: unknown;
+    sessionId?: unknown;
+    surfaceId?: unknown;
     terminalId?: unknown;
+    worktreeId?: unknown;
+    branch?: unknown;
+    revision?: unknown;
+    baseRevision?: unknown;
+    headRevision?: unknown;
   };
   return {
     event: "worker.command.dispatched",
@@ -63,8 +71,30 @@ function commandLogContext(
     status: "started",
     requestId: request.requestId,
     ...(typeof command.chatId === "string" ? { chatId: command.chatId } : {}),
+    ...(typeof command.projectId === "string"
+      ? { projectId: command.projectId }
+      : {}),
+    ...(typeof command.sessionId === "string"
+      ? { sessionId: command.sessionId }
+      : {}),
+    ...(typeof command.surfaceId === "string"
+      ? { surfaceId: command.surfaceId }
+      : {}),
     ...(typeof command.terminalId === "string"
       ? { terminalId: command.terminalId }
+      : {}),
+    ...(typeof command.worktreeId === "string"
+      ? { worktreeId: command.worktreeId }
+      : {}),
+    ...(typeof command.branch === "string" ? { branch: command.branch } : {}),
+    ...(typeof command.revision === "string"
+      ? { revision: command.revision }
+      : {}),
+    ...(typeof command.baseRevision === "string"
+      ? { baseRevision: command.baseRevision }
+      : {}),
+    ...(typeof command.headRevision === "string"
+      ? { headRevision: command.headRevision }
       : {}),
   };
 }
@@ -88,15 +118,42 @@ function commandCompletionLogContext(
   request: WorkerRequestEnvelope,
   result: unknown,
 ): Record<string, unknown> {
-  if (
-    request.command.type !== "chat.turn" ||
-    !result ||
-    typeof result !== "object" ||
-    Array.isArray(result)
-  ) {
+  if (Array.isArray(result)) {
+    return { counts: { items: result.length } };
+  }
+  if (!result || typeof result !== "object") {
     return {};
   }
   const value = result as Record<string, unknown>;
+  if (request.command.type !== "chat.turn") {
+    const countFields = [
+      "branches",
+      "commits",
+      "conflicts",
+      "entries",
+      "files",
+      "issues",
+      "items",
+      "models",
+      "pullRequests",
+      "references",
+      "releases",
+      "remotes",
+      "repositories",
+      "shares",
+      "stashes",
+      "submodules",
+      "tags",
+      "targets",
+      "worktrees",
+    ] as const;
+    const counts = Object.fromEntries(
+      countFields.flatMap((field) =>
+        Array.isArray(value[field]) ? [[field, value[field].length]] : [],
+      ),
+    );
+    return Object.keys(counts).length > 0 ? { counts } : {};
+  }
   return {
     ...(typeof value.status === "string" ? { status: value.status } : {}),
     ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
@@ -582,13 +639,20 @@ export class WorkerConnection {
           );
         }
       }
+      const completionContext = commandCompletionLogContext(request, result);
       const completedContext = {
         ...commandLogContext(request),
         event: "worker.command.completed",
         status: "completed",
-        ...commandCompletionLogContext(request, result),
+        ...completionContext,
         durationMs: Math.round(performance.now() - startedAt),
-        counts: { emittedEvents: emittedEventCount },
+        counts: {
+          ...(completionContext.counts &&
+          typeof completionContext.counts === "object"
+            ? completionContext.counts
+            : {}),
+          emittedEvents: emittedEventCount,
+        },
       };
       if (level === "trace") {
         workerLogger.sampled(

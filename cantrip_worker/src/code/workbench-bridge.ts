@@ -16,7 +16,7 @@ import {
 } from "@cantrip/protocol";
 import WebSocket, { WebSocketServer } from "ws";
 
-import { workerLogger } from "../logger.js";
+import { workerLogError, workerLogger } from "../logger.js";
 
 interface BridgeSession {
   appearance: CodeAppearance;
@@ -124,9 +124,19 @@ export class CodeWorkbenchBridge {
       try {
         url = new URL(request.url ?? "/", "http://127.0.0.1");
       } catch (error) {
-        workerLogger.warn("Cantrip Code bridge rejected an invalid upgrade", {
-          error,
-        });
+        workerLogger.rateLimited(
+          "code-bridge-invalid-upgrade",
+          "warn",
+          "Cantrip Code bridge rejected an invalid upgrade",
+          {
+            event: "code.bridge.upgrade-rejected",
+            subsystem: "code",
+            operation: "bridge-upgrade",
+            reasonCode: "invalid-request",
+            status: "rejected",
+            error: workerLogError(error),
+          },
+        );
         socket.destroy();
         return;
       }
@@ -135,17 +145,25 @@ export class CodeWorkbenchBridge {
       const session = sessionId ? this.#sessions.get(sessionId) : null;
       const token = url.searchParams.get("token") ?? "";
       if (!sessionId || !session || !secureTokenEqual(session.token, token)) {
-        workerLogger.warn("Cantrip Code bridge rejected an upgrade", {
-          hasSessionId: Boolean(sessionId),
-          hasToken: Boolean(token),
-          path: url.pathname,
-          reason: !sessionId
-            ? "invalid-session-path"
-            : !session
-              ? "unknown-session"
-              : "invalid-token",
-          sessionId,
-        });
+        workerLogger.rateLimited(
+          `code-bridge-upgrade-rejected:${sessionId ?? "unknown"}`,
+          "warn",
+          "Cantrip Code bridge rejected an upgrade",
+          {
+            event: "code.bridge.upgrade-rejected",
+            subsystem: "code",
+            operation: "bridge-upgrade",
+            hasSessionId: Boolean(sessionId),
+            hasToken: Boolean(token),
+            reasonCode: !sessionId
+              ? "invalid-session-path"
+              : !session
+                ? "unknown-session"
+                : "invalid-token",
+            status: "rejected",
+            sessionId,
+          },
+        );
         socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
         socket.destroy();
         return;
@@ -169,8 +187,11 @@ export class CodeWorkbenchBridge {
     this.#http = server;
     this.#webSockets = webSockets;
     this.#origin = `ws://127.0.0.1:${address.port}`;
-    workerLogger.info("Cantrip Code workbench bridge is listening", {
-      origin: this.#origin,
+    workerLogger.event("info", "Cantrip Code workbench bridge is listening", {
+      event: "code.bridge.listening",
+      subsystem: "code",
+      operation: "start-bridge",
+      status: "completed",
     });
   }
 
@@ -200,7 +221,11 @@ export class CodeWorkbenchBridge {
       this.#origin,
     );
     url.searchParams.set("token", token);
-    workerLogger.info("Cantrip Code bridge session registered", {
+    workerLogger.event("debug", "Cantrip Code bridge session registered", {
+      event: "code.bridge.session-registered",
+      subsystem: "code",
+      operation: "register-session",
+      status: "completed",
       appearance,
       replaced: Boolean(current),
       sessionId,
@@ -217,7 +242,11 @@ export class CodeWorkbenchBridge {
     }
     session.sockets.clear();
     this.#sessions.delete(sessionId);
-    workerLogger.info("Cantrip Code bridge session unregistered", {
+    workerLogger.event("debug", "Cantrip Code bridge session unregistered", {
+      event: "code.bridge.session-unregistered",
+      subsystem: "code",
+      operation: "unregister-session",
+      status: "completed",
       sessionId,
     });
   }
@@ -354,10 +383,18 @@ export class CodeWorkbenchBridge {
         this.#requestOnSocket(session, socket, "setTheme", { appearance }),
       );
     if (requests.length === 0) {
-      workerLogger.info("Cantrip Code theme saved pending bridge connection", {
-        appearance,
-        sessionId,
-      });
+      workerLogger.event(
+        "debug",
+        "Cantrip Code theme saved pending bridge connection",
+        {
+          event: "code.bridge.theme-deferred",
+          subsystem: "code",
+          operation: "set-theme",
+          status: "deferred",
+          appearance,
+          sessionId,
+        },
+      );
       return;
     }
     // The workspace file is the durable theme source. A workbench socket can
@@ -366,12 +403,19 @@ export class CodeWorkbenchBridge {
     // making Code availability depend on an acknowledgement from every view.
     const results = await Promise.allSettled(requests);
     const rejected = results.filter((result) => result.status === "rejected");
-    workerLogger.info("Cantrip Code theme delivered to workbench bridge", {
-      appearance,
-      failedSockets: rejected.length,
-      sessionId,
-      sockets: results.length,
-    });
+    workerLogger.event(
+      "debug",
+      "Cantrip Code theme delivered to workbench bridge",
+      {
+        event: "code.bridge.theme-delivered",
+        subsystem: "code",
+        operation: "set-theme",
+        status: rejected.length === 0 ? "completed" : "degraded",
+        appearance,
+        sessionId,
+        counts: { failedSockets: rejected.length, sockets: results.length },
+      },
+    );
   }
 
   async notifyExternalFiles(
@@ -440,20 +484,28 @@ export class CodeWorkbenchBridge {
       return;
     }
     session.sockets.add(socket);
-    workerLogger.info("Cantrip Code workbench bridge connected", {
+    workerLogger.event("info", "Cantrip Code workbench bridge connected", {
+      event: "code.bridge.connected",
+      subsystem: "code",
+      operation: "connect",
+      status: "completed",
       sessionId,
-      sockets: session.sockets.size,
+      counts: { sockets: session.sockets.size },
     });
     socket.on("message", (data, isBinary) => {
       if (!isBinary) this.#onMessage(session, socket, data.toString());
     });
     socket.once("close", (code, reason) => {
       session.sockets.delete(socket);
-      workerLogger.warn("Cantrip Code workbench bridge disconnected", {
+      workerLogger.event("warn", "Cantrip Code workbench bridge disconnected", {
+        event: "code.bridge.disconnected",
+        subsystem: "code",
+        operation: "connect",
+        reasonCode: code === 1000 ? "normal-close" : "connection-closed",
+        status: code === 1000 ? "completed" : "degraded",
         code,
-        reason: reason.toString().slice(0, 256),
         sessionId,
-        sockets: session.sockets.size,
+        counts: { sockets: session.sockets.size },
       });
       this.#rejectPending(
         session,
@@ -464,11 +516,20 @@ export class CodeWorkbenchBridge {
     void this.#requestOnSocket(session, socket, "setTheme", {
       appearance: session.appearance,
     }).catch((error) => {
-      workerLogger.warn("Cantrip Code initial bridge theme request failed", {
-        appearance: session.appearance,
-        error,
-        sessionId,
-      });
+      workerLogger.event(
+        "warn",
+        "Cantrip Code initial bridge theme request failed",
+        {
+          event: "code.bridge.theme-delivery-failed",
+          subsystem: "code",
+          operation: "set-theme",
+          reasonCode: "request-failed",
+          status: "degraded",
+          appearance: session.appearance,
+          error: workerLogError(error),
+          sessionId,
+        },
+      );
     });
   }
 
@@ -477,9 +538,19 @@ export class CodeWorkbenchBridge {
     try {
       message = JSON.parse(raw) as BridgeResponse | BridgeState;
     } catch (error) {
-      workerLogger.warn("Cantrip Code bridge received invalid JSON", {
-        error,
-      });
+      workerLogger.rateLimited(
+        "code-bridge-invalid-message",
+        "warn",
+        "Cantrip Code bridge received an invalid message",
+        {
+          event: "code.bridge.message-rejected",
+          subsystem: "code",
+          operation: "receive-message",
+          reasonCode: "invalid-json",
+          status: "rejected",
+          error: workerLogError(error),
+        },
+      );
       return;
     }
     if (message.type === "state") {
@@ -539,7 +610,12 @@ export class CodeWorkbenchBridge {
         const error = new Error(
           `Cantrip workbench ${method} request timed out.`,
         );
-        workerLogger.warn("Cantrip Code bridge request timed out", {
+        workerLogger.event("warn", "Cantrip Code bridge request timed out", {
+          event: "code.bridge.request-timeout",
+          subsystem: "code",
+          operation: method,
+          reasonCode: "timeout",
+          status: "failed",
           method,
           sessionId: this.#sessionId(session),
         });
@@ -551,8 +627,13 @@ export class CodeWorkbenchBridge {
         if (!error) return;
         clearTimeout(timer);
         session.pending.delete(id);
-        workerLogger.warn("Cantrip Code bridge request send failed", {
-          error,
+        workerLogger.event("warn", "Cantrip Code bridge request send failed", {
+          event: "code.bridge.request-send-failed",
+          subsystem: "code",
+          operation: method,
+          reasonCode: "send-failed",
+          status: "failed",
+          error: workerLogError(error),
           method,
           sessionId: this.#sessionId(session),
         });
