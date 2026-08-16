@@ -1,4 +1,5 @@
 import {
+  agentTurnResultSchema,
   decodeWorkerRequestEnvelope,
   decodeRemoteSurfaceFrame,
   decodeTunnelDataPlaneFrame,
@@ -356,6 +357,9 @@ export class WorkerConnection {
   private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
     const startedAt = performance.now();
     let emittedEventCount = 0;
+    if (request.command.type === "chat.turn") {
+      workerLogger.info("Codex command started", commandLogContext(request));
+    }
     try {
       const emit = (event: WorkerEvent) => {
         emittedEventCount += 1;
@@ -372,6 +376,27 @@ export class WorkerConnection {
         ok: true,
         result,
       });
+      if (request.command.type === "chat.turn") {
+        const parsedResult = agentTurnResultSchema.safeParse(result);
+        if (parsedResult.success) {
+          this.sendServerEnvelope({
+            kind: "notification",
+            notification: {
+              type: "chat.turn.outcome",
+              chatId: request.command.chatId,
+              clientMessageId: request.command.clientMessageId,
+              executionLaneId: request.command.executionLaneId,
+              worktreeId: request.command.worktreeId,
+              outcome: { ok: true, result: parsedResult.data },
+            },
+          });
+        } else {
+          workerLogger.error("Codex command returned an invalid result", {
+            ...commandLogContext(request),
+            error: parsedResult.error,
+          });
+        }
+      }
       if (
         request.command.type === "chat.turn" ||
         request.command.type === "chat.thread.ensure"
@@ -383,6 +408,7 @@ export class WorkerConnection {
         });
       }
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       workerLogger.error("Worker command failed", {
         ...commandLogContext(request),
         durationMs: Math.round(performance.now() - startedAt),
@@ -393,9 +419,22 @@ export class WorkerConnection {
         requestId: request.requestId,
         ok: false,
         error: {
-          message: error instanceof Error ? error.message : String(error),
+          message,
         },
       });
+      if (request.command.type === "chat.turn") {
+        this.sendServerEnvelope({
+          kind: "notification",
+          notification: {
+            type: "chat.turn.outcome",
+            chatId: request.command.chatId,
+            clientMessageId: request.command.clientMessageId,
+            executionLaneId: request.command.executionLaneId,
+            worktreeId: request.command.worktreeId,
+            outcome: { ok: false, error: message },
+          },
+        });
+      }
     }
   }
 }

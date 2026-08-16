@@ -8980,9 +8980,9 @@ export class ServerRepository {
     chatId: string,
     laneId: string,
     status: ChatSummary["status"],
-  ): Promise<void> {
+  ): Promise<boolean> {
     const now = new Date();
-    await this.database.transaction(async (transaction) => {
+    return this.database.transaction(async (transaction) => {
       const laneRows = await transaction
         .select({
           lane: schema.chatExecutionLanes,
@@ -9014,10 +9014,41 @@ export class ServerRepository {
       if (suspended[0] && laneRows[0]?.isPrimary) {
         await releaseChatLogicalBranchLease(transaction, laneId);
       }
+      if (!suspended[0]) return false;
       await transaction
         .update(schema.chats)
         .set({ status, updatedAt: now })
         .where(eq(schema.chats.id, chatId));
+      return true;
+    });
+  }
+
+  async updateChatExecutionLaneRuntime(
+    chatId: string,
+    laneId: string,
+    threadId: string | null,
+    status: string,
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const lanes = await transaction
+        .update(schema.chatExecutionLanes)
+        .set({ codexThreadId: threadId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.chatExecutionLanes.id, laneId),
+            eq(schema.chatExecutionLanes.chatId, chatId),
+          ),
+        )
+        .returning({
+          runtimeSessionId: schema.chatExecutionLanes.runtimeSessionId,
+        });
+      const runtimeSessionId = lanes[0]?.runtimeSessionId;
+      if (!runtimeSessionId) return false;
+      await transaction
+        .update(schema.chatRuntimeSessions)
+        .set({ codexThreadId: threadId, status, updatedAt: new Date() })
+        .where(eq(schema.chatRuntimeSessions.id, runtimeSessionId));
+      return true;
     });
   }
 

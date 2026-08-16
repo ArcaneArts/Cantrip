@@ -1212,6 +1212,10 @@ export async function buildApp({
     string,
     ReturnType<typeof setTimeout>
   >();
+  const chatTurnOutcomeRecoveryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   const runningGitOperationRequests = new Set<string>();
   const workerNotificationSubscriptions = new Map<string, () => void>();
   const publishWorktreeStatus = (
@@ -1320,9 +1324,34 @@ export async function buildApp({
     if (source) scheduleWorkerWorktreeObservation(source.workerId);
   };
   const handleWorkerNotification = async (
+    ownerId: string,
     workerId: string,
     notification: WorkerNotification,
   ): Promise<void> => {
+    if (notification.type === "chat.turn.outcome") {
+      const key = `${workerId}:${notification.chatId}:${notification.clientMessageId}`;
+      const existing = chatTurnOutcomeRecoveryTimers.get(key);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        chatTurnOutcomeRecoveryTimers.delete(key);
+        void runAsOwner(ownerId, () =>
+          recoverChatTurnOutcome(ownerId, workerId, notification),
+        ).catch((error) => {
+          app.log.error(
+            {
+              chatId: notification.chatId,
+              clientMessageId: notification.clientMessageId,
+              err: error,
+              workerId,
+            },
+            "Could not recover a completed agent turn",
+          );
+        });
+      }, 1_000);
+      timer.unref();
+      chatTurnOutcomeRecoveryTimers.set(key, timer);
+      return;
+    }
     if (notification.type === "worktree.inventory.observed") {
       if (
         notification.inventory.sourcePath !== notification.sourcePath ||
@@ -1331,14 +1360,14 @@ export async function buildApp({
         return;
       }
       const context = await repository.getProjectWorktreeObservationContext(
-        applicationOwnerId(),
+        ownerId,
         workerId,
         notification.sourcePath,
         notification.inventory.primaryPath,
       );
       if (!context) return;
       const worktrees = await repository.reconcileProjectWorktrees(
-        applicationOwnerId(),
+        ownerId,
         context.projectId,
         workerId,
         notification.inventory,
@@ -1349,7 +1378,7 @@ export async function buildApp({
       return;
     }
     const context = await repository.getProjectWorktreeObservationContext(
-      applicationOwnerId(),
+      ownerId,
       workerId,
       notification.sourcePath,
       notification.worktreePath,
@@ -1366,7 +1395,10 @@ export async function buildApp({
       notification.result,
     );
   };
-  const ensureWorkerNotificationSubscription = (workerId: string): void => {
+  const ensureWorkerNotificationSubscription = (
+    ownerId: string,
+    workerId: string,
+  ): void => {
     if (
       !bridge.subscribeNotifications ||
       workerNotificationSubscriptions.has(workerId)
@@ -1376,10 +1408,12 @@ export async function buildApp({
     workerNotificationSubscriptions.set(
       workerId,
       bridge.subscribeNotifications(workerId, (notification) =>
-        handleWorkerNotification(workerId, notification).catch((error) => {
+        runAsOwner(ownerId, () =>
+          handleWorkerNotification(ownerId, workerId, notification),
+        ).catch((error) => {
           app.log.warn(
             { err: error, notificationType: notification.type, workerId },
-            "Could not apply worker observation notification",
+            "Could not apply worker notification",
           );
         }),
       ),
@@ -5201,6 +5235,151 @@ export async function buildApp({
     }
   };
 
+  async function recoverChatTurnOutcome(
+    ownerId: string,
+    workerId: string,
+    notification: Extract<WorkerNotification, { type: "chat.turn.outcome" }>,
+  ): Promise<void> {
+    const laneContext = await repository.getChatExecutionLaneContext(
+      ownerId,
+      notification.chatId,
+      notification.executionLaneId,
+    );
+    if (
+      !laneContext ||
+      laneContext.lane.workerId !== workerId ||
+      laneContext.lane.worktreeId !== notification.worktreeId
+    ) {
+      app.log.warn(
+        {
+          chatId: notification.chatId,
+          clientMessageId: notification.clientMessageId,
+          executionLaneId: notification.executionLaneId,
+          workerId,
+        },
+        "Ignored an agent turn outcome outside its execution lane",
+      );
+      return;
+    }
+
+    const attribution = {
+      executionLaneId: notification.executionLaneId,
+      worktreeId: notification.worktreeId,
+    };
+    const assistantKey = `assistant:${notification.clientMessageId}`;
+    const errorKey = `error:${notification.clientMessageId}`;
+    const existingAssistant = await repository.getMessageByIdempotencyKey(
+      ownerId,
+      notification.chatId,
+      assistantKey,
+    );
+    const existingError = await repository.getMessageByIdempotencyKey(
+      ownerId,
+      notification.chatId,
+      errorKey,
+    );
+
+    if (notification.outcome.ok) {
+      await repository.updateChatExecutionLaneRuntime(
+        notification.chatId,
+        notification.executionLaneId,
+        notification.outcome.result.threadId,
+        "ready",
+      );
+      if (!existingAssistant) {
+        await upsertLiveChatMessage(
+          ownerId,
+          notification.chatId,
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "text",
+                text:
+                  notification.outcome.result.text ||
+                  "The agent completed without a message.",
+                phase: "final_answer",
+              },
+            ],
+            idempotencyKey: existingError ? errorKey : assistantKey,
+          },
+          attribution,
+        );
+      }
+    } else if (!existingAssistant) {
+      await repository.updateChatExecutionLaneRuntime(
+        notification.chatId,
+        notification.executionLaneId,
+        laneContext.lane.codexThreadId,
+        "ready",
+      );
+      await upsertLiveChatMessage(
+        ownerId,
+        notification.chatId,
+        {
+          role: "system",
+          content: [
+            {
+              type: "text",
+              text: `Agent failed: ${notification.outcome.error}`,
+            },
+          ],
+          idempotencyKey: errorKey,
+        },
+        attribution,
+      );
+    }
+
+    await interruptLiveAgentInteractionRequests(notification.chatId);
+    const finished = await repository.finishChatExecutionLane(
+      notification.chatId,
+      notification.executionLaneId,
+      notification.outcome.ok ? "idle" : "failed",
+    );
+    let recoveredFailedStatus = false;
+    if (!finished && notification.outcome.ok) {
+      const current = await repository.getChatExecutionContext(
+        ownerId,
+        notification.chatId,
+      );
+      if (current?.status === "failed" && !current.executionLaneId) {
+        await repository.setChatStatus(notification.chatId, "idle");
+        recoveredFailedStatus = true;
+      }
+    }
+    await notifyCodeAgentState(
+      {
+        chatId: notification.chatId,
+        cwd: laneContext.worktree.path,
+        workerId,
+      },
+      notification.outcome.ok ? "completed" : "failed",
+    );
+    publishChatTurnBoundary(notification.chatId, laneContext.chat.projectId);
+    app.log.info(
+      {
+        chatId: notification.chatId,
+        clientMessageId: notification.clientMessageId,
+        executionLaneId: notification.executionLaneId,
+        outcome: notification.outcome.ok ? "completed" : "failed",
+        ...(notification.outcome.ok
+          ? {
+              responseCharacterCount: notification.outcome.result.text.length,
+              threadId: notification.outcome.result.threadId,
+              turnId: notification.outcome.result.turnId,
+            }
+          : { error: notification.outcome.error }),
+        workerId,
+      },
+      "Recovered agent turn outcome from worker",
+    );
+    if (finished || recoveredFailedStatus) {
+      if (!(await continuePendingWorktreeTransition(notification.chatId))) {
+        void dispatchNextQueuedPrompt(notification.chatId);
+      }
+    }
+  }
+
   async function beginTurn(
     context: ChatExecutionContext,
     input: Omit<ChatTurnCreate, "attachmentIds" | "mode"> & {
@@ -5305,6 +5484,18 @@ export async function buildApp({
         execution.chatId,
         { modelId },
         requestedReasoningEffort,
+      );
+      app.log.info(
+        {
+          chatId: execution.chatId,
+          clientMessageId: userMessage.id,
+          executionLaneId,
+          modelId,
+          providerAccountId: runtimes[0]!.provider.accountId,
+          providerId: runtimes[0]!.provider.id,
+          workerId: execution.workerId,
+        },
+        "Agent turn accepted",
       );
     } catch (error) {
       await repository.finishChatExecutionLane(
@@ -5632,13 +5823,16 @@ export async function buildApp({
               );
             }
             await interruptLiveAgentInteractionRequests(execution.chatId);
-            await repository.finishChatExecutionLane(
+            const finished = await repository.finishChatExecutionLane(
               execution.chatId,
               executionLaneId,
               "idle",
             );
             publishChatTurnBoundary(execution.chatId, execution.projectId);
-            if (!(await continuePendingWorktreeTransition(execution.chatId))) {
+            if (
+              finished &&
+              !(await continuePendingWorktreeTransition(execution.chatId))
+            ) {
               void dispatchNextQueuedPrompt(execution.chatId);
             }
             return;
@@ -5700,13 +5894,16 @@ export async function buildApp({
           attribution,
         );
         await interruptLiveAgentInteractionRequests(execution.chatId);
-        await repository.finishChatExecutionLane(
+        const finished = await repository.finishChatExecutionLane(
           execution.chatId,
           executionLaneId,
           interrupted ? "idle" : "failed",
         );
         publishChatTurnBoundary(execution.chatId, execution.projectId);
-        if (!(await continuePendingWorktreeTransition(execution.chatId))) {
+        if (
+          finished &&
+          !(await continuePendingWorktreeTransition(execution.chatId))
+        ) {
           void dispatchNextQueuedPrompt(execution.chatId);
         }
       }
@@ -19748,7 +19945,7 @@ export async function buildApp({
           "Could not reconcile terminal services",
         );
       });
-      ensureWorkerNotificationSubscription(workerId);
+      ensureWorkerNotificationSubscription(workerAuth.ownerId, workerId);
       scheduleWorkerWorktreeObservation(workerId);
       void resumePendingWorktreeTransitionsForWorker(
         workerAuth.ownerId,
@@ -19940,6 +20137,9 @@ export async function buildApp({
     customizationStatusObservers.clear();
     for (const timer of worktreeObservationTimers.values()) clearTimeout(timer);
     worktreeObservationTimers.clear();
+    for (const timer of chatTurnOutcomeRecoveryTimers.values())
+      clearTimeout(timer);
+    chatTurnOutcomeRecoveryTimers.clear();
     for (const unsubscribe of workerNotificationSubscriptions.values()) {
       unsubscribe();
     }
