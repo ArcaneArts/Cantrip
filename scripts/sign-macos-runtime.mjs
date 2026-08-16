@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { open, readdir, stat } from "node:fs/promises";
+import { open, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -73,9 +73,11 @@ export async function signMacosRuntime({
   for (const binary of binaries) {
     const arguments_ = ["--force", "--sign", identity];
     if (identity !== "-") arguments_.push("--timestamp");
-    if (((await stat(binary)).mode & 0o111) !== 0) {
-      arguments_.push("--options", "runtime");
-    }
+    // Packagers may strip the executable bit from helper binaries while
+    // preserving their Mach-O executable file type. Apple evaluates the
+    // binary itself during notarization, so every bundled Mach-O must carry
+    // the hardened-runtime flag rather than relying on its filesystem mode.
+    arguments_.push("--options", "runtime");
     if (path.basename(binary) === "node") {
       arguments_.push("--entitlements", entitlements);
     }

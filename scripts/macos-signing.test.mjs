@@ -40,7 +40,7 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
     await writeFile(node, thinMachO);
     await writeFile(codex, thinMachO);
     await chmod(node, 0o755);
-    await chmod(codex, 0o755);
+    await chmod(codex, 0o644);
     await writeFile(path.join(root, "README.txt"), "not native\n");
     assert.deepEqual(
       new Set(await findMachOBinaries(root)),
@@ -61,6 +61,7 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
     assert.ok(nodeCall.includes("--options"));
     assert.ok(nodeCall.includes("--entitlements"));
     assert.ok(codexCall.includes("--timestamp"));
+    assert.ok(codexCall.includes("--options"));
     assert.equal(codexCall.includes("--entitlements"), false);
 
     const adhocCalls = [];
@@ -123,11 +124,7 @@ test("signs generated disk images after Tauri packaging", async () => {
       identity: "-",
       run: (command, arguments_) => adhocCalls.push({ command, arguments_ }),
     });
-    assert.equal(adhocCalls.length, 4);
-    assert.equal(
-      adhocCalls.some(({ arguments_ }) => arguments_.includes("--timestamp")),
-      false,
-    );
+    assert.deepEqual(adhocCalls, []);
 
     const packageScript = await readFile(
       new URL("./package-app.mjs", import.meta.url),
@@ -257,6 +254,20 @@ test("accepts a certificate-signed distribution without notarization", async () 
     assert.equal(
       calls.some(
         ({ command, arguments_ }) =>
+          command === "codesign" && arguments_.at(-1) === dmg,
+      ),
+      true,
+    );
+    assert.equal(
+      calls.some(
+        ({ command, arguments_ }) =>
+          command === "hdiutil" && arguments_.at(-1) === dmg,
+      ),
+      true,
+    );
+    assert.equal(
+      calls.some(
+        ({ command, arguments_ }) =>
           command === "xcrun" && arguments_[0] === "stapler",
       ),
       false,
@@ -266,7 +277,53 @@ test("accepts a certificate-signed distribution without notarization", async () 
   }
 });
 
-test("accepts a fully sealed ad-hoc distribution when explicitly allowed", async () => {
+test("rejects a mode-0644 Mach-O without hardened runtime", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-runtime-"));
+  try {
+    const app = path.join(root, "macos", "Cantrip.app");
+    const helper = path.join(
+      app,
+      "Contents",
+      "Resources",
+      "runtime",
+      "spawn-helper",
+    );
+    const dmg = path.join(root, "dmg", "Cantrip.dmg");
+    await mkdir(path.dirname(helper), { recursive: true });
+    await mkdir(path.dirname(dmg), { recursive: true });
+    await writeFile(helper, thinMachO);
+    await chmod(helper, 0o644);
+    await writeFile(dmg, "dmg");
+
+    await assert.rejects(
+      verifyMacosDistribution({
+        bundleDirectory: root,
+        runCommand: (_command, arguments_) => {
+          const target = arguments_.at(-1);
+          if (target === app && arguments_[0] === "-dvvv") {
+            return [
+              "Identifier=art.cantrip",
+              "flags=0x10000(runtime)",
+              "Authority=Developer ID Application: Cantrip Test (TEAMID)",
+            ].join("\n");
+          }
+          if (target === helper && arguments_[0] === "-dvvv") {
+            return "Authority=Developer ID Application: Cantrip Test (TEAMID)";
+          }
+          if (target === dmg && arguments_[0] === "-dvvv") {
+            return "Authority=Developer ID Application: Cantrip Test (TEAMID)";
+          }
+          return "";
+        },
+      }),
+      /does not enable Hardened Runtime/u,
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("accepts a sealed ad-hoc app in an unsigned DMG when allowed", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-verify-adhoc-"));
   try {
     const app = path.join(root, "macos", "Cantrip.app");
@@ -315,6 +372,20 @@ test("accepts a fully sealed ad-hoc distribution when explicitly allowed", async
     assert.equal(
       calls.some(({ command }) => command === "spctl"),
       false,
+    );
+    assert.equal(
+      calls.some(
+        ({ command, arguments_ }) =>
+          command === "codesign" && arguments_.at(-1) === dmg,
+      ),
+      false,
+    );
+    assert.equal(
+      calls.some(
+        ({ command, arguments_ }) =>
+          command === "hdiutil" && arguments_.at(-1) === dmg,
+      ),
+      true,
     );
     assert.equal(
       calls.some(

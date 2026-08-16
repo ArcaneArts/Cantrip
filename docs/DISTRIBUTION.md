@@ -100,10 +100,11 @@ submit the app or DMG for notarization. A Developer ID certificate is therefore
 not required by the workflow, although macOS may still warn users that the
 unnotarized app has not been checked by Apple. If macOS imports the `.p12` but
 reports no currently valid identity, packaging falls back to a complete ad-hoc
-signature rather than failing the release. The fallback still seals and
-verifies every native runtime and the app bundle, then explicitly signs and
-verifies the DMG after Tauri creates it. It does not establish an Apple-verified
-developer identity.
+app signature rather than failing the release. The fallback still seals and
+verifies every native runtime and the app bundle. It deliberately leaves the
+outer DMG unsigned because macOS blocks ad-hoc-signed disk images before they
+can mount. Certificate-backed releases still sign and verify the DMG. The
+fallback does not establish an Apple-verified developer identity.
 
 For a signed and notarized local package, install the Developer ID certificate
 in the login keychain, find its exact identity, and provide the downloaded API

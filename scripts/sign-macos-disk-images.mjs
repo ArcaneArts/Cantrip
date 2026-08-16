@@ -30,6 +30,7 @@ export async function signMacosDiskImages({
   if (dmgs.length === 0) {
     throw new Error(`No macOS DMG was found in ${bundleDirectory}.`);
   }
+  if (identity === "-") return dmgs;
   for (const dmg of dmgs) {
     run("xattr", ["-c", dmg]);
     const arguments_ = ["--force", "--sign", identity];
@@ -64,8 +65,11 @@ const isMain =
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const dmgs = await signMacosDiskImages(parseArguments(process.argv.slice(2)));
+  const input = parseArguments(process.argv.slice(2));
+  const dmgs = await signMacosDiskImages(input);
   console.log(
-    `Signed ${dmgs.length} macOS disk image${dmgs.length === 1 ? "" : "s"}.`,
+    input.identity === "-"
+      ? `Left ${dmgs.length} macOS disk image${dmgs.length === 1 ? "" : "s"} unsigned so Gatekeeper can mount the ad-hoc fallback.`
+      : `Signed ${dmgs.length} macOS disk image${dmgs.length === 1 ? "" : "s"}.`,
   );
 }
