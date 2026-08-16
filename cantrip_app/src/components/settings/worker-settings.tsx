@@ -598,7 +598,7 @@ export function WorkerSettings() {
   };
 
   return (
-    <div className="mx-auto grid max-w-6xl gap-4">
+    <div className="grid w-full gap-4">
       <div className="flex flex-wrap items-center gap-2">
         <SettingsSearchField
           ariaLabel="Search workers"

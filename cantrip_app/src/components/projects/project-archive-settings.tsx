@@ -77,7 +77,7 @@ export function ProjectArchiveSettings({
   const chats = archived.data ?? [];
 
   return (
-    <div className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
       <section aria-labelledby="project-archive-title">
         <div className="mb-4">
           <h2 id="project-archive-title" className="font-semibold">

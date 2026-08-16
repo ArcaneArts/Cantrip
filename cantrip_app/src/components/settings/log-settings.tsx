@@ -577,7 +577,7 @@ export function LogSettings() {
             : "Offline";
 
   return (
-    <div className="mx-auto flex h-full min-h-0 w-full max-w-[96rem] flex-col gap-3">
+    <div className="flex h-full min-h-0 w-full flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {compact ? (
           <select

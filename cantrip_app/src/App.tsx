@@ -644,7 +644,7 @@ function RepositoryImporter({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 overflow-hidden p-5 sm:p-8">
+      <div className="flex w-full flex-1 flex-col gap-4 overflow-hidden p-5 sm:p-8">
         {!workerId ? (
           <Card>
             <CardHeader>
@@ -1782,10 +1782,7 @@ function ChatTranscript({
         className="chat-message-scroll flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8"
         onScroll={handleTranscriptScroll}
       >
-        <div
-          ref={transcriptContentRef}
-          className="mx-auto flex max-w-3xl flex-col gap-5"
-        >
+        <div ref={transcriptContentRef} className="flex w-full flex-col gap-5">
           {messages.data?.length === 0 ? (
             <div className="grid min-h-[45vh] place-items-center text-center">
               <div>
@@ -1955,7 +1952,7 @@ function ChatTranscript({
         className="pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4"
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       >
-        <div className="pointer-events-auto relative mx-auto max-w-3xl">
+        <div className="pointer-events-auto relative w-full">
           {showScrollToBottom ? (
             <Button
               type="button"
