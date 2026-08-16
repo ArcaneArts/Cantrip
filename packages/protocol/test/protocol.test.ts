@@ -1001,7 +1001,14 @@ describe("Cantrip protocol", () => {
         models: [],
         range: { start: "2025-08-12", end: "2026-08-11" },
       }).total,
-    ).toEqual({ inputTokens: 800, outputTokens: 400, totalTokens: 1_200 });
+    ).toEqual({
+      inputTokens: 800,
+      outputTokens: 400,
+      cachedInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      reasoningOutputTokens: 0,
+      totalTokens: 1_200,
+    });
     expect(
       projectTokenUsageSchema.safeParse({
         total: { inputTokens: -1, outputTokens: 0, totalTokens: -1 },

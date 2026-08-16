@@ -243,6 +243,7 @@ import {
   providerAccessTokenLeaseRequestSchema,
   providerAccessTokenLeaseSchema,
   providerModelCatalogResultSchema,
+  providerTelemetryAnalyticsSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
   mcpServerConfigurationSchema,
@@ -8405,6 +8406,37 @@ export async function buildApp({
         : reply.code(404).send({ error: "Account provider not found." });
     },
   );
+
+  app.get<{
+    Querystring: {
+      providerId?: string;
+      providerAccountId?: string;
+      modelId?: string;
+      reasoningEffort?: string;
+      projectId?: string;
+      days?: string;
+    };
+  }>("/api/analytics/provider-telemetry", async (request, reply) => {
+    const parsedDays = Number.parseInt(request.query.days ?? "90", 10);
+    const days = Number.isFinite(parsedDays)
+      ? Math.min(365, Math.max(1, parsedDays))
+      : 90;
+    const to = new Date();
+    const from = new Date(to.getTime() - days * 86_400_000);
+    const analytics = await repository.getProviderTelemetryAnalytics(
+      applicationOwnerId(),
+      {
+        providerId: request.query.providerId || undefined,
+        providerAccountId: request.query.providerAccountId || undefined,
+        modelId: request.query.modelId || undefined,
+        reasoningEffort: request.query.reasoningEffort || undefined,
+        projectId: request.query.projectId || undefined,
+        from,
+        to,
+      },
+    );
+    return reply.send(providerTelemetryAnalyticsSchema.parse(analytics));
+  });
 
   app.post<{
     Params: { providerId: string };

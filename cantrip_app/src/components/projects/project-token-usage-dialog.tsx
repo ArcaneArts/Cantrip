@@ -2,7 +2,13 @@ import type {
   ProjectTokenUsage,
   ProjectTokenUsageBreakdown,
 } from "@cantrip/protocol";
-import { ArrowDownToLine, ArrowUpFromLine, Coins } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Brain,
+  Coins,
+  DatabaseZap,
+} from "lucide-react";
 import { useMemo } from "react";
 
 import {
@@ -90,27 +96,43 @@ export function ProjectTokenUsageAnalytics({
 
   return (
     <>
-      <section className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-card/60 p-4">
+      <section className="grid divide-x border-y sm:grid-cols-5">
+        <div className="px-3 py-3">
           <p className="text-xs text-muted-foreground">Total</p>
-          <p className="mt-2 text-2xl font-semibold tabular-nums">
+          <p className="mt-2 text-lg font-semibold tabular-nums">
             {formatTokenCount(usage.total.totalTokens)}
           </p>
         </div>
-        <div className="rounded-xl border bg-card/60 p-4">
+        <div className="px-3 py-3">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <ArrowDownToLine className="size-3.5" /> Input
           </p>
-          <p className="mt-2 text-2xl font-semibold tabular-nums">
+          <p className="mt-2 text-lg font-semibold tabular-nums">
             {formatTokenCount(usage.total.inputTokens)}
           </p>
         </div>
-        <div className="rounded-xl border bg-card/60 p-4">
+        <div className="px-3 py-3">
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <ArrowUpFromLine className="size-3.5" /> Output
           </p>
-          <p className="mt-2 text-2xl font-semibold tabular-nums">
+          <p className="mt-2 text-lg font-semibold tabular-nums">
             {formatTokenCount(usage.total.outputTokens)}
+          </p>
+        </div>
+        <div className="px-3 py-3">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <DatabaseZap className="size-3.5" /> Cached input
+          </p>
+          <p className="mt-2 text-lg font-semibold tabular-nums">
+            {formatTokenCount(usage.total.cachedInputTokens)}
+          </p>
+        </div>
+        <div className="px-3 py-3">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Brain className="size-3.5" /> Reasoning
+          </p>
+          <p className="mt-2 text-lg font-semibold tabular-nums">
+            {formatTokenCount(usage.total.reasoningOutputTokens)}
           </p>
         </div>
       </section>
