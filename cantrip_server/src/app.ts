@@ -5404,6 +5404,7 @@ export async function buildApp({
       workerPrompt?: string;
     } = {},
   ): Promise<ChatMessage> {
+    const ownerId = applicationOwnerId();
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
     }
@@ -5427,11 +5428,11 @@ export async function buildApp({
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
     await prepareCodeEditorsForTurn(context);
     const mcpServers = await repository.listEffectiveMcpServers(
-      applicationOwnerId(),
+      ownerId,
       context.projectId,
     );
     const execution = await repository.startChatExecutionLane(
-      applicationOwnerId(),
+      ownerId,
       context.chatId,
       options.acquiringActor ?? "user",
       options.purpose ?? "Chat turn",
@@ -5448,17 +5449,10 @@ export async function buildApp({
     let priorMessages: ChatMessage[];
     let userMessage: ChatMessage;
     try {
-      await updateLiveChatPlanMode(
-        applicationOwnerId(),
-        execution.chatId,
-        turnPlanMode,
-      );
-      priorMessages = await repository.listMessages(
-        applicationOwnerId(),
-        execution.chatId,
-      );
+      await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
+      priorMessages = await repository.listMessages(ownerId, execution.chatId);
       const appended = await repository.appendMessage(
-        applicationOwnerId(),
+        ownerId,
         execution.chatId,
         {
           role: options.messageRole ?? "user",
@@ -5480,7 +5474,7 @@ export async function buildApp({
       if (!appended) throw new Error("Chat not found.");
       userMessage = appended;
       await setLiveChatMessageModelRoute(
-        applicationOwnerId(),
+        ownerId,
         userMessage.id,
         modelId,
         runtimes[0]!,
@@ -5490,7 +5484,7 @@ export async function buildApp({
         },
       );
       await repository.setChatModel(
-        applicationOwnerId(),
+        ownerId,
         execution.chatId,
         { modelId },
         requestedReasoningEffort,
@@ -5517,7 +5511,7 @@ export async function buildApp({
       throw error;
     }
 
-    void (async () => {
+    void runAsOwner(ownerId, async () => {
       let anyActivity = false;
       const changedPaths = new Set<string>();
       try {
@@ -5537,7 +5531,7 @@ export async function buildApp({
             : continuationPrompt(priorMessages, requestedPrompt);
           if (index > 0) {
             await setLiveChatMessageModelRoute(
-              applicationOwnerId(),
+              ownerId,
               userMessage.id,
               modelId,
               runtime,
@@ -5550,7 +5544,7 @@ export async function buildApp({
           }
           if (preparedReasoning.adjusted && requestedReasoningEffort) {
             await appendLiveChatMessage(
-              applicationOwnerId(),
+              ownerId,
               execution.chatId,
               {
                 role: "system",
@@ -5615,190 +5609,196 @@ export async function buildApp({
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
-                onEvent: async (event) => {
-                  attemptActivity = true;
-                  anyActivity = true;
-                  if (event.type === "agent.interaction.requested") {
-                    try {
-                      await recordLiveAgentInteractionRequest({
-                        requestKey: event.request.requestKey,
-                        projectId: execution.projectId,
-                        provenance: {
-                          chatId: execution.chatId,
-                          threadId: event.request.threadId,
-                          turnId: event.request.turnId,
-                          itemId: event.request.itemId,
-                          executionLaneId,
-                          workflowRunId: null,
-                          workflowNodeId: null,
-                          workerId: execution.workerId,
-                        },
-                        payload: event.request.payload,
-                        expiresAt: event.request.expiresAt,
-                      });
-                    } catch (error) {
+                onEvent: (event) =>
+                  runAsOwner(ownerId, async () => {
+                    attemptActivity = true;
+                    anyActivity = true;
+                    if (event.type === "agent.interaction.requested") {
                       try {
-                        await bridge.request(execution.workerId, {
-                          type: "agent.interaction.cancel",
+                        await recordLiveAgentInteractionRequest({
                           requestKey: event.request.requestKey,
-                          reason:
-                            "Cantrip could not persist the interaction safely.",
-                          model: runtime.model,
-                          provider: runtime.provider,
+                          projectId: execution.projectId,
+                          provenance: {
+                            chatId: execution.chatId,
+                            threadId: event.request.threadId,
+                            turnId: event.request.turnId,
+                            itemId: event.request.itemId,
+                            executionLaneId,
+                            workflowRunId: null,
+                            workflowNodeId: null,
+                            workerId: execution.workerId,
+                          },
+                          payload: event.request.payload,
+                          expiresAt: event.request.expiresAt,
                         });
-                      } catch {
-                        // The turn failure below remains fail closed.
+                      } catch (error) {
+                        try {
+                          await bridge.request(execution.workerId, {
+                            type: "agent.interaction.cancel",
+                            requestKey: event.request.requestKey,
+                            reason:
+                              "Cantrip could not persist the interaction safely.",
+                            model: runtime.model,
+                            provider: runtime.provider,
+                          });
+                        } catch {
+                          // The turn failure below remains fail closed.
+                        }
+                        throw error;
                       }
-                      throw error;
+                      return;
                     }
-                    return;
-                  }
-                  if (
-                    event.type === "agent.interaction.cleared" ||
-                    event.type === "agent.interaction.expired"
-                  ) {
-                    await terminalizeLiveAgentInteractionRequest(
-                      event.requestKey,
-                      execution.chatId,
-                      execution.workerId,
+                    if (
+                      event.type === "agent.interaction.cleared" ||
                       event.type === "agent.interaction.expired"
-                        ? "expired"
-                        : "interrupted",
-                    );
-                    return;
-                  }
-                  if (event.type === "agent.message") {
-                    const turnId = event.message.correlation?.turnId;
-                    await upsertLiveChatMessage(
-                      applicationOwnerId(),
-                      execution.chatId,
-                      {
-                        role: "assistant",
-                        content: [
-                          {
-                            type: "text",
-                            text: event.message.text,
-                            phase: event.message.phase,
-                            correlation: event.message.correlation,
-                          },
-                        ],
-                        idempotencyKey: `agent-message:${turnId ?? userMessage.id}:${event.message.id}`,
-                      },
-                      attribution,
-                    );
-                    if (event.message.phase !== "commentary" && turnId) {
-                      finalAgentTurns.add(turnId);
+                    ) {
+                      await terminalizeLiveAgentInteractionRequest(
+                        event.requestKey,
+                        execution.chatId,
+                        execution.workerId,
+                        event.type === "agent.interaction.expired"
+                          ? "expired"
+                          : "interrupted",
+                      );
+                      return;
                     }
-                    return;
-                  }
-                  if (event.type === "agent.checkpoint") {
-                    if (!event.text.trim()) return;
-                    if (finalAgentTurns.has(event.turnId)) return;
-                    await upsertLiveChatMessage(
-                      applicationOwnerId(),
-                      execution.chatId,
-                      {
-                        role: "assistant",
-                        content: [
-                          {
-                            type: "text",
-                            text: event.text,
-                            phase: "final_answer",
-                          },
-                        ],
-                        idempotencyKey: `goal-checkpoint:${userMessage.id}:${event.turnId}`,
-                      },
-                      attribution,
-                    );
-                    return;
-                  }
-                  if (event.type === "agent.plan.updated") {
-                    await updateLiveChatPlanSnapshot(
-                      execution.chatId,
-                      event.explanation,
-                      event.steps,
-                    );
-                    return;
-                  }
-                  if (event.type === "agent.plan.question") {
-                    await setLivePendingPlanQuestion(
-                      execution.chatId,
-                      event.question,
-                    );
-                    return;
-                  }
-                  if (event.type === "agent.plan.question-resolved") {
-                    const state = await repository.getChatPlanState(
-                      applicationOwnerId(),
-                      execution.chatId,
-                    );
-                    if (state?.question?.id === event.questionId) {
-                      await setLivePendingPlanQuestion(execution.chatId, null);
-                    }
-                    return;
-                  }
-                  if (event.type !== "agent.activity") return;
-                  if (event.activity.type === "usage") {
-                    const usageTurnId =
-                      event.activity.correlation?.turnId ?? event.activity.id;
-                    await recordRuntimeTokenUsage(
-                      `chat:${execution.chatId}:${usageTurnId}`,
-                      execution.projectId,
-                      execution.chatId,
-                      runtime,
-                      event.activity.last,
-                    );
-                  }
-                  if (
-                    event.activity.type === "rateLimit" &&
-                    runtime.provider.accountId
-                  ) {
-                    // Other Codex limit buckets have independent weekly windows;
-                    // only the canonical account quota belongs in provider usage.
-                    const weekly = weeklyUsageFromRateLimitActivity(
-                      event.activity,
-                    );
-                    if (weekly) {
-                      await repository
-                        .recordModelProviderAccountUsage({
-                          accountId: runtime.provider.accountId,
-                          ownerId: applicationOwnerId(),
-                          planType: event.activity.planType,
-                          providerId: runtime.provider.id,
-                          resetsAt: weekly.resetsAt,
-                          usedPercent: weekly.usedPercent,
-                        })
-                        .catch((error) => {
-                          app.log.warn(
+                    if (event.type === "agent.message") {
+                      const turnId = event.message.correlation?.turnId;
+                      await upsertLiveChatMessage(
+                        ownerId,
+                        execution.chatId,
+                        {
+                          role: "assistant",
+                          content: [
                             {
-                              accountId: runtime.provider.accountId,
-                              err: error,
-                              providerId: runtime.provider.id,
+                              type: "text",
+                              text: event.message.text,
+                              phase: event.message.phase,
+                              correlation: event.message.correlation,
                             },
-                            "Unable to persist provider account quota",
-                          );
-                        });
+                          ],
+                          idempotencyKey: `agent-message:${turnId ?? userMessage.id}:${event.message.id}`,
+                        },
+                        attribution,
+                      );
+                      if (event.message.phase !== "commentary" && turnId) {
+                        finalAgentTurns.add(turnId);
+                      }
+                      return;
                     }
-                  }
-                  if (event.activity.type === "fileChange") {
-                    for (const change of event.activity.changes) {
-                      changedPaths.add(change.path);
+                    if (event.type === "agent.checkpoint") {
+                      if (!event.text.trim()) return;
+                      if (finalAgentTurns.has(event.turnId)) return;
+                      await upsertLiveChatMessage(
+                        ownerId,
+                        execution.chatId,
+                        {
+                          role: "assistant",
+                          content: [
+                            {
+                              type: "text",
+                              text: event.text,
+                              phase: "final_answer",
+                            },
+                          ],
+                          idempotencyKey: `goal-checkpoint:${userMessage.id}:${event.turnId}`,
+                        },
+                        attribution,
+                      );
+                      return;
                     }
-                  }
-                  await upsertLiveChatMessage(
-                    applicationOwnerId(),
-                    execution.chatId,
-                    {
-                      role: "assistant",
-                      content: [{ type: "activity", activity: event.activity }],
-                      idempotencyKey:
-                        event.activity.type === "worktree"
-                          ? event.activity.id
-                          : `activity:${userMessage.id}:${event.activity.id}`,
-                    },
-                    attribution,
-                  );
-                },
+                    if (event.type === "agent.plan.updated") {
+                      await updateLiveChatPlanSnapshot(
+                        execution.chatId,
+                        event.explanation,
+                        event.steps,
+                      );
+                      return;
+                    }
+                    if (event.type === "agent.plan.question") {
+                      await setLivePendingPlanQuestion(
+                        execution.chatId,
+                        event.question,
+                      );
+                      return;
+                    }
+                    if (event.type === "agent.plan.question-resolved") {
+                      const state = await repository.getChatPlanState(
+                        ownerId,
+                        execution.chatId,
+                      );
+                      if (state?.question?.id === event.questionId) {
+                        await setLivePendingPlanQuestion(
+                          execution.chatId,
+                          null,
+                        );
+                      }
+                      return;
+                    }
+                    if (event.type !== "agent.activity") return;
+                    if (event.activity.type === "usage") {
+                      const usageTurnId =
+                        event.activity.correlation?.turnId ?? event.activity.id;
+                      await recordRuntimeTokenUsage(
+                        `chat:${execution.chatId}:${usageTurnId}`,
+                        execution.projectId,
+                        execution.chatId,
+                        runtime,
+                        event.activity.last,
+                      );
+                    }
+                    if (
+                      event.activity.type === "rateLimit" &&
+                      runtime.provider.accountId
+                    ) {
+                      // Other Codex limit buckets have independent weekly windows;
+                      // only the canonical account quota belongs in provider usage.
+                      const weekly = weeklyUsageFromRateLimitActivity(
+                        event.activity,
+                      );
+                      if (weekly) {
+                        await repository
+                          .recordModelProviderAccountUsage({
+                            accountId: runtime.provider.accountId,
+                            ownerId,
+                            planType: event.activity.planType,
+                            providerId: runtime.provider.id,
+                            resetsAt: weekly.resetsAt,
+                            usedPercent: weekly.usedPercent,
+                          })
+                          .catch((error) => {
+                            app.log.warn(
+                              {
+                                accountId: runtime.provider.accountId,
+                                err: error,
+                                providerId: runtime.provider.id,
+                              },
+                              "Unable to persist provider account quota",
+                            );
+                          });
+                      }
+                    }
+                    if (event.activity.type === "fileChange") {
+                      for (const change of event.activity.changes) {
+                        changedPaths.add(change.path);
+                      }
+                    }
+                    await upsertLiveChatMessage(
+                      ownerId,
+                      execution.chatId,
+                      {
+                        role: "assistant",
+                        content: [
+                          { type: "activity", activity: event.activity },
+                        ],
+                        idempotencyKey:
+                          event.activity.type === "worktree"
+                            ? event.activity.id
+                            : `activity:${userMessage.id}:${event.activity.id}`,
+                      },
+                      attribution,
+                    );
+                  }),
               },
             );
             const result = agentTurnResultSchema.parse(rawResult);
@@ -5815,7 +5815,7 @@ export async function buildApp({
             );
             if (!result.turnId || !finalAgentTurns.has(result.turnId)) {
               await appendLiveChatMessage(
-                applicationOwnerId(),
+                ownerId,
                 execution.chatId,
                 {
                   role: "assistant",
@@ -5887,7 +5887,7 @@ export async function buildApp({
           "Agent turn failed",
         );
         await appendLiveChatMessage(
-          applicationOwnerId(),
+          ownerId,
           execution.chatId,
           {
             role: "system",
@@ -5917,7 +5917,7 @@ export async function buildApp({
           void dispatchNextQueuedPrompt(execution.chatId);
         }
       }
-    })();
+    });
 
     const firstRuntime = runtimes[0]!;
     return {
