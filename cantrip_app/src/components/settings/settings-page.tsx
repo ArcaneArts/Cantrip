@@ -75,6 +75,7 @@ import {
   logoutCodex,
   startCodexDeviceLogin,
   refreshProviderModelCatalog,
+  reorderModelProviderAccounts,
   updateModelProviderAccount,
   updateModelProfile,
   updateModelProvider,
@@ -110,6 +111,7 @@ import {
   providerWeeklyAvailability,
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
+import { ProviderAccountPriorityChips } from "./provider-account-priority";
 
 export type SettingsSection =
   | "general"
@@ -770,6 +772,16 @@ export function SettingsPage({
       await reloadAccountProvider(account.providerId);
       setSelectedAccountId(account.id);
       setAccountLabelDraft(account.label);
+    },
+  });
+  const reorderProviderAccounts = useMutation({
+    mutationFn: ({ providerId, ids }: { providerId: string; ids: string[] }) =>
+      reorderModelProviderAccounts(providerId, ids),
+    onSuccess: async (_value, { providerId }) => {
+      await reloadAccountProvider(providerId);
+    },
+    onError: async (_error, { providerId }) => {
+      await reloadAccountProvider(providerId);
     },
   });
   const removeProviderAccount = useMutation({
@@ -1617,14 +1629,18 @@ export function SettingsPage({
                     <p className="text-sm font-medium">Accounts</p>
                     <p className="text-xs text-muted-foreground">
                       Each server-owned sign-in has separate credentials and can
-                      be tried as a fallback route from any worker.
+                      be tried as a fallback route from any worker. Drag the
+                      chips left or right to set priority; leftmost is first.
                     </p>
                   </div>
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={addProviderAccount.isPending}
+                    disabled={
+                      addProviderAccount.isPending ||
+                      reorderProviderAccounts.isPending
+                    }
                     onClick={() => addProviderAccount.mutate()}
                   >
                     {addProviderAccount.isPending ? (
@@ -1653,29 +1669,24 @@ export function SettingsPage({
                     </span>
                   </div>
                 ) : null}
-                <div className="flex flex-wrap gap-1.5">
-                  {accountProvider.accounts.map((account) => {
-                    const signedIn = account.credentialState === "signed-in";
-                    return (
-                      <Button
-                        key={account.id}
-                        type="button"
-                        size="sm"
-                        variant={
-                          account.id === selectedAccount?.id
-                            ? "outline"
-                            : "ghost"
-                        }
-                        onClick={() => setSelectedAccountId(account.id)}
-                      >
-                        <span
-                          className={`size-1.5 rounded-full ${signedIn ? "bg-emerald-400" : "bg-muted-foreground/45"}`}
-                        />
-                        {account.label}
-                      </Button>
+                <ProviderAccountPriorityChips
+                  accounts={accountProvider.accounts}
+                  disabled={reorderProviderAccounts.isPending}
+                  selectedAccountId={selectedAccount?.id ?? null}
+                  onSelect={setSelectedAccountId}
+                  onReorder={(accounts) => {
+                    const providerId = accountProvider.id;
+                    setEditingProvider((provider) =>
+                      provider?.id === providerId
+                        ? { ...provider, accounts }
+                        : provider,
                     );
-                  })}
-                </div>
+                    reorderProviderAccounts.mutate({
+                      providerId,
+                      ids: accounts.map(({ id }) => id),
+                    });
+                  }}
+                />
                 {selectedAccount ? (
                   <div className="flex items-center gap-2">
                     <input
@@ -1695,7 +1706,8 @@ export function SettingsPage({
                       title="Delete account"
                       disabled={
                         accountProvider.accounts.length <= 1 ||
-                        removeProviderAccount.isPending
+                        removeProviderAccount.isPending ||
+                        reorderProviderAccounts.isPending
                       }
                       onClick={() => removeProviderAccount.mutate()}
                     >
@@ -1881,6 +1893,7 @@ export function SettingsPage({
               beginCodexLogin.isError ||
               signOutCodex.isError ||
               addProviderAccount.isError ||
+              reorderProviderAccounts.isError ||
               removeProviderAccount.isError) ? (
               <p className="text-sm text-destructive">
                 {errorText(
@@ -1888,6 +1901,7 @@ export function SettingsPage({
                     beginCodexLogin.error ??
                     signOutCodex.error ??
                     addProviderAccount.error ??
+                    reorderProviderAccounts.error ??
                     removeProviderAccount.error,
                 )}
               </p>

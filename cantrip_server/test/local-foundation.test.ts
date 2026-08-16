@@ -57,6 +57,7 @@ import {
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
   modelProfileSummarySchema,
+  modelProviderAccountListSchema,
   modelProviderSummarySchema,
   projectListSchema,
   projectReplicaJobListSchema,
@@ -2067,6 +2068,37 @@ describe("local server foundation", () => {
       })
     ).json<{ id: string; label: string; position: number }>();
     expect(additionalAccount).toMatchObject({ label: "Work", position: 1 });
+    const reorderAccountsResponse = await firstApp.inject({
+      method: "PATCH",
+      url: `/api/settings/providers/${chatGptProvider.id}/accounts/order`,
+      payload: { ids: [additionalAccount.id, primaryChatGptAccount.id] },
+    });
+    expect(
+      reorderAccountsResponse.statusCode,
+      reorderAccountsResponse.body,
+    ).toBe(204);
+    expect(
+      modelProviderAccountListSchema
+        .parse(
+          (
+            await firstApp.inject({
+              method: "GET",
+              url: `/api/settings/providers/${chatGptProvider.id}/accounts`,
+            })
+          ).json(),
+        )
+        .map(({ id, position }) => ({ id, position })),
+    ).toEqual([
+      { id: additionalAccount.id, position: 0 },
+      { id: primaryChatGptAccount.id, position: 1 },
+    ]);
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/settings/providers/${chatGptProvider.id}/accounts/order`,
+        payload: { ids: [additionalAccount.id] },
+      }),
+    ).toMatchObject({ statusCode: 400 });
     expect(
       await firstApp.inject({
         method: "GET",

@@ -3829,6 +3829,69 @@ export class ServerRepository {
     return rows[0] ? toProviderAccountSummary(rows[0]) : null;
   }
 
+  async reorderModelProviderAccounts(
+    ownerId: string,
+    providerId: string,
+    input: OrderedIds,
+  ): Promise<boolean> {
+    return this.database.transaction(async (transaction) => {
+      const accounts = await transaction
+        .select({
+          id: schema.modelProviderAccounts.id,
+          position: schema.modelProviderAccounts.position,
+        })
+        .from(schema.modelProviderAccounts)
+        .innerJoin(
+          schema.modelProviders,
+          eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
+        )
+        .where(
+          and(
+            eq(schema.modelProviderAccounts.providerId, providerId),
+            eq(schema.modelProviders.ownerId, ownerId),
+            inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
+          ),
+        );
+      if (
+        accounts.length !== input.ids.length ||
+        accounts.some(({ id }) => !input.ids.includes(id))
+      ) {
+        return false;
+      }
+      const updatedAt = new Date();
+      const temporaryOffset =
+        Math.max(
+          accounts.length - 1,
+          ...accounts.map(({ position }) => position),
+        ) + 1;
+      // Vacate the unique provider/position range before assigning the final
+      // order so swaps never collide midway through the transaction.
+      for (const [position, id] of input.ids.entries()) {
+        await transaction
+          .update(schema.modelProviderAccounts)
+          .set({ position: temporaryOffset + position, updatedAt })
+          .where(
+            and(
+              eq(schema.modelProviderAccounts.id, id),
+              eq(schema.modelProviderAccounts.providerId, providerId),
+            ),
+          );
+      }
+      for (const [position, id] of input.ids.entries()) {
+        await transaction
+          .update(schema.modelProviderAccounts)
+          .set({ position, updatedAt })
+          .where(
+            and(
+              eq(schema.modelProviderAccounts.id, id),
+              eq(schema.modelProviderAccounts.providerId, providerId),
+            ),
+          );
+      }
+      return true;
+    });
+  }
+
   async deleteModelProviderAccount(
     ownerId: string,
     providerId: string,

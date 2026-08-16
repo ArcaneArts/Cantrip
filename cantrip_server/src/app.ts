@@ -7445,6 +7445,28 @@ export async function buildApp({
   });
 
   app.patch<{
+    Params: { providerId: string };
+    Body: unknown;
+  }>(
+    "/api/settings/providers/:providerId/accounts/order",
+    async (request, reply) => {
+      const input = orderedIdsSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      return (await repository.reorderModelProviderAccounts(
+        applicationOwnerId(),
+        request.params.providerId,
+        input.data,
+      ))
+        ? reply.code(204).send()
+        : reply
+            .code(400)
+            .send({ error: "Provider account order did not match." });
+    },
+  );
+
+  app.patch<{
     Params: { providerId: string; accountId: string };
     Body: unknown;
   }>(
