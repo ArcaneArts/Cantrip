@@ -589,12 +589,34 @@ export interface TokenUsageRecordInput {
   modelName: string;
   providerName: string;
   providerModelName: string;
-  usage: {
+  providerAccountId?: string | null;
+  workerId?: string | null;
+  turnId?: string | null;
+  executionAttemptId?: string | null;
+  attemptKind?: string;
+  attemptStatus?:
+    | "running"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "interrupted"
+    | "compacted";
+  reasoningEffort?: ReasoningEffort | null;
+  workerVersion?: string | null;
+  serverVersion?: string | null;
+  codexVersion?: string | null;
+  startedAt?: Date;
+  completedAt?: Date | null;
+  finalizedAt?: Date | null;
+  usage?: {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
     cachedInputTokens?: number;
     reasoningOutputTokens?: number;
+    cacheWriteInputTokens?: number;
+    visibleOutputTokens?: number | null;
+    sanitizedRawUsage?: Record<string, unknown>;
   };
 }
 
@@ -2874,24 +2896,38 @@ export class ServerRepository {
       .where(eq(schema.modelRoutes.id, input.modelRouteId))
       .limit(1);
     const route = routeRows[0];
-    const inputTokens = Math.max(0, Math.round(input.usage.inputTokens));
-    const reportedOutputTokens = Math.max(
-      0,
-      Math.round(input.usage.outputTokens),
-    );
-    const reasoningOutputTokens = Math.max(
-      0,
-      Math.round(input.usage.reasoningOutputTokens ?? 0),
-    );
-    const totalTokens = Math.max(
-      inputTokens + reportedOutputTokens + reasoningOutputTokens,
-      Math.round(input.usage.totalTokens),
-    );
-    const outputTokens = Math.max(
-      reportedOutputTokens + reasoningOutputTokens,
-      totalTokens - inputTokens,
-    );
+    const exactCount = (value: number | undefined): number =>
+      Math.max(0, Math.round(value ?? 0));
+    const usage = input.usage;
+    const inputTokens = exactCount(usage?.inputTokens);
+    const outputTokens = exactCount(usage?.outputTokens);
+    const cachedInputTokens = exactCount(usage?.cachedInputTokens);
+    const reasoningOutputTokens = exactCount(usage?.reasoningOutputTokens);
+    const cacheWriteInputTokens = exactCount(usage?.cacheWriteInputTokens);
+    const visibleOutputTokens =
+      typeof usage?.visibleOutputTokens === "number"
+        ? exactCount(usage.visibleOutputTokens)
+        : null;
+    const reportedTotalTokens = usage ? exactCount(usage.totalTokens) : null;
+    const sanitizedRawUsage =
+      usage?.sanitizedRawUsage ??
+      (usage
+        ? {
+            inputTokens,
+            outputTokens,
+            totalTokens: reportedTotalTokens,
+            cachedInputTokens,
+            reasoningOutputTokens,
+            cacheWriteInputTokens,
+            visibleOutputTokens,
+          }
+        : {});
     const updatedAt = new Date();
+    const attemptStatus = input.attemptStatus ?? "completed";
+    const completedAt =
+      input.completedAt ?? (attemptStatus === "running" ? null : updatedAt);
+    const finalizedAt =
+      input.finalizedAt ?? (attemptStatus === "running" ? null : updatedAt);
     await this.database
       .insert(schema.tokenUsageRecords)
       .values({
@@ -2906,13 +2942,28 @@ export class ServerRepository {
         modelName: route?.modelName ?? input.modelName,
         providerName: route?.providerName ?? input.providerName,
         providerModelName: route?.providerModelName ?? input.providerModelName,
+        providerAccountId: input.providerAccountId ?? null,
+        workerId: input.workerId ?? null,
+        turnId: input.turnId ?? null,
+        executionAttemptId: input.executionAttemptId ?? null,
+        attemptKind: input.attemptKind ?? "turn",
+        attemptStatus,
+        reasoningEffort: input.reasoningEffort ?? null,
+        workerVersion: input.workerVersion ?? null,
+        serverVersion: input.serverVersion ?? null,
+        codexVersion: input.codexVersion ?? null,
         inputTokens,
         outputTokens,
-        cachedInputTokens: Math.max(
-          0,
-          Math.round(input.usage.cachedInputTokens ?? 0),
-        ),
+        cachedInputTokens,
         reasoningOutputTokens,
+        cacheWriteInputTokens,
+        visibleOutputTokens,
+        reportedTotalTokens,
+        usageSemantics: "provider-reported-v2",
+        sanitizedRawUsage,
+        startedAt: input.startedAt ?? updatedAt,
+        completedAt,
+        finalizedAt,
         updatedAt,
       })
       .onConflictDoUpdate({
@@ -2930,13 +2981,35 @@ export class ServerRepository {
           providerName: route?.providerName ?? input.providerName,
           providerModelName:
             route?.providerModelName ?? input.providerModelName,
-          inputTokens,
-          outputTokens,
-          cachedInputTokens: Math.max(
-            0,
-            Math.round(input.usage.cachedInputTokens ?? 0),
-          ),
-          reasoningOutputTokens,
+          providerAccountId: input.providerAccountId ?? null,
+          workerId: input.workerId ?? null,
+          turnId: input.turnId ?? null,
+          executionAttemptId: input.executionAttemptId ?? null,
+          attemptKind: input.attemptKind ?? "turn",
+          attemptStatus,
+          reasoningEffort: input.reasoningEffort ?? null,
+          workerVersion: input.workerVersion ?? null,
+          serverVersion: input.serverVersion ?? null,
+          codexVersion: input.codexVersion ?? null,
+          ...(usage
+            ? {
+                inputTokens,
+                outputTokens,
+                cachedInputTokens,
+                reasoningOutputTokens,
+                cacheWriteInputTokens,
+                visibleOutputTokens,
+                reportedTotalTokens,
+                usageSemantics: "provider-reported-v2",
+                sanitizedRawUsage,
+              }
+            : {}),
+          ...(input.completedAt !== undefined
+            ? { completedAt: input.completedAt }
+            : {}),
+          ...(input.finalizedAt !== undefined
+            ? { finalizedAt: input.finalizedAt }
+            : {}),
           updatedAt,
         },
       });

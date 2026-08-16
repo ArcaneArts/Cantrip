@@ -17,6 +17,7 @@ import {
   type WorkflowRunPause,
   type WorkflowRunResume,
 } from "@cantrip/protocol/workflows";
+import { cantripVersion } from "@cantrip/version";
 
 import {
   LOCAL_USER_ID,
@@ -681,6 +682,8 @@ export class WorkflowExecutor {
   ): Promise<void> {
     const { cwd, workerId, worktreeId } = lease.assignment;
     const ownerId = this.#ownerId();
+    const startedAt = new Date();
+    let observedTurnId: string | null = null;
     let heartbeatInFlight = false;
     const heartbeatTimer = setInterval(() => {
       if (heartbeatInFlight) return;
@@ -707,6 +710,10 @@ export class WorkflowExecutor {
     }, ATTEMPT_HEARTBEAT_INTERVAL_MS);
     heartbeatTimer.unref();
     try {
+      await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
+        attemptStatus: "running",
+        startedAt,
+      });
       const mcpServers = await this.repository.listEffectiveMcpServers(
         this.#ownerId(),
         lease.candidate.run.projectId,
@@ -760,7 +767,16 @@ export class WorkflowExecutor {
         },
       );
       const result = workflowNodeExecutionResultSchema.parse(rawResult);
-      await this.recordWorkflowTokenUsage(lease, runtime, result.measuredUsage);
+      observedTurnId = result.turnId;
+      await this.recordWorkflowTokenUsage(
+        lease,
+        runtime,
+        result.measuredUsage,
+        {
+          attemptStatus: "running",
+          turnId: result.turnId,
+        },
+      );
       if (
         lease.candidate.verification &&
         lease.candidate.verification.failurePolicy === "fail-run" &&
@@ -779,12 +795,26 @@ export class WorkflowExecutor {
         result,
         await this.captureWorktreeCheckpoint(lease),
       );
+      const completedAt = new Date();
+      await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
+        attemptStatus: "completed",
+        turnId: result.turnId,
+        completedAt,
+        finalizedAt: completedAt,
+      });
       this.notifyRunChanged(
         lease.candidate.run.id,
         lease.candidate.projectId,
         "workflow-node",
       );
     } catch (error) {
+      const failedAt = new Date();
+      await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
+        attemptStatus: "failed",
+        turnId: observedTurnId,
+        completedAt: failedAt,
+        finalizedAt: failedAt,
+      });
       const failure = await this.repository.workflowRuns.failAgentAttempt(
         this.#ownerId(),
         lease,
@@ -950,6 +980,10 @@ export class WorkflowExecutor {
             lease,
             runtime,
             event.activity.last,
+            {
+              attemptStatus: "running",
+              turnId: event.activity.correlation?.turnId ?? null,
+            },
           );
         }
         const budget = await this.repository.workflowRuns.enforceRunBudget(
@@ -984,15 +1018,29 @@ export class WorkflowExecutor {
   private async recordWorkflowTokenUsage(
     lease: WorkflowAttemptLease,
     runtime: ModelRuntime,
-    usage: {
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-      cachedInputTokens?: number;
-      reasoningOutputTokens?: number;
-    },
+    usage:
+      | {
+          inputTokens: number;
+          outputTokens: number;
+          totalTokens: number;
+          cachedInputTokens?: number;
+          reasoningOutputTokens?: number;
+          cacheWriteInputTokens?: number;
+        }
+      | undefined,
+    attribution: {
+      attemptStatus?: "running" | "completed" | "failed";
+      turnId?: string | null;
+      startedAt?: Date;
+      completedAt?: Date | null;
+      finalizedAt?: Date | null;
+    } = {},
   ): Promise<void> {
     try {
+      const worker = await this.repository.getWorker(
+        this.#ownerId(),
+        lease.assignment.workerId,
+      );
       await this.repository.recordTokenUsage(this.#ownerId(), {
         sourceKey: `workflow:${lease.attemptId}`,
         projectId: lease.candidate.projectId,
@@ -1001,6 +1049,19 @@ export class WorkflowExecutor {
         modelName: runtime.model.profileName,
         providerName: runtime.provider.name,
         providerModelName: runtime.model.name,
+        providerAccountId: runtime.provider.accountId,
+        workerId: lease.assignment.workerId,
+        turnId: attribution.turnId,
+        executionAttemptId: lease.attemptId,
+        attemptKind: "workflow-node",
+        attemptStatus: attribution.attemptStatus,
+        reasoningEffort: runtime.model.reasoningEffort,
+        serverVersion: cantripVersion.version,
+        workerVersion: null,
+        codexVersion: worker?.codexVersion ?? null,
+        startedAt: attribution.startedAt,
+        completedAt: attribution.completedAt,
+        finalizedAt: attribution.finalizedAt,
         usage,
       });
     } catch (error) {
