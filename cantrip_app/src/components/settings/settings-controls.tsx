@@ -23,7 +23,7 @@ export function SettingsTabBar<TabId extends string>({
   return (
     <div
       aria-label={ariaLabel}
-      className="flex h-10 w-full min-w-0 shrink-0 items-center gap-1 overflow-x-auto overscroll-x-contain border-b px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
+      className="flex w-full min-w-0 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
       role="tablist"
     >
       {tabs.map(({ icon: Icon, id, label }) => (
