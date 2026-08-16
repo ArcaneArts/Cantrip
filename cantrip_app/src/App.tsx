@@ -182,7 +182,11 @@ import {
   reconcileMobileBottomTabs,
   removeMobileBottomTab,
 } from "@/lib/mobile-navigation";
-import { useCompactLayout } from "@/lib/use-compact-layout";
+import {
+  shouldUseCompactLayout,
+  shouldUseDesktopSidebarDrawer,
+  useNarrowViewport,
+} from "@/lib/use-compact-layout";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { chatResourceRefreshIntervalMs } from "@/lib/chat-resource-refresh";
 import { Badge } from "@/components/ui/badge";
@@ -2508,8 +2512,14 @@ export function App() {
   const popoutProjectId =
     popoutTarget?.projectId ?? explorerFileTarget?.projectId ?? null;
   const isPopout = popoutTarget !== null || explorerFileTarget !== null;
-  const compactLayout = useCompactLayout();
+  const narrowViewport = useNarrowViewport();
+  const compactLayout = shouldUseCompactLayout(narrowViewport, desktopRuntime);
   const compactShell = compactLayout && !isPopout;
+  const desktopSidebarDrawer = shouldUseDesktopSidebarDrawer(
+    narrowViewport,
+    desktopRuntime,
+    isPopout,
+  );
   const showContentTitlebar = !isPopout || desktopRuntime;
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     popoutProjectId,
@@ -2585,6 +2595,8 @@ export function App() {
     PRIMARY_MOBILE_BOTTOM_TAB_ID,
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [desktopSidebarDrawerOpen, setDesktopSidebarDrawerOpen] =
+    useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [contentScrolled, setContentScrolled] = useState(false);
@@ -2636,6 +2648,20 @@ export function App() {
     userSelect: string;
   } | null>(null);
 
+  useEffect(() => {
+    if (!desktopSidebarDrawer) setDesktopSidebarDrawerOpen(false);
+  }, [desktopSidebarDrawer]);
+
+  useEffect(() => {
+    if (!desktopSidebarDrawerOpen) return;
+    sidebarRef.current?.focus();
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setDesktopSidebarDrawerOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [desktopSidebarDrawerOpen]);
+
   const handleExplorerLifecycleChange = useCallback(
     (explorerId: string, actions: ExplorerLifecycleActions | null) => {
       if (actions) explorerLifecycleRef.current.set(explorerId, actions);
@@ -2685,6 +2711,7 @@ export function App() {
     kind: "browser" | "chat" | "code" | "explorer" | "terminal" | "view",
     tabId: string,
   ) => {
+    setDesktopSidebarDrawerOpen(false);
     const tabKey = projectSurfaceTabKey(kind, tabId);
     setSelectedProjectId(projectId);
     setPendingSurfaceSelection({ projectId, tabKey });
@@ -2704,6 +2731,7 @@ export function App() {
     projectId: string,
     workflowId: string | null = null,
   ) => {
+    setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
     setChatConsoleChatId(null);
     setShowImporter(false);
@@ -4450,6 +4478,7 @@ export function App() {
   ]);
 
   const revealWorkspace = () => {
+    setDesktopSidebarDrawerOpen(false);
     setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);
@@ -4460,6 +4489,7 @@ export function App() {
       ({ id }) => id === workspaceId,
     );
     if (!workspace) return;
+    setDesktopSidebarDrawerOpen(false);
     setActiveProjectWorkspaceId(workspace.id);
     window.localStorage.setItem(activeProjectWorkspaceStorageKey, workspace.id);
     if (compactShell) {
@@ -4521,6 +4551,7 @@ export function App() {
     setShowProjectSettings(false);
   };
   const openServerAdmin = () => {
+    setDesktopSidebarDrawerOpen(false);
     setShowServerAdmin(true);
     setShowImporter(false);
     setShowSettings(false);
@@ -4881,6 +4912,11 @@ export function App() {
       />
     );
   }
+  const sidebarExpanded = desktopSidebarDrawer
+    ? desktopSidebarDrawerOpen
+    : !sidebarCollapsed;
+  const sidebarToggleVisible =
+    !isPopout && (desktopSidebarDrawer || sidebarCollapsed);
   return (
     <WorkspaceDndProvider
       className="flex h-svh overflow-hidden bg-background text-foreground"
@@ -4892,25 +4928,51 @@ export function App() {
       {!isPopout ? (
         <div
           data-slot="app-sidebar-shell"
+          role={desktopSidebarDrawer ? "dialog" : undefined}
+          aria-label={desktopSidebarDrawer ? "Cantrip sidebar" : undefined}
+          aria-modal={desktopSidebarDrawer ? true : undefined}
           className={cn(
-            "group/sidebar-shell relative hidden shrink-0 md:block",
+            "group/sidebar-shell shrink-0",
+            desktopSidebarDrawer
+              ? desktopSidebarDrawerOpen
+                ? "fixed inset-0 z-[80] block"
+                : "hidden"
+              : "relative hidden md:block",
             sidebarResizing
               ? "transition-none"
               : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
           )}
-          style={{ width: sidebarCollapsed ? 0 : sidebarWidth }}
+          style={{
+            width: desktopSidebarDrawer
+              ? undefined
+              : sidebarCollapsed
+                ? 0
+                : sidebarWidth,
+          }}
         >
+          {desktopSidebarDrawer ? (
+            <button
+              type="button"
+              aria-label="Close sidebar"
+              className="absolute inset-0 bg-black/40 backdrop-blur-[1px]"
+              onClick={() => setDesktopSidebarDrawerOpen(false)}
+              tabIndex={-1}
+            />
+          ) : null}
           <aside
             ref={sidebarRef}
             data-slot="app-sidebar"
-            data-state={sidebarCollapsed ? "collapsed" : "expanded"}
-            aria-hidden={sidebarCollapsed}
-            inert={sidebarCollapsed}
+            data-state={sidebarExpanded ? "expanded" : "collapsed"}
+            aria-hidden={!sidebarExpanded}
+            inert={!sidebarExpanded}
+            tabIndex={desktopSidebarDrawer ? -1 : undefined}
             className={cn(
-              "group/sidebar absolute inset-y-0 left-0 flex flex-col bg-background transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
-              sidebarCollapsed
-                ? "pointer-events-none -translate-x-2 opacity-0"
-                : "translate-x-0 opacity-100",
+              "group/sidebar absolute inset-y-0 left-0 z-10 flex flex-col bg-background transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+              desktopSidebarDrawer &&
+                "max-w-[calc(100vw-3rem)] border-r shadow-2xl",
+              sidebarExpanded
+                ? "translate-x-0 opacity-100"
+                : "pointer-events-none -translate-x-2 opacity-0",
             )}
             style={{ width: sidebarWidth }}
           >
@@ -4957,13 +5019,21 @@ export function App() {
                 size="icon"
                 variant="ghost"
                 className={overlayTitlebar ? "size-6" : "size-8"}
-                onClick={() => setSidebarCollapsed(true)}
-                title="Collapse sidebar"
+                onClick={() =>
+                  desktopSidebarDrawer
+                    ? setDesktopSidebarDrawerOpen(false)
+                    : setSidebarCollapsed(true)
+                }
+                title={
+                  desktopSidebarDrawer ? "Close sidebar" : "Collapse sidebar"
+                }
               >
                 <PanelLeftClose
                   className={overlayTitlebar ? "size-3" : "size-4"}
                 />
-                <span className="sr-only">Collapse sidebar</span>
+                <span className="sr-only">
+                  {desktopSidebarDrawer ? "Close sidebar" : "Collapse sidebar"}
+                </span>
               </Button>
             </div>
 
@@ -4976,12 +5046,14 @@ export function App() {
                   await createWorkspaceMutation.mutateAsync(name);
                 }}
                 onAddProject={() => {
+                  setDesktopSidebarDrawerOpen(false);
                   setShowImporter(true);
                   setShowSettings(false);
                   setShowServerAdmin(false);
                   setShowProjectSettings(false);
                 }}
                 onManage={() => {
+                  setDesktopSidebarDrawerOpen(false);
                   setSettingsSection("workspaces");
                   setShowSettings(true);
                   setShowServerAdmin(false);
@@ -5008,9 +5080,10 @@ export function App() {
                 selectedTabKey={selectedTabKey}
                 tabLayout={tabLayout.data ?? null}
                 creatingKinds={creatingSurfaceKinds}
-                onCreateSurface={(projectId, kind, target) =>
-                  createProjectSurface(projectId, kind, undefined, target)
-                }
+                onCreateSurface={(projectId, kind, target) => {
+                  setDesktopSidebarDrawerOpen(false);
+                  createProjectSurface(projectId, kind, undefined, target);
+                }}
                 onChangeChatWorktree={(chatId, worktreeId, mode) => {
                   const chat = chats.data?.find(({ id }) => id === chatId);
                   if (chat) bindChatWorktree(chat, worktreeId, mode);
@@ -5094,6 +5167,7 @@ export function App() {
                   variant="ghost"
                   className="size-8"
                   onClick={() => {
+                    setDesktopSidebarDrawerOpen(false);
                     setSettingsSection("general");
                     setShowSettings(true);
                     setShowServerAdmin(false);
@@ -5107,29 +5181,31 @@ export function App() {
               </div>
             </div>
           </aside>
-          <div
-            data-slot="sidebar-resize-handle"
-            role="separator"
-            aria-label="Resize sidebar"
-            aria-orientation="vertical"
-            aria-valuemin={MIN_SIDEBAR_WIDTH}
-            aria-valuemax={MAX_SIDEBAR_WIDTH}
-            aria-valuenow={sidebarWidth}
-            tabIndex={sidebarCollapsed ? -1 : 0}
-            title="Drag to resize sidebar"
-            className={cn(
-              "absolute inset-y-0 -right-1 z-40 w-2 cursor-col-resize touch-none outline-none",
-              "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
-              "group-hover/sidebar-shell:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
-              sidebarCollapsed && "pointer-events-none opacity-0",
-              sidebarResizing && "after:opacity-100",
-            )}
-            onKeyDown={resizeSidebarWithKeyboard}
-            onPointerDown={beginSidebarResize}
-            onPointerMove={moveSidebarResize}
-            onPointerUp={(event) => finishSidebarResize(event, true)}
-            onPointerCancel={(event) => finishSidebarResize(event, false)}
-          />
+          {!desktopSidebarDrawer ? (
+            <div
+              data-slot="sidebar-resize-handle"
+              role="separator"
+              aria-label="Resize sidebar"
+              aria-orientation="vertical"
+              aria-valuemin={MIN_SIDEBAR_WIDTH}
+              aria-valuemax={MAX_SIDEBAR_WIDTH}
+              aria-valuenow={sidebarWidth}
+              tabIndex={sidebarCollapsed ? -1 : 0}
+              title="Drag to resize sidebar"
+              className={cn(
+                "absolute inset-y-0 -right-1 z-40 w-2 cursor-col-resize touch-none outline-none",
+                "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
+                "group-hover/sidebar-shell:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
+                sidebarCollapsed && "pointer-events-none opacity-0",
+                sidebarResizing && "after:opacity-100",
+              )}
+              onKeyDown={resizeSidebarWithKeyboard}
+              onPointerDown={beginSidebarResize}
+              onPointerMove={moveSidebarResize}
+              onPointerUp={(event) => finishSidebarResize(event, true)}
+              onPointerCancel={(event) => finishSidebarResize(event, false)}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -5215,19 +5291,25 @@ export function App() {
               ),
             }}
           >
-            {sidebarCollapsed && !isPopout ? (
+            {sidebarToggleVisible ? (
               <Button
                 size="icon"
                 variant="ghost"
                 className={cn(
-                  "absolute hidden size-8 md:inline-flex",
+                  "absolute size-8",
                   overlayTitlebar ? "left-20 top-1" : "left-4 top-4",
                 )}
-                onClick={() => setSidebarCollapsed(false)}
-                title="Expand sidebar"
+                onClick={() =>
+                  desktopSidebarDrawer
+                    ? setDesktopSidebarDrawerOpen(true)
+                    : setSidebarCollapsed(false)
+                }
+                title={desktopSidebarDrawer ? "Open sidebar" : "Expand sidebar"}
               >
                 <PanelLeftOpen className="size-4" />
-                <span className="sr-only">Expand sidebar</span>
+                <span className="sr-only">
+                  {desktopSidebarDrawer ? "Open sidebar" : "Expand sidebar"}
+                </span>
               </Button>
             ) : null}
             <div
@@ -5235,7 +5317,7 @@ export function App() {
                 "min-w-0",
                 overlayTitlebar &&
                   "flex flex-1 items-center gap-2 overflow-hidden",
-                sidebarCollapsed &&
+                sidebarToggleVisible &&
                   (overlayTitlebar ? "pl-[6.25rem]" : "pl-10"),
               )}
               data-tauri-drag-region={overlayTitlebar ? "" : undefined}
