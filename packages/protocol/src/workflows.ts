@@ -7,6 +7,11 @@ const MAX_CONTAINER_ITEMS = 1_000;
 const MAX_JSON_KEY_LENGTH = 256;
 const MAX_JSON_STRING_LENGTH = 100_000;
 
+export interface WorkflowJsonValidationLimits {
+  maxBytes: number;
+  maxStringLength: number;
+}
+
 export type WorkflowJsonValue =
   | boolean
   | number
@@ -19,6 +24,10 @@ export type WorkflowJsonObject = { [key: string]: WorkflowJsonValue };
 function jsonValidationError(
   root: unknown,
   requireObject: boolean,
+  limits: WorkflowJsonValidationLimits = {
+    maxBytes: MAX_JSON_BYTES,
+    maxStringLength: MAX_JSON_STRING_LENGTH,
+  },
 ): string | null {
   if (
     requireObject &&
@@ -50,8 +59,8 @@ function jsonValidationError(
       continue;
     }
     if (typeof value === "string") {
-      if (value.length > MAX_JSON_STRING_LENGTH) {
-        return `JSON strings may contain at most ${MAX_JSON_STRING_LENGTH} characters.`;
+      if (value.length > limits.maxStringLength) {
+        return `JSON strings may contain at most ${limits.maxStringLength} characters.`;
       }
       continue;
     }
@@ -95,9 +104,9 @@ function jsonValidationError(
   } catch {
     return "Values must be JSON serializable.";
   }
-  return encodedLength <= MAX_JSON_BYTES
+  return encodedLength <= limits.maxBytes
     ? null
-    : `JSON payloads may contain at most ${MAX_JSON_BYTES} encoded bytes.`;
+    : `JSON payloads may contain at most ${limits.maxBytes} encoded bytes.`;
 }
 
 export const workflowJsonValueSchema = z
@@ -110,15 +119,20 @@ export const workflowJsonValueSchema = z
     return value as WorkflowJsonValue;
   });
 
-export const workflowJsonObjectSchema = z
-  .unknown()
-  .transform<WorkflowJsonObject>((value, context) => {
-    const error = jsonValidationError(value, true);
-    if (error) {
-      context.addIssue({ code: "custom", message: error });
-    }
+export function workflowJsonObjectSchemaWithLimits(
+  limits: WorkflowJsonValidationLimits,
+) {
+  return z.unknown().transform<WorkflowJsonObject>((value, context) => {
+    const error = jsonValidationError(value, true, limits);
+    if (error) context.addIssue({ code: "custom", message: error });
     return value as WorkflowJsonObject;
   });
+}
+
+export const workflowJsonObjectSchema = workflowJsonObjectSchemaWithLimits({
+  maxBytes: MAX_JSON_BYTES,
+  maxStringLength: MAX_JSON_STRING_LENGTH,
+});
 
 const idSchema = z.string().trim().min(1).max(200);
 const optionalIdSchema = idSchema.nullable().default(null);

@@ -340,6 +340,36 @@ describe("AppLiveHub", () => {
     hub.close();
   });
 
+  it("bounds retained replay events by encoded bytes", async () => {
+    const hub = new AppLiveHub({
+      epoch: "epoch-byte-expiry",
+      maxReplayBytes: 1,
+    });
+    hub.publish({
+      ownerId: "owner-one",
+      scope: currentUserScope,
+      resource: "settings",
+      action: "updated",
+      entityId: null,
+      revision: 1,
+      payload: { body: "large enough to exceed one byte" },
+    });
+    expect(hub.stats().replayEventCount).toBe(0);
+
+    const socket = new FakeSocket();
+    hub.attach(socket, {
+      ownerId: "owner-one",
+      authorizeScope: () => true,
+    });
+    socket.receive(initialize({ serverEpoch: "epoch-byte-expiry", cursor: 0 }));
+    await settle();
+    expect(socket.sent[0]).toMatchObject({
+      type: "ready",
+      resume: "resync-required",
+    });
+    hub.close();
+  });
+
   it("reports an epoch change before requiring an authoritative resync", async () => {
     const hub = new AppLiveHub({ epoch: "new-epoch" });
     const socket = new FakeSocket();

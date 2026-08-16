@@ -7,6 +7,8 @@ import {
   CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
+  appendBoundedCommandOutput,
+  boundedCommandOutput,
   changedFiles,
   codexChatApprovalPolicy,
   codexResultForAgentInteraction,
@@ -20,6 +22,9 @@ import {
   codexWorkflowTurnPolicy,
   codexWorktreeTurnPolicy,
   codexWorkspaceContext,
+  commandTelemetryFromCompletion,
+  commandTelemetryFromDelta,
+  commandTelemetryFromStart,
   failClosedAgentInteractionReply,
   findActiveChatTurn,
   GOAL_CONTINUATION_PROMPT,
@@ -30,6 +35,7 @@ import {
   normalizeNoticeActivity,
   normalizeRateLimitActivity,
   normalizeTokenUsageActivity,
+  latestChangedLine,
   parseCodexRpcMessage,
   parseCodexSkills,
   parsePermissionProfileList,
@@ -75,6 +81,65 @@ const correlation = {
 };
 
 describe("Codex rich event normalization", () => {
+  it("retains a strict rolling 256 KiB UTF-8 command tail", () => {
+    const exact = boundedCommandOutput("🙂".repeat(65_536));
+    expect(Buffer.byteLength(exact.output!, "utf8")).toBe(256 * 1_024);
+    expect(exact.truncated).toBe(false);
+
+    const truncated = appendBoundedCommandOutput(exact, "tail🙂");
+    expect(Buffer.byteLength(truncated.output!, "utf8")).toBeLessThanOrEqual(
+      256 * 1_024,
+    );
+    expect(truncated.output).toMatch(/tail🙂$/u);
+    expect(truncated.output).not.toContain("�");
+    expect(truncated.truncated).toBe(true);
+
+    const continued = appendBoundedCommandOutput(truncated, "\nnew output");
+    expect(continued.output).toMatch(/tail🙂\nnew output$/u);
+    expect(Buffer.byteLength(continued.output!, "utf8")).toBeLessThanOrEqual(
+      256 * 1_024,
+    );
+
+    const sanitized = boundedCommandOutput(
+      "\u001b[31mred\u001b[0m\u0000\u0007\nnext\tcolumn",
+    );
+    expect(sanitized).toEqual({
+      output: "red\nnext\tcolumn",
+      truncated: false,
+    });
+  });
+
+  it("reconciles output deltas that arrive before start and completion", () => {
+    const early = commandTelemetryFromDelta(null, "early", 1_100);
+    const started = commandTelemetryFromStart(early, null, 1_000, 1_200);
+    const running = commandTelemetryFromDelta(started, " output", 1_300);
+    const completed = commandTelemetryFromCompletion(running, null, 300, 1_400);
+    expect(completed).toEqual({
+      output: "early output",
+      truncated: false,
+      startedAtMs: 1_000,
+      updatedAtMs: 1_400,
+    });
+
+    expect(commandTelemetryFromCompletion(null, "done", 250, 2_000)).toEqual({
+      output: "done",
+      truncated: false,
+      startedAtMs: 1_750,
+      updatedAtMs: 2_000,
+    });
+  });
+
+  it("prefers authoritative completion output after malformed delta ordering", () => {
+    const pending = commandTelemetryFromDelta(null, "partial", 1_000);
+    expect(
+      commandTelemetryFromCompletion(pending, "complete output", 50, 1_100),
+    ).toMatchObject({
+      output: "complete output",
+      truncated: false,
+      startedAtMs: 1_000,
+    });
+  });
+
   it("keeps supported reasoning summaries and drops private reasoning content", () => {
     const activity = normalizeCodexThreadItem(
       {
@@ -200,6 +265,100 @@ describe("Codex rich event normalization", () => {
       type: "webSearch",
       action: "Opened https://example.com/report",
     });
+  });
+
+  it("normalizes command timing and best-effort file previews", () => {
+    expect(
+      normalizeCodexThreadItem(
+        {
+          type: "commandExecution",
+          id: "command-1",
+          command: "pnpm test",
+          cwd: "/workspace/path with spaces",
+          status: "inProgress",
+          exitCode: null,
+          aggregatedOutput: null,
+          durationMs: null,
+        },
+        "/workspace",
+        "started",
+        { ...correlation, itemId: "command-1" },
+        {
+          commandOutput: { output: "running", truncated: false },
+          startedAtMs: 1_000,
+          updatedAtMs: 1_100,
+          completedAtMs: null,
+        },
+      ),
+    ).toMatchObject({
+      type: "command",
+      output: null,
+      outputTail: "running",
+      outputTruncated: false,
+      startedAtMs: 1_000,
+      updatedAtMs: 1_100,
+      completedAtMs: null,
+    });
+    expect(
+      normalizeCodexThreadItem(
+        {
+          type: "commandExecution",
+          id: "command-1",
+          command: "pnpm test",
+          cwd: "/workspace/path with spaces",
+          status: "inProgress",
+          exitCode: null,
+          aggregatedOutput: "last output",
+          durationMs: null,
+        },
+        "/workspace",
+        "completed",
+        { ...correlation, itemId: "command-1" },
+        { completedAtMs: 1_200, status: "completed", updatedAtMs: 1_200 },
+      ),
+    ).toMatchObject({
+      status: "completed",
+      output: "last output",
+      outputTail: "last output",
+      completedAtMs: 1_200,
+      updatedAtMs: 1_200,
+    });
+    expect(
+      normalizeCodexThreadItem(
+        {
+          type: "fileChange",
+          id: "files-1",
+          status: "inProgress",
+          changes: [
+            {
+              path: "/workspace/src/path with spaces.ts",
+              kind: { type: "update" },
+              diff: "@@ -1 +1 @@\n-old\n+new value",
+            },
+            {
+              path: "/workspace/assets/image.png",
+              kind: { type: "update" },
+              diff: "Binary files differ",
+            },
+          ],
+        },
+        "/workspace",
+        "started",
+        { ...correlation, itemId: "files-1" },
+        { startedAtMs: 2_000, updatedAtMs: 2_100, completedAtMs: null },
+      ),
+    ).toMatchObject({
+      type: "fileChange",
+      changes: [
+        {
+          path: "src/path with spaces.ts",
+          latestLine: "new value",
+          lastActivityAtMs: 2_100,
+        },
+        { path: "assets/image.png" },
+      ],
+    });
+    expect(latestChangedLine("Binary files differ")).toBeNull();
   });
 
   it("normalizes phased messages, token usage, and rate limits", () => {

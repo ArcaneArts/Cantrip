@@ -212,13 +212,16 @@ describe("application live protocol", () => {
     ).toThrow();
   });
 
-  it("bounds event payloads below the general workflow JSON ceiling", () => {
+  it("bounds event payloads while allowing bounded agent terminal tails", () => {
     expect(appLiveEventPayloadSchema.parse({ ok: true })).toEqual({ ok: true });
+    expect(
+      appLiveEventPayloadSchema.parse({ body: "x".repeat(256 * 1_024) }),
+    ).toBeTruthy();
     expect(() =>
       appLiveEventPayloadSchema.parse({
-        body: ["x".repeat(90_000), "x".repeat(90_000), "x".repeat(90_000)],
+        body: Array.from({ length: 4 }, () => '"'.repeat(100_000)),
       }),
-    ).toThrow(/256000/);
+    ).toThrow(/786432/);
   });
 
   it("round-trips typed client and server messages through the JSON codec", () => {

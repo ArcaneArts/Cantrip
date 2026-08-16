@@ -4191,6 +4191,18 @@ export const agentActivityStatusSchema = z.enum([
   "failed",
   "declined",
 ]);
+export const agentCommandOutputLimitBytes = 256 * 1_024;
+export const agentFilePreviewLimitCharacters = 8_192;
+
+const agentActivityTimestampSchema = z.number().int().nonnegative().safe();
+const agentCommandOutputSchema = z.string().superRefine((value, context) => {
+  const size = new TextEncoder().encode(value).byteLength;
+  if (size <= agentCommandOutputLimitBytes) return;
+  context.addIssue({
+    code: "custom",
+    message: `Agent command output may contain at most ${agentCommandOutputLimitBytes} encoded bytes.`,
+  });
+});
 export const codexEventCorrelationSchema = z.object({
   sourceMethod: z.string().min(1).max(200),
   diagnosticId: z.string().min(1).max(200).nullable(),
@@ -4202,6 +4214,9 @@ export const codexEventCorrelationSchema = z.object({
 const agentActivityBaseShape = {
   id: z.string().min(1),
   status: agentActivityStatusSchema,
+  startedAtMs: agentActivityTimestampSchema.optional(),
+  updatedAtMs: agentActivityTimestampSchema.optional(),
+  completedAtMs: agentActivityTimestampSchema.nullable().optional(),
   correlation: codexEventCorrelationSchema.nullable().optional(),
 };
 
@@ -4228,6 +4243,8 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1),
     exitCode: z.number().int().nullable(),
     output: z.string().nullable(),
+    outputTail: agentCommandOutputSchema.nullable().optional(),
+    outputTruncated: z.boolean().optional(),
     durationMs: z.number().int().nonnegative().nullable().optional(),
   }),
   z.object({
@@ -4237,6 +4254,12 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
       z.object({
         path: z.string().min(1),
         kind: z.enum(["add", "delete", "update"]),
+        latestLine: z
+          .string()
+          .max(agentFilePreviewLimitCharacters)
+          .nullable()
+          .optional(),
+        lastActivityAtMs: agentActivityTimestampSchema.optional(),
       }),
     ),
   }),

@@ -19,6 +19,7 @@ const DEFAULT_HEARTBEAT_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_BUFFERED_BYTES = 1_024 * 1_024;
 const DEFAULT_MAX_INBOUND_BYTES = 64 * 1_024;
 const DEFAULT_MAX_REPLAY_EVENTS = 2_048;
+const DEFAULT_MAX_REPLAY_BYTES = 32 * 1_024 * 1_024;
 const MAX_PROTOCOL_VIOLATIONS = 5;
 const MAX_REQUEST_HISTORY = 256;
 
@@ -56,6 +57,7 @@ export interface AppLiveHubOptions {
   heartbeatIntervalMs?: number;
   maxBufferedBytes?: number;
   maxInboundBytes?: number;
+  maxReplayBytes?: number;
   maxReplayEvents?: number;
   now?: () => number;
   publishExternal?(publication: AppLivePublication): Promise<void> | void;
@@ -101,6 +103,7 @@ interface Connection {
 }
 
 interface RetainedEvent {
+  encodedBytes: number;
   event: AppLiveEvent;
   ownerId: string;
 }
@@ -153,6 +156,7 @@ export class AppLiveHub {
   readonly #heartbeatIntervalMs: number;
   readonly #maxBufferedBytes: number;
   readonly #maxInboundBytes: number;
+  readonly #maxReplayBytes: number;
   readonly #maxReplayEvents: number;
   readonly #now: () => number;
   readonly #publishExternal?: AppLiveHubOptions["publishExternal"];
@@ -170,6 +174,7 @@ export class AppLiveHub {
   #protocolViolationCount = 0;
   #publicationCount = 0;
   #queuePressureCount = 0;
+  #replayBytes = 0;
   #replaySessionCount = 0;
   #replayedEventCount = 0;
   #resyncRequiredCount = 0;
@@ -184,6 +189,7 @@ export class AppLiveHub {
       options.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
     this.#maxInboundBytes =
       options.maxInboundBytes ?? DEFAULT_MAX_INBOUND_BYTES;
+    this.#maxReplayBytes = options.maxReplayBytes ?? DEFAULT_MAX_REPLAY_BYTES;
     this.#maxReplayEvents =
       options.maxReplayEvents ?? DEFAULT_MAX_REPLAY_EVENTS;
     this.#now = options.now ?? Date.now;
@@ -198,7 +204,11 @@ export class AppLiveHub {
     if (this.#maxReplayEvents < 1 || this.#maxReplayEvents > 10_000) {
       throw new Error("Live replay capacity must be between 1 and 10,000.");
     }
-    if (this.#maxBufferedBytes < 1 || this.#maxInboundBytes < 1) {
+    if (
+      this.#maxBufferedBytes < 1 ||
+      this.#maxInboundBytes < 1 ||
+      this.#maxReplayBytes < 1
+    ) {
       throw new Error("Live frame limits must be positive.");
     }
 
@@ -290,12 +300,16 @@ export class AppLiveHub {
     this.#ownerCursors.set(ownerId, cursor);
     this.#currentCursor += 1;
     this.#publicationCount += 1;
-    this.#replayEvents.push({ event: parsed, ownerId });
-    if (this.#replayEvents.length > this.#maxReplayEvents) {
-      this.#replayEvents.splice(
-        0,
-        this.#replayEvents.length - this.#maxReplayEvents,
-      );
+    const encodedBytes = Buffer.byteLength(encodeAppLiveServerMessage(parsed));
+    this.#replayEvents.push({ encodedBytes, event: parsed, ownerId });
+    this.#replayBytes += encodedBytes;
+    while (
+      this.#replayEvents.length > this.#maxReplayEvents ||
+      this.#replayBytes > this.#maxReplayBytes
+    ) {
+      const removed = this.#replayEvents.shift();
+      if (!removed) break;
+      this.#replayBytes -= removed.encodedBytes;
     }
 
     const scopeKey = appLiveScopeKey(parsed.scope);
