@@ -1985,6 +1985,25 @@ export class CodexAppServer implements CodexRuntime {
     }
   }
 
+  async setActiveChatPaused(chatId: string, paused: boolean): Promise<boolean> {
+    this.setChatPaused(chatId, paused);
+    const active = [...this.#activeTurns.entries()].find(
+      ([, turn]) => turn.executionKind === "chat" && turn.chatId === chatId,
+    );
+    if (!active) return false;
+    try {
+      await this.request("turn/pause", {
+        threadId: active[1].threadId,
+        turnId: active[0],
+        paused,
+      });
+    } catch (error) {
+      if (!this.#activeTurns.has(active[0])) return false;
+      throw error;
+    }
+    return true;
+  }
+
   async listChatGptModels(
     provider: Extract<
       WorkerCommand,

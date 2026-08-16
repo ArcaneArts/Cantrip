@@ -1384,9 +1384,11 @@ async function start(): Promise<void> {
         } else {
           pausedChats.delete(command.chatId);
         }
-        for (const runtime of codexRuntimes.values()) {
-          runtime.setChatPaused(command.chatId, command.paused);
-        }
+        await Promise.all(
+          [...codexRuntimes.values()].map((runtime) =>
+            runtime.setActiveChatPaused(command.chatId, command.paused),
+          ),
+        );
         return { paused: command.paused };
       case "chat.compact":
         return runtimeFor(command).compactThread({
