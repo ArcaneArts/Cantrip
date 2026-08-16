@@ -160,6 +160,10 @@ import {
   type ExecutionTargetCapability,
 } from "../execution-targets/catalog.js";
 import {
+  deriveQuotaTokenAnalytics,
+  type QuotaTokenAnalytics,
+} from "../analytics/quota-token.js";
+import {
   enrichCatalogFromExactOpenRouterMatch,
   exactOpenRouterAliases,
 } from "../models/catalog-enrichment.js";
@@ -618,6 +622,13 @@ export interface TokenUsageRecordInput {
     visibleOutputTokens?: number | null;
     sanitizedRawUsage?: Record<string, unknown>;
   };
+}
+
+export interface QuotaTokenAnalyticsQuery {
+  providerId?: string;
+  providerAccountId?: string;
+  from?: Date;
+  to?: Date;
 }
 
 export interface ProviderQuotaObservationInput {
@@ -4325,6 +4336,120 @@ export class ServerRepository {
       }
       return true;
     });
+  }
+
+  async getQuotaTokenAnalytics(
+    ownerId: string,
+    query: QuotaTokenAnalyticsQuery = {},
+  ): Promise<QuotaTokenAnalytics> {
+    const quotaFilters = [
+      eq(schema.providerQuotaObservations.ownerId, ownerId),
+      ...(query.providerId
+        ? [eq(schema.providerQuotaObservations.providerId, query.providerId)]
+        : []),
+      ...(query.providerAccountId
+        ? [
+            eq(
+              schema.providerQuotaObservations.providerAccountId,
+              query.providerAccountId,
+            ),
+          ]
+        : []),
+      ...(query.to
+        ? [lte(schema.providerQuotaObservations.observedAt, query.to)]
+        : []),
+    ];
+    const tokenFilters = [
+      eq(schema.tokenUsageRecords.ownerId, ownerId),
+      ...(query.providerId
+        ? [eq(schema.tokenUsageRecords.providerId, query.providerId)]
+        : []),
+      ...(query.providerAccountId
+        ? [
+            eq(
+              schema.tokenUsageRecords.providerAccountId,
+              query.providerAccountId,
+            ),
+          ]
+        : []),
+      ...(query.to ? [lte(schema.tokenUsageRecords.startedAt, query.to)] : []),
+    ];
+    const [quotaRows, tokenRows] = await Promise.all([
+      this.database
+        .select()
+        .from(schema.providerQuotaObservations)
+        .where(and(...quotaFilters))
+        .orderBy(asc(schema.providerQuotaObservations.observedAt)),
+      this.database
+        .select()
+        .from(schema.tokenUsageRecords)
+        .where(and(...tokenFilters))
+        .orderBy(asc(schema.tokenUsageRecords.startedAt)),
+    ]);
+    const readings = quotaRows.map((row) => ({
+      id: row.id,
+      providerId: row.providerId,
+      providerAccountId: row.providerAccountId,
+      limitId: row.limitId,
+      limitName: row.limitName,
+      windowKind: row.windowKind,
+      windowDurationMinutes: row.windowDurationMinutes,
+      resetsAt: row.resetsAt,
+      observedAt: row.observedAt,
+      receivedAt: row.receivedAt,
+      usedPercent: row.usedPercentMicros / 1_000_000,
+    }));
+    const rangedReadings = query.from
+      ? [
+          ...new Map(
+            readings
+              .filter((reading) => reading.observedAt >= query.from!)
+              .flatMap((reading) => {
+                const prior = readings
+                  .filter(
+                    (candidate) =>
+                      candidate.providerAccountId ===
+                        reading.providerAccountId &&
+                      candidate.limitId === reading.limitId &&
+                      candidate.windowKind === reading.windowKind &&
+                      candidate.resetsAt?.getTime() ===
+                        reading.resetsAt?.getTime() &&
+                      candidate.observedAt < query.from!,
+                  )
+                  .at(-1);
+                return [prior, reading].filter(
+                  (candidate): candidate is (typeof readings)[number] =>
+                    Boolean(candidate),
+                );
+              })
+              .map((reading) => [reading.id, reading]),
+          ).values(),
+        ]
+      : readings;
+    return deriveQuotaTokenAnalytics(
+      rangedReadings,
+      tokenRows.map((row) => ({
+        id: row.id,
+        providerId: row.providerId,
+        providerAccountId: row.providerAccountId,
+        modelId: row.modelId,
+        modelName: row.modelName,
+        reasoningEffort: row.reasoningEffort,
+        projectId: row.projectId,
+        startedAt: row.startedAt,
+        completedAt: row.completedAt,
+        finalizedAt: row.finalizedAt,
+        attemptStatus: row.attemptStatus,
+        inputTokens: row.inputTokens,
+        cachedInputTokens: row.cachedInputTokens,
+        cacheWriteInputTokens: row.cacheWriteInputTokens,
+        outputTokens: row.outputTokens,
+        reasoningOutputTokens: row.reasoningOutputTokens,
+        visibleOutputTokens: row.visibleOutputTokens,
+        reportedTotalTokens: row.reportedTotalTokens,
+      })),
+      query.to ?? new Date(),
+    );
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {
