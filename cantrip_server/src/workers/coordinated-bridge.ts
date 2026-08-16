@@ -18,6 +18,7 @@ import type {
   RelayCoordinator,
   WorkerPresenceClaim,
 } from "../coordination/relay-coordinator.js";
+import { serverLogger } from "../logger.js";
 import type {
   WorkerCommandBus,
   WorkerCommandBusStats,
@@ -43,10 +44,12 @@ interface LocalConnection {
 }
 
 interface PendingRemoteRequest {
+  commandType: WorkerCommand["type"];
   eventQueue: Promise<void>;
   onEvent?: WorkerRequestOptions["onEvent"];
   reject(error: Error): void;
   resolve(value: unknown): void;
+  startedAtMs: number;
   timeout: ReturnType<typeof setTimeout>;
   workerId: string;
 }
@@ -122,6 +125,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     }
     const resolvedOwnerId = ownerId ?? (await this.#resolveOwnerId(workerId));
     if (!resolvedOwnerId) {
+      serverLogger.event("warn", "Worker relay attachment rejected", {
+        event: "coordination.worker.attach-rejected",
+        subsystem: "relay-coordination",
+        operation: "attach-worker",
+        reasonCode: "owner-unavailable",
+        status: "rejected",
+        workerId,
+      });
       socket.close(1008, "Worker owner is unavailable");
       return;
     }
@@ -194,11 +205,30 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       ownerId: resolvedOwnerId,
       unsubscribers,
     });
+    serverLogger.event("info", "Worker attached to relay instance", {
+      event: "coordination.worker.attached",
+      subsystem: "relay-coordination",
+      operation: "attach-worker",
+      status: "online",
+      workerId,
+      replacedRemoteClaim: Boolean(previous),
+    });
   }
 
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
+    const startedAtMs = Date.now();
+    serverLogger.event("info", "Coordinated worker bridge shutdown began", {
+      event: "coordination.bridge.shutdown-started",
+      subsystem: "relay-coordination",
+      operation: "close",
+      status: "stopping",
+      counts: {
+        localWorkers: this.#connections.size,
+        pendingRequests: this.#pending.size,
+      },
+    });
     clearInterval(this.#presenceTimer);
     this.#unsubscribeCoordination();
     const releases: Array<Promise<boolean>> = [];
@@ -221,6 +251,13 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     this.#tunnelListeners.clear();
     this.#knownRemoteWorkers.clear();
     await Promise.allSettled(releases);
+    serverLogger.event("info", "Coordinated worker bridge stopped", {
+      event: "coordination.bridge.shutdown-completed",
+      subsystem: "relay-coordination",
+      operation: "close",
+      status: "stopped",
+      durationMs: Date.now() - startedAtMs,
+    });
   }
 
   disconnect(workerId: string, reason?: string, code?: number): void {
@@ -338,11 +375,37 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
   ): Promise<unknown> {
     if (this.#pending.size >= MAX_PENDING_REMOTE_REQUESTS) {
       this.#failedRequests += 1;
+      serverLogger.rateLimited(
+        "coordination-command-queue-full",
+        "warn",
+        "Shared worker command queue is full",
+        {
+          event: "coordination.command.rejected",
+          subsystem: "relay-coordination",
+          operation: command.type,
+          reasonCode: "queue-full",
+          status: "rejected",
+          workerId,
+        },
+      );
       throw new Error("The shared worker command queue is full.");
     }
     const presence = await this.#coordinator.findWorker(workerId);
     if (!presence) {
       this.#failedRequests += 1;
+      serverLogger.rateLimited(
+        `coordination-command-offline:${workerId}:${command.type}`,
+        "warn",
+        "Remote worker command could not be dispatched",
+        {
+          event: "coordination.command.rejected",
+          subsystem: "relay-coordination",
+          operation: command.type,
+          reasonCode: "worker-offline",
+          status: "rejected",
+          workerId,
+        },
+      );
       throw new WorkerUnavailableError(`Worker ${workerId} is offline.`);
     }
     this.#knownRemoteWorkers.add(workerId);
@@ -358,19 +421,40 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
       MAX_REMOTE_COMMAND_LIFETIME_MS,
     );
     const requestId = randomUUID();
+    const startedAtMs = Date.now();
     this.#routedRequests += 1;
+    serverLogger.event("debug", "Remote worker command dispatched", {
+      event: "coordination.command.dispatched",
+      subsystem: "relay-coordination",
+      operation: command.type,
+      requestId,
+      status: "dispatched",
+      workerId,
+    });
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.#pending.delete(requestId);
         this.#failedRequests += 1;
+        serverLogger.event("warn", "Remote worker command timed out", {
+          event: "coordination.command.timed-out",
+          subsystem: "relay-coordination",
+          operation: command.type,
+          requestId,
+          reasonCode: "timeout",
+          status: "failed",
+          durationMs: Date.now() - startedAtMs,
+          workerId,
+        });
         reject(new Error(`Worker command ${command.type} timed out.`));
       }, timeoutMs);
       timeout.unref();
       this.#pending.set(requestId, {
+        commandType: command.type,
         eventQueue: Promise.resolve(),
         onEvent: options.onEvent,
         reject,
         resolve,
+        startedAtMs,
         timeout,
         workerId,
       });
@@ -393,6 +477,16 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
           clearTimeout(pending.timeout);
           this.#pending.delete(requestId);
           this.#failedRequests += 1;
+          serverLogger.event("error", "Remote worker command relay failed", {
+            event: "coordination.command.dispatch-failed",
+            subsystem: "relay-coordination",
+            operation: command.type,
+            requestId,
+            reasonCode: "coordination-publish-failed",
+            status: "failed",
+            durationMs: Date.now() - startedAtMs,
+            workerId,
+          });
           pending.reject(
             error instanceof Error ? error : new Error(String(error)),
           );
@@ -431,9 +525,28 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         }
         if (message.ok) {
           this.#succeededRequests += 1;
+          serverLogger.event("debug", "Remote worker command completed", {
+            event: "coordination.command.completed",
+            subsystem: "relay-coordination",
+            operation: pending.commandType,
+            requestId: message.requestId,
+            status: "completed",
+            durationMs: Date.now() - pending.startedAtMs,
+            workerId: pending.workerId,
+          });
           pending.resolve(message.result);
         } else {
           this.#failedRequests += 1;
+          serverLogger.event("warn", "Remote worker command failed", {
+            event: "coordination.command.failed",
+            subsystem: "relay-coordination",
+            operation: pending.commandType,
+            requestId: message.requestId,
+            reasonCode: "remote-worker-failure",
+            status: "failed",
+            durationMs: Date.now() - pending.startedAtMs,
+            workerId: pending.workerId,
+          });
           pending.reject(
             new Error(message.error ?? "Remote worker command failed."),
           );
@@ -487,6 +600,19 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
     >,
   ): Promise<void> {
     if (this.#incomingRequests >= MAX_INCOMING_REMOTE_REQUESTS) {
+      serverLogger.rateLimited(
+        "coordination-incoming-command-busy",
+        "warn",
+        "Incoming worker command relay is busy",
+        {
+          event: "coordination.command.rejected",
+          subsystem: "relay-coordination",
+          operation: "receive-command",
+          reasonCode: "incoming-limit",
+          status: "rejected",
+          workerId: message.workerId,
+        },
+      );
       await this.#respond(
         message,
         false,
@@ -731,6 +857,14 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         continue;
       }
       if (!retained) {
+        serverLogger.event("warn", "Worker relay claim was lost", {
+          event: "coordination.worker.claim-lost",
+          subsystem: "relay-coordination",
+          operation: "refresh-worker",
+          reasonCode: "claim-replaced",
+          status: "reconnecting",
+          workerId,
+        });
         this.#local.disconnect(
           workerId,
           "Worker connection was claimed by another server instance",

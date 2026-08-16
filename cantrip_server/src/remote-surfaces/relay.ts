@@ -5,6 +5,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import { serverLogger } from "../logger.js";
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
 
@@ -58,7 +59,14 @@ export class RemoteSurfaceRelay {
     socket: RemoteSurfaceClientSocket,
     binding: RemoteSurfaceRelayBinding,
   ): () => void {
+    const startedAtMs = Date.now();
     let closed = false;
+    let closeReasonCode = "client_closed";
+    let bytesFromClient = 0;
+    let bytesFromWorker = 0;
+    let framesFromClient = 0;
+    let framesFromWorker = 0;
+    let droppedFrames = 0;
     let lastClientSequence = -1;
     let lastWorkerSequence = -1;
     let unsubscribeDisconnect: () => void = () => undefined;
@@ -82,18 +90,25 @@ export class RemoteSurfaceRelay {
             payload.byteLength,
           )
         ) {
+          closeReasonCode = "relay_quota_reached";
           socket.close(1013, "Remote Surface relay bandwidth quota reached");
           cleanup();
           return;
         }
         if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
-          if (header.channel === "frame" || header.channel === "cursor") return;
+          if (header.channel === "frame" || header.channel === "cursor") {
+            droppedFrames += 1;
+            return;
+          }
+          closeReasonCode = "client_backpressure";
           socket.close(1013, "Remote Surface client is too slow");
           return;
         }
         socket.send(encodeRemoteSurfaceFrame(header, payload), {
           binary: true,
         });
+        framesFromWorker += 1;
+        bytesFromWorker += payload.byteLength;
         lastWorkerSequence = header.sequence;
       },
     );
@@ -103,12 +118,31 @@ export class RemoteSurfaceRelay {
       closed = true;
       unsubscribe();
       unsubscribeDisconnect();
+      serverLogger.info("Remote Surface relay closed", {
+        event: "remote_surface.relay.closed",
+        subsystem: "remote-surface",
+        operation: "relay",
+        status: "completed",
+        reasonCode: closeReasonCode,
+        attachmentId: binding.attachmentId,
+        surfaceId: binding.surfaceId,
+        workerId: binding.workerId,
+        durationMs: Date.now() - startedAtMs,
+        bytesFromClient,
+        bytesFromWorker,
+        counts: {
+          framesFromClient,
+          framesFromWorker,
+          droppedFrames,
+        },
+      });
     };
 
     unsubscribeDisconnect = this.bridge.subscribeWorkerDisconnect(
       binding.workerId,
       () => {
         if (closed) return;
+        closeReasonCode = "worker_disconnected";
         socket.close(1013, "Remote Surface worker disconnected");
         cleanup();
       },
@@ -117,6 +151,7 @@ export class RemoteSurfaceRelay {
     socket.on("message", (data, isBinary) => {
       if (closed) return;
       if (!isBinary) {
+        closeReasonCode = "non_binary_frame";
         socket.close(1003, "Remote Surface data must be binary");
         cleanup();
         return;
@@ -125,6 +160,7 @@ export class RemoteSurfaceRelay {
       try {
         frame = decodeRemoteSurfaceFrame(frameBytes(data));
       } catch {
+        closeReasonCode = "invalid_frame";
         socket.close(1008, "Invalid Remote Surface frame");
         cleanup();
         return;
@@ -133,6 +169,7 @@ export class RemoteSurfaceRelay {
         frame.header.surfaceId !== binding.surfaceId ||
         frame.header.attachmentId !== binding.attachmentId
       ) {
+        closeReasonCode = "binding_mismatch";
         socket.close(1008, "Remote Surface binding mismatch");
         cleanup();
         return;
@@ -145,6 +182,7 @@ export class RemoteSurfaceRelay {
           frame.payload.byteLength,
         )
       ) {
+        closeReasonCode = "relay_quota_reached";
         socket.close(1013, "Remote Surface relay bandwidth quota reached");
         cleanup();
         return;
@@ -159,15 +197,29 @@ export class RemoteSurfaceRelay {
         if (
           frame.header.channel === "frame" ||
           frame.header.channel === "cursor"
-        )
+        ) {
+          droppedFrames += 1;
           return;
+        }
+        closeReasonCode = "worker_unavailable_or_congested";
         socket.close(1013, "Remote Surface worker is unavailable or congested");
         cleanup();
         return;
       }
+      framesFromClient += 1;
+      bytesFromClient += frame.payload.byteLength;
       lastClientSequence = frame.header.sequence;
     });
     socket.on("close", cleanup);
+    serverLogger.info("Remote Surface relay active", {
+      event: "remote_surface.relay.active",
+      subsystem: "remote-surface",
+      operation: "relay",
+      status: "started",
+      attachmentId: binding.attachmentId,
+      surfaceId: binding.surfaceId,
+      workerId: binding.workerId,
+    });
     return cleanup;
   }
 }

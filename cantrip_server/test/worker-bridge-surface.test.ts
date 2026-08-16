@@ -9,6 +9,10 @@ import {
   type RemoteSurfaceFrameHeader,
   type TunnelDataPlaneFrameHeader,
 } from "@cantrip/protocol";
+import {
+  createServiceLogEmitter,
+  type ServiceLogRecordInput,
+} from "@cantrip/logging";
 import { describe, expect, it, vi } from "vitest";
 
 import { WorkerBridge } from "../src/workers/bridge.js";
@@ -52,6 +56,46 @@ const header: RemoteSurfaceFrameHeader = {
 };
 
 describe("WorkerBridge Remote Surface transport", () => {
+  it("logs command lifecycle metadata without command payloads", async () => {
+    const records: ServiceLogRecordInput[] = [];
+    const logger = createServiceLogEmitter("server-test", {
+      onRecord: (record) => records.push(record),
+    });
+    const bridge = new WorkerBridge(1_000, logger);
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+
+    const secretInput = "super-secret-terminal-input";
+    const response = bridge.request("worker-1", {
+      type: "terminal.input",
+      terminalId: "terminal-1",
+      data: secretInput,
+    });
+    const request = JSON.parse(String(socket.sent.at(-1))) as {
+      requestId: string;
+    };
+    socket.emit(
+      "message",
+      JSON.stringify(
+        workerResponseEnvelopeSchema.parse({
+          kind: "response",
+          requestId: request.requestId,
+          ok: true,
+          result: { accepted: true },
+        }),
+      ),
+      false,
+    );
+
+    await expect(response).resolves.toEqual({ accepted: true });
+    const serialized = JSON.stringify(records);
+    expect(serialized).toContain("worker.command.dispatched");
+    expect(serialized).toContain("worker.command.completed");
+    expect(serialized).toContain("terminal.input");
+    expect(serialized).not.toContain(secretInput);
+    bridge.close();
+  });
+
   it("keeps an in-flight command alive across a short worker reconnect", async () => {
     const bridge = new WorkerBridge(1_000);
     const firstSocket = new TestWorkerSocket();

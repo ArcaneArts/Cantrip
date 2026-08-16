@@ -9,6 +9,7 @@ import {
   RelayLimitError,
   SlidingWindowRateLimiter,
 } from "../security/abuse-limits.js";
+import { serverLogger } from "../logger.js";
 import type {
   WorkerCommandBus,
   WorkerNotificationListener,
@@ -156,6 +157,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
       )
     ) {
       this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "relay-bandwidth-quota");
       throw new RelayLimitError("Relay bandwidth quota reached. Retry later.");
     }
     const accountRetry = this.#accountRate.consume(ownerId);
@@ -163,6 +165,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     const retryAfter = Math.max(accountRetry ?? 0, workerRetry ?? 0);
     if (retryAfter > 0) {
       this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "command-rate-limit");
       throw new RelayLimitError(
         "Worker command rate limit reached. Retry shortly.",
         retryAfter,
@@ -171,6 +174,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     const releaseAccount = this.#accountActive.acquire(ownerId);
     if (!releaseAccount) {
       this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "account-concurrency-limit");
       throw new RelayLimitError(
         "Account worker-command concurrency limit reached.",
       );
@@ -179,6 +183,7 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     if (!releaseWorker) {
       releaseAccount();
       this.#failedRequests += 1;
+      this.#logLimit(workerId, command.type, "worker-concurrency-limit");
       throw new RelayLimitError("Worker command concurrency limit reached.");
     }
     this.#routedRequests += 1;
@@ -245,5 +250,25 @@ export class LimitedWorkerCommandBus implements WorkerCommandBus {
     }
     this.#ownerIds.set(workerId, ownerId);
     return ownerId;
+  }
+
+  #logLimit(
+    workerId: string,
+    operation: WorkerCommand["type"],
+    reasonCode: string,
+  ): void {
+    serverLogger.rateLimited(
+      `worker-command-limit:${workerId}:${operation}:${reasonCode}`,
+      "warn",
+      "Worker command rejected by relay limits",
+      {
+        event: "worker.command.rate-limited",
+        subsystem: "worker-command",
+        operation,
+        reasonCode,
+        status: "rejected",
+        workerId,
+      },
+    );
   }
 }

@@ -9,6 +9,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { ServerRepository } from "../db/repository.js";
+import { serverLogger } from "../logger.js";
 import {
   TunnelStreamBroker,
   type TunnelRouteHandle,
@@ -34,6 +35,10 @@ export interface ProjectShareAttachmentBinding {
   token: string;
   tunnelId: string;
   workerId: string;
+  bytesFromSource: number;
+  bytesToSource: number;
+  connectionsOpened: number;
+  connectionsClosed: number;
 }
 
 export interface OpenProjectShareInput {
@@ -272,6 +277,16 @@ export class ProjectShareTunnelBroker {
         existing.loopbackHost = descriptor.loopbackHost;
         existing.loopbackPort = descriptor.loopbackPort;
         this.#touch(existing, now);
+        serverLogger.debug("Project share attachment reused", {
+          event: "project_share.reused",
+          subsystem: "project-share",
+          operation: "open",
+          status: "completed",
+          attachmentId: existing.attachment.attachmentId,
+          projectId: input.projectId,
+          tunnelId: existing.tunnelId,
+          workerId: input.workerId,
+        });
         return projectShareAttachmentSchema.parse({
           ...existing.attachment,
           expiresAt: new Date(existing.expiresAt).toISOString(),
@@ -316,6 +331,15 @@ export class ProjectShareTunnelBroker {
   }
 
   async #open(input: OpenProjectShareInput): Promise<ProjectShareAttachment> {
+    const startedAtMs = Date.now();
+    serverLogger.debug("Project share attachment opening", {
+      event: "project_share.open.started",
+      subsystem: "project-share",
+      operation: "open",
+      status: "started",
+      projectId: input.projectId,
+      workerId: input.workerId,
+    });
     if (!this.bridge.isConnected(input.workerId)) {
       throw new Error(`Worker ${input.workerId} is offline.`);
     }
@@ -437,6 +461,10 @@ export class ProjectShareTunnelBroker {
         token,
         tunnelId: managedTunnelId,
         workerId: input.workerId,
+        bytesFromSource: 0,
+        bytesToSource: 0,
+        connectionsOpened: 0,
+        connectionsClosed: 0,
       };
       this.#attachments.set(token, binding);
       this.#attachmentsByProject.set(projectKey(input), binding);
@@ -447,8 +475,30 @@ export class ProjectShareTunnelBroker {
         projectId: input.projectId,
         tunnelId: managedTunnelId,
       });
+      serverLogger.info("Project share attachment active", {
+        event: "project_share.open.completed",
+        subsystem: "project-share",
+        operation: "open",
+        status: "completed",
+        attachmentId: shareId,
+        projectId: input.projectId,
+        tunnelId: managedTunnelId,
+        workerId: input.workerId,
+        durationMs: Date.now() - startedAtMs,
+      });
       return attachment;
     } catch (error) {
+      serverLogger.warn("Project share attachment failed to open", {
+        event: "project_share.open.failed",
+        subsystem: "project-share",
+        operation: "open",
+        status: "failed",
+        reasonCode: "worker_or_tunnel_setup_failed",
+        projectId: input.projectId,
+        workerId: input.workerId,
+        durationMs: Date.now() - startedAtMs,
+        error,
+      });
       if (managedTunnelId && this.#repository) {
         await this.#repository
           .removeManagedTunnel(input.ownerId, {
@@ -552,6 +602,23 @@ export class ProjectShareTunnelBroker {
         .catch(() => undefined);
     }
     this.#stopTrackingWorkerIfUnused(binding.workerId);
+    serverLogger.info("Project share attachment closed", {
+      event: "project_share.closed",
+      subsystem: "project-share",
+      operation: "close",
+      status: "completed",
+      attachmentId: binding.attachment.attachmentId,
+      projectId: binding.attachment.projectId,
+      tunnelId: binding.tunnelId,
+      workerId: binding.workerId,
+      durationMs: Date.now() - binding.createdAt,
+      bytesFromSource: binding.bytesFromSource,
+      bytesToSource: binding.bytesToSource,
+      counts: {
+        connectionsOpened: binding.connectionsOpened,
+        connectionsClosed: binding.connectionsClosed,
+      },
+    });
   }
 
   #recordMetrics(
@@ -570,6 +637,13 @@ export class ProjectShareTunnelBroker {
       now + this.#idleTtlMs,
     );
     binding.telemetry?.record(input, new Date(binding.expiresAt));
+    binding.bytesFromSource += Math.max(0, input.bytesFromSource);
+    binding.bytesToSource += Math.max(0, input.bytesToSource);
+    if (input.connectionDelta > 0) {
+      binding.connectionsOpened += input.connectionDelta;
+    } else if (input.connectionDelta < 0) {
+      binding.connectionsClosed += Math.abs(input.connectionDelta);
+    }
   }
 
   async #closeWorkerShare(
@@ -597,13 +671,26 @@ export class ProjectShareTunnelBroker {
   #trackWorkerDisconnect(workerId: string): void {
     if (this.#workerDisconnectSubscriptions.has(workerId)) return;
     const unsubscribe = this.bridge.subscribeWorkerDisconnect(workerId, () => {
+      let closedCount = 0;
       for (const binding of [...this.#attachments.values()]) {
         if (binding.workerId !== workerId) continue;
+        closedCount += 1;
         this.#markOrphanedWorkerShare(
           workerId,
           binding.attachment.attachmentId,
         );
         void this.#remove(binding);
+      }
+      if (closedCount > 0) {
+        serverLogger.warn("Project shares closed after worker disconnect", {
+          event: "project_share.worker_disconnected",
+          subsystem: "project-share",
+          operation: "disconnect",
+          status: "degraded",
+          reasonCode: "worker_disconnected",
+          workerId,
+          counts: { attachments: closedCount },
+        });
       }
     });
     this.#workerDisconnectSubscriptions.set(workerId, unsubscribe);

@@ -38,7 +38,9 @@ import type { ProjectWorktreeCoordinator } from "../worktrees/coordinator.js";
 import { evaluateWorkflowPredicate } from "./values.js";
 
 interface WorkflowExecutorLogger {
+  debug?(context: Record<string, unknown>, message: string): void;
   error(context: Record<string, unknown>, message: string): void;
+  info?(context: Record<string, unknown>, message: string): void;
   warn(context: Record<string, unknown>, message: string): void;
 }
 
@@ -128,6 +130,16 @@ export class WorkflowExecutor {
         "Workflow worktree recovery scan could not complete during startup",
       );
     }
+    this.logger.info?.(
+      {
+        event: "workflow.recovery.completed",
+        subsystem: "workflow",
+        operation: "recovery",
+        status: "completed",
+        counts: { recoveredRuns: recovered.length },
+      },
+      "Workflow restart recovery completed",
+    );
     return recovered.length;
   }
 
@@ -249,8 +261,28 @@ export class WorkflowExecutor {
     const runKey = `${ownerId}\0${runId}`;
     if (this.#activeRuns.has(runKey)) {
       this.#rerunRequested.add(runKey);
+      this.logger.debug?.(
+        {
+          event: "workflow.run.requeued",
+          subsystem: "workflow",
+          operation: "queue",
+          status: "queued",
+          runId,
+        },
+        "Workflow run requested another dispatch pass",
+      );
       return;
     }
+    this.logger.debug?.(
+      {
+        event: "workflow.run.queued",
+        subsystem: "workflow",
+        operation: "queue",
+        status: "queued",
+        runId,
+      },
+      "Workflow run queued",
+    );
     const task = this.#ownerContext
       .run(ownerId, () => this.executeRun(runId))
       .catch((error: unknown) => {
@@ -269,6 +301,18 @@ export class WorkflowExecutor {
   async queueAvailableRuns(): Promise<void> {
     if (this.#stopping) return;
     const runs = await this.repository.workflowRuns.listDispatchableRuns();
+    if (runs.length > 0) {
+      this.logger.info?.(
+        {
+          event: "workflow.dispatch.discovered",
+          subsystem: "workflow",
+          operation: "dispatch",
+          status: "queued",
+          counts: { runs: runs.length },
+        },
+        "Dispatchable workflow runs discovered",
+      );
+    }
     for (const run of runs) this.queueRun(run.runId, run.ownerId);
   }
 
@@ -288,6 +332,20 @@ export class WorkflowExecutor {
           runId,
           requested.run.run.projectId,
           "workflow-run",
+        );
+      }
+      if (requested) {
+        this.logger.info?.(
+          {
+            event: "workflow.run.cancel_requested",
+            subsystem: "workflow",
+            operation: "cancel",
+            status: "accepted",
+            runId,
+            projectId: requested.run.run.projectId,
+            counts: { activeExecutions: requested.executions.length },
+          },
+          "Workflow cancellation requested",
         );
       }
       if (!requested?.executions.length || requested.replayed) {
@@ -316,6 +374,19 @@ export class WorkflowExecutor {
         input,
       );
       if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
+      if (run) {
+        this.logger.info?.(
+          {
+            event: "workflow.run.paused",
+            subsystem: "workflow",
+            operation: "pause",
+            status: "completed",
+            runId,
+            projectId: run.run.projectId,
+          },
+          "Workflow run paused",
+        );
+      }
       return run;
     });
   }
@@ -335,6 +406,19 @@ export class WorkflowExecutor {
         this.queueRun(runId);
       }
       if (run) this.notifyRunChanged(runId, run.run.projectId, "workflow-run");
+      if (run) {
+        this.logger.info?.(
+          {
+            event: "workflow.run.resumed",
+            subsystem: "workflow",
+            operation: "resume",
+            status: "completed",
+            runId,
+            projectId: run.run.projectId,
+          },
+          "Workflow run resumed",
+        );
+      }
       return run;
     });
   }
@@ -444,6 +528,16 @@ export class WorkflowExecutor {
       clearInterval(this.#recoveryTimer);
       this.#recoveryTimer = null;
     }
+    this.logger.info?.(
+      {
+        event: "workflow.executor.stopping",
+        subsystem: "workflow",
+        operation: "shutdown",
+        status: "started",
+        counts: { activeRuns: this.#activeRuns.size },
+      },
+      "Workflow executor stopping",
+    );
   }
 
   async drain(): Promise<void> {
@@ -510,12 +604,25 @@ export class WorkflowExecutor {
   }
 
   private async executeRun(runId: string): Promise<void> {
+    const startedAtMs = Date.now();
     const initial = await this.repository.workflowRuns.getRun(
       this.#ownerId(),
       runId,
     );
     if (!initial) return;
     const projectId = initial.run.projectId;
+    this.logger.info?.(
+      {
+        event: "workflow.run.started",
+        subsystem: "workflow",
+        operation: "execute",
+        status: "started",
+        runId,
+        workflowId: initial.run.workflowId,
+        projectId,
+      },
+      "Workflow run dispatch started",
+    );
     this.notifyRunChanged(runId, projectId);
     const active = new Set<Promise<void>>();
     while (!this.#stopping) {
@@ -674,12 +781,30 @@ export class WorkflowExecutor {
       if (allocationBlocked && active.size === 0) break;
     }
     await Promise.allSettled(active);
+    const finalRun = await this.repository.workflowRuns.getRun(
+      this.#ownerId(),
+      runId,
+    );
+    this.logger.info?.(
+      {
+        event: "workflow.run.dispatch_completed",
+        subsystem: "workflow",
+        operation: "execute",
+        status: finalRun?.run.status ?? "unavailable",
+        runId,
+        workflowId: initial.run.workflowId,
+        projectId,
+        durationMs: Date.now() - startedAtMs,
+      },
+      "Workflow run dispatch pass completed",
+    );
   }
 
   private async executeAttempt(
     lease: WorkflowAttemptLease,
     runtime: ModelRuntime,
   ): Promise<void> {
+    const startedAtMs = Date.now();
     const { cwd, workerId, worktreeId } = lease.assignment;
     const ownerId = this.#ownerId();
     const startedAt = new Date();
@@ -709,6 +834,20 @@ export class WorkflowExecutor {
         });
     }, ATTEMPT_HEARTBEAT_INTERVAL_MS);
     heartbeatTimer.unref();
+    this.logger.info?.(
+      {
+        event: "workflow.attempt.started",
+        subsystem: "workflow",
+        operation: "node.execute",
+        status: "started",
+        runId: lease.candidate.run.id,
+        workflowId: lease.candidate.run.workflowId,
+        attemptId: lease.attemptId,
+        workerId,
+        projectId: lease.candidate.projectId,
+      },
+      "Workflow node attempt started",
+    );
     try {
       await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
         attemptStatus: "running",
@@ -807,6 +946,21 @@ export class WorkflowExecutor {
         lease.candidate.projectId,
         "workflow-node",
       );
+      this.logger.info?.(
+        {
+          event: "workflow.attempt.completed",
+          subsystem: "workflow",
+          operation: "node.execute",
+          status: "completed",
+          runId: lease.candidate.run.id,
+          workflowId: lease.candidate.run.workflowId,
+          attemptId: lease.attemptId,
+          workerId,
+          projectId: lease.candidate.projectId,
+          durationMs: Date.now() - startedAtMs,
+        },
+        "Workflow node attempt completed",
+      );
     } catch (error) {
       const failedAt = new Date();
       await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
@@ -828,6 +982,22 @@ export class WorkflowExecutor {
       await this.interruptExecutions(
         failure.interruptions,
         "Map failure was persisted but sibling runtime interruption failed",
+      );
+      this.logger.warn(
+        {
+          event: "workflow.attempt.failed",
+          subsystem: "workflow",
+          operation: "node.execute",
+          status: "failed",
+          runId: lease.candidate.run.id,
+          workflowId: lease.candidate.run.workflowId,
+          attemptId: lease.attemptId,
+          workerId,
+          projectId: lease.candidate.projectId,
+          durationMs: Date.now() - startedAtMs,
+          err: error,
+        },
+        "Workflow node attempt failed",
       );
     } finally {
       clearInterval(heartbeatTimer);

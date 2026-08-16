@@ -36,9 +36,27 @@ async function listenCodeSurface(
 }
 
 async function start(): Promise<void> {
+  const startedAtMs = Date.now();
   const config = readServerConfig();
   config.serverInstanceId ??= randomUUID();
+  serverLogger.event("info", "Cantrip Server startup began", {
+    event: "server.startup.started",
+    subsystem: "server-lifecycle",
+    operation: "start",
+    status: "starting",
+    deploymentMode: config.deploymentMode,
+    databaseEngine: config.databaseUrl ? "postgres" : "pglite",
+    sharedCoordination: Boolean(config.redisUrl),
+  });
   const database = await connectDatabase(config);
+  serverLogger.event("info", "Database is ready", {
+    event: "server.startup.database-ready",
+    subsystem: "server-lifecycle",
+    operation: "connect-database",
+    status: "ready",
+    durationMs: Date.now() - startedAtMs,
+    databaseEngine: database.engine,
+  });
   const coordinator = config.redisUrl
     ? new RedisRelayCoordinator({
         instanceId: config.serverInstanceId,
@@ -48,6 +66,15 @@ async function start(): Promise<void> {
       })
     : undefined;
   await coordinator?.start();
+  if (coordinator) {
+    serverLogger.event("info", "Shared relay coordination is ready", {
+      event: "coordination.lifecycle.ready",
+      subsystem: "relay-coordination",
+      operation: "start",
+      status: "ready",
+      counts: { instances: coordinator.stats().instanceCount },
+    });
+  }
   const workerBridge = coordinator
     ? new CoordinatedWorkerBridge({
         coordinator,
@@ -95,7 +122,14 @@ async function start(): Promise<void> {
     }
 
     closing = true;
-    app.log.info({ signal }, "Shutting down Cantrip Server");
+    const shutdownStartedAtMs = Date.now();
+    serverLogger.event("info", "Cantrip Server shutdown began", {
+      event: "server.shutdown.started",
+      subsystem: "server-lifecycle",
+      operation: "shutdown",
+      reasonCode: signal.toLowerCase(),
+      status: "stopping",
+    });
     try {
       if (codeSurfaceListening) {
         await closeCodeSurfaceServer(codeSurface);
@@ -103,6 +137,13 @@ async function start(): Promise<void> {
       }
     } finally {
       await app.close();
+      serverLogger.event("info", "Cantrip Server shutdown completed", {
+        event: "server.shutdown.completed",
+        subsystem: "server-lifecycle",
+        operation: "shutdown",
+        status: "stopped",
+        durationMs: Date.now() - shutdownStartedAtMs,
+      });
     }
   };
 
@@ -121,14 +162,31 @@ async function start(): Promise<void> {
     await app.close();
     throw error;
   }
-  app.log.info(
-    { origin: surfaceConfig.origin },
-    "Cantrip Code isolated surface is ready",
-  );
-  app.log.info({ database: database.engine }, "Cantrip Server is ready");
+  serverLogger.event("info", "Cantrip Code isolated surface is ready", {
+    event: "server.startup.code-surface-ready",
+    subsystem: "server-lifecycle",
+    operation: "listen-code-surface",
+    status: "ready",
+  });
+  serverLogger.event("info", "Cantrip Server is ready", {
+    event: "server.startup.completed",
+    subsystem: "server-lifecycle",
+    operation: "start",
+    status: "ready",
+    durationMs: Date.now() - startedAtMs,
+    databaseEngine: database.engine,
+    sharedCoordination: Boolean(coordinator),
+  });
 }
 
 start().catch((error: unknown) => {
-  serverLogger.error("Cantrip Server failed to start", error);
+  serverLogger.event("fatal", "Cantrip Server failed to start", {
+    event: "server.startup.failed",
+    subsystem: "server-lifecycle",
+    operation: "start",
+    status: "failed",
+    reasonCode: "startup-error",
+    error: error instanceof Error ? error : new Error(String(error)),
+  });
   process.exitCode = 1;
 });
