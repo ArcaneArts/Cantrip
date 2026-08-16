@@ -9,6 +9,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Star,
   Trash2,
 } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -36,6 +37,19 @@ import { errorMessage } from "@/lib/error-message";
 
 function message(error: unknown): string {
   return errorMessage(error, "Workspace update failed.");
+}
+
+export function promoteDefaultWorkspace(
+  workspaces: ProjectWorkspaceSummary[],
+  promoted: ProjectWorkspaceSummary,
+): ProjectWorkspaceSummary[] {
+  return workspaces.map((workspace) =>
+    workspace.id === promoted.id
+      ? promoted
+      : workspace.isDefault
+        ? { ...workspace, isDefault: false }
+        : workspace,
+  );
 }
 
 export function WorkspaceSettings() {
@@ -81,6 +95,19 @@ export function WorkspaceSettings() {
       workspaceId: string;
     }) => updateProjectWorkspace(workspaceId, { projectIds }),
     onSuccess: replaceWorkspace,
+  });
+  const makeDefault = useMutation({
+    mutationFn: (workspaceId: string) =>
+      updateProjectWorkspace(workspaceId, { isDefault: true }),
+    onSuccess: (workspace) => {
+      queryClient.setQueryData<ProjectWorkspaceSummary[]>(
+        ["project-workspaces"],
+        (current = []) => promoteDefaultWorkspace(current, workspace),
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ["project-workspaces"],
+      });
+    },
   });
   const remove = useMutation({
     mutationFn: deleteProjectWorkspace,
@@ -156,26 +183,36 @@ export function WorkspaceSettings() {
                   </p>
                 </div>
                 {!workspace.isDefault ? (
-                  <>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-8"
-                      onClick={() => openEditor(workspace)}
-                    >
-                      <Pencil className="size-3.5" />
-                      <span className="sr-only">Rename {workspace.name}</span>
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="size-8"
-                      onClick={() => setDeleteTarget(workspace)}
-                    >
-                      <Trash2 className="size-3.5" />
-                      <span className="sr-only">Delete {workspace.name}</span>
-                    </Button>
-                  </>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={makeDefault.isPending}
+                    onClick={() => makeDefault.mutate(workspace.id)}
+                    title={`Make ${workspace.name} the default workspace`}
+                  >
+                    <Star className="size-3.5" />
+                    <span className="hidden sm:inline">Make default</span>
+                  </Button>
+                ) : null}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="size-8"
+                  onClick={() => openEditor(workspace)}
+                >
+                  <Pencil className="size-3.5" />
+                  <span className="sr-only">Rename {workspace.name}</span>
+                </Button>
+                {!workspace.isDefault ? (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="size-8"
+                    onClick={() => setDeleteTarget(workspace)}
+                  >
+                    <Trash2 className="size-3.5" />
+                    <span className="sr-only">Delete {workspace.name}</span>
+                  </Button>
                 ) : null}
               </div>
               <div className="border-t p-2">
@@ -219,9 +256,9 @@ export function WorkspaceSettings() {
           ))}
         </div>
 
-        {membership.isError || remove.isError ? (
+        {membership.isError || makeDefault.isError || remove.isError ? (
           <p className="text-sm text-destructive">
-            {message(membership.error ?? remove.error)}
+            {message(membership.error ?? makeDefault.error ?? remove.error)}
           </p>
         ) : null}
       </div>
