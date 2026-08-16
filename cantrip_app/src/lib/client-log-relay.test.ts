@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import clientLogRelaySource from "../../src-tauri/src/client_log_relay.js?raw";
-import { formatClientLogArguments } from "./client-log-relay";
+import {
+  clearClientLogs,
+  formatClientLogArguments,
+  readClientLogs,
+  recordClientLog,
+} from "./client-log-relay";
 
 describe("client log relay", () => {
   it("formats structured and error arguments for the terminal", () => {
@@ -26,6 +31,20 @@ describe("client log relay", () => {
     const message = formatClientLogArguments(["x".repeat(20_000)]);
     expect(message.length).toBeLessThan(16_500);
     expect(message.endsWith("… [truncated]")).toBe(true);
+  });
+
+  it("keeps a bounded sanitized client buffer outside Tauri", () => {
+    clearClientLogs();
+    recordClientLog("error", ["request failed", { apiKey: "secret-key" }]);
+    const result = readClientLogs({ afterCursor: 0, limit: 10 });
+    expect(result.records).toMatchObject([
+      {
+        system: "client",
+        level: "error",
+        message: 'request failed {"apiKey":"[REDACTED]"}',
+      },
+    ]);
+    expect(result.nextCursor).toBe(result.latestCursor);
   });
 
   it("captures pre-bootstrap console and fetch failures without URL secrets", async () => {
@@ -99,6 +118,10 @@ describe("client log relay", () => {
       context.Error,
     );
     context.console.error("client exploded");
+    context.console.error("apiKey=sk-abcdefghijk");
+    context.console.error(
+      "https://user:password@example.test/failure?token=secret",
+    );
     await context.window.fetch(
       "https://user:password@example.test/failure?token=secret#private",
     );
@@ -124,5 +147,8 @@ describe("client log relay", () => {
         },
       ]),
     );
+    expect(JSON.stringify(invocations)).not.toContain("sk-abcdefghijk");
+    expect(JSON.stringify(invocations)).not.toContain("user:password");
+    expect(JSON.stringify(invocations)).not.toContain("token=secret");
   });
 });

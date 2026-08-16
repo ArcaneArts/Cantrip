@@ -1,7 +1,7 @@
 (() => {
   const relayState = globalThis;
-  if (relayState.__CANTRIP_CLIENT_LOG_RELAY_INSTALLED__) return;
-  relayState.__CANTRIP_CLIENT_LOG_RELAY_INSTALLED__ = true;
+  if (relayState.__CANTRIP_CLIENT_LOG_NATIVE_RELAY_INSTALLED__) return;
+  relayState.__CANTRIP_CLIENT_LOG_NATIVE_RELAY_INSTALLED__ = true;
 
   const maxMessageLength = 16_384;
   const maxSourceLength = 2_048;
@@ -51,10 +51,52 @@
     }
   };
 
+  const secretName = (value) =>
+    /^(?:authorization|cookie|password|passwd|passphrase|secret|api[-_]?key|apikey|token|access[-_]?token|refresh[-_]?token|private[-_]?key|credential|pairing[-_]?code|enrollment[-_]?code)$/iu.test(
+      value,
+    );
+
+  const sanitizeUrl = (candidate) => {
+    try {
+      const url = new URL(candidate);
+      if (url.username || url.password) {
+        url.username = "redacted";
+        url.password = "redacted";
+      }
+      for (const key of [...url.searchParams.keys()]) {
+        if (secretName(key)) url.searchParams.set(key, "[REDACTED]");
+      }
+      return url.toString();
+    } catch {
+      return candidate;
+    }
+  };
+
+  const sanitizeText = (value) =>
+    value
+      .replace(
+        /(?:\u001b(?:\[[0-?]*[ -/]*[@-~]|\][^\u0007]*(?:\u0007|\u001b\\))|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f])/gu,
+        "",
+      )
+      .replace(
+        /\bauthorization(\s*[=:]\s*)(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+/giu,
+        (_match, separator) => `Authorization${separator}[REDACTED]`,
+      )
+      .replace(
+        /\b(authorization|cookie|password|passwd|passphrase|secret|api[_-]?key|apikey|token|access[_-]?token|refresh[_-]?token|private[_-]?key|pairing[_-]?code|enrollment[_-]?code)(["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}&]+)/giu,
+        (_match, name, separator) => `${name}${separator}"[REDACTED]"`,
+      )
+      .replace(
+        /\b(?:sk|gh[opusr]|xox[baprs]|pat)[-_][A-Za-z0-9_-]{8,}\b/gu,
+        "[REDACTED]",
+      )
+      .replace(/https?:\/\/[^\s"'<>]+/giu, sanitizeUrl);
+
   const format = (values) => {
     const message = values.map((value) => serialize(value)).join(" ");
-    if (message.length <= maxMessageLength) return message;
-    return `${message.slice(0, maxMessageLength)}… [truncated]`;
+    const sanitized = sanitizeText(message);
+    if (sanitized.length <= maxMessageLength) return sanitized;
+    return `${sanitized.slice(0, maxMessageLength)}… [truncated]`;
   };
 
   const callerSource = () => {

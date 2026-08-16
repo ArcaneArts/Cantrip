@@ -35,6 +35,9 @@ importers:
 
   cantrip_app:
     dependencies:
+      "@cantrip/logging":
+        specifier: workspace:*
+        version: link:../packages/logging
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol

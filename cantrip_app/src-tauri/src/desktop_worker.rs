@@ -226,6 +226,10 @@ impl DesktopWorkers {
             .env("CANTRIP_WORKER_ID", &profile.worker_id)
             .env("CANTRIP_WORKER_NAME", &profile.name)
             .env(
+                "CANTRIP_SERVICE_LOG_FILE",
+                self.service_log_path(&profile.worker_id)?,
+            )
+            .env(
                 "CANTRIP_WORKER_DATA_DIR",
                 self.profile_directory(&profile.worker_id),
             )
@@ -348,6 +352,25 @@ impl DesktopWorkers {
             }
             children.clear();
         }
+    }
+
+    pub fn service_log_path(&self, worker_id: &str) -> Result<PathBuf, String> {
+        if !valid_desktop_worker_id(worker_id) {
+            return Err("The linked worker identity is malformed.".into());
+        }
+        let profiles = self
+            .profiles
+            .lock()
+            .map_err(|_| "The desktop worker registry is unavailable.".to_string())?;
+        if !profiles
+            .iter()
+            .any(|profile| profile.worker_id == worker_id)
+        {
+            return Err("The linked worker is not managed by this installation.".into());
+        }
+        Ok(self
+            .logs_directory
+            .join(format!("{worker_id}.service.jsonl")))
     }
 }
 

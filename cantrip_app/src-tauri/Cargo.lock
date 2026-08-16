@@ -408,6 +408,7 @@ name = "cantrip-app"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "ctrlc",
  "ed25519-dalek",
  "futures-util",
