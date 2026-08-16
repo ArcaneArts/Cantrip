@@ -37,6 +37,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
+  ArrowDown,
   Bot,
   Check,
   CircleAlert,
@@ -89,6 +90,7 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
+import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
@@ -956,6 +958,13 @@ function ChatTranscript({
   const skillListRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    contentRef: transcriptContentRef,
+    onScroll: handleTranscriptScroll,
+    scrollToBottom: scrollTranscriptToBottom,
+    showScrollToBottom,
+    viewportRef: transcriptViewportRef,
+  } = useStickyChatScroll(chat.id);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const selectedModel = settings?.models.find(
@@ -1620,8 +1629,15 @@ function ChatTranscript({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="chat-message-scroll flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8">
-        <div className="mx-auto flex max-w-3xl flex-col gap-5">
+      <div
+        ref={transcriptViewportRef}
+        className="chat-message-scroll flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8"
+        onScroll={handleTranscriptScroll}
+      >
+        <div
+          ref={transcriptContentRef}
+          className="mx-auto flex max-w-3xl flex-col gap-5"
+        >
           {messages.data?.length === 0 ? (
             <div className="grid min-h-[45vh] place-items-center text-center">
               <div>
@@ -1790,6 +1806,19 @@ function ChatTranscript({
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-3 sm:px-8 sm:pb-4"
       >
         <div className="pointer-events-auto relative mx-auto max-w-3xl">
+          {showScrollToBottom ? (
+            <Button
+              type="button"
+              size="icon"
+              variant="outline"
+              className="absolute bottom-[calc(100%+0.75rem)] left-1/2 z-30 size-9 -translate-x-1/2 rounded-full bg-popover text-popover-foreground shadow-lg backdrop-blur-xl"
+              title="Scroll to latest message"
+              aria-label="Scroll to latest message"
+              onClick={scrollTranscriptToBottom}
+            >
+              <ArrowDown className="size-4" />
+            </Button>
+          ) : null}
           {slashMenuOpen ? (
             <div
               id="slash-command-menu"

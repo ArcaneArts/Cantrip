@@ -1,6 +1,10 @@
+import type { AgentInteractionRequest } from "@cantrip/protocol";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  AgentInteractionPanel,
   buildUserInputResponse,
   commandDecisionResponse,
 } from "./agent-interaction-panel";
@@ -82,5 +86,55 @@ describe("agent interaction response builders", () => {
       execpolicyAmendment: null,
       networkPolicyAmendment: null,
     });
+  });
+
+  it("renders pending approvals on an opaque popover surface", () => {
+    const request: AgentInteractionRequest = {
+      id: "approval-one",
+      requestKey: "approval-one",
+      projectId: "project-one",
+      provenance: {
+        chatId: "chat-one",
+        threadId: "thread-one",
+        turnId: "turn-one",
+        itemId: null,
+        executionLaneId: null,
+        workflowRunId: null,
+        workflowNodeId: null,
+        workerId: "worker-one",
+      },
+      status: "pending",
+      payload: {
+        kind: "commandExecution",
+        startedAtMs: 1,
+        approvalId: null,
+        environmentId: null,
+        reason: null,
+        command: "git status",
+        cwd: "/repo",
+        commandActions: null,
+        networkApprovalContext: null,
+        additionalPermissions: null,
+        proposedExecpolicyAmendment: null,
+        proposedNetworkPolicyAmendments: null,
+        availableDecisions: ["accept", "decline"],
+      },
+      createdAt: "2026-08-16T00:00:00.000Z",
+      updatedAt: "2026-08-16T00:00:00.000Z",
+      expiresAt: null,
+      resolvedAt: null,
+      resolvedByUserId: null,
+      response: null,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(AgentInteractionPanel, {
+        requests: [request],
+        pendingRequestId: null,
+        onRespond: () => undefined,
+      }),
+    );
+
+    expect(markup).toContain("bg-popover");
+    expect(markup).not.toContain("bg-amber-500/5");
   });
 });
