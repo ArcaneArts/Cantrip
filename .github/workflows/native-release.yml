@@ -290,12 +290,24 @@ jobs:
 
   ios:
     name: iOS TestFlight
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Require iOS 26 SDK or newer
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
+          sdk_major="${sdk_version%%.*}"
+          if ! [[ "$sdk_major" =~ ^[0-9]+$ ]] || (( sdk_major < 26 )); then
+            echo "App Store Connect requires iOS SDK 26 or newer; this runner selected iOS SDK $sdk_version." >&2
+            exit 1
+          fi
+          echo "Using iOS SDK $sdk_version"
       - uses: pnpm/action-setup@v4
         with:
           version: 11.15.1
@@ -494,7 +506,7 @@ jobs:
           tar -xzf "artifacts/incoming/worker/cantrip-worker-${{ matrix.target }}.tar.gz" -C artifacts
       - run: pnpm install --frozen-lockfile
       - name: Build desktop workspace dependencies
-        run: pnpm --filter @cantrip/protocol build
+        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
       - name: Require updater signing material
         shell: bash
         env:

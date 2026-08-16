@@ -55,7 +55,7 @@ test("builds mobile releases in parallel and gates publication on them", async (
   assert.match(workflow, /^ {2}ios:\n {4}name: iOS TestFlight$/mu);
   assert.equal(
     workflow.match(/pnpm --filter @cantrip\/logging build/gmu)?.length,
-    2,
+    3,
   );
   assert.doesNotMatch(
     workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "",
@@ -103,6 +103,9 @@ test("publishes signed Android artifacts and uploads iOS to TestFlight", async (
   assert.match(androidBuild, /CANTRIP_ANDROID_UPLOAD_KEYSTORE_PATH/u);
   assert.match(androidBuild, /Android release signing requires/u);
   assert.match(workflow, /IOS_DISTRIBUTION_CERTIFICATE/u);
+  assert.match(workflow, /^ {4}runs-on: macos-26$/mu);
+  assert.match(workflow, /xcrun --sdk iphoneos --show-sdk-version/u);
+  assert.match(workflow, /sdk_major < 26/u);
   assert.match(workflow, /Apple Distribution/u);
   assert.match(workflow, /-archivePath "\$RUNNER_TEMP\/Cantrip\.xcarchive"/u);
   assert.match(
@@ -222,6 +225,10 @@ test("builds generated desktop dependencies before packaging installers", async 
     "- name: Package signed Windows NSIS updater and installer",
   );
   assert.ok(protocolBuild >= 0);
+  assert.match(
+    workflow.slice(protocolBuild, macosPackage),
+    /pnpm --filter @cantrip\/logging build/u,
+  );
   assert.match(
     workflow.slice(protocolBuild, macosPackage),
     /pnpm --filter @cantrip\/protocol build/u,
