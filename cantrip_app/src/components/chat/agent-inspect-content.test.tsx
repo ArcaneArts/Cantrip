@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_INSPECT_THOUGHT_LINE_LIMIT,
   AGENT_INSPECT_SCROLLING_CARD_HEIGHT_PX,
   AgentInspectPresentation,
   agentInspectorActive,
@@ -10,6 +11,7 @@ import {
   formatInspectorElapsed,
   inspectorCommandLayout,
   inspectorSingleLine,
+  latestInspectorThoughtLines,
   visibleInspectorCommands,
 } from "./agent-inspect-content";
 import type {
@@ -82,6 +84,15 @@ describe("agent inspector presentation helpers", () => {
     expect(inspectorSingleLine("first\r\nsecond\nthird")).toBe(
       "first ↵ second ↵ third",
     );
+  });
+
+  it("limits live thinking to its latest three meaningful lines", () => {
+    expect(AGENT_INSPECT_THOUGHT_LINE_LIMIT).toBe(3);
+    expect(
+      latestInspectorThoughtLines(
+        "oldest\r\nolder\n\nrecent one\nrecent two\nrecent three",
+      ),
+    ).toBe("recent one\nrecent two\nrecent three");
   });
 
   it("follows output only while its viewport remains at the newest end", () => {
@@ -165,7 +176,12 @@ describe("AgentInspectPresentation", () => {
           thought: {
             id: "thought-1",
             kind: "commentary",
-            text: "Checking the live worker state.",
+            text: [
+              "Old thought that should no longer be visible.",
+              "Checking the live worker state.",
+              "Reviewing the latest command.",
+              "Waiting for its result.",
+            ].join("\n"),
             turnId: "turn-1",
             updatedAtMs: 1_500,
           },
@@ -174,7 +190,13 @@ describe("AgentInspectPresentation", () => {
     );
 
     expect(markup).toContain("Latest thought");
+    expect(markup).not.toContain(
+      "Old thought that should no longer be visible.",
+    );
     expect(markup).toContain("Checking the live worker state.");
+    expect(markup).toContain("Reviewing the latest command.");
+    expect(markup).toContain("Waiting for its result.");
+    expect(markup).toContain("line-clamp-3");
     expect(markup).toContain("src/path with spaces.ts");
     expect(markup).toContain("const latest = &#x27;&lt;safe&gt;&#x27;;");
     expect(markup).toContain("File deleted");

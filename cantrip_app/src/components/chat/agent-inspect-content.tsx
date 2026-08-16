@@ -25,6 +25,7 @@ import {
 export const AGENT_INSPECT_CLOCK_INTERVAL_MS = 250;
 export const AGENT_INSPECT_SCROLL_BOTTOM_TOLERANCE_PX = 24;
 export const AGENT_INSPECT_SCROLLING_CARD_HEIGHT_PX = 176;
+export const AGENT_INSPECT_THOUGHT_LINE_LIMIT = 3;
 
 export function agentInspectorActive(status: ChatSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";
@@ -60,6 +61,14 @@ export function commandOutputIsAtBottom(input: {
 
 export function inspectorSingleLine(value: string): string {
   return value.replace(/(?:\r\n|[\r\n])+/gu, " ↵ ");
+}
+
+export function latestInspectorThoughtLines(value: string): string {
+  return value
+    .split(/\r\n|[\r\n]/u)
+    .filter((line) => line.trim().length > 0)
+    .slice(-AGENT_INSPECT_THOUGHT_LINE_LIMIT)
+    .join("\n");
 }
 
 export function inspectorCommandLayout(commandCount: number): {
@@ -303,6 +312,9 @@ export function AgentInspectPresentation({
 }) {
   const commands = visibleInspectorCommands(snapshot.commands);
   const layout = inspectorCommandLayout(commands.length);
+  const thoughtText = snapshot.thought
+    ? latestInspectorThoughtLines(snapshot.thought.text)
+    : null;
   const hasSummary =
     snapshot.thought !== null ||
     snapshot.files.length > 0 ||
@@ -330,11 +342,8 @@ export function AgentInspectPresentation({
                 Latest thought
               </h3>
             </div>
-            <p
-              className="mt-2 whitespace-pre-wrap text-xs leading-5 text-foreground/85 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none"
-              key={`${snapshot.thought.id}:${snapshot.thought.updatedAtMs}:${snapshot.thought.text}`}
-            >
-              {snapshot.thought.text}
+            <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-foreground/85 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
+              {thoughtText}
             </p>
           </section>
         ) : null}
