@@ -48,6 +48,7 @@ import {
   codeTabSummarySchema,
   codeTabUpdateSchema,
   codeThemeUpdateSchema,
+  desktopUpdateActiveWorkSummarySchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexCustomizationInventorySchema,
@@ -7773,6 +7774,12 @@ export async function buildApp({
       );
     }
     return reply.send(settingsBundleSchema.parse(settings));
+  });
+
+  app.get("/api/desktop-update/active-work", async (_request, reply) => {
+    const summary =
+      await repository.desktopUpdateActiveWork(applicationOwnerId());
+    return reply.send(desktopUpdateActiveWorkSummarySchema.parse(summary));
   });
 
   app.get<{

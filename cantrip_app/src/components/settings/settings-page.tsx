@@ -83,6 +83,10 @@ import {
   type SettingsTab,
 } from "./settings-controls";
 import { McpServerSettings } from "./mcp-server-settings";
+import {
+  DesktopUpdateSettings,
+  useDesktopUpdateCapability,
+} from "./desktop-update-settings";
 import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
@@ -510,6 +514,9 @@ export function SettingsPage({
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
+  const desktopUpdateCapability = useDesktopUpdateCapability();
+  const desktopUpdatesAvailable =
+    desktopUpdateCapability.data?.available === true;
   const macosDesktopRuntime = isMacosDesktopRuntime();
   const [generalSearchQuery, setGeneralSearchQuery] = useState("");
   const [modelSearchQuery, setModelSearchQuery] = useState("");
@@ -809,6 +816,13 @@ export function SettingsPage({
       generalSearch,
       "remote desktop streaming frame rate fps quality adaptive latency bandwidth data saver sharp",
     );
+  const desktopUpdateMatches =
+    desktopUpdatesAvailable &&
+    (!generalSearch ||
+      matchesSearch(
+        generalSearch,
+        "cantrip desktop update updater version release notes download install restart",
+      ));
   const providerSectionMatches =
     !modelSearch ||
     matchesSearch(
@@ -852,7 +866,7 @@ export function SettingsPage({
   const hasSearchResults =
     section === "models"
       ? providersMatch || modelsMatch
-      : appearanceMatches || desktopStreamingMatches;
+      : appearanceMatches || desktopStreamingMatches || desktopUpdateMatches;
 
   useEffect(() => {
     setSection(initialSection);
@@ -1046,6 +1060,12 @@ export function SettingsPage({
                     </div>
                   </div>
                 </section>
+              ) : null}
+
+              {section === "general" && desktopUpdateMatches ? (
+                <DesktopUpdateSettings
+                  capability={desktopUpdateCapability.data!}
+                />
               ) : null}
 
               {section === "models" && providersMatch ? (
