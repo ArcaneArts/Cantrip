@@ -1322,6 +1322,12 @@ export const tokenUsageTotalsSchema = z.object({
   totalTokens: z.number().int().nonnegative(),
 });
 
+export const detailedTokenUsageTotalsSchema = tokenUsageTotalsSchema.extend({
+  cachedInputTokens: z.number().int().nonnegative().default(0),
+  cacheWriteInputTokens: z.number().int().nonnegative().default(0),
+  reasoningOutputTokens: z.number().int().nonnegative().default(0),
+});
+
 export const modelProviderCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
   kind: modelProviderKindSchema,
@@ -2718,23 +2724,159 @@ export const projectRepositoryStatsSchema = z.object({
   truncated: z.boolean(),
 });
 
-export const projectTokenUsageDaySchema = tokenUsageTotalsSchema.extend({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
-});
+export const projectTokenUsageDaySchema = detailedTokenUsageTotalsSchema.extend(
+  {
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  },
+);
 
-export const projectTokenUsageBreakdownSchema = tokenUsageTotalsSchema.extend({
-  id: z.string().min(1).nullable(),
-  name: z.string().min(1),
-});
+export const projectTokenUsageBreakdownSchema =
+  detailedTokenUsageTotalsSchema.extend({
+    id: z.string().min(1).nullable(),
+    name: z.string().min(1),
+  });
 
 export const projectTokenUsageSchema = z.object({
-  total: tokenUsageTotalsSchema,
+  total: detailedTokenUsageTotalsSchema,
   daily: z.array(projectTokenUsageDaySchema).max(366),
   providers: z.array(projectTokenUsageBreakdownSchema),
   models: z.array(projectTokenUsageBreakdownSchema),
   range: z.object({
     start: projectTokenUsageDaySchema.shape.date,
     end: projectTokenUsageDaySchema.shape.date,
+  }),
+});
+
+export const telemetryValueStatisticsSchema = z.object({
+  sampleCount: z.number().int().nonnegative(),
+  mean: z.number().finite().nullable(),
+  median: z.number().finite().nullable(),
+  min: z.number().finite().nullable(),
+  p10: z.number().finite().nullable(),
+  p25: z.number().finite().nullable(),
+  p75: z.number().finite().nullable(),
+  p90: z.number().finite().nullable(),
+  max: z.number().finite().nullable(),
+});
+
+export const telemetryQuotaReadingSchema = z.object({
+  id: z.string().min(1),
+  providerId: z.string().min(1),
+  providerName: z.string().min(1),
+  providerAccountId: z.string().min(1),
+  providerAccountLabel: z.string().min(1),
+  limitName: z.string().min(1),
+  windowKind: z.string().min(1),
+  usedPercent: z.number().min(0).max(100),
+  remainingPercent: z.number().min(0).max(100),
+  resetsAt: z.string().datetime().nullable(),
+  observedAt: z.string().datetime(),
+});
+
+export const telemetryBreakdownSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  sampleCount: z.number().int().nonnegative(),
+  highConfidenceSamples: z.number().int().nonnegative(),
+  unattributedSamples: z.number().int().nonnegative(),
+  tokens: detailedTokenUsageTotalsSchema,
+  effectiveTokensPer100Percent: telemetryValueStatisticsSchema,
+});
+
+export const modelBehaviorSummarySchema = z.object({
+  attemptCount: z.number().int().nonnegative(),
+  completedCount: z.number().int().nonnegative(),
+  failedCount: z.number().int().nonnegative(),
+  interruptedCount: z.number().int().nonnegative(),
+  completionRate: z.number().min(0).max(1).nullable(),
+  finalAnswerRate: z.number().min(0).max(1).nullable(),
+  toolCallCount: z.number().int().nonnegative(),
+  invalidToolCallCount: z.number().int().nonnegative(),
+  toolErrorRate: z.number().min(0).max(1).nullable(),
+  retryFailoverCount: z.number().int().nonnegative(),
+  compactionCount: z.number().int().nonnegative(),
+  approvalRequestCount: z.number().int().nonnegative(),
+  filesChangedCount: z.number().int().nonnegative(),
+  testCommandCount: z.number().int().nonnegative(),
+  testFailureCount: z.number().int().nonnegative(),
+  immediateCorrectiveFollowupCount: z.number().int().nonnegative(),
+  durationMs: telemetryValueStatisticsSchema,
+  timeToFirstActivityMs: telemetryValueStatisticsSchema,
+  timeToVisibleResponseMs: telemetryValueStatisticsSchema,
+});
+
+export const modelBehaviorBreakdownSchema = modelBehaviorSummarySchema.extend({
+  key: z.string().min(1),
+  label: z.string().min(1),
+});
+
+export const modelBehaviorDaySchema = modelBehaviorSummarySchema.extend({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+});
+
+export const providerTelemetryAnalyticsSchema = z.object({
+  generatedAt: z.string().datetime(),
+  range: z.object({
+    from: z.string().datetime(),
+    to: z.string().datetime(),
+  }),
+  accounts: z.array(
+    z.object({
+      id: z.string().min(1),
+      providerId: z.string().min(1),
+      providerName: z.string().min(1),
+      label: z.string().min(1),
+    }),
+  ),
+  currentQuota: z.array(telemetryQuotaReadingSchema),
+  quotaHistory: z.array(telemetryQuotaReadingSchema),
+  resetBoundaries: z.array(
+    z.object({
+      providerAccountId: z.string().min(1),
+      resetsAt: z.string().datetime(),
+      firstObservedAt: z.string().datetime(),
+    }),
+  ),
+  tokens: z.object({
+    total: detailedTokenUsageTotalsSchema,
+    daily: z.array(projectTokenUsageDaySchema).max(366),
+  }),
+  estimates: z.object({
+    sampleCount: z.number().int().nonnegative(),
+    highConfidenceSamples: z.number().int().nonnegative(),
+    unattributedSamples: z.number().int().nonnegative(),
+    tokensPerPercent: telemetryValueStatisticsSchema,
+    effectiveTokensPer100Percent: telemetryValueStatisticsSchema,
+  }),
+  comparisons: z.object({
+    rolling7Days: z.object({
+      current: telemetryValueStatisticsSchema,
+      previous: telemetryValueStatisticsSchema,
+      changePercent: z.number().finite().nullable(),
+    }),
+    rolling30Days: z.object({
+      current: telemetryValueStatisticsSchema,
+      previous: telemetryValueStatisticsSchema,
+      changePercent: z.number().finite().nullable(),
+    }),
+    monthOverMonth: z.object({
+      current: telemetryValueStatisticsSchema,
+      previous: telemetryValueStatisticsSchema,
+      changePercent: z.number().finite().nullable(),
+    }),
+  }),
+  breakdowns: z.object({
+    accounts: z.array(telemetryBreakdownSchema),
+    models: z.array(telemetryBreakdownSchema),
+    reasoningEfforts: z.array(telemetryBreakdownSchema),
+    months: z.array(telemetryBreakdownSchema),
+  }),
+  behavior: z.object({
+    total: modelBehaviorSummarySchema,
+    daily: z.array(modelBehaviorDaySchema).max(366),
+    accounts: z.array(modelBehaviorBreakdownSchema),
+    models: z.array(modelBehaviorBreakdownSchema),
+    reasoningEfforts: z.array(modelBehaviorBreakdownSchema),
   }),
 });
 
@@ -8866,6 +9008,9 @@ export type ModelProviderAccountUpdate = z.infer<
   typeof modelProviderAccountUpdateSchema
 >;
 export type TokenUsageTotals = z.infer<typeof tokenUsageTotalsSchema>;
+export type DetailedTokenUsageTotals = z.infer<
+  typeof detailedTokenUsageTotalsSchema
+>;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
 export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
@@ -8936,6 +9081,15 @@ export type ProjectTokenUsageBreakdown = z.infer<
   typeof projectTokenUsageBreakdownSchema
 >;
 export type ProjectTokenUsage = z.infer<typeof projectTokenUsageSchema>;
+export type TelemetryValueStatistics = z.infer<
+  typeof telemetryValueStatisticsSchema
+>;
+export type TelemetryQuotaReading = z.infer<typeof telemetryQuotaReadingSchema>;
+export type TelemetryBreakdown = z.infer<typeof telemetryBreakdownSchema>;
+export type ModelBehaviorSummary = z.infer<typeof modelBehaviorSummarySchema>;
+export type ProviderTelemetryAnalytics = z.infer<
+  typeof providerTelemetryAnalyticsSchema
+>;
 export type ProjectWorkspaceCreate = z.infer<
   typeof projectWorkspaceCreateSchema
 >;

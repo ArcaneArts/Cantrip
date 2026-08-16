@@ -43,6 +43,7 @@ import type {
   CodeSessionSummary,
   CodeTabCreate,
   CodeTabSummary,
+  DetailedTokenUsageTotals,
   CodeTabUpdate,
   DesktopUpdateActiveWorkSummary,
   ExplorerCreate,
@@ -95,6 +96,7 @@ import type {
   ProjectReplicaSummary,
   ProjectSummary,
   ProjectTokenUsage,
+  ProviderTelemetryAnalytics,
   ProjectWorkspaceCreate,
   ProjectWorkspaceSummary,
   ProjectWorkspaceUpdate,
@@ -161,8 +163,14 @@ import {
 } from "../execution-targets/catalog.js";
 import {
   deriveQuotaTokenAnalytics,
+  quotaValueStatistics,
   type QuotaTokenAnalytics,
 } from "../analytics/quota-token.js";
+import {
+  groupModelBehavior,
+  sumDetailedTokenUsage,
+  summarizeModelBehavior,
+} from "../analytics/telemetry-dashboard.js";
 import {
   enrichCatalogFromExactOpenRouterMatch,
   exactOpenRouterAliases,
@@ -676,6 +684,9 @@ export interface ModelBehaviorObservationInput {
 export interface QuotaTokenAnalyticsQuery {
   providerId?: string;
   providerAccountId?: string;
+  modelId?: string;
+  reasoningEffort?: string;
+  projectId?: string;
   from?: Date;
   to?: Date;
 }
@@ -720,6 +731,21 @@ function tokenUsageTotals(
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
+  };
+}
+
+function detailedTokenUsageTotals(
+  inputTokens: number,
+  outputTokens: number,
+  cachedInputTokens: number,
+  cacheWriteInputTokens: number,
+  reasoningOutputTokens: number,
+): DetailedTokenUsageTotals {
+  return {
+    ...tokenUsageTotals(inputTokens, outputTokens),
+    cachedInputTokens,
+    cacheWriteInputTokens,
+    reasoningOutputTokens,
   };
 }
 
@@ -3239,28 +3265,45 @@ export class ServerRepository {
       sql<number>`coalesce(sum(${schema.tokenUsageRecords.outputTokens}), 0)`.mapWith(
         Number,
       );
-    const day = sql<string>`to_char(${schema.tokenUsageRecords.createdAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
+    const sumCachedInput =
+      sql<number>`coalesce(sum(${schema.tokenUsageRecords.cachedInputTokens}), 0)`.mapWith(
+        Number,
+      );
+    const sumCacheWriteInput =
+      sql<number>`coalesce(sum(${schema.tokenUsageRecords.cacheWriteInputTokens}), 0)`.mapWith(
+        Number,
+      );
+    const sumReasoningOutput =
+      sql<number>`coalesce(sum(${schema.tokenUsageRecords.reasoningOutputTokens}), 0)`.mapWith(
+        Number,
+      );
+    const tokenSums = {
+      inputTokens: sumInput,
+      outputTokens: sumOutput,
+      cachedInputTokens: sumCachedInput,
+      cacheWriteInputTokens: sumCacheWriteInput,
+      reasoningOutputTokens: sumReasoningOutput,
+    };
+    const day = sql<string>`to_char(${schema.tokenUsageRecords.startedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
     const [totalRows, dailyRows, providerRows, modelRows] = await Promise.all([
       this.database
-        .select({ inputTokens: sumInput, outputTokens: sumOutput })
+        .select(tokenSums)
         .from(schema.tokenUsageRecords)
         .where(filter),
       this.database
         .select({
           date: day,
-          inputTokens: sumInput,
-          outputTokens: sumOutput,
+          ...tokenSums,
         })
         .from(schema.tokenUsageRecords)
-        .where(and(filter, gte(schema.tokenUsageRecords.createdAt, rangeStart)))
+        .where(and(filter, gte(schema.tokenUsageRecords.startedAt, rangeStart)))
         .groupBy(day)
         .orderBy(day),
       this.database
         .select({
           id: schema.tokenUsageRecords.providerId,
           name: schema.tokenUsageRecords.providerName,
-          inputTokens: sumInput,
-          outputTokens: sumOutput,
+          ...tokenSums,
         })
         .from(schema.tokenUsageRecords)
         .where(filter)
@@ -3272,8 +3315,7 @@ export class ServerRepository {
         .select({
           id: schema.tokenUsageRecords.modelId,
           name: schema.tokenUsageRecords.modelName,
-          inputTokens: sumInput,
-          outputTokens: sumOutput,
+          ...tokenSums,
         })
         .from(schema.tokenUsageRecords)
         .where(filter)
@@ -3288,6 +3330,9 @@ export class ServerRepository {
         name: string;
         inputTokens: number;
         outputTokens: number;
+        cachedInputTokens: number;
+        cacheWriteInputTokens: number;
+        reasoningOutputTokens: number;
       }>,
     ) => {
       const merged = new Map<
@@ -3297,6 +3342,9 @@ export class ServerRepository {
           name: string;
           inputTokens: number;
           outputTokens: number;
+          cachedInputTokens: number;
+          cacheWriteInputTokens: number;
+          reasoningOutputTokens: number;
         }
       >();
       for (const row of rows) {
@@ -3307,21 +3355,51 @@ export class ServerRepository {
           name: row.name,
           inputTokens: (existing?.inputTokens ?? 0) + row.inputTokens,
           outputTokens: (existing?.outputTokens ?? 0) + row.outputTokens,
+          cachedInputTokens:
+            (existing?.cachedInputTokens ?? 0) + row.cachedInputTokens,
+          cacheWriteInputTokens:
+            (existing?.cacheWriteInputTokens ?? 0) + row.cacheWriteInputTokens,
+          reasoningOutputTokens:
+            (existing?.reasoningOutputTokens ?? 0) + row.reasoningOutputTokens,
         });
       }
       return [...merged.values()]
         .map((row) => ({
-          ...row,
-          totalTokens: row.inputTokens + row.outputTokens,
+          id: row.id,
+          name: row.name,
+          ...detailedTokenUsageTotals(
+            row.inputTokens,
+            row.outputTokens,
+            row.cachedInputTokens,
+            row.cacheWriteInputTokens,
+            row.reasoningOutputTokens,
+          ),
         }))
         .sort((left, right) => right.totalTokens - left.totalTokens);
     };
-    const totalRow = totalRows[0] ?? ZERO_TOKEN_USAGE;
+    const totalRow = totalRows[0] ?? {
+      ...ZERO_TOKEN_USAGE,
+      cachedInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      reasoningOutputTokens: 0,
+    };
     return {
-      total: tokenUsageTotals(totalRow.inputTokens, totalRow.outputTokens),
+      total: detailedTokenUsageTotals(
+        totalRow.inputTokens,
+        totalRow.outputTokens,
+        totalRow.cachedInputTokens,
+        totalRow.cacheWriteInputTokens,
+        totalRow.reasoningOutputTokens,
+      ),
       daily: dailyRows.map((row) => ({
         date: row.date,
-        ...tokenUsageTotals(row.inputTokens, row.outputTokens),
+        ...detailedTokenUsageTotals(
+          row.inputTokens,
+          row.outputTokens,
+          row.cachedInputTokens,
+          row.cacheWriteInputTokens,
+          row.reasoningOutputTokens,
+        ),
       })),
       providers: mergeBreakdowns(providerRows),
       models: mergeBreakdowns(modelRows),
@@ -4551,6 +4629,18 @@ export class ServerRepository {
             ),
           ]
         : []),
+      ...(query.modelId
+        ? [eq(schema.tokenUsageRecords.modelId, query.modelId)]
+        : []),
+      ...(query.reasoningEffort
+        ? [eq(schema.tokenUsageRecords.reasoningEffort, query.reasoningEffort)]
+        : []),
+      ...(query.projectId
+        ? [eq(schema.tokenUsageRecords.projectId, query.projectId)]
+        : []),
+      ...(query.from
+        ? [gte(schema.tokenUsageRecords.startedAt, query.from)]
+        : []),
       ...(query.to ? [lte(schema.tokenUsageRecords.startedAt, query.to)] : []),
     ];
     const [quotaRows, tokenRows] = await Promise.all([
@@ -4629,6 +4719,315 @@ export class ServerRepository {
       })),
       query.to ?? new Date(),
     );
+  }
+
+  async getProviderTelemetryAnalytics(
+    ownerId: string,
+    query: QuotaTokenAnalyticsQuery = {},
+  ): Promise<ProviderTelemetryAnalytics> {
+    const from = query.from ?? new Date(Date.now() - 364 * 86_400_000);
+    const to = query.to ?? new Date();
+    const scopedQuery = { ...query, from, to };
+    const tokenFilters = [
+      eq(schema.tokenUsageRecords.ownerId, ownerId),
+      ...(query.providerId
+        ? [eq(schema.tokenUsageRecords.providerId, query.providerId)]
+        : []),
+      ...(query.providerAccountId
+        ? [
+            eq(
+              schema.tokenUsageRecords.providerAccountId,
+              query.providerAccountId,
+            ),
+          ]
+        : []),
+      ...(query.modelId
+        ? [eq(schema.tokenUsageRecords.modelId, query.modelId)]
+        : []),
+      ...(query.reasoningEffort
+        ? [eq(schema.tokenUsageRecords.reasoningEffort, query.reasoningEffort)]
+        : []),
+      ...(query.projectId
+        ? [eq(schema.tokenUsageRecords.projectId, query.projectId)]
+        : []),
+      gte(schema.tokenUsageRecords.startedAt, from),
+      lte(schema.tokenUsageRecords.startedAt, to),
+    ];
+    const behaviorFilters = [
+      eq(schema.modelBehaviorObservations.ownerId, ownerId),
+      ...(query.providerId
+        ? [eq(schema.modelBehaviorObservations.providerId, query.providerId)]
+        : []),
+      ...(query.providerAccountId
+        ? [
+            eq(
+              schema.modelBehaviorObservations.providerAccountId,
+              query.providerAccountId,
+            ),
+          ]
+        : []),
+      ...(query.modelId
+        ? [eq(schema.modelBehaviorObservations.modelId, query.modelId)]
+        : []),
+      ...(query.reasoningEffort
+        ? [
+            eq(
+              schema.modelBehaviorObservations.reasoningEffort,
+              query.reasoningEffort,
+            ),
+          ]
+        : []),
+      ...(query.projectId
+        ? [eq(schema.modelBehaviorObservations.projectId, query.projectId)]
+        : []),
+      gte(schema.modelBehaviorObservations.startedAt, from),
+      lte(schema.modelBehaviorObservations.startedAt, to),
+    ];
+    const [quota, tokenRows, behaviorRows, currentAccounts, quotaLabels] =
+      await Promise.all([
+        this.getQuotaTokenAnalytics(ownerId, scopedQuery),
+        this.database
+          .select()
+          .from(schema.tokenUsageRecords)
+          .where(and(...tokenFilters))
+          .orderBy(asc(schema.tokenUsageRecords.startedAt)),
+        this.database
+          .select()
+          .from(schema.modelBehaviorObservations)
+          .where(and(...behaviorFilters))
+          .orderBy(asc(schema.modelBehaviorObservations.startedAt)),
+        this.database
+          .select({
+            id: schema.modelProviderAccounts.id,
+            providerId: schema.modelProviderAccounts.providerId,
+            providerName: schema.modelProviders.name,
+            label: schema.modelProviderAccounts.label,
+          })
+          .from(schema.modelProviderAccounts)
+          .innerJoin(
+            schema.modelProviders,
+            eq(
+              schema.modelProviders.id,
+              schema.modelProviderAccounts.providerId,
+            ),
+          )
+          .where(
+            and(
+              eq(schema.modelProviders.ownerId, ownerId),
+              ...(query.providerId
+                ? [eq(schema.modelProviders.id, query.providerId)]
+                : []),
+            ),
+          ),
+        this.database
+          .select({
+            providerId: schema.providerQuotaObservations.providerId,
+            providerName: schema.providerQuotaObservations.providerName,
+            accountId: schema.providerQuotaObservations.providerAccountId,
+            accountLabel: schema.providerQuotaObservations.providerAccountLabel,
+          })
+          .from(schema.providerQuotaObservations)
+          .where(
+            and(
+              eq(schema.providerQuotaObservations.ownerId, ownerId),
+              ...(query.providerId
+                ? [
+                    eq(
+                      schema.providerQuotaObservations.providerId,
+                      query.providerId,
+                    ),
+                  ]
+                : []),
+            ),
+          ),
+      ]);
+
+    const accountById = new Map(
+      currentAccounts.map((account) => [account.id, account] as const),
+    );
+    for (const historical of quotaLabels) {
+      if (accountById.has(historical.accountId)) continue;
+      accountById.set(historical.accountId, {
+        id: historical.accountId,
+        providerId: historical.providerId,
+        providerName: historical.providerName,
+        label: historical.accountLabel,
+      });
+    }
+    const modelLabelById = new Map<string, string>();
+    for (const row of [...tokenRows, ...behaviorRows]) {
+      if (row.modelId) modelLabelById.set(row.modelId, row.modelName);
+    }
+
+    const quotaHistory = quota.readings.map((reading) => {
+      const account = accountById.get(reading.providerAccountId);
+      return {
+        id: reading.id,
+        providerId: reading.providerId,
+        providerName: account?.providerName ?? reading.providerId,
+        providerAccountId: reading.providerAccountId,
+        providerAccountLabel: account?.label ?? reading.providerAccountId,
+        limitName: reading.limitName ?? reading.windowKind,
+        windowKind: reading.windowKind,
+        usedPercent: reading.usedPercent,
+        remainingPercent: Math.max(0, 100 - reading.usedPercent),
+        resetsAt: reading.resetsAt?.toISOString() ?? null,
+        observedAt: reading.observedAt.toISOString(),
+      };
+    });
+    const currentQuotaByBucket = new Map<
+      string,
+      (typeof quotaHistory)[number]
+    >();
+    for (const reading of quotaHistory) {
+      currentQuotaByBucket.set(
+        [
+          reading.providerId,
+          reading.providerAccountId,
+          reading.limitName,
+          reading.windowKind,
+        ].join(":"),
+        reading,
+      );
+    }
+
+    const dailyTokens = new Map<string, typeof tokenRows>();
+    for (const row of tokenRows) {
+      const date = row.startedAt.toISOString().slice(0, 10);
+      dailyTokens.set(date, [...(dailyTokens.get(date) ?? []), row]);
+    }
+    const detailedBreakdown = (
+      entries: typeof quota.breakdowns.model,
+      labels: ReadonlyMap<string, string> = new Map(),
+    ) =>
+      entries.map((entry) => ({
+        key: entry.key,
+        label: labels.get(entry.key) ?? entry.key,
+        sampleCount: entry.sampleCount,
+        highConfidenceSamples: entry.highConfidenceSamples,
+        unattributedSamples: entry.unattributedSamples,
+        tokens: detailedTokenUsageTotals(
+          entry.totals.inputTokens,
+          entry.totals.outputTokens,
+          entry.totals.cachedInputTokens,
+          entry.totals.cacheWriteInputTokens,
+          entry.totals.reasoningOutputTokens,
+        ),
+        effectiveTokensPer100Percent: entry.effectiveTokensPer100Percent,
+      }));
+
+    const behaviorBreakdown = <Row extends (typeof behaviorRows)[number]>(
+      rows: Row[],
+      keyFor: (row: Row) => string,
+      labelFor: (key: string) => string,
+    ) =>
+      [...groupModelBehavior(rows, keyFor).entries()]
+        .map(([key, summary]) => ({ key, label: labelFor(key), ...summary }))
+        .sort((left, right) => right.attemptCount - left.attemptCount);
+    const dailyBehavior = behaviorBreakdown(
+      behaviorRows,
+      (row) => row.startedAt.toISOString().slice(0, 10),
+      (key) => key,
+    ).map(({ key: _key, label: date, ...summary }) => ({ date, ...summary }));
+    const accountLabels = new Map(
+      [...accountById.values()].map((account) => [account.id, account.label]),
+    );
+    const accountBreakdownLabels = new Map(
+      [...accountById.values()].map((account) => [account.id, account.label]),
+    );
+    const estimates = quota.movementSamples;
+    const attributableEstimates = estimates.filter(
+      ({ unattributed }) => !unattributed,
+    );
+    const resetBoundaries = new Map<
+      string,
+      { providerAccountId: string; resetsAt: string; firstObservedAt: string }
+    >();
+    for (const reading of quotaHistory) {
+      if (!reading.resetsAt) continue;
+      const key = `${reading.providerAccountId}:${reading.resetsAt}`;
+      const current = resetBoundaries.get(key);
+      if (!current || reading.observedAt < current.firstObservedAt) {
+        resetBoundaries.set(key, {
+          providerAccountId: reading.providerAccountId,
+          resetsAt: reading.resetsAt,
+          firstObservedAt: reading.observedAt,
+        });
+      }
+    }
+
+    return {
+      generatedAt: new Date().toISOString(),
+      range: { from: from.toISOString(), to: to.toISOString() },
+      accounts: [...accountById.values()].sort((left, right) =>
+        left.label.localeCompare(right.label),
+      ),
+      currentQuota: [...currentQuotaByBucket.values()].sort((left, right) =>
+        right.observedAt.localeCompare(left.observedAt),
+      ),
+      quotaHistory,
+      resetBoundaries: [...resetBoundaries.values()].sort((left, right) =>
+        left.resetsAt.localeCompare(right.resetsAt),
+      ),
+      tokens: {
+        total: sumDetailedTokenUsage(tokenRows),
+        daily: [...dailyTokens.entries()]
+          .map(([date, rows]) => ({ date, ...sumDetailedTokenUsage(rows) }))
+          .sort((left, right) => left.date.localeCompare(right.date)),
+      },
+      estimates: {
+        sampleCount: estimates.length,
+        highConfidenceSamples: estimates.filter(
+          ({ confidence }) => confidence === "high",
+        ).length,
+        unattributedSamples: estimates.filter(
+          ({ unattributed }) => unattributed,
+        ).length,
+        tokensPerPercent: quotaValueStatistics(
+          attributableEstimates.map(
+            ({ tokensPerPercent }) => tokensPerPercent.comparableTokens,
+          ),
+        ),
+        effectiveTokensPer100Percent: quotaValueStatistics(
+          attributableEstimates.map(
+            ({ effectiveTokensPer100Percent }) => effectiveTokensPer100Percent,
+          ),
+        ),
+      },
+      comparisons: {
+        rolling7Days: quota.rolling7Days,
+        rolling30Days: quota.rolling30Days,
+        monthOverMonth: quota.monthOverMonth,
+      },
+      breakdowns: {
+        accounts: detailedBreakdown(
+          quota.breakdowns.account,
+          accountBreakdownLabels,
+        ),
+        models: detailedBreakdown(quota.breakdowns.model, modelLabelById),
+        reasoningEfforts: detailedBreakdown(quota.breakdowns.reasoningEffort),
+        months: detailedBreakdown(quota.breakdowns.month),
+      },
+      behavior: {
+        total: summarizeModelBehavior(behaviorRows),
+        daily: dailyBehavior,
+        accounts: behaviorBreakdown(
+          behaviorRows,
+          (row) => row.providerAccountId ?? "unattributed",
+          (key) => accountLabels.get(key) ?? key,
+        ),
+        models: behaviorBreakdown(
+          behaviorRows,
+          (row) => row.modelId ?? `deleted:${row.modelName}`,
+          (key) => modelLabelById.get(key) ?? key.replace(/^deleted:/u, ""),
+        ),
+        reasoningEfforts: behaviorBreakdown(
+          behaviorRows,
+          (row) => row.reasoningEffort ?? "provider-default",
+          (key) => key,
+        ),
+      },
+    };
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {

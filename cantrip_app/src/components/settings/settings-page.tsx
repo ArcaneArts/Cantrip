@@ -12,6 +12,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Cable,
+  BarChart3,
   Check,
   ChevronDown,
   ChevronUp,
@@ -114,6 +115,7 @@ import {
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
 import { ProviderAccountPriorityChips } from "./provider-account-priority";
+import { ProviderTelemetryDialog } from "./provider-telemetry-dialog";
 
 export type SettingsSection =
   | "general"
@@ -240,12 +242,14 @@ function ProviderRow({
   workerId,
   removing,
   onEdit,
+  onAnalytics,
   onRemove,
 }: {
   provider: ModelProviderSummary;
   workerId: string | null;
   removing: boolean;
   onEdit(): void;
+  onAnalytics(): void;
   onRemove(): void;
 }) {
   const queryClient = useQueryClient();
@@ -305,7 +309,7 @@ function ProviderRow({
       tabIndex={0}
       aria-label={`Edit ${provider.name}`}
       title={`Edit ${provider.name}`}
-      className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_72px]"
+      className="grid min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 outline-none transition-colors hover:bg-muted/30 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px]"
       onClick={onEdit}
       onKeyDown={(event) => editSettingsRowFromKeyboard(event, onEdit)}
     >
@@ -371,6 +375,16 @@ function ProviderRow({
         className="col-start-2 row-start-1 flex items-center justify-end sm:col-auto sm:row-auto"
         onClick={(event) => event.stopPropagation()}
       >
+        <Button
+          className="size-7"
+          size="icon"
+          variant="ghost"
+          title={`View ${provider.name} telemetry`}
+          onClick={onAnalytics}
+        >
+          <BarChart3 className="size-3.5" />
+          <span className="sr-only">View {provider.name} telemetry</span>
+        </Button>
         {supportsCatalog ? (
           <Button
             className="size-7"
@@ -551,6 +565,8 @@ export function SettingsPage({
   const workers = useQuery({ queryFn: getWorkers, queryKey: ["workers"] });
   const worker = workers.data?.find((item) => item.online) ?? null;
   const [providerDialogOpen, setProviderDialogOpen] = useState(false);
+  const [analyticsProvider, setAnalyticsProvider] =
+    useState<ModelProviderSummary | null>(null);
   const [editingProvider, setEditingProvider] =
     useState<ModelProviderSummary | null>(null);
   const [providerName, setProviderName] = useState("");
@@ -1201,7 +1217,7 @@ export function SettingsPage({
                       <span className="sr-only">Add provider</span>
                     </Button>
                   </div>
-                  <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_72px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
+                  <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(8rem,0.75fr)_minmax(7rem,0.65fr)_96px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
                     <span>Provider</span>
                     <span>Connection</span>
                     <span>Catalog</span>
@@ -1216,6 +1232,7 @@ export function SettingsPage({
                         workerId={worker?.workerId ?? null}
                         removing={removeProvider.isPending}
                         onEdit={() => openProviderDialog(provider)}
+                        onAnalytics={() => setAnalyticsProvider(provider)}
                         onRemove={() => removeProvider.mutate(provider.id)}
                       />
                     ))}
@@ -1504,6 +1521,15 @@ export function SettingsPage({
           </DialogContent>
         </Dialog>
       ) : null}
+
+      <ProviderTelemetryDialog
+        models={models}
+        open={Boolean(analyticsProvider)}
+        provider={analyticsProvider}
+        onOpenChange={(open) => {
+          if (!open) setAnalyticsProvider(null);
+        }}
+      />
 
       <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
         <DialogContent className="sm:max-w-3xl lg:max-w-4xl">

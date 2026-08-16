@@ -204,6 +204,34 @@ describe("provider quota observation ledger", () => {
         { observation_trigger: "turn-completed", window_kind: "secondary" },
       ]);
 
+      const analytics = await repository.getProviderTelemetryAnalytics(
+        LOCAL_USER_ID,
+        {
+          providerId: provider.id,
+          from: new Date("2026-08-16T10:00:00.000Z"),
+          to: new Date("2026-08-16T13:00:00.000Z"),
+        },
+      );
+      expect(analytics.accounts).toEqual([
+        expect.objectContaining({
+          id: account.id,
+          label: "ChatGPT account",
+          providerName: "Observed account",
+        }),
+      ]);
+      expect(analytics.quotaHistory).toHaveLength(5);
+      expect(analytics.currentQuota).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            providerAccountId: account.id,
+            usedPercent: 44,
+            windowKind: "secondary",
+          }),
+        ]),
+      );
+      expect(analytics.estimates.unattributedSamples).toBeGreaterThan(0);
+      expect(analytics.tokens.total.totalTokens).toBe(0);
+
       await expect(
         repository.deleteModelProvider(LOCAL_USER_ID, provider.id),
       ).resolves.toBe(true);

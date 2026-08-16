@@ -169,6 +169,7 @@ import {
   projectReplicaSummarySchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
+  providerTelemetryAnalyticsSchema,
   projectShareAttachmentSchema,
   projectShareDirectCreateSchema,
   projectSummarySchema,
@@ -1812,6 +1813,23 @@ export async function getProjectRepositoryStats(projectId: string) {
 export async function getProjectTokenUsage(projectId: string) {
   return projectTokenUsageSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/token-usage`),
+  );
+}
+
+export async function getProviderTelemetryAnalytics(input: {
+  providerId?: string;
+  providerAccountId?: string;
+  modelId?: string;
+  reasoningEffort?: string;
+  projectId?: string;
+  days?: number;
+}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(input)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  return providerTelemetryAnalyticsSchema.parse(
+    await request(`/api/analytics/provider-telemetry?${query.toString()}`),
   );
 }
 

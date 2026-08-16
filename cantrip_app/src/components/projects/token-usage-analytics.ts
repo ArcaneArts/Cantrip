@@ -57,6 +57,9 @@ export function tokenUsageCalendar(
         date,
         inputTokens: 0,
         outputTokens: 0,
+        cachedInputTokens: 0,
+        cacheWriteInputTokens: 0,
+        reasoningOutputTokens: 0,
         totalTokens: 0,
       },
     );
@@ -90,6 +93,12 @@ export function tokenUsageSlices(
             name: "Other",
             inputTokens: result.inputTokens + value.inputTokens,
             outputTokens: result.outputTokens + value.outputTokens,
+            cachedInputTokens:
+              result.cachedInputTokens + value.cachedInputTokens,
+            cacheWriteInputTokens:
+              result.cacheWriteInputTokens + value.cacheWriteInputTokens,
+            reasoningOutputTokens:
+              result.reasoningOutputTokens + value.reasoningOutputTokens,
             totalTokens: result.totalTokens + value.totalTokens,
           }),
           {
@@ -97,6 +106,9 @@ export function tokenUsageSlices(
             name: "Other",
             inputTokens: 0,
             outputTokens: 0,
+            cachedInputTokens: 0,
+            cacheWriteInputTokens: 0,
+            reasoningOutputTokens: 0,
             totalTokens: 0,
           },
         ),

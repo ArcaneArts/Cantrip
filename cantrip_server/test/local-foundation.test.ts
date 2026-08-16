@@ -4313,7 +4313,10 @@ describe("local server foundation", () => {
     );
     expect(projectUsage.total).toEqual({
       inputTokens: 800,
+      cachedInputTokens: 200,
+      cacheWriteInputTokens: 0,
       outputTokens: 300,
+      reasoningOutputTokens: 100,
       totalTokens: 1_100,
     });
     expect(projectUsage.daily.at(-1)).toMatchObject({ totalTokens: 1_100 });
@@ -4357,7 +4360,10 @@ describe("local server foundation", () => {
     );
     expect(refreshedProjectUsage.total).toEqual({
       inputTokens: 1_650,
+      cachedInputTokens: 300,
+      cacheWriteInputTokens: 0,
       outputTokens: 600,
+      reasoningOutputTokens: 250,
       totalTokens: 2_250,
     });
     const usageSettings = settingsBundleSchema.parse(
@@ -4365,11 +4371,19 @@ describe("local server foundation", () => {
     );
     expect(
       usageSettings.providers.find(({ id }) => id === provider.id)?.tokenUsage,
-    ).toEqual(refreshedProjectUsage.total);
+    ).toEqual({
+      inputTokens: refreshedProjectUsage.total.inputTokens,
+      outputTokens: refreshedProjectUsage.total.outputTokens,
+      totalTokens: refreshedProjectUsage.total.totalTokens,
+    });
     expect(
       usageSettings.models.find(({ id }) => id === selectedModel.id)
         ?.tokenUsage,
-    ).toEqual(refreshedProjectUsage.total);
+    ).toEqual({
+      inputTokens: refreshedProjectUsage.total.inputTokens,
+      outputTokens: refreshedProjectUsage.total.outputTokens,
+      totalTokens: refreshedProjectUsage.total.totalTokens,
+    });
     expect(
       await firstApp.inject({
         method: "GET",

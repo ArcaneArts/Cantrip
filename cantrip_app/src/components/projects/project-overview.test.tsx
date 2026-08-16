@@ -70,12 +70,22 @@ const stats = {
   truncated: true,
 } satisfies ProjectRepositoryStats;
 const usage = {
-  total: { inputTokens: 8_000, outputTokens: 2_500, totalTokens: 10_500 },
+  total: {
+    inputTokens: 8_000,
+    outputTokens: 2_500,
+    cachedInputTokens: 1_000,
+    cacheWriteInputTokens: 0,
+    reasoningOutputTokens: 500,
+    totalTokens: 10_500,
+  },
   daily: [
     {
       date: "2026-08-11",
       inputTokens: 8_000,
       outputTokens: 2_500,
+      cachedInputTokens: 1_000,
+      cacheWriteInputTokens: 0,
+      reasoningOutputTokens: 500,
       totalTokens: 10_500,
     },
   ],
@@ -85,6 +95,9 @@ const usage = {
       name: "ChatGPT",
       inputTokens: 8_000,
       outputTokens: 2_500,
+      cachedInputTokens: 1_000,
+      cacheWriteInputTokens: 0,
+      reasoningOutputTokens: 500,
       totalTokens: 10_500,
     },
   ],
@@ -94,6 +107,9 @@ const usage = {
       name: "GPT 5.6 Sol",
       inputTokens: 8_000,
       outputTokens: 2_500,
+      cachedInputTokens: 1_000,
+      cacheWriteInputTokens: 0,
+      reasoningOutputTokens: 500,
       totalTokens: 10_500,
     },
   ],
