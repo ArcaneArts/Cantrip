@@ -32,6 +32,7 @@ import {
   Route,
   Search,
   Server,
+  ScrollText,
   SlidersHorizontal,
   Sparkles,
   Sun,
@@ -97,6 +98,7 @@ import { WorkspaceSettings } from "./workspace-settings";
 import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
 import { TunnelSettings } from "./tunnel-settings";
+import { LogSettings } from "./log-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -117,6 +119,7 @@ export type SettingsSection =
   | "general"
   | "models"
   | "workers"
+  | "logs"
   | "tunnels"
   | "skills"
   | "mcp"
@@ -126,6 +129,7 @@ const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
   { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
+  { id: "logs", label: "Logs", icon: ScrollText },
   { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "workspaces", label: "Workspaces", icon: Layers3 },
   { id: "skills", label: "Skills", icon: Sparkles },
@@ -932,7 +936,9 @@ export function SettingsPage({
         tabs={settingsTabs}
         onTabChange={setSection}
       />
-      <div className="min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
+      <div
+        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+      >
         <div
           className={`${section === "general" || section === "models" ? "grid" : "hidden"} mx-auto w-full min-w-0 max-w-6xl gap-4`}
         >
@@ -1401,6 +1407,7 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
+        {section === "logs" ? <LogSettings /> : null}
         {section === "tunnels" ? (
           <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
         ) : null}

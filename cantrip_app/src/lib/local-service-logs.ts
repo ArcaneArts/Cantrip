@@ -11,6 +11,11 @@ export type LocalServiceLogSource =
   | { source: "worker" }
   | { source: "linkedWorker"; workerId: string };
 
+export async function getLocalRuntimeServerUrl(): Promise<string | null> {
+  if (!isTauri()) return null;
+  return invoke<string>("local_server_url");
+}
+
 export async function readLocalServiceLogs(
   source: LocalServiceLogSource,
   options: {
