@@ -499,6 +499,11 @@ export function codexStartupExitMessage(
   return `Codex app-server exited before listening (${status})${diagnostic ? `: ${diagnostic}` : "."}`;
 }
 
+export function isInvalidCompactionBlobError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.toLowerCase().includes("could not decode the compaction blob");
+}
+
 export function codexWorkspaceContext(cwd: string): {
   cwd: string;
   runtimeWorkspaceRoots: string[];
@@ -2437,6 +2442,28 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async runTurn(options: RunAgentTurnOptions): Promise<AgentTurnResult> {
+    try {
+      return await this.runTurnAttempt(options);
+    } catch (error) {
+      if (!options.threadId || !isInvalidCompactionBlobError(error)) {
+        throw error;
+      }
+      this.forgetThread(options.threadId);
+      workerLogger.warn(
+        "Codex rejected stored compaction state; retrying the turn on a fresh thread",
+        {
+          chatId: options.chatId,
+          providerKind: options.provider.kind,
+          staleThreadId: options.threadId,
+        },
+      );
+      return this.runTurnAttempt({ ...options, threadId: null });
+    }
+  }
+
+  private async runTurnAttempt(
+    options: RunAgentTurnOptions,
+  ): Promise<AgentTurnResult> {
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
     await this.ensureStarted(options.model, options.provider);
     const baseline = await workspaceSnapshot(options.cwd);

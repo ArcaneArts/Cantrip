@@ -229,7 +229,24 @@ server.on("connection", (socket) => {
       }));
       return;
     }
+    if (message.method === "thread/resume") {
+      socket.send(JSON.stringify({
+        id: message.id,
+        result: { thread: { id: message.params.threadId } }
+      }));
+      return;
+    }
     if (message.method === "turn/start") {
+      if (message.params.threadId === "stale-thread") {
+        socket.send(JSON.stringify({
+          id: message.id,
+          error: {
+            code: -32602,
+            message: '{"code":"invalid-argument","error":"Could not decode the compaction blob. Ensure it is unmodified from the compact response."}'
+          }
+        }));
+        return;
+      }
       const turnId = chatGptAuthenticated ? "chatgpt-turn" : "grok-turn";
       const text = chatGptAuthenticated
         ? "Portable ChatGPT turn completed."
@@ -440,10 +457,24 @@ describe("portable provider accounts on a brand-new worker", () => {
         status: "completed",
         text: "Portable Grok turn completed.",
       });
+      const recoveredThreadIds: string[] = [];
+      await expect(
+        grokRuntime.runTurn({
+          ...turnOptions(root, grokProvider, "grok-code-fast-1"),
+          threadId: "stale-thread",
+          onThreadLoaded: (threadId) => recoveredThreadIds.push(threadId),
+        }),
+      ).resolves.toMatchObject({
+        status: "completed",
+        text: "Portable Grok turn completed.",
+        threadId: "portable-thread",
+      });
+      expect(recoveredThreadIds).toEqual(["stale-thread", "portable-thread"]);
 
       expect(await readdir(chatGptHome)).toEqual([]);
       expect(await readdir(grokHome)).toEqual([]);
       expect(grokUpstreamTokens).toEqual([
+        "Bearer grok-access-1",
         "Bearer grok-access-1",
         "Bearer grok-access-1",
         "Bearer grok-access-1",
