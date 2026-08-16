@@ -4,13 +4,45 @@ Cantrip exposes a bounded, read-only service console in **Settings → Logs**.
 It is intended for diagnosing the Cantrip client, its local embedded runtime,
 and linked worker processes without granting filesystem or terminal access.
 
+## Operational record contract
+
+Server, worker, and deliberate client events use one structured logging path.
+Each event is normalized and sanitized once, then the same safe record is sent
+to the component console, bounded service buffer, and rotated JSONL file where
+that component has one. Settings → Logs reads those records through the
+authorized transports below. Console output may be formatted for humans, but
+it represents the same timestamp, level, message, and context as the service
+record; there is no separate raw console event.
+
+Operational context uses a small shared vocabulary when the fields apply:
+`event`, `subsystem`, `operation`, `status`, `reasonCode`, `durationMs`,
+`requestId`, `workerId`, `projectId`, `chatId`, `turnId`, `workflowId`,
+`runId`, `surfaceId`, `attempt`, and `counts`. Errors are reduced to safe
+`name`, `message`, and optional `code` metadata. Stack traces, causes, and
+arbitrary thrown-object fields are excluded from remotely readable records.
+
+Levels have consistent meanings:
+
+- `fatal` is an unrecoverable process-level shutdown;
+- `error` is a permanent operation failure or broken user functionality;
+- `warn` is a recoverable failure, retry, degradation, or fallback;
+- `info` is a meaningful, uncommon lifecycle transition;
+- `debug` is routine routing, cache, and state-transition detail; and
+- `trace` is sampled high-volume transport diagnostics only.
+
+Callers explicitly rate-limit repetitive failures. The first event is emitted,
+identical events inside the configured window are suppressed, and periodic
+summary records expose a repeat count. High-volume diagnostics use deterministic
+sampling. Heartbeats, frames, pointer input, terminal resize/input/output,
+streamed model deltas, polling ticks, and other hot-loop data are not logged.
+
 ## Available sources
 
-| Source | Where it appears | Transport |
-| --- | --- | --- |
-| **Client · This device** | Every client | An in-memory browser buffer; Tauri also reads its local rotated client log |
-| **Server · Local internal** | Tauri only, while connected to that installation's embedded local server | A fixed-source Tauri command reads the local rotated server log |
-| **Worker · _name_** | Every worker linked to the active account | Cursor polling through the authenticated server-to-worker command channel |
+| Source                      | Where it appears                                                         | Transport                                                                  |
+| --------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| **Client · This device**    | Every client                                                             | An in-memory browser buffer; Tauri also reads its local rotated client log |
+| **Server · Local internal** | Tauri only, while connected to that installation's embedded local server | A fixed-source Tauri command reads the local rotated server log            |
+| **Worker · _name_**         | Every worker linked to the active account                                | Cursor polling through the authenticated server-to-worker command channel  |
 
 The local server source is deliberately strict. It appears only when all of
 the following are true:

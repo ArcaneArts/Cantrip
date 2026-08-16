@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import clientLogRelaySource from "../../src-tauri/src/client_log_relay.js?raw";
 import {
+  clientLogger,
   clearClientLogs,
   formatClientLogArguments,
   readClientLogs,
@@ -45,6 +46,35 @@ describe("client log relay", () => {
       },
     ]);
     expect(result.nextCursor).toBe(result.latestCursor);
+  });
+
+  it("fans deliberate client events to sanitized console and Logs records", () => {
+    clearClientLogs();
+    const lines: unknown[][] = [];
+    const originalInfo = console.info;
+    console.info = (...values: unknown[]) => lines.push(values);
+    try {
+      clientLogger.event("info", "Server connection restored", {
+        event: "server.connection.restored",
+        subsystem: "connection",
+        authorization: "Bearer unsafe-value",
+      });
+    } finally {
+      console.info = originalInfo;
+    }
+    expect(JSON.stringify(lines)).not.toContain("unsafe-value");
+    expect(readClientLogs().records).toMatchObject([
+      {
+        system: "client",
+        level: "info",
+        message: "Server connection restored",
+        context: {
+          event: "server.connection.restored",
+          subsystem: "connection",
+          authorization: "[REDACTED]",
+        },
+      },
+    ]);
   });
 
   it("captures pre-bootstrap console and fetch failures without URL secrets", async () => {

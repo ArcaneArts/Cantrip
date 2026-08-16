@@ -1,17 +1,22 @@
 import { STATUS_CODES } from "node:http";
 
 import {
+  createServiceLogEmitter,
+  type ServiceLogContext,
+  type ServiceLogger,
+} from "./core.js";
+import {
   sanitizeLogRecordInput,
+  sanitizeLogText,
   type ServiceLogLevel,
   type ServiceLogRecordInput,
 } from "./records.js";
 
+export * from "./core.js";
 export * from "./records.js";
 export * from "./rotating-jsonl.js";
 
 export type { ServiceLogLevel } from "./records.js";
-
-export type ServiceLogContext = Error | Record<string, unknown> | unknown;
 
 type LogOutput = (line: string, level: ServiceLogLevel) => void;
 
@@ -187,9 +192,11 @@ function levelFromPino(level = 30): ServiceLogLevel {
 
 function levelLabel(level: ServiceLogLevel): string | null {
   if (level === "info") return null;
-  if (level === "fatal" || level === "error") return "ERROR";
+  if (level === "fatal") return "FATAL";
+  if (level === "error") return "ERROR";
   if (level === "warn") return "WARN";
-  return "DEBUG";
+  if (level === "debug") return "DEBUG";
+  return "TRACE";
 }
 
 function levelColor(level: ServiceLogLevel): keyof typeof ANSI {
@@ -260,48 +267,34 @@ function defaultOutput(line: string, level: ServiceLogLevel): void {
 export function createServiceLogger(
   system: string,
   options: ServiceLogFormatterOptions = {},
-) {
+): ServiceLogger {
   const colors = options.colors ?? environmentUsesColor();
-  const now = options.now ?? (() => new Date());
-  const onRecord = options.onRecord;
   const output = options.output ?? defaultOutput;
-  const write = (
-    level: ServiceLogLevel,
-    message: string,
-    context?: ServiceLogContext,
-  ) => {
-    const timestamp = now();
-    output(
-      formatServiceLog({
-        colors,
-        context,
-        level,
-        message,
-        system,
-        timestamp,
-      }),
-      level,
-    );
-    onRecord?.(
-      sanitizeLogRecordInput({
-        timestamp: timestamp.toISOString(),
-        system,
-        level,
-        message,
-        ...(context === undefined ? {} : { context }),
-      }),
-    );
-  };
-  return {
-    debug: (message: string, context?: ServiceLogContext) =>
-      write("debug", message, context),
-    error: (message: string, context?: ServiceLogContext) =>
-      write("error", message, context),
-    info: (message: string, context?: ServiceLogContext) =>
-      write("info", message, context),
-    warn: (message: string, context?: ServiceLogContext) =>
-      write("warn", message, context),
-  };
+  return createServiceLogEmitter(system, {
+    now: options.now,
+    onRecord: options.onRecord,
+    output: (record) =>
+      output(
+        formatServiceLog({
+          colors,
+          context: record.context,
+          level: record.level,
+          message: record.message,
+          system: record.system,
+          timestamp: new Date(record.timestamp),
+        }),
+        record.level,
+      ),
+  });
+}
+
+function safeHttpPath(value: string): string {
+  try {
+    const parsed = new URL(value, "http://cantrip.invalid");
+    return parsed.pathname || "/";
+  } catch {
+    return value.split(/[?#]/u, 1)[0] || "/";
+  }
 }
 
 export function createPinoServiceLogStream(
@@ -314,6 +307,26 @@ export function createPinoServiceLogStream(
   const output = options.output ?? defaultOutput;
   const pendingRequests = new Map<string, { method: string; path: string }>();
 
+  const emit = (
+    input: ServiceLogRecordInput,
+    formatter?: (record: ServiceLogRecordInput) => string,
+  ) => {
+    const record = sanitizeLogRecordInput(input);
+    output(
+      formatter?.(record) ??
+        formatServiceLog({
+          colors,
+          context: record.context,
+          level: record.level,
+          message: record.message,
+          system: record.system,
+          timestamp: new Date(record.timestamp),
+        }),
+      record.level,
+    );
+    onRecord?.(record);
+  };
+
   return {
     write(line: string) {
       for (const candidate of line.split("\n")) {
@@ -323,24 +336,12 @@ export function createPinoServiceLogStream(
           entry = JSON.parse(candidate) as PinoEntry;
         } catch {
           const timestamp = now();
-          output(
-            formatServiceLog({
-              colors,
-              level: "info",
-              message: candidate,
-              system,
-              timestamp,
-            }),
-            "info",
-          );
-          onRecord?.(
-            sanitizeLogRecordInput({
-              timestamp: timestamp.toISOString(),
-              system,
-              level: "info",
-              message: candidate,
-            }),
-          );
+          emit({
+            timestamp: timestamp.toISOString(),
+            system,
+            level: "info",
+            message: candidate,
+          });
           continue;
         }
 
@@ -354,8 +355,8 @@ export function createPinoServiceLogStream(
           entry.req.url
         ) {
           pendingRequests.set(entry.reqId, {
-            method: entry.req.method,
-            path: entry.req.url,
+            method: sanitizeLogText(entry.req.method),
+            path: sanitizeLogText(safeHttpPath(entry.req.url)),
           });
           continue;
         }
@@ -371,57 +372,48 @@ export function createPinoServiceLogStream(
           (entry.msg === "request completed" || entry.msg === "request errored")
         ) {
           pendingRequests.delete(entry.reqId!);
-          output(
-            formatHttpLog({
-              colors,
-              durationMs: entry.responseTime,
-              method: request.method,
-              path: request.path,
-              statusCode,
-              system,
-              timestamp,
-            }),
-            statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : level,
-          );
+          const durationMs = entry.responseTime;
           const recordLevel =
             statusCode >= 500 ? "error" : statusCode >= 400 ? "warn" : level;
-          onRecord?.(
-            sanitizeLogRecordInput({
+          emit(
+            {
               timestamp: timestamp.toISOString(),
               system,
               level: recordLevel,
-              message: `${request.method} ${request.path} -> ${statusCode} ${STATUS_CODES[statusCode] ?? "Unknown"} (${formatDuration(entry.responseTime)})`,
+              message: `${request.method} ${request.path} -> ${statusCode} ${STATUS_CODES[statusCode] ?? "Unknown"} (${formatDuration(durationMs)})`,
               context: {
-                durationMs: entry.responseTime,
+                event: "http.request.completed",
+                subsystem: "http",
+                operation: request.method,
+                status: statusCode >= 400 ? "failed" : "completed",
+                durationMs,
+                requestId: entry.reqId,
                 method: request.method,
                 path: request.path,
                 statusCode,
               },
-            }),
+            },
+            () =>
+              formatHttpLog({
+                colors,
+                durationMs,
+                method: request.method,
+                path: request.path,
+                statusCode,
+                system,
+                timestamp,
+              }),
           );
           continue;
         }
 
-        output(
-          formatServiceLog({
-            colors,
-            context: entry,
-            level,
-            message: entry.msg ?? "Log event",
-            system,
-            timestamp,
-          }),
+        emit({
+          timestamp: timestamp.toISOString(),
+          system,
           level,
-        );
-        onRecord?.(
-          sanitizeLogRecordInput({
-            timestamp: timestamp.toISOString(),
-            system,
-            level,
-            message: entry.msg ?? "Log event",
-            context: entry,
-          }),
-        );
+          message: entry.msg ?? "Log event",
+          context: entry,
+        });
       }
     },
   };
