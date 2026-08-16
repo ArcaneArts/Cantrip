@@ -8,6 +8,7 @@ import type {
 } from "./provider-credential-revocation.js";
 
 interface ProviderAccountLifecycleLogger {
+  info?(context: Record<string, unknown>, message: string): void;
   warn(context: Record<string, unknown>, message: string): void;
 }
 
@@ -49,6 +50,18 @@ export class ProviderAccountLifecycleService {
     ownerId: string;
     providerId: string;
   }): Promise<ProviderAccountSignOutSummary | null> {
+    const startedAtMs = Date.now();
+    this.options.logger.info?.(
+      {
+        event: "provider.account.sign_out_started",
+        subsystem: "provider-auth",
+        operation: "sign-out",
+        status: "started",
+        accountId: input.accountId,
+        providerId: input.providerId,
+      },
+      "Provider account sign-out started",
+    );
     this.options.accessTokens.denyAccount(
       input.ownerId,
       input.providerId,
@@ -111,6 +124,13 @@ export class ProviderAccountLifecycleService {
     const workersFailed = workerResults.filter(
       ({ status }) => status === "rejected",
     ).length;
+    const summary = {
+      catalogInvalidated: catalog,
+      credentialCleared: true,
+      revocation,
+      workersClosed: workerResults.length - workersFailed,
+      workersFailed,
+    } satisfies ProviderAccountSignOutSummary;
     if (revocation === "failed" || !catalog || workersFailed > 0) {
       this.options.logger.warn(
         {
@@ -123,12 +143,27 @@ export class ProviderAccountLifecycleService {
         "Provider account sign-out completed with cleanup warnings",
       );
     }
-    return {
-      catalogInvalidated: catalog,
-      credentialCleared: true,
-      revocation,
-      workersClosed: workerResults.length - workersFailed,
-      workersFailed,
-    };
+    this.options.logger.info?.(
+      {
+        event: "provider.account.sign_out_completed",
+        subsystem: "provider-auth",
+        operation: "sign-out",
+        status:
+          revocation === "failed" || !catalog || workersFailed > 0
+            ? "degraded"
+            : "completed",
+        accountId: input.accountId,
+        providerId: input.providerId,
+        durationMs: Date.now() - startedAtMs,
+        counts: {
+          workersClosed: summary.workersClosed,
+          workersFailed: summary.workersFailed,
+        },
+        catalogInvalidated: summary.catalogInvalidated,
+        credentialRevocation: summary.revocation,
+      },
+      "Provider account sign-out completed",
+    );
+    return summary;
   }
 }

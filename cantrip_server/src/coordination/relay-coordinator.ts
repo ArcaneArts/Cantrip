@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { createClient } from "redis";
 
+import { serverLogger } from "../logger.js";
+
 const DEFAULT_MESSAGE_TTL_MS = 60_000;
 const DEFAULT_PRESENCE_TTL_MS = 30_000;
 const MAX_COORDINATION_MESSAGE_BYTES = 12 * 1_024 * 1_024;
@@ -423,12 +425,45 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
     this.#channel = `${this.#keyPrefix}:messages`;
     this.#client = createClient({ url: options.url });
     this.#subscriber = this.#client.duplicate();
-    this.#client.on("error", () => undefined);
-    this.#subscriber.on("error", () => undefined);
+    this.#client.on("error", () => {
+      serverLogger.rateLimited(
+        "coordination-redis-client-error",
+        "error",
+        "Redis relay coordination client reported an error",
+        {
+          event: "coordination.connection.error",
+          subsystem: "relay-coordination",
+          operation: "redis-client",
+          reasonCode: "redis-client-error",
+          status: "degraded",
+        },
+      );
+    });
+    this.#subscriber.on("error", () => {
+      serverLogger.rateLimited(
+        "coordination-redis-subscriber-error",
+        "error",
+        "Redis relay coordination subscriber reported an error",
+        {
+          event: "coordination.subscription.error",
+          subsystem: "relay-coordination",
+          operation: "redis-subscribe",
+          reasonCode: "redis-subscriber-error",
+          status: "degraded",
+        },
+      );
+    });
   }
 
   async start(): Promise<void> {
     if (this.#started) return;
+    const startedAtMs = Date.now();
+    serverLogger.event("info", "Redis relay coordination startup began", {
+      event: "coordination.lifecycle.started",
+      subsystem: "relay-coordination",
+      operation: "start",
+      status: "starting",
+    });
     await this.#client.connect();
     try {
       await this.#subscriber.connect();
@@ -467,9 +502,28 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
       );
       this.#heartbeatTimer.unref();
       this.#started = true;
+      serverLogger.event("info", "Redis relay coordination is ready", {
+        event: "coordination.lifecycle.completed",
+        subsystem: "relay-coordination",
+        operation: "start",
+        status: "ready",
+        durationMs: Date.now() - startedAtMs,
+        counts: {
+          instances: this.instanceCount,
+          workers: this.stats().cachedWorkers,
+        },
+      });
     } catch (error) {
       if (this.#subscriber.isOpen) await this.#subscriber.disconnect();
       if (this.#client.isOpen) await this.#client.disconnect();
+      serverLogger.event("error", "Redis relay coordination failed to start", {
+        event: "coordination.lifecycle.failed",
+        subsystem: "relay-coordination",
+        operation: "start",
+        status: "failed",
+        reasonCode: "redis-startup-failed",
+        durationMs: Date.now() - startedAtMs,
+      });
       throw error;
     }
   }
@@ -492,6 +546,14 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
     );
     this.cachePresence(presence);
     await this.publish({ kind: "worker-presence", action: "online", presence });
+    serverLogger.event("info", "Worker relay ownership claimed", {
+      event: "coordination.worker.claimed",
+      subsystem: "relay-coordination",
+      operation: "claim-worker",
+      status: "claimed",
+      workerId: input.workerId,
+      replacedInstance: previous?.instanceId !== undefined,
+    });
     return previous;
   }
 
@@ -536,6 +598,13 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
       kind: "worker-presence",
       action: "online",
       presence: refreshed,
+    });
+    serverLogger.event("info", "Worker relay ownership released", {
+      event: "coordination.worker.released",
+      subsystem: "relay-coordination",
+      operation: "release-worker",
+      status: "released",
+      workerId,
     });
     return true;
   }
@@ -591,19 +660,66 @@ export class RedisRelayCoordinator extends BaseRelayCoordinator {
   }
 
   async health(): Promise<boolean> {
-    if (!this.#client.isReady) return false;
+    if (!this.#client.isReady) {
+      serverLogger.rateLimited(
+        "coordination-health-not-ready",
+        "warn",
+        "Redis relay coordination is not ready",
+        {
+          event: "coordination.health.failed",
+          subsystem: "relay-coordination",
+          operation: "health",
+          reasonCode: "redis-not-ready",
+          status: "unhealthy",
+        },
+      );
+      return false;
+    }
     if ((await this.#client.ping()) !== "PONG") return false;
     await this.#refreshInstanceCount();
-    return this.instanceCount <= this.maximumInstances;
+    const healthy = this.instanceCount <= this.maximumInstances;
+    if (!healthy) {
+      serverLogger.rateLimited(
+        "coordination-health-instance-limit",
+        "error",
+        "Relay coordination instance limit exceeded",
+        {
+          event: "coordination.health.failed",
+          subsystem: "relay-coordination",
+          operation: "health",
+          reasonCode: "instance-limit-exceeded",
+          status: "unhealthy",
+          counts: {
+            instances: this.instanceCount,
+            maximumInstances: this.maximumInstances,
+          },
+        },
+      );
+    }
+    return healthy;
   }
 
   async close(): Promise<void> {
+    const startedAtMs = Date.now();
+    serverLogger.event("info", "Redis relay coordination shutdown began", {
+      event: "coordination.shutdown.started",
+      subsystem: "relay-coordination",
+      operation: "close",
+      status: "stopping",
+    });
     if (this.#heartbeatTimer) clearInterval(this.#heartbeatTimer);
     this.#heartbeatTimer = null;
     if (this.#client.isReady) await this.#client.del(this.#instanceKey());
     if (this.#subscriber.isOpen) await this.#subscriber.quit();
     if (this.#client.isOpen) await this.#client.quit();
     this.#started = false;
+    serverLogger.event("info", "Redis relay coordination stopped", {
+      event: "coordination.shutdown.completed",
+      subsystem: "relay-coordination",
+      operation: "close",
+      status: "stopped",
+      durationMs: Date.now() - startedAtMs,
+    });
   }
 
   protected async send(message: RelayCoordinationMessage): Promise<void> {

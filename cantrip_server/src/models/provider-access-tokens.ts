@@ -8,6 +8,7 @@ import {
   type ProviderAccountCredentialRecord,
   type ServerRepository,
 } from "../db/repository.js";
+import { serverLogger } from "../logger.js";
 import {
   parseProviderCredential,
   type ProviderCredential,
@@ -156,6 +157,7 @@ export class ProviderAccessTokenService {
     ownerId: string;
     providerId: string;
   }): Promise<ProviderAccessTokenLease> {
+    const startedAtMs = Date.now();
     this.#assertEnabled(input);
     if (
       !Number.isSafeInteger(input.minimumValidityMs) ||
@@ -192,6 +194,21 @@ export class ProviderAccessTokenService {
       (input.forceRefresh && !alreadyRefreshed) ||
       !this.#isUsable(record, input.minimumValidityMs)
     ) {
+      serverLogger.rateLimited(
+        `provider-credential-refresh-requested:${input.providerId}:${input.accountId}`,
+        "debug",
+        "Provider credential refresh required",
+        {
+          event: "provider.credential.refresh_requested",
+          subsystem: "provider-auth",
+          operation: "refresh",
+          status: "started",
+          accountId: input.accountId,
+          providerId: input.providerId,
+          reasonCode: input.forceRefresh ? "forced" : "insufficient_validity",
+        },
+        { summaryEvery: 10, windowMs: 30_000 },
+      );
       const startingRevision = record.revision;
       record = await this.#refreshSingleFlight(input, record);
       if (
@@ -206,6 +223,21 @@ export class ProviderAccessTokenService {
       throw new ProviderAccessTokenError("refresh-failed");
     }
     this.#assertEnabled(input);
+    serverLogger.sampled(
+      `provider-access-lease-issued:${input.providerId}:${input.accountId}`,
+      20,
+      "debug",
+      "Provider access lease issued",
+      {
+        event: "provider.access_lease.issued",
+        subsystem: "provider-auth",
+        operation: "issue",
+        status: "completed",
+        accountId: input.accountId,
+        providerId: input.providerId,
+        durationMs: Date.now() - startedAtMs,
+      },
+    );
     return this.#lease(record);
   }
 
@@ -357,6 +389,14 @@ export class ProviderAccessTokenService {
           providerId: input.providerId,
         });
       if (acquired) {
+        serverLogger.debug("Provider credential refresh lease acquired", {
+          event: "provider.credential.refresh_lease_acquired",
+          subsystem: "provider-auth",
+          operation: "refresh",
+          status: "claimed",
+          accountId: input.accountId,
+          providerId: input.providerId,
+        });
         return this.#refreshOwned(
           input,
           record,
@@ -370,6 +410,16 @@ export class ProviderAccessTokenService {
       record = await this.#readAvailable(input);
       this.#assertGeneration(input, generation);
     }
+    serverLogger.warn("Provider credential refresh timed out", {
+      event: "provider.credential.refresh_failed",
+      subsystem: "provider-auth",
+      operation: "refresh",
+      status: "failed",
+      reasonCode: "refresh_timeout",
+      accountId: input.accountId,
+      providerId: input.providerId,
+      durationMs: this.#refreshWaitMs,
+    });
     throw new ProviderAccessTokenError("refresh-timeout");
   }
 
@@ -388,6 +438,7 @@ export class ProviderAccessTokenService {
     generation: number,
   ): Promise<ProviderAccountCredentialRecord> {
     const key = this.#accountKey(input);
+    const startedAtMs = Date.now();
     try {
       const refreshed = parseProviderCredential(
         await this.#refreshWithTimeout(key, refresher, record.credential),
@@ -409,8 +460,33 @@ export class ProviderAccessTokenService {
         leaseId,
       );
       if (!saved) throw new ProviderAccessTokenError("credential-unavailable");
+      serverLogger.info("Provider credential refreshed", {
+        event: "provider.credential.refresh_completed",
+        subsystem: "provider-auth",
+        operation: "refresh",
+        status: "completed",
+        accountId: input.accountId,
+        providerId: input.providerId,
+        durationMs: Date.now() - startedAtMs,
+      });
       return saved;
     } catch (error) {
+      serverLogger.rateLimited(
+        `provider-credential-refresh:${input.providerId}:${input.accountId}`,
+        "warn",
+        "Provider credential refresh failed",
+        {
+          event: "provider.credential.refresh_failed",
+          subsystem: "provider-auth",
+          operation: "refresh",
+          status: "failed",
+          reasonCode: providerRefreshReasonCode(error),
+          accountId: input.accountId,
+          providerId: input.providerId,
+          durationMs: Date.now() - startedAtMs,
+        },
+        { summaryEvery: 5, windowMs: 5 * 60_000 },
+      );
       if (this.#disabled.has(key)) {
         await this.repository.releaseModelProviderAccountRefreshLease({
           ...input,
@@ -520,4 +596,18 @@ export class ProviderAccessTokenService {
       providerKind: record.credential.kind,
     };
   }
+}
+
+function providerRefreshReasonCode(error: unknown): string {
+  if (error instanceof ProviderAccessTokenError) return error.code;
+  if (error instanceof ProviderCredentialIdentityConflictError) {
+    return "identity_conflict";
+  }
+  if (error instanceof ProviderCredentialRequiresSignInError) {
+    return "reauth_required";
+  }
+  if (error instanceof ProviderCredentialRevisionConflictError) {
+    return "revision_conflict";
+  }
+  return "refresh_failed";
 }

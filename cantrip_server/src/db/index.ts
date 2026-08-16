@@ -23,6 +23,47 @@ import * as schema from "./schema.js";
 const migrationsFolder = fileURLToPath(
   new URL("../../drizzle", import.meta.url),
 );
+const SLOW_DATABASE_HEALTH_CHECK_MS = 250;
+
+async function databaseHealthCheck(
+  engine: DatabaseEngine,
+  execute: () => Promise<unknown>,
+): Promise<void> {
+  const startedAtMs = Date.now();
+  try {
+    await execute();
+    const durationMs = Date.now() - startedAtMs;
+    if (durationMs >= SLOW_DATABASE_HEALTH_CHECK_MS) {
+      serverLogger.warn("Database health check was slow", {
+        event: "database.health.slow",
+        subsystem: "database",
+        operation: "health-check",
+        status: "degraded",
+        reasonCode: "slow-operation",
+        databaseEngine: engine,
+        durationMs,
+      });
+    }
+  } catch (error) {
+    serverLogger.rateLimited(
+      `database-health-failed:${engine}`,
+      "error",
+      "Database health check failed",
+      {
+        event: "database.health.failed",
+        subsystem: "database",
+        operation: "health-check",
+        status: "failed",
+        reasonCode: "query-failed",
+        databaseEngine: engine,
+        durationMs: Date.now() - startedAtMs,
+        error,
+      },
+      { summaryEvery: 5, windowMs: 60_000 },
+    );
+    throw error;
+  }
+}
 
 export interface DatabaseConnection {
   close(): Promise<void>;
@@ -35,6 +76,7 @@ async function connectPglite(
   config: ServerConfig,
   secretVault: SecretVault,
 ): Promise<DatabaseConnection> {
+  const startedAtMs = Date.now();
   await mkdir(config.dataDirectory, { recursive: true });
 
   const databaseDirectory = path.join(config.dataDirectory, "server-db");
@@ -51,11 +93,26 @@ async function connectPglite(
       `server-db-corrupt-${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}`,
     );
     await rename(databaseDirectory, backupDirectory);
-    serverLogger.warn(
+    serverLogger.event(
+      "warn",
       "PGlite data was unreadable; preserved it and created a fresh development database",
-      { backupDirectory },
+      {
+        event: "database.recovery.started",
+        subsystem: "database",
+        operation: "recover-development-database",
+        reasonCode: "pglite-aborted",
+        status: "recovering",
+      },
     );
-    return openPglite(databaseDirectory, secretVault);
+    const connection = await openPglite(databaseDirectory, secretVault);
+    serverLogger.event("info", "PGlite development database recovered", {
+      event: "database.recovery.completed",
+      subsystem: "database",
+      operation: "recover-development-database",
+      status: "ready",
+      durationMs: Date.now() - startedAtMs,
+    });
+    return connection;
   }
 }
 
@@ -85,6 +142,7 @@ async function openPglite(
   databaseDirectory: string,
   secretVault: SecretVault,
 ): Promise<DatabaseConnection> {
+  const startedAtMs = Date.now();
   const client = new PGlite(databaseDirectory);
   const database = drizzlePglite(client, { schema });
 
@@ -96,11 +154,22 @@ async function openPglite(
     await repository.migrateProviderAccountCredentialSecrets();
     await repository.migrateMcpServerSecrets();
 
+    serverLogger.event("info", "PGlite migrations completed", {
+      event: "database.migrations.completed",
+      subsystem: "database",
+      operation: "migrate",
+      status: "completed",
+      durationMs: Date.now() - startedAtMs,
+      databaseEngine: "pglite",
+    });
+
     return {
       engine: "pglite",
       repository,
       async ping() {
-        await database.execute(sql`select 1`);
+        await databaseHealthCheck("pglite", () =>
+          database.execute(sql`select 1`),
+        );
       },
       async close() {
         await client.close();
@@ -125,6 +194,7 @@ async function connectPostgres(
       max: 5,
     });
     const database = drizzlePostgres(client, { schema });
+    const attemptStartedAtMs = Date.now();
 
     try {
       await database.execute(sql`select 1`);
@@ -135,11 +205,23 @@ async function connectPostgres(
       await repository.migrateProviderAccountCredentialSecrets();
       await repository.migrateMcpServerSecrets();
 
+      serverLogger.event("info", "PostgreSQL migrations completed", {
+        event: "database.migrations.completed",
+        subsystem: "database",
+        operation: "migrate",
+        status: "completed",
+        durationMs: Date.now() - attemptStartedAtMs,
+        databaseEngine: "postgres",
+        attempt,
+      });
+
       return {
         engine: "postgres",
         repository,
         async ping() {
-          await database.execute(sql`select 1`);
+          await databaseHealthCheck("postgres", () =>
+            database.execute(sql`select 1`),
+          );
         },
         async close() {
           await client.end({ timeout: 5 });
@@ -150,6 +232,20 @@ async function connectPostgres(
       await client.end({ timeout: 0 });
 
       if (attempt < attempts) {
+        serverLogger.rateLimited(
+          "database-postgres-connect-retry",
+          "warn",
+          "PostgreSQL connection attempt failed; retrying",
+          {
+            event: "database.connection.retrying",
+            subsystem: "database",
+            operation: "connect",
+            reasonCode: "connection-failed",
+            status: "retrying",
+            attempt,
+          },
+          { summaryEvery: 5, windowMs: 30_000 },
+        );
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
     }
@@ -161,10 +257,26 @@ async function connectPostgres(
 export async function connectDatabase(
   config: ServerConfig,
 ): Promise<DatabaseConnection> {
+  const startedAtMs = Date.now();
+  const databaseEngine = config.databaseUrl ? "postgres" : "pglite";
+  serverLogger.event("info", "Database connection began", {
+    event: "database.connection.started",
+    subsystem: "database",
+    operation: "connect",
+    status: "connecting",
+    databaseEngine,
+  });
   const secretVault = await resolveSecretVault(config);
-  if (config.databaseUrl) {
-    return connectPostgres(config.databaseUrl, secretVault);
-  }
-
-  return connectPglite(config, secretVault);
+  const connection = config.databaseUrl
+    ? await connectPostgres(config.databaseUrl, secretVault)
+    : await connectPglite(config, secretVault);
+  serverLogger.event("info", "Database connection completed", {
+    event: "database.connection.completed",
+    subsystem: "database",
+    operation: "connect",
+    status: "ready",
+    durationMs: Date.now() - startedAtMs,
+    databaseEngine: connection.engine,
+  });
+  return connection;
 }

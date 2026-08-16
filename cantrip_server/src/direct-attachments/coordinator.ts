@@ -11,6 +11,7 @@ import {
 } from "@cantrip/protocol";
 
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import { serverLogger } from "../logger.js";
 
 interface DirectGrant {
   attachmentId: string;
@@ -56,6 +57,17 @@ export class DirectAttachmentCoordinator {
   async prepare(
     input: DirectAttachmentPrepareInput,
   ): Promise<DirectAttachmentTicket> {
+    const startedAtMs = Date.now();
+    serverLogger.debug("Direct attachment capability requested", {
+      event: "direct_attachment.prepare.started",
+      subsystem: "direct-attachment",
+      operation: "prepare",
+      status: "started",
+      attachmentId: input.attachmentId,
+      resourceKind: input.resourceKind,
+      workerId: input.worker.workerId,
+      counts: { channels: new Set(input.channels).size },
+    });
     if (
       !input.worker.online ||
       !this.workers.isConnected(input.worker.workerId)
@@ -111,7 +123,19 @@ export class DirectAttachmentCoordinator {
           { ownerId: input.ownerId, timeoutMs: 5_000 },
         ),
       );
-    } catch {
+    } catch (error) {
+      serverLogger.warn("Direct attachment preparation failed", {
+        event: "direct_attachment.prepare.failed",
+        subsystem: "direct-attachment",
+        operation: "prepare",
+        status: "failed",
+        reasonCode: "worker_prepare_failed",
+        attachmentId: input.attachmentId,
+        resourceKind: input.resourceKind,
+        workerId: input.worker.workerId,
+        durationMs: Date.now() - startedAtMs,
+        error,
+      });
       throw new DirectAttachmentUnavailableError(
         "Worker could not prepare a local direct capability.",
       );
@@ -144,6 +168,17 @@ export class DirectAttachmentCoordinator {
         connectionsOpened: 0,
       },
     });
+    serverLogger.info("Direct attachment capability prepared", {
+      event: "direct_attachment.prepare.completed",
+      subsystem: "direct-attachment",
+      operation: "prepare",
+      status: "completed",
+      attachmentId: binding.attachmentId,
+      resourceKind: input.resourceKind,
+      workerId: input.worker.workerId,
+      durationMs: Date.now() - startedAtMs,
+      counts: { channels: binding.channels.length },
+    });
     return ticket;
   }
 
@@ -173,6 +208,22 @@ export class DirectAttachmentCoordinator {
         { ownerId: grant.ownerId, timeoutMs: 5_000 },
       )
       .catch(() => undefined);
+    serverLogger.info("Direct attachment capability revoked", {
+      event: "direct_attachment.revoked",
+      subsystem: "direct-attachment",
+      operation: "revoke",
+      status: "completed",
+      reasonCode: directRevocationReasonCode(reason),
+      attachmentId: grant.attachmentId,
+      resourceKind: grant.resourceKind,
+      workerId: grant.workerId,
+      bytesFromLocal: grant.telemetry.bytesFromLocal,
+      bytesToLocal: grant.telemetry.bytesToLocal,
+      counts: {
+        connectionsOpened: grant.telemetry.connectionsOpened,
+        connectionsClosed: grant.telemetry.connectionsClosed,
+      },
+    });
     return true;
   }
 
@@ -277,11 +328,19 @@ export class DirectAttachmentCoordinator {
   }
 
   async close(): Promise<void> {
+    const activeCount = this.#grants.size;
     await Promise.all(
       [...this.#grants.keys()].map((capabilityId) =>
         this.revoke(capabilityId, "Cantrip Server is stopping"),
       ),
     );
+    serverLogger.info("Direct attachment coordinator stopped", {
+      event: "direct_attachment.runtime.stopped",
+      subsystem: "direct-attachment",
+      operation: "shutdown",
+      status: "completed",
+      counts: { activeCapabilities: activeCount },
+    });
   }
 
   #forget(capabilityId: string): void {
@@ -291,4 +350,13 @@ export class DirectAttachmentCoordinator {
     grant.unsubscribeDisconnect();
     this.#grants.delete(capabilityId);
   }
+}
+
+function directRevocationReasonCode(reason: string): string {
+  if (reason.includes("expired")) return "expired";
+  if (reason.includes("session")) return "session_revoked";
+  if (reason.includes("attachment")) return "attachment_revoked";
+  if (reason.includes("resource")) return "resource_revoked";
+  if (reason.includes("Server")) return "server_shutdown";
+  return "revoked";
 }

@@ -580,7 +580,7 @@ import {
   sendWorkerRequestFailure,
 } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
-import { createServerLogStream } from "./logger.js";
+import { createServerLogStream, serverLogger } from "./logger.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -1927,6 +1927,25 @@ export async function buildApp({
   const publishProjectReplicaJobChange = (
     change: ProjectReplicaJobLiveChange,
   ): void => {
+    const replicaLogContext = {
+      event: "replica.job.transitioned",
+      subsystem: "project-replica",
+      operation: change.job.kind,
+      status: change.job.state,
+      runId: change.job.id,
+      projectId: change.job.projectId,
+      workerId: change.job.workerId,
+      attempt: change.job.attempt,
+    };
+    if (change.job.state === "failed") {
+      app.log.error(replicaLogContext, "Project replica job failed");
+    } else if (change.job.state === "blocked") {
+      app.log.warn(replicaLogContext, "Project replica job blocked");
+    } else if (change.job.state === "succeeded") {
+      app.log.info(replicaLogContext, "Project replica job completed");
+    } else {
+      app.log.debug(replicaLogContext, "Project replica job transitioned");
+    }
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
@@ -1973,6 +1992,26 @@ export async function buildApp({
     publishProjectReplicaJobChange,
   );
   const publishChatImportChange = (change: ChatImportLiveChange): void => {
+    const importLogContext = {
+      event: "chat-import.job.transitioned",
+      subsystem: "chat-import",
+      operation: "import-chat",
+      status: change.job.state,
+      runId: change.job.id,
+      projectId: change.job.projectId,
+      ...(change.job.chatId ? { chatId: change.job.chatId } : {}),
+      workerId: change.job.targetPlacement.workerId,
+      attempt: change.job.attempt,
+    };
+    if (change.job.state === "failed") {
+      app.log.error(importLogContext, "Chat import failed");
+    } else if (change.job.state === "blocked") {
+      app.log.warn(importLogContext, "Chat import needs attention");
+    } else if (change.job.state === "succeeded") {
+      app.log.info(importLogContext, "Chat import completed");
+    } else {
+      app.log.debug(importLogContext, "Chat import transitioned");
+    }
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
@@ -2029,6 +2068,26 @@ export async function buildApp({
   const publishChatRelocationChange = (
     change: ChatRelocationLiveChange,
   ): void => {
+    const relocationLogContext = {
+      event: "chat-relocation.job.transitioned",
+      subsystem: "chat-relocation",
+      operation: "relocate-chat",
+      status: change.job.state,
+      runId: change.job.id,
+      projectId: change.job.projectId,
+      chatId: change.job.chatId,
+      workerId: change.job.targetPlacement.workerId,
+      attempt: change.job.attempt,
+    };
+    if (change.job.state === "failed") {
+      app.log.error(relocationLogContext, "Chat relocation failed");
+    } else if (change.job.state === "blocked") {
+      app.log.warn(relocationLogContext, "Chat relocation blocked");
+    } else if (change.job.state === "succeeded") {
+      app.log.info(relocationLogContext, "Chat relocation completed");
+    } else {
+      app.log.debug(relocationLogContext, "Chat relocation transitioned");
+    }
     if (!livePublishingEnabled) return;
     try {
       liveHub.publish({
@@ -2466,6 +2525,20 @@ export async function buildApp({
     if (config.authMode === "none" || request.method === "OPTIONS") return;
     const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
     if (!publicRoute(route) && request.principal.state !== "authenticated") {
+      serverLogger.rateLimited(
+        `security-auth-required:${request.method}:${route}`,
+        "warn",
+        "Unauthenticated application request rejected",
+        {
+          event: "security.authentication.rejected",
+          subsystem: "security",
+          operation: request.method,
+          reasonCode: "authentication-required",
+          requestId: request.id,
+          status: "rejected",
+          route,
+        },
+      );
       return reply.code(401).send({ error: "Authentication is required." });
     }
     if (
@@ -2474,6 +2547,20 @@ export async function buildApp({
     ) {
       const origin = request.headers.origin;
       if (origin && !config.appOrigins.includes(origin)) {
+        serverLogger.rateLimited(
+          `security-origin-rejected:${request.method}:${route}`,
+          "warn",
+          "Application request origin rejected",
+          {
+            event: "security.origin.rejected",
+            subsystem: "security",
+            operation: request.method,
+            reasonCode: "origin-not-allowed",
+            requestId: request.id,
+            status: "rejected",
+            route,
+          },
+        );
         return reply.code(403).send({ error: "Origin is not allowed." });
       }
       const session = await sessionService.resolve(request);
@@ -2481,6 +2568,20 @@ export async function buildApp({
         !session ||
         !sessionService.csrfMatches(session, request.headers["x-cantrip-csrf"])
       ) {
+        serverLogger.rateLimited(
+          `security-csrf-rejected:${request.method}:${route}`,
+          "warn",
+          "Application request failed CSRF validation",
+          {
+            event: "security.csrf.rejected",
+            subsystem: "security",
+            operation: request.method,
+            reasonCode: "csrf-validation-failed",
+            requestId: request.id,
+            status: "rejected",
+            route,
+          },
+        );
         return reply.code(403).send({ error: "CSRF validation failed." });
       }
     }
@@ -3253,16 +3354,41 @@ export async function buildApp({
       scanFailed = false;
     } finally {
       scheduleTickRunning = false;
+      const durationMs = performance.now() - scanStartedAt;
       operationalMetrics.recordSchedulerScan({
         dispatchFailures,
         dispatches,
         dueOccurrences,
-        durationMs: performance.now() - scanStartedAt,
+        durationMs,
         failed: scanFailed,
         leaseContentions,
         leaseRecoveries,
         maximumLagMs,
       });
+      if (dueOccurrences > 0 || dispatchFailures > 0 || scanFailed) {
+        app.log[scanFailed || dispatchFailures > 0 ? "warn" : "info"](
+          {
+            event: "workflow.schedule.scan_completed",
+            subsystem: "workflow-scheduler",
+            operation: "scan",
+            status: scanFailed
+              ? "failed"
+              : dispatchFailures > 0
+                ? "degraded"
+                : "completed",
+            durationMs,
+            counts: {
+              dueOccurrences,
+              dispatches,
+              dispatchFailures,
+              leaseContentions,
+              leaseRecoveries,
+            },
+            maximumLagMs,
+          },
+          "Workflow schedule scan completed",
+        );
+      }
     }
   };
 
@@ -4793,10 +4919,46 @@ export async function buildApp({
       }
     }
     if (!available.length) {
+      serverLogger.rateLimited(
+        `provider-routing-unavailable:${context.workerId}:${context.providerAccountId ?? "automatic"}`,
+        "warn",
+        "No provider route is currently available",
+        {
+          event: "provider.routing.unavailable",
+          subsystem: "provider-routing",
+          operation: "resolve-routes",
+          reasonCode: "no-eligible-routes",
+          status: "unavailable",
+          workerId: context.workerId,
+          counts: {
+            configuredRoutes: runtimes.length,
+            unavailableRoutes: unavailable.length,
+          },
+        },
+        { summaryEvery: 10, windowMs: 60_000 },
+      );
       throw new Error(
         `No provider route is currently available${unavailable.length ? `: ${unavailable.join("; ")}` : "."}`,
       );
     }
+    serverLogger.sampled(
+      `provider-routing-resolved:${context.workerId}`,
+      20,
+      "debug",
+      "Provider routes resolved",
+      {
+        event: "provider.routing.resolved",
+        subsystem: "provider-routing",
+        operation: "resolve-routes",
+        status: "ready",
+        workerId: context.workerId,
+        counts: {
+          configuredRoutes: runtimes.length,
+          availableRoutes: available.length,
+          unavailableRoutes: unavailable.length,
+        },
+      },
+    );
     return available;
   };
 
@@ -5376,6 +5538,17 @@ export async function buildApp({
         await repository.listQueuedPrompts(applicationOwnerId(), chatId)
       ).find((candidate) => !candidate.frozen);
       if (!prompt) return;
+      app.log.info(
+        {
+          event: "chat.queue.dispatching",
+          subsystem: "chat-queue",
+          operation: "dispatch-prompt",
+          status: "dispatching",
+          chatId,
+          requestId: prompt.id,
+        },
+        "Queued prompt is being dispatched",
+      );
       if (prompt.worktreeId && prompt.worktreeId !== context.worktreeId) {
         await repository.updateChatWorktree(applicationOwnerId(), chatId, {
           worktreeId: prompt.worktreeId,
@@ -5397,7 +5570,18 @@ export async function buildApp({
       });
       await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
     } catch (error) {
-      app.log.error({ chatId, err: error }, "Queued prompt dispatch failed");
+      app.log.error(
+        {
+          event: "chat.queue.dispatch-failed",
+          subsystem: "chat-queue",
+          operation: "dispatch-prompt",
+          reasonCode: "dispatch-failed",
+          status: "failed",
+          chatId,
+          err: error,
+        },
+        "Queued prompt dispatch failed",
+      );
     } finally {
       dispatchingChats.delete(chatId);
       if (pendingQueueDispatches.delete(chatId)) {
@@ -5529,6 +5713,10 @@ export async function buildApp({
     publishChatTurnBoundary(notification.chatId, laneContext.chat.projectId);
     app.log.info(
       {
+        event: "chat.turn.outcome-recovered",
+        subsystem: "chat-execution",
+        operation: "recover-outcome",
+        status: notification.outcome.ok ? "completed" : "failed",
         chatId: notification.chatId,
         clientMessageId: notification.clientMessageId,
         executionLaneId: notification.executionLaneId,
@@ -5539,7 +5727,7 @@ export async function buildApp({
               threadId: notification.outcome.result.threadId,
               turnId: notification.outcome.result.turnId,
             }
-          : { error: notification.outcome.error }),
+          : { reasonCode: "worker-reported-failure" }),
         workerId,
       },
       "Recovered agent turn outcome from worker",
@@ -5565,6 +5753,7 @@ export async function buildApp({
       workerPrompt?: string;
     } = {},
   ): Promise<ChatMessage> {
+    const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
@@ -5652,6 +5841,10 @@ export async function buildApp({
       );
       app.log.info(
         {
+          event: "chat.turn.accepted",
+          subsystem: "chat-execution",
+          operation: "turn",
+          status: "accepted",
           chatId: execution.chatId,
           clientMessageId: userMessage.id,
           executionLaneId,
@@ -5659,6 +5852,7 @@ export async function buildApp({
           providerAccountId: runtimes[0]!.provider.accountId,
           providerId: runtimes[0]!.provider.id,
           workerId: execution.workerId,
+          projectId: execution.projectId,
         },
         "Agent turn accepted",
       );
@@ -5686,6 +5880,7 @@ export async function buildApp({
           const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
           const attemptStartedAt = new Date();
           let quotaFollowupsScheduled = false;
+          const attemptStartedAtMs = Date.now();
           const preparedReasoning = preparedRuntimes[index]!;
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
@@ -5771,6 +5966,25 @@ export async function buildApp({
             },
           );
           try {
+            app.log.debug(
+              {
+                event: "chat.turn.route-dispatched",
+                subsystem: "chat-execution",
+                operation: "turn",
+                status: "dispatching",
+                chatId: execution.chatId,
+                projectId: execution.projectId,
+                workerId: execution.workerId,
+                requestId: userMessage.id,
+                runId: executionLaneId,
+                attempt: index + 1,
+                counts: { candidateRoutes: runtimes.length },
+                providerId: runtime.provider.id,
+                providerAccountId: runtime.provider.accountId,
+                routeId: runtime.routeId,
+              },
+              "Agent turn route dispatched",
+            );
             const rawResult = await bridge.request(
               execution.workerId,
               {
@@ -6070,6 +6284,29 @@ export async function buildApp({
             ) {
               void dispatchNextQueuedPrompt(execution.chatId);
             }
+            app.log.info(
+              {
+                event: "chat.turn.completed",
+                subsystem: "chat-execution",
+                operation: "turn",
+                status: "completed",
+                chatId: execution.chatId,
+                projectId: execution.projectId,
+                workerId: execution.workerId,
+                requestId: userMessage.id,
+                runId: executionLaneId,
+                turnId: result.turnId,
+                durationMs: Date.now() - turnStartedAtMs,
+                counts: {
+                  changedPaths: changedPaths.size,
+                  responseCharacters: result.text.length,
+                },
+                providerId: runtime.provider.id,
+                providerAccountId: runtime.provider.accountId,
+                routeId: runtime.routeId,
+              },
+              "Agent turn completed",
+            );
             return;
           } catch (error) {
             const failedAt = new Date();
@@ -6115,11 +6352,22 @@ export async function buildApp({
             );
             app.log.warn(
               {
+                event: "chat.turn.route-failed-over",
+                subsystem: "chat-execution",
+                operation: "turn",
+                status: "retrying",
+                reasonCode: "route-failed-before-activity",
                 chatId: execution.chatId,
                 err: error,
                 providerId: runtime.provider.id,
                 providerAccountId: runtime.provider.accountId,
                 routeId: runtime.routeId,
+                projectId: execution.projectId,
+                workerId: execution.workerId,
+                requestId: userMessage.id,
+                runId: executionLaneId,
+                durationMs: Date.now() - attemptStartedAtMs,
+                attempt: index + 1,
               },
               "Provider route failed before activity; trying the next route",
             );
@@ -6140,7 +6388,20 @@ export async function buildApp({
         }
         const interrupted = /interrupted/i.test(errorMessage(error));
         app.log.error(
-          { chatId: execution.chatId, err: error },
+          {
+            event: interrupted ? "chat.turn.interrupted" : "chat.turn.failed",
+            subsystem: "chat-execution",
+            operation: "turn",
+            status: interrupted ? "interrupted" : "failed",
+            reasonCode: interrupted ? "interrupted" : "execution-failed",
+            chatId: execution.chatId,
+            projectId: execution.projectId,
+            workerId: execution.workerId,
+            requestId: userMessage.id,
+            runId: executionLaneId,
+            durationMs: Date.now() - turnStartedAtMs,
+            err: error,
+          },
           "Agent turn failed",
         );
         await appendLiveChatMessage(
@@ -6716,6 +6977,14 @@ export async function buildApp({
       resourceType: "session",
       result: "succeeded",
     });
+    serverLogger.info("Application session revoked", {
+      event: "security.session.revoked",
+      subsystem: "security",
+      operation: "logout",
+      status: "completed",
+      requestId: request.id,
+      sessionId: principal.sessionId,
+    });
     return reply.code(204).send();
   });
 
@@ -6739,6 +7008,14 @@ export async function buildApp({
       resourceId: principal.user.id,
       resourceType: "account",
       result: "succeeded",
+    });
+    serverLogger.info("All application sessions revoked", {
+      event: "security.sessions.revoked",
+      subsystem: "security",
+      operation: "logout-all",
+      status: "completed",
+      requestId: request.id,
+      counts: { sessions: revokedSessions },
     });
     return reply.send(authLogoutAllResultSchema.parse({ revokedSessions }));
   });
@@ -7610,6 +7887,15 @@ export async function buildApp({
         if (credential.active) revokedWorkerCredentialIds.add(credential.id);
       }
       bridge.disconnect?.(request.params.workerId, "Worker was unlinked");
+      serverLogger.info("Worker unlinked", {
+        event: "worker.enrollment.unlinked",
+        subsystem: "worker-auth",
+        operation: "unlink",
+        status: "completed",
+        requestId: request.id,
+        workerId: request.params.workerId,
+        counts: { credentials: credentials?.length ?? 0 },
+      });
       return reply.code(204).send();
     },
   );
@@ -7639,6 +7925,16 @@ export async function buildApp({
         expiresAt,
         label: input.data.label,
         ownerId: principal.user.id,
+      });
+      serverLogger.info("Worker enrollment code created", {
+        event: "worker.enrollment.code_created",
+        subsystem: "worker-auth",
+        operation: "create-enrollment-code",
+        status: "completed",
+        requestId: request.id,
+        enrollmentCodeId: id,
+        workerId,
+        expiresInSeconds: input.data.expiresInSeconds,
       });
       return reply.code(201).send(
         workerEnrollmentCodeResultSchema.parse({
@@ -7739,6 +8035,16 @@ export async function buildApp({
         "Worker credential was rotated",
         1012,
       );
+      serverLogger.info("Worker credential rotated", {
+        event: "worker.credential.rotated",
+        subsystem: "worker-auth",
+        operation: "rotate",
+        status: delivered ? "completed" : "degraded",
+        reasonCode: delivered ? undefined : "worker_delivery_failed",
+        requestId: request.id,
+        workerId: request.params.workerId,
+        counts: { previousCredentials: previousCredentials?.length ?? 0 },
+      });
       return reply.send(
         workerCredentialRotateResultSchema.parse({
           credential: generated.credential,
@@ -7768,6 +8074,15 @@ export async function buildApp({
         request.params.workerId,
         "Worker credential was revoked",
       );
+      serverLogger.info("Worker credential revoked", {
+        event: "worker.credential.revoked",
+        subsystem: "worker-auth",
+        operation: "revoke",
+        status: "completed",
+        requestId: request.id,
+        workerId: request.params.workerId,
+        credentialId: request.params.credentialId,
+      });
       return reply.code(204).send();
     },
   );
@@ -8645,7 +8960,7 @@ export async function buildApp({
     },
   );
 
-  const loadProviderCatalog = async (
+  const loadProviderCatalogUnchecked = async (
     ownerId: string,
     providerId: string,
     workerId: string | undefined,
@@ -8714,6 +9029,63 @@ export async function buildApp({
       selectedWorkerId,
       force,
     );
+  };
+
+  const loadProviderCatalog = async (
+    ownerId: string,
+    providerId: string,
+    workerId: string | undefined,
+    force: boolean,
+    accountId?: string,
+    quotaTrigger?: string,
+  ) => {
+    const startedAtMs = Date.now();
+    serverLogger.event("debug", "Provider catalog refresh began", {
+      event: "provider.catalog.refresh-started",
+      subsystem: "provider-catalog",
+      operation: "refresh",
+      status: "refreshing",
+      providerId,
+      workerId,
+    });
+    try {
+      const catalog = await loadProviderCatalogUnchecked(
+        ownerId,
+        providerId,
+        workerId,
+        force,
+        accountId,
+        quotaTrigger,
+      );
+      serverLogger.event("info", "Provider catalog refresh completed", {
+        event: "provider.catalog.refresh-completed",
+        subsystem: "provider-catalog",
+        operation: "refresh",
+        status: catalog ? "completed" : "not-applicable",
+        durationMs: Date.now() - startedAtMs,
+        providerId,
+        workerId,
+      });
+      return catalog;
+    } catch (error) {
+      serverLogger.rateLimited(
+        `provider-catalog-refresh-failed:${providerId}:${workerId ?? "automatic"}`,
+        "warn",
+        "Provider catalog refresh failed",
+        {
+          event: "provider.catalog.refresh-failed",
+          subsystem: "provider-catalog",
+          operation: "refresh",
+          reasonCode: "catalog-unavailable",
+          status: "failed",
+          durationMs: Date.now() - startedAtMs,
+          providerId,
+          workerId,
+        },
+        { summaryEvery: 10, windowMs: 5 * 60_000 },
+      );
+      throw error;
+    }
   };
 
   const catalogWorkers = new Map<string, string>();
@@ -17826,6 +18198,19 @@ export async function buildApp({
       if (!runtime) {
         return reply.code(400).send({ error: "Selected model was not found." });
       }
+      const compactionStartedAtMs = Date.now();
+      app.log.info(
+        {
+          event: "chat.compaction.started",
+          subsystem: "chat-execution",
+          operation: "compact",
+          status: "running",
+          chatId: context.chatId,
+          projectId: context.projectId,
+          workerId: context.workerId,
+        },
+        "Chat compaction started",
+      );
       const result = await bridge.request(context.workerId, {
         type: "chat.compact",
         chatId: context.chatId,
@@ -17835,6 +18220,19 @@ export async function buildApp({
         provider: runtime.provider,
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
       });
+      app.log.info(
+        {
+          event: "chat.compaction.completed",
+          subsystem: "chat-execution",
+          operation: "compact",
+          status: "completed",
+          durationMs: Date.now() - compactionStartedAtMs,
+          chatId: context.chatId,
+          projectId: context.projectId,
+          workerId: context.workerId,
+        },
+        "Chat compaction completed",
+      );
       return reply.send(chatCompactAcceptedSchema.parse(result));
     },
   );
@@ -17875,6 +18273,20 @@ export async function buildApp({
       ) {
         await interruptLiveAgentInteractionRequests(context.chatId);
       }
+      app.log.info(
+        {
+          event: "chat.interrupt.requested",
+          subsystem: "chat-execution",
+          operation: "interrupt",
+          status: parsedResult.interrupted ? "accepted" : "not-active",
+          chatId: context.chatId,
+          projectId: context.projectId,
+          workerId: context.workerId,
+        },
+        parsedResult.interrupted
+          ? "Agent turn interruption accepted"
+          : "Agent turn was not active",
+      );
       return reply.send(parsedResult);
     },
   );
@@ -17971,6 +18383,23 @@ export async function buildApp({
           });
         }
       }
+
+      app.log.info(
+        {
+          event: input.data.paused
+            ? "chat.automation.paused"
+            : "chat.automation.resumed",
+          subsystem: "chat-execution",
+          operation: input.data.paused ? "pause" : "resume",
+          status: input.data.paused ? "paused" : "active",
+          chatId: context.chatId,
+          projectId: context.projectId,
+          workerId: context.workerId,
+        },
+        input.data.paused
+          ? "Chat automation paused"
+          : "Chat automation resumed",
+      );
 
       return reply.send(
         chatPauseStateSchema.parse({ paused: input.data.paused }),
@@ -19413,6 +19842,18 @@ export async function buildApp({
         ),
       );
       if (!prompt) return reply.code(404).send({ error: "Chat not found." });
+      app.log.info(
+        {
+          event: "chat.queue.enqueued",
+          subsystem: "chat-queue",
+          operation: "enqueue-prompt",
+          status: prompt.frozen ? "frozen" : "queued",
+          chatId: context.chatId,
+          requestId: prompt.id,
+          counts: { attachments: prompt.attachments.length },
+        },
+        "Chat prompt queued",
+      );
       if (!prompt.frozen) void dispatchNextQueuedPrompt(context.chatId);
       return reply.code(201).send(queuedPromptSchema.parse(prompt));
     },
@@ -19613,6 +20054,19 @@ export async function buildApp({
           });
         }
         await deleteLiveQueuedPrompt(applicationOwnerId(), queued.id);
+        app.log.info(
+          {
+            event: "chat.queue.steered",
+            subsystem: "chat-queue",
+            operation: "steer",
+            status: "completed",
+            chatId: context.chatId,
+            projectId: context.projectId,
+            workerId: context.workerId,
+            requestId: queued.id,
+          },
+          "Queued prompt steered into chat",
+        );
         return reply.send(
           chatPromptSteerResultSchema.parse({ steered: true, message }),
         );
@@ -19679,6 +20133,25 @@ export async function buildApp({
             chatAttachmentSummarySchema.parse(attachment),
           ),
         );
+        if (prompt) {
+          app.log.info(
+            {
+              event: "chat.queue.enqueued",
+              subsystem: "chat-queue",
+              operation: "enqueue-prompt",
+              status: "queued",
+              chatId: context.chatId,
+              projectId: context.projectId,
+              workerId: context.workerId,
+              requestId: prompt.id,
+              counts: { attachments: prompt.attachments.length },
+              reasonCode: context.automationPaused
+                ? "automation-paused"
+                : "turn-active",
+            },
+            "Chat prompt queued behind active work",
+          );
+        }
         return prompt
           ? reply.code(202).send(
               chatPromptSubmitResultSchema.parse({
@@ -19805,6 +20278,16 @@ export async function buildApp({
         });
         publishWorkerPresence(provision.worker);
         scheduleWorkerOfflineInvalidation(provision.worker.workerId);
+        serverLogger.info("Worker enrollment completed", {
+          event: "worker.enrollment.completed",
+          subsystem: "worker-auth",
+          operation: "enroll",
+          status: "completed",
+          requestId: request.id,
+          workerId: provision.worker.workerId,
+          platform: provision.worker.platform,
+          architecture: provision.worker.architecture,
+        });
         return reply.code(201).send(
           workerEnrollmentResultSchema.parse({
             credential: generated.credential,
@@ -19822,6 +20305,21 @@ export async function buildApp({
             resourceType: "worker",
             result: "denied",
           });
+          serverLogger.rateLimited(
+            `worker-enrollment-rejected:${input.data.heartbeat.workerId}`,
+            "warn",
+            "Worker enrollment rejected",
+            {
+              event: "worker.enrollment.rejected",
+              subsystem: "worker-auth",
+              operation: "enroll",
+              status: "rejected",
+              reasonCode: "invalid_or_conflicting_enrollment",
+              requestId: request.id,
+              workerId: input.data.heartbeat.workerId,
+            },
+            { summaryEvery: 5, windowMs: 5 * 60_000 },
+          );
           return reply.code(409).send({ error: error.message });
         }
         throw error;
@@ -19901,6 +20399,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       return runAsOwner(workerAuth.ownerId, async () => {
+        const dispatchStartedAtMs = Date.now();
         const claim = await repository.projectAutomations.claimDue(
           workerAuth.ownerId,
           request.query.workerId!,
@@ -19910,6 +20409,17 @@ export async function buildApp({
           schedulerLeaseTtlMs,
         );
         if (!claim) {
+          serverLogger.debug("Automation dispatch skipped without a lease", {
+            event: "automation.dispatch.skipped",
+            subsystem: "automation",
+            operation: "dispatch",
+            status: "skipped",
+            reasonCode: "not_due_or_already_claimed",
+            requestId: request.id,
+            workerId: request.query.workerId,
+            automationId: request.params.automationId,
+            durationMs: Date.now() - dispatchStartedAtMs,
+          });
           const current = await repository.projectAutomations.get(
             workerAuth.ownerId,
             request.params.automationId,
@@ -19924,6 +20434,18 @@ export async function buildApp({
         }
 
         const automation = claim.automation;
+        serverLogger.info("Automation dispatch lease claimed", {
+          event: "automation.dispatch.claimed",
+          subsystem: "automation",
+          operation: "dispatch",
+          status: "claimed",
+          requestId: request.id,
+          workerId: request.query.workerId,
+          projectId: automation.projectId,
+          chatId: automation.chatId,
+          automationId: automation.id,
+          attempt: claim.fencingToken,
+        });
         const idempotencyKey = `automation:${automation.id}:${input.data.scheduledFor}`;
         try {
           const context = await repository.getChatExecutionContext(
@@ -20044,6 +20566,18 @@ export async function buildApp({
               error: "Automation dispatch lease expired before completion.",
             });
           }
+          serverLogger.info("Automation dispatch completed", {
+            event: "automation.dispatch.completed",
+            subsystem: "automation",
+            operation: "dispatch",
+            status,
+            requestId: request.id,
+            workerId: request.query.workerId,
+            projectId: automation.projectId,
+            chatId: automation.chatId,
+            automationId: automation.id,
+            durationMs: Date.now() - dispatchStartedAtMs,
+          });
           return reply.code(202).send(
             projectAutomationDispatchResultSchema.parse({
               accepted: true,
@@ -20057,6 +20591,20 @@ export async function buildApp({
             "failed",
             errorMessage(error),
           );
+          serverLogger.warn("Automation dispatch failed", {
+            event: "automation.dispatch.failed",
+            subsystem: "automation",
+            operation: "dispatch",
+            status: "failed",
+            reasonCode: "dispatch_failed",
+            requestId: request.id,
+            workerId: request.query.workerId,
+            projectId: automation.projectId,
+            chatId: automation.chatId,
+            automationId: automation.id,
+            durationMs: Date.now() - dispatchStartedAtMs,
+            error,
+          });
           return reply.code(409).send({ error: errorMessage(error) });
         }
       });
@@ -20252,6 +20800,19 @@ export async function buildApp({
     async (socket, request) => {
       const workerId = request.query.workerId;
       if (!workerId) {
+        serverLogger.rateLimited(
+          "worker-connect-missing-id",
+          "warn",
+          "Worker connection rejected",
+          {
+            event: "worker.authentication.rejected",
+            subsystem: "worker-connection",
+            operation: "connect",
+            reasonCode: "worker-id-missing",
+            requestId: request.id,
+            status: "rejected",
+          },
+        );
         socket.close(1008, "Unauthorized");
         return;
       }
@@ -20263,6 +20824,20 @@ export async function buildApp({
         "worker:connect",
       );
       if (!workerAuth) {
+        serverLogger.rateLimited(
+          `worker-connect-unauthorized:${workerId}`,
+          "warn",
+          "Worker connection authentication failed",
+          {
+            event: "worker.authentication.rejected",
+            subsystem: "worker-connection",
+            operation: "connect",
+            reasonCode: "invalid-credential",
+            requestId: request.id,
+            status: "rejected",
+            workerId,
+          },
+        );
         socket.close(1008, "Unauthorized");
         return;
       }
@@ -20270,11 +20845,29 @@ export async function buildApp({
         !workerAuth.development &&
         revokedWorkerCredentialIds.has(workerAuth.id)
       ) {
+        serverLogger.event("warn", "Revoked worker credential rejected", {
+          event: "worker.authentication.rejected",
+          subsystem: "worker-connection",
+          operation: "connect",
+          reasonCode: "credential-revoked",
+          requestId: request.id,
+          status: "rejected",
+          workerId,
+        });
         socket.close(1008, "Worker credential was revoked");
         return;
       }
       const ownerId = await repository.getWorkerOwnerId(workerId);
       if (ownerId !== workerAuth.ownerId) {
+        serverLogger.event("warn", "Worker identity mismatch rejected", {
+          event: "worker.authentication.rejected",
+          subsystem: "worker-connection",
+          operation: "connect",
+          reasonCode: "owner-mismatch",
+          requestId: request.id,
+          status: "rejected",
+          workerId,
+        });
         socket.close(1008, "Worker identity mismatch");
         return;
       }
@@ -20286,13 +20879,27 @@ export async function buildApp({
       try {
         await bridge.attach(workerId, socket, workerAuth.ownerId);
       } catch (error) {
-        app.log.error(
-          { err: error, workerId },
-          "Could not claim the worker connection",
-        );
+        serverLogger.event("error", "Could not claim worker connection", {
+          event: "worker.connection.claim-failed",
+          subsystem: "worker-connection",
+          operation: "connect",
+          reasonCode: "coordination-unavailable",
+          requestId: request.id,
+          status: "failed",
+          workerId,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
         socket.close(1013, "Worker relay coordination is unavailable");
         return;
       }
+      serverLogger.event("info", "Worker command channel authenticated", {
+        event: "worker.authentication.completed",
+        subsystem: "worker-connection",
+        operation: "connect",
+        requestId: request.id,
+        status: "authenticated",
+        workerId,
+      });
       catalogWorkers.set(workerId, workerAuth.ownerId);
       void providerCredentialMigrations
         .migrateWorker(workerAuth.ownerId, workerId)

@@ -1,4 +1,5 @@
 import type { ModelRuntime, ServerRepository } from "../db/repository.js";
+import { serverLogger } from "../logger.js";
 import { isAccountProviderKind } from "./account-provider.js";
 import { accountProviderSupportsModel } from "./model-route-availability.js";
 
@@ -46,6 +47,24 @@ export async function resolveAccountProviderRuntimes(input: {
     });
   if (!orderedAccounts.length) {
     const hasEnabledAccounts = accounts.some(({ enabled }) => enabled);
+    serverLogger.rateLimited(
+      `provider-account-route-unavailable:${runtime.provider.id}:${input.workerId}`,
+      "warn",
+      "Account provider has no routable accounts",
+      {
+        event: "provider.account_route.unavailable",
+        subsystem: "provider-routing",
+        operation: "resolve-account-route",
+        status: "unavailable",
+        reasonCode: hasEnabledAccounts
+          ? "model_unavailable"
+          : "no_enabled_accounts",
+        providerId: runtime.provider.id,
+        workerId: input.workerId,
+        counts: { accounts: accounts.length },
+      },
+      { summaryEvery: 10, windowMs: 60_000 },
+    );
     return {
       runtimes: [],
       unavailable: [
@@ -59,11 +78,18 @@ export async function resolveAccountProviderRuntimes(input: {
   const healthy: typeof orderedAccounts = [];
   const legacy: typeof orderedAccounts = [];
   const unavailable: string[] = [];
+  const unavailableCounts = {
+    migrationNeeded: 0,
+    requiresSignIn: 0,
+    belowReserve: 0,
+    exhausted: 0,
+  };
   for (const account of orderedAccounts) {
     if (account.credentialState === "migration-needed") {
       if (account.legacyWorkerAuthenticated) {
         legacy.push(account);
       } else {
+        unavailableCounts.migrationNeeded += 1;
         unavailable.push(
           `${runtime.provider.name} account ${account.label} must be migrated; reconnect its original worker`,
         );
@@ -71,6 +97,7 @@ export async function resolveAccountProviderRuntimes(input: {
       continue;
     }
     if (account.credentialState !== "signed-in") {
+      unavailableCounts.requiresSignIn += 1;
       unavailable.push(
         account.credentialState === "conflict"
           ? `${runtime.provider.name} account ${account.label} has a credential identity conflict`
@@ -87,15 +114,38 @@ export async function resolveAccountProviderRuntimes(input: {
     } else if (remainingPercent > runtime.provider.weeklyUsageReservePercent) {
       healthy.push(account);
     } else if (remainingPercent > 0) {
+      unavailableCounts.belowReserve += 1;
       unavailable.push(
         `${runtime.provider.name} account ${account.label} is below its ${runtime.provider.weeklyUsageReservePercent}% weekly usage reserve`,
       );
     } else {
+      unavailableCounts.exhausted += 1;
       unavailable.push(
         `${runtime.provider.name} account ${account.label} has no weekly usage left`,
       );
     }
   }
+
+  serverLogger.sampled(
+    `provider-account-route:${runtime.provider.id}:${input.workerId}`,
+    20,
+    "debug",
+    "Account provider routes resolved",
+    {
+      event: "provider.account_route.resolved",
+      subsystem: "provider-routing",
+      operation: "resolve-account-route",
+      status: healthy.length + legacy.length > 0 ? "completed" : "unavailable",
+      providerId: runtime.provider.id,
+      workerId: input.workerId,
+      counts: {
+        accounts: accounts.length,
+        healthy: healthy.length,
+        legacy: legacy.length,
+        ...unavailableCounts,
+      },
+    },
+  );
 
   return {
     runtimes: [...healthy, ...legacy].map((account) => ({

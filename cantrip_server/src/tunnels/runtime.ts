@@ -7,6 +7,7 @@ import type {
   ServerRepository,
   TunnelAttachmentAuthorization,
 } from "../db/repository.js";
+import { serverLogger } from "../logger.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
 import { TunnelStreamBroker, type TunnelRouteHandle } from "./broker.js";
 import {
@@ -49,6 +50,17 @@ export class TunnelRuntimeManager {
     authorization: TunnelAttachmentAuthorization,
     initialize: TunnelAttachmentInitialize,
   ): Promise<TunnelAttachmentReady> {
+    const startedAtMs = Date.now();
+    serverLogger.debug("Tunnel attachment requested", {
+      event: "tunnel.attachment.started",
+      subsystem: "tunnel",
+      operation: "attach",
+      status: "started",
+      attachmentId: authorization.attachmentId,
+      projectId: authorization.projectId,
+      tunnelId: authorization.tunnelId,
+      workerId: authorization.destination.workerId,
+    });
     if (this.#closed) throw new Error("The tunnel runtime is shutting down.");
     if (initialize.clientId !== authorization.clientId) {
       throw new Error("Tunnel attachment client identity does not match.");
@@ -149,6 +161,17 @@ export class TunnelRuntimeManager {
       throw new Error("Tunnel attachment is stale or expired.");
     }
     this.changed(this.#change(authorization));
+    serverLogger.info("Tunnel attachment active", {
+      event: "tunnel.attachment.active",
+      subsystem: "tunnel",
+      operation: "attach",
+      status: "completed",
+      attachmentId: authorization.attachmentId,
+      projectId: authorization.projectId,
+      tunnelId: authorization.tunnelId,
+      workerId: authorization.destination.workerId,
+      durationMs: Date.now() - startedAtMs,
+    });
     return {
       type: "ready",
       attachmentId: authorization.attachmentId,
@@ -167,6 +190,17 @@ export class TunnelRuntimeManager {
     active.unsubscribeWorker();
     active.route.close();
     active.endpoint.close(code, reason);
+    serverLogger.info("Tunnel attachment closed", {
+      event: "tunnel.attachment.closed",
+      subsystem: "tunnel",
+      operation: "close",
+      status: "completed",
+      reasonCode: tunnelCloseReasonCode(reason),
+      attachmentId,
+      projectId: active.authorization.projectId,
+      tunnelId: active.authorization.tunnelId,
+      workerId: active.authorization.destination.workerId,
+    });
   }
 
   async revoke(ownerId: string, attachmentId: string): Promise<boolean> {
@@ -188,10 +222,26 @@ export class TunnelRuntimeManager {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    const activeCount = this.#active.size;
+    const aggregate = this.#broker.stats();
     for (const attachmentId of [...this.#active.keys()]) {
       this.closeActive(attachmentId, "Server is shutting down", 1012);
     }
     this.#broker.close();
+    serverLogger.info("Tunnel runtime stopped", {
+      event: "tunnel.runtime.stopped",
+      subsystem: "tunnel",
+      operation: "shutdown",
+      status: "completed",
+      counts: {
+        activeAttachments: activeCount,
+        openedConnections: aggregate.openedConnections,
+        closedConnections: aggregate.closedConnections,
+        rejectedConnections: aggregate.rejectedConnections,
+      },
+      bytesFromSource: aggregate.bytesFromSource,
+      bytesToSource: aggregate.bytesToSource,
+    });
   }
 
   #change(authorization: TunnelAttachmentAuthorization): TunnelRuntimeChange {
@@ -202,4 +252,15 @@ export class TunnelRuntimeManager {
       tunnelId: authorization.tunnelId,
     };
   }
+}
+
+function tunnelCloseReasonCode(reason: string): string {
+  if (reason.includes("expired")) return "expired";
+  if (reason.includes("replaced")) return "replaced";
+  if (reason.includes("disconnected")) return "worker_disconnected";
+  if (reason.includes("revoked")) return "revoked";
+  if (reason.includes("shutting down")) return "server_shutdown";
+  if (reason.includes("stale")) return "stale";
+  if (reason.includes("activate")) return "activation_failed";
+  return "closed";
 }
