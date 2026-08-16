@@ -616,6 +616,51 @@ export const providerModels = pgTable(
   ],
 );
 
+export const providerModelCatalogSnapshots = pgTable(
+  "provider_model_catalog_snapshots",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    providerId: text("provider_id").notNull(),
+    providerName: text("provider_name").notNull(),
+    providerAccountId: text("provider_account_id"),
+    workerId: text("worker_id"),
+    availabilityScope: text("availability_scope").notNull(),
+    nativeModelId: text("native_model_id").notNull(),
+    canonicalModelId: text("canonical_model_id"),
+    metadataSource: text("metadata_source").notNull(),
+    metadataHash: text("metadata_hash").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    observedAt: timestamp("observed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("provider_model_catalog_snapshots_version_unique").on(
+      table.ownerId,
+      table.providerId,
+      table.availabilityScope,
+      table.nativeModelId,
+      table.metadataHash,
+    ),
+    index("provider_model_catalog_snapshots_model_time_index").on(
+      table.ownerId,
+      table.providerId,
+      table.nativeModelId,
+      table.observedAt,
+    ),
+    index("provider_model_catalog_snapshots_hash_index").on(table.metadataHash),
+  ],
+);
+
 export const providerModelAvailability = pgTable(
   "provider_model_availability",
   {
@@ -2057,6 +2102,150 @@ export const tokenUsageRecords = pgTable(
     check(
       "token_usage_records_nonnegative_check",
       sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cachedInputTokens} >= 0 AND ${table.reasoningOutputTokens} >= 0 AND ${table.cacheWriteInputTokens} >= 0 AND (${table.visibleOutputTokens} IS NULL OR ${table.visibleOutputTokens} >= 0) AND (${table.reportedTotalTokens} IS NULL OR ${table.reportedTotalTokens} >= 0)`,
+    ),
+  ],
+);
+
+export const modelBehaviorObservations = pgTable(
+  "model_behavior_observations",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sourceKey: text("source_key").notNull(),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    modelId: text("model_id").references(() => modelProfiles.id, {
+      onDelete: "set null",
+    }),
+    modelRouteId: text("model_route_id").references(() => modelRoutes.id, {
+      onDelete: "set null",
+    }),
+    providerId: text("provider_id").references(() => modelProviders.id, {
+      onDelete: "set null",
+    }),
+    modelName: text("model_name").notNull(),
+    providerName: text("provider_name").notNull(),
+    providerModelName: text("provider_model_name").notNull(),
+    providerAccountId: text("provider_account_id"),
+    workerId: text("worker_id"),
+    turnId: text("turn_id"),
+    executionAttemptId: text("execution_attempt_id").notNull(),
+    attemptKind: text("attempt_kind").notNull().default("chat-turn"),
+    attemptStatus: text("attempt_status").notNull().default("running"),
+    reasoningEffort: text("reasoning_effort"),
+    routeAttemptIndex: integer("route_attempt_index").notNull().default(0),
+    retryFailoverCount: integer("retry_failover_count").notNull().default(0),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    firstActivityAt: timestamp("first_activity_at", { withTimezone: true }),
+    firstVisibleResponseAt: timestamp("first_visible_response_at", {
+      withTimezone: true,
+    }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
+    durationMs: bigint("duration_ms", { mode: "number" }),
+    finalAnswerAppeared: boolean("final_answer_appeared")
+      .notNull()
+      .default(false),
+    toolCallCount: integer("tool_call_count").notNull().default(0),
+    invalidToolCallCount: integer("invalid_tool_call_count")
+      .notNull()
+      .default(0),
+    compactionCount: integer("compaction_count").notNull().default(0),
+    approvalRequestCount: integer("approval_request_count")
+      .notNull()
+      .default(0),
+    inputTokens: bigint("input_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    cachedInputTokens: bigint("cached_input_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    cacheWriteInputTokens: bigint("cache_write_input_tokens", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" })
+      .notNull()
+      .default(0),
+    reasoningOutputTokens: bigint("reasoning_output_tokens", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    modelContextWindow: bigint("model_context_window", { mode: "number" }),
+    contextUsedPercentBasisPoints: integer("context_used_percent_basis_points"),
+    filesChangedCount: integer("files_changed_count").notNull().default(0),
+    testCommandCount: integer("test_command_count").notNull().default(0),
+    testPassCount: integer("test_pass_count").notNull().default(0),
+    testFailureCount: integer("test_failure_count").notNull().default(0),
+    userInterrupted: boolean("user_interrupted").notNull().default(false),
+    userRetryRegeneration: boolean("user_retry_regeneration"),
+    immediateCorrectiveFollowup: boolean("immediate_corrective_followup")
+      .notNull()
+      .default(false),
+    forkCount: integer("fork_count").notNull().default(0),
+    copyCount: integer("copy_count"),
+    ratingValue: integer("rating_value"),
+    workerVersion: text("worker_version"),
+    serverVersion: text("server_version"),
+    codexVersion: text("codex_version"),
+    signalAvailability: jsonb("signal_availability")
+      .$type<Record<string, boolean>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("model_behavior_observations_owner_source_unique").on(
+      table.ownerId,
+      table.sourceKey,
+    ),
+    index("model_behavior_observations_account_time_index").on(
+      table.ownerId,
+      table.providerAccountId,
+      table.startedAt,
+    ),
+    index("model_behavior_observations_model_time_index").on(
+      table.ownerId,
+      table.modelId,
+      table.startedAt,
+    ),
+    index("model_behavior_observations_project_time_index").on(
+      table.projectId,
+      table.startedAt,
+    ),
+    index("model_behavior_observations_turn_index").on(
+      table.chatId,
+      table.turnId,
+    ),
+    index("model_behavior_observations_attempt_index").on(
+      table.executionAttemptId,
+    ),
+    check(
+      "model_behavior_observations_status_check",
+      sql`${table.attemptStatus} IN ('running', 'completed', 'failed', 'cancelled', 'interrupted')`,
+    ),
+    check(
+      "model_behavior_observations_nonnegative_check",
+      sql`${table.routeAttemptIndex} >= 0 AND ${table.retryFailoverCount} >= 0 AND ${table.toolCallCount} >= 0 AND ${table.invalidToolCallCount} >= 0 AND ${table.compactionCount} >= 0 AND ${table.approvalRequestCount} >= 0 AND ${table.inputTokens} >= 0 AND ${table.cachedInputTokens} >= 0 AND ${table.cacheWriteInputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.reasoningOutputTokens} >= 0 AND ${table.filesChangedCount} >= 0 AND ${table.testCommandCount} >= 0 AND ${table.testPassCount} >= 0 AND ${table.testFailureCount} >= 0 AND ${table.forkCount} >= 0`,
+    ),
+    check(
+      "model_behavior_observations_context_percent_check",
+      sql`${table.contextUsedPercentBasisPoints} IS NULL OR ${table.contextUsedPercentBasisPoints} >= 0`,
     ),
   ],
 );
