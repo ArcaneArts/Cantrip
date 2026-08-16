@@ -28,6 +28,14 @@ test("archives standalone services and native client bundles", async () => {
     });
     await writeFile(path.join(server, "start.sh"), "run\n");
     await writeFile(path.join(client, "macos", "Cantrip.app", "binary"), "app");
+    await writeFile(
+      path.join(client, "macos", "Cantrip.app.tar.gz"),
+      "updater",
+    );
+    await writeFile(
+      path.join(client, "macos", "Cantrip.app.tar.gz.sig"),
+      "signature",
+    );
     await writeFile(path.join(client, "Cantrip.dmg"), "dmg");
 
     const serverResult = await archiveDistribution({
@@ -55,6 +63,8 @@ test("archives standalone services and native client bundles", async () => {
       new RegExp(`cantrip-client-${target.id}/macos/Cantrip\\.app/binary`, "u"),
     );
     await access(path.join(clientResult.output, "Cantrip.dmg"));
+    await access(path.join(clientResult.output, "Cantrip.app.tar.gz"));
+    await access(path.join(clientResult.output, "Cantrip.app.tar.gz.sig"));
   } finally {
     await rm(root, { force: true, recursive: true });
   }

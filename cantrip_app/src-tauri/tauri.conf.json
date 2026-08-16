@@ -30,6 +30,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -40,6 +41,17 @@
     ],
     "resources": {
       "resources/runtime": "runtime"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/ArcaneArts/Cantrip/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzNzZEN0U2NUE5NDE4NTMKUldSVEdKUmE1dGQyTTVvTHFUQk9hdXFWbHUwRUEyOUlUdndyNUhMMkJJMWJrdVk0M1Y2OEExMEQK",
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
