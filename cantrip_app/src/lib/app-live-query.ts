@@ -95,7 +95,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [["chats", projectId]]
         : event.scope.kind === "chat"
-          ? [["chat-sync", event.scope.chatId]]
+          ? [
+              ["chat-sync", event.scope.chatId],
+              ["messages", event.scope.chatId],
+            ]
           : event.scope.kind === "current-user"
             ? [["chats"]]
             : [];
