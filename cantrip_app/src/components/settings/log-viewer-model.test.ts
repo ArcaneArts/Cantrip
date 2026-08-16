@@ -47,8 +47,7 @@ describe("service log viewer model", () => {
       },
     };
     let pendingUpdate:
-      | ((viewport: typeof current) => typeof current)
-      | undefined;
+      ((viewport: typeof current) => typeof current) | undefined;
 
     scheduleLogViewportScroll(target, (update) => {
       pendingUpdate = update;
