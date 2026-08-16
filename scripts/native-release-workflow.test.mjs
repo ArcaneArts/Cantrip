@@ -11,7 +11,6 @@ test("publishes native releases only when the release branch advances", async ()
     path.join(root, ".github", "workflows", "native-release.yml"),
     "utf8",
   );
-
   assert.match(workflow, /^on:\n {2}push:\n {4}branches:\n {6}- release$/mu);
   assert.doesNotMatch(workflow, /^\s*(?:pull_request|workflow_dispatch):/mu);
   assert.match(workflow, /blacksmith-6vcpu-macos-15/u);
@@ -52,8 +51,12 @@ test("builds mobile releases in parallel and gates publication on them", async (
     "utf8",
   );
 
-  assert.match(workflow, /^ {2}android:\n {4}name: Android unsigned APK$/mu);
+  assert.match(workflow, /^ {2}android:\n {4}name: Android signed release$/mu);
   assert.match(workflow, /^ {2}ios:\n {4}name: iOS TestFlight$/mu);
+  assert.equal(
+    workflow.match(/pnpm --filter @cantrip\/logging build/gmu)?.length,
+    2,
+  );
   assert.doesNotMatch(
     workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "",
     /^ {4}needs:/mu,
@@ -65,9 +68,13 @@ test("builds mobile releases in parallel and gates publication on them", async (
   assert.match(workflow, /needs: \[server, worker, client, android, ios\]/u);
 });
 
-test("publishes an unsigned Android APK and uploads iOS to TestFlight", async () => {
+test("publishes signed Android artifacts and uploads iOS to TestFlight", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+  const androidBuild = await readFile(
+    path.join(root, "cantrip_app", "android", "app", "build.gradle"),
     "utf8",
   );
   const exportOptions = await readFile(
@@ -81,10 +88,20 @@ test("publishes an unsigned Android APK and uploads iOS to TestFlight", async ()
     "utf8",
   );
 
-  assert.match(workflow, /\.\/gradlew --no-daemon assembleRelease/u);
-  assert.match(workflow, /app-release-unsigned\.apk/u);
-  assert.match(workflow, /Cantrip_\$\{version\}_android_unsigned\.apk/u);
-  assert.match(workflow, /name: cantrip-android-apk/u);
+  assert.match(workflow, /ANDROID_UPLOAD_KEYSTORE_BASE64/u);
+  assert.match(workflow, /CANTRIP_ANDROID_UPLOAD_KEYSTORE_PATH/u);
+  assert.match(
+    workflow,
+    /\.\/gradlew --no-daemon bundleRelease assembleRelease/u,
+  );
+  assert.match(workflow, /jarsigner -verify "\$bundle"/u);
+  assert.match(workflow, /Cantrip_\$\{version\}_android\.aab/u);
+  assert.match(workflow, /Cantrip_\$\{version\}_android\.apk/u);
+  assert.match(workflow, /name: cantrip-android-release/u);
+  assert.match(workflow, /Remove Android upload keystore/u);
+  assert.match(androidBuild, /signingConfigs/u);
+  assert.match(androidBuild, /CANTRIP_ANDROID_UPLOAD_KEYSTORE_PATH/u);
+  assert.match(androidBuild, /Android release signing requires/u);
   assert.match(workflow, /IOS_DISTRIBUTION_CERTIFICATE/u);
   assert.match(workflow, /Apple Distribution/u);
   assert.match(workflow, /-archivePath "\$RUNNER_TEMP\/Cantrip\.xcarchive"/u);

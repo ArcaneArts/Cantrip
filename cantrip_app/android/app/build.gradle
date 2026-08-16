@@ -7,10 +7,30 @@ if (cantripVersionFile.exists()) {
 }
 def cantripVersionName = cantripVersionProperties.getProperty('CANTRIP_VERSION_NAME', '1.1.0')
 def cantripVersionCode = cantripVersionProperties.getProperty('CANTRIP_VERSION_CODE', '1').toInteger()
+def cantripAndroidSigning = [
+    storeFile: System.getenv('CANTRIP_ANDROID_UPLOAD_KEYSTORE_PATH'),
+    storePassword: System.getenv('CANTRIP_ANDROID_UPLOAD_KEYSTORE_PASSWORD'),
+    keyAlias: System.getenv('CANTRIP_ANDROID_UPLOAD_KEY_ALIAS'),
+    keyPassword: System.getenv('CANTRIP_ANDROID_UPLOAD_KEY_PASSWORD'),
+]
+def cantripAndroidSigningRequested = cantripAndroidSigning.values().any { it }
+if (cantripAndroidSigningRequested && cantripAndroidSigning.values().any { !it }) {
+    throw new GradleException('Android release signing requires the keystore path, store password, key alias, and key password.')
+}
 
 android {
     namespace = "art.cantrip"
     compileSdk = rootProject.ext.compileSdkVersion
+    signingConfigs {
+        if (cantripAndroidSigningRequested) {
+            release {
+                storeFile file(cantripAndroidSigning.storeFile)
+                storePassword cantripAndroidSigning.storePassword
+                keyAlias cantripAndroidSigning.keyAlias
+                keyPassword cantripAndroidSigning.keyPassword
+            }
+        }
+    }
     defaultConfig {
         applicationId "art.cantrip"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -26,6 +46,9 @@ android {
     }
     buildTypes {
         release {
+            if (cantripAndroidSigningRequested) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
