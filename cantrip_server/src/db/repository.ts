@@ -598,6 +598,32 @@ export interface TokenUsageRecordInput {
   };
 }
 
+export interface ProviderQuotaObservationInput {
+  eventKey: string;
+  observationBatchKey: string;
+  providerId: string;
+  providerAccountId: string;
+  workerId: string | null;
+  observedAt: Date;
+  usedPercent: number;
+  resetsAt: Date | null;
+  windowDurationMinutes: number | null;
+  limitId: string | null;
+  limitName: string | null;
+  windowKind: string;
+  planType: string | null;
+  reachedType: string | null;
+  observationTrigger: string;
+  isWeeklyProjection: boolean;
+  chatId: string | null;
+  turnId: string | null;
+  executionAttemptId: string | null;
+  workerVersion: string | null;
+  serverVersion: string | null;
+  codexVersion: string | null;
+  sanitizedRawPayload: Record<string, unknown>;
+}
+
 const ZERO_TOKEN_USAGE: TokenUsageTotals = {
   inputTokens: 0,
   outputTokens: 0,
@@ -3979,6 +4005,7 @@ export class ServerRepository {
                 weeklyUsageResetsAt: status.weeklyUsage.resetsAt
                   ? new Date(status.weeklyUsage.resetsAt * 1_000)
                   : null,
+                weeklyUsageObservedAt: now,
               }
             : {}),
           authLastSyncedAt: now,
@@ -3997,6 +4024,7 @@ export class ServerRepository {
           weeklyUsageResetsAt: status.weeklyUsage?.resetsAt
             ? new Date(status.weeklyUsage.resetsAt * 1_000)
             : null,
+          weeklyUsageObservedAt: status.weeklyUsage ? now : null,
           lastSyncedAt: now,
           lastError: null,
           updatedAt: now,
@@ -4014,6 +4042,7 @@ export class ServerRepository {
             weeklyUsageResetsAt: status.weeklyUsage?.resetsAt
               ? new Date(status.weeklyUsage.resetsAt * 1_000)
               : null,
+            ...(status.weeklyUsage ? { weeklyUsageObservedAt: now } : {}),
             lastSyncedAt: now,
             lastError: null,
             updatedAt: now,
@@ -4042,6 +4071,7 @@ export class ServerRepository {
         weeklyUsageResetsAt: input.resetsAt
           ? new Date(input.resetsAt * 1_000)
           : null,
+        weeklyUsageObservedAt: now,
         authLastSyncedAt: now,
         updatedAt: now,
       })
@@ -4064,6 +4094,164 @@ export class ServerRepository {
       )
       .returning({ id: schema.modelProviderAccounts.id });
     return Boolean(rows[0]);
+  }
+
+  /**
+   * Appends one immutable quota-window reading and, when requested, advances
+   * the account's cached weekly projection. Re-delivery of the same event is
+   * idempotent, while independent identical observations remain distinct.
+   */
+  async recordProviderQuotaObservation(
+    ownerId: string,
+    input: ProviderQuotaObservationInput,
+  ): Promise<boolean> {
+    if (
+      !Number.isFinite(input.usedPercent) ||
+      input.usedPercent < 0 ||
+      input.usedPercent > 100 ||
+      Number.isNaN(input.observedAt.getTime()) ||
+      (input.windowDurationMinutes !== null &&
+        (!Number.isInteger(input.windowDurationMinutes) ||
+          input.windowDurationMinutes < 0))
+    ) {
+      return false;
+    }
+    const accountRows = await this.database
+      .select({
+        accountLabel: schema.modelProviderAccounts.label,
+        providerKind: schema.modelProviders.kind,
+        providerName: schema.modelProviders.name,
+      })
+      .from(schema.modelProviderAccounts)
+      .innerJoin(
+        schema.modelProviders,
+        and(
+          eq(schema.modelProviders.id, input.providerId),
+          eq(schema.modelProviders.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.modelProviderAccounts.id, input.providerAccountId),
+          eq(schema.modelProviderAccounts.providerId, input.providerId),
+        ),
+      )
+      .limit(1);
+    const account = accountRows[0];
+    if (!account) return false;
+
+    let workerName: string | null = null;
+    if (input.workerId) {
+      const workerRows = await this.database
+        .select({ name: schema.workers.name })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.id, input.workerId),
+            eq(schema.workers.ownerId, ownerId),
+          ),
+        )
+        .limit(1);
+      if (!workerRows[0]) return false;
+      workerName = workerRows[0].name;
+    }
+
+    return this.database.transaction(async (transaction) => {
+      const inserted = await transaction
+        .insert(schema.providerQuotaObservations)
+        .values({
+          id: randomUUID(),
+          ownerId,
+          eventKey: input.eventKey,
+          observationBatchKey: input.observationBatchKey,
+          providerId: input.providerId,
+          providerName: account.providerName,
+          providerKind: account.providerKind,
+          providerAccountId: input.providerAccountId,
+          providerAccountLabel: account.accountLabel,
+          workerId: input.workerId,
+          workerName,
+          observedAt: input.observedAt,
+          usedPercentMicros: Math.round(input.usedPercent * 1_000_000),
+          resetsAt: input.resetsAt,
+          windowDurationMinutes: input.windowDurationMinutes,
+          limitId: input.limitId,
+          limitName: input.limitName,
+          windowKind: input.windowKind,
+          planType: input.planType,
+          reachedType: input.reachedType,
+          observationTrigger: input.observationTrigger,
+          isWeeklyProjection: input.isWeeklyProjection,
+          chatId: input.chatId,
+          turnId: input.turnId,
+          executionAttemptId: input.executionAttemptId,
+          workerVersion: input.workerVersion,
+          serverVersion: input.serverVersion,
+          codexVersion: input.codexVersion,
+          sanitizedRawPayload: input.sanitizedRawPayload,
+        })
+        .onConflictDoNothing({
+          target: [
+            schema.providerQuotaObservations.ownerId,
+            schema.providerQuotaObservations.eventKey,
+          ],
+        })
+        .returning({ id: schema.providerQuotaObservations.id });
+      if (!inserted[0]) return false;
+      if (!input.isWeeklyProjection) return true;
+
+      const projection = {
+        ...(input.planType ? { planType: input.planType } : {}),
+        weeklyUsageUsedBasisPoints: Math.round(input.usedPercent * 100),
+        weeklyUsageResetsAt: input.resetsAt,
+        weeklyUsageObservedAt: input.observedAt,
+        updatedAt: new Date(),
+      };
+      await transaction
+        .update(schema.modelProviderAccounts)
+        .set(projection)
+        .where(
+          and(
+            eq(schema.modelProviderAccounts.id, input.providerAccountId),
+            or(
+              isNull(schema.modelProviderAccounts.weeklyUsageObservedAt),
+              lte(
+                schema.modelProviderAccounts.weeklyUsageObservedAt,
+                input.observedAt,
+              ),
+            ),
+          ),
+        );
+      if (input.workerId) {
+        await transaction
+          .update(schema.modelProviderAccountWorkers)
+          .set({
+            weeklyUsageUsedBasisPoints: projection.weeklyUsageUsedBasisPoints,
+            weeklyUsageResetsAt: projection.weeklyUsageResetsAt,
+            weeklyUsageObservedAt: projection.weeklyUsageObservedAt,
+            updatedAt: projection.updatedAt,
+          })
+          .where(
+            and(
+              eq(
+                schema.modelProviderAccountWorkers.accountId,
+                input.providerAccountId,
+              ),
+              eq(schema.modelProviderAccountWorkers.workerId, input.workerId),
+              or(
+                isNull(
+                  schema.modelProviderAccountWorkers.weeklyUsageObservedAt,
+                ),
+                lte(
+                  schema.modelProviderAccountWorkers.weeklyUsageObservedAt,
+                  input.observedAt,
+                ),
+              ),
+            ),
+          );
+      }
+      return true;
+    });
   }
 
   async deleteModelProvider(ownerId: string, providerId: string) {
