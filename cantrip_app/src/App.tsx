@@ -55,12 +55,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
-  Play,
   Plus,
   RefreshCw,
-  Send,
   Settings,
-  Square,
   SquareTerminal,
   User,
   WandSparkles,
@@ -96,6 +93,7 @@ import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
+import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
@@ -2380,87 +2378,38 @@ function ChatTranscript({
                   disabled={relocationActive}
                   onChange={setComposerMode}
                 />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant={chat.automationPaused ? "outline" : "ghost"}
-                  className={cn(
-                    "size-7 shrink-0",
-                    chat.automationPaused
-                      ? "border-amber-500/40 text-amber-700 dark:text-amber-300"
-                      : "text-muted-foreground",
-                  )}
-                  disabled={relocationActive || setAutomationPaused.isPending}
-                  onClick={() =>
-                    setAutomationPaused.mutate(!chat.automationPaused)
-                  }
-                  title={
-                    chat.automationPaused
-                      ? "Resume automatic agent work"
-                      : "Pause after the current safe boundary"
-                  }
-                >
-                  {setAutomationPaused.isPending ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : chat.automationPaused ? (
-                    <Play className="size-3.5" />
-                  ) : (
-                    <Pause className="size-3.5" />
-                  )}
-                  <span className="sr-only">
-                    {chat.automationPaused ? "Resume" : "Pause"}
-                  </span>
-                </Button>
               </div>
             </div>
-            {chat.status === "running" ||
-            chat.status === "waiting-for-approval" ? (
-              <Button
-                size="icon"
-                type="button"
-                variant="outline"
-                className="size-8 shrink-0 rounded-lg border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                disabled={relocationActive || interrupt.isPending}
-                title="Stop current operation"
-                aria-label="Stop current operation"
-                onClick={() => interrupt.mutate()}
-              >
-                {interrupt.isPending ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Square className="size-3 fill-current" />
-                )}
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                type="submit"
-                className="size-8 shrink-0 rounded-lg"
-                disabled={
-                  relocationActive ||
-                  (!draft.trim() &&
-                    !draftAttachments.some(
-                      ({ error, uploading }) => !error && !uploading,
-                    )) ||
-                  draftAttachments.some(
-                    ({ error, uploading }) => Boolean(error) || uploading,
-                  ) ||
-                  !selectedModelId ||
-                  send.isPending ||
-                  selectModel.isPending ||
-                  selectReasoning.isPending ||
-                  selectPermissionProfile.isPending ||
-                  updatePrompt.isPending
-                }
-              >
-                {send.isPending ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Send className="size-3.5" />
-                )}
-                <span className="sr-only">Send prompt</span>
-              </Button>
-            )}
+            <ChatComposerPrimaryActions
+              active={
+                chat.status === "running" ||
+                chat.status === "waiting-for-approval"
+              }
+              paused={chat.automationPaused}
+              pausePending={setAutomationPaused.isPending}
+              pauseDisabled={relocationActive || setAutomationPaused.isPending}
+              stopPending={interrupt.isPending}
+              stopDisabled={relocationActive || interrupt.isPending}
+              sendPending={send.isPending}
+              sendDisabled={
+                relocationActive ||
+                (!draft.trim() &&
+                  !draftAttachments.some(
+                    ({ error, uploading }) => !error && !uploading,
+                  )) ||
+                draftAttachments.some(
+                  ({ error, uploading }) => Boolean(error) || uploading,
+                ) ||
+                !selectedModelId ||
+                send.isPending ||
+                selectModel.isPending ||
+                selectReasoning.isPending ||
+                selectPermissionProfile.isPending ||
+                updatePrompt.isPending
+              }
+              onPauseChange={(paused) => setAutomationPaused.mutate(paused)}
+              onStop={() => interrupt.mutate()}
+            />
           </div>
           <AttachmentViewerDialog
             attachment={viewingAttachment}
