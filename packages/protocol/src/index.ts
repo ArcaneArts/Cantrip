@@ -7296,11 +7296,52 @@ export const grokModelInventorySchema = z.object({
   weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
 });
 
+export const serviceLogLevelSchema = z.enum([
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "fatal",
+]);
+
+export const serviceLogRecordSchema = z.object({
+  cursor: z.number().int().positive(),
+  timestamp: z.string().datetime(),
+  system: z.string().trim().min(1).max(100),
+  level: serviceLogLevelSchema,
+  message: z.string().max(16_384),
+  context: z.unknown().optional(),
+});
+
+export const serviceLogReadResultSchema = z.object({
+  records: z.array(serviceLogRecordSchema).max(500),
+  nextCursor: z.number().int().nonnegative(),
+  oldestCursor: z.number().int().positive().nullable(),
+  latestCursor: z.number().int().nonnegative(),
+  hasMore: z.boolean(),
+  truncated: z.boolean(),
+});
+
+export const workerLogReadQuerySchema = z
+  .object({
+    afterCursor: z.coerce.number().int().nonnegative().default(0),
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+    minimumLevel: serviceLogLevelSchema.default("trace"),
+  })
+  .strict();
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
   directCapabilityRenewCommandSchema,
   z.object({ type: z.literal("worker.version") }),
+  z.object({
+    type: z.literal("diagnostics.logs.read"),
+    afterCursor: z.number().int().nonnegative().default(0),
+    limit: z.number().int().min(1).max(500).default(200),
+    minimumLevel: serviceLogLevelSchema.default("trace"),
+  }),
   z.object({
     type: z.literal("worker.credential.rotate"),
     credential: workerCredentialSecretSchema,
@@ -9666,6 +9707,10 @@ export type GrokModelInventoryItem = z.infer<
   typeof grokModelInventoryItemSchema
 >;
 export type GrokModelInventory = z.infer<typeof grokModelInventorySchema>;
+export type ServiceLogLevel = z.infer<typeof serviceLogLevelSchema>;
+export type ServiceLogRecord = z.infer<typeof serviceLogRecordSchema>;
+export type ServiceLogReadResult = z.infer<typeof serviceLogReadResultSchema>;
+export type WorkerLogReadQuery = z.infer<typeof workerLogReadQuerySchema>;
 export type ProjectShareAdapterRequestHead = z.infer<
   typeof projectShareAdapterRequestHeadSchema
 >;
