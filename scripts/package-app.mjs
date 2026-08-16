@@ -89,6 +89,25 @@ if (target.platform === "darwin") {
 }
 const appBuild = pnpmCommand(["--filter", "@cantrip/app", "tauri:build"]);
 run(appBuild.command, appBuild.arguments);
+if (target.platform === "darwin") {
+  const identity = process.env.APPLE_SIGNING_IDENTITY?.trim();
+  if (identity) {
+    run(process.execPath, [
+      path.join(root, "scripts", "sign-macos-disk-images.mjs"),
+      "--directory",
+      path.join(
+        root,
+        "cantrip_app",
+        "src-tauri",
+        "target",
+        "release",
+        "bundle",
+      ),
+      "--identity",
+      identity,
+    ]);
+  }
+}
 if (
   target.platform === "darwin" &&
   process.env.CANTRIP_REQUIRE_MACOS_NOTARIZATION === "1"
