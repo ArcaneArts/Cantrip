@@ -128,6 +128,14 @@ describe("client log relay", () => {
     await Promise.resolve();
 
     expect(listeners.has("error")).toBe(true);
+    expect(listeners.has("securitypolicyviolation")).toBe(true);
+    listeners.get("securitypolicyviolation")?.({
+      blockedURI:
+        "https://reader:open-sesame@example.test/script.js?apiKey=sk-source-secret",
+      sourceFile: "",
+      violatedDirective: "script-src",
+    } as unknown as Event);
+    await Promise.resolve();
     expect(invocations).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -148,6 +156,8 @@ describe("client log relay", () => {
       ]),
     );
     expect(JSON.stringify(invocations)).not.toContain("sk-abcdefghijk");
+    expect(JSON.stringify(invocations)).not.toContain("sk-source-secret");
+    expect(JSON.stringify(invocations)).not.toContain("open-sesame");
     expect(JSON.stringify(invocations)).not.toContain("user:password");
     expect(JSON.stringify(invocations)).not.toContain("token=secret");
   });

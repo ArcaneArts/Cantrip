@@ -118,12 +118,16 @@
   const relayClientLog = (level, values, source) => {
     const invoke = window.__TAURI_INTERNALS__?.invoke;
     if (typeof invoke !== "function") return;
+    const safeSource =
+      typeof source === "string"
+        ? sanitizeText(source).slice(0, maxSourceLength)
+        : undefined;
     try {
       void Promise.resolve(
         invoke("relay_client_log", {
           level,
           message: format(values),
-          source: source?.slice(0, maxSourceLength),
+          source: safeSource,
         }),
       ).catch(() => {
         // Do not log relay failures through the wrapped console and recurse.

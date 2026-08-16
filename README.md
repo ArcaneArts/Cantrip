@@ -26,7 +26,7 @@ Cantrip organizes work into GitHub-backed projects. Import an existing repositor
 
 Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
-Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
+Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers; see the [service log guide](docs/SERVICE_LOGS.md) for source availability, redaction, retention, and remote-worker behavior. Provider support currently includes:
 
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
