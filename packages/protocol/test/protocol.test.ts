@@ -2770,6 +2770,11 @@ describe("Cantrip protocol", () => {
         available: true,
         profiles: [
           { id: ":workspace", description: "Workspace writes", allowed: true },
+          {
+            id: ":yolo",
+            description: "Unrestricted access without approvals",
+            allowed: true,
+          },
         ],
         selectedId: ":workspace",
         effectiveId: ":read-only",

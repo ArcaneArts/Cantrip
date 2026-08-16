@@ -2779,6 +2779,7 @@ export const archivedChatCleanupResultSchema = z.object({
 });
 
 export const permissionProfileIdSchema = z.string().min(1).max(200);
+export const YOLO_PERMISSION_PROFILE_ID = ":yolo" as const;
 
 export const permissionProfileSummarySchema = z.object({
   id: permissionProfileIdSchema,
