@@ -172,6 +172,28 @@ interface ActiveTurn {
   workflowOutputSchema: Record<string, unknown> | null;
 }
 
+export function findActiveChatTurn<
+  T extends Pick<ActiveTurn, "chatId" | "executionKind" | "threadId">,
+>(
+  activeTurns: ReadonlyMap<string, T>,
+  chatId: string,
+  threadId: string | null,
+): [string, T] | null {
+  for (const entry of activeTurns) {
+    if (entry[1].executionKind === "chat" && entry[1].chatId === chatId) {
+      return entry;
+    }
+  }
+  if (threadId) {
+    for (const entry of activeTurns) {
+      if (entry[1].executionKind === "chat" && entry[1].threadId === threadId) {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
 export interface CodexThreadTurn {
   completedAt: number | null;
   durationMs: number | null;
@@ -2959,6 +2981,19 @@ export class CodexAppServer implements CodexRuntime {
     );
     if (!active) return { interrupted: false };
     await this.request("turn/interrupt", { threadId, turnId: active[0] });
+    return { interrupted: true };
+  }
+
+  async interruptChat(
+    chatId: string,
+    threadId: string | null,
+  ): Promise<{ interrupted: boolean }> {
+    const active = findActiveChatTurn(this.#activeTurns, chatId, threadId);
+    if (!active) return { interrupted: false };
+    await this.request("turn/interrupt", {
+      threadId: active[1].threadId,
+      turnId: active[0],
+    });
     return { interrupted: true };
   }
 
