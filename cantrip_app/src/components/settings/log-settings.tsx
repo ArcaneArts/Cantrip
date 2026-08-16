@@ -282,7 +282,7 @@ function VirtualLogConsole({
   return (
     <div
       ref={viewportRef}
-      className="relative min-h-0 flex-1 overflow-auto bg-black/95 font-mono text-[11px] leading-[22px] text-zinc-200 [scrollbar-color:color-mix(in_srgb,currentColor_30%,transparent)_transparent]"
+      className="relative min-h-0 flex-1 overflow-auto font-mono text-[11px] leading-[22px] [scrollbar-color:color-mix(in_srgb,currentColor_30%,transparent)_transparent]"
       role="log"
       aria-live="off"
       onScroll={(event) => {
@@ -675,9 +675,9 @@ export function LogSettings() {
         </Button>
       </div>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border bg-black/95">
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
         {!compact ? (
-          <div className="w-56 shrink-0 overflow-y-auto border-r border-white/10 bg-black/70 p-1.5">
+          <div className="w-56 shrink-0 overflow-y-auto border-r border-border/60 p-1.5">
             {sources.map((source) => {
               const Icon = sourceIcon(source.kind);
               const active = source.id === selectedSource.id;

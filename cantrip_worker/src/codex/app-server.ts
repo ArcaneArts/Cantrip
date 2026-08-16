@@ -63,7 +63,7 @@ import {
   type WorkerCommand,
 } from "@cantrip/protocol";
 
-import { workerLogger } from "../logger.js";
+import { captureWorkerDiagnostic, workerLogger } from "../logger.js";
 import {
   ProviderAccessTokenRequestError,
   type ProviderAccessTokenClient,
@@ -3929,9 +3929,13 @@ export class CodexAppServer implements CodexRuntime {
     let startupComplete = false;
     stderrLines.on("line", (line) => {
       if (line.trimStart().startsWith("listening on:")) return;
-      process.stderr.write(
-        `[codex] ${String(redactCodexDiagnosticPayload(line, this.#diagnosticSecrets))}\n`,
+      const redacted = String(
+        redactCodexDiagnosticPayload(line, this.#diagnosticSecrets),
       );
+      process.stderr.write(`[codex] ${redacted}\n`);
+      captureWorkerDiagnostic("debug", `[codex] ${redacted}`, {
+        subsystem: "codex",
+      });
       if (!startupComplete) {
         startupStderr.push(line);
         if (startupStderr.length > 20) startupStderr.shift();
