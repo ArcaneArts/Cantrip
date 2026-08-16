@@ -351,6 +351,88 @@ describe("Grok OAuth accounts", () => {
     }
   });
 
+  it("drops rejected reasoning items instead of sending invalid summary-only input", async () => {
+    const upstreamRequests: string[] = [];
+    const client = new GrokSubscriptionClient(
+      async () => ({
+        accessToken: "worker-owned-token",
+        email: "grok@example.com",
+        userId: "user-1",
+      }),
+      {
+        fetch: async (_input, init) => {
+          const body = await new Response(init?.body).text();
+          upstreamRequests.push(body);
+          if (upstreamRequests.length === 1) {
+            return json(
+              {
+                code: "invalid-argument",
+                error:
+                  "Could not decode the compaction blob. Ensure it is unmodified from the compact response.",
+              },
+              400,
+            );
+          }
+          const payload = JSON.parse(body) as {
+            input?: Array<{ type?: string }>;
+          };
+          if (payload.input?.some((item) => item.type === "reasoning")) {
+            return json(
+              {
+                error:
+                  "Failed to deserialize the JSON body into the target type: data did not match any variant of untagged enum ModelInput",
+              },
+              422,
+            );
+          }
+          return json({ id: "response-recovered" });
+        },
+      },
+    );
+    try {
+      const baseUrl = await client.localProxyBaseUrl();
+      const response = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [
+            {
+              type: "reasoning",
+              id: "reasoning-readable",
+              status: "completed",
+              summary: [{ type: "summary_text", text: "Inspect the docs." }],
+              encrypted_content: "rejected-state",
+            },
+            {
+              type: "function_call_output",
+              call_id: "call-1",
+              output: "README.md",
+            },
+          ],
+          prompt_cache_key: "cache-1",
+        }),
+      });
+      await expect(response.json()).resolves.toEqual({
+        id: "response-recovered",
+      });
+      expect(upstreamRequests).toHaveLength(2);
+      const recovered = JSON.parse(upstreamRequests[1] ?? "{}") as {
+        input: Array<Record<string, unknown>>;
+      };
+      expect(recovered.input).not.toContainEqual(
+        expect.objectContaining({ type: "reasoning" }),
+      );
+      expect(recovered.input).toContainEqual({
+        type: "function_call_output",
+        call_id: "call-1",
+        output: "README.md",
+      });
+    } finally {
+      client.close();
+    }
+  });
+
   it("recovers rejected opaque reasoning before resetting Grok session affinity", async () => {
     const upstreamRequests: Array<{ body: string; headers: Headers }> = [];
     const client = new GrokSubscriptionClient(
@@ -428,12 +510,11 @@ describe("Grok OAuth accounts", () => {
         prompt_cache_key?: string;
       };
       expect(portable.prompt_cache_key).toBe("cache-1");
-      expect(portable.input).toContainEqual({
-        type: "reasoning",
-        summary: [{ type: "summary_text", text: "Inspect the docs." }],
-      });
       expect(portable.input).not.toContainEqual(
-        expect.objectContaining({ id: "reasoning-opaque-only" }),
+        expect.objectContaining({ type: "reasoning" }),
+      );
+      expect(portable.input).toContainEqual(
+        expect.objectContaining({ type: "function_call_output" }),
       );
       expect(upstreamRequests[1]?.headers.get("x-grok-session-id")).toBe(
         "cache-1",

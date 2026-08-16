@@ -266,27 +266,7 @@ async function responseHasReasoningDecodeFailure(
   }
 }
 
-function hasReadableReasoningContent(item: Record<string, unknown>): boolean {
-  for (const field of ["summary", "content"] as const) {
-    const parts = item[field];
-    if (!Array.isArray(parts)) continue;
-    if (
-      parts.some(
-        (part) =>
-          part !== null &&
-          typeof part === "object" &&
-          !Array.isArray(part) &&
-          typeof (part as Record<string, unknown>).text === "string" &&
-          Boolean((part as Record<string, unknown>).text?.toString().trim()),
-      )
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function stripRejectedReasoningState(body: Buffer | undefined): Buffer | null {
+function stripReasoningItems(body: Buffer | undefined): Buffer | null {
   if (!body?.byteLength) return null;
   let payload: Record<string, unknown>;
   try {
@@ -305,19 +285,12 @@ function stripRejectedReasoningState(body: Buffer | undefined): Buffer | null {
       return [entry];
     }
     const item = entry as Record<string, unknown>;
-    if (
-      item.type !== "reasoning" ||
-      typeof item.encrypted_content !== "string" ||
-      !item.encrypted_content.trim()
-    ) {
-      return [entry];
-    }
-    const portable = { ...item };
-    delete portable.encrypted_content;
-    delete portable.id;
-    delete portable.status;
+    // Grok accepts replayed reasoning only with the exact encrypted payload it
+    // produced. Once that payload is rejected, retaining a summary-only item
+    // produces a 422 because it is not a valid ModelInput variant.
+    if (item.type !== "reasoning") return [entry];
     changed = true;
-    return hasReadableReasoningContent(portable) ? [portable] : [];
+    return [];
   });
   if (!changed) return null;
   return Buffer.from(JSON.stringify({ ...payload, input }));
@@ -729,7 +702,7 @@ export class GrokSubscriptionClient {
     }
     const target = `${new URL(this.#proxyBaseUrl).origin}${upstreamPath}${requestUrl.search}`;
     const initialBody = statelessConversation
-      ? removePromptCacheKey(stripRejectedReasoningState(body) ?? body)
+      ? removePromptCacheKey(stripReasoningItems(body) ?? body)
       : body;
     const initial = await this.request(
       target,
@@ -743,11 +716,11 @@ export class GrokSubscriptionClient {
     if (statelessConversation) return initial;
     if (!(await responseHasReasoningDecodeFailure(initial))) return initial;
 
-    const portableBody = stripRejectedReasoningState(body);
+    const portableBody = stripReasoningItems(body);
     let rejected = initial;
     if (portableBody) {
       workerLogger.warn(
-        "Grok rejected opaque reasoning state; retrying with portable history",
+        "Grok rejected opaque reasoning state; retrying without reasoning history",
         {
           conversationId: identity.conversationId,
           requestId: identity.requestId,
