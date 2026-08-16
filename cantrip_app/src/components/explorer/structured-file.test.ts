@@ -61,6 +61,59 @@ describe("structured Explorer files", () => {
     });
   });
 
+  it("parses Gradle template placeholders used as TOML table keys", () => {
+    const content = [
+      "# A dependency - use the . to indicate dependency for a specific modid.",
+      "# Dependencies are optional.",
+      "[[dependencies.${mod_id}]] #optional",
+      'modId = "forge"',
+      "mandatory = true",
+      "[[dependencies.${mod_id}]]",
+      'modId = "minecraft"',
+      "mandatory = true",
+      "",
+    ].join("\n");
+
+    expect(parseStructuredFile(content, "toml")).toEqual({
+      dependencies: {
+        "${mod_id}": [
+          { modId: "forge", mandatory: true },
+          { modId: "minecraft", mandatory: true },
+        ],
+      },
+    });
+  });
+
+  it("quotes Gradle template table keys when saving TOML visual edits", () => {
+    const content = [
+      "[[dependencies.${mod_id}]] #optional",
+      'modId = "forge"',
+      "mandatory = true",
+      "",
+    ].join("\n");
+    const updated = updateStructuredFileContent(
+      content,
+      "toml",
+      ["dependencies", "${mod_id}", 0, "mandatory"],
+      false,
+    );
+
+    expect(updated).toContain('[[dependencies."${mod_id}"]]');
+    expect(parseStructuredFile(updated, "toml")).toEqual({
+      dependencies: {
+        "${mod_id}": [{ modId: "forge", mandatory: false }],
+      },
+    });
+  });
+
+  it("keeps rejecting unrelated invalid TOML keys", () => {
+    expect(() =>
+      parseStructuredFile("[[dependencies.$broken]]\n", "toml"),
+    ).toThrow(
+      "only letter, numbers, dashes and underscores are allowed in keys",
+    );
+  });
+
   it("searches nested keys, paths, types, and scalar values", () => {
     const value = {
       database: { host: "localhost", port: 5432 },
