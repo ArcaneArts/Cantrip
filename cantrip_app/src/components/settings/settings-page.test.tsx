@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { SettingsPage } from "./settings-page";
+import { SettingsPage, changedAccountLabel } from "./settings-page";
 
 function renderSettings(
   initialSection: "general" | "models",
@@ -21,6 +21,12 @@ function renderSettings(
 }
 
 describe("account settings", () => {
+  it("only saves changed, non-empty account labels", () => {
+    expect(changedAccountLabel("Arcane", "  Personal  ")).toBe("Personal");
+    expect(changedAccountLabel("Arcane", " Arcane ")).toBeNull();
+    expect(changedAccountLabel("Arcane", "   ")).toBeNull();
+  });
+
   it("places Models immediately after General", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");

@@ -6,6 +6,10 @@ export interface ProviderWeeklyAvailability {
   signedInAccountCount: number;
 }
 
+export function providerWeeklyRemainingPercent(usedPercent: number): number {
+  return Math.max(0, Math.min(100, 100 - usedPercent));
+}
+
 export function providerWeeklyAvailability(
   accounts: ModelProviderAccountSummary[],
 ): ProviderWeeklyAvailability | null {
@@ -20,7 +24,8 @@ export function providerWeeklyAvailability(
   if (!reported.length) return null;
   return {
     availablePercent: reported.reduce(
-      (total, usedPercent) => total + Math.max(0, 100 - usedPercent),
+      (total, usedPercent) =>
+        total + providerWeeklyRemainingPercent(usedPercent),
       0,
     ),
     reportedAccountCount: reported.length,

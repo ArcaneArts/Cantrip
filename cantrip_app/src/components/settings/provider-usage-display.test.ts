@@ -1,7 +1,10 @@
 import type { ModelProviderAccountSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { providerWeeklyAvailability } from "./provider-usage-display";
+import {
+  providerWeeklyAvailability,
+  providerWeeklyRemainingPercent,
+} from "./provider-usage-display";
 
 function account(
   id: string,
@@ -28,6 +31,12 @@ function account(
 }
 
 describe("provider weekly availability", () => {
+  it("converts used capacity into remaining capacity", () => {
+    expect(providerWeeklyRemainingPercent(95)).toBe(5);
+    expect(providerWeeklyRemainingPercent(0)).toBe(100);
+    expect(providerWeeklyRemainingPercent(100)).toBe(0);
+  });
+
   it("adds remaining capacity across every reported signed-in account", () => {
     expect(
       providerWeeklyAvailability([

@@ -106,7 +106,10 @@ import {
   latestCatalogSuccess,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
-import { providerWeeklyAvailability } from "./provider-usage-display";
+import {
+  providerWeeklyAvailability,
+  providerWeeklyRemainingPercent,
+} from "./provider-usage-display";
 
 export type SettingsSection =
   | "general"
@@ -179,6 +182,14 @@ function isAccountProviderKind(
 
 function accountProviderName(kind: AccountProviderKind) {
   return kind === "grok" ? "Grok" : "ChatGPT";
+}
+
+export function changedAccountLabel(
+  savedLabel: string | null | undefined,
+  draftLabel: string,
+): string | null {
+  const label = draftLabel.trim();
+  return label && label !== savedLabel ? label : null;
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
@@ -582,6 +593,9 @@ export function SettingsPage({
     queryKey: ["codex-auth", accountProvider?.id, selectedAccount?.id],
     refetchInterval: deviceLogin ? 1_500 : 10_000,
   });
+  const weeklyRemainingPercent = codexAuth.data?.weeklyUsage
+    ? providerWeeklyRemainingPercent(codexAuth.data.weeklyUsage.usedPercent)
+    : null;
 
   const refresh = () =>
     queryClient.invalidateQueries({ queryKey: ["settings"] });
@@ -630,9 +644,24 @@ export function SettingsPage({
                 : {}
             : { apiKey: apiKey.trim() || null }),
       };
-      return editingProvider
+      const provider = editingProvider
         ? updateModelProvider(editingProvider.id, input)
         : createModelProvider(input);
+      const savedProvider = await provider;
+      const accountLabel = changedAccountLabel(
+        selectedAccount?.label,
+        accountLabelDraft,
+      );
+      if (
+        isAccountProviderKind(savedProvider.kind) &&
+        selectedAccount &&
+        accountLabel
+      ) {
+        await updateModelProviderAccount(savedProvider.id, selectedAccount.id, {
+          label: accountLabel,
+        });
+      }
+      return savedProvider;
     },
     onSuccess: async (provider) => {
       await refresh();
@@ -741,16 +770,6 @@ export function SettingsPage({
       await reloadAccountProvider(account.providerId);
       setSelectedAccountId(account.id);
       setAccountLabelDraft(account.label);
-    },
-  });
-  const renameProviderAccount = useMutation({
-    mutationFn: () =>
-      updateModelProviderAccount(accountProvider!.id, selectedAccount!.id, {
-        label: accountLabelDraft.trim(),
-      }),
-    onSuccess: async (account) => {
-      await reloadAccountProvider(account.providerId);
-      setSelectedAccountId(account.id);
     },
   });
   const removeProviderAccount = useMutation({
@@ -1661,25 +1680,14 @@ export function SettingsPage({
                   <div className="flex items-center gap-2">
                     <input
                       aria-label="Account label"
+                      required
+                      maxLength={160}
                       value={accountLabelDraft}
                       onChange={(event) =>
                         setAccountLabelDraft(event.target.value)
                       }
                       className={`${inputClass} h-8 flex-1`}
                     />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={
-                        !accountLabelDraft.trim() ||
-                        accountLabelDraft.trim() === selectedAccount.label ||
-                        renameProviderAccount.isPending
-                      }
-                      onClick={() => renameProviderAccount.mutate()}
-                    >
-                      Save label
-                    </Button>
                     <Button
                       type="button"
                       size="icon"
@@ -1731,19 +1739,20 @@ export function SettingsPage({
                       <LogOut className="size-4" /> Sign out
                     </Button>
                   </div>
-                  {codexAuth.data.weeklyUsage ? (
+                  {codexAuth.data.weeklyUsage &&
+                  weeklyRemainingPercent !== null ? (
                     <div className="grid gap-1.5 border-t pt-3">
                       <div className="flex justify-between text-xs">
-                        <span>7-day usage</span>
+                        <span>7-day remaining</span>
                         <span className="font-medium">
-                          {Math.round(codexAuth.data.weeklyUsage.usedPercent)}%
+                          {Math.round(weeklyRemainingPercent)}%
                         </span>
                       </div>
                       <div className="h-1.5 overflow-hidden rounded-full bg-muted">
                         <div
                           className="h-full rounded-full bg-primary transition-[width]"
                           style={{
-                            width: `${codexAuth.data.weeklyUsage.usedPercent}%`,
+                            width: `${weeklyRemainingPercent}%`,
                           }}
                         />
                       </div>
@@ -1872,7 +1881,6 @@ export function SettingsPage({
               beginCodexLogin.isError ||
               signOutCodex.isError ||
               addProviderAccount.isError ||
-              renameProviderAccount.isError ||
               removeProviderAccount.isError) ? (
               <p className="text-sm text-destructive">
                 {errorText(
@@ -1880,7 +1888,6 @@ export function SettingsPage({
                     beginCodexLogin.error ??
                     signOutCodex.error ??
                     addProviderAccount.error ??
-                    renameProviderAccount.error ??
                     removeProviderAccount.error,
                 )}
               </p>
