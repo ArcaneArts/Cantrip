@@ -11,8 +11,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+#[cfg(target_os = "macos")]
+use tauri::menu::MenuItemKind;
 use tauri::{
-    menu::{Menu, MenuItem, MenuItemKind},
+    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, State, WindowEvent,
 };
@@ -219,8 +221,12 @@ pub(crate) fn terminate_child(child: &mut Child) {
     }
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let mut command = Command::new("taskkill");
+        configure_desktop_child(&mut command);
+        let _ = command
             .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
     }
     let _ = child.kill();
