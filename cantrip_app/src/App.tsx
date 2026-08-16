@@ -89,6 +89,11 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
+import {
+  AgentInspectPanelShell,
+  readAgentInspectWidth,
+  updateAgentInspectOpenChats,
+} from "@/components/chat/agent-inspect-panel";
 import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
@@ -923,9 +928,12 @@ function RepositoryImporter({
 
 function ChatTranscript({
   chat,
+  inspectOpen,
+  inspectOverlay,
   onCreateChat,
   onDelete,
   onForked,
+  onInspectOpenChange,
   onOpenWorkflow,
   onRename,
   onOpenRelocation,
@@ -934,9 +942,12 @@ function ChatTranscript({
   syncEnabled,
 }: {
   chat: ChatSummary;
+  inspectOpen: boolean;
+  inspectOverlay: boolean;
   onCreateChat(): void;
   onDelete(): void;
   onForked(chat: ChatSummary): void;
+  onInspectOpenChange(open: boolean): void;
   onOpenWorkflow(workflowId: string): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
@@ -975,6 +986,7 @@ function ChatTranscript({
   >([]);
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const [inspectWidth, setInspectWidth] = useState(readAgentInspectWidth);
   const [viewingAttachment, setViewingAttachment] =
     useState<ChatAttachmentSummary | null>(null);
   const commandListRef = useRef<HTMLDivElement>(null);
@@ -1686,7 +1698,12 @@ function ChatTranscript({
   };
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col overflow-hidden transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
+      style={{
+        paddingRight: inspectOpen && !inspectOverlay ? inspectWidth : 0,
+      }}
+    >
       <div
         ref={transcriptViewportRef}
         className="chat-message-scroll flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8"
@@ -1857,11 +1874,13 @@ function ChatTranscript({
 
       <div
         aria-hidden="true"
-        className="chat-composer-fade pointer-events-none absolute inset-x-0 bottom-0 z-10 h-56"
+        className="chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-56 transition-[right] duration-150 ease-out motion-reduce:transition-none"
+        style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       />
       <form
         onSubmit={submit}
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-3 sm:px-8 sm:pb-4"
+        className="pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4"
+        style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       >
         <div className="pointer-events-auto relative mx-auto max-w-3xl">
           {showScrollToBottom ? (
@@ -2481,6 +2500,16 @@ function ChatTranscript({
           ) : null}
         </div>
       </form>
+      <AgentInspectPanelShell
+        active={
+          chat.status === "running" || chat.status === "waiting-for-approval"
+        }
+        className="absolute inset-y-0 right-0 z-30"
+        onOpenChange={onInspectOpenChange}
+        onWidthChange={setInspectWidth}
+        open={inspectOpen}
+        overlay={inspectOverlay}
+      />
     </div>
   );
 }
@@ -2553,6 +2582,14 @@ export function App() {
   const [chatConsoleChatId, setChatConsoleChatId] = useState<string | null>(
     null,
   );
+  const [agentInspectOpenChats, setAgentInspectOpenChats] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const setAgentInspectOpen = useCallback((chatId: string, open: boolean) => {
+    setAgentInspectOpenChats((current) =>
+      updateAgentInspectOpenChats(current, chatId, open),
+    );
+  }, []);
   const [workspaceDragError, setWorkspaceDragError] = useState<string | null>(
     null,
   );
@@ -4856,6 +4893,7 @@ export function App() {
         ? {
             consoleActive: Boolean(linkedConsoleChat),
             consolePending: openChatConsole.isPending,
+            inspectActive: agentInspectOpenChats.has(activeChat.id),
             inspectCustomizations: () => setShowCustomizations(true),
             relocation: {
               active: Boolean(activeRelocation),
@@ -4877,6 +4915,11 @@ export function App() {
               linkedConsoleChat
                 ? setChatConsoleChatId(null)
                 : showChatConsole(activeChat),
+            toggleInspect: () =>
+              setAgentInspectOpen(
+                activeChat.id,
+                !agentInspectOpenChats.has(activeChat.id),
+              ),
           }
         : null,
   } satisfies Omit<ContentHeaderActionsProps, "compact">;
@@ -6028,14 +6071,22 @@ export function App() {
           <ChatTranscript
             key={selectedChat.id}
             chat={selectedChat}
+            inspectOpen={agentInspectOpenChats.has(selectedChat.id)}
+            inspectOverlay={narrowViewport}
             settings={settings.data}
             syncEnabled
             onCreateChat={() =>
               newChat.mutate({ projectId: selectedChat.projectId })
             }
-            onDelete={() => deleteChatMutation.mutate(selectedChat.id)}
+            onDelete={() => {
+              setAgentInspectOpen(selectedChat.id, false);
+              deleteChatMutation.mutate(selectedChat.id);
+            }}
             onForked={(forked) =>
               openCreatedTab(forked.projectId, "chat", forked.id)
+            }
+            onInspectOpenChange={(open) =>
+              setAgentInspectOpen(selectedChat.id, open)
             }
             onOpenWorkflow={(workflowId) =>
               openProjectSettings(selectedChat.projectId, workflowId)

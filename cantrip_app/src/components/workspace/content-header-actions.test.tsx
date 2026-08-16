@@ -97,6 +97,7 @@ describe("ContentHeaderActions", () => {
         chat={{
           consoleActive: false,
           consolePending: false,
+          inspectActive: true,
           inspectCustomizations: vi.fn(),
           relocation: {
             active: true,
@@ -106,6 +107,7 @@ describe("ContentHeaderActions", () => {
             show: vi.fn(),
           },
           toggleConsole: vi.fn(),
+          toggleInspect: vi.fn(),
         }}
       />,
     );
@@ -129,6 +131,10 @@ describe("ContentHeaderActions", () => {
     expect(markup).toContain('title="Inspect Codex customizations"');
     expect(markup).toContain('title="View agent move progress"');
     expect(markup).toContain('title="Show Codex console"');
+    expect(markup).toContain('title="Close agent Inspect"');
+    expect(markup.indexOf("Show Codex console")).toBeLessThan(
+      markup.indexOf("Close agent Inspect"),
+    );
   });
 
   it("renders the Explorer file close action independently for the left title cluster", () => {
