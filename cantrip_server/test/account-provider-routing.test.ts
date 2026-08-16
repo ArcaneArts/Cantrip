@@ -59,6 +59,19 @@ function fixture(accounts: ModelProviderAccountRuntime[]) {
 }
 
 describe("account-scoped provider routing", () => {
+  it("uses persisted account position as fallback priority", async () => {
+    const input = fixture([
+      account("backup", { position: 1 }),
+      account("primary", { position: 0 }),
+    ]);
+    const result = await resolveAccountProviderRuntimes({ ...input, runtime });
+
+    expect(result.runtimes.map(({ provider }) => provider.accountId)).toEqual([
+      "primary",
+      "backup",
+    ]);
+  });
+
   it("routes a server-owned account on a worker with no local sign-in", async () => {
     const input = fixture([
       account("primary", { position: 0 }),

@@ -733,6 +733,19 @@ export async function updateModelProviderAccount(
   );
 }
 
+export async function reorderModelProviderAccounts(
+  providerId: string,
+  ids: string[],
+) {
+  await request(
+    `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/order`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(orderedIdsSchema.parse({ ids })),
+    },
+  );
+}
+
 export async function deleteModelProviderAccount(
   providerId: string,
   accountId: string,
