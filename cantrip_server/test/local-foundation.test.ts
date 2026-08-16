@@ -3384,20 +3384,24 @@ describe("local server foundation", () => {
       modelId: selectedModel.id,
     });
 
-    expect(
-      chatPermissionProfileStateSchema.parse(
-        (
-          await firstApp.inject({
-            method: "GET",
-            url: `/api/chats/${chat.id}/permission-profiles`,
-          })
-        ).json(),
-      ),
-    ).toMatchObject({
+    const initialPermissionProfiles = chatPermissionProfileStateSchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/chats/${chat.id}/permission-profiles`,
+        })
+      ).json(),
+    );
+    expect(initialPermissionProfiles).toMatchObject({
       available: true,
       selectedId: ":workspace",
       effectiveId: ":workspace",
       forcedByWorktreePolicy: false,
+    });
+    expect(initialPermissionProfiles.profiles).toContainEqual({
+      id: ":yolo",
+      description: "Unrestricted access without approval prompts",
+      allowed: true,
     });
     const selectedPermissionProfile = chatPermissionProfileStateSchema.parse(
       (
@@ -3411,6 +3415,19 @@ describe("local server foundation", () => {
     expect(selectedPermissionProfile).toMatchObject({
       selectedId: ":danger-full-access",
       effectiveId: ":danger-full-access",
+    });
+    const selectedYoloProfile = chatPermissionProfileStateSchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/chats/${chat.id}/permission-profile`,
+          payload: { id: ":yolo" },
+        })
+      ).json(),
+    );
+    expect(selectedYoloProfile).toMatchObject({
+      selectedId: ":yolo",
+      effectiveId: ":yolo",
     });
     expect(
       (
@@ -3436,7 +3453,7 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toMatchObject({
-      selectedId: ":danger-full-access",
+      selectedId: ":yolo",
       effectiveId: ":read-only",
       forcedByWorktreePolicy: true,
     });
@@ -3958,7 +3975,7 @@ describe("local server foundation", () => {
     });
     expect(turnTimeouts).toEqual([null]);
     expect(turnModelIds).toContain(selectedModel.id);
-    expect(turnPermissionProfileIds[0]).toBe(":danger-full-access");
+    expect(turnPermissionProfileIds[0]).toBe(":yolo");
     expect(
       await firstApp.inject({
         method: "POST",

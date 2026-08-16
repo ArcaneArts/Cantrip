@@ -25,6 +25,7 @@ import {
   codexMcpReloadResultSchema,
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
+  YOLO_PERMISSION_PROFILE_ID,
   normalizedAgentMessageSchema,
   threadGoalSchema,
   type AgentActivity,
@@ -1182,8 +1183,23 @@ export function codexThreadPermissionParams(
   permissionProfilesSupported: boolean,
 ) {
   return permissionProfilesSupported
-    ? { permissions: permissionProfileId }
+    ? {
+        permissions:
+          permissionProfileId === YOLO_PERMISSION_PROFILE_ID
+            ? ":danger-full-access"
+            : permissionProfileId,
+      }
     : { sandbox: "workspace-write" as const };
+}
+
+export function codexChatApprovalPolicy(
+  permissionProfileId: string,
+  permissionProfilesSupported: boolean,
+) {
+  return permissionProfilesSupported &&
+    permissionProfileId === YOLO_PERMISSION_PROFILE_ID
+    ? ("never" as const)
+    : ("on-request" as const);
 }
 
 export interface CodexSkill {
@@ -2759,11 +2775,14 @@ export class CodexAppServer implements CodexRuntime {
       );
     }
     const profiles = await this.listPermissionProfiles(options);
+    const codexPermissionProfileId =
+      options.permissionProfileId === YOLO_PERMISSION_PROFILE_ID
+        ? ":danger-full-access"
+        : options.permissionProfileId;
     if (
       !profiles.available ||
       !profiles.profiles.some(
-        (profile) =>
-          profile.id === options.permissionProfileId && profile.allowed,
+        (profile) => profile.id === codexPermissionProfileId && profile.allowed,
       )
     ) {
       throw new Error(
@@ -3175,7 +3194,10 @@ export class CodexAppServer implements CodexRuntime {
           ...codexReasoningEffortParams(options.model),
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
-          approvalPolicy: "on-request",
+          approvalPolicy: codexChatApprovalPolicy(
+            options.permissionProfileId,
+            this.permissionProfilesSupported(),
+          ),
           ...cantripChatThreadParams(),
           ...this.threadPermissionParams(options.permissionProfileId),
           ...(mcpConfig ? { config: mcpConfig } : {}),
@@ -3205,7 +3227,10 @@ export class CodexAppServer implements CodexRuntime {
         ...codexReasoningEffortParams(options.model),
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
-        approvalPolicy: "on-request",
+        approvalPolicy: codexChatApprovalPolicy(
+          options.permissionProfileId,
+          this.permissionProfilesSupported(),
+        ),
         ...this.threadPermissionParams(options.permissionProfileId),
         ...cantripChatThreadParams(),
         ...(mcpConfig ? { config: mcpConfig } : {}),

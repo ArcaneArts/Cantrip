@@ -285,6 +285,7 @@ import {
   projectViewSummarySchema,
   projectViewUpdateSchema,
   permissionProfileCapabilitySchema,
+  YOLO_PERMISSION_PROFILE_ID,
   queuedPromptCreateSchema,
   queuedPromptListSchema,
   queuedPromptOrderSchema,
@@ -4874,9 +4875,27 @@ export async function buildApp({
           provider: runtime.provider,
         }),
       );
+      const fullAccessProfile = capability.profiles.find(
+        (profile) => profile.id === ":danger-full-access",
+      );
+      const profiles =
+        fullAccessProfile &&
+        !capability.profiles.some(
+          (profile) => profile.id === YOLO_PERMISSION_PROFILE_ID,
+        )
+          ? [
+              ...capability.profiles,
+              {
+                id: YOLO_PERMISSION_PROFILE_ID,
+                description: "Unrestricted access without approval prompts",
+                allowed: fullAccessProfile.allowed,
+              },
+            ]
+          : capability.profiles;
       return chatPermissionProfileStateSchema.parse({
         ...selection,
         ...capability,
+        profiles,
       });
     } catch (error) {
       return chatPermissionProfileStateSchema.parse({

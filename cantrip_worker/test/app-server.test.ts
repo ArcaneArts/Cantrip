@@ -8,6 +8,7 @@ import {
   cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
   changedFiles,
+  codexChatApprovalPolicy,
   codexResultForAgentInteraction,
   CodexAppServer,
   codexEndpointFromLine,
@@ -533,6 +534,17 @@ describe("Codex permission profile params", () => {
     expect(codexThreadPermissionParams(":read-only", false)).toEqual({
       sandbox: "workspace-write",
     });
+    expect(codexThreadPermissionParams(":yolo", true)).toEqual({
+      permissions: ":danger-full-access",
+    });
+  });
+
+  it("only disables approvals for supported YOLO chat profiles", () => {
+    expect(codexChatApprovalPolicy(":yolo", true)).toBe("never");
+    expect(codexChatApprovalPolicy(":danger-full-access", true)).toBe(
+      "on-request",
+    );
+    expect(codexChatApprovalPolicy(":yolo", false)).toBe("on-request");
   });
 });
 

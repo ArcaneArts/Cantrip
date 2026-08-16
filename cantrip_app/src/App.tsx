@@ -95,6 +95,7 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
+import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
   activeChatRelocationJob,
   ChatRelocationDialog,
@@ -221,6 +222,7 @@ import {
   forkChat,
   getChats,
   getChatGoal,
+  getChatPermissionProfiles,
   getChatPlan,
   getChatReasoning,
   getChatRelocations,
@@ -266,6 +268,7 @@ import {
   steerQueuedPrompt,
   syncChat,
   updateChatModel,
+  updateChatPermissionProfile,
   updateChatGoal,
   updateChatReasoning,
   updateChatWorktree,
@@ -1033,6 +1036,13 @@ function ChatTranscript({
     retry: false,
     staleTime: 30_000,
   });
+  const permissionProfiles = useQuery({
+    enabled: Boolean(selectedModelId),
+    queryFn: () => getChatPermissionProfiles(chat.id),
+    queryKey: ["permission-profiles", chat.id, selectedModelId],
+    retry: false,
+    staleTime: 30_000,
+  });
   const skills = useQuery({
     enabled: Boolean(
       selectedModelId &&
@@ -1325,6 +1335,18 @@ function ChatTranscript({
       );
     },
   });
+  const selectPermissionProfile = useMutation({
+    mutationFn: (id: string) => updateChatPermissionProfile(chat.id, id),
+    onSuccess: async (state) => {
+      queryClient.setQueryData(
+        ["permission-profiles", chat.id, selectedModelId],
+        state,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ["chats", chat.projectId],
+      });
+    },
+  });
   const fork = useMutation({
     mutationFn: (messageId?: string) => forkChat(chat.id, messageId),
     onSuccess: async (forked) => {
@@ -1470,6 +1492,7 @@ function ChatTranscript({
       send.isPending ||
       selectModel.isPending ||
       selectReasoning.isPending ||
+      selectPermissionProfile.isPending ||
       updatePrompt.isPending ||
       draftAttachments.some(({ error, uploading }) => error || uploading)
     ) {
@@ -2314,6 +2337,19 @@ function ChatTranscript({
                     }
                   }}
                 />
+                <PermissionProfileControl
+                  disabled={
+                    relocationActive ||
+                    chat.status === "running" ||
+                    chat.status === "waiting-for-approval"
+                  }
+                  pending={
+                    permissionProfiles.isLoading ||
+                    selectPermissionProfile.isPending
+                  }
+                  state={permissionProfiles.data}
+                  onChange={(id) => selectPermissionProfile.mutate(id)}
+                />
                 <ChatModeControl
                   mode={composerMode}
                   disabled={relocationActive}
@@ -2368,6 +2404,7 @@ function ChatTranscript({
                 send.isPending ||
                 selectModel.isPending ||
                 selectReasoning.isPending ||
+                selectPermissionProfile.isPending ||
                 updatePrompt.isPending
               }
             >
@@ -2408,6 +2445,7 @@ function ChatTranscript({
           {send.isError ||
           selectModel.isError ||
           selectReasoning.isError ||
+          selectPermissionProfile.isError ||
           compact.isError ||
           updatePrompt.isError ||
           removePrompt.isError ||
@@ -2419,6 +2457,7 @@ function ChatTranscript({
                 send.error ??
                   selectModel.error ??
                   selectReasoning.error ??
+                  selectPermissionProfile.error ??
                   compact.error ??
                   updatePrompt.error ??
                   removePrompt.error ??
