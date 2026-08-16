@@ -2,6 +2,7 @@ import {
   parse as parseToml,
   stringify as stringifyToml,
   TomlDate,
+  TomlError,
 } from "smol-toml";
 import { parseDocument } from "yaml";
 
@@ -14,6 +15,62 @@ export type StructuredValue =
 
 const MAX_VISUAL_NODES = 100_000;
 const MAX_VISUAL_DEPTH = 100;
+const MAX_TOML_TEMPLATE_KEY_REPAIRS = 1_000;
+const TOML_BARE_KEY_ERROR =
+  "only letter, numbers, dashes and underscores are allowed in keys";
+const TOML_TEMPLATE_KEY = /^\$\{[A-Za-z_][A-Za-z0-9_.-]*\}/u;
+
+function tomlSourceOffset(
+  content: string,
+  line: number,
+  column: number,
+): number | null {
+  let offset = 0;
+  for (let currentLine = 1; currentLine < line; currentLine += 1) {
+    const lineEnding = /\r\n|\n|\r/gu;
+    lineEnding.lastIndex = offset;
+    const match = lineEnding.exec(content);
+    if (!match) return null;
+    offset = match.index + match[0].length;
+  }
+
+  const result = offset + column - 1;
+  return result >= offset && result <= content.length ? result : null;
+}
+
+function quoteTomlTemplateKeyAtError(
+  content: string,
+  error: unknown,
+): string | null {
+  if (
+    !(error instanceof TomlError) ||
+    !error.message.includes(TOML_BARE_KEY_ERROR)
+  ) {
+    return null;
+  }
+
+  const offset = tomlSourceOffset(content, error.line, error.column);
+  if (offset === null) return null;
+  const placeholder = TOML_TEMPLATE_KEY.exec(content.slice(offset))?.[0];
+  if (!placeholder) return null;
+
+  return `${content.slice(0, offset)}${JSON.stringify(placeholder)}${content.slice(offset + placeholder.length)}`;
+}
+
+function parseTomlWithTemplateKeys(content: string): unknown {
+  let source = content;
+  for (let repairs = 0; repairs < MAX_TOML_TEMPLATE_KEY_REPAIRS; repairs += 1) {
+    try {
+      return parseToml(source);
+    } catch (error) {
+      const repaired = quoteTomlTemplateKeyAtError(source, error);
+      if (repaired === null) throw error;
+      source = repaired;
+    }
+  }
+
+  return parseToml(source);
+}
 
 export function isStructuredCollection(
   value: StructuredValue,
@@ -82,7 +139,7 @@ export function parseStructuredFile(
   if (format === "json") {
     parsed = JSON.parse(content);
   } else if (format === "toml") {
-    parsed = parseToml(content);
+    parsed = parseTomlWithTemplateKeys(content);
   } else {
     const document = parseDocument(content);
     if (document.errors.length > 0) throw document.errors[0];

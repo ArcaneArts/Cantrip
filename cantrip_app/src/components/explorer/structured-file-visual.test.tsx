@@ -37,6 +37,28 @@ describe("StructuredFileVisual", () => {
     expect(markup).toContain("Switch to Edit to repair the document");
   });
 
+  it("renders Gradle-templated TOML dependency tables", () => {
+    const markup = renderToStaticMarkup(
+      <StructuredFileVisual
+        content={[
+          "# Dependencies are optional.",
+          "[[dependencies.${mod_id}]] #optional",
+          'modId = "forge"',
+          "mandatory = true",
+          "",
+        ].join("\n")}
+        format="toml"
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        path="mods.toml"
+      />,
+    );
+
+    expect(markup).not.toContain("Visual mode is unavailable");
+    expect(markup).toContain("dependencies");
+    expect(markup).toContain("2 editable values");
+  });
+
   it("renders CSV with locked headers and editable body cells", () => {
     const markup = renderToStaticMarkup(
       <StructuredFileVisual
