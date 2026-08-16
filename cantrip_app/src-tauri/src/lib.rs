@@ -26,6 +26,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 mod desktop_update;
 mod desktop_worker;
 mod direct_probe;
+mod local_logs;
 mod process_environment;
 mod project_share;
 mod tunnel_forward;
@@ -90,7 +91,6 @@ fn local_server_url(runtime: State<'_, ManagedRuntime>) -> String {
     runtime.server_url.clone()
 }
 
-#[cfg(debug_assertions)]
 fn sanitize_client_log(message: &str) -> String {
     message
         .chars()
@@ -109,7 +109,9 @@ fn relay_client_log(
     level: String,
     message: String,
     source: Option<String>,
+    logs: State<'_, local_logs::LocalServiceLogs>,
 ) {
+    logs.append_client(&level, message.clone(), source.clone());
     #[cfg(debug_assertions)]
     {
         let level = match level.as_str() {
@@ -136,7 +138,7 @@ fn relay_client_log(
         }
     }
     #[cfg(not(debug_assertions))]
-    let _ = (window, level, message, source);
+    let _ = window;
 }
 
 #[tauri::command]
@@ -481,6 +483,12 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                 data.join("server").to_string_lossy().into_owned(),
             ),
             ("CANTRIP_WORKER_TOKEN", worker_token.clone()),
+            (
+                "CANTRIP_SERVICE_LOG_FILE",
+                logs.join("server.service.jsonl")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
         ],
     )?;
     if let Err(error) = wait_for_server(&mut server, port) {
@@ -501,6 +509,12 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
             (
                 "CANTRIP_WORKER_DATA_DIR",
                 data.join("worker").to_string_lossy().into_owned(),
+            ),
+            (
+                "CANTRIP_SERVICE_LOG_FILE",
+                logs.join("worker.service.jsonl")
+                    .to_string_lossy()
+                    .into_owned(),
             ),
         ],
     ) {
@@ -546,6 +560,7 @@ pub fn run() {
             desktop_worker::pair_desktop_worker,
             desktop_worker::forget_desktop_worker,
             direct_probe::probe_direct_worker,
+            local_logs::read_local_service_logs,
             local_server_url,
             relay_client_log,
             set_macos_pro_mode,
@@ -563,10 +578,19 @@ pub fn run() {
                 MacosLauncher::LaunchAgent,
                 Some(vec!["--background"]),
             ))?;
-            let runtime = build_runtime(app).map_err(std::io::Error::other)?;
-            let desktop_workers = desktop_worker::build(app).map_err(std::io::Error::other)?;
+            let local_logs = local_logs::build(app).map_err(std::io::Error::other)?;
+            let runtime = build_runtime(app).map_err(|error| {
+                local_logs.runtime_error(format!("Local runtime startup failed: {error}"));
+                std::io::Error::other(error)
+            })?;
+            let desktop_workers = desktop_worker::build(app).map_err(|error| {
+                local_logs.runtime_error(format!("Desktop worker startup failed: {error}"));
+                std::io::Error::other(error)
+            })?;
+            local_logs.runtime_info("Cantrip desktop runtime initialized");
             app.manage(runtime);
             app.manage(desktop_workers);
+            app.manage(local_logs);
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
             app.manage(desktop_update::DesktopUpdateCoordinator::default());
@@ -590,7 +614,6 @@ pub fn run() {
             }
             Ok(())
         });
-    #[cfg(debug_assertions)]
     let builder = builder.append_invoke_initialization_script(include_str!("client_log_relay.js"));
     let app = builder
         .build(tauri::generate_context!())

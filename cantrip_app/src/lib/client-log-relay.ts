@@ -1,11 +1,27 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import {
+  sanitizeLogContext,
+  ServiceLogBuffer,
+  type ServiceLogLevel,
+  type ServiceLogReadOptions,
+  type ServiceLogReadResult,
+} from "@cantrip/logging/records";
 
-type ClientLogLevel = "debug" | "error" | "info" | "log" | "trace" | "warn";
+type ClientConsoleLevel = "debug" | "error" | "info" | "log" | "trace" | "warn";
 
 const MAX_MESSAGE_LENGTH = 16_384;
-const relayState = globalThis as typeof globalThis & {
-  __CANTRIP_CLIENT_LOG_RELAY_INSTALLED__?: boolean;
+const captureState = globalThis as typeof globalThis & {
+  __CANTRIP_CLIENT_LOG_CAPTURE__?: {
+    buffer: ServiceLogBuffer;
+    installed: boolean;
+  };
 };
+
+function state() {
+  return (captureState.__CANTRIP_CLIENT_LOG_CAPTURE__ ??= {
+    buffer: new ServiceLogBuffer(),
+    installed: false,
+  });
+}
 
 function serializeLogValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -50,20 +66,44 @@ export function formatClientLogArguments(values: readonly unknown[]): string {
   return `${message.slice(0, MAX_MESSAGE_LENGTH)}… [truncated]`;
 }
 
-export function installDesktopClientLogRelay(): void {
-  // Tauri debug builds install the same relay before any frontend module runs.
-  // This remains the fallback for development shells without that early hook.
-  if (
-    !import.meta.env.DEV ||
-    !isTauri() ||
-    relayState.__CANTRIP_CLIENT_LOG_RELAY_INSTALLED__
-  ) {
-    return;
-  }
-  relayState.__CANTRIP_CLIENT_LOG_RELAY_INSTALLED__ = true;
+function serviceLevel(level: ClientConsoleLevel): ServiceLogLevel {
+  if (level === "error") return "error";
+  if (level === "warn") return "warn";
+  if (level === "debug" || level === "trace") return "debug";
+  return "info";
+}
+
+export function recordClientLog(
+  level: ClientConsoleLevel,
+  values: readonly unknown[],
+  source?: string,
+): void {
+  state().buffer.append({
+    timestamp: new Date().toISOString(),
+    system: "client",
+    level: serviceLevel(level),
+    message: formatClientLogArguments(values.map(sanitizeLogContext)),
+    ...(source ? { context: { source } } : {}),
+  });
+}
+
+export function readClientLogs(
+  options: ServiceLogReadOptions = {},
+): ServiceLogReadResult {
+  return state().buffer.read(options);
+}
+
+export function clearClientLogs(): void {
+  state().buffer.clear();
+}
+
+export function installClientLogCapture(): void {
+  const current = state();
+  if (current.installed) return;
+  current.installed = true;
 
   const originalConsole: Record<
-    ClientLogLevel,
+    ClientConsoleLevel,
     (...values: unknown[]) => void
   > = {
     debug: console.debug.bind(console),
@@ -73,37 +113,43 @@ export function installDesktopClientLogRelay(): void {
     trace: console.trace.bind(console),
     warn: console.warn.bind(console),
   };
-  const relay = (
-    level: ClientLogLevel,
-    values: readonly unknown[],
-    source?: string,
-  ) => {
-    const message = formatClientLogArguments(values);
-    void invoke("relay_client_log", { level, message, source }).catch(
-      (error) => {
-        originalConsole.warn("Could not relay a client log to devtop.", error);
-      },
-    );
-  };
 
-  for (const level of Object.keys(originalConsole) as ClientLogLevel[]) {
+  for (const level of Object.keys(originalConsole) as ClientConsoleLevel[]) {
     console[level] = (...values: unknown[]) => {
       originalConsole[level](...values);
-      relay(level, values);
+      recordClientLog(level, values);
     };
   }
 
-  window.addEventListener("error", (event) => {
-    relay(
-      "error",
-      [
-        `Uncaught client error at ${event.filename || "unknown source"}:${event.lineno}:${event.colno}`,
-        event.error ?? event.message,
-      ],
-      event.filename || undefined,
-    );
-  });
+  window.addEventListener(
+    "error",
+    (event: Event) => {
+      if (event instanceof ErrorEvent) {
+        recordClientLog(
+          "error",
+          ["Uncaught client error", event.error ?? event.message],
+          event.filename
+            ? `${event.filename}:${event.lineno}:${event.colno}`
+            : undefined,
+        );
+        return;
+      }
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      recordClientLog(
+        "error",
+        [`Failed to load client resource <${target.tagName.toLowerCase()}>`],
+        target.getAttribute("src") ??
+          target.getAttribute("href") ??
+          window.location.href,
+      );
+    },
+    true,
+  );
   window.addEventListener("unhandledrejection", (event) => {
-    relay("error", ["Unhandled client promise rejection", event.reason]);
+    recordClientLog("error", [
+      "Unhandled client promise rejection",
+      event.reason,
+    ]);
   });
 }
