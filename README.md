@@ -1,6 +1,6 @@
 # Cantrip
 
-Cantrip is a local-first, self-hostable coding-agent workspace powered by the open-source Codex CLI. It combines Codex chats, real terminals, project files, Git tooling, and lightweight browser tabs in one interface.
+Cantrip is a local-first, self-hostable coding-agent workspace powered by the open-source Codex CLI. It combines Codex chats, real and supervised terminals, persistent file editing, an embedded Code workspace, Git and GitHub tooling, automations, and remote browser and desktop surfaces in one interface.
 
 The project is inspired by the Codex desktop experience, but its architecture is designed around a server and independent workers. The local development path runs the app, server, and one worker on the same computer. The hosted path runs an authenticated PostgreSQL-backed control plane with independently enrolled workers and browser, desktop, or mobile clients.
 
@@ -8,20 +8,23 @@ The project is inspired by the Codex desktop experience, but its architecture is
 
 ## What Cantrip does
 
-Cantrip organizes work into GitHub-backed projects. Each project has one source folder owned by a worker and can contain an ordered mix of:
+Cantrip organizes work into GitHub-backed projects. Import an existing repository or create a public or private repository in a personal account or organization directly from the project picker. Empty repositories remain usable while they wait for their first commit. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
-- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume, compaction commands, forking, renaming, and duplication.
+- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
-- Real PTY terminal tabs that run in the project folder on the worker.
-- Read-only Explorer tabs with a source or Markdown preview for supported text files.
+- Real PTY terminal tabs that run in the project folder on the worker. A terminal can also become a durable service: the worker starts its saved command at boot, restarts it after an unexpected exit, retains its live PTY for later attachment, and exposes stop, disable, and restart controls.
+- Finder-style Explorer tabs with a lazy expandable directory tree, file sizes, local Git state, and asynchronously hydrated last-commit metadata. Files open in preview or structured visual mode and can switch to a persistent Monaco editor with conflict-safe saves; the selected file, draft, cursor, scroll position, and undo history survive ordinary tab changes.
+- Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
 - Worker-streamed Browser tabs for project-related web pages.
 - Saved and feature-managed tunnels that expose explicit worker-local services
   on Tauri desktop loopback without opening inbound worker ports. See
   [the tunnels guide](docs/TUNNELS.md).
 - One-click Remote Desktop tabs for the project worker's screen.
-- Git history with a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, clickable commit inspection and revision patches, staged and unstaged changes, commits, branches, pull/push operations, and GitHub issue browsing and management. See [the Git client guide](docs/GIT_CLIENT.md).
+- A unified Git tab with History, Issues, and Pull Requests. History includes a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, clickable commit inspection and revision patches, staged and unstaged changes, commits, branches, stashes, conflict resolution, and pull/push operations. Issues and pull requests have open/closed views and GitHub-backed management. See [the Git client guide](docs/GIT_CLIENT.md).
+
+Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. Provider support currently includes:
 
@@ -34,7 +37,9 @@ Settings are stored by the server for the current Cantrip identity rather than i
   credentials, subscription model discovery, and multi-account fallback routing
   through a worker-local xAI subscription proxy.
 
-Models are logical profiles with one or more ordered provider routes. A profile
+Models are logical profiles with one or more ordered provider routes. Provider
+settings aggregate weekly usage across portable accounts while retaining each
+account's individual limits and reset time. A profile
 such as `GPT-5.6 Sol` can prefer one ChatGPT account, fall back to another when
 its reported weekly usage is exhausted, and then use an OpenAI-compatible
 route such as OpenRouter. Grok profiles can likewise pool multiple SuperGrok
@@ -43,7 +48,7 @@ optional reasoning override. Cantrip records the concrete route used for a
 turn and only retries another route automatically when the first attempt fails
 before producing command or file activity.
 
-The app can switch between the structured chat view and the linked live Codex console. Ordinary terminal, Explorer, browser, chat, and project tabs can be renamed and reordered together.
+The app can switch between the structured chat view and the linked live Codex console. A newly opened console initializes the Codex CLI with the model selected in the composer, so a conversation can begin in either interface.
 
 ### Persistent tab groups
 
@@ -96,7 +101,7 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes, supervises worktree-specific Codex runtimes, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts. Server-managed ChatGPT and Grok access leases remain in memory; normal operation does not create worker-local `auth.json` or `grok-auth.json` credentials.
+The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes and supervised terminal services, supervises worktree-specific Codex runtimes, keeps the embedded Code server warm, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts. Server-managed ChatGPT and Grok access leases remain in memory; normal operation does not create worker-local `auth.json` or `grok-auth.json` credentials.
 
 Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
 
@@ -169,6 +174,11 @@ creates triggers disabled until an operator explicitly enables them. This is a
 local/trusted-network product boundary today, not a public multi-user automation
 service or a raw GitHub HMAC webhook receiver.
 
+Simple project automations can additionally gate a scheduled prompt on one
+condition: a worker-side script must exit with code 0, or the repository must
+have at least a configured number of open GitHub issues. A false condition
+records a skipped run instead of dispatching the prompt.
+
 See the [orchestration contract](docs/WORKFLOW_ORCHESTRATION.md),
 [operator and recovery guide](docs/WORKFLOW_OPERATIONS.md),
 [implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md), and
@@ -197,11 +207,12 @@ and past messages retain the worktree and execution-lane attribution that
 produced them.
 
 The sidebar remains flat: a compact worktree icon appears only on secondary
-checkout tabs. The active Chat, Terminal, Explorer, and History header contains
+checkout tabs. The active Chat, Terminal, Explorer, and Git header contains
 a worktree control. Terminals and Explorers are physically bound to one
-checkout; linked Codex consoles follow their parent chat. Browser and Issues
-tabs remain project-level. History selects one checkout for Git actions while
-showing markers and virtual WIP rows for every known worktree.
+checkout; linked Codex consoles follow their parent chat. Browser tabs and the
+Git Issues and Pull Requests views remain project-level. Git History selects
+one checkout for Git actions while showing markers and virtual WIP rows for
+every known worktree.
 
 Worktree removal never deletes its branch. Primary cannot be removed, dirty or
 locked worktrees require explicit handling, running chats and terminals block
@@ -471,12 +482,38 @@ Run `pnpm release` from a clean `main` branch to pull `origin/main` and
 fast-forward `origin/release`. That branch update starts the native release
 workflow, which builds separate Server, Worker, and Desktop artifacts for
 macOS ARM64 and Windows x64 before publishing them in a versioned GitHub
-release. Release packaging runs only when that branch advances, uses
+release. The macOS application and DMG are Developer ID signed, notarized, and
+stapled. Both desktop targets publish separately signed Tauri updater payloads;
+the release remains a draft until every platform artifact, signature, and the
+static `latest.json` manifest have been uploaded. Release packaging runs only
+when that branch advances, uses
 content-addressed caches for the pinned Codex and Cantrip Code runtimes, and
 tags releases with the repository's `major.minor.commit-count` version. The
 command never force-pushes a divergent release branch. See
 [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for the artifact flow, environment
 contract, desktop lifecycle, and current security boundary.
+
+### Explicit desktop updates
+
+Packaged macOS and Windows Tauri builds expose **Check for updates** in General
+Settings. Cantrip never checks, downloads, or installs an update at startup or
+on a timer. A manual check shows the installed and available versions, release
+date, and safely rendered GitHub release Markdown before enabling a separate
+**Update and restart** action.
+
+The native coordinator downloads only over HTTPS and verifies the release with
+the updater public key embedded in the installed app. It reports progress,
+allows cancellation while downloading, and prevents duplicate update attempts.
+Before stopping the bundled runtime, Cantrip checks for active local chats,
+queued prompts, terminal services, and background jobs and requires another
+confirmation when any are present. It then replaces the complete desktop
+bundle and restarts the app; remote servers and workers are never upgraded by
+this action.
+
+An app installed before updater support does not contain the verification key
+or native coordinator. Install one updater-enabled DMG or NSIS release manually
+before using in-app updates. Signing-key provisioning and recovery procedures
+are documented in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#desktop-updater-signing-and-recovery).
 
 ## Test with Ollama
 
