@@ -25,7 +25,8 @@ export function codexCatalogForRuntimeModel(
   const catalog = model.catalog;
   if (!catalog) return null;
   const supportsTools = catalog.supportsTools;
-  const supportsFreeformTools = providerKind !== "openai-compatible";
+  const supportsFreeformTools =
+    providerKind !== "openai-compatible" && providerKind !== "grok";
   const supportsReasoning = catalog.supportsReasoning === true;
   const inputModalities = catalog.inputModalities.filter((modality) =>
     SUPPORTED_INPUT_MODALITIES.has(modality),

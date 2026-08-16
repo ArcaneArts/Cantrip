@@ -188,7 +188,10 @@ import {
   useNarrowViewport,
 } from "@/lib/use-compact-layout";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
-import { chatResourceRefreshIntervalMs } from "@/lib/chat-resource-refresh";
+import {
+  chatResourceRefreshIntervalMs,
+  chatTranscriptNeedsFastRefresh,
+} from "@/lib/chat-resource-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -1002,7 +1005,12 @@ function ChatTranscript({
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
-    refetchInterval: chatRefreshInterval,
+    refetchInterval: (query) =>
+      chatResourceRefreshIntervalMs(
+        chat.status,
+        chatResourcesLive,
+        chatTranscriptNeedsFastRefresh(query.state.data),
+      ),
   });
   useQuery({
     enabled: syncEnabled,

@@ -1,9 +1,11 @@
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Mutex,
+    thread,
 };
 
 use serde::{Deserialize, Serialize};
@@ -90,6 +92,34 @@ fn open_log(path: &Path) -> Result<File, String> {
         .append(true)
         .open(path)
         .map_err(|error| format!("Could not open {}: {error}", path.display()))
+}
+
+fn mirror_child_output<R: Read + Send + 'static>(mut reader: R, mut log: File, use_stderr: bool) {
+    thread::spawn(move || {
+        let mut buffer = [0_u8; 8 * 1_024];
+        loop {
+            let read = match reader.read(&mut buffer) {
+                Ok(0) => return,
+                Ok(read) => read,
+                Err(error) => {
+                    eprintln!("Could not read linked worker output: {error}");
+                    return;
+                }
+            };
+            if let Err(error) = log.write_all(&buffer[..read]) {
+                eprintln!("Could not persist linked worker output: {error}");
+            }
+            let console_result = if use_stderr {
+                std::io::stderr().write_all(&buffer[..read])
+            } else {
+                std::io::stdout().write_all(&buffer[..read])
+            };
+            if let Err(error) = console_result {
+                eprintln!("Could not mirror linked worker output: {error}");
+                return;
+            }
+        }
+    });
 }
 
 fn normalize_server_url(value: &str) -> Result<String, String> {
@@ -201,20 +231,38 @@ impl DesktopWorkers {
             )
             .env_remove("CANTRIP_WORKER_TOKEN")
             .env_remove("CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP")
-            .env_remove("CANTRIP_WORKER_CREDENTIAL")
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr));
+            .env_remove("CANTRIP_WORKER_CREDENTIAL");
+        if cfg!(debug_assertions) {
+            command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        } else {
+            command
+                .stdout(Stdio::from(stdout.try_clone().map_err(|error| {
+                    format!("Could not clone worker stdout log handle: {error}")
+                })?))
+                .stderr(Stdio::from(stderr.try_clone().map_err(|error| {
+                    format!("Could not clone worker stderr log handle: {error}")
+                })?));
+        }
         if let Some(code) = enrollment_code {
             command.env("CANTRIP_WORKER_ENROLLMENT_CODE", code);
         } else {
             command.env_remove("CANTRIP_WORKER_ENROLLMENT_CODE");
         }
-        command.spawn().map_err(|error| {
+        let mut child = command.spawn().map_err(|error| {
             format!(
                 "Could not start this machine's worker for {}: {error}",
                 profile.server_url
             )
-        })
+        })?;
+        if cfg!(debug_assertions) {
+            if let Some(child_stdout) = child.stdout.take() {
+                mirror_child_output(child_stdout, stdout, false);
+            }
+            if let Some(child_stderr) = child.stderr.take() {
+                mirror_child_output(child_stderr, stderr, true);
+            }
+        }
+        Ok(child)
     }
 
     fn ensure_running(

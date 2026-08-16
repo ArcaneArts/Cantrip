@@ -63,6 +63,31 @@ function commandLogContext(
   };
 }
 
+function commandCompletionLogContext(
+  request: WorkerRequestEnvelope,
+  result: unknown,
+  emittedEventCount: number,
+): Record<string, unknown> {
+  if (
+    request.command.type !== "chat.turn" ||
+    !result ||
+    typeof result !== "object" ||
+    Array.isArray(result)
+  ) {
+    return {};
+  }
+  const value = result as Record<string, unknown>;
+  return {
+    emittedEventCount,
+    ...(typeof value.status === "string" ? { status: value.status } : {}),
+    ...(typeof value.threadId === "string" ? { threadId: value.threadId } : {}),
+    ...(typeof value.turnId === "string" ? { turnId: value.turnId } : {}),
+    ...(typeof value.text === "string"
+      ? { responseCharacterCount: value.text.length }
+      : {}),
+  };
+}
+
 export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
@@ -330,8 +355,10 @@ export class WorkerConnection {
 
   private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
     const startedAt = performance.now();
+    let emittedEventCount = 0;
     try {
       const emit = (event: WorkerEvent) => {
+        emittedEventCount += 1;
         this.sendServerEnvelope({
           kind: "event",
           requestId: request.requestId,
@@ -351,6 +378,7 @@ export class WorkerConnection {
       ) {
         workerLogger.info("Codex command completed", {
           ...commandLogContext(request),
+          ...commandCompletionLogContext(request, result, emittedEventCount),
           durationMs: Math.round(performance.now() - startedAt),
         });
       }
