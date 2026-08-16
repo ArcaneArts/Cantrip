@@ -60,6 +60,7 @@ import {
   RefreshCw,
   Send,
   Settings,
+  Square,
   SquareTerminal,
   User,
   WandSparkles,
@@ -254,6 +255,7 @@ import {
   getWorkflows,
   getWorkflowAutomationTriggers,
   invokeSavedWorkflowCommand,
+  interruptChat,
   renameChat,
   renameExplorer,
   renameProjectView,
@@ -1401,6 +1403,16 @@ function ChatTranscript({
       ]);
     },
   });
+  const interrupt = useMutation({
+    mutationFn: () => interruptChat(chat.id),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
+        queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
+      ]);
+    },
+  });
   const [answerPlanPending, setAnswerPlanPending] = useState(false);
   const [answerPlanError, setAnswerPlanError] = useState<string | null>(null);
   const submitPlanAnswer = async (answers: ChatPlanAnswer["answers"]) => {
@@ -1968,7 +1980,7 @@ function ChatTranscript({
               <Pause className="size-3.5 shrink-0" />
               <span>
                 {chat.status === "running"
-                  ? "Pausing when possible. The current turn may finish, but nothing automatic will advance."
+                  ? "Paused. The current step will finish, then Codex will wait here until Resume."
                   : "Paused. Queued prompts, goals, and automatic continuations will wait for Resume."}
               </span>
             </div>
@@ -2302,7 +2314,7 @@ function ChatTranscript({
                   )}
                 />
               </div>
-              <div className="flex min-w-0 items-center gap-1 border-t px-1 pt-2">
+              <div className="flex min-w-0 items-center gap-1 px-1 pt-2">
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -2401,33 +2413,54 @@ function ChatTranscript({
                 </Button>
               </div>
             </div>
-            <Button
-              size="icon"
-              type="submit"
-              disabled={
-                relocationActive ||
-                (!draft.trim() &&
-                  !draftAttachments.some(
-                    ({ error, uploading }) => !error && !uploading,
-                  )) ||
-                draftAttachments.some(
-                  ({ error, uploading }) => Boolean(error) || uploading,
-                ) ||
-                !selectedModelId ||
-                send.isPending ||
-                selectModel.isPending ||
-                selectReasoning.isPending ||
-                selectPermissionProfile.isPending ||
-                updatePrompt.isPending
-              }
-            >
-              {send.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Send className="size-4" />
-              )}
-              <span className="sr-only">Send prompt</span>
-            </Button>
+            {chat.status === "running" ||
+            chat.status === "waiting-for-approval" ? (
+              <Button
+                size="icon"
+                type="button"
+                variant="outline"
+                className="size-8 shrink-0 rounded-lg border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+                disabled={relocationActive || interrupt.isPending}
+                title="Stop current operation"
+                aria-label="Stop current operation"
+                onClick={() => interrupt.mutate()}
+              >
+                {interrupt.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Square className="size-3 fill-current" />
+                )}
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                type="submit"
+                className="size-8 shrink-0 rounded-lg"
+                disabled={
+                  relocationActive ||
+                  (!draft.trim() &&
+                    !draftAttachments.some(
+                      ({ error, uploading }) => !error && !uploading,
+                    )) ||
+                  draftAttachments.some(
+                    ({ error, uploading }) => Boolean(error) || uploading,
+                  ) ||
+                  !selectedModelId ||
+                  send.isPending ||
+                  selectModel.isPending ||
+                  selectReasoning.isPending ||
+                  selectPermissionProfile.isPending ||
+                  updatePrompt.isPending
+                }
+              >
+                {send.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Send className="size-3.5" />
+                )}
+                <span className="sr-only">Send prompt</span>
+              </Button>
+            )}
           </div>
           <AttachmentViewerDialog
             attachment={viewingAttachment}
@@ -2464,7 +2497,8 @@ function ChatTranscript({
           removePrompt.isError ||
           steerPrompt.isError ||
           reorderPrompts.isError ||
-          setAutomationPaused.isError ? (
+          setAutomationPaused.isError ||
+          interrupt.isError ? (
             <p className="mt-2 text-xs text-destructive">
               {errorText(
                 send.error ??
@@ -2476,7 +2510,8 @@ function ChatTranscript({
                   removePrompt.error ??
                   steerPrompt.error ??
                   reorderPrompts.error ??
-                  setAutomationPaused.error,
+                  setAutomationPaused.error ??
+                  interrupt.error,
               )}
             </p>
           ) : editingPrompt ? (
