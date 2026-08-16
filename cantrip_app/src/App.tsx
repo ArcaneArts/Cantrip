@@ -90,6 +90,10 @@ import {
 } from "@/components/chat/attachment-utils";
 import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
 import {
+  AgentInspectContent,
+  agentInspectorActive,
+} from "@/components/chat/agent-inspect-content";
+import {
   AgentInspectPanelShell,
   readAgentInspectWidth,
   updateAgentInspectOpenChats,
@@ -961,6 +965,7 @@ function ChatTranscript({
   const relocationActive = isChatRelocationActive(relocationJob);
   const relocationNeedsAttention =
     relocationJob?.state === "blocked" || relocationJob?.state === "failed";
+  const inspectActive = agentInspectorActive(chat.status);
   const chatRefreshInterval = chatResourceRefreshIntervalMs(
     chat.status,
     chatResourcesLive,
@@ -2501,15 +2506,19 @@ function ChatTranscript({
         </div>
       </form>
       <AgentInspectPanelShell
-        active={
-          chat.status === "running" || chat.status === "waiting-for-approval"
-        }
+        active={inspectActive}
         className="absolute inset-y-0 right-0 z-30"
         onOpenChange={onInspectOpenChange}
         onWidthChange={setInspectWidth}
         open={inspectOpen}
         overlay={inspectOverlay}
-      />
+      >
+        <AgentInspectContent
+          active={inspectActive}
+          messages={messages.data ?? []}
+          visible={inspectOpen}
+        />
+      </AgentInspectPanelShell>
     </div>
   );
 }

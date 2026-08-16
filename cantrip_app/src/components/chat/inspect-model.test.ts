@@ -303,6 +303,47 @@ describe("agent inspector projection", () => {
     expect(snapshot.commands).toHaveLength(1);
   });
 
+  it("does not treat a mid-turn system activity notice as a turn boundary", () => {
+    const reasoning = activityMessage(
+      {
+        type: "reasoning",
+        id: "reasoning-before-notice",
+        status: "running",
+        summary: ["The provider route is still active."],
+        updatedAtMs: 1_500,
+        correlation: correlation("turn-1", "reasoning-before-notice"),
+      },
+      2,
+      1_500,
+    );
+    const notice = message("system-notice", 3, "system", 1_700, [
+      {
+        type: "activity",
+        activity: {
+          type: "notice",
+          id: "reasoning-adjustment",
+          status: "completed",
+          level: "warning",
+          message: "Using the provider default reasoning effort.",
+          details: null,
+          willRetry: null,
+        },
+      },
+    ]);
+    const running = activityMessage(
+      commandActivity({ startedAtMs: 1_800, updatedAtMs: 3_000 }),
+      4,
+      1_800,
+    );
+    const snapshot = projectAgentInspector({
+      active: true,
+      messages: [user(), reasoning, notice, running],
+      nowMs: 3_000,
+    });
+    expect(snapshot.thought?.text).toBe("The provider route is still active.");
+    expect(snapshot.commands).toHaveLength(1);
+  });
+
   it("prefers terminal lifecycle updates across reordered duplicates", () => {
     const stale = activityMessage(
       commandActivity({
@@ -347,7 +388,7 @@ describe("agent inspector projection", () => {
     expect(snapshot.recentCommands).toHaveLength(1);
   });
 
-  it("hydrates a running snapshot after reconnect and sorts longest-running first", () => {
+  it("hydrates identical running snapshots in reconnecting windows and sorts longest-running first", () => {
     const messages = [
       user(),
       activityMessage(
@@ -386,6 +427,11 @@ describe("agent inspector projection", () => {
       messages,
       nowMs: 5_000,
     });
+    const secondWindowSnapshot = projectAgentInspector({
+      active: true,
+      messages: structuredClone(messages),
+      nowMs: 5_000,
+    });
     expect(snapshot.commands.map((command) => command.id)).toEqual([
       "oldest",
       "middle",
@@ -394,6 +440,7 @@ describe("agent inspector projection", () => {
     expect(
       snapshot.commands.every(({ presentation }) => presentation === "visible"),
     ).toBe(true);
+    expect(secondWindowSnapshot).toEqual(snapshot);
   });
 
   it("clears stale state on turn completion or a new terminal boundary", () => {

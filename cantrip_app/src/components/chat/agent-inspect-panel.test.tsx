@@ -54,15 +54,28 @@ describe("AgentInspectPanel", () => {
 });
 
 describe("agent inspector shell state", () => {
-  it("keeps open state independently per chat for the session", () => {
+  it("keeps open state independently per chat through chat and console switches", () => {
     const first = updateAgentInspectOpenChats(new Set(), "chat-one", true);
     const second = updateAgentInspectOpenChats(first, "chat-two", true);
+    const afterConsoleRoundTrip = new Set(second);
     const third = updateAgentInspectOpenChats(second, "chat-one", false);
     expect([...second]).toEqual(["chat-one", "chat-two"]);
+    expect([...afterConsoleRoundTrip]).toEqual(["chat-one", "chat-two"]);
     expect([...third]).toEqual(["chat-two"]);
     expect(
       updateAgentInspectOpenChats(third, "new-chat", false).has("new-chat"),
     ).toBe(false);
+  });
+
+  it("starts every newly created app-window session with chats collapsed", () => {
+    const firstWindow = updateAgentInspectOpenChats(
+      new Set(),
+      "shared-chat",
+      true,
+    );
+    const secondWindow = new Set<string>();
+    expect(firstWindow.has("shared-chat")).toBe(true);
+    expect(secondWindow.has("shared-chat")).toBe(false);
   });
 
   it("clamps pointer and keyboard resizing from the left edge", () => {

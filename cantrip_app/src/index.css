@@ -342,6 +342,34 @@
   }
 }
 
+@keyframes agent-inspect-recent-command {
+  0% {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+
+  7%,
+  86% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateY(-0.2rem);
+  }
+}
+
+.agent-inspect-recent-command {
+  animation: agent-inspect-recent-command 3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-inspect-recent-command {
+    animation: none;
+  }
+}
+
 .chat-composer-fade {
   background: linear-gradient(
     to top,
