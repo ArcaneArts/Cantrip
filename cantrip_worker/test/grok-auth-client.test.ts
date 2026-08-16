@@ -5,7 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GrokAuthClient, normalizeGrokModel } from "../src/grok-auth-client.js";
-import { normalizeGrokWeeklyUsage } from "../src/grok-subscription-client.js";
+import {
+  GrokSubscriptionClient,
+  normalizeGrokWeeklyUsage,
+} from "../src/grok-subscription-client.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -343,6 +346,216 @@ describe("Grok OAuth accounts", () => {
       });
       await expect(nextTurn.json()).resolves.toEqual({ id: "response-1" });
       expect(upstreamRequests[2]?.headers.get("x-grok-turn-idx")).toBe("2");
+    } finally {
+      client.close();
+    }
+  });
+
+  it("recovers rejected opaque reasoning before resetting Grok session affinity", async () => {
+    const upstreamRequests: Array<{ body: string; headers: Headers }> = [];
+    const client = new GrokSubscriptionClient(
+      async () => ({
+        accessToken: "worker-owned-token",
+        email: "grok@example.com",
+        userId: "user-1",
+      }),
+      {
+        fetch: async (_input, init) => {
+          const body = await new Response(init?.body).text();
+          upstreamRequests.push({ body, headers: new Headers(init?.headers) });
+          if (upstreamRequests.length < 3) {
+            return json(
+              {
+                code: "invalid-argument",
+                error:
+                  "Could not decode the compaction blob. Ensure it is unmodified from the compact response.",
+              },
+              400,
+            );
+          }
+          return json({ id: "response-recovered" });
+        },
+      },
+    );
+    try {
+      const baseUrl = await client.localProxyBaseUrl();
+      const response = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [
+            {
+              type: "reasoning",
+              id: "reasoning-readable",
+              status: "completed",
+              summary: [{ type: "summary_text", text: "Inspect the docs." }],
+              encrypted_content: "opaque-readable-state",
+            },
+            {
+              type: "reasoning",
+              id: "reasoning-opaque-only",
+              status: "completed",
+              summary: [],
+              encrypted_content: "opaque-only-state",
+            },
+            {
+              type: "function_call_output",
+              call_id: "call-1",
+              output: "README.md",
+            },
+          ],
+          prompt_cache_key: "cache-1",
+          client_metadata: {
+            session_id: "session-1",
+            thread_id: "thread-1",
+            turn_id: "turn-1",
+          },
+        }),
+      });
+      await expect(response.json()).resolves.toEqual({
+        id: "response-recovered",
+      });
+      expect(upstreamRequests).toHaveLength(3);
+
+      const initial = JSON.parse(upstreamRequests[0]?.body ?? "{}") as {
+        input: Array<Record<string, unknown>>;
+      };
+      expect(initial.input[0]?.encrypted_content).toBe("opaque-readable-state");
+
+      const portable = JSON.parse(upstreamRequests[1]?.body ?? "{}") as {
+        input: Array<Record<string, unknown>>;
+        prompt_cache_key?: string;
+      };
+      expect(portable.prompt_cache_key).toBe("cache-1");
+      expect(portable.input).toContainEqual({
+        type: "reasoning",
+        summary: [{ type: "summary_text", text: "Inspect the docs." }],
+      });
+      expect(portable.input).not.toContainEqual(
+        expect.objectContaining({ id: "reasoning-opaque-only" }),
+      );
+      expect(upstreamRequests[1]?.headers.get("x-grok-session-id")).toBe(
+        "cache-1",
+      );
+
+      const stateless = JSON.parse(upstreamRequests[2]?.body ?? "{}") as {
+        prompt_cache_key?: string;
+      };
+      expect(stateless.prompt_cache_key).toBeUndefined();
+      expect(upstreamRequests[2]?.headers.get("x-grok-session-id")).toBeNull();
+      expect(upstreamRequests[2]?.headers.get("x-grok-conv-id")).toBeNull();
+      expect(upstreamRequests[2]?.headers.get("x-grok-turn-idx")).toBeNull();
+      expect(upstreamRequests[2]?.headers.get("x-grok-req-id")).not.toBe(
+        "turn-1",
+      );
+
+      const statelessRequestId =
+        upstreamRequests[2]?.headers.get("x-grok-req-id");
+      const continuation = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [
+            {
+              type: "reasoning",
+              summary: [],
+              encrypted_content: "replacement-opaque-state",
+            },
+            {
+              type: "function_call_output",
+              call_id: "call-2",
+              output: "package.json",
+            },
+          ],
+          prompt_cache_key: "cache-1",
+          client_metadata: {
+            session_id: "session-1",
+            thread_id: "thread-1",
+            turn_id: "turn-1",
+          },
+        }),
+      });
+      await expect(continuation.json()).resolves.toEqual({
+        id: "response-recovered",
+      });
+      expect(upstreamRequests).toHaveLength(4);
+      expect(upstreamRequests[3]?.body).not.toContain("encrypted_content");
+      expect(upstreamRequests[3]?.body).not.toContain("prompt_cache_key");
+      expect(upstreamRequests[3]?.headers.get("x-grok-session-id")).toBeNull();
+      expect(upstreamRequests[3]?.headers.get("x-grok-req-id")).toBe(
+        statelessRequestId,
+      );
+
+      const nextTurn = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [{ role: "user", content: "Continue." }],
+          prompt_cache_key: "cache-1",
+          client_metadata: {
+            session_id: "session-1",
+            thread_id: "thread-1",
+            turn_id: "turn-2",
+          },
+        }),
+      });
+      await expect(nextTurn.json()).resolves.toEqual({
+        id: "response-recovered",
+      });
+      expect(upstreamRequests).toHaveLength(5);
+      expect(upstreamRequests[4]?.body).not.toContain("prompt_cache_key");
+      expect(upstreamRequests[4]?.headers.get("x-grok-session-id")).toBeNull();
+      expect(upstreamRequests[4]?.headers.get("x-grok-req-id")).not.toBe(
+        statelessRequestId,
+      );
+    } finally {
+      client.close();
+    }
+  });
+
+  it("does not retry unrelated Grok validation failures", async () => {
+    let requestCount = 0;
+    const client = new GrokSubscriptionClient(
+      async () => ({
+        accessToken: "worker-owned-token",
+        email: null,
+        userId: "user-1",
+      }),
+      {
+        fetch: async () => {
+          requestCount += 1;
+          return json(
+            { code: "invalid-argument", error: "Unsupported tool schema." },
+            400,
+          );
+        },
+      },
+    );
+    try {
+      const baseUrl = await client.localProxyBaseUrl();
+      const response = await fetch(`${baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [
+            {
+              type: "reasoning",
+              summary: [],
+              encrypted_content: "opaque-state",
+            },
+          ],
+          prompt_cache_key: "cache-1",
+        }),
+      });
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        error: "Unsupported tool schema.",
+      });
+      expect(requestCount).toBe(1);
     } finally {
       client.close();
     }
