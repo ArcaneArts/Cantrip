@@ -251,6 +251,10 @@ describe("Grok OAuth accounts", () => {
       }),
       { mode: 0o600 },
     );
+    const upstreamRequests: Array<{
+      body: string;
+      headers: Headers;
+    }> = [];
     const client = new GrokAuthClient(home, {
       fetch: async (input, init) => {
         expect(String(input)).toBe(
@@ -260,10 +264,10 @@ describe("Grok OAuth accounts", () => {
         expect(headers.get("authorization")).toBe("Bearer worker-owned-token");
         expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
         expect(headers.get("x-userid")).toBe("user-1");
+        expect(headers.get("x-grok-user-id")).toBe("user-1");
         expect(headers.get("x-grok-client-identifier")).toBe("cantrip");
-        expect(await new Response(init?.body).text()).toBe(
-          '{"model":"grok-4"}',
-        );
+        const body = await new Response(init?.body).text();
+        upstreamRequests.push({ body, headers });
         return json({ id: "response-1" });
       },
     });
@@ -277,9 +281,68 @@ describe("Grok OAuth accounts", () => {
           "content-type": "application/json",
           "x-userid": "browser-supplied-user",
         },
-        body: '{"model":"grok-4"}',
+        body: JSON.stringify({
+          model: "grok-4",
+          prompt_cache_key: "cache-1",
+          client_metadata: {
+            session_id: "session-1",
+            thread_id: "thread-1",
+            turn_id: "turn-1",
+          },
+        }),
       });
       await expect(response.json()).resolves.toEqual({ id: "response-1" });
+      const first = upstreamRequests[0];
+      expect(first?.body).toBe(
+        '{"model":"grok-4","prompt_cache_key":"cache-1","client_metadata":{"session_id":"session-1","thread_id":"thread-1","turn_id":"turn-1"}}',
+      );
+      expect(first?.headers.get("x-grok-conv-id")).toBe("thread-1");
+      expect(first?.headers.get("x-grok-req-id")).toBe("turn-1");
+      expect(first?.headers.get("x-grok-session-id")).toBe("session-1");
+      expect(first?.headers.get("x-grok-turn-idx")).toBe("0");
+      expect(first?.headers.get("x-grok-model-override")).toBe("grok-4");
+      expect(first?.headers.get("x-grok-agent-id")).toMatch(/^[0-9a-f-]{36}$/u);
+
+      const continuation = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4",
+          input: [{ encrypted_content: "opaque-compaction-state" }],
+          prompt_cache_key: "cache-1",
+          client_metadata: {
+            session_id: "session-1",
+            thread_id: "thread-1",
+            turn_id: "turn-1",
+          },
+        }),
+      });
+      await expect(continuation.json()).resolves.toEqual({ id: "response-1" });
+      const second = upstreamRequests[1];
+      expect(second?.headers.get("x-grok-conv-id")).toBe("thread-1");
+      expect(second?.headers.get("x-grok-req-id")).toBe("turn-1");
+      expect(second?.headers.get("x-grok-session-id")).toBe("session-1");
+      expect(second?.headers.get("x-grok-turn-idx")).toBe("0");
+      expect(second?.headers.get("x-grok-agent-id")).toBe(
+        first?.headers.get("x-grok-agent-id"),
+      );
+      expect(second?.body).toContain('"opaque-compaction-state"');
+
+      const nextTurn = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4",
+          prompt_cache_key: "cache-1",
+          client_metadata: {
+            session_id: "session-1",
+            thread_id: "thread-1",
+            turn_id: "turn-2",
+          },
+        }),
+      });
+      await expect(nextTurn.json()).resolves.toEqual({ id: "response-1" });
+      expect(upstreamRequests[2]?.headers.get("x-grok-turn-idx")).toBe("1");
     } finally {
       client.close();
     }
