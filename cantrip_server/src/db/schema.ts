@@ -1974,6 +1974,16 @@ export const tokenUsageRecords = pgTable(
     modelName: text("model_name").notNull(),
     providerName: text("provider_name").notNull(),
     providerModelName: text("provider_model_name").notNull(),
+    providerAccountId: text("provider_account_id"),
+    workerId: text("worker_id"),
+    turnId: text("turn_id"),
+    executionAttemptId: text("execution_attempt_id"),
+    attemptKind: text("attempt_kind").notNull().default("turn"),
+    attemptStatus: text("attempt_status").notNull().default("completed"),
+    reasoningEffort: text("reasoning_effort"),
+    workerVersion: text("worker_version"),
+    serverVersion: text("server_version"),
+    codexVersion: text("codex_version"),
     inputTokens: bigint("input_tokens", { mode: "number" })
       .notNull()
       .default(0),
@@ -1988,6 +1998,25 @@ export const tokenUsageRecords = pgTable(
     })
       .notNull()
       .default(0),
+    cacheWriteInputTokens: bigint("cache_write_input_tokens", {
+      mode: "number",
+    })
+      .notNull()
+      .default(0),
+    visibleOutputTokens: bigint("visible_output_tokens", { mode: "number" }),
+    reportedTotalTokens: bigint("reported_total_tokens", { mode: "number" }),
+    usageSemantics: text("usage_semantics")
+      .notNull()
+      .default("provider-reported-v2"),
+    sanitizedRawUsage: jsonb("sanitized_raw_usage")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -2012,9 +2041,22 @@ export const tokenUsageRecords = pgTable(
       table.ownerId,
       table.modelId,
     ),
+    index("token_usage_records_owner_account_time_index").on(
+      table.ownerId,
+      table.providerAccountId,
+      table.startedAt,
+    ),
+    index("token_usage_records_worker_time_index").on(
+      table.workerId,
+      table.startedAt,
+    ),
+    index("token_usage_records_execution_attempt_index").on(
+      table.executionAttemptId,
+    ),
+    index("token_usage_records_turn_index").on(table.chatId, table.turnId),
     check(
       "token_usage_records_nonnegative_check",
-      sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cachedInputTokens} >= 0 AND ${table.reasoningOutputTokens} >= 0`,
+      sql`${table.inputTokens} >= 0 AND ${table.outputTokens} >= 0 AND ${table.cachedInputTokens} >= 0 AND ${table.reasoningOutputTokens} >= 0 AND ${table.cacheWriteInputTokens} >= 0 AND (${table.visibleOutputTokens} IS NULL OR ${table.visibleOutputTokens} >= 0) AND (${table.reportedTotalTokens} IS NULL OR ${table.reportedTotalTokens} >= 0)`,
     ),
   ],
 );

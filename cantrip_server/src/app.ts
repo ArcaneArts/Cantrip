@@ -4851,13 +4851,33 @@ export async function buildApp({
     projectId: string | null,
     chatId: string | null,
     runtime: ModelRuntime,
-    usage: {
-      inputTokens: number;
-      outputTokens: number;
-      totalTokens: number;
-      cachedInputTokens?: number;
-      reasoningOutputTokens?: number;
-    },
+    usage:
+      | {
+          inputTokens: number;
+          outputTokens: number;
+          totalTokens: number;
+          cachedInputTokens?: number;
+          reasoningOutputTokens?: number;
+          cacheWriteInputTokens?: number;
+        }
+      | undefined,
+    attribution: {
+      workerId?: string | null;
+      turnId?: string | null;
+      executionAttemptId?: string | null;
+      attemptKind?: string;
+      attemptStatus?:
+        | "running"
+        | "completed"
+        | "failed"
+        | "cancelled"
+        | "interrupted"
+        | "compacted";
+      startedAt?: Date;
+      completedAt?: Date | null;
+      finalizedAt?: Date | null;
+      codexVersion?: string | null;
+    } = {},
   ): Promise<void> => {
     try {
       await repository.recordTokenUsage(applicationOwnerId(), {
@@ -4868,6 +4888,19 @@ export async function buildApp({
         modelName: runtime.model.profileName,
         providerName: runtime.provider.name,
         providerModelName: runtime.model.name,
+        providerAccountId: runtime.provider.accountId,
+        workerId: attribution.workerId,
+        turnId: attribution.turnId,
+        executionAttemptId: attribution.executionAttemptId,
+        attemptKind: attribution.attemptKind,
+        attemptStatus: attribution.attemptStatus,
+        reasoningEffort: runtime.model.reasoningEffort,
+        workerVersion: null,
+        serverVersion: cantripVersion.version,
+        codexVersion: attribution.codexVersion,
+        startedAt: attribution.startedAt,
+        completedAt: attribution.completedAt,
+        finalizedAt: attribution.finalizedAt,
         usage,
       });
     } catch (error) {
@@ -5639,6 +5672,10 @@ export async function buildApp({
       throw error;
     }
 
+    const attributedWorker = await repository.getWorker(
+      ownerId,
+      execution.workerId,
+    );
     void runAsOwner(ownerId, async () => {
       let anyActivity = false;
       const changedPaths = new Set<string>();
@@ -5646,6 +5683,8 @@ export async function buildApp({
         await notifyCodeAgentState(execution, "started");
         for (const [index, runtime] of runtimes.entries()) {
           const executionAttemptId = `${userMessage.id}:${runtime.routeId}:${index}`;
+          const tokenUsageSourceKey = `chat-attempt:${executionAttemptId}`;
+          const attemptStartedAt = new Date();
           let quotaFollowupsScheduled = false;
           const preparedReasoning = preparedRuntimes[index]!;
           let attemptActivity = false;
@@ -5715,6 +5754,21 @@ export async function buildApp({
               ? "account-switch"
               : "turn-starting",
             executionAttemptId,
+          );
+          await recordRuntimeTokenUsage(
+            tokenUsageSourceKey,
+            execution.projectId,
+            execution.chatId,
+            runtime,
+            undefined,
+            {
+              workerId: execution.workerId,
+              executionAttemptId,
+              attemptKind: "chat-turn",
+              attemptStatus: "running",
+              startedAt: attemptStartedAt,
+              codexVersion: attributedWorker?.codexVersion ?? null,
+            },
           );
           try {
             const rawResult = await bridge.request(
@@ -5880,11 +5934,19 @@ export async function buildApp({
                       const usageTurnId =
                         event.activity.correlation?.turnId ?? event.activity.id;
                       await recordRuntimeTokenUsage(
-                        `chat:${execution.chatId}:${usageTurnId}`,
+                        tokenUsageSourceKey,
                         execution.projectId,
                         execution.chatId,
                         runtime,
                         event.activity.last,
+                        {
+                          workerId: execution.workerId,
+                          turnId: usageTurnId,
+                          executionAttemptId,
+                          attemptKind: "chat-turn",
+                          attemptStatus: "running",
+                          codexVersion: attributedWorker?.codexVersion ?? null,
+                        },
                       );
                     }
                     if (
@@ -5940,6 +6002,24 @@ export async function buildApp({
               },
             );
             const result = agentTurnResultSchema.parse(rawResult);
+            const completedAt = new Date();
+            await recordRuntimeTokenUsage(
+              tokenUsageSourceKey,
+              execution.projectId,
+              execution.chatId,
+              runtime,
+              undefined,
+              {
+                workerId: execution.workerId,
+                turnId: result.turnId ?? null,
+                executionAttemptId,
+                attemptKind: "chat-turn",
+                attemptStatus: "completed",
+                completedAt,
+                finalizedAt: completedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            );
             scheduleRuntimeQuotaSamples(
               runtime,
               execution,
@@ -5992,6 +6072,29 @@ export async function buildApp({
             }
             return;
           } catch (error) {
+            const failedAt = new Date();
+            const failureText = errorMessage(error).toLowerCase();
+            const attemptStatus = failureText.includes("interrupt")
+              ? "interrupted"
+              : failureText.includes("cancel")
+                ? "cancelled"
+                : "failed";
+            await recordRuntimeTokenUsage(
+              tokenUsageSourceKey,
+              execution.projectId,
+              execution.chatId,
+              runtime,
+              undefined,
+              {
+                workerId: execution.workerId,
+                executionAttemptId,
+                attemptKind: "chat-turn",
+                attemptStatus,
+                completedAt: failedAt,
+                finalizedAt: failedAt,
+                codexVersion: attributedWorker?.codexVersion ?? null,
+              },
+            );
             if (!quotaFollowupsScheduled) {
               scheduleRuntimeQuotaSamples(
                 runtime,
@@ -9983,30 +10086,73 @@ export async function buildApp({
           applicationOwnerId(),
           context.projectId,
         );
-        const result = workflowNodeExecutionResultSchema.parse(
-          await bridge.request(
-            context.workerId,
-            {
-              type: "workflow.definition.generate",
-              generationId,
-              cwd: context.cwd,
-              prompt,
-              developerInstructions: WORKFLOW_GENERATION_INSTRUCTIONS,
-              outputSchema: WORKFLOW_GENERATION_OUTPUT_SCHEMA,
-              timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS,
-              model: runtime.model,
-              provider: runtime.provider,
-              mcpServers,
-            },
-            { timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS + 10_000 },
-          ),
-        );
+        const workflowUsageKey = `workflow-definition:${generationId}`;
         await recordRuntimeTokenUsage(
-          `workflow-definition:${generationId}`,
+          workflowUsageKey,
+          context.projectId,
+          context.chatId,
+          runtime,
+          undefined,
+          {
+            workerId: context.workerId,
+            executionAttemptId: generationId,
+            attemptKind: "workflow-definition",
+            attemptStatus: "running",
+            startedAt: new Date(),
+          },
+        );
+        let result;
+        try {
+          result = workflowNodeExecutionResultSchema.parse(
+            await bridge.request(
+              context.workerId,
+              {
+                type: "workflow.definition.generate",
+                generationId,
+                cwd: context.cwd,
+                prompt,
+                developerInstructions: WORKFLOW_GENERATION_INSTRUCTIONS,
+                outputSchema: WORKFLOW_GENERATION_OUTPUT_SCHEMA,
+                timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS,
+                model: runtime.model,
+                provider: runtime.provider,
+                mcpServers,
+              },
+              { timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS + 10_000 },
+            ),
+          );
+        } catch (error) {
+          const failedAt = new Date();
+          await recordRuntimeTokenUsage(
+            workflowUsageKey,
+            context.projectId,
+            context.chatId,
+            runtime,
+            undefined,
+            {
+              workerId: context.workerId,
+              executionAttemptId: generationId,
+              attemptKind: "workflow-definition",
+              attemptStatus: "failed",
+              completedAt: failedAt,
+              finalizedAt: failedAt,
+            },
+          );
+          throw error;
+        }
+        await recordRuntimeTokenUsage(
+          workflowUsageKey,
           context.projectId,
           context.chatId,
           runtime,
           result.measuredUsage,
+          {
+            workerId: context.workerId,
+            turnId: result.turnId,
+            executionAttemptId: generationId,
+            attemptKind: "workflow-definition",
+            attemptStatus: "completed",
+          },
         );
         const generated = workflowDefinitionGenerationModelOutputSchema.parse(
           result.structuredResult,
@@ -10133,6 +10279,22 @@ export async function buildApp({
         let selectedRuntime: ModelRuntime | null = null;
         let lastError: unknown = null;
         for (const runtime of runtimes) {
+          const gitAttemptId = `${generationId}:${runtime.routeId}`;
+          const gitUsageKey = `git-agent:${gitAttemptId}`;
+          await recordRuntimeTokenUsage(
+            gitUsageKey,
+            request.params.projectId,
+            null,
+            runtime,
+            undefined,
+            {
+              workerId: context.workerId,
+              executionAttemptId: gitAttemptId,
+              attemptKind: "git-agent",
+              attemptStatus: "running",
+              startedAt: new Date(),
+            },
+          );
           try {
             const result = workflowNodeExecutionResultSchema.parse(
               await bridge.request(
@@ -10158,11 +10320,18 @@ export async function buildApp({
               ),
             );
             await recordRuntimeTokenUsage(
-              `git-agent:${generationId}`,
+              gitUsageKey,
               request.params.projectId,
               null,
               runtime,
               result.measuredUsage,
+              {
+                workerId: context.workerId,
+                turnId: result.turnId,
+                executionAttemptId: gitAttemptId,
+                attemptKind: "git-agent",
+                attemptStatus: "completed",
+              },
             );
             generated = gitAgentDraftModelOutputSchema.parse(
               result.structuredResult,
@@ -10170,6 +10339,22 @@ export async function buildApp({
             selectedRuntime = runtime;
             break;
           } catch (error) {
+            const failedAt = new Date();
+            await recordRuntimeTokenUsage(
+              gitUsageKey,
+              request.params.projectId,
+              null,
+              runtime,
+              undefined,
+              {
+                workerId: context.workerId,
+                executionAttemptId: gitAttemptId,
+                attemptKind: "git-agent",
+                attemptStatus: "failed",
+                completedAt: failedAt,
+                finalizedAt: failedAt,
+              },
+            );
             lastError = error;
           }
         }
@@ -18280,6 +18465,14 @@ export async function buildApp({
             context.chatId,
             runtime,
             entry.activity.last,
+            {
+              workerId: context.workerId,
+              turnId: usageTurnId,
+              executionAttemptId: `console-sync:${context.chatId}:${usageTurnId}`,
+              attemptKind: "console-sync",
+              attemptStatus:
+                sync.status === "running" ? "running" : "completed",
+            },
           );
         }
         await upsertLiveChatMessage(

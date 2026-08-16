@@ -4313,22 +4313,22 @@ describe("local server foundation", () => {
     );
     expect(projectUsage.total).toEqual({
       inputTokens: 800,
-      outputTokens: 400,
-      totalTokens: 1_200,
+      outputTokens: 300,
+      totalTokens: 1_100,
     });
-    expect(projectUsage.daily.at(-1)).toMatchObject({ totalTokens: 1_200 });
+    expect(projectUsage.daily.at(-1)).toMatchObject({ totalTokens: 1_100 });
     expect(projectUsage.providers).toContainEqual(
       expect.objectContaining({
         id: provider.id,
         name: "Edited test provider",
-        totalTokens: 1_200,
+        totalTokens: 1_100,
       }),
     );
     expect(projectUsage.models).toContainEqual(
       expect.objectContaining({
         id: selectedModel.id,
         name: "Edited test model",
-        totalTokens: 1_200,
+        totalTokens: 1_100,
       }),
     );
     await firstDatabase.repository.recordTokenUsage(LOCAL_USER_ID, {
@@ -4356,9 +4356,9 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(refreshedProjectUsage.total).toEqual({
-      inputTokens: 850,
-      outputTokens: 450,
-      totalTokens: 1_300,
+      inputTokens: 1_650,
+      outputTokens: 600,
+      totalTokens: 2_250,
     });
     const usageSettings = settingsBundleSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/settings" })).json(),
