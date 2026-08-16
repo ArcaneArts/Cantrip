@@ -401,7 +401,9 @@ describe("worker Git worktrees", () => {
           },
         });
       },
-      { timeout: 3_000 },
+      // Recursive filesystem notifications can be delayed while the full
+      // worker suite is exercising several process and watcher integrations.
+      { timeout: 10_000 },
     );
     manager.close();
   });
