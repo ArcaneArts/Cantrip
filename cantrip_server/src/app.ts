@@ -1329,6 +1329,16 @@ export async function buildApp({
     notification: WorkerNotification,
   ): Promise<void> => {
     if (notification.type === "chat.turn.outcome") {
+      app.log.info(
+        {
+          chatId: notification.chatId,
+          clientMessageId: notification.clientMessageId,
+          executionLaneId: notification.executionLaneId,
+          outcome: notification.outcome.ok ? "completed" : "failed",
+          workerId,
+        },
+        "Received durable agent turn outcome",
+      );
       const key = `${workerId}:${notification.chatId}:${notification.clientMessageId}`;
       const existing = chatTurnOutcomeRecoveryTimers.get(key);
       if (existing) clearTimeout(existing);
@@ -19882,6 +19892,11 @@ export async function buildApp({
         socket.close(1008, "Worker identity mismatch");
         return;
       }
+      // Subscribe before attaching the socket. A reconnecting worker flushes
+      // buffered command outcomes as soon as the WebSocket opens, so attaching
+      // first leaves a race where the bridge receives a valid outcome before
+      // the application has registered its persistence listener.
+      ensureWorkerNotificationSubscription(workerAuth.ownerId, workerId);
       try {
         await bridge.attach(workerId, socket, workerAuth.ownerId);
       } catch (error) {
@@ -19945,7 +19960,6 @@ export async function buildApp({
           "Could not reconcile terminal services",
         );
       });
-      ensureWorkerNotificationSubscription(workerAuth.ownerId, workerId);
       scheduleWorkerWorktreeObservation(workerId);
       void resumePendingWorktreeTransitionsForWorker(
         workerAuth.ownerId,

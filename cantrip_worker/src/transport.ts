@@ -40,6 +40,7 @@ const MAX_BUFFERED_NOTIFICATION_BYTES = 1 * 1_024 * 1_024;
 const MAX_BUFFERED_COMMAND_BYTES = 8 * 1_024 * 1_024;
 const TUNNEL_DATA_PLANE_LOW_WATER_BYTES = 256 * 1_024;
 const DEFAULT_KEEPALIVE_INTERVAL_MS = 20_000;
+type CommandEnvelopeDelivery = "sent" | "queued" | "dropped";
 
 function rawDataBytes(data: RawData): Uint8Array {
   if (Array.isArray(data)) return Buffer.concat(data);
@@ -214,17 +215,17 @@ export class WorkerConnection {
     this.#keepaliveTimer = null;
   }
 
-  private sendCommandEnvelope(envelope: string): void {
+  private sendCommandEnvelope(envelope: string): CommandEnvelopeDelivery {
     const socket = this.#socket;
     if (socket?.readyState === WebSocket.OPEN) {
       try {
         socket.send(envelope);
-        return;
+        return "sent";
       } catch {
         // Preserve the command result for the reconnecting channel below.
       }
     }
-    if (this.#closed || this.#authenticationRejected) return;
+    if (this.#closed || this.#authenticationRejected) return "dropped";
     const bytes = Buffer.byteLength(envelope);
     while (
       this.#pendingCommandEnvelopes.length > 0 &&
@@ -233,13 +234,42 @@ export class WorkerConnection {
       const removed = this.#pendingCommandEnvelopes.shift()!;
       this.#pendingCommandBytes -= Buffer.byteLength(removed);
     }
-    if (bytes > MAX_BUFFERED_COMMAND_BYTES) return;
+    if (bytes > MAX_BUFFERED_COMMAND_BYTES) return "dropped";
     this.#pendingCommandEnvelopes.push(envelope);
     this.#pendingCommandBytes += bytes;
+    return "queued";
   }
 
-  private sendServerEnvelope(envelope: WorkerServerEnvelope): void {
-    this.sendCommandEnvelope(encodeWorkerServerEnvelope(envelope));
+  private sendServerEnvelope(
+    envelope: WorkerServerEnvelope,
+  ): CommandEnvelopeDelivery {
+    return this.sendCommandEnvelope(encodeWorkerServerEnvelope(envelope));
+  }
+
+  private dispatchChatTurnOutcome(
+    request: WorkerRequestEnvelope,
+    command: Extract<WorkerCommand, { type: "chat.turn" }>,
+    outcome: Extract<
+      WorkerNotification,
+      { type: "chat.turn.outcome" }
+    >["outcome"],
+  ): void {
+    const delivery = this.sendServerEnvelope({
+      kind: "notification",
+      notification: {
+        type: "chat.turn.outcome",
+        chatId: command.chatId,
+        clientMessageId: command.clientMessageId,
+        executionLaneId: command.executionLaneId,
+        worktreeId: command.worktreeId,
+        outcome,
+      },
+    });
+    workerLogger.info("Codex outcome dispatched for durable recovery", {
+      ...commandLogContext(request),
+      delivery,
+      outcome: outcome.ok ? "completed" : "failed",
+    });
   }
 
   private flushCommandEnvelopes(socket: WebSocket): void {
@@ -379,16 +409,9 @@ export class WorkerConnection {
       if (request.command.type === "chat.turn") {
         const parsedResult = agentTurnResultSchema.safeParse(result);
         if (parsedResult.success) {
-          this.sendServerEnvelope({
-            kind: "notification",
-            notification: {
-              type: "chat.turn.outcome",
-              chatId: request.command.chatId,
-              clientMessageId: request.command.clientMessageId,
-              executionLaneId: request.command.executionLaneId,
-              worktreeId: request.command.worktreeId,
-              outcome: { ok: true, result: parsedResult.data },
-            },
+          this.dispatchChatTurnOutcome(request, request.command, {
+            ok: true,
+            result: parsedResult.data,
           });
         } else {
           workerLogger.error("Codex command returned an invalid result", {
@@ -423,16 +446,9 @@ export class WorkerConnection {
         },
       });
       if (request.command.type === "chat.turn") {
-        this.sendServerEnvelope({
-          kind: "notification",
-          notification: {
-            type: "chat.turn.outcome",
-            chatId: request.command.chatId,
-            clientMessageId: request.command.clientMessageId,
-            executionLaneId: request.command.executionLaneId,
-            worktreeId: request.command.worktreeId,
-            outcome: { ok: false, error: message },
-          },
+        this.dispatchChatTurnOutcome(request, request.command, {
+          ok: false,
+          error: message,
         });
       }
     }
