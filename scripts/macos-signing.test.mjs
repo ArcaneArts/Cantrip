@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,6 +17,7 @@ import {
   signMacosRuntime,
 } from "./sign-macos-runtime.mjs";
 import { notarizeMacosDistribution } from "./notarize-macos-distribution.mjs";
+import { signMacosDiskImages } from "./sign-macos-disk-images.mjs";
 import { verifyMacosDistribution } from "./verify-macos-distribution.mjs";
 
 const thinMachO = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]);
@@ -72,6 +80,63 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
         .find((call) => call.at(-1) === node)
         .includes("--entitlements"),
     );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("signs generated disk images after Tauri packaging", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-sign-dmg-"));
+  try {
+    const first = path.join(root, "dmg", "Cantrip.dmg");
+    const second = path.join(root, "nested", "Cantrip Preview.dmg");
+    await mkdir(path.dirname(first), { recursive: true });
+    await mkdir(path.dirname(second), { recursive: true });
+    await writeFile(first, "dmg");
+    await writeFile(second, "dmg");
+
+    const certificateCalls = [];
+    assert.deepEqual(
+      await signMacosDiskImages({
+        bundleDirectory: root,
+        identity: "Developer ID Application: Cantrip Test (TEAMID)",
+        run: (command, arguments_) =>
+          certificateCalls.push({ command, arguments_ }),
+      }),
+      [first, second],
+    );
+    assert.equal(certificateCalls.length, 4);
+    assert.equal(
+      certificateCalls
+        .filter(({ command }) => command === "codesign")
+        .every(({ arguments_ }) => arguments_.includes("--timestamp")),
+      true,
+    );
+    assert.equal(
+      certificateCalls.filter(({ command }) => command === "xattr").length,
+      2,
+    );
+
+    const adhocCalls = [];
+    await signMacosDiskImages({
+      bundleDirectory: root,
+      identity: "-",
+      run: (command, arguments_) => adhocCalls.push({ command, arguments_ }),
+    });
+    assert.equal(adhocCalls.length, 4);
+    assert.equal(
+      adhocCalls.some(({ arguments_ }) => arguments_.includes("--timestamp")),
+      false,
+    );
+
+    const packageScript = await readFile(
+      new URL("./package-app.mjs", import.meta.url),
+      "utf8",
+    );
+    const build = packageScript.indexOf('"tauri:build"');
+    const sign = packageScript.indexOf('"sign-macos-disk-images.mjs"');
+    const verify = packageScript.indexOf('"verify-macos-distribution.mjs"');
+    assert.ok(build >= 0 && sign > build && verify > sign);
   } finally {
     await rm(root, { force: true, recursive: true });
   }
