@@ -16,8 +16,11 @@ export const DIALOG_CONTENT_CLASS_NAME =
 export function DialogContent({
   children,
   className,
+  showClose = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  showClose?: boolean;
+}) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
@@ -28,10 +31,12 @@ export function DialogContent({
           {...props}
         >
           {children}
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-            <X className="size-4" />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
+          {showClose ? (
+            <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          ) : null}
         </DialogPrimitive.Content>
       </div>
     </DialogPrimitive.Portal>

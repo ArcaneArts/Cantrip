@@ -357,6 +357,13 @@ export const serverBootstrapSchema = z.object({
   }),
 });
 
+export const desktopUpdateActiveWorkSummarySchema = z.object({
+  activeChats: z.number().int().nonnegative().max(4_294_967_295),
+  queuedPrompts: z.number().int().nonnegative().max(4_294_967_295),
+  terminalServices: z.number().int().nonnegative().max(4_294_967_295),
+  backgroundJobs: z.number().int().nonnegative().max(4_294_967_295),
+});
+
 export const codexRuntimeMethodStateSchema = z.enum([
   "available",
   "unavailable",
@@ -8611,6 +8618,9 @@ export type MobileSignInGrantExchange = z.infer<
 export type MobileSignInQrPayload = z.infer<typeof mobileSignInQrPayloadSchema>;
 export type AuthLogoutAllResult = z.infer<typeof authLogoutAllResultSchema>;
 export type ServerBootstrap = z.infer<typeof serverBootstrapSchema>;
+export type DesktopUpdateActiveWorkSummary = z.infer<
+  typeof desktopUpdateActiveWorkSummarySchema
+>;
 export type CantripVersion = z.infer<typeof cantripVersionSchema>;
 export type CodexRuntimeMethodState = z.infer<
   typeof codexRuntimeMethodStateSchema

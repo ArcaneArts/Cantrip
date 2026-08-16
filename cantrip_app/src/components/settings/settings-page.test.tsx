@@ -36,6 +36,7 @@ describe("account settings", () => {
     const general = renderSettings("general");
     expect(general).toContain("System follows the operating system.");
     expect(general).toContain("Search general settings");
+    expect(general).not.toContain("Cantrip updates");
     expect(general).not.toContain(
       "Logical models with ordered provider failover routes.",
     );
