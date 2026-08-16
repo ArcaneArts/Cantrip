@@ -240,17 +240,72 @@ async function readRequestBody(
   return Buffer.concat(chunks);
 }
 
+interface GrokProxyRequestIdentity {
+  conversationId: string;
+  modelId: string | null;
+  requestId: string;
+  sessionId: string;
+}
+
+function proxyRequestIdentity(
+  body: Buffer | undefined,
+  fallbackConversationId: string,
+): GrokProxyRequestIdentity {
+  let payload: Record<string, unknown> = {};
+  if (body?.byteLength) {
+    try {
+      const parsed = JSON.parse(body.toString("utf8")) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        payload = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Preserve and forward non-JSON request bodies without modification.
+    }
+  }
+  const clientMetadata =
+    payload.client_metadata &&
+    typeof payload.client_metadata === "object" &&
+    !Array.isArray(payload.client_metadata)
+      ? (payload.client_metadata as Record<string, unknown>)
+      : {};
+  const promptCacheKey =
+    typeof payload.prompt_cache_key === "string" &&
+    payload.prompt_cache_key.trim()
+      ? payload.prompt_cache_key.trim()
+      : null;
+  const conversationId =
+    stringField(clientMetadata, "thread_id") ??
+    promptCacheKey ??
+    fallbackConversationId;
+  return {
+    conversationId,
+    modelId:
+      typeof payload.model === "string" && payload.model.trim()
+        ? payload.model.trim()
+        : null,
+    requestId: stringField(clientMetadata, "turn_id") ?? randomUUID(),
+    sessionId:
+      stringField(clientMetadata, "session_id") ??
+      promptCacheKey ??
+      conversationId,
+  };
+}
+
 /**
  * Talks to xAI's subscription API using an injected access-token source. The
  * source may be legacy local storage or a server lease; proxy and header
  * behavior remain identical in either case.
  */
 export class GrokSubscriptionClient {
+  readonly #agentId = randomUUID();
   readonly #clientVersion: string;
+  readonly #fallbackConversationId = randomUUID();
   readonly #fetch: typeof fetch;
+  readonly #nextTurnIndexByConversation = new Map<string, number>();
   readonly #now: () => number;
   readonly #proxyBaseUrl: string;
   readonly #proxyPathToken = randomUUID();
+  readonly #turnIndexByRequest = new Map<string, number>();
   #proxyServer: Server | null = null;
   #proxyStarting: Promise<string> | null = null;
   #weeklyUsageCache: {
@@ -331,6 +386,8 @@ export class GrokSubscriptionClient {
   close(): void {
     this.#proxyServer?.close();
     this.#proxyServer = null;
+    this.#nextTurnIndexByConversation.clear();
+    this.#turnIndexByRequest.clear();
     this.#weeklyUsageCache = null;
   }
 
@@ -376,7 +433,10 @@ export class GrokSubscriptionClient {
     headers.set("x-grok-client-identifier", "cantrip");
     headers.set("x-grok-client-mode", "interactive");
     headers.set("x-authenticateresponse", "authenticate-response");
-    if (credential.userId) headers.set("x-userid", credential.userId);
+    if (credential.userId) {
+      headers.set("x-userid", credential.userId);
+      headers.set("x-grok-user-id", credential.userId);
+    }
     if (credential.email) headers.set("x-email", credential.email);
     return headers;
   }
@@ -463,6 +523,13 @@ export class GrokSubscriptionClient {
           "x-grok-client-identifier",
           "x-grok-client-mode",
           "x-grok-client-version",
+          "x-grok-conv-id",
+          "x-grok-agent-id",
+          "x-grok-model-override",
+          "x-grok-req-id",
+          "x-grok-session-id",
+          "x-grok-turn-idx",
+          "x-grok-user-id",
           "x-userid",
           "x-xai-token-auth",
         ].includes(name.toLowerCase())
@@ -472,6 +539,28 @@ export class GrokSubscriptionClient {
       headers.set(name, Array.isArray(value) ? value.join(", ") : value);
     }
     const body = await readRequestBody(request);
+    const identity = proxyRequestIdentity(body, this.#fallbackConversationId);
+    const turnKey = `${identity.conversationId}\u0000${identity.requestId}`;
+    let turnIndex = this.#turnIndexByRequest.get(turnKey);
+    if (turnIndex === undefined) {
+      turnIndex =
+        this.#nextTurnIndexByConversation.get(identity.conversationId) ?? 0;
+      this.#turnIndexByRequest.set(turnKey, turnIndex);
+      this.#nextTurnIndexByConversation.set(
+        identity.conversationId,
+        turnIndex + 1,
+      );
+    }
+    // Grok binds encrypted reasoning state to this request identity. Keep it
+    // stable across every model/tool continuation in the same Codex turn.
+    headers.set("x-grok-agent-id", this.#agentId);
+    headers.set("x-grok-conv-id", identity.conversationId);
+    headers.set("x-grok-req-id", identity.requestId);
+    headers.set("x-grok-session-id", identity.sessionId);
+    headers.set("x-grok-turn-idx", String(turnIndex));
+    if (identity.modelId) {
+      headers.set("x-grok-model-override", identity.modelId);
+    }
     return this.request(
       `${new URL(this.#proxyBaseUrl).origin}${upstreamPath}${requestUrl.search}`,
       {
