@@ -188,6 +188,32 @@ describe("worker channel JSON codec", () => {
     ).toEqual({ data: response, success: true });
   });
 
+  it("round-trips durable agent turn outcomes", () => {
+    const notification = workerNotificationEnvelopeSchema.parse({
+      kind: "notification",
+      notification: {
+        type: "chat.turn.outcome",
+        chatId: "chat-1",
+        clientMessageId: "message-1",
+        executionLaneId: "lane-1",
+        worktreeId: "worktree-1",
+        outcome: {
+          ok: true,
+          result: {
+            threadId: "thread-1",
+            turnId: "turn-1",
+            text: "Completed",
+            status: "completed",
+          },
+        },
+      },
+    });
+
+    expect(
+      decodeWorkerServerEnvelope(encodeWorkerServerEnvelope(notification)),
+    ).toEqual({ data: notification, success: true });
+  });
+
   it("distinguishes invalid JSON from an invalid worker envelope", () => {
     expect(decodeWorkerServerEnvelope("{")).toEqual({
       reason: "invalid-json",

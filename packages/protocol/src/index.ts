@@ -8620,6 +8620,23 @@ export const workerEventEnvelopeSchema = z.object({
 
 export const workerNotificationSchema = z.discriminatedUnion("type", [
   z.object({
+    type: z.literal("chat.turn.outcome"),
+    chatId: z.string().min(1),
+    clientMessageId: z.string().min(1),
+    executionLaneId: z.string().min(1),
+    worktreeId: z.string().min(1),
+    outcome: z.discriminatedUnion("ok", [
+      z.object({
+        ok: z.literal(true),
+        result: agentTurnResultSchema,
+      }),
+      z.object({
+        ok: z.literal(false),
+        error: z.string().min(1),
+      }),
+    ]),
+  }),
+  z.object({
     type: z.literal("worktree.inventory.observed"),
     sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
     inventory: worktreeInventorySchema,

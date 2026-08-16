@@ -44,6 +44,7 @@ export function codexProviderConfiguration(
       `model_providers.cantrip_runtime.name=${JSON.stringify(provider.name)}`,
       `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
       'model_providers.cantrip_runtime.wire_api="responses"',
+      ...(provider.kind === "grok" ? ['web_search="disabled"'] : []),
       ...(provider.apiKey
         ? ['model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"']
         : []),

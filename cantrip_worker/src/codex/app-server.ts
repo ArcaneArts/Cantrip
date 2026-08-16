@@ -1280,6 +1280,25 @@ export function parseCodexSkills(response: unknown, cwd: string): CodexSkill[] {
   );
 }
 
+export function parsePermissionProfileList(response: unknown) {
+  const data =
+    response && typeof response === "object"
+      ? (response as { data?: unknown }).data
+      : undefined;
+  if (!Array.isArray(data)) return [];
+  return permissionProfileCapabilitySchema.shape.profiles.parse(
+    data.map((candidate) => {
+      if (!candidate || typeof candidate !== "object") return candidate;
+      const profile = candidate as Record<string, unknown>;
+      return {
+        ...profile,
+        description:
+          typeof profile.description === "string" ? profile.description : "",
+      };
+    }),
+  );
+}
+
 export type CompactAgentThreadOptions = Pick<
   RunAgentTurnOptions,
   "cwd" | "model" | "permissionProfileId" | "provider"
@@ -2597,11 +2616,7 @@ export class CodexAppServer implements CodexRuntime {
         cursor,
         limit: 100,
       })) as { data?: unknown; nextCursor?: unknown };
-      profiles.push(
-        ...permissionProfileCapabilitySchema.shape.profiles.parse(
-          response.data,
-        ),
-      );
+      profiles.push(...parsePermissionProfileList(response));
       cursor =
         typeof response.nextCursor === "string" ? response.nextCursor : null;
     } while (cursor);

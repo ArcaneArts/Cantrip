@@ -32,6 +32,7 @@ import {
   normalizeTokenUsageActivity,
   parseCodexRpcMessage,
   parseCodexSkills,
+  parsePermissionProfileList,
   parseWorkflowStructuredResult,
   planQuestionId,
   workflowMeasuredUsage,
@@ -881,6 +882,22 @@ describe("parseCodexSkills", () => {
         displayName: "Skill Creator",
         path: "/skills/skill-creator/SKILL.md",
       },
+    ]);
+  });
+});
+
+describe("parsePermissionProfileList", () => {
+  it("normalizes null Codex descriptions without rejecting the capability", () => {
+    expect(
+      parsePermissionProfileList({
+        data: [
+          { id: ":workspace", description: null, allowed: true },
+          { id: ":read-only", description: "Read only", allowed: true },
+        ],
+      }),
+    ).toEqual([
+      { id: ":workspace", description: "", allowed: true },
+      { id: ":read-only", description: "Read only", allowed: true },
     ]);
   });
 });
