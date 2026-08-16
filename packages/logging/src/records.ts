@@ -17,6 +17,12 @@ export type ServiceLogRecordInput = {
   context?: unknown;
 };
 
+export type NormalizedLogError = {
+  code?: string;
+  message: string;
+  name: string;
+};
+
 export type ServiceLogRecord = ServiceLogRecordInput & {
   cursor: number;
 };
@@ -60,12 +66,12 @@ const LEVEL_WEIGHT: Record<ServiceLogLevel, number> = {
 };
 
 const SECRET_FIELD_SEGMENT =
-  /^(?:authorization|cookie|password|passwd|passphrase|secret|api-key|apikey|token|access-token|refresh-token|bearer-token|private-key|credential|pairing-code|enrollment-code)$/iu;
+  /^(?:authorization|proxy-authorization|cookie|set-cookie|password|passwd|passphrase|secret|client-secret|api-key|apikey|token|access-token|refresh-token|id-token|bearer-token|provider-token|private-key|credential|csrf|csrf-token|xsrf-token|device-code|oauth-code|pairing-code|enrollment-code|signed-url)$/iu;
 const AUTH_HEADER =
   /\bauthorization(\s*[=:]\s*)(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+/giu;
 const AUTH_VALUE = /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]+/giu;
 const NAMED_SECRET =
-  /\b(authorization|cookie|password|passwd|passphrase|secret|api[_-]?key|apikey|token|access[_-]?token|refresh[_-]?token|private[_-]?key|pairing[_-]?code|enrollment[_-]?code)(\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}&]+)/giu;
+  /\b(authorization|proxy[_-]?authorization|cookie|set[_-]?cookie|password|passwd|passphrase|secret|client[_-]?secret|api[_-]?key|apikey|token|access[_-]?token|refresh[_-]?token|id[_-]?token|provider[_-]?token|private[_-]?key|credential|csrf(?:[_-]?token)?|xsrf[_-]?token|device[_-]?code|oauth[_-]?code|pairing[_-]?code|enrollment[_-]?code|signed[_-]?url)(\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}&]+)/giu;
 const PROVIDER_TOKEN =
   /\b(?:sk|gh[opusr]|xox[baprs]|pat)[-_][A-Za-z0-9_-]{8,}\b/gu;
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/giu;
@@ -135,6 +141,46 @@ export function sanitizeLogText(value: string): string {
   );
 }
 
+function errorCode(value: unknown): string | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  return sanitizeLogText(String(value));
+}
+
+/**
+ * Converts thrown values to stable, bounded metadata. Stacks and causes are
+ * deliberately excluded: they commonly contain paths, command arguments, and
+ * provider payload fragments that do not belong in remotely readable logs.
+ */
+export function normalizeLogError(error: unknown): NormalizedLogError {
+  if (error instanceof Error) {
+    const candidateCode = Reflect.get(error, "code");
+    const code = errorCode(candidateCode);
+    return {
+      name: sanitizeLogText(error.name || "Error"),
+      message: sanitizeLogText(error.message || "Unknown error"),
+      ...(code ? { code } : {}),
+    };
+  }
+  if (error && typeof error === "object") {
+    const name = Reflect.get(error, "name");
+    const message = Reflect.get(error, "message");
+    const code = errorCode(Reflect.get(error, "code"));
+    return {
+      name: sanitizeLogText(typeof name === "string" ? name : "Error"),
+      message: sanitizeLogText(
+        typeof message === "string" ? message : "Unknown error",
+      ),
+      ...(code ? { code } : {}),
+    };
+  }
+  return {
+    name: "Error",
+    message: sanitizeLogText(
+      error === undefined ? "Unknown error" : String(error),
+    ),
+  };
+}
+
 function sanitizeUnknown(
   value: unknown,
   depth: number,
@@ -153,11 +199,7 @@ function sanitizeUnknown(
   if (value instanceof Date) return value.toISOString();
   if (depth >= MAX_CONTEXT_DEPTH) return "[Truncated]";
   if (value instanceof Error) {
-    return {
-      name: sanitizeLogText(value.name),
-      message: sanitizeLogText(value.message),
-      ...(value.stack ? { stack: sanitizeLogText(value.stack) } : {}),
-    };
+    return normalizeLogError(value);
   }
   if (typeof value !== "object") return sanitizeLogText(String(value));
   if (seen.has(value)) return "[Circular]";

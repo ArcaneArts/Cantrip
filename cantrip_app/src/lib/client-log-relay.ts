@@ -5,6 +5,10 @@ import {
   type ServiceLogReadOptions,
   type ServiceLogReadResult,
 } from "@cantrip/logging/records";
+import {
+  createServiceLogEmitter,
+  type OperationalLogContext,
+} from "@cantrip/logging/core";
 
 type ClientConsoleLevel = "debug" | "error" | "info" | "log" | "trace" | "warn";
 
@@ -13,6 +17,10 @@ const captureState = globalThis as typeof globalThis & {
   __CANTRIP_CLIENT_LOG_CAPTURE__?: {
     buffer: ServiceLogBuffer;
     installed: boolean;
+    originalConsole?: Record<
+      ClientConsoleLevel,
+      (...values: unknown[]) => void
+    >;
   };
 };
 
@@ -25,8 +33,7 @@ function state() {
 
 function serializeLogValue(value: unknown): string {
   if (typeof value === "string") return value;
-  if (value instanceof Error)
-    return value.stack ?? `${value.name}: ${value.message}`;
+  if (value instanceof Error) return `${value.name}: ${value.message}`;
   if (typeof value === "bigint") return `${value.toString()}n`;
   if (typeof value === "symbol" || typeof value === "function") {
     return String(value);
@@ -40,7 +47,6 @@ function serializeLogValue(value: unknown): string {
           return {
             message: item.message,
             name: item.name,
-            stack: item.stack,
           };
         }
         if (typeof item === "bigint") return `${item.toString()}n`;
@@ -71,6 +77,43 @@ function serviceLevel(level: ClientConsoleLevel): ServiceLogLevel {
   if (level === "warn") return "warn";
   if (level === "debug" || level === "trace") return "debug";
   return "info";
+}
+
+function consoleLevel(level: ServiceLogLevel): ClientConsoleLevel {
+  if (level === "fatal" || level === "error") return "error";
+  if (level === "warn") return "warn";
+  if (level === "debug") return "debug";
+  if (level === "trace") return "trace";
+  return "info";
+}
+
+function clientConsoleLine(
+  level: ServiceLogLevel,
+  message: string,
+  context?: unknown,
+): string {
+  const label = level === "info" ? "" : ` ${level.toUpperCase()}`;
+  const suffix =
+    context === undefined ? "" : ` ${formatClientLogArguments([context])}`;
+  return `[client]${label} ${message}${suffix}`;
+}
+
+/** Deliberate operational logger. Its sanitized record feeds console and Logs. */
+export const clientLogger = createServiceLogEmitter("client", {
+  onRecord: (record) => state().buffer.append(record),
+  output: (record) => {
+    const level = consoleLevel(record.level);
+    const writer = state().originalConsole?.[level] ?? console[level];
+    writer(clientConsoleLine(record.level, record.message, record.context));
+  },
+});
+
+export function logClientEvent(
+  level: ServiceLogLevel,
+  message: string,
+  context: OperationalLogContext,
+): void {
+  clientLogger.event(level, message, context);
 }
 
 export function recordClientLog(
@@ -113,11 +156,13 @@ export function installClientLogCapture(): void {
     trace: console.trace.bind(console),
     warn: console.warn.bind(console),
   };
+  current.originalConsole = originalConsole;
 
   for (const level of Object.keys(originalConsole) as ClientConsoleLevel[]) {
     console[level] = (...values: unknown[]) => {
-      originalConsole[level](...values);
-      recordClientLog(level, values);
+      const sanitizedValues = values.map(sanitizeLogContext);
+      originalConsole[level](...sanitizedValues);
+      recordClientLog(level, sanitizedValues);
     };
   }
 

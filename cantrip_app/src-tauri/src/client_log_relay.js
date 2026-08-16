@@ -17,7 +17,7 @@
   const serialize = (value, seen = new WeakSet()) => {
     if (typeof value === "string") return value;
     if (value instanceof Error) {
-      return value.stack || `${value.name}: ${value.message}`;
+      return `${value.name}: ${value.message}`;
     }
     if (typeof value === "bigint") return `${value.toString()}n`;
     if (typeof value === "symbol" || typeof value === "function") {
@@ -31,7 +31,6 @@
             return {
               message: item.message,
               name: item.name,
-              stack: item.stack,
             };
           }
           if (typeof item === "bigint") return `${item.toString()}n`;
@@ -52,7 +51,7 @@
   };
 
   const secretName = (value) =>
-    /^(?:authorization|cookie|password|passwd|passphrase|secret|api[-_]?key|apikey|token|access[-_]?token|refresh[-_]?token|private[-_]?key|credential|pairing[-_]?code|enrollment[-_]?code)$/iu.test(
+    /^(?:authorization|proxy[-_]?authorization|cookie|set[-_]?cookie|password|passwd|passphrase|secret|client[-_]?secret|api[-_]?key|apikey|token|access[-_]?token|refresh[-_]?token|id[-_]?token|provider[-_]?token|private[-_]?key|credential|csrf(?:[-_]?token)?|xsrf[-_]?token|device[-_]?code|oauth[-_]?code|pairing[-_]?code|enrollment[-_]?code|signed[-_]?url)$/iu.test(
       value,
     );
 
@@ -83,7 +82,7 @@
         (_match, separator) => `Authorization${separator}[REDACTED]`,
       )
       .replace(
-        /\b(authorization|cookie|password|passwd|passphrase|secret|api[_-]?key|apikey|token|access[_-]?token|refresh[_-]?token|private[_-]?key|pairing[_-]?code|enrollment[_-]?code)(["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}&]+)/giu,
+        /\b(authorization|proxy[_-]?authorization|cookie|set[_-]?cookie|password|passwd|passphrase|secret|client[_-]?secret|api[_-]?key|apikey|token|access[_-]?token|refresh[_-]?token|id[_-]?token|provider[_-]?token|private[_-]?key|credential|csrf(?:[_-]?token)?|xsrf[_-]?token|device[_-]?code|oauth[_-]?code|pairing[_-]?code|enrollment[_-]?code|signed[_-]?url)(["']?\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;}&]+)/giu,
         (_match, name, separator) => `${name}${separator}"[REDACTED]"`,
       )
       .replace(
@@ -161,8 +160,9 @@
 
   for (const level of Object.keys(originalConsole)) {
     console[level] = (...values) => {
-      originalConsole[level](...values);
-      relayClientLog(level, values, callerSource());
+      const sanitized = format(values);
+      originalConsole[level](sanitized);
+      relayClientLog(level, [sanitized], callerSource());
     };
   }
 

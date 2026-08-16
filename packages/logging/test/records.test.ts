@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeLogError,
   sanitizeLogContext,
   sanitizeLogText,
   ServiceLogBuffer,
@@ -41,6 +42,24 @@ describe("structured service logs", () => {
   it("strips terminal control sequences while preserving readable text", () => {
     expect(sanitizeLogText("\u001b[31merror\u001b[0m\u0000 ok")).toBe(
       "error ok",
+    );
+  });
+
+  it("normalizes errors without stacks, causes, or secret-bearing fields", () => {
+    const error = Object.assign(new Error("oauthCode=private-value"), {
+      code: "AUTH_FAILED",
+      cause: { accessToken: "unsafe" },
+    });
+    expect(normalizeLogError(error)).toEqual({
+      name: "Error",
+      message: "oauthCode=[REDACTED]",
+      code: "AUTH_FAILED",
+    });
+    expect(JSON.stringify(sanitizeLogContext({ error }))).not.toContain(
+      "private-value",
+    );
+    expect(JSON.stringify(sanitizeLogContext({ error }))).not.toContain(
+      "cause",
     );
   });
 

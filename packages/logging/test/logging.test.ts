@@ -96,7 +96,7 @@ describe("service logging", () => {
     expect(formatted).toContain("\u001b[31m503 Service Unavailable\u001b[0m");
   });
 
-  it("emits sanitized structured records without changing console output", () => {
+  it("emits the same sanitized event to console and structured sinks", () => {
     const lines: string[] = [];
     const records: unknown[] = [];
     const logger = createServiceLogger("worker", {
@@ -111,7 +111,7 @@ describe("service logging", () => {
     });
 
     expect(lines).toEqual([
-      "[worker] 22:15: WARN Credential rejected · apiKey=sk-abcdefghijk endpoint=https://example.com?token=secret",
+      "[worker] 22:15: WARN Credential rejected · apiKey=[REDACTED] endpoint=https://example.com/?token=%5BREDACTED%5D",
     ]);
     expect(records).toEqual([
       {
@@ -125,5 +125,49 @@ describe("service logging", () => {
         },
       },
     ]);
+  });
+
+  it("removes query strings from Fastify access logs and records", () => {
+    const lines: string[] = [];
+    const records: Array<{ context?: unknown; message: string }> = [];
+    const stream = createPinoServiceLogStream("server", {
+      colors: false,
+      output: (line) => lines.push(line),
+      onRecord: (record) => records.push(record),
+    });
+    stream.write(
+      `${JSON.stringify({
+        level: 30,
+        time: timestamp.getTime(),
+        reqId: "safe-request-id",
+        req: {
+          method: "GET",
+          url: "/api/providers?access_token=unsafe#private",
+        },
+        msg: "incoming request",
+      })}\n`,
+    );
+    stream.write(
+      `${JSON.stringify({
+        level: 30,
+        time: timestamp.getTime(),
+        reqId: "safe-request-id",
+        res: { statusCode: 200 },
+        responseTime: 2,
+        msg: "request completed",
+      })}\n`,
+    );
+    expect(lines).toEqual([
+      "[server] 22:15: GET /api/providers -> 200 OK (2ms)",
+    ]);
+    expect(JSON.stringify(records)).not.toContain("unsafe");
+    expect(records[0]).toMatchObject({
+      message: "GET /api/providers -> 200 OK (2ms)",
+      context: {
+        event: "http.request.completed",
+        subsystem: "http",
+        requestId: "safe-request-id",
+      },
+    });
   });
 });
