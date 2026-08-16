@@ -2419,7 +2419,13 @@ describe("Cantrip protocol", () => {
         projectIds: ["project-1", "project-2"],
       }),
     ).toEqual({ projectIds: ["project-1", "project-2"] });
+    expect(projectWorkspaceUpdateSchema.parse({ isDefault: true })).toEqual({
+      isDefault: true,
+    });
     expect(() => projectWorkspaceUpdateSchema.parse({})).toThrow();
+    expect(() =>
+      projectWorkspaceUpdateSchema.parse({ isDefault: false }),
+    ).toThrow();
     expect(() =>
       projectWorkspaceSummarySchema.parse({
         id: "workspace-1",

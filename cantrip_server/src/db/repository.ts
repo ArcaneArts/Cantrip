@@ -6947,11 +6947,6 @@ export class ServerRepository {
       .limit(1);
     const workspace = rows[0];
     if (!workspace) return null;
-    if (workspace.isDefault && input.name !== undefined) {
-      throw new ProjectWorkspaceInvariantError(
-        "The Default workspace cannot be renamed.",
-      );
-    }
     const projectIds = input.projectIds
       ? [...new Set(input.projectIds)]
       : undefined;
@@ -6974,13 +6969,31 @@ export class ServerRepository {
       }
     }
     await this.database.transaction(async (transaction) => {
+      const updatedAt = new Date();
+      if (input.isDefault) {
+        await transaction
+          .update(schema.projectWorkspaces)
+          .set({ isDefault: false, updatedAt })
+          .where(
+            and(
+              eq(schema.projectWorkspaces.ownerId, ownerId),
+              eq(schema.projectWorkspaces.isDefault, true),
+            ),
+          );
+      }
       await transaction
         .update(schema.projectWorkspaces)
         .set({
           ...(input.name === undefined ? {} : { name: input.name }),
-          updatedAt: new Date(),
+          ...(input.isDefault ? { isDefault: true } : {}),
+          updatedAt,
         })
-        .where(eq(schema.projectWorkspaces.id, workspaceId));
+        .where(
+          and(
+            eq(schema.projectWorkspaces.id, workspaceId),
+            eq(schema.projectWorkspaces.ownerId, ownerId),
+          ),
+        );
       if (projectIds !== undefined) {
         await transaction
           .delete(schema.projectWorkspaceMemberships)

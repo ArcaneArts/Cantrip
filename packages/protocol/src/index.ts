@@ -1981,9 +1981,13 @@ export const projectWorkspaceUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(80).optional(),
     projectIds: z.array(z.string().min(1)).max(10_000).optional(),
+    isDefault: z.literal(true).optional(),
   })
   .refine(
-    (input) => input.name !== undefined || input.projectIds !== undefined,
+    (input) =>
+      input.name !== undefined ||
+      input.projectIds !== undefined ||
+      input.isDefault !== undefined,
     { message: "At least one workspace field is required." },
   );
 

@@ -2362,25 +2362,56 @@ describe("local server foundation", () => {
       name: "Personal Projects",
       projectIds: [project.id],
     });
+    const renamedDefaultWorkspace = projectWorkspaceSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/workspaces/${defaultWorkspace.id}`,
+          payload: { name: "Main Workspace" },
+        })
+      ).json(),
+    );
+    expect(renamedDefaultWorkspace).toMatchObject({
+      name: "Main Workspace",
+      isDefault: true,
+    });
+    const promotedWorkspace = projectWorkspaceSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/workspaces/${personalWorkspace.id}`,
+          payload: { isDefault: true },
+        })
+      ).json(),
+    );
+    expect(promotedWorkspace).toMatchObject({
+      name: "Personal Projects",
+      isDefault: true,
+    });
+    const updatedWorkspaces = projectWorkspaceListSchema.parse(
+      (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
+    );
+    expect(updatedWorkspaces.filter(({ isDefault }) => isDefault)).toEqual([
+      expect.objectContaining({ id: personalWorkspace.id }),
+    ]);
     expect(
-      projectWorkspaceListSchema
-        .parse(
-          (
-            await firstApp.inject({ method: "GET", url: "/api/workspaces" })
-          ).json(),
-        )
-        .filter(({ projectIds }) => projectIds.includes(project.id)),
+      updatedWorkspaces.find(({ id }) => id === defaultWorkspace.id),
+    ).toMatchObject({ name: "Main Workspace", isDefault: false });
+    expect(
+      updatedWorkspaces.filter(({ projectIds }) =>
+        projectIds.includes(project.id),
+      ),
     ).toHaveLength(2);
     expect(
       await firstApp.inject({
         method: "DELETE",
-        url: `/api/workspaces/${defaultWorkspace.id}`,
+        url: `/api/workspaces/${personalWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 409 });
     expect(
       await firstApp.inject({
         method: "DELETE",
-        url: `/api/workspaces/${personalWorkspace.id}`,
+        url: `/api/workspaces/${defaultWorkspace.id}`,
       }),
     ).toMatchObject({ statusCode: 204 });
     const projectShareResponse = await firstApp.inject({
