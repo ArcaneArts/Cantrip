@@ -23,6 +23,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 #[cfg(desktop)]
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+mod desktop_update;
 mod desktop_worker;
 mod direct_probe;
 mod process_environment;
@@ -36,6 +37,40 @@ use tunnel_forward::TunnelForwards;
 struct ManagedRuntime {
     children: Mutex<Vec<Child>>,
     server_url: String,
+}
+
+#[cfg(desktop)]
+#[derive(Default)]
+struct DesktopShutdownState {
+    complete: Mutex<bool>,
+}
+
+#[cfg(desktop)]
+fn run_shutdown_once(complete: &Mutex<bool>, shutdown: impl FnOnce()) -> bool {
+    let mut complete = complete.lock().unwrap_or_else(|error| error.into_inner());
+    if *complete {
+        return false;
+    }
+    shutdown();
+    *complete = true;
+    true
+}
+
+#[cfg(desktop)]
+pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
+    let shutdown = app.state::<DesktopShutdownState>();
+    run_shutdown_once(&shutdown.complete, || {
+        app.state::<ProjectShareMounts>().cleanup();
+        app.state::<TunnelForwards>().cleanup();
+        app.state::<desktop_worker::DesktopWorkers>().stop_all();
+        let runtime = app.state::<ManagedRuntime>();
+        if let Ok(mut children) = runtime.children.lock() {
+            for child in children.iter_mut().rev() {
+                terminate_child(child);
+            }
+            children.clear();
+        };
+    })
 }
 
 #[cfg(desktop)]
@@ -490,10 +525,22 @@ pub fn run() {
             show_main_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+    #[cfg(all(
+        desktop,
+        not(debug_assertions),
+        any(target_os = "macos", target_os = "windows")
+    ))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    let builder = builder
         .invoke_handler(tauri::generate_handler![
             desktop_autostart_enabled,
             set_desktop_autostart,
+            desktop_update::desktop_update_capability,
+            desktop_update::desktop_update_status,
+            desktop_update::check_desktop_update,
+            desktop_update::install_desktop_update,
+            desktop_update::cancel_desktop_update,
             desktop_worker::list_desktop_workers,
             desktop_worker::list_desktop_worker_candidates,
             desktop_worker::pair_desktop_worker,
@@ -522,8 +569,10 @@ pub fn run() {
             app.manage(desktop_workers);
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
+            app.manage(desktop_update::DesktopUpdateCoordinator::default());
             #[cfg(desktop)]
             {
+                app.manage(DesktopShutdownState::default());
                 app.manage(DesktopExitState::default());
                 setup_tray(app)?;
                 #[cfg(target_os = "macos")]
@@ -588,25 +637,24 @@ pub fn run() {
             }
         }
         if matches!(event, RunEvent::Exit) {
-            handle.state::<ProjectShareMounts>().cleanup();
-            handle.state::<TunnelForwards>().cleanup();
-            handle.state::<desktop_worker::DesktopWorkers>().stop_all();
-            let runtime = handle.state::<ManagedRuntime>();
-            if let Ok(mut children) = runtime.children.lock() {
-                for child in children.iter_mut().rev() {
-                    terminate_child(child);
-                }
-                children.clear();
-            };
+            #[cfg(desktop)]
+            shutdown_owned_runtime(handle);
         }
     });
 }
 
 #[cfg(all(test, desktop))]
 mod tests {
-    use std::{ffi::OsStr, path::Path};
+    use std::{
+        ffi::OsStr,
+        path::Path,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Mutex,
+        },
+    };
 
-    use super::{exit_request_needs_confirmation, node_service_command};
+    use super::{exit_request_needs_confirmation, node_service_command, run_shutdown_once};
 
     #[test]
     fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
@@ -636,5 +684,19 @@ mod tests {
             false,
             Some(tauri::RESTART_EXIT_CODE)
         ));
+    }
+
+    #[test]
+    fn owned_runtime_shutdown_is_idempotent() {
+        let complete = Mutex::new(false);
+        let calls = AtomicUsize::new(0);
+
+        assert!(run_shutdown_once(&complete, || {
+            calls.fetch_add(1, Ordering::SeqCst);
+        }));
+        assert!(!run_shutdown_once(&complete, || {
+            calls.fetch_add(1, Ordering::SeqCst);
+        }));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }
