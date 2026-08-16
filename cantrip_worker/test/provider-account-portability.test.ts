@@ -196,6 +196,32 @@ server.on("connection", (socket) => {
       }));
       return;
     }
+    if (message.method === "account/rateLimits/read") {
+      socket.send(JSON.stringify({
+        id: message.id,
+        result: {
+          rateLimits: {
+            primary: null,
+            secondary: {
+              usedPercent: 24,
+              windowDurationMins: 10080,
+              resetsAt: 1787000000
+            }
+          },
+          rateLimitsByLimitId: {
+            other: {
+              primary: {
+                usedPercent: 100,
+                windowDurationMins: 10080,
+                resetsAt: 1787000000
+              },
+              secondary: null
+            }
+          }
+        }
+      }));
+      return;
+    }
     if (message.method === "thread/start") {
       socket.send(JSON.stringify({
         id: message.id,
@@ -332,9 +358,22 @@ describe("portable provider accounts on a brand-new worker", () => {
           grokUpstreamTokens.push(headers.get("authorization") ?? "");
           expect(headers.get("x-userid")).toBe("grok-user");
           expect(headers.get("x-email")).toBe("grok@example.test");
-          return new URL(String(input)).pathname.endsWith("/models")
-            ? Response.json({ data: [{ id: "grok-code-fast-1" }] })
-            : Response.json({ id: "portable-grok-response" });
+          const url = new URL(String(input));
+          if (url.pathname.endsWith("/models")) {
+            return Response.json({ data: [{ id: "grok-code-fast-1" }] });
+          }
+          if (url.pathname.endsWith("/billing")) {
+            return Response.json({
+              config: {
+                creditUsagePercent: 31,
+                currentPeriod: {
+                  type: "USAGE_PERIOD_TYPE_WEEKLY",
+                  end: "2030-01-08T00:00:00.000Z",
+                },
+              },
+            });
+          }
+          return Response.json({ id: "portable-grok-response" });
         },
       },
     );
@@ -375,9 +414,15 @@ describe("portable provider accounts on a brand-new worker", () => {
     try {
       await expect(
         chatGptCatalog.listChatGptModels(chatGptProvider),
-      ).resolves.toMatchObject({ models: [{ model: "gpt-5.6-sol" }] });
+      ).resolves.toMatchObject({
+        models: [{ model: "gpt-5.6-sol" }],
+        weeklyUsage: { usedPercent: 24 },
+      });
       await expect(grok.listModels()).resolves.toMatchObject({
         models: [{ id: "grok-code-fast-1" }],
+      });
+      await expect(grok.weeklyUsage()).resolves.toMatchObject({
+        usedPercent: 31,
       });
       await expect(
         chatGptRuntime.runTurn(
@@ -399,6 +444,7 @@ describe("portable provider accounts on a brand-new worker", () => {
       expect(await readdir(chatGptHome)).toEqual([]);
       expect(await readdir(grokHome)).toEqual([]);
       expect(grokUpstreamTokens).toEqual([
+        "Bearer grok-access-1",
         "Bearer grok-access-1",
         "Bearer grok-access-1",
       ]);

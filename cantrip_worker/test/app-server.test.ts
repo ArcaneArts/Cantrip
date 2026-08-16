@@ -230,7 +230,11 @@ describe("Codex rich event normalization", () => {
         "turn-1",
         { ...correlation, itemId: null },
       ),
-    ).toMatchObject({ type: "rateLimit", primary: { usedPercent: 42 } });
+    ).toMatchObject({
+      type: "rateLimit",
+      limitId: "codex",
+      primary: { usedPercent: 42 },
+    });
 
     expect(
       normalizeNoticeActivity({

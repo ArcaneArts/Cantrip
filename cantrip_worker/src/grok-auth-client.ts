@@ -15,6 +15,7 @@ import {
   type CodexAuthStatus,
   type CodexDeviceLogin,
   type GrokModelInventory,
+  type ProviderWeeklyUsage,
 } from "@cantrip/protocol";
 
 import {
@@ -206,12 +207,15 @@ export class GrokAuthClient {
         }
       }
     }
+    const weeklyUsage = credential
+      ? await this.#subscription.weeklyUsage()
+      : null;
     return codexAuthStatusSchema.parse({
       authenticated: Boolean(credential),
       authMode: credential ? "grok" : null,
       email: credential?.email ?? null,
       planType: credential?.planType ?? null,
-      weeklyUsage: null,
+      weeklyUsage,
       loginPending: Boolean(this.#pendingLogin),
       loginError: this.#loginError,
     });
@@ -255,6 +259,10 @@ export class GrokAuthClient {
 
   async listModels(): Promise<GrokModelInventory> {
     return this.#subscription.listModels();
+  }
+
+  async weeklyUsage(): Promise<ProviderWeeklyUsage | null> {
+    return this.#subscription.weeklyUsage();
   }
 
   async localProxyBaseUrl(): Promise<string> {

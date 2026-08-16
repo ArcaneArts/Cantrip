@@ -611,6 +611,7 @@ import {
   isAccountProviderKind,
 } from "./models/account-provider.js";
 import { providerAccountAuthStatus } from "./models/provider-account-status.js";
+import { weeklyUsageFromRateLimitActivity } from "./models/provider-account-usage.js";
 import { evaluateModelRouteAvailability } from "./models/model-route-availability.js";
 
 export interface BuildAppOptions {
@@ -5531,11 +5532,10 @@ export async function buildApp({
                     event.activity.type === "rateLimit" &&
                     runtime.provider.accountId
                   ) {
-                    const weekly = [
-                      event.activity.primary,
-                      event.activity.secondary,
-                    ].find(
-                      (window) => window?.windowDurationMins === 7 * 24 * 60,
+                    // Other Codex limit buckets have independent weekly windows;
+                    // only the canonical account quota belongs in provider usage.
+                    const weekly = weeklyUsageFromRateLimitActivity(
+                      event.activity,
                     );
                     if (weekly) {
                       await repository

@@ -131,7 +131,7 @@ import {
 
 type GrokSubscriptionOperations = Pick<
   GrokSubscriptionClient,
-  "listModels" | "localProxyBaseUrl"
+  "listModels" | "localProxyBaseUrl" | "weeklyUsage"
 >;
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
@@ -467,9 +467,13 @@ async function start(): Promise<void> {
           command.provider.credentialHomeKey,
         ).listChatGptModels(command.provider);
       case "model.grok.catalog":
-        return withGrokSubscription(command.provider, (client) =>
-          client.listModels(),
-        );
+        return withGrokSubscription(command.provider, async (client) => {
+          const [inventory, weeklyUsage] = await Promise.all([
+            client.listModels(),
+            client.weeklyUsage(),
+          ]);
+          return { ...inventory, weeklyUsage };
+        });
       case "codex.auth.status":
         return command.providerKind === "grok"
           ? grokFor(command.credentialHomeKey ?? command.providerId).status()

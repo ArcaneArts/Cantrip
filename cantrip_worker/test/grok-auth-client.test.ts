@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GrokAuthClient, normalizeGrokModel } from "../src/grok-auth-client.js";
+import { normalizeGrokWeeklyUsage } from "../src/grok-subscription-client.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -73,6 +74,17 @@ describe("Grok OAuth accounts", () => {
             subscriptionTier: "SuperGrok",
           });
         }
+        if (url.includes("/billing?format=credits")) {
+          return json({
+            config: {
+              creditUsagePercent: 28.5,
+              currentPeriod: {
+                type: "USAGE_PERIOD_TYPE_WEEKLY",
+                end: "2026-08-23T00:00:00.000Z",
+              },
+            },
+          });
+        }
         throw new Error(`Unexpected request: ${url}`);
       },
     });
@@ -94,6 +106,10 @@ describe("Grok OAuth accounts", () => {
         authMode: "grok",
         email: "grok@example.com",
         planType: "SuperGrok",
+        weeklyUsage: {
+          usedPercent: 28.5,
+          resetsAt: 1_787_443_200,
+        },
         loginPending: false,
         loginError: null,
       });
@@ -196,6 +212,28 @@ describe("Grok OAuth accounts", () => {
       supportsReasoning: false,
     });
     expect(normalizeGrokModel({ description: "missing id" })).toBeNull();
+  });
+
+  it("accepts only a bounded active weekly Grok billing period", () => {
+    expect(
+      normalizeGrokWeeklyUsage({
+        config: {
+          creditUsagePercent: 62.5,
+          currentPeriod: {
+            type: "USAGE_PERIOD_TYPE_WEEKLY",
+            end: "2026-08-24T00:00:00.000Z",
+          },
+        },
+      }),
+    ).toEqual({ usedPercent: 62.5, resetsAt: 1_787_529_600 });
+    expect(
+      normalizeGrokWeeklyUsage({
+        config: {
+          creditUsagePercent: 25,
+          currentPeriod: { type: "USAGE_PERIOD_TYPE_MONTHLY" },
+        },
+      }),
+    ).toBeNull();
   });
 
   it("keeps bearer credentials inside a loopback-only subscription proxy", async () => {

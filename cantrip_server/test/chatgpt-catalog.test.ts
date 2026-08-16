@@ -79,6 +79,7 @@ describe("ChatGPT catalog", () => {
             model("internal-preview", { hidden: true }),
           ],
           observedAt: "2026-08-14T12:00:00.000Z",
+          weeklyUsage: { usedPercent: 35, resetsAt: 1_787_000_000 },
         };
       },
       sendSurfaceFrame: () => false,
@@ -190,6 +191,11 @@ describe("ChatGPT catalog", () => {
           ),
         ),
       ).toEqual(new Set([first.id, second!.id]));
+      expect(
+        (
+          await repository.listModelProviderAccounts(LOCAL_USER_ID, provider.id)
+        )?.map(({ weeklyUsageUsedPercent }) => weeklyUsageUsedPercent),
+      ).toEqual([35, 35]);
 
       const profiles = await client.query<{ name: string }>(`
         SELECT name FROM model_profiles WHERE discovery_managed = true

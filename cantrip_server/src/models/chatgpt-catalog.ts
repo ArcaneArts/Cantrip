@@ -196,6 +196,16 @@ export class ChatGptCatalogService {
             { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
           ),
         );
+        if (inventory.weeklyUsage) {
+          await this.#repository.recordModelProviderAccountUsage({
+            accountId: account.id,
+            ownerId,
+            planType: account.planType,
+            providerId,
+            resetsAt: inventory.weeklyUsage.resetsAt,
+            usedPercent: inventory.weeklyUsage.usedPercent,
+          });
+        }
         const models = inventory.models.map(normalizeChatGptModel);
         const visible = inventory.models.filter((model) => !model.hidden);
         await this.#repository.reconcileProviderModelCatalog(

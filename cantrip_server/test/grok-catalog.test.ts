@@ -66,6 +66,7 @@ describe("Grok catalog", () => {
         return {
           models: [model("grok-4", true), model("grok-code-fast-1")],
           observedAt: "2026-08-15T12:00:00.000Z",
+          weeklyUsage: { usedPercent: 45, resetsAt: 1_787_000_000 },
         };
       },
       sendSurfaceFrame: () => false,
@@ -162,6 +163,11 @@ describe("Grok catalog", () => {
           ),
         ),
       ).toEqual(new Set([first.id, second!.id]));
+      expect(
+        (
+          await repository.listModelProviderAccounts(LOCAL_USER_ID, provider.id)
+        )?.map(({ weeklyUsageUsedPercent }) => weeklyUsageUsedPercent),
+      ).toEqual([45, 45]);
       expect(commands).toHaveLength(2);
       expect(commands).toEqual(
         expect.arrayContaining([
