@@ -97,6 +97,7 @@ import {
   latestCatalogSuccess,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
+import { providerWeeklyAvailability } from "./provider-usage-display";
 
 export type SettingsSection =
   | "general"
@@ -255,14 +256,7 @@ function ProviderRow({
   const signedInAccounts = enabledAccounts.filter(
     (account) => account.credentialState === "signed-in",
   );
-  const remainingUsage = signedInAccounts.flatMap((account) =>
-    account.weeklyUsageUsedPercent === null
-      ? []
-      : [Math.max(0, 100 - account.weeklyUsageUsedPercent)],
-  );
-  const lowestRemaining = remainingUsage.length
-    ? Math.min(...remainingUsage)
-    : null;
+  const weeklyAvailability = providerWeeklyAvailability(provider.accounts);
   const statusTone =
     displayStatus === "current"
       ? "text-emerald-500"
@@ -309,8 +303,11 @@ function ProviderRow({
             >
               {signedInAccounts.length}/{enabledAccounts.length} signed in
             </span>
-            {lowestRemaining === null ? null : (
-              <span>{Math.round(lowestRemaining)}% lowest 7-day remaining</span>
+            {weeklyAvailability === null ? null : (
+              <span>
+                {Math.round(weeklyAvailability.availablePercent)}% total 7-day
+                available
+              </span>
             )}
           </p>
         ) : (
@@ -548,6 +545,9 @@ export function SettingsPage({
     editingProvider && isAccountProviderKind(editingProvider.kind)
       ? editingProvider
       : null;
+  const accountWeeklyAvailability = accountProvider
+    ? providerWeeklyAvailability(accountProvider.accounts)
+    : null;
   const selectedAccount =
     accountProvider?.accounts.find(({ id }) => id === selectedAccountId) ??
     accountProvider?.accounts[0] ??
@@ -699,6 +699,20 @@ export function SettingsPage({
     setEditingProvider(provider);
     return provider;
   };
+  useEffect(() => {
+    const providerId = accountProvider?.id;
+    const workerId = worker?.workerId;
+    if (!providerDialogOpen || !providerId || !workerId) return;
+    let cancelled = false;
+    void refreshProviderModelCatalog(providerId, workerId)
+      .then(async () => {
+        if (!cancelled) await reloadAccountProvider(providerId);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [accountProvider?.id, providerDialogOpen, worker?.workerId]);
   const addProviderAccount = useMutation({
     mutationFn: () =>
       createModelProviderAccount(accountProvider!.id, {
@@ -1370,7 +1384,7 @@ export function SettingsPage({
       ) : null}
 
       <Dialog open={providerDialogOpen} onOpenChange={setProviderDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-3xl lg:max-w-4xl">
           <form onSubmit={submitProvider} className="grid gap-5">
             <DialogHeader>
               <DialogTitle>
@@ -1518,6 +1532,24 @@ export function SettingsPage({
                     Account
                   </Button>
                 </div>
+                {accountWeeklyAvailability ? (
+                  <div className="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium">
+                        Total 7-day available
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {accountWeeklyAvailability.reportedAccountCount ===
+                        accountWeeklyAvailability.signedInAccountCount
+                          ? `Across ${accountWeeklyAvailability.signedInAccountCount} signed-in ${accountWeeklyAvailability.signedInAccountCount === 1 ? "account" : "accounts"}`
+                          : `${accountWeeklyAvailability.reportedAccountCount} of ${accountWeeklyAvailability.signedInAccountCount} signed-in accounts reporting`}
+                      </p>
+                    </div>
+                    <span className="text-xl font-semibold tabular-nums">
+                      {Math.round(accountWeeklyAvailability.availablePercent)}%
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex flex-wrap gap-1.5">
                   {accountProvider.accounts.map((account) => {
                     const signedIn = account.credentialState === "signed-in";

@@ -9,6 +9,11 @@ import {
   type CodexDeviceLogin,
 } from "@cantrip/protocol";
 
+import {
+  weeklyUsageFromRateLimits,
+  type AccountRateLimitsResult,
+} from "./rate-limits.js";
+
 interface RpcMessage {
   error?: { message: string };
   id?: number;
@@ -108,27 +113,8 @@ export class CodexAuthClient {
       const result = (await this.request(
         "account/rateLimits/read",
         undefined,
-      )) as {
-        rateLimits?: RateLimitSnapshot;
-        rateLimitsByLimitId?: Record<string, RateLimitSnapshot> | null;
-      };
-      const snapshots = [
-        ...(result.rateLimitsByLimitId
-          ? Object.values(result.rateLimitsByLimitId)
-          : []),
-        ...(result.rateLimits ? [result.rateLimits] : []),
-      ];
-      const windows = snapshots.flatMap((snapshot) =>
-        [snapshot.primary, snapshot.secondary].filter(
-          (window): window is RateLimitWindow => Boolean(window),
-        ),
-      );
-      const weekly = windows.find(
-        (window) => window.windowDurationMins === 7 * 24 * 60,
-      );
-      const value = weekly
-        ? { usedPercent: weekly.usedPercent, resetsAt: weekly.resetsAt }
-        : null;
+      )) as AccountRateLimitsResult;
+      const value = weeklyUsageFromRateLimits(result);
       this.#weeklyUsageCache = { fetchedAt: Date.now(), value };
       return value;
     } catch {
@@ -229,15 +215,4 @@ export class CodexAuthClient {
     }
     this.#pending.clear();
   }
-}
-
-interface RateLimitWindow {
-  usedPercent: number;
-  windowDurationMins: number | null;
-  resetsAt: number | null;
-}
-
-interface RateLimitSnapshot {
-  primary: RateLimitWindow | null;
-  secondary: RateLimitWindow | null;
 }

@@ -1049,17 +1049,17 @@ export const modelProviderKindSchema = z.enum([
   "openai-compatible",
 ]);
 
+export const providerWeeklyUsageSchema = z.object({
+  usedPercent: z.number().min(0).max(100),
+  resetsAt: z.number().int().nullable(),
+});
+
 export const codexAuthStatusSchema = z.object({
   authenticated: z.boolean(),
   authMode: z.enum(["chatgpt", "grok", "apiKey", "other"]).nullable(),
   email: z.string().nullable(),
   planType: z.string().nullable(),
-  weeklyUsage: z
-    .object({
-      usedPercent: z.number().min(0).max(100),
-      resetsAt: z.number().int().nullable(),
-    })
-    .nullable(),
+  weeklyUsage: providerWeeklyUsageSchema.nullable(),
   loginPending: z.boolean().default(false),
   loginError: z.string().max(2_000).nullable().default(null),
 });
@@ -4310,6 +4310,7 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("rateLimit"),
+    limitId: z.string().nullable().default(null),
     limitName: z.string().nullable(),
     planType: z.string().nullable(),
     reachedType: z.string().nullable(),
@@ -7237,6 +7238,7 @@ export const chatGptModelInventoryItemSchema = z.object({
 export const chatGptModelInventorySchema = z.object({
   models: z.array(chatGptModelInventoryItemSchema).max(1_000),
   observedAt: z.string().datetime(),
+  weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
 });
 
 export const grokModelInventoryItemSchema = z.object({
@@ -7258,6 +7260,7 @@ export const grokModelInventoryItemSchema = z.object({
 export const grokModelInventorySchema = z.object({
   models: z.array(grokModelInventoryItemSchema).max(1_000),
   observedAt: z.string().datetime(),
+  weeklyUsage: providerWeeklyUsageSchema.nullable().default(null),
 });
 
 export const workerCommandSchema = z.discriminatedUnion("type", [
@@ -8659,6 +8662,7 @@ export type SystemHealth = z.infer<typeof systemHealthSchema>;
 export type OperationalProbe = z.infer<typeof operationalProbeSchema>;
 export type ThemePreference = z.infer<typeof themePreferenceSchema>;
 export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
+export type ProviderWeeklyUsage = z.infer<typeof providerWeeklyUsageSchema>;
 export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;
 export type CodexDeviceLogin = z.infer<typeof codexDeviceLoginSchema>;
 export type ProviderAccessTokenLeaseRequest = z.infer<

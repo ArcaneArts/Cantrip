@@ -7,12 +7,15 @@ import {
   grokModelInventorySchema,
   type GrokModelInventory,
   type GrokModelInventoryItem,
+  type ProviderWeeklyUsage,
 } from "@cantrip/protocol";
 
 export const GROK_SUBSCRIPTION_PROXY = "https://cli-chat-proxy.grok.com/v1";
 export const GROK_CLIENT_VERSION = "1.0.3";
 
 const MAX_PROXY_REQUEST_BYTES = 64 * 1_024 * 1_024;
+const WEEKLY_USAGE_CACHE_MS = 30_000;
+const WEEKLY_USAGE_PERIOD_TYPE = "USAGE_PERIOD_TYPE_WEEKLY";
 
 export interface GrokSubscriptionAccess {
   accessToken: string;
@@ -183,6 +186,43 @@ export function normalizeGrokModel(
   });
 }
 
+/** Extracts the shared weekly subscription pool exposed by Grok Build. */
+export function normalizeGrokWeeklyUsage(
+  input: unknown,
+): ProviderWeeklyUsage | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const config = (input as Record<string, unknown>).config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return null;
+  }
+  const value = config as Record<string, unknown>;
+  const period = value.currentPeriod;
+  if (!period || typeof period !== "object" || Array.isArray(period)) {
+    return null;
+  }
+  const periodValue = period as Record<string, unknown>;
+  if (periodValue.type !== WEEKLY_USAGE_PERIOD_TYPE) return null;
+  const usedPercent = value.creditUsagePercent;
+  if (
+    typeof usedPercent !== "number" ||
+    !Number.isFinite(usedPercent) ||
+    usedPercent < 0 ||
+    usedPercent > 100
+  ) {
+    return null;
+  }
+  const resetMilliseconds =
+    typeof periodValue.end === "string"
+      ? Date.parse(periodValue.end)
+      : Number.NaN;
+  return {
+    usedPercent,
+    resetsAt: Number.isFinite(resetMilliseconds)
+      ? Math.floor(resetMilliseconds / 1_000)
+      : null,
+  };
+}
+
 async function readRequestBody(
   request: IncomingMessage,
 ): Promise<Buffer | undefined> {
@@ -213,6 +253,10 @@ export class GrokSubscriptionClient {
   readonly #proxyPathToken = randomUUID();
   #proxyServer: Server | null = null;
   #proxyStarting: Promise<string> | null = null;
+  #weeklyUsageCache: {
+    fetchedAt: number;
+    value: ProviderWeeklyUsage | null;
+  } | null = null;
 
   constructor(
     private readonly access: GrokSubscriptionAccessSource,
@@ -247,6 +291,28 @@ export class GrokSubscriptionClient {
     });
   }
 
+  async weeklyUsage(): Promise<ProviderWeeklyUsage | null> {
+    if (
+      this.#weeklyUsageCache &&
+      this.#now() - this.#weeklyUsageCache.fetchedAt < WEEKLY_USAGE_CACHE_MS
+    ) {
+      return this.#weeklyUsageCache.value;
+    }
+    try {
+      const response = await this.request("/billing?format=credits");
+      if (!response.ok) {
+        throw new Error(`Grok usage discovery failed (${response.status}).`);
+      }
+      const value = normalizeGrokWeeklyUsage(await response.json());
+      this.#weeklyUsageCache = { fetchedAt: this.#now(), value };
+      return value;
+    } catch {
+      const value = this.#weeklyUsageCache?.value ?? null;
+      this.#weeklyUsageCache = { fetchedAt: this.#now(), value };
+      return value;
+    }
+  }
+
   async localProxyBaseUrl(): Promise<string> {
     if (this.#proxyServer) {
       const address = this.#proxyServer.address();
@@ -265,6 +331,7 @@ export class GrokSubscriptionClient {
   close(): void {
     this.#proxyServer?.close();
     this.#proxyServer = null;
+    this.#weeklyUsageCache = null;
   }
 
   async request(

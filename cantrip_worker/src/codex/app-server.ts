@@ -101,6 +101,10 @@ import {
   type ExternalChatGptAuthSession,
   type RuntimeProvider,
 } from "./external-chatgpt-auth.js";
+import {
+  weeklyUsageFromRateLimits,
+  type AccountRateLimitsResult,
+} from "./rate-limits.js";
 
 export type CodexProcessLauncher = (
   binary: string,
@@ -1716,6 +1720,7 @@ export function normalizeRateLimitActivity(
     type: "rateLimit",
     id: `turn:${turnId}:rate-limit`,
     status: params.rateLimits.rateLimitReachedType ? "failed" : "completed",
+    limitId: params.rateLimits.limitId,
     limitName: params.rateLimits.limitName,
     planType: params.rateLimits.planType,
     reachedType: params.rateLimits.rateLimitReachedType,
@@ -2034,9 +2039,21 @@ export class CodexAppServer implements CodexRuntime {
       if (nextCursor) seenCursors.add(nextCursor);
       cursor = nextCursor;
     } while (cursor && models.length < 1_000);
+    let weeklyUsage = null;
+    try {
+      weeklyUsage = weeklyUsageFromRateLimits(
+        (await this.request(
+          "account/rateLimits/read",
+          undefined,
+        )) as AccountRateLimitsResult,
+      );
+    } catch {
+      // Model discovery remains useful when quota reporting is unavailable.
+    }
     return chatGptModelInventorySchema.parse({
       models,
       observedAt: new Date().toISOString(),
+      weeklyUsage,
     });
   }
 
