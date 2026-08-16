@@ -85,6 +85,25 @@ test("fails closed while signing and notarizing the macOS updater and DMG", asyn
   assert.match(workflow, /- name: Import macOS Developer ID certificate/u);
   assert.match(workflow, /APPLE_CERTIFICATE/u);
   assert.match(workflow, /Developer ID Application/u);
+  assert.match(
+    workflow,
+    /security list-keychains -d user -s "\$keychain" "\$\{existing_keychains\[@\]\}"/u,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /security default-keychain -s "\$keychain"/u,
+  );
+  assert.match(workflow, /DeveloperIDCA\.cer/u);
+  assert.match(workflow, /DeveloperIDG2CA\.cer/u);
+  assert.match(
+    workflow,
+    /7afc9d01a62f03a2de9637936d4afe68090d2de18d03f29c88cfb0b1ba63587f/u,
+  );
+  assert.match(
+    workflow,
+    /f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a/u,
+  );
+  assert.match(workflow, /leaf_fingerprint/u);
   assert.match(workflow, /CANTRIP_REQUIRE_MACOS_SIGNING: "1"/u);
   assert.match(workflow, /APPSTORE_CONNECT_ISSUER_ID/u);
   assert.match(workflow, /APPSTORE_CONNECT_KEY_ID/u);
