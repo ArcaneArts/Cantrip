@@ -1,4 +1,5 @@
 import type {
+  ProjectReplicaJobSummary,
   ProjectSummary,
   ProjectWorkspaceSummary,
   WorkerSummary,
@@ -70,6 +71,38 @@ describe("mobile project selector", () => {
     expect(markup).toContain('aria-label="Open settings"');
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).not.toContain("ArcaneArts/CareMap");
+  });
+
+  it("shows durable clone progress for a project that is being prepared", () => {
+    const project = {
+      ...projects[0]!,
+      setupStatus: "cloning",
+    } as ProjectSummary;
+    const setupJob = {
+      id: "setup-job",
+      kind: "provision",
+      progress: { percent: 47 },
+    } as ProjectReplicaJobSummary;
+    const markup = renderToStaticMarkup(
+      <MobileProjectSelector
+        activeWorkspace={workspaces[0]!}
+        currentUserName="Local User"
+        loading={false}
+        projects={[project]}
+        projectSetupJobs={new Map([[project.id, setupJob]])}
+        workers={workers}
+        workspaces={workspaces}
+        onCreateWorkspace={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onNewProject={vi.fn()}
+        onOpenAdmin={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Cloning · 47%");
   });
 
   it("exposes project settings and close actions in the overview header", () => {

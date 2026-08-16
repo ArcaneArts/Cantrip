@@ -13,6 +13,7 @@ import type {
   ExecutionTarget,
   ExplorerSummary,
   ProjectSummary,
+  ProjectReplicaJobSummary,
   ProjectTabLayoutSummary,
   ProjectWorktreeSummary,
   ProjectViewSummary,
@@ -324,6 +325,7 @@ function SortableProject({
   onRemove,
   onSelect,
   project,
+  setupJob,
   projectRevealLabel,
   revealDisabled,
 }: {
@@ -337,6 +339,7 @@ function SortableProject({
   onSelect(): void;
   placement: ProjectSurfacePlacementContext;
   project: ProjectSummary;
+  setupJob?: ProjectReplicaJobSummary;
   projectRevealLabel?: string;
   revealDisabled: boolean;
 }) {
@@ -355,7 +358,11 @@ function SortableProject({
   return (
     <div ref={sortable.setNodeRef} style={style} className="group mb-1">
       <div
-        title={failed ? (project.setupError ?? undefined) : undefined}
+        title={
+          failed
+            ? (project.setupError ?? undefined)
+            : setupJob?.progress.message
+        }
         onContextMenu={openSidebarActionsMenu}
         className={cn(
           "flex items-center rounded-md hover:bg-muted",
@@ -366,29 +373,46 @@ function SortableProject({
           ref={sortable.setActivatorNodeRef}
           type="button"
           className={cn(
-            "flex min-w-0 flex-1 touch-none items-center gap-2 px-3 py-2 text-left text-sm",
+            "flex min-w-0 flex-1 touch-none flex-col px-3 py-2 text-left text-sm",
             cloning ? "cursor-default" : "cursor-grab active:cursor-grabbing",
           )}
           onClick={onSelect}
           {...sortable.attributes}
           {...sortable.listeners}
         >
+          <span className="flex w-full min-w-0 items-center gap-2">
+            {cloning ? (
+              <Loader2 className="size-4 shrink-0 animate-spin" />
+            ) : failed ? (
+              <CircleAlert className="size-4 shrink-0 text-destructive" />
+            ) : (
+              <FolderGit2 className="size-4 shrink-0" />
+            )}
+            <span className="truncate">{project.name}</span>
+            {cloning || failed ? (
+              <span
+                className={cn(
+                  "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
+                  failed && "text-destructive",
+                )}
+              >
+                {cloning
+                  ? setupJob
+                    ? `${setupJob.progress.percent}%`
+                    : "Starting"
+                  : "Failed"}
+              </span>
+            ) : null}
+          </span>
           {cloning ? (
-            <Loader2 className="size-4 shrink-0 animate-spin" />
-          ) : failed ? (
-            <CircleAlert className="size-4 shrink-0 text-destructive" />
-          ) : (
-            <FolderGit2 className="size-4 shrink-0" />
-          )}
-          <span className="truncate">{project.name}</span>
-          {cloning || failed ? (
-            <span
-              className={cn(
-                "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
-                failed && "text-destructive",
-              )}
-            >
-              {cloning ? "Cloning" : "Failed"}
+            <span className="mt-1.5 block h-0.5 w-full overflow-hidden rounded-full bg-muted-foreground/20">
+              <span
+                className={cn(
+                  "block h-full rounded-full bg-primary transition-[width] duration-500",
+                  !setupJob && "animate-pulse",
+                )}
+                style={{ width: `${setupJob?.progress.percent ?? 5}%` }}
+              />
             </span>
           ) : null}
         </button>
@@ -495,6 +519,7 @@ export function ProjectChatList({
   onSelectGroup,
   onSelectProject,
   projects,
+  projectSetupJobs,
   projectRevealLabel,
   selectedTabKey,
   selectedProjectId,
@@ -544,6 +569,7 @@ export function ProjectChatList({
   onSelectGroup(groupId: string): void;
   onSelectProject(projectId: string): void;
   projects: ProjectSummary[];
+  projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projectRevealLabel?: string;
   selectedTabKey: string | null;
   selectedProjectId: string | null;
@@ -845,6 +871,7 @@ export function ProjectChatList({
               <SortableProject
                 key={project.id}
                 project={project}
+                setupJob={projectSetupJobs.get(project.id)}
                 active={active}
                 creatingKinds={creatingKinds}
                 onCreate={(kind, target) =>

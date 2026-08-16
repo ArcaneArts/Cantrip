@@ -1029,7 +1029,9 @@ export class ProjectReplicaJobRepository {
           progress: progress(
             "succeeded",
             100,
-            "Replica is ready at the resolved revision.",
+            result.resolvedRevision
+              ? "Replica is ready at the resolved revision."
+              : "Empty repository is ready for its first commit.",
             now,
           ),
           completedAt: now,

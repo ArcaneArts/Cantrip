@@ -15,6 +15,7 @@ import type {
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
+  ProjectReplicaJobSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
   ProjectWorkspaceSummary,
@@ -235,6 +236,7 @@ import {
   getMessages,
   getAgentInteractionRequests,
   getProjects,
+  getProjectReplicaJobs,
   getProjectWorkspaces,
   getProjectTabLayout,
   getProjectWorktrees,
@@ -328,6 +330,10 @@ import {
   projectsInWorkspace,
   resolveProjectWorkspace,
 } from "@/lib/project-workspaces";
+import {
+  latestProjectProvisionJob,
+  projectSetupPercent,
+} from "@/lib/project-setup-progress";
 import type {
   TabLayoutCommand,
   WorkspaceDropOperation,
@@ -476,12 +482,14 @@ function StatusDot({ online }: { online: boolean }) {
 function RepositoryImporter({
   activeWorkspaceId,
   onCreatedProject,
+  projectSetupJobs,
   projects,
   workerId,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
   onCreatedProject(project: ProjectSummary): void;
+  projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projects: ProjectSummary[];
   workerId: string | null;
   workspaces: ProjectWorkspaceSummary[];
@@ -765,6 +773,9 @@ function RepositoryImporter({
                         pendingRepositoryIds.has(repository.id) ||
                         project?.setupStatus === "cloning";
                       const failed = project?.setupStatus === "failed";
+                      const setupJob = project
+                        ? projectSetupJobs.get(project.id)
+                        : undefined;
                       const disabled = Boolean(
                         !activeWorkspaceId ||
                         repository.imported ||
@@ -847,7 +858,9 @@ function RepositoryImporter({
                               {failed
                                 ? "Failed"
                                 : importing
-                                  ? "Cloning"
+                                  ? setupJob
+                                    ? `${setupJob.progress.percent}%`
+                                    : "Starting"
                                   : repository.imported
                                     ? "Added"
                                     : "Add"}
@@ -2804,6 +2817,21 @@ export function App() {
           ? false
           : 15_000,
   });
+  const cloningProjectIds = (projects.data ?? [])
+    .filter((project) => project.setupStatus === "cloning")
+    .map((project) => project.id);
+  const projectSetupJobQueries = useQueries({
+    queries: cloningProjectIds.map((projectId) => ({
+      queryFn: () => getProjectReplicaJobs(projectId),
+      queryKey: ["project-replica-jobs", projectId],
+      refetchInterval: projectResourcesLive ? false : 2_000,
+    })),
+  });
+  const projectSetupJobs = new Map<string, ProjectReplicaJobSummary>();
+  cloningProjectIds.forEach((projectId, index) => {
+    const job = latestProjectProvisionJob(projectSetupJobQueries[index]?.data);
+    if (job) projectSetupJobs.set(projectId, job);
+  });
   const projectWorkspaces = useQuery({
     queryFn: getProjectWorkspaces,
     queryKey: ["project-workspaces"],
@@ -3652,6 +3680,9 @@ export function App() {
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
+  const selectedProjectSetupJob = selectedProject
+    ? projectSetupJobs.get(selectedProject.id)
+    : undefined;
   const mobileProjectSelectorOpen =
     compactShell &&
     selectedProjectId === null &&
@@ -4985,6 +5016,7 @@ export function App() {
               <ProjectChatList
                 browsers={browsers.data ?? []}
                 projects={visibleProjects}
+                projectSetupJobs={projectSetupJobs}
                 chats={chats.data ?? []}
                 codeTabs={codeTabs.data ?? []}
                 explorers={explorers.data ?? []}
@@ -5582,6 +5614,7 @@ export function App() {
             error={projects.isError ? errorText(projects.error) : null}
             loading={projects.isLoading || projectWorkspaces.isLoading}
             projects={projects.data ?? []}
+            projectSetupJobs={projectSetupJobs}
             workers={workers.data ?? []}
             workspaces={projectWorkspaces.data ?? []}
             onCreateWorkspace={async (name) => {
@@ -5682,6 +5715,7 @@ export function App() {
               });
             }}
             projects={projects.data ?? []}
+            projectSetupJobs={projectSetupJobs}
             workerId={onlineWorker?.workerId ?? null}
             workspaces={projectWorkspaces.data ?? []}
           />
@@ -5962,6 +5996,41 @@ export function App() {
                     : (selectedProject.setupError ??
                       "The worker could not prepare this repository.")}
                 </p>
+                {selectedProject.setupStatus === "cloning" ? (
+                  <div className="mx-auto mt-4 w-full max-w-sm text-left">
+                    <div
+                      aria-label="Repository clone progress"
+                      aria-valuemax={100}
+                      aria-valuemin={0}
+                      aria-valuenow={projectSetupPercent(
+                        selectedProjectSetupJob,
+                      )}
+                      className="h-1.5 overflow-hidden rounded-full bg-muted"
+                      role="progressbar"
+                    >
+                      <div
+                        className={cn(
+                          "h-full rounded-full bg-primary transition-[width] duration-500",
+                          !selectedProjectSetupJob && "animate-pulse",
+                        )}
+                        style={{
+                          width: `${projectSetupPercent(selectedProjectSetupJob)}%`,
+                        }}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-start justify-between gap-3 text-xs text-muted-foreground">
+                      <span>
+                        {selectedProjectSetupJob?.progress.message ??
+                          "Waiting for the worker to start cloning."}
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {selectedProjectSetupJob
+                          ? `${selectedProjectSetupJob.progress.percent}%`
+                          : "Starting"}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : projectOverviewSelected ? (
