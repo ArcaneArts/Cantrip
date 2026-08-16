@@ -445,6 +445,9 @@ function AuthenticatedApplication({
       client: { id: clientId, name: "Cantrip App", version: "0.0.0" },
       onAuthenticationRequired: notifyAuthenticationRequired,
       onEvent: (event) => queryBridge.handleEvent(event),
+      onProtocolError: (error) => {
+        console.error("Cantrip live protocol error", error);
+      },
       onResync: (scopes, reason) => queryBridge.recoverScopes(scopes, reason),
       storage: window.localStorage,
       storageKey: `cantrip.app-live.resume.v1.${bootstrap.server.id}.${user.id}`,

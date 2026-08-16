@@ -63,6 +63,17 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "chat",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+      ),
+    ).toEqual([
+      ["chat-sync", "chat-one"],
+      ["messages", "chat-one"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           entityId: "relocation-one",
           resource: "chat-relocation-job",
           scope: { kind: "chat", chatId: "chat-one" },
@@ -161,6 +172,31 @@ describe("application live query bridge", () => {
       invalidatedQueryCount: 3,
       invalidationFlushCount: 1,
       receivedEventCount: 2,
+    });
+  });
+
+  it("reconciles durable messages when a turn boundary follows lost live events", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+
+    bridge.handleEvent(
+      event({
+        entityId: "chat-one",
+        resource: "chat",
+        scope: { kind: "chat", chatId: "chat-one" },
+      }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["chat-sync", "chat-one"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["messages", "chat-one"],
     });
   });
 

@@ -3055,6 +3055,9 @@ export function App() {
   });
   const openChatConsole = useMutation({
     mutationFn: (chatId: string) => createChatConsole(chatId),
+    onError: (error, chatId) => {
+      console.error("Could not open the Codex console", { chatId, error });
+    },
     onSuccess: (terminal) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],

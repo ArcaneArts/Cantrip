@@ -46,6 +46,23 @@ function rawDataBytes(data: RawData): Uint8Array {
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
 }
 
+function commandLogContext(
+  request: WorkerRequestEnvelope,
+): Record<string, unknown> {
+  const command = request.command as WorkerCommand & {
+    chatId?: unknown;
+    terminalId?: unknown;
+  };
+  return {
+    requestId: request.requestId,
+    command: command.type,
+    ...(typeof command.chatId === "string" ? { chatId: command.chatId } : {}),
+    ...(typeof command.terminalId === "string"
+      ? { terminalId: command.terminalId }
+      : {}),
+  };
+}
+
 export class WorkerConnection {
   #closed = false;
   #authenticationRejected = false;
@@ -312,6 +329,7 @@ export class WorkerConnection {
   }
 
   private async handleRequest(request: WorkerRequestEnvelope): Promise<void> {
+    const startedAt = performance.now();
     try {
       const emit = (event: WorkerEvent) => {
         this.sendServerEnvelope({
@@ -327,7 +345,21 @@ export class WorkerConnection {
         ok: true,
         result,
       });
+      if (
+        request.command.type === "chat.turn" ||
+        request.command.type === "chat.thread.ensure"
+      ) {
+        workerLogger.info("Codex command completed", {
+          ...commandLogContext(request),
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+      }
     } catch (error) {
+      workerLogger.error("Worker command failed", {
+        ...commandLogContext(request),
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
+      });
       this.sendServerEnvelope({
         kind: "response",
         requestId: request.requestId,
