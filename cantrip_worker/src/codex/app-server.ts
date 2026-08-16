@@ -12,6 +12,8 @@ import { promisify, stripVTControlCharacters } from "node:util";
 
 import {
   agentActivitySchema,
+  agentCommandOutputLimitBytes,
+  agentFilePreviewLimitCharacters,
   agentInteractionAcceptedSchema,
   agentInteractionRuntimeRequestSchema,
   agentThreadSyncSchema,
@@ -141,11 +143,14 @@ interface ActiveTurn {
   baseline: WorkspaceSnapshot;
   chatId: string | null;
   collaborationMode: NativeCollaborationMode | null;
+  commandTelemetry: Map<string, ActiveCommandTelemetry>;
+  completedCommandIds: Set<string>;
   cwd: string;
   delta: string;
-  diffChanges: Array<{ kind: "add" | "delete" | "update"; path: string }>;
+  diffChanges: FileActivityChange[];
   durationMs: number | null;
   executionKind: "chat" | "workflow";
+  fileStartedAtMs: Map<string, number>;
   finalText: string | null;
   interactionMode: "interactive" | "preauthorized";
   latestUsage: TokenUsageBreakdown | null;
@@ -170,6 +175,121 @@ interface ActiveTurn {
   threadId: string;
   timeout: ReturnType<typeof setTimeout> | null;
   workflowOutputSchema: Record<string, unknown> | null;
+}
+
+type FileActivityChange = Extract<
+  AgentActivity,
+  { type: "fileChange" }
+>["changes"][number];
+
+export interface CommandOutputBuffer {
+  output: string | null;
+  truncated: boolean;
+}
+
+export interface CommandTelemetryValue extends CommandOutputBuffer {
+  startedAtMs: number;
+  updatedAtMs: number;
+}
+
+interface ActiveCommandTelemetry extends CommandTelemetryValue {
+  correlation: CodexEventCorrelation;
+  flushTimer: ReturnType<typeof setTimeout> | null;
+  item: CommandExecutionItem | null;
+}
+
+const COMMAND_OUTPUT_COALESCE_MS = 100;
+const MAX_TURN_COMMAND_TELEMETRY = 200;
+const MAX_COMPLETED_COMMAND_IDS = 1_000;
+const MAX_TURN_FILE_ITEMS = 1_000;
+
+function boundedMapSet<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
+  if (!map.has(key) && map.size >= limit) {
+    const oldest = map.keys().next().value as K | undefined;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
+
+function rememberCompletedCommand(active: ActiveTurn, itemId: string): void {
+  if (active.completedCommandIds.size >= MAX_COMPLETED_COMMAND_IDS) {
+    const oldest = active.completedCommandIds.values().next().value;
+    if (oldest !== undefined) active.completedCommandIds.delete(oldest);
+  }
+  active.completedCommandIds.add(itemId);
+}
+
+function boundedCommandTelemetrySet(
+  active: ActiveTurn,
+  itemId: string,
+  telemetry: ActiveCommandTelemetry,
+): void {
+  if (
+    !active.commandTelemetry.has(itemId) &&
+    active.commandTelemetry.size >= MAX_TURN_COMMAND_TELEMETRY
+  ) {
+    const oldestId = active.commandTelemetry.keys().next().value;
+    if (oldestId !== undefined) {
+      const oldest = active.commandTelemetry.get(oldestId);
+      if (oldest) clearCommandFlush(oldest);
+      active.commandTelemetry.delete(oldestId);
+    }
+  }
+  active.commandTelemetry.set(itemId, telemetry);
+}
+
+function emitCommandTelemetry(
+  active: ActiveTurn,
+  telemetry: ActiveCommandTelemetry,
+  completedAtMs?: number | null,
+  status?: AgentActivity["status"],
+): void {
+  if (!telemetry.item) return;
+  const activity = normalizeCodexThreadItem(
+    telemetry.item,
+    active.cwd,
+    completedAtMs === undefined ? "started" : "completed",
+    telemetry.correlation,
+    {
+      commandOutput: {
+        output: telemetry.output,
+        truncated: telemetry.truncated,
+      },
+      startedAtMs: telemetry.startedAtMs,
+      updatedAtMs: telemetry.updatedAtMs,
+      ...(completedAtMs === undefined ? {} : { completedAtMs }),
+      ...(status === undefined ? {} : { status }),
+    },
+  );
+  if (activity) active.onActivity?.(activity);
+}
+
+function clearCommandFlush(telemetry: ActiveCommandTelemetry): void {
+  if (!telemetry.flushTimer) return;
+  clearTimeout(telemetry.flushTimer);
+  telemetry.flushTimer = null;
+}
+
+function scheduleCommandTelemetry(
+  active: ActiveTurn,
+  telemetry: ActiveCommandTelemetry,
+): void {
+  if (!telemetry.item || telemetry.flushTimer) return;
+  telemetry.flushTimer = setTimeout(() => {
+    telemetry.flushTimer = null;
+    if (active.commandTelemetry.get(telemetry.item!.id) !== telemetry) return;
+    emitCommandTelemetry(active, telemetry);
+  }, COMMAND_OUTPUT_COALESCE_MS);
+  telemetry.flushTimer.unref();
+}
+
+function clearTurnInspectionTelemetry(active: ActiveTurn): void {
+  for (const telemetry of active.commandTelemetry.values()) {
+    clearCommandFlush(telemetry);
+  }
+  active.commandTelemetry.clear();
+  active.completedCommandIds.clear();
+  active.fileStartedAtMs.clear();
 }
 
 export function findActiveChatTurn<
@@ -656,6 +776,14 @@ interface TurnCompletedParams {
 
 interface AgentMessageDeltaParams {
   delta: string;
+  itemId: string;
+  threadId: string;
+  turnId: string;
+}
+
+interface CommandExecutionOutputDeltaParams {
+  delta: string;
+  itemId: string;
   threadId: string;
   turnId: string;
 }
@@ -682,14 +810,24 @@ interface CommandExecutionItem {
   type: "commandExecution";
 }
 
+interface FileUpdateChange {
+  diff?: string;
+  kind: { type: "add" | "delete" | "update" };
+  path: string;
+}
+
 interface FileChangeItem {
-  changes: Array<{
-    kind: { type: "add" | "delete" | "update" };
-    path: string;
-  }>;
+  changes: FileUpdateChange[];
   id: string;
   status: "inProgress" | "completed" | "failed" | "declined";
   type: "fileChange";
+}
+
+interface FileChangePatchUpdatedParams {
+  changes: FileUpdateChange[];
+  itemId: string;
+  threadId: string;
+  turnId: string;
 }
 
 interface AgentMessageItem {
@@ -801,7 +939,9 @@ type CodexThreadItem =
   | ContextCompactionItem;
 
 interface ItemLifecycleParams {
+  completedAtMs?: number;
   item: CodexThreadItem;
+  startedAtMs?: number;
   threadId: string;
   turnId: string;
 }
@@ -1409,14 +1549,155 @@ function displayPath(cwd: string, filePath: string): string {
     : filePath;
 }
 
-function commandOutput(output: string | null): string | null {
-  if (!output || output.length <= 20_000) {
-    return output;
+export function appendBoundedCommandOutput(
+  current: CommandOutputBuffer,
+  delta: string,
+): CommandOutputBuffer {
+  if (!delta) return current;
+  const plainDelta = stripVTControlCharacters(delta);
+  let safeDelta = "";
+  for (const character of plainDelta) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      (codePoint < 0x20 &&
+        codePoint !== 0x09 &&
+        codePoint !== 0x0a &&
+        codePoint !== 0x0d) ||
+      (codePoint >= 0x7f && codePoint <= 0x9f)
+    ) {
+      continue;
+    }
+    safeDelta += character;
   }
+  if (!safeDelta) return current;
+  const currentBytes = Buffer.from(current.output ?? "", "utf8");
+  const deltaBytes = Buffer.from(safeDelta, "utf8");
+  const totalBytes = currentBytes.byteLength + deltaBytes.byteLength;
+  if (totalBytes <= agentCommandOutputLimitBytes) {
+    return {
+      output: `${current.output ?? ""}${safeDelta}`,
+      truncated: current.truncated,
+    };
+  }
+
+  const retained = Buffer.allocUnsafe(agentCommandOutputLimitBytes);
+  const deltaStart = Math.max(0, deltaBytes.byteLength - retained.byteLength);
+  const retainedDelta = deltaBytes.subarray(deltaStart);
+  const retainedCurrentBytes = retained.byteLength - retainedDelta.byteLength;
+  if (retainedCurrentBytes > 0) {
+    currentBytes.copy(
+      retained,
+      0,
+      Math.max(0, currentBytes.byteLength - retainedCurrentBytes),
+    );
+  }
+  retainedDelta.copy(retained, Math.max(0, retainedCurrentBytes));
+
+  let start = 0;
+  while (start < retained.byteLength && (retained[start]! & 0xc0) === 0x80) {
+    start += 1;
+  }
+  return {
+    output: retained.subarray(start).toString("utf8"),
+    truncated: true,
+  };
+}
+
+export function boundedCommandOutput(
+  output: string | null,
+): CommandOutputBuffer {
+  return appendBoundedCommandOutput(
+    { output: null, truncated: false },
+    output ?? "",
+  );
+}
+
+function transcriptCommandOutput(output: string | null): string | null {
+  if (!output || output.length <= 20_000) return output;
   return `…output truncated…\n${output.slice(-20_000)}`;
 }
 
-export function changedFiles(diff: string): ActiveTurn["diffChanges"] {
+export function commandTelemetryFromDelta(
+  current: CommandTelemetryValue | null,
+  delta: string,
+  observedAtMs: number,
+): CommandTelemetryValue {
+  return {
+    ...appendBoundedCommandOutput(
+      current ?? { output: null, truncated: false },
+      delta,
+    ),
+    startedAtMs: current?.startedAtMs ?? observedAtMs,
+    updatedAtMs: observedAtMs,
+  };
+}
+
+export function commandTelemetryFromStart(
+  current: CommandTelemetryValue | null,
+  aggregatedOutput: string | null,
+  startedAtMs: number,
+  observedAtMs: number,
+): CommandTelemetryValue {
+  const initial = boundedCommandOutput(aggregatedOutput);
+  return {
+    output: current?.output ?? initial.output,
+    truncated: current?.truncated ?? initial.truncated,
+    startedAtMs,
+    updatedAtMs: observedAtMs,
+  };
+}
+
+export function commandTelemetryFromCompletion(
+  current: CommandTelemetryValue | null,
+  aggregatedOutput: string | null,
+  durationMs: number | null | undefined,
+  observedAtMs: number,
+): CommandTelemetryValue {
+  const output =
+    aggregatedOutput === null
+      ? {
+          output: current?.output ?? null,
+          truncated: current?.truncated ?? false,
+        }
+      : boundedCommandOutput(aggregatedOutput);
+  return {
+    ...output,
+    startedAtMs:
+      current?.startedAtMs ??
+      (durationMs === null || durationMs === undefined
+        ? observedAtMs
+        : Math.max(0, observedAtMs - durationMs)),
+    updatedAtMs: observedAtMs,
+  };
+}
+
+function boundedFilePreview(value: string): string {
+  return value.length <= agentFilePreviewLimitCharacters
+    ? value
+    : value.slice(-agentFilePreviewLimitCharacters);
+}
+
+export function latestChangedLine(
+  diff: string | null | undefined,
+): string | null {
+  if (!diff) return null;
+  let latestAdded: string | null = null;
+  let latestRemoved: string | null = null;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+") && !line.startsWith("+++ ")) {
+      latestAdded = line.slice(1);
+    } else if (line.startsWith("-") && !line.startsWith("--- ")) {
+      latestRemoved = line.slice(1);
+    }
+  }
+  const latest = latestAdded ?? latestRemoved;
+  return latest === null ? null : boundedFilePreview(latest);
+}
+
+export function changedFiles(
+  diff: string,
+  lastActivityAtMs?: number,
+): ActiveTurn["diffChanges"] {
   return diff
     .split(/^diff --git /m)
     .slice(1)
@@ -1426,6 +1707,7 @@ export function changedFiles(diff: string): ActiveTurn["diffChanges"] {
       if (!match?.[2]) {
         return [];
       }
+      const latestLine = latestChangedLine(section);
       return [
         {
           path: match[2],
@@ -1434,6 +1716,8 @@ export function changedFiles(diff: string): ActiveTurn["diffChanges"] {
             : section.includes("\ndeleted file mode ")
               ? ("delete" as const)
               : ("update" as const),
+          ...(latestLine === null ? {} : { latestLine }),
+          ...(lastActivityAtMs === undefined ? {} : { lastActivityAtMs }),
         },
       ];
     });
@@ -1476,6 +1760,7 @@ async function workspaceSnapshot(cwd: string): Promise<WorkspaceSnapshot> {
 async function workspaceChanges(
   active: ActiveTurn,
 ): Promise<ActiveTurn["diffChanges"]> {
+  const observedAtMs = Date.now();
   const after = await workspaceSnapshot(active.cwd);
   const paths = new Set([...active.baseline.keys(), ...after.keys()]);
   const changes = new Map(
@@ -1497,7 +1782,11 @@ async function workspaceChanges(
         : status.includes("D")
           ? "delete"
           : "update";
-    changes.set(filePath, { path: filePath, kind });
+    changes.set(filePath, {
+      path: filePath,
+      kind,
+      lastActivityAtMs: observedAtMs,
+    });
   }
   return [...changes.values()].sort((left, right) =>
     left.path.localeCompare(right.path),
@@ -1519,6 +1808,17 @@ function emitFileActivity(
       id: `turn:${turnId}:files`,
       status,
       changes: active.diffChanges,
+      startedAtMs:
+        active.diffChanges
+          .map((change) => change.lastActivityAtMs)
+          .filter((value): value is number => value !== undefined)
+          .sort((left, right) => left - right)[0] ?? active.startedAtMs,
+      updatedAtMs: Math.max(
+        ...active.diffChanges.map(
+          (change) => change.lastActivityAtMs ?? active.startedAtMs,
+        ),
+      ),
+      completedAtMs: status === "running" ? null : Date.now(),
       correlation,
     }),
   );
@@ -1565,8 +1865,29 @@ export function normalizeCodexThreadItem(
   cwd: string,
   lifecycle: "started" | "completed",
   correlation: CodexEventCorrelation,
+  telemetry: {
+    commandOutput?: CommandOutputBuffer;
+    completedAtMs?: number | null;
+    fileChanges?: FileActivityChange[];
+    startedAtMs?: number;
+    status?: AgentActivity["status"];
+    updatedAtMs?: number;
+  } = {},
 ): AgentActivity | null {
+  const timestamps = {
+    ...(telemetry.startedAtMs === undefined
+      ? {}
+      : { startedAtMs: telemetry.startedAtMs }),
+    ...(telemetry.updatedAtMs === undefined
+      ? {}
+      : { updatedAtMs: telemetry.updatedAtMs }),
+    ...(telemetry.completedAtMs === undefined
+      ? {}
+      : { completedAtMs: telemetry.completedAtMs }),
+  };
   if (item.type === "commandExecution") {
+    const output =
+      telemetry.commandOutput ?? boundedCommandOutput(item.aggregatedOutput);
     return agentActivitySchema.parse({
       type: "command",
       id: item.id,
@@ -1574,20 +1895,35 @@ export function normalizeCodexThreadItem(
       cwd: displayPath(cwd, item.cwd) || ".",
       status: activityStatus(item.status),
       exitCode: item.exitCode,
-      output: commandOutput(item.aggregatedOutput),
+      output: transcriptCommandOutput(item.aggregatedOutput),
+      outputTail: output.output,
+      outputTruncated: output.truncated,
       durationMs: item.durationMs ?? null,
+      ...timestamps,
+      ...(telemetry.status === undefined ? {} : { status: telemetry.status }),
       correlation,
     });
   }
   if (item.type === "fileChange") {
+    const changes =
+      telemetry.fileChanges ??
+      item.changes.map((change) => {
+        const latestLine = latestChangedLine(change.diff);
+        return {
+          path: displayPath(cwd, change.path),
+          kind: change.kind.type,
+          ...(latestLine === null ? {} : { latestLine }),
+          ...(telemetry.updatedAtMs === undefined
+            ? {}
+            : { lastActivityAtMs: telemetry.updatedAtMs }),
+        };
+      });
     return agentActivitySchema.parse({
       type: "fileChange",
       id: item.id,
       status: activityStatus(item.status),
-      changes: item.changes.map((change) => ({
-        path: displayPath(cwd, change.path),
-        kind: change.kind.type,
-      })),
+      changes,
+      ...timestamps,
       correlation,
     });
   }
@@ -1599,6 +1935,7 @@ export function normalizeCodexThreadItem(
       text: boundedText(item.text) ?? "",
       explanation: null,
       steps: [],
+      ...timestamps,
       correlation,
     });
   }
@@ -1611,6 +1948,7 @@ export function normalizeCodexThreadItem(
         .map((part) => boundedText(part)?.trim() ?? "")
         .filter(Boolean)
         .slice(0, 100),
+      ...timestamps,
       correlation,
     });
   }
@@ -2135,11 +2473,14 @@ export class CodexAppServer implements CodexRuntime {
         baseline,
         chatId: options.chatId,
         collaborationMode,
+        commandTelemetry: new Map(),
+        completedCommandIds: new Set(),
         cwd: options.cwd,
         delta: "",
         diffChanges: [],
         durationMs: null,
         executionKind: "chat",
+        fileStartedAtMs: new Map(),
         finalText: null,
         interactionMode: "interactive",
         latestUsage: null,
@@ -2247,11 +2588,14 @@ export class CodexAppServer implements CodexRuntime {
         baseline,
         chatId: null,
         collaborationMode: null,
+        commandTelemetry: new Map(),
+        completedCommandIds: new Set(),
         cwd: options.cwd,
         delta: "",
         diffChanges: [],
         durationMs: null,
         executionKind: "workflow",
+        fileStartedAtMs: new Map(),
         finalText: null,
         interactionMode: options.approvalMode,
         latestUsage: null,
@@ -3958,6 +4302,7 @@ export class CodexAppServer implements CodexRuntime {
       const params = message.params as ReasoningSummaryTextDeltaParams;
       const active = this.#activeTurns.get(params.turnId);
       if (active && params.summaryIndex >= 0 && params.summaryIndex < 100) {
+        const observedAtMs = Date.now();
         const summary = active.reasoningSummaries.get(params.itemId) ?? [];
         while (summary.length <= params.summaryIndex) summary.push("");
         summary[params.summaryIndex] =
@@ -3970,6 +4315,9 @@ export class CodexAppServer implements CodexRuntime {
             id: params.itemId,
             status: "running",
             summary: summary.map((part) => part.trim()).filter(Boolean),
+            startedAtMs: active.startedAtMs,
+            updatedAtMs: observedAtMs,
+            completedAtMs: null,
             correlation: eventCorrelation(
               message.method,
               diagnosticId,
@@ -3980,6 +4328,79 @@ export class CodexAppServer implements CodexRuntime {
           }),
         );
       }
+      return;
+    }
+
+    if (message.method === "item/commandExecution/outputDelta") {
+      const params = message.params as CommandExecutionOutputDeltaParams;
+      const active = this.#activeTurns.get(params.turnId);
+      if (!active || active.completedCommandIds.has(params.itemId)) return;
+      const observedAtMs = Date.now();
+      const correlation = eventCorrelation(
+        message.method,
+        diagnosticId,
+        params.threadId,
+        params.turnId,
+        params.itemId,
+      );
+      const existing = active.commandTelemetry.get(params.itemId);
+      const next = commandTelemetryFromDelta(
+        existing ?? null,
+        params.delta,
+        observedAtMs,
+      );
+      const telemetry: ActiveCommandTelemetry = existing ?? {
+        correlation,
+        flushTimer: null,
+        item: null,
+        ...next,
+      };
+      telemetry.output = next.output;
+      telemetry.truncated = next.truncated;
+      telemetry.startedAtMs = next.startedAtMs;
+      telemetry.updatedAtMs = next.updatedAtMs;
+      telemetry.correlation = correlation;
+      boundedCommandTelemetrySet(active, params.itemId, telemetry);
+      scheduleCommandTelemetry(active, telemetry);
+      return;
+    }
+
+    if (message.method === "item/fileChange/patchUpdated") {
+      const params = message.params as FileChangePatchUpdatedParams;
+      const active = this.#activeTurns.get(params.turnId);
+      if (!active) return;
+      const observedAtMs = Date.now();
+      const startedAtMs =
+        active.fileStartedAtMs.get(params.itemId) ?? observedAtMs;
+      boundedMapSet(
+        active.fileStartedAtMs,
+        params.itemId,
+        startedAtMs,
+        MAX_TURN_FILE_ITEMS,
+      );
+      const activity = normalizeCodexThreadItem(
+        {
+          type: "fileChange",
+          id: params.itemId,
+          status: "inProgress",
+          changes: params.changes,
+        },
+        active.cwd,
+        "started",
+        eventCorrelation(
+          message.method,
+          diagnosticId,
+          params.threadId,
+          params.turnId,
+          params.itemId,
+        ),
+        {
+          startedAtMs,
+          updatedAtMs: observedAtMs,
+          completedAtMs: null,
+        },
+      );
+      if (activity) active.onActivity?.(activity);
       return;
     }
 
@@ -3998,25 +4419,62 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "item/started") {
       const params = message.params as ItemLifecycleParams;
       const active = this.#activeTurns.get(params.turnId);
-      if (
-        active &&
-        params.item.type !== "agentMessage" &&
-        params.item.type !== "fileChange"
-      ) {
+      if (active && params.item.type !== "agentMessage") {
+        const observedAtMs = Date.now();
+        const startedAtMs = params.startedAtMs ?? observedAtMs;
+        const correlation = eventCorrelation(
+          message.method,
+          diagnosticId,
+          params.threadId,
+          params.turnId,
+          params.item.id,
+        );
         if (params.item.type === "reasoning") {
           active.reasoningSummaries.set(params.item.id, params.item.summary);
+        }
+        if (params.item.type === "commandExecution") {
+          const existing = active.commandTelemetry.get(params.item.id);
+          const initial = commandTelemetryFromStart(
+            existing ?? null,
+            params.item.aggregatedOutput,
+            startedAtMs,
+            observedAtMs,
+          );
+          const telemetry: ActiveCommandTelemetry = existing ?? {
+            correlation,
+            flushTimer: null,
+            item: params.item,
+            ...initial,
+          };
+          telemetry.item = params.item;
+          telemetry.output = initial.output;
+          telemetry.truncated = initial.truncated;
+          telemetry.startedAtMs = initial.startedAtMs;
+          telemetry.updatedAtMs = initial.updatedAtMs;
+          telemetry.correlation = correlation;
+          boundedCommandTelemetrySet(active, params.item.id, telemetry);
+          emitCommandTelemetry(active, telemetry);
+          return;
+        }
+        if (params.item.type === "fileChange") {
+          boundedMapSet(
+            active.fileStartedAtMs,
+            params.item.id,
+            startedAtMs,
+            MAX_TURN_FILE_ITEMS,
+          );
+          if (params.item.changes.length === 0) return;
         }
         const activity = normalizeCodexThreadItem(
           params.item,
           active.cwd,
           "started",
-          eventCorrelation(
-            message.method,
-            diagnosticId,
-            params.threadId,
-            params.turnId,
-            params.item.id,
-          ),
+          correlation,
+          {
+            startedAtMs,
+            updatedAtMs: observedAtMs,
+            completedAtMs: null,
+          },
         );
         if (activity) active.onActivity?.(activity);
       }
@@ -4026,6 +4484,7 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "item/completed") {
       const params = message.params as ItemLifecycleParams;
       const active = this.#activeTurns.get(params.turnId);
+      const observedAtMs = params.completedAtMs ?? Date.now();
       if (
         active &&
         ((params.item.type === "agentMessage" &&
@@ -4047,22 +4506,78 @@ export class CodexAppServer implements CodexRuntime {
           ),
         );
         if (normalized) active.onMessage?.(normalized);
+      } else if (active && params.item.type === "commandExecution") {
+        const correlation = eventCorrelation(
+          message.method,
+          diagnosticId,
+          params.threadId,
+          params.turnId,
+          params.item.id,
+        );
+        const existing = active.commandTelemetry.get(params.item.id);
+        if (existing) clearCommandFlush(existing);
+        const completed = commandTelemetryFromCompletion(
+          existing ?? null,
+          params.item.aggregatedOutput,
+          params.item.durationMs,
+          observedAtMs,
+        );
+        const telemetry: ActiveCommandTelemetry = existing ?? {
+          correlation,
+          flushTimer: null,
+          item: params.item,
+          ...completed,
+        };
+        telemetry.item = params.item;
+        telemetry.output = completed.output;
+        telemetry.truncated = completed.truncated;
+        telemetry.startedAtMs = completed.startedAtMs;
+        telemetry.updatedAtMs = completed.updatedAtMs;
+        telemetry.correlation = correlation;
+        emitCommandTelemetry(active, telemetry, observedAtMs);
+        active.commandTelemetry.delete(params.item.id);
+        rememberCompletedCommand(active, params.item.id);
+      } else if (active && params.item.type === "fileChange") {
+        const startedAtMs =
+          active.fileStartedAtMs.get(params.item.id) ?? observedAtMs;
+        active.fileStartedAtMs.delete(params.item.id);
+        const activity = normalizeCodexThreadItem(
+          params.item,
+          active.cwd,
+          "completed",
+          eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            params.item.id,
+          ),
+          {
+            startedAtMs,
+            updatedAtMs: observedAtMs,
+            completedAtMs: observedAtMs,
+          },
+        );
+        if (activity) active.onActivity?.(activity);
       } else if (active) {
-        if (params.item.type !== "fileChange") {
-          const activity = normalizeCodexThreadItem(
-            params.item,
-            active.cwd,
-            "completed",
-            eventCorrelation(
-              message.method,
-              diagnosticId,
-              params.threadId,
-              params.turnId,
-              params.item.id,
-            ),
-          );
-          if (activity) active.onActivity?.(activity);
-        }
+        const activity = normalizeCodexThreadItem(
+          params.item,
+          active.cwd,
+          "completed",
+          eventCorrelation(
+            message.method,
+            diagnosticId,
+            params.threadId,
+            params.turnId,
+            params.item.id,
+          ),
+          {
+            startedAtMs: active.startedAtMs,
+            updatedAtMs: observedAtMs,
+            completedAtMs: observedAtMs,
+          },
+        );
+        if (activity) active.onActivity?.(activity);
         if (params.item.type === "reasoning") {
           active.reasoningSummaries.delete(params.item.id);
         }
@@ -4074,7 +4589,7 @@ export class CodexAppServer implements CodexRuntime {
       const params = message.params as TurnDiffUpdatedParams;
       const active = this.#activeTurns.get(params.turnId);
       if (active) {
-        active.diffChanges = changedFiles(params.diff);
+        active.diffChanges = changedFiles(params.diff, Date.now());
         emitFileActivity(
           active,
           params.turnId,
@@ -4210,6 +4725,23 @@ export class CodexAppServer implements CodexRuntime {
         params.turn.id,
         null,
       );
+      const observedAtMs =
+        params.turn.completedAt === null ||
+        params.turn.completedAt === undefined
+          ? Date.now()
+          : params.turn.completedAt * 1_000;
+      const pendingCommandStatus =
+        params.turn.status === "completed" ? "completed" : "failed";
+      for (const telemetry of active.commandTelemetry.values()) {
+        clearCommandFlush(telemetry);
+        telemetry.updatedAtMs = observedAtMs;
+        emitCommandTelemetry(
+          active,
+          telemetry,
+          observedAtMs,
+          pendingCommandStatus,
+        );
+      }
       if (params.turn.error?.message) {
         active.onActivity?.(
           normalizeNoticeActivity({
@@ -4294,6 +4826,7 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
       const text = active.finalText ?? active.delta;
+      clearTurnInspectionTelemetry(active);
       if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
         const response = await this.refreshGoal(active.threadId);
         if (
@@ -4312,6 +4845,7 @@ export class CodexAppServer implements CodexRuntime {
           active.diffChanges = [];
           active.finalText = null;
           active.reasoningSummaries.clear();
+          active.startedAtMs = Date.now();
           const continued = (await this.request("turn/start", {
             threadId: active.threadId,
             ...codexWorkspaceContext(active.cwd),
@@ -4356,6 +4890,7 @@ export class CodexAppServer implements CodexRuntime {
             }),
       );
     } catch (error) {
+      clearTurnInspectionTelemetry(active);
       active.reject(error instanceof Error ? error : new Error(String(error)));
     }
   }
@@ -4403,6 +4938,7 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
     } finally {
+      clearTurnInspectionTelemetry(active);
       active.reject(error);
     }
   }
@@ -4633,6 +5169,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#pendingPlanQuestions.clear();
     for (const active of this.#activeTurns.values()) {
       if (active.timeout) clearTimeout(active.timeout);
+      clearTurnInspectionTelemetry(active);
       active.reject(error);
     }
     this.#activeTurns.clear();

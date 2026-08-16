@@ -2982,6 +2982,68 @@ describe("Cantrip protocol", () => {
     ).toBe("worktree");
   });
 
+  it("validates bounded live command and file inspection telemetry", () => {
+    const output = "🙂".repeat(65_536);
+    expect(new TextEncoder().encode(output)).toHaveLength(256 * 1_024);
+    expect(
+      agentActivitySchema.parse({
+        type: "command",
+        id: "command-1",
+        status: "running",
+        command: "pnpm test",
+        cwd: ".",
+        exitCode: null,
+        output: "transcript output",
+        outputTail: output,
+        outputTruncated: true,
+        startedAtMs: 1_000,
+        updatedAtMs: 2_000,
+        completedAtMs: null,
+      }),
+    ).toMatchObject({
+      output: "transcript output",
+      outputTail: output,
+      outputTruncated: true,
+      startedAtMs: 1_000,
+    });
+    expect(
+      agentActivitySchema.safeParse({
+        type: "command",
+        id: "command-2",
+        status: "running",
+        command: "pnpm test",
+        cwd: ".",
+        exitCode: null,
+        output: null,
+        outputTail: `${output}x`,
+      }).success,
+    ).toBe(false);
+    expect(
+      agentActivitySchema.parse({
+        type: "fileChange",
+        id: "files-1",
+        status: "running",
+        startedAtMs: 1_000,
+        updatedAtMs: 2_000,
+        changes: [
+          {
+            path: "src/path with spaces.ts",
+            kind: "update",
+            latestLine: "export const ready = true;",
+            lastActivityAtMs: 2_000,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      changes: [
+        {
+          path: "src/path with spaces.ts",
+          latestLine: "export const ready = true;",
+        },
+      ],
+    });
+  });
+
   it("validates CLI results and bounded terminal snapshots", () => {
     const target = {
       kind: "surface" as const,

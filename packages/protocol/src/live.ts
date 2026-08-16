@@ -5,7 +5,7 @@ import {
   encodeJsonMessage,
   type JsonMessageDecodeResult,
 } from "./json-message.js";
-import { workflowJsonObjectSchema } from "./workflows.js";
+import { workflowJsonObjectSchemaWithLimits } from "./workflows.js";
 
 export const appLiveProtocolVersionSchema = z.literal(1);
 
@@ -112,9 +112,17 @@ export const appLiveEventActionSchema = z.enum([
   "invalidated",
 ]);
 
-const MAX_LIVE_EVENT_PAYLOAD_BYTES = 256_000;
+// A running agent command may retain a sanitized 256 KiB UTF-8 tail. JSON
+// escaping can at most double that terminal text, so this leaves headroom for
+// the surrounding message while remaining below the live hub's 1 MiB queue
+// threshold.
+const MAX_LIVE_EVENT_PAYLOAD_BYTES = 768 * 1_024;
+const liveEventJsonObjectSchema = workflowJsonObjectSchemaWithLimits({
+  maxBytes: MAX_LIVE_EVENT_PAYLOAD_BYTES,
+  maxStringLength: 300_000,
+});
 
-export const appLiveEventPayloadSchema = workflowJsonObjectSchema.superRefine(
+export const appLiveEventPayloadSchema = liveEventJsonObjectSchema.superRefine(
   (payload, context) => {
     const encoded = new TextEncoder().encode(JSON.stringify(payload));
     if (encoded.byteLength > MAX_LIVE_EVENT_PAYLOAD_BYTES) {
