@@ -10,12 +10,18 @@ import {
   type ProviderWeeklyUsage,
 } from "@cantrip/protocol";
 
+import { workerLogger } from "./logger.js";
+
 export const GROK_SUBSCRIPTION_PROXY = "https://cli-chat-proxy.grok.com/v1";
 export const GROK_CLIENT_VERSION = "1.0.3";
 
 const MAX_PROXY_REQUEST_BYTES = 64 * 1_024 * 1_024;
 const WEEKLY_USAGE_CACHE_MS = 30_000;
 const WEEKLY_USAGE_PERIOD_TYPE = "USAGE_PERIOD_TYPE_WEEKLY";
+const REASONING_DECODE_FAILURE_MARKERS = [
+  "could not decode the compaction blob",
+  "could not decrypt the provided encrypted_content",
+] as const;
 
 export interface GrokSubscriptionAccess {
   accessToken: string;
@@ -240,6 +246,104 @@ async function readRequestBody(
   return Buffer.concat(chunks);
 }
 
+function isReasoningDecodeFailure(errorBody: string): boolean {
+  const normalized = errorBody.toLowerCase();
+  return REASONING_DECODE_FAILURE_MARKERS.some((marker) =>
+    normalized.includes(marker),
+  );
+}
+
+async function responseHasReasoningDecodeFailure(
+  response: Response,
+): Promise<boolean> {
+  if (response.status !== 400) return false;
+  try {
+    return isReasoningDecodeFailure(await response.clone().text());
+  } catch {
+    return false;
+  }
+}
+
+function hasReadableReasoningContent(item: Record<string, unknown>): boolean {
+  for (const field of ["summary", "content"] as const) {
+    const parts = item[field];
+    if (!Array.isArray(parts)) continue;
+    if (
+      parts.some(
+        (part) =>
+          part !== null &&
+          typeof part === "object" &&
+          !Array.isArray(part) &&
+          typeof (part as Record<string, unknown>).text === "string" &&
+          Boolean((part as Record<string, unknown>).text?.toString().trim()),
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function stripRejectedReasoningState(body: Buffer | undefined): Buffer | null {
+  if (!body?.byteLength) return null;
+  let payload: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(body.toString("utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    payload = parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(payload.input)) return null;
+  let changed = false;
+  const input = payload.input.flatMap((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return [entry];
+    }
+    const item = entry as Record<string, unknown>;
+    if (
+      item.type !== "reasoning" ||
+      typeof item.encrypted_content !== "string" ||
+      !item.encrypted_content.trim()
+    ) {
+      return [entry];
+    }
+    const portable = { ...item };
+    delete portable.encrypted_content;
+    delete portable.id;
+    delete portable.status;
+    changed = true;
+    return hasReadableReasoningContent(portable) ? [portable] : [];
+  });
+  if (!changed) return null;
+  return Buffer.from(JSON.stringify({ ...payload, input }));
+}
+
+function removePromptCacheKey(body: Buffer | undefined): Buffer | null {
+  if (!body?.byteLength) return null;
+  try {
+    const parsed = JSON.parse(body.toString("utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    const payload = parsed as Record<string, unknown>;
+    delete payload.prompt_cache_key;
+    return Buffer.from(JSON.stringify(payload));
+  } catch {
+    return null;
+  }
+}
+
+async function discardResponse(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // The replacement response remains authoritative even if cleanup races.
+  }
+}
+
 interface GrokProxyRequestIdentity {
   conversationId: string;
   modelId: string | null;
@@ -308,6 +412,8 @@ export class GrokSubscriptionClient {
   readonly #now: () => number;
   readonly #proxyBaseUrl: string;
   readonly #proxyPathToken = randomUUID();
+  readonly #statelessConversations = new Set<string>();
+  readonly #statelessRequestIdByTurn = new Map<string, string>();
   readonly #turnIndexByRequest = new Map<string, number>();
   #proxyServer: Server | null = null;
   #proxyStarting: Promise<string> | null = null;
@@ -390,6 +496,8 @@ export class GrokSubscriptionClient {
     this.#proxyServer?.close();
     this.#proxyServer = null;
     this.#nextTurnIndexByConversation.clear();
+    this.#statelessConversations.clear();
+    this.#statelessRequestIdByTurn.clear();
     this.#turnIndexByRequest.clear();
     this.#weeklyUsageCache = null;
   }
@@ -544,11 +652,13 @@ export class GrokSubscriptionClient {
     const body = await readRequestBody(request);
     const identity = proxyRequestIdentity(body, this.#fallbackConversationId);
     const turnKey = `${identity.conversationId}\u0000${identity.requestId}`;
+    const statelessConversation = this.#statelessConversations.has(
+      identity.conversationId,
+    );
     let turnIndex = this.#turnIndexByRequest.get(turnKey);
     if (turnIndex === undefined) {
-      // Grok increments its prompt index before sampling, so the first turn is
-      // one-based. A zero index lets generation start but invalidates the
-      // encrypted reasoning state on the following tool continuation.
+      // Grok increments its prompt index before sampling, so mirror its
+      // one-based sequence and retain that value across tool continuations.
       turnIndex =
         this.#nextTurnIndexByConversation.get(identity.conversationId) ?? 1;
       this.#turnIndexByRequest.set(turnKey, turnIndex);
@@ -560,21 +670,88 @@ export class GrokSubscriptionClient {
     // Grok binds encrypted reasoning state to this request identity. Keep it
     // stable across every model/tool continuation in the same Codex turn.
     headers.set("x-grok-agent-id", this.#agentId);
-    headers.set("x-grok-conv-id", identity.conversationId);
-    headers.set("x-grok-req-id", identity.requestId);
-    headers.set("x-grok-session-id", identity.sessionId);
-    headers.set("x-grok-turn-idx", String(turnIndex));
+    if (statelessConversation) {
+      let statelessRequestId = this.#statelessRequestIdByTurn.get(turnKey);
+      if (!statelessRequestId) {
+        statelessRequestId = randomUUID();
+        this.#statelessRequestIdByTurn.set(turnKey, statelessRequestId);
+      }
+      headers.set("x-grok-req-id", statelessRequestId);
+    } else {
+      headers.set("x-grok-conv-id", identity.conversationId);
+      headers.set("x-grok-req-id", identity.requestId);
+      headers.set("x-grok-session-id", identity.sessionId);
+      headers.set("x-grok-turn-idx", String(turnIndex));
+    }
     if (identity.modelId) {
       headers.set("x-grok-model-override", identity.modelId);
     }
-    return this.request(
-      `${new URL(this.#proxyBaseUrl).origin}${upstreamPath}${requestUrl.search}`,
+    const target = `${new URL(this.#proxyBaseUrl).origin}${upstreamPath}${requestUrl.search}`;
+    const initialBody = statelessConversation
+      ? removePromptCacheKey(stripRejectedReasoningState(body) ?? body)
+      : body;
+    const initial = await this.request(
+      target,
       {
         method: request.method,
         headers,
-        body: body as BodyInit | undefined,
+        body: initialBody as BodyInit | undefined,
       },
       true,
     );
+    if (statelessConversation) return initial;
+    if (!(await responseHasReasoningDecodeFailure(initial))) return initial;
+
+    const portableBody = stripRejectedReasoningState(body);
+    let rejected = initial;
+    if (portableBody) {
+      workerLogger.warn(
+        "Grok rejected opaque reasoning state; retrying with portable history",
+        {
+          conversationId: identity.conversationId,
+          requestId: identity.requestId,
+        },
+      );
+      await discardResponse(rejected);
+      const portable = await this.request(
+        target,
+        {
+          method: request.method,
+          headers,
+          body: portableBody as BodyInit,
+        },
+        true,
+      );
+      if (!(await responseHasReasoningDecodeFailure(portable))) return portable;
+      rejected = portable;
+    }
+
+    const statelessBody = removePromptCacheKey(portableBody ?? body);
+    if (!statelessBody) return rejected;
+    await discardResponse(rejected);
+    const statelessHeaders = new Headers(headers);
+    statelessHeaders.delete("x-grok-conv-id");
+    statelessHeaders.delete("x-grok-session-id");
+    statelessHeaders.delete("x-grok-turn-idx");
+    const statelessRequestId = randomUUID();
+    statelessHeaders.set("x-grok-req-id", statelessRequestId);
+    workerLogger.warn(
+      "Grok reasoning recovery remained session-bound; retrying statelessly",
+      { conversationId: identity.conversationId },
+    );
+    const stateless = await this.request(
+      target,
+      {
+        method: request.method,
+        headers: statelessHeaders,
+        body: statelessBody as BodyInit,
+      },
+      true,
+    );
+    if (stateless.ok) {
+      this.#statelessConversations.add(identity.conversationId);
+      this.#statelessRequestIdByTurn.set(turnKey, statelessRequestId);
+    }
+    return stateless;
   }
 }
