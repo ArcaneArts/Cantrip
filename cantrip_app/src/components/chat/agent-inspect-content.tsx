@@ -14,6 +14,7 @@ import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { displayCommand } from "./command-display";
 import {
   buildAgentInspectorProjectionSource,
   projectAgentInspector,
@@ -191,7 +192,7 @@ function CommandOutput({ command }: { command: AgentInspectorCommand }) {
 
   return (
     <pre
-      aria-label={`Output from ${command.command}`}
+      aria-label={`Output from ${displayCommand(command.command)}`}
       className="min-h-0 flex-1 overflow-auto overscroll-contain p-2 font-mono text-[10px] leading-4 text-foreground/80 outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
       onScroll={handleScroll}
       ref={outputRef}
@@ -218,7 +219,7 @@ function RunningCommandCard({
 }) {
   const unsuccessful =
     command.status === "failed" || command.status === "declined";
-  const commandText = inspectorSingleLine(command.command);
+  const commandText = inspectorSingleLine(displayCommand(command.command));
   return (
     <article
       className={cn(
@@ -289,9 +290,9 @@ function RecentCommandRows({
             <SquareTerminal className="size-3.5 shrink-0" />
             <code
               className="min-w-0 flex-1 truncate font-mono"
-              title={inspectorSingleLine(command.command)}
+              title={inspectorSingleLine(displayCommand(command.command))}
             >
-              {inspectorSingleLine(command.command)}
+              {inspectorSingleLine(displayCommand(command.command))}
             </code>
             {command.status === "failed" || command.status === "declined" ? (
               <CircleX className="size-3 shrink-0 text-destructive" />

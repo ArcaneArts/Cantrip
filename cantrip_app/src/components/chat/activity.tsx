@@ -27,6 +27,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+import { displayCommand } from "./command-display";
 import { formatElapsedTime } from "./timeline";
 
 function ActivityState({ activity }: { activity: AgentActivity }) {
@@ -160,7 +161,7 @@ export function activityLabel(activity: AgentActivity): string {
         ? "Changing files"
         : `Changed ${activity.changes.length} ${activity.changes.length === 1 ? "file" : "files"}`;
     case "command":
-      return activity.command;
+      return displayCommand(activity.command);
   }
 }
 
@@ -486,7 +487,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
           {activity.status === "running" ? "Running" : "Ran"}
         </span>
         <code className="min-w-0 truncate font-mono text-xs text-muted-foreground">
-          {activity.command}
+          {displayCommand(activity.command)}
         </code>
         <ActivityState activity={activity} />
         {hasDetails ? (

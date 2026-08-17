@@ -5,6 +5,25 @@ import { describe, expect, it } from "vitest";
 import { Activity, activityLabel } from "./activity";
 
 describe("rich Codex activity", () => {
+  it("shows the command inside a login-shell wrapper", () => {
+    const command = '/bin/zsh -lc "printf \\"hello\\""';
+    const activity: AgentActivity = {
+      type: "command",
+      id: "command-1",
+      command,
+      cwd: ".",
+      status: "completed",
+      exitCode: 0,
+      output: null,
+    };
+
+    const markup = renderToStaticMarkup(<Activity activity={activity} />);
+    expect(markup).toContain("printf &quot;hello&quot;");
+    expect(markup).not.toContain("/bin/zsh");
+    expect(activityLabel(activity)).toBe('printf "hello"');
+    expect(activity.command).toBe(command);
+  });
+
   it("renders reasoning summaries inline without a disclosure", () => {
     const activity: AgentActivity = {
       type: "reasoning",
