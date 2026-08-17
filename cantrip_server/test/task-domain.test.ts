@@ -407,15 +407,25 @@ describe.sequential("Task domain foundation", () => {
         briefMarkdown: "Inspect the repository and write a complete plan.",
       },
     );
+    const operationId = randomUUID();
     const response = await app.inject({
       method: "POST",
       url: `/api/tasks/${created!.chat.id}/plan`,
       payload: {
-        operationId: randomUUID(),
+        operationId,
         rowVersion: drafted!.rowVersion,
       },
     });
     expect(response.statusCode).toBe(202);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/tasks/${created!.chat.id}/plan`,
+          payload: { operationId, rowVersion: drafted!.rowVersion },
+        })
+      ).statusCode,
+    ).toBe(202);
     const completed = await waitForTaskState(created!.chat.id, "review");
     expect(completed).toMatchObject({
       planMarkdown: plannerResult.planMarkdown,
@@ -475,6 +485,59 @@ describe.sequential("Task domain foundation", () => {
       }),
     ]);
 
+    const invalidReviewResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: {
+        rowVersion: completed.rowVersion,
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "missing-option",
+            freeform: null,
+          },
+        ],
+      },
+    });
+    expect(invalidReviewResponse.statusCode).toBe(409);
+
+    const savedReviewResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: {
+        rowVersion: completed.rowVersion,
+        planMarkdown:
+          "# User-refined Task plan\n\nKeep the rollout independently reversible.",
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "sequential",
+            freeform: null,
+          },
+        ],
+        additionalDirection: "Keep each milestone independently mergeable.",
+      },
+    });
+    expect(savedReviewResponse.statusCode).toBe(200);
+    const savedReview = taskDetailSchema.parse(savedReviewResponse.json());
+    expect(savedReview).toMatchObject({
+      planAuthorship: "user-edited",
+      currentAnswers: [{ questionId: "delivery", optionId: "sequential" }],
+      additionalDirection: "Keep each milestone independently mergeable.",
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/tasks/${created!.chat.id}/plan`,
+          payload: {
+            rowVersion: completed.rowVersion,
+            additionalDirection: "Overwrite from a stale window.",
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+
     const continuedPlan = {
       planMarkdown:
         "# Revised Task plan\n\nDeliver every milestone as a sequential PR.",
@@ -486,7 +549,7 @@ describe.sequential("Task domain foundation", () => {
       url: `/api/tasks/${created!.chat.id}/continue`,
       payload: {
         operationId: randomUUID(),
-        rowVersion: completed.rowVersion,
+        rowVersion: savedReview.rowVersion,
         answers: [
           {
             questionId: "delivery",
@@ -505,6 +568,7 @@ describe.sequential("Task domain foundation", () => {
       currentQuestions: [],
     });
     expect(taskTurnCommand?.prompt).toContain("Sequential PRs");
+    expect(taskTurnCommand?.prompt).toContain("User-refined Task plan");
     expect(taskTurnCommand?.prompt).toContain(
       "Keep each milestone independently mergeable.",
     );
@@ -551,6 +615,23 @@ describe.sequential("Task domain foundation", () => {
         created!.chat.id,
       ),
     ).toEqual([expect.objectContaining({ status: "failed" })]);
+
+    nextTaskStructuredResult = plannerResult;
+    const retryResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/retry`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: failed.rowVersion,
+      },
+    });
+    expect(retryResponse.statusCode).toBe(202);
+    const recovered = await waitForTaskState(created!.chat.id, "review", 2);
+    expect(recovered).toMatchObject({
+      planMarkdown: plannerResult.planMarkdown,
+      planningRound: 2,
+      lastError: null,
+    });
   });
 
   it("reconciles interrupted rounds and accepts a late durable outcome once", async () => {

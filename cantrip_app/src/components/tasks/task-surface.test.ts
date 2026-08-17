@@ -43,6 +43,14 @@ describe("Task draft presentation", () => {
       }),
     ).toBe("review");
     expect(taskSurfaceMode({ ...baseTask, state: "failed" })).toBe("failed");
+    expect(
+      taskSurfaceMode({
+        ...baseTask,
+        state: "failed",
+        stableStateBeforeFailure: "review",
+        planMarkdown: "# Stable plan",
+      }),
+    ).toBe("review");
   });
 
   it("includes ordered attachments in conflict-safe draft signatures", () => {

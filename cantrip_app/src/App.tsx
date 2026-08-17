@@ -167,7 +167,6 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
-import { TaskSurface } from "@/components/tasks/task-surface";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
   SettingsPage,
@@ -407,6 +406,11 @@ const BrowserView = lazy(() =>
 const PersistentCodeViews = lazy(() =>
   import("@/components/code/persistent-code-views").then((module) => ({
     default: module.PersistentCodeViews,
+  })),
+);
+const PersistentTaskViews = lazy(() =>
+  import("@/components/tasks/persistent-task-views").then((module) => ({
+    default: module.PersistentTaskViews,
   })),
 );
 const RemoteDesktopView = lazy(() =>
@@ -5291,6 +5295,17 @@ export function App() {
     !(compactShell && mobileTabGridOpen) &&
     !groupOwnedElsewhere,
   );
+  const taskSurfaceVisible = Boolean(
+    selectedChat?.experience === "task" &&
+    selectedTaskView &&
+    !mobileProjectSelectorOpen &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !(compactShell && mobileTabGridOpen) &&
+    !groupOwnedElsewhere,
+  );
   if (explorerFileTarget) {
     const explorer =
       explorers.data?.find(({ id }) => id === explorerFileTarget.explorerId) ??
@@ -6068,6 +6083,34 @@ export function App() {
           />
         </Suspense>
 
+        <Suspense
+          fallback={
+            taskSurfaceVisible ? (
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : null
+          }
+        >
+          <PersistentTaskViews
+            activeTask={
+              taskSurfaceVisible && selectedChat
+                ? {
+                    chat: selectedChat,
+                    workerName: selectedWorker?.name,
+                    workerOnline:
+                      selectedWorker?.online ??
+                      selectedChat.status !== "offline",
+                  }
+                : null
+            }
+            settings={settings.data}
+            onRename={(chatId, title) =>
+              renameChatMutation.mutate({ chatId, title })
+            }
+          />
+        </Suspense>
+
         {mobileProjectSelectorOpen ? (
           <MobileProjectSelector
             activeWorkspace={activeProjectWorkspace}
@@ -6425,16 +6468,8 @@ export function App() {
               />
             )}
           </Suspense>
-        ) : selectedChat?.experience === "task" && selectedTaskView ? (
-          <TaskSurface
-            key={selectedChat.id}
-            chat={selectedChat}
-            settings={settings.data}
-            onRename={(title) =>
-              renameChatMutation.mutate({ chatId: selectedChat.id, title })
-            }
-          />
-        ) : selectedChat ? (
+        ) : selectedChat?.experience === "task" &&
+          selectedTaskView ? null : selectedChat ? (
           <ChatTranscript
             key={selectedChat.id}
             chat={selectedChat}

@@ -117,6 +117,7 @@ function toTaskPlanningRound(row: TaskPlanningRoundRow): TaskPlanningRound {
 function validateAnswers(
   task: TaskDetail,
   answers: TaskQuestionAnswer[],
+  requireRequiredAnswers = true,
 ): void {
   const byQuestion = new Map(
     task.currentQuestions.map((question) => [question.id, question]),
@@ -149,6 +150,7 @@ function validateAnswers(
     }
   }
   if (
+    requireRequiredAnswers &&
     task.currentQuestions.some(
       (question) => question.required && !byAnswer.has(question.id),
     )
@@ -247,15 +249,39 @@ export class TaskRepository {
     const input = taskPlanUpdateSchema.parse(rawInput);
     const current = await this.get(ownerId, chatId);
     if (!current) return null;
-    if (current.state !== "review") {
+    if (
+      current.state !== "review" &&
+      !(
+        current.state === "failed" &&
+        current.stableStateBeforeFailure === "review"
+      )
+    ) {
       throw new TaskStateTransitionError(current.state, "review");
     }
+    if (input.answers !== undefined) {
+      validateAnswers(current, input.answers, false);
+    }
+    const planChanged =
+      input.planMarkdown !== undefined &&
+      input.planMarkdown !== current.planMarkdown;
     const updated = await this.database
       .update(schema.tasks)
       .set({
-        planMarkdown: input.planMarkdown,
-        planAuthorship:
-          current.planAuthorship === "agent" ? "user-edited" : "mixed",
+        ...(input.planMarkdown !== undefined
+          ? { planMarkdown: input.planMarkdown }
+          : {}),
+        ...(planChanged
+          ? {
+              planAuthorship:
+                current.planAuthorship === "agent" ? "user-edited" : "mixed",
+            }
+          : {}),
+        ...(input.answers !== undefined
+          ? { currentAnswers: input.answers }
+          : {}),
+        ...(input.additionalDirection !== undefined
+          ? { additionalDirection: input.additionalDirection }
+          : {}),
         rowVersion: current.rowVersion + 1,
         updatedAt: new Date(),
       })

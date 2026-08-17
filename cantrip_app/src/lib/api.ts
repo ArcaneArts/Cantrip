@@ -223,9 +223,11 @@ import {
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
   taskCreateResultSchema,
+  taskContinuationStartSchema,
   taskDetailSchema,
   taskDraftUpdateSchema,
   taskOperationStartSchema,
+  taskPlanUpdateSchema,
   terminalListSchema,
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
@@ -335,6 +337,8 @@ import type {
   TerminalServiceConfiguration,
   TaskDraftUpdate,
   TaskOperationStart,
+  TaskContinuationStart,
+  TaskPlanUpdate,
   TunnelAttachmentCreate,
   BrowserTunnelRequest,
   TunnelUserCreate,
@@ -2561,6 +2565,39 @@ export async function startTaskPlanning(
   return taskDetailSchema.parse(
     await post(
       `/api/tasks/${encodeURIComponent(chatId)}/plan`,
+      taskOperationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/plan`, {
+      method: "PATCH",
+      body: JSON.stringify(taskPlanUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function continueTaskPlanning(
+  chatId: string,
+  input: TaskContinuationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/continue`,
+      taskContinuationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function retryTaskPlanning(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/retry`,
       taskOperationStartSchema.parse(input),
     ),
   );
