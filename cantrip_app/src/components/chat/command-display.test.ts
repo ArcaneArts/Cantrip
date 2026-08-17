@@ -22,12 +22,38 @@ describe("command display", () => {
     );
   });
 
+  it("shows managed worker repository paths from the project root", () => {
+    const command =
+      "/bin/zsh -lc 'cat \"/Users/test/Library/Application Support/art.cantrip/worker/repositories/VolmitSoftware/Iris/core/src/Noise.java\"'";
+
+    expect(displayCommand(command)).toBe('cat "Iris/core/src/Noise.java"');
+    expect(command).toContain(
+      "/worker/repositories/VolmitSoftware/Iris/core/src/Noise.java",
+    );
+  });
+
+  it("normalizes quoted Windows and unquoted worker repository paths", () => {
+    expect(
+      displayCommand(
+        'type "C:\\Users\\test\\AppData\\Roaming\\art.cantrip\\worker\\repositories\\VolmitSoftware\\Iris\\README.md"',
+      ),
+    ).toBe('type "Iris\\README.md"');
+    expect(
+      displayCommand(
+        "cat /var/lib/cantrip/worker/repositories/VolmitSoftware/Iris/package.json",
+      ),
+    ).toBe("cat Iris/package.json");
+  });
+
   it("leaves commands that are not login-shell wrappers unchanged", () => {
     expect(displayCommand("/bin/zsh -c 'pnpm check'")).toBe(
       "/bin/zsh -c 'pnpm check'",
     );
     expect(displayCommand("printf '/bin/zsh -lc test'")).toBe(
       "printf '/bin/zsh -lc test'",
+    );
+    expect(displayCommand('cat "/Users/test/project/Iris/README.md"')).toBe(
+      'cat "/Users/test/project/Iris/README.md"',
     );
   });
 });
