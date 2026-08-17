@@ -23,6 +23,7 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import {
   TaskStateTransitionError,
+  assertTaskStateTransition,
   validateTaskOperationStart,
 } from "../tasks/state.js";
 import * as schema from "./schema.js";
@@ -892,6 +893,70 @@ export class TaskRepository {
         round: toTaskPlanningRound(updatedRounds[0]!),
       };
     });
+  }
+
+  async syncImplementationState(
+    ownerId: string,
+    chatId: string,
+    input: {
+      code: string | null;
+      reason: string | null;
+      state: "implementing" | "paused" | "blocked" | "complete" | "failed";
+    },
+  ): Promise<TaskDetail | null> {
+    const current = await this.get(ownerId, chatId);
+    if (!current) return null;
+    const implementationFailure =
+      current.state === "failed" && current.stableStateBeforeFailure === null;
+    if (
+      !current.implementationStartedAt ||
+      (!["implementing", "paused", "blocked", "complete"].includes(
+        current.state,
+      ) &&
+        !implementationFailure)
+    ) {
+      return current;
+    }
+    if (current.state === "complete") return current;
+    if (current.state !== input.state) {
+      assertTaskStateTransition(current.state, input.state);
+    }
+    const nextError: TaskLastError | null =
+      input.state === "blocked" || input.state === "failed"
+        ? {
+            code: (input.code ?? "implementation-blocked").slice(0, 200),
+            message: (input.reason ?? "Implementation needs attention.").slice(
+              0,
+              TASK_ERROR_MESSAGE_LIMIT,
+            ),
+            operationKind: "implementation",
+            occurredAt: new Date().toISOString(),
+          }
+        : null;
+    if (
+      current.state === input.state &&
+      current.lastError?.code === nextError?.code &&
+      current.lastError?.message === nextError?.message
+    ) {
+      return current;
+    }
+    const updated = await this.database
+      .update(schema.tasks)
+      .set({
+        state: input.state,
+        stableStateBeforeFailure: null,
+        lastError: nextError,
+        rowVersion: current.rowVersion + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.tasks.chatId, chatId),
+          eq(schema.tasks.rowVersion, current.rowVersion),
+        ),
+      )
+      .returning();
+    return updated[0] ? toTaskDetail(updated[0]) : this.get(ownerId, chatId);
   }
 
   async failOperation(

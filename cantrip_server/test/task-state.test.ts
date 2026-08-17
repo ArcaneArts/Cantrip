@@ -19,6 +19,7 @@ describe("Task state transitions", () => {
     expect(canTransitionTaskState("implementing", "paused")).toBe(true);
     expect(canTransitionTaskState("paused", "implementing")).toBe(true);
     expect(canTransitionTaskState("blocked", "complete")).toBe(true);
+    expect(canTransitionTaskState("failed", "blocked")).toBe(true);
     expect(canTransitionTaskState("complete", "implementing")).toBe(false);
     expect(() => assertTaskStateTransition("draft", "complete")).toThrow(
       TaskStateTransitionError,

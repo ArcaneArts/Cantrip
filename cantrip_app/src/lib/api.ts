@@ -225,6 +225,7 @@ import {
   taskCreateResultSchema,
   taskContinuationStartSchema,
   taskDetailSchema,
+  taskImplementationDashboardSchema,
   taskDraftUpdateSchema,
   taskOperationStartSchema,
   taskPlanUpdateSchema,
@@ -2540,6 +2541,12 @@ export async function createTask(
 export async function getTask(chatId: string) {
   return taskDetailSchema.parse(
     await request(`/api/tasks/${encodeURIComponent(chatId)}`),
+  );
+}
+
+export async function getTaskImplementationDashboard(chatId: string) {
+  return taskImplementationDashboardSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/dashboard`),
   );
 }
 

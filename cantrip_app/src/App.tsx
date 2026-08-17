@@ -1031,7 +1031,7 @@ function ChatTranscript({
     queryKey: ["task", chat.id],
   });
   const effectiveInspectOnly =
-    inspectOnly && taskChatIsInspectOnly(taskState.data?.state);
+    inspectOnly && taskChatIsInspectOnly(taskState.data);
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
