@@ -341,6 +341,11 @@ async function recordWorker(
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   await recordWorker("local-worker", "Local Worker", true);
   await recordWorker("offline-worker", "Offline Worker", true);
   await recordWorker("legacy-worker", "Legacy Worker", false);

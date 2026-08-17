@@ -1705,6 +1705,13 @@ export const githubPullRequestSummarySchema = githubIssueSummarySchema.extend({
   baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
 });
 
+export const githubPullRequestListSchema = z.object({
+  state: githubIssueStateSchema,
+  total: z.number().int().nonnegative(),
+  pullRequests: z.array(githubPullRequestSummarySchema),
+  nextPage: z.number().int().positive().nullable().default(null),
+});
+
 export const githubPullRequestCreateResultSchema = z.object({
   pullRequest: githubPullRequestSummarySchema,
   warnings: z.array(z.string().min(1).max(1_000)).max(100),
@@ -3151,6 +3158,7 @@ export const archivedChatSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  experience: z.enum(["agent", "task"]).default("agent"),
   messageCount: z.number().int().nonnegative(),
   archivedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -7877,6 +7885,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     request: githubPullRequestCreateSchema,
   }),
   z.object({
+    type: z.literal("github.pull-requests.list"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    state: githubIssueStateSchema,
+    page: z.number().int().positive().default(1),
+    limit: z.number().int().min(1).max(100).default(100),
+  }),
+  z.object({
     type: z.literal("github.pull-request.get"),
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
@@ -9417,6 +9432,7 @@ export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
 export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
 export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
+export type GithubPullRequestList = z.infer<typeof githubPullRequestListSchema>;
 export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
 export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
 export type GithubPullRequestCreate = z.infer<

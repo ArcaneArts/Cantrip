@@ -34,6 +34,10 @@ export const taskOperationKindSchema = z.enum([
   "continue-plan",
   "finalize",
 ]);
+export const taskFailureOperationKindSchema = z.union([
+  taskOperationKindSchema,
+  z.literal("implementation"),
+]);
 export const taskPlanAuthorshipSchema = z.enum([
   "agent",
   "user-edited",
@@ -145,7 +149,7 @@ export const taskQuestionAnswerListSchema = z
 export const taskLastErrorSchema = z.object({
   code: z.string().trim().min(1).max(200),
   message: z.string().trim().min(1).max(TASK_ERROR_MESSAGE_LIMIT),
-  operationKind: taskOperationKindSchema,
+  operationKind: taskFailureOperationKindSchema,
   occurredAt: z.iso.datetime(),
 });
 
@@ -172,6 +176,91 @@ export const taskDetailSchema = z.object({
   updatedAt: z.iso.datetime(),
 });
 
+export const taskGoalStatusSchema = z.enum([
+  "active",
+  "paused",
+  "blocked",
+  "usageLimited",
+  "budgetLimited",
+  "complete",
+]);
+
+export const taskGoalSnapshotSchema = z.object({
+  threadId: z.string().min(1),
+  objective: z.string().min(1),
+  status: taskGoalStatusSchema,
+  tokenBudget: z.number().int().positive().nullable(),
+  tokensUsed: z.number().int().nonnegative(),
+  timeUsedSeconds: z.number().int().nonnegative(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+});
+
+export const taskImplementationPlacementSchema = z.object({
+  workerId: z.string().min(1),
+  worktreeId: z.string().min(1),
+  worktreeName: z.string().min(1),
+  branch: z.string().min(1).nullable(),
+  isPrimary: z.boolean(),
+  dirty: z.boolean(),
+  dirtyFileCount: z.number().int().nonnegative(),
+});
+
+export const taskPullRequestAssociationSourceSchema = z.enum([
+  "lane-branch",
+  "worktree",
+  "message-url",
+]);
+
+export const taskPullRequestAssociationKindSchema = z.enum([
+  "explicit",
+  "inferred",
+]);
+
+export const taskAssociatedPullRequestSchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string().min(1),
+  url: z.url(),
+  state: z.enum(["open", "closed"]),
+  draft: z.boolean(),
+  merged: z.boolean(),
+  headRef: z.string().min(1),
+  headSha: z.string().min(1),
+  baseRef: z.string().min(1),
+  baseSha: z.string().min(1),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  closedAt: z.iso.datetime().nullable(),
+  associationKind: taskPullRequestAssociationKindSchema,
+  associationSource: taskPullRequestAssociationSourceSchema,
+  confidence: z.enum(["high", "medium"]),
+  worktreeId: z.string().min(1).nullable(),
+  worktreeName: z.string().min(1).nullable(),
+});
+
+export const taskAdvisoryWarningSchema = z.object({
+  code: z.enum([
+    "multiple-open-pull-requests",
+    "new-worktree-before-merge",
+    "closed-unmerged",
+    "dirty-after-merge",
+    "complete-with-open-pull-request",
+  ]),
+  message: z.string().min(1).max(2_000),
+  pullRequestNumber: z.number().int().positive().nullable(),
+  worktreeId: z.string().min(1).nullable(),
+});
+
+export const taskImplementationDashboardSchema = z.object({
+  task: taskDetailSchema,
+  goal: taskGoalSnapshotSchema.nullable(),
+  goalUnavailableReason: z.string().min(1).max(2_000).nullable(),
+  placement: taskImplementationPlacementSchema,
+  pullRequests: z.array(taskAssociatedPullRequestSchema).max(200),
+  pullRequestsUnavailableReason: z.string().min(1).max(2_000).nullable(),
+  warnings: z.array(taskAdvisoryWarningSchema).max(200),
+});
+
 export const taskDraftUpdateSchema = z
   .object({
     rowVersion: z.number().int().positive(),
@@ -192,10 +281,23 @@ export const taskDraftUpdateSchema = z
     { message: "At least one Task draft field is required." },
   );
 
-export const taskPlanUpdateSchema = z.object({
-  rowVersion: z.number().int().positive(),
-  planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
-});
+export const taskPlanUpdateSchema = z
+  .object({
+    rowVersion: z.number().int().positive(),
+    planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT).optional(),
+    answers: taskQuestionAnswerListSchema.optional(),
+    additionalDirection: z
+      .string()
+      .max(TASK_ADDITIONAL_DIRECTION_LIMIT)
+      .optional(),
+  })
+  .refine(
+    (value) =>
+      value.planMarkdown !== undefined ||
+      value.answers !== undefined ||
+      value.additionalDirection !== undefined,
+    { message: "At least one Task review field is required." },
+  );
 
 export const taskPlannerResultSchema = z.object({
   planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
@@ -338,6 +440,9 @@ export type ChatExperience = z.infer<typeof chatExperienceSchema>;
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type TaskStableState = z.infer<typeof taskStableStateSchema>;
 export type TaskOperationKind = z.infer<typeof taskOperationKindSchema>;
+export type TaskFailureOperationKind = z.infer<
+  typeof taskFailureOperationKindSchema
+>;
 export type TaskPlanAuthorship = z.infer<typeof taskPlanAuthorshipSchema>;
 export type TaskPlanningRoundStatus = z.infer<
   typeof taskPlanningRoundStatusSchema
@@ -347,6 +452,17 @@ export type TaskQuestion = z.infer<typeof taskQuestionSchema>;
 export type TaskQuestionAnswer = z.infer<typeof taskQuestionAnswerSchema>;
 export type TaskLastError = z.infer<typeof taskLastErrorSchema>;
 export type TaskDetail = z.infer<typeof taskDetailSchema>;
+export type TaskGoalSnapshot = z.infer<typeof taskGoalSnapshotSchema>;
+export type TaskImplementationPlacement = z.infer<
+  typeof taskImplementationPlacementSchema
+>;
+export type TaskAssociatedPullRequest = z.infer<
+  typeof taskAssociatedPullRequestSchema
+>;
+export type TaskAdvisoryWarning = z.infer<typeof taskAdvisoryWarningSchema>;
+export type TaskImplementationDashboard = z.infer<
+  typeof taskImplementationDashboardSchema
+>;
 export type TaskDraftUpdate = z.infer<typeof taskDraftUpdateSchema>;
 export type TaskPlanUpdate = z.infer<typeof taskPlanUpdateSchema>;
 export type TaskPlannerResult = z.infer<typeof taskPlannerResultSchema>;

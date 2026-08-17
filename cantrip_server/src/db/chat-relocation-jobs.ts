@@ -82,6 +82,24 @@ function toISOString(value: Date): string {
   return value.toISOString();
 }
 
+async function relocationAttachmentIds(
+  database: ChatRelocationDatabase,
+  chatId: string,
+  messages: readonly (typeof schema.chatMessages.$inferSelect)[],
+): Promise<string[]> {
+  const taskRows = await database
+    .select({ draftAttachmentIds: schema.tasks.draftAttachmentIds })
+    .from(schema.tasks)
+    .where(eq(schema.tasks.chatId, chatId))
+    .limit(1);
+  return [
+    ...new Set([
+      ...messages.flatMap((message) => attachmentIds(message.content)),
+      ...(taskRows[0]?.draftAttachmentIds ?? []),
+    ]),
+  ];
+}
+
 function progress(
   stage: string,
   percent: number,
@@ -412,11 +430,11 @@ export class ChatRelocationJobRepository {
             "The canonical transcript is too large to snapshot safely.",
           );
         }
-        const referencedAttachmentIds = [
-          ...new Set(
-            messages.flatMap((message) => attachmentIds(message.content)),
-          ),
-        ];
+        const referencedAttachmentIds = await relocationAttachmentIds(
+          transaction,
+          chatId,
+          messages,
+        );
         if (referencedAttachmentIds.length > 2_000) {
           throw new ChatRelocationJobConflictError(
             "The chat has too many referenced attachments to relocate safely.",
@@ -700,11 +718,11 @@ export class ChatRelocationJobRepository {
           "The canonical transcript is too large to snapshot safely.",
         );
       }
-      const referencedAttachmentIds = [
-        ...new Set(
-          messages.flatMap((message) => attachmentIds(message.content)),
-        ),
-      ];
+      const referencedAttachmentIds = await relocationAttachmentIds(
+        transaction,
+        context.chat.id,
+        messages,
+      );
       if (referencedAttachmentIds.length > 2_000) {
         throw new ChatRelocationJobConflictError(
           "The chat has too many referenced attachments to relocate safely.",

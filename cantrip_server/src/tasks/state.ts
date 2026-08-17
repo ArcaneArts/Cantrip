@@ -13,7 +13,7 @@ const transitions: Readonly<Record<TaskState, readonly TaskState[]>> = {
   paused: ["implementing", "blocked", "complete", "failed"],
   blocked: ["implementing", "complete", "failed"],
   complete: [],
-  failed: ["planning", "finalizing", "implementing"],
+  failed: ["planning", "finalizing", "implementing", "paused", "blocked"],
 };
 
 export class TaskStateTransitionError extends Error {

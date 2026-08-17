@@ -28,6 +28,13 @@ export const SERVER_LOG_REDACTION_PATHS = [
   "req.body.idToken",
   "req.body.summary",
   "req.body.bodyMarkdown",
+  "req.body.briefMarkdown",
+  "req.body.planMarkdown",
+  "req.body.finalPlanMarkdown",
+  "req.body.goalPrompt",
+  "req.body.questions",
+  "req.body.answers",
+  "req.body.additionalDirection",
   "res.headers.set-cookie",
 ] as const;
 

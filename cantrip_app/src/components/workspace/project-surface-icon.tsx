@@ -6,6 +6,7 @@ import {
   GitCommitHorizontal,
   Globe2,
   Layers3,
+  ListTodo,
   MonitorUp,
   SquareTerminal,
   type LucideProps,
@@ -19,22 +20,24 @@ export function ProjectSurfaceIcon({
   ...props
 }: LucideProps & { filled?: boolean; kind: ProjectTabGroupVisualKind }) {
   const Icon =
-    kind === "chat"
-      ? Bot
-      : kind === "terminal"
-        ? SquareTerminal
-        : kind === "explorer"
-          ? FolderTree
-          : kind === "browser"
-            ? Globe2
-            : kind === "code"
-              ? Code2
-              : kind === "history"
-                ? GitCommitHorizontal
-                : kind === "issues"
-                  ? CircleDot
-                  : kind === "remote-desktop"
-                    ? MonitorUp
-                    : Layers3;
+    kind === "task"
+      ? ListTodo
+      : kind === "chat"
+        ? Bot
+        : kind === "terminal"
+          ? SquareTerminal
+          : kind === "explorer"
+            ? FolderTree
+            : kind === "browser"
+              ? Globe2
+              : kind === "code"
+                ? Code2
+                : kind === "history"
+                  ? GitCommitHorizontal
+                  : kind === "issues"
+                    ? CircleDot
+                    : kind === "remote-desktop"
+                      ? MonitorUp
+                      : Layers3;
   return <Icon {...props} fill={filled ? "currentColor" : props.fill} />;
 }

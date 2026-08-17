@@ -1725,10 +1725,12 @@ describe("local server foundation", () => {
       sidebarWidth: 288,
       desktopFrameRate: 30,
       desktopStreamQuality: "adaptive",
-      defaultModelId: expect.any(String),
+      defaultModelId: null,
       defaultPermissionProfileId: ":workspace",
       mobileProjectTabConfigurations: {},
     });
+    expect(initialSettings.providers).toEqual([]);
+    expect(initialSettings.models).toEqual([]);
     const providerResponse = await firstApp.inject({
       method: "POST",
       url: "/api/settings/providers",
@@ -4979,11 +4981,11 @@ describe("local server foundation", () => {
     const changedModelResponse = await firstApp.inject({
       method: "PATCH",
       url: `/api/chats/${chat.id}/model`,
-      payload: { modelId: initialSettings.preferences.defaultModelId },
+      payload: { modelId: selectedModel.id },
     });
     expect(changedModelResponse.statusCode).toBe(200);
     expect(chatSummarySchema.parse(changedModelResponse.json()).modelId).toBe(
-      initialSettings.preferences.defaultModelId,
+      selectedModel.id,
     );
     expect(
       await firstApp.inject({
@@ -4992,14 +4994,12 @@ describe("local server foundation", () => {
         payload: {
           text: "Use the newly selected model.",
           idempotencyKey: "dynamic-model-turn",
-          modelId: initialSettings.preferences.defaultModelId,
+          modelId: selectedModel.id,
         },
       }),
     ).toMatchObject({ statusCode: 202 });
     await vi.waitFor(() => expect(turnModelIds).toHaveLength(3));
-    expect(turnModelIds.at(-1)).toBe(
-      initialSettings.preferences.defaultModelId,
-    );
+    expect(turnModelIds.at(-1)).toBe(selectedModel.id);
 
     const queueChat = chatSummarySchema.parse(
       (

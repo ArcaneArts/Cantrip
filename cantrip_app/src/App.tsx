@@ -103,6 +103,7 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
@@ -166,6 +167,7 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
   SettingsPage,
@@ -217,6 +219,7 @@ import {
   chatAttachmentContentUrl,
   answerChatPlan,
   createChat,
+  createTask,
   createChatConsole,
   createExplorer,
   createGithubProject,
@@ -265,6 +268,7 @@ import {
   getServerBootstrap,
   getSettings,
   getSkills,
+  getTask,
   getTerminals,
   getWorkers,
   getWorkflows,
@@ -404,6 +408,11 @@ const BrowserView = lazy(() =>
 const PersistentCodeViews = lazy(() =>
   import("@/components/code/persistent-code-views").then((module) => ({
     default: module.PersistentCodeViews,
+  })),
+);
+const PersistentTaskViews = lazy(() =>
+  import("@/components/tasks/persistent-task-views").then((module) => ({
+    default: module.PersistentTaskViews,
   })),
 );
 const RemoteDesktopView = lazy(() =>
@@ -927,6 +936,7 @@ function RepositoryImporter({
 
 function ChatTranscript({
   chat,
+  inspectOnly = false,
   inspectOpen,
   inspectOverlay,
   onCreateChat,
@@ -941,6 +951,7 @@ function ChatTranscript({
   syncEnabled,
 }: {
   chat: ChatSummary;
+  inspectOnly?: boolean;
   inspectOpen: boolean;
   inspectOverlay: boolean;
   onCreateChat(): void;
@@ -1014,6 +1025,13 @@ function ChatTranscript({
         "chatgpt"
       );
     });
+  const taskState = useQuery({
+    enabled: inspectOnly && chat.experience === "task",
+    queryFn: () => getTask(chat.id),
+    queryKey: ["task", chat.id],
+  });
+  const effectiveInspectOnly =
+    inspectOnly && taskChatIsInspectOnly(taskState.data);
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
@@ -1779,7 +1797,10 @@ function ChatTranscript({
     >
       <div
         ref={transcriptViewportRef}
-        className="chat-message-scroll flex-1 overflow-y-auto px-4 pb-72 pt-6 sm:px-8"
+        className={cn(
+          "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8",
+          effectiveInspectOnly ? "pb-10" : "pb-72",
+        )}
         onScroll={handleTranscriptScroll}
       >
         <div ref={transcriptContentRef} className="flex w-full flex-col gap-5">
@@ -1920,36 +1941,28 @@ function ChatTranscript({
             );
           })}
 
-          {chat.status === "running" ||
-          chat.status === "waiting-for-approval" ? (
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="grid size-7 place-items-center rounded-lg border bg-card">
-                {chat.automationPaused ? (
-                  <Pause className="size-3.5 text-amber-500" />
-                ) : (
-                  <Loader2 className="size-3.5 animate-spin" />
-                )}
-              </div>
-              {chat.status === "waiting-for-approval"
-                ? "Codex is waiting for your approval…"
-                : chat.automationPaused
-                  ? "Pause requested — Codex will hold at its next safe boundary…"
-                  : planState.data?.question
-                    ? "Codex is waiting for your plan answer…"
-                    : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
-            </div>
-          ) : null}
+          <ChatRunStatus
+            automationPaused={chat.automationPaused}
+            status={chat.status}
+            waitingForPlanAnswer={Boolean(planState.data?.question)}
+          />
         </div>
       </div>
 
       <div
         aria-hidden="true"
-        className="chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-56 transition-[right] duration-150 ease-out motion-reduce:transition-none"
+        className={cn(
+          "chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-56 transition-[right] duration-150 ease-out motion-reduce:transition-none",
+          effectiveInspectOnly && "hidden",
+        )}
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       />
       <form
         onSubmit={submit}
-        className="pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4"
+        className={cn(
+          "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4",
+          effectiveInspectOnly && "hidden",
+        )}
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       >
         <div className="pointer-events-auto relative w-full">
@@ -2570,6 +2583,11 @@ function ChatTranscript({
           ) : null}
         </div>
       </form>
+      {effectiveInspectOnly ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 border-t bg-background/95 px-4 py-2 text-center text-[11px] text-muted-foreground backdrop-blur">
+          Task planning controls are available in Task view.
+        </div>
+      ) : null}
       <AgentInspectPanelShell
         active={inspectActive}
         className="absolute inset-y-0 right-0 z-30"
@@ -2659,6 +2677,9 @@ export function App() {
   const [agentInspectOpenChats, setAgentInspectOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
+  const [taskChatViewIds, setTaskChatViewIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const setAgentInspectOpen = useCallback((chatId: string, open: boolean) => {
     setAgentInspectOpenChats((current) =>
       updateAgentInspectOpenChats(current, chatId, open),
@@ -3252,6 +3273,51 @@ export function App() {
       });
     },
   });
+  const newTask = useMutation({
+    mutationFn: ({
+      projectId,
+      tabGroupId,
+      worktreeId,
+      worktreeMode,
+      target,
+    }: {
+      projectId: string;
+      tabGroupId?: string;
+      worktreeId?: string;
+      worktreeMode?: "agent-managed" | "pinned";
+      target?: ExecutionTarget;
+    }) =>
+      createTask(
+        projectId,
+        "New task",
+        worktreeId,
+        worktreeMode,
+        tabGroupId,
+        target,
+      ),
+    onSuccess: ({ chat, task }) => {
+      queryClient.setQueryData<ChatSummary[]>(
+        ["chats", chat.projectId],
+        (current = []) =>
+          [...current.filter((item) => item.id !== chat.id), chat].sort(
+            (left, right) => left.position - right.position,
+          ),
+      );
+      queryClient.setQueryData(["task", chat.id], task);
+      setTaskChatViewIds((current) => {
+        const next = new Set(current);
+        next.delete(chat.id);
+        return next;
+      });
+      openCreatedTab(chat.projectId, "chat", chat.id);
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-tab-layout", chat.projectId],
+        }),
+      ]);
+    },
+  });
   const newTerminal = useMutation({
     mutationFn: ({
       projectId,
@@ -3668,6 +3734,11 @@ export function App() {
     mutationFn: deleteChat,
     onSuccess: async (_value, deletedId) => {
       if (selectedChatId === deletedId) setChatConsoleChatId(null);
+      setTaskChatViewIds((current) => {
+        const next = new Set(current);
+        next.delete(deletedId);
+        return next;
+      });
       await queryClient.invalidateQueries({
         queryKey: ["chats", selectedProjectId],
       });
@@ -4023,6 +4094,19 @@ export function App() {
       : undefined;
   const selectedChat =
     selectedSurface?.kind === "chat" ? selectedSurface.entity : undefined;
+  const selectedTaskView = Boolean(
+    selectedChat?.experience === "task" &&
+    !taskChatViewIds.has(selectedChat.id),
+  );
+  const setSelectedTaskView = (view: "task" | "chat") => {
+    if (selectedChat?.experience !== "task") return;
+    setTaskChatViewIds((current) => {
+      const next = new Set(current);
+      if (view === "chat") next.add(selectedChat.id);
+      else next.delete(selectedChat.id);
+      return next;
+    });
+  };
   const selectedStandaloneTerminal =
     selectedSurface?.kind === "terminal" ? selectedSurface.entity : undefined;
   const linkedConsoleTerminal =
@@ -4991,6 +5075,7 @@ export function App() {
     if (tabGroupId) input.tabGroupId = tabGroupId;
     if (target) input.target = target;
     if (kind === "chat") newChat.mutate(input);
+    else if (kind === "task") newTask.mutate(input);
     else if (kind === "terminal") newTerminal.mutate(input);
     else if (kind === "explorer") newExplorer.mutate(input);
     else if (kind === "browser") newBrowser.mutate(input);
@@ -5047,6 +5132,7 @@ export function App() {
   };
   const creatingSurfaceKinds = new Set<ProjectSurfaceCreateKind>([
     ...(newChat.isPending ? (["chat"] as const) : []),
+    ...(newTask.isPending ? (["task"] as const) : []),
     ...(newTerminal.isPending ? (["terminal"] as const) : []),
     ...(newExplorer.isPending ? (["explorer"] as const) : []),
     ...(newBrowser.isPending ? (["browser"] as const) : []),
@@ -5065,20 +5151,22 @@ export function App() {
       : undefined;
   const surfaceCreationFailure = newChat.isError
     ? { label: "Agent", error: newChat.error }
-    : newTerminal.isError
-      ? { label: "terminal", error: newTerminal.error }
-      : newExplorer.isError
-        ? { label: "Explorer", error: newExplorer.error }
-        : newBrowser.isError
-          ? { label: "Browser", error: newBrowser.error }
-          : newCodeTab.isError
-            ? { label: "Code tab", error: newCodeTab.error }
-            : newRemoteDesktop.isError
-              ? {
-                  label: "Remote Desktop",
-                  error: newRemoteDesktop.error,
-                }
-              : null;
+    : newTask.isError
+      ? { label: "Task", error: newTask.error }
+      : newTerminal.isError
+        ? { label: "terminal", error: newTerminal.error }
+        : newExplorer.isError
+          ? { label: "Explorer", error: newExplorer.error }
+          : newBrowser.isError
+            ? { label: "Browser", error: newBrowser.error }
+            : newCodeTab.isError
+              ? { label: "Code tab", error: newCodeTab.error }
+              : newRemoteDesktop.isError
+                ? {
+                    label: "Remote Desktop",
+                    error: newRemoteDesktop.error,
+                  }
+                : null;
   const handleWorkspaceDrop = (operation: WorkspaceDropOperation) => {
     setWorkspaceDragError(null);
     if (operation.type === "tab-layout") {
@@ -5150,6 +5238,13 @@ export function App() {
           open: popOutActiveView,
         }
       : null,
+    task:
+      activeChat?.experience === "task"
+        ? {
+            change: setSelectedTaskView,
+            view: selectedTaskView ? ("task" as const) : ("chat" as const),
+          }
+        : null,
     chat:
       activeChat &&
       !showImporter &&
@@ -5201,6 +5296,17 @@ export function App() {
   );
   const explorerSurfaceVisible = Boolean(
     selectedExplorer &&
+    !mobileProjectSelectorOpen &&
+    !showImporter &&
+    !showSettings &&
+    !showServerAdmin &&
+    !showProjectSettings &&
+    !(compactShell && mobileTabGridOpen) &&
+    !groupOwnedElsewhere,
+  );
+  const taskSurfaceVisible = Boolean(
+    selectedChat?.experience === "task" &&
+    selectedTaskView &&
     !mobileProjectSelectorOpen &&
     !showImporter &&
     !showSettings &&
@@ -5986,6 +6092,34 @@ export function App() {
           />
         </Suspense>
 
+        <Suspense
+          fallback={
+            taskSurfaceVisible ? (
+              <div className="grid flex-1 place-items-center text-muted-foreground">
+                <Loader2 className="size-5 animate-spin" />
+              </div>
+            ) : null
+          }
+        >
+          <PersistentTaskViews
+            activeTask={
+              taskSurfaceVisible && selectedChat
+                ? {
+                    chat: selectedChat,
+                    workerName: selectedWorker?.name,
+                    workerOnline:
+                      selectedWorker?.online ??
+                      selectedChat.status !== "offline",
+                  }
+                : null
+            }
+            settings={settings.data}
+            onRename={(chatId, title) =>
+              renameChatMutation.mutate({ chatId, title })
+            }
+          />
+        </Suspense>
+
         {mobileProjectSelectorOpen ? (
           <MobileProjectSelector
             activeWorkspace={activeProjectWorkspace}
@@ -6343,10 +6477,12 @@ export function App() {
               />
             )}
           </Suspense>
-        ) : selectedChat ? (
+        ) : selectedChat?.experience === "task" &&
+          selectedTaskView ? null : selectedChat ? (
           <ChatTranscript
             key={selectedChat.id}
             chat={selectedChat}
+            inspectOnly={selectedChat.experience === "task"}
             inspectOpen={agentInspectOpenChats.has(selectedChat.id)}
             inspectOverlay={narrowViewport}
             settings={settings.data}

@@ -70,6 +70,15 @@ describe("project tab group presentation", () => {
     ).toBe("mixed");
   });
 
+  it("uses the Task visual kind without changing the persisted chat tab kind", () => {
+    const task = surface("chat:task");
+    if (task.kind !== "chat") throw new Error("Expected a Chat surface.");
+    task.entity.experience = "task";
+
+    expect(projectTabGroupVisualKind([task])).toBe("task");
+    expect(task.member.tabKind).toBe("chat");
+  });
+
   it("selects the right neighbor before falling back to the left", () => {
     const surfaces = [
       surface("chat:left"),

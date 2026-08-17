@@ -11,6 +11,15 @@ The project is inspired by the Codex desktop experience, but its architecture is
 Cantrip organizes work into GitHub-backed projects. Import an existing repository or create a public or private repository in a personal account or organization directly from the project picker. Empty repositories remain usable while they wait for their first commit. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
+- Task-backed chats for large jobs. A Task starts as a full Markdown brief with
+  attachments, runs strictly read-only planning into a durable Markdown plan
+  and structured questions, supports repeated refinements and revision-safe
+  user edits, then finalizes and automatically starts one Goal on the same
+  Codex thread. Its dashboard keeps the immutable plan, Goal usage and controls,
+  live Agent activity, worker/worktree state, associated pull requests, and
+  nonblocking policy-cycle warnings together. Tasks survive tab changes,
+  desktop pop-outs, worker outages, relocation, archive/restore, and server
+  restarts. See [the Tasks contract](docs/TASKS.md).
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
@@ -302,7 +311,7 @@ pnpm install
 Defaults are suitable for local development. The first development start builds
 the pinned Codex source; subsequent starts reuse Cargo's cache. Copy
 `.env.example` into your preferred environment setup if you need to override
-ports, data directories, the server origin, or the default local model.
+ports, data directories, the server origin, or local model metadata.
 
 ## Command quick reference
 
@@ -563,7 +572,11 @@ are documented in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#desktop-updater-si
 
 ## Test with Ollama
 
-The development seed includes an Ollama provider at `http://127.0.0.1:11434/v1` and a `gemma4:26b` model entry. Make the configured model available in Ollama, start Ollama, then select that model in Cantrip. Providers and model names can be changed from Settings without storing credentials in the browser.
+Cantrip starts without a model provider or default model. To test with Ollama,
+start Ollama, then add an Ollama provider and the model you want through
+**Settings → Models**. The usual local endpoint is
+`http://127.0.0.1:11434/v1`. Provider configuration remains server-owned rather
+than being stored in the browser.
 
 ## PostgreSQL development
 

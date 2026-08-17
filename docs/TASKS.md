@@ -1,12 +1,24 @@
 # Tasks
 
-## Status and dependency
+## Implementation status
 
-This document designs the Cantrip Task experience. It assumes the Policy system
-in [POLICIES.md](POLICIES.md) has already been fully implemented, merged, and
-validated. Policies are intentionally implemented first as an independent
-effort. Task implementation should be revisited against the final Policy APIs
-before its first code milestone begins.
+The Cantrip Task experience described here is implemented. It was delivered in
+seven independently merged Manual Change Protocol cycles after the Policy
+system in [POLICIES.md](POLICIES.md) was completed. This document now records
+the product and recovery contract for the shipped feature rather than a future
+proposal.
+
+The implementation uses the final Policy APIs: every planning, finalization,
+and Goal turn receives current effective Policy summaries, and the generated
+Goal objective tells the Agent how to inspect full effective policies through
+the Cantrip CLI. Task persistence never snapshots Policy bodies.
+
+The initial release deliberately keeps pull-request tracking observational.
+Exact PR URLs in the durable transcript and branches from the Task's current or
+historical execution lanes are combined with bounded GitHub list calls when the
+dashboard loads. Associations and warnings do not mutate GitHub or block Goal
+progress. A separate durable dismissal table remains an optional future
+extension.
 
 Tasks automate the user's existing large-job workflow:
 
@@ -602,7 +614,7 @@ does not need a complex diff/history editor.
 
 ### task_pull_requests
 
-Optional durable associations:
+Optional future durable associations (not materialized in the initial release):
 
 | Field                   | Notes                                               |
 | ----------------------- | --------------------------------------------------- |
@@ -637,8 +649,12 @@ Suggested routes:
 
 ### Advisory state
 
-    GET  /api/tasks/:chatId/pull-requests
-    POST /api/tasks/:chatId/pull-requests/:number/dismiss
+    GET /api/tasks/:chatId/dashboard
+
+The dashboard snapshot combines the durable Task, live Goal state, current
+placement/dirty observation, bounded Task-associated PR discovery, and
+nonblocking warnings. Separate PR dismissal routes are deferred with the
+optional durable-association table.
 
 Mutations carry rowVersion and idempotency keys. Operation endpoints return
 accepted/current state rather than holding the HTTP request open for the whole
@@ -737,11 +753,11 @@ operation-kind dimension. Task plan contents are not analytics.
 
 ## Implementation sequence
 
-Start only after Policies is merged and the Task plan has been reconciled with
-the implemented Policy contracts. Every milestone uses its own worktree,
-branch, ready PR, squash auto-merge, merge observation, and cleanup.
+Policies were merged first and the Task plan was reconciled with the implemented
+Policy contracts. Every milestone used its own worktree, branch, ready PR,
+squash merge, merge observation, and cleanup.
 
-### Milestone 1: Task domain foundation
+### Milestone 1: Task domain foundation — complete
 
 - Chat experience protocol/database migration;
 - Task and planning-round tables;
@@ -751,7 +767,7 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - repository/protocol/server tests;
 - no visible Task menu yet.
 
-### Milestone 2: Structured read-only planner
+### Milestone 2: Structured read-only planner — complete
 
 - internal structured Chat-turn mode;
 - Task planner/finalizer schemas;
@@ -761,7 +777,7 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - round persistence and restart recovery;
 - worker/server integration tests.
 
-### Milestone 3: Task creation and draft UI
+### Milestone 3: Task creation and draft UI — complete
 
 - new-tab Task entries;
 - Task surface/router selection;
@@ -772,7 +788,7 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - Task/Chat inspect toggle;
 - focused app tests.
 
-### Milestone 4: Review and iterative planning
+### Milestone 4: Review and iterative planning — complete
 
 - Markdown plan renderer;
 - question/recommendation/freeform UI;
@@ -782,7 +798,7 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - failed/retry/offline states;
 - multi-window and accessibility tests.
 
-### Milestone 5: Finalization and Goal handoff
+### Milestone 5: Finalization and Goal handoff — complete
 
 - Begin Implementation validation;
 - final structured turn;
@@ -792,7 +808,7 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - automatic same-Chat Goal turn;
 - recovery/duplicate-prevention tests.
 
-### Milestone 6: Dashboard and PR advisories
+### Milestone 6: Dashboard and PR advisories — complete
 
 - implementing/paused/blocked/complete dashboard;
 - Goal controls and Chat integration;
@@ -801,7 +817,7 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - worktree/branch display;
 - server/app/GitHub tests.
 
-### Milestone 7: Full-system hardening
+### Milestone 7: Full-system hardening — complete
 
 - relocation and attachment-transfer tests;
 - hosted tenant isolation;
@@ -810,6 +826,12 @@ branch, ready PR, squash auto-merge, merge observation, and cleanup.
 - logging/redaction review;
 - README/FULL_DESCRIPTION updates;
 - end-to-end and repository-wide validation.
+
+The hardening pass also ensures Task draft attachments that have not yet
+appeared in a transcript message are included in both immediate and
+wait-for-idle Chat relocation snapshots. Archive/restore retains Task identity
+and state, permanent deletion cascades Task-only rows, and forking the hidden
+transcript intentionally creates an ordinary Agent Chat.
 
 ## Acceptance criteria
 

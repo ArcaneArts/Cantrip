@@ -180,7 +180,12 @@ export function ProjectTabBar({
                             }}
                           >
                             <ProjectSurfaceIcon
-                              kind={surface.kind}
+                              kind={
+                                surface.kind === "chat" &&
+                                surface.entity.experience === "task"
+                                  ? "task"
+                                  : surface.kind
+                              }
                               className="size-3.5 shrink-0"
                             />
                             <span className="truncate">{surface.title}</span>

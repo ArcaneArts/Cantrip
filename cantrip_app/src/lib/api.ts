@@ -21,6 +21,7 @@ import {
   browserTunnelRequestSchema,
   agentThreadSyncSchema,
   chatListSchema,
+  chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
@@ -221,6 +222,13 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  taskCreateResultSchema,
+  taskContinuationStartSchema,
+  taskDetailSchema,
+  taskImplementationDashboardSchema,
+  taskDraftUpdateSchema,
+  taskOperationStartSchema,
+  taskPlanUpdateSchema,
   terminalListSchema,
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
@@ -328,6 +336,10 @@ import type {
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
   TerminalServiceConfiguration,
+  TaskDraftUpdate,
+  TaskOperationStart,
+  TaskContinuationStart,
+  TaskPlanUpdate,
   TunnelAttachmentCreate,
   BrowserTunnelRequest,
   TunnelUserCreate,
@@ -2504,6 +2516,109 @@ export async function createChat(
       ...(tabGroupId ? { tabGroupId } : {}),
       ...(target ? { target } : {}),
     }),
+  );
+}
+
+export async function createTask(
+  projectId: string,
+  title: string,
+  worktreeId?: string,
+  worktreeMode?: "agent-managed" | "pinned",
+  tabGroupId?: string,
+  target?: ExecutionTarget,
+) {
+  return taskCreateResultSchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
+      title,
+      ...(worktreeId ? { worktreeId } : {}),
+      ...(worktreeMode ? { worktreeMode } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
+    }),
+  );
+}
+
+export async function getTask(chatId: string) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}`),
+  );
+}
+
+export async function getTaskImplementationDashboard(chatId: string) {
+  return taskImplementationDashboardSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/dashboard`),
+  );
+}
+
+export async function getTaskAttachments(chatId: string) {
+  return chatAttachmentListSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/attachments`),
+  );
+}
+
+export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/draft`, {
+      method: "PATCH",
+      body: JSON.stringify(taskDraftUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function startTaskPlanning(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/plan`,
+      taskOperationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/plan`, {
+      method: "PATCH",
+      body: JSON.stringify(taskPlanUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function continueTaskPlanning(
+  chatId: string,
+  input: TaskContinuationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/continue`,
+      taskContinuationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function beginTaskImplementation(
+  chatId: string,
+  input: TaskContinuationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/begin-implementation`,
+      taskContinuationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function retryTaskPlanning(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/retry`,
+      taskOperationStartSchema.parse(input),
+    ),
   );
 }
 

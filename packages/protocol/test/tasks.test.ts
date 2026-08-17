@@ -5,7 +5,9 @@ import {
   taskDetailSchema,
   taskDraftUpdateSchema,
   taskFinalizerResultSchema,
+  taskImplementationDashboardSchema,
   taskOperationStartSchema,
+  taskPlanUpdateSchema,
   taskPlannerResultSchema,
   taskQuestionAnswerListSchema,
   taskQuestionListSchema,
@@ -103,6 +105,29 @@ describe("Task protocol", () => {
     ).toBe(false);
   });
 
+  it("accepts independent optimistic review edits", () => {
+    expect(taskPlanUpdateSchema.safeParse({ rowVersion: 1 }).success).toBe(
+      false,
+    );
+    expect(
+      taskPlanUpdateSchema.parse({
+        rowVersion: 2,
+        answers: [],
+        additionalDirection: "Recheck rollout safety.",
+      }),
+    ).toEqual({
+      rowVersion: 2,
+      answers: [],
+      additionalDirection: "Recheck rollout safety.",
+    });
+    expect(
+      taskPlanUpdateSchema.safeParse({
+        rowVersion: 2,
+        planMarkdown: "",
+      }).success,
+    ).toBe(false);
+  });
+
   it("bounds durable Task documents", () => {
     const base = {
       chatId: "chat-1",
@@ -133,5 +158,40 @@ describe("Task protocol", () => {
         briefMarkdown: "x".repeat(TASK_MARKDOWN_LIMIT + 1),
       }).success,
     ).toBe(false);
+
+    expect(
+      taskImplementationDashboardSchema.parse({
+        task: {
+          ...base,
+          state: "implementing",
+          finalPlanMarkdown: "# Final plan",
+          goalPrompt: "Implement everything.",
+          implementationStartedAt: "2026-08-17T00:00:00.000Z",
+        },
+        goal: {
+          threadId: "thread",
+          objective: "Implement everything.",
+          status: "active",
+          tokenBudget: 10_000,
+          tokensUsed: 50,
+          timeUsedSeconds: 10,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+        goalUnavailableReason: null,
+        placement: {
+          workerId: "worker",
+          worktreeId: "worktree",
+          worktreeName: "Cycle 1",
+          branch: "agent/manual/cycle-1",
+          isPrimary: false,
+          dirty: false,
+          dirtyFileCount: 0,
+        },
+        pullRequests: [],
+        pullRequestsUnavailableReason: null,
+        warnings: [],
+      }),
+    ).toMatchObject({ task: { state: "implementing" } });
   });
 });

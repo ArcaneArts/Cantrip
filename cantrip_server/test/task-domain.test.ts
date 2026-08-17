@@ -4,10 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  archivedChatListSchema,
+  chatAttachmentListSchema,
   chatListSchema,
   chatMessageListSchema,
   chatSummarySchema,
   taskCreateResultSchema,
+  taskImplementationDashboardSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -18,6 +21,7 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
+import { buildTaskGoalObjective } from "../src/tasks/planner.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
@@ -56,10 +60,36 @@ const plannerResult = {
     },
   ],
 };
+const finalizerResult = {
+  finalPlanMarkdown:
+    "# Final Task plan\n\nDeliver every acceptance criterion in sequential, policy-compliant milestones.",
+  goalPrompt:
+    "Implement the complete final plan and continue through every milestone.",
+};
 let taskTurnCommand: Extract<WorkerCommand, { type: "chat.turn" }> | null =
   null;
 let codePreparationCount = 0;
+let goalCreateCount = 0;
+let goalTurnCount = 0;
+let structuredTurnCount = 0;
+let failNextGoalCreate = false;
 let nextTaskStructuredResult: unknown = plannerResult;
+let activeGoal: {
+  threadId: string;
+  objective: string;
+  status:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usageLimited"
+    | "budgetLimited"
+    | "complete";
+  tokenBudget: number | null;
+  tokensUsed: number;
+  timeUsedSeconds: number;
+  createdAt: number;
+  updatedAt: number;
+} | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -85,6 +115,17 @@ const workerBridge: WorkerCommandBus = {
     }
     if (command.type === "chat.turn") {
       taskTurnCommand = command;
+      if (command.resultMode.kind !== "structured") {
+        goalTurnCount += 1;
+        return {
+          threadId: "task-planner-thread",
+          turnId: "task-goal-turn",
+          text: "Implementation is underway: https://github.com/ArcaneArts/TaskDomain/pull/77",
+          structuredResult: null,
+          status: "completed",
+        };
+      }
+      structuredTurnCount += 1;
       const structuredResult = nextTaskStructuredResult;
       nextTaskStructuredResult = plannerResult;
       await options?.onEvent?.({
@@ -113,6 +154,58 @@ const workerBridge: WorkerCommandBus = {
         status: "completed",
       };
     }
+    if (command.type === "chat.goal.create") {
+      goalCreateCount += 1;
+      if (failNextGoalCreate) {
+        failNextGoalCreate = false;
+        throw new Error("Goal runtime temporarily unavailable.");
+      }
+      activeGoal = {
+        threadId: command.threadId ?? "task-planner-thread",
+        objective: command.objective,
+        status: "active",
+        tokenBudget: command.tokenBudget,
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      return { goal: activeGoal };
+    }
+    if (command.type === "chat.goal.get") {
+      return { goal: activeGoal };
+    }
+    if (command.type === "github.pull-requests.list") {
+      return {
+        state: command.state,
+        total: command.state === "open" ? 1 : 0,
+        nextPage: null,
+        pullRequests:
+          command.state === "open"
+            ? [
+                {
+                  number: 77,
+                  title: "Implement the Task dashboard",
+                  state: "open",
+                  url: "https://github.com/ArcaneArts/TaskDomain/pull/77",
+                  author: "cantrip-test",
+                  commentCount: 0,
+                  labels: [],
+                  createdAt: "2026-08-17T12:00:00.000Z",
+                  updatedAt: "2026-08-17T12:00:00.000Z",
+                  closedAt: null,
+                  body: "Task implementation",
+                  draft: false,
+                  merged: false,
+                  headRef: "agent/manual/task-dashboard",
+                  headSha: "1".repeat(40),
+                  baseRef: "main",
+                  baseSha: "2".repeat(40),
+                },
+              ]
+            : [],
+      };
+    }
     throw new Error(`Unexpected Task foundation command ${command.type}.`);
   },
 };
@@ -123,6 +216,11 @@ let projectId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId: "task-worker",
     name: "Task Worker",
@@ -282,6 +380,173 @@ describe.sequential("Task domain foundation", () => {
     expect(
       await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
     ).toMatchObject({ briefMarkdown: "A durable implementation brief" });
+
+    expect(
+      await database.repository.tasks.updateDraft(
+        "other-owner",
+        created!.chat.id,
+        {
+          rowVersion: updated.rowVersion,
+          briefMarkdown: "Cross-tenant overwrite",
+        },
+      ),
+    ).toBeNull();
+    expect(
+      await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
+    ).toMatchObject({ briefMarkdown: "A durable implementation brief" });
+  });
+
+  it("preserves Task state through archive, restore, and ordinary Chat forking", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Lifecycle Task", worktreeMode: "agent-managed" },
+    );
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown: "Keep this durable Task state across archival.",
+      },
+    );
+    await database.repository.appendMessage(LOCAL_USER_ID, created!.chat.id, {
+      role: "user",
+      content: [{ type: "text", text: "A canonical Task message." }],
+      idempotencyKey: "task-lifecycle-message",
+    });
+
+    const forkedResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${created!.chat.id}/fork`,
+      payload: {},
+    });
+    expect(forkedResponse.statusCode).toBe(201);
+    expect(chatSummarySchema.parse(forkedResponse.json())).toMatchObject({
+      experience: "agent",
+      title: "Lifecycle Task (fork)",
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${created!.chat.id}`,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      archivedChatListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/archived-chats`,
+          })
+        ).json(),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          experience: "task",
+          id: created!.chat.id,
+          messageCount: 1,
+        }),
+      ]),
+    );
+    expect(
+      await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
+    ).toMatchObject({
+      briefMarkdown: drafted!.briefMarkdown,
+      rowVersion: drafted!.rowVersion,
+    });
+
+    const restoredResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${created!.chat.id}/restore`,
+    });
+    expect(restoredResponse.statusCode).toBe(200);
+    expect(chatSummarySchema.parse(restoredResponse.json())).toMatchObject({
+      experience: "task",
+      id: created!.chat.id,
+    });
+    expect(
+      taskDetailSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/tasks/${created!.chat.id}`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      briefMarkdown: drafted!.briefMarkdown,
+      rowVersion: drafted!.rowVersion,
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${created!.chat.id}`,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${created!.chat.id}/permanent`,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
+    ).toBeNull();
+  });
+
+  it("hydrates only the ordered attachments selected by the Task draft", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Attachment hydration", worktreeMode: "agent-managed" },
+    );
+    const attachmentId = randomUUID();
+    await database.repository.createChatAttachment(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        fileName: "architecture.md",
+        id: attachmentId,
+        kind: "text",
+        mimeType: "text/markdown",
+        previewText: "# Architecture",
+        sha256: "a".repeat(64),
+        sizeBytes: 14,
+        source: "file",
+        workerId: "task-worker",
+      },
+    );
+    await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        draftAttachmentIds: [attachmentId],
+      },
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/tasks/${created!.chat.id}/attachments`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(chatAttachmentListSchema.parse(response.json())).toEqual([
+      expect.objectContaining({
+        chatId: created!.chat.id,
+        fileName: "architecture.md",
+        id: attachmentId,
+      }),
+    ]);
   });
 
   it("starts one idempotent planning round with a stable input snapshot", async () => {
@@ -361,15 +626,25 @@ describe.sequential("Task domain foundation", () => {
         briefMarkdown: "Inspect the repository and write a complete plan.",
       },
     );
+    const operationId = randomUUID();
     const response = await app.inject({
       method: "POST",
       url: `/api/tasks/${created!.chat.id}/plan`,
       payload: {
-        operationId: randomUUID(),
+        operationId,
         rowVersion: drafted!.rowVersion,
       },
     });
     expect(response.statusCode).toBe(202);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/tasks/${created!.chat.id}/plan`,
+          payload: { operationId, rowVersion: drafted!.rowVersion },
+        })
+      ).statusCode,
+    ).toBe(202);
     const completed = await waitForTaskState(created!.chat.id, "review");
     expect(completed).toMatchObject({
       planMarkdown: plannerResult.planMarkdown,
@@ -429,6 +704,59 @@ describe.sequential("Task domain foundation", () => {
       }),
     ]);
 
+    const invalidReviewResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: {
+        rowVersion: completed.rowVersion,
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "missing-option",
+            freeform: null,
+          },
+        ],
+      },
+    });
+    expect(invalidReviewResponse.statusCode).toBe(409);
+
+    const savedReviewResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: {
+        rowVersion: completed.rowVersion,
+        planMarkdown:
+          "# User-refined Task plan\n\nKeep the rollout independently reversible.",
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "sequential",
+            freeform: null,
+          },
+        ],
+        additionalDirection: "Keep each milestone independently mergeable.",
+      },
+    });
+    expect(savedReviewResponse.statusCode).toBe(200);
+    const savedReview = taskDetailSchema.parse(savedReviewResponse.json());
+    expect(savedReview).toMatchObject({
+      planAuthorship: "user-edited",
+      currentAnswers: [{ questionId: "delivery", optionId: "sequential" }],
+      additionalDirection: "Keep each milestone independently mergeable.",
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/tasks/${created!.chat.id}/plan`,
+          payload: {
+            rowVersion: completed.rowVersion,
+            additionalDirection: "Overwrite from a stale window.",
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+
     const continuedPlan = {
       planMarkdown:
         "# Revised Task plan\n\nDeliver every milestone as a sequential PR.",
@@ -440,7 +768,7 @@ describe.sequential("Task domain foundation", () => {
       url: `/api/tasks/${created!.chat.id}/continue`,
       payload: {
         operationId: randomUUID(),
-        rowVersion: completed.rowVersion,
+        rowVersion: savedReview.rowVersion,
         answers: [
           {
             questionId: "delivery",
@@ -459,6 +787,7 @@ describe.sequential("Task domain foundation", () => {
       currentQuestions: [],
     });
     expect(taskTurnCommand?.prompt).toContain("Sequential PRs");
+    expect(taskTurnCommand?.prompt).toContain("User-refined Task plan");
     expect(taskTurnCommand?.prompt).toContain(
       "Keep each milestone independently mergeable.",
     );
@@ -505,6 +834,373 @@ describe.sequential("Task domain foundation", () => {
         created!.chat.id,
       ),
     ).toEqual([expect.objectContaining({ status: "failed" })]);
+
+    nextTaskStructuredResult = plannerResult;
+    const retryResponse = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/retry`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: failed.rowVersion,
+      },
+    });
+    expect(retryResponse.statusCode).toBe(202);
+    const recovered = await waitForTaskState(created!.chat.id, "review", 2);
+    expect(recovered).toMatchObject({
+      planMarkdown: plannerResult.planMarkdown,
+      planningRound: 2,
+      lastError: null,
+    });
+  });
+
+  it("finalizes one immutable plan and starts one same-Chat Goal idempotently", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Goal handoff", worktreeMode: "agent-managed" },
+    );
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown: "Finalize this plan and implement the complete result.",
+      },
+    );
+    await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: { operationId: randomUUID(), rowVersion: drafted!.rowVersion },
+    });
+    const review = await waitForTaskState(created!.chat.id, "review");
+    nextTaskStructuredResult = finalizerResult;
+    const operationId = randomUUID();
+    const payload = {
+      operationId,
+      rowVersion: review.rowVersion,
+      answers: [
+        {
+          questionId: "delivery",
+          optionId: "sequential",
+          freeform: null,
+        },
+      ],
+      additionalDirection: "Keep every milestone independently mergeable.",
+    };
+    const goalsBefore = goalCreateCount;
+    const goalTurnsBefore = goalTurnCount;
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/tasks/${created!.chat.id}/begin-implementation`,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(202);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/tasks/${created!.chat.id}/begin-implementation`,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(202);
+
+    const implementing = await waitForTaskState(
+      created!.chat.id,
+      "implementing",
+    );
+    expect(implementing).toMatchObject({
+      finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+      implementationStartedAt: expect.any(String),
+      currentQuestions: [],
+      activeOperationId: null,
+    });
+    expect(implementing.goalPrompt).toContain(
+      "# Cantrip Task implementation objective",
+    );
+    expect(implementing.goalPrompt).toContain("cantrip policy read");
+    expect(implementing.goalPrompt).toContain(finalizerResult.goalPrompt);
+    expect(implementing.goalPrompt).toContain(
+      finalizerResult.finalPlanMarkdown,
+    );
+    expect(goalCreateCount - goalsBefore).toBe(1);
+    expect(goalTurnCount - goalTurnsBefore).toBe(1);
+
+    const dashboardResponse = await app.inject({
+      method: "GET",
+      url: `/api/tasks/${created!.chat.id}/dashboard`,
+    });
+    expect(dashboardResponse.statusCode).toBe(200);
+    expect(
+      taskImplementationDashboardSchema.parse(dashboardResponse.json()),
+    ).toMatchObject({
+      task: { state: "implementing" },
+      goal: { status: "active" },
+      pullRequests: [
+        {
+          number: 77,
+          associationKind: "explicit",
+          associationSource: "message-url",
+        },
+      ],
+      warnings: [],
+    });
+
+    activeGoal = {
+      ...activeGoal!,
+      status: "usageLimited",
+      tokensUsed: 500,
+      timeUsedSeconds: 30,
+      updatedAt: 2,
+    };
+    const blockedDashboard = taskImplementationDashboardSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/tasks/${created!.chat.id}/dashboard`,
+        })
+      ).json(),
+    );
+    expect(blockedDashboard.task).toMatchObject({
+      state: "blocked",
+      lastError: {
+        code: "goal-usage-limited",
+        operationKind: "implementation",
+      },
+    });
+    activeGoal = { ...activeGoal, status: "active", updatedAt: 3 };
+    expect(
+      taskImplementationDashboardSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/tasks/${created!.chat.id}/dashboard`,
+          })
+        ).json(),
+      ).task,
+    ).toMatchObject({ state: "implementing", lastError: null });
+
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/tasks/${created!.chat.id}/begin-implementation`,
+          payload,
+        })
+      ).statusCode,
+    ).toBe(202);
+    expect(goalCreateCount - goalsBefore).toBe(1);
+    expect(goalTurnCount - goalTurnsBefore).toBe(1);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/tasks/${created!.chat.id}/plan`,
+          payload: {
+            rowVersion: implementing.rowVersion,
+            planMarkdown: "# Attempted rewrite",
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+
+    const messages = chatMessageListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/chats/${created!.chat.id}/messages`,
+        })
+      ).json(),
+    );
+    expect(
+      messages.filter(
+        (message) => message.role === "user" && message.mode === "goal",
+      ),
+    ).toHaveLength(1);
+    expect(
+      await database.repository.tasks.listRounds(
+        LOCAL_USER_ID,
+        created!.chat.id,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: operationId,
+          kind: "finalize",
+          status: "completed",
+          outputPlanMarkdown: finalizerResult.finalPlanMarkdown,
+          outputGoalPrompt: implementing.goalPrompt,
+          turnId: "task-planner-turn",
+        }),
+      ]),
+    );
+  });
+
+  it("retries a prepared Goal launch without rerunning finalization", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Goal launch recovery", worktreeMode: "agent-managed" },
+    );
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown: "Preserve final artifacts if Goal startup fails.",
+      },
+    );
+    await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: { operationId: randomUUID(), rowVersion: drafted!.rowVersion },
+    });
+    const review = await waitForTaskState(created!.chat.id, "review");
+    nextTaskStructuredResult = finalizerResult;
+    failNextGoalCreate = true;
+    const structuredBefore = structuredTurnCount;
+    const goalsBefore = goalCreateCount;
+    await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/begin-implementation`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: review.rowVersion,
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "sequential",
+            freeform: null,
+          },
+        ],
+        additionalDirection: "",
+      },
+    });
+    const failed = await waitForTaskState(created!.chat.id, "failed");
+    expect(failed).toMatchObject({
+      stableStateBeforeFailure: "review",
+      finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+      goalPrompt: expect.stringContaining(finalizerResult.goalPrompt),
+      lastError: { code: "task-goal-start-failed", operationKind: "finalize" },
+    });
+    expect(structuredTurnCount - structuredBefore).toBe(1);
+    expect(goalCreateCount - goalsBefore).toBe(1);
+
+    const retry = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/retry`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: failed.rowVersion,
+      },
+    });
+    expect(retry.statusCode).toBe(202);
+    await waitForTaskState(created!.chat.id, "implementing");
+    expect(structuredTurnCount - structuredBefore).toBe(1);
+    expect(goalCreateCount - goalsBefore).toBe(2);
+  });
+
+  it("recovers staged final artifacts after a server restart window", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Finalization restart", worktreeMode: "agent-managed" },
+    );
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown: "Recover finalization after a restart.",
+      },
+    );
+    const planningId = randomUUID();
+    await database.repository.tasks.beginOperation(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        operationId: planningId,
+        kind: "initial-plan",
+        rowVersion: drafted!.rowVersion,
+      },
+    );
+    const reviewed = await database.repository.tasks.completePlanningOperation(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      planningId,
+      plannerResult,
+      "restart-planning-turn",
+    );
+    const finalizeId = randomUUID();
+    await database.repository.tasks.beginOperation(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        operationId: finalizeId,
+        kind: "finalize",
+        rowVersion: reviewed!.task.rowVersion,
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "sequential",
+            freeform: null,
+          },
+        ],
+      },
+    );
+    const objective = buildTaskGoalObjective(finalizerResult);
+    await database.repository.tasks.stageFinalizationResult(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      finalizeId,
+      {
+        finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+        goalPrompt: objective,
+      },
+      "restart-finalizer-turn",
+    );
+
+    expect(
+      await database.repository.tasks.reconcileInterruptedOperations(),
+    ).toBe(1);
+    const interrupted = await database.repository.tasks.get(
+      LOCAL_USER_ID,
+      created!.chat.id,
+    );
+    expect(interrupted).toMatchObject({
+      state: "failed",
+      finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+      goalPrompt: objective,
+      lastError: { code: "server-restarted", operationKind: "finalize" },
+    });
+
+    const resumed =
+      await database.repository.tasks.resumeFinalizationGoalLaunch(
+        LOCAL_USER_ID,
+        created!.chat.id,
+        interrupted!.rowVersion,
+      );
+    expect(resumed).toMatchObject({
+      task: { state: "finalizing", activeOperationId: finalizeId },
+      round: { id: finalizeId, status: "running" },
+    });
+    const completed =
+      await database.repository.tasks.completeFinalizationOperation(
+        LOCAL_USER_ID,
+        created!.chat.id,
+        finalizeId,
+      );
+    expect(completed).toMatchObject({
+      task: {
+        state: "implementing",
+        finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+        implementationStartedAt: expect.any(String),
+      },
+      round: { status: "completed" },
+    });
   });
 
   it("reconciles interrupted rounds and accepts a late durable outcome once", async () => {
