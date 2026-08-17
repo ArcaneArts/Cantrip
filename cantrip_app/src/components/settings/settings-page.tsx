@@ -33,6 +33,7 @@ import {
   Route,
   Search,
   Server,
+  ShieldCheck,
   ScrollText,
   SlidersHorizontal,
   Sparkles,
@@ -100,6 +101,7 @@ import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
 import { TunnelSettings } from "./tunnel-settings";
 import { LogSettings } from "./log-settings";
+import { PolicySettings } from "./policy-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -125,6 +127,7 @@ export type SettingsSection =
   | "tunnels"
   | "skills"
   | "mcp"
+  | "policies"
   | "workspaces";
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
@@ -134,6 +137,7 @@ const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "logs", label: "Logs", icon: ScrollText },
   { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "workspaces", label: "Workspaces", icon: Layers3 },
+  { id: "policies", label: "Policies", icon: ShieldCheck },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP", icon: Cable },
 ];
@@ -1421,6 +1425,11 @@ export function SettingsPage({
         {section === "workspaces" ? (
           <div className="w-full min-w-0">
             <WorkspaceSettings />
+          </div>
+        ) : null}
+        {section === "policies" ? (
+          <div className="w-full min-w-0">
+            <PolicySettings />
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}

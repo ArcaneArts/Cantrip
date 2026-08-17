@@ -145,6 +145,18 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([["tunnels"], ["project-tunnels", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          entityId: "policy-one",
+          resource: "policy",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([["policies"], ["policy", "policy-one"]]);
+    expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+      "policies",
+    ]);
   });
 
   it("coalesces repeated events before invalidating TanStack Query", async () => {

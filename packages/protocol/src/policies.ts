@@ -122,6 +122,28 @@ export const policyAssignmentUpdateSchema = z.object({
     ),
 });
 
+export const policyFromTemplateCreateSchema = z
+  .object({
+    key: policyKeySchema.optional(),
+    name: policyNameSchema.optional(),
+    summary: policySummaryTextSchema.optional(),
+    bodyMarkdown: policyBodyMarkdownSchema.optional(),
+    enabled: z.boolean().optional(),
+    mandatory: z.boolean().optional(),
+  })
+  .strict();
+
+export const policyTemplateResetSchema = z
+  .object({
+    rowVersion: z.number().int().positive(),
+    restoreDefaults: z.boolean().default(false),
+  })
+  .strict();
+
+export const policyDeleteSchema = z
+  .object({ rowVersion: z.number().int().positive() })
+  .strict();
+
 export const effectivePolicySourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mandatory") }),
   z.object({
@@ -161,6 +183,11 @@ export type PolicyOrderUpdate = z.infer<typeof policyOrderUpdateSchema>;
 export type PolicyAssignmentUpdate = z.infer<
   typeof policyAssignmentUpdateSchema
 >;
+export type PolicyFromTemplateCreate = z.infer<
+  typeof policyFromTemplateCreateSchema
+>;
+export type PolicyTemplateReset = z.infer<typeof policyTemplateResetSchema>;
+export type PolicyDelete = z.infer<typeof policyDeleteSchema>;
 export type EffectivePolicySource = z.infer<typeof effectivePolicySourceSchema>;
 export type EffectivePolicySummary = z.infer<
   typeof effectivePolicySummarySchema

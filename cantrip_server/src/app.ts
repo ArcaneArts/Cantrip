@@ -450,6 +450,18 @@ import {
   workflowRepositoryWriteResultSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
+import {
+  policyCreateSchema,
+  policyDeleteSchema,
+  policyDetailSchema,
+  policyFromTemplateCreateSchema,
+  policyListSchema,
+  policyOrderUpdateSchema,
+  policyTemplateDetailSchema,
+  policyTemplateListSchema,
+  policyTemplateResetSchema,
+  policyUpdateSchema,
+} from "@cantrip/protocol/policies";
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
@@ -518,6 +530,10 @@ import {
   type ModelRuntime,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
+import {
+  PolicyConflictError,
+  PolicyScopeNotFoundError,
+} from "./db/policies.js";
 import {
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
@@ -759,6 +775,7 @@ function auditResourceId(request: FastifyRequest): string | null {
     "credentialId",
     "workerId",
     "providerId",
+    "policyId",
     "serverId",
     "projectReplicaId",
     "replicaId",
@@ -782,6 +799,9 @@ type ChatLiveResource = Extract<
 >;
 
 function mutationLiveResources(route: string): AppLiveResource[] {
+  if (route === "/api/policies" || route.startsWith("/api/policies/")) {
+    return ["policy"];
+  }
   if (route === "/api/tunnels" || route.startsWith("/api/tunnels/")) {
     return ["tunnel"];
   }
@@ -2877,6 +2897,7 @@ export async function buildApp({
       params.surfaceId,
       params.viewId,
       params.workerId,
+      params.policyId,
       params.tunnelId,
       params.attachmentId,
       params.projectId,
@@ -21402,6 +21423,178 @@ export async function buildApp({
       publishChatImportChange({ ownerId: applicationOwnerId(), job });
       chatImportJobExecutor.queueAvailable();
       return reply.send(chatImportJobSummarySchema.parse(job));
+    },
+  );
+
+  app.get("/api/policy-templates", async (_request, reply) =>
+    reply.send(
+      policyTemplateListSchema.parse(repository.policies.listTemplates()),
+    ),
+  );
+
+  app.get<{ Params: { templateKey: string } }>(
+    "/api/policy-templates/:templateKey",
+    async (request, reply) => {
+      const template = repository.policies.getTemplate(
+        request.params.templateKey,
+      );
+      return template
+        ? reply.send(policyTemplateDetailSchema.parse(template))
+        : reply.code(404).send({ error: "Policy template not found." });
+    },
+  );
+
+  app.get("/api/policies", async (_request, reply) =>
+    reply.send(
+      policyListSchema.parse(
+        await repository.policies.list(applicationOwnerId()),
+      ),
+    ),
+  );
+
+  app.post("/api/policies", async (request, reply) => {
+    const input = policyCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const policy = await repository.policies.create(
+        applicationOwnerId(),
+        input.data,
+      );
+      return reply.code(201).send(policyDetailSchema.parse(policy));
+    } catch (error) {
+      const status = error instanceof PolicyConflictError ? 409 : 500;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.patch("/api/policies/order", async (request, reply) => {
+    const input = policyOrderUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const policies = await repository.policies.reorder(
+        applicationOwnerId(),
+        input.data,
+      );
+      return reply.send(policyListSchema.parse(policies));
+    } catch (error) {
+      const status = error instanceof PolicyConflictError ? 409 : 500;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.post<{ Params: { templateKey: string } }>(
+    "/api/policies/from-template/:templateKey",
+    async (request, reply) => {
+      const input = policyFromTemplateCreateSchema.safeParse(
+        request.body ?? {},
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (!repository.policies.getTemplate(request.params.templateKey)) {
+        return reply.code(404).send({ error: "Policy template not found." });
+      }
+      try {
+        const policy = await repository.policies.createFromTemplate(
+          applicationOwnerId(),
+          request.params.templateKey,
+          input.data,
+        );
+        return reply.code(201).send(policyDetailSchema.parse(policy));
+      } catch (error) {
+        const status = error instanceof PolicyConflictError ? 409 : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId",
+    async (request, reply) => {
+      const policy = await repository.policies.get(
+        applicationOwnerId(),
+        request.params.policyId,
+      );
+      return policy
+        ? reply.send(policyDetailSchema.parse(policy))
+        : reply.code(404).send({ error: "Policy not found." });
+    },
+  );
+
+  app.patch<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId",
+    async (request, reply) => {
+      const input = policyUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const policy = await repository.policies.update(
+          applicationOwnerId(),
+          request.params.policyId,
+          input.data,
+        );
+        return policy
+          ? reply.send(policyDetailSchema.parse(policy))
+          : reply.code(404).send({ error: "Policy not found." });
+      } catch (error) {
+        const status = error instanceof PolicyConflictError ? 409 : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId/reset-template",
+    async (request, reply) => {
+      const input = policyTemplateResetSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const policy = await repository.policies.resetFromTemplate(
+          applicationOwnerId(),
+          request.params.policyId,
+          input.data,
+        );
+        return policy
+          ? reply.send(policyDetailSchema.parse(policy))
+          : reply.code(404).send({ error: "Policy not found." });
+      } catch (error) {
+        const status =
+          error instanceof PolicyConflictError
+            ? 409
+            : error instanceof PolicyScopeNotFoundError
+              ? 404
+              : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId",
+    async (request, reply) => {
+      const input = policyDeleteSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        return (await repository.policies.delete(
+          applicationOwnerId(),
+          request.params.policyId,
+          input.data.rowVersion,
+        ))
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "Policy not found." });
+      } catch (error) {
+        const status = error instanceof PolicyConflictError ? 409 : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
     },
   );
 

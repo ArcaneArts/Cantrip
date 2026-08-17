@@ -3,10 +3,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { SettingsPage, changedAccountLabel } from "./settings-page";
+import {
+  SettingsPage,
+  changedAccountLabel,
+  type SettingsSection,
+} from "./settings-page";
 
 function renderSettings(
-  initialSection: "general" | "models",
+  initialSection: SettingsSection,
   settings?: SettingsBundle,
 ) {
   const queryClient = new QueryClient({
@@ -38,6 +42,13 @@ describe("account settings", () => {
     expect(models).toBeGreaterThan(general);
     expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
+  });
+
+  it("exposes root policy management as its own settings section", () => {
+    const markup = renderSettings("policies");
+    expect(markup).toContain(">Policies<");
+    expect(markup).toContain("Search policies");
+    expect(markup).toContain("Policy");
   });
 
   it("separates general preferences from model and provider management", () => {
