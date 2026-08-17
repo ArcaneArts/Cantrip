@@ -24,6 +24,8 @@ export * from "./tunnel-data-plane.js";
 
 export * from "./live.js";
 
+export * from "./policies.js";
+
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
   workflowJsonObjectSchema,

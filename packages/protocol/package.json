@@ -15,6 +15,10 @@
     "./automations": {
       "types": "./src/automations.ts",
       "import": "./dist/automations.js"
+    },
+    "./policies": {
+      "types": "./src/policies.ts",
+      "import": "./dist/policies.js"
     }
   },
   "files": [

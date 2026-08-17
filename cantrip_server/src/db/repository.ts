@@ -206,6 +206,7 @@ import {
   releaseChatLogicalBranchLease,
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
+import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
@@ -1952,6 +1953,7 @@ export class ServerRepository {
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly projectAutomations: ProjectAutomationRepository;
+  readonly policies: PolicyRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
@@ -1965,6 +1967,7 @@ export class ServerRepository {
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
+    this.policies = new PolicyRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
@@ -2425,6 +2428,7 @@ export class ServerRepository {
       .returning();
     const user = firstOrThrow(rows, "creating an account");
     await this.ensureDefaultProjectWorkspace(user.id);
+    await this.policies.ensureBootstrap(user.id);
     return toUserSummary(user);
   }
 
