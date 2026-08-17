@@ -37,9 +37,9 @@ import {
   unansweredRequiredTaskQuestions,
 } from "./task-review-state";
 
-const MonacoFileEditor = lazy(() =>
-  import("@/components/explorer/monaco-file-editor").then((module) => ({
-    default: module.MonacoFileEditor,
+const TaskMarkdownEditor = lazy(() =>
+  import("./task-markdown-editor").then((module) => ({
+    default: module.TaskMarkdownEditor,
   })),
 );
 
@@ -538,11 +538,11 @@ export function TaskPlanReview({
                   </div>
                 }
               >
-                <MonacoFileEditor
-                  language="markdown"
-                  modelPath={`cantrip-task://${chat.id}/plan.md`}
+                <TaskMarkdownEditor
+                  ariaLabel="Task plan"
                   onChange={setPlanDraft}
                   onSave={() => void savePlan()}
+                  placeholder="Refine the implementation plan…"
                   value={planDraft}
                 />
               </Suspense>
