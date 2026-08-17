@@ -51,6 +51,19 @@ describe("Task draft presentation", () => {
         planMarkdown: "# Stable plan",
       }),
     ).toBe("review");
+    expect(
+      taskSurfaceMode({
+        ...baseTask,
+        state: "implementing",
+        finalPlanMarkdown: "# Final plan",
+      }),
+    ).toBe("implementation");
+    expect(taskSurfaceMode({ ...baseTask, state: "paused" })).toBe(
+      "implementation",
+    );
+    expect(taskSurfaceMode({ ...baseTask, state: "complete" })).toBe(
+      "implementation",
+    );
   });
 
   it("includes ordered attachments in conflict-safe draft signatures", () => {

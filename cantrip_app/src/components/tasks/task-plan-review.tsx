@@ -22,6 +22,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Markdown } from "@/components/chat/markdown";
 import { Button } from "@/components/ui/button";
 import {
+  beginTaskImplementation,
   continueTaskPlanning,
   retryTaskPlanning,
   updateTaskPlan,
@@ -120,6 +121,7 @@ export function TaskPlanReview({
   const directionRef = useRef(additionalDirection);
   const failedInputSignatureRef = useRef<string | null>(null);
   const continueOperationIdRef = useRef<string | null>(null);
+  const implementationOperationIdRef = useRef<string | null>(null);
   const retryOperationIdRef = useRef<string | null>(null);
   planDraftRef.current = planDraft;
   answersRef.current = answers;
@@ -301,6 +303,29 @@ export function TaskPlanReview({
       setOperationNotice(errorMessage(error));
     },
   });
+  const beginImplementation = useMutation({
+    mutationFn: (operationId: string) =>
+      beginTaskImplementation(chat.id, {
+        operationId,
+        rowVersion: rowVersionRef.current,
+        answers: answersRef.current,
+        additionalDirection: directionRef.current,
+      }),
+    onMutate: () => setOperationNotice(null),
+    onSuccess: (updated) => {
+      implementationOperationIdRef.current = null;
+      queryClient.setQueryData(["task", chat.id], updated);
+      void queryClient.invalidateQueries({ queryKey: ["messages", chat.id] });
+      void queryClient.invalidateQueries({
+        queryKey: ["chats", chat.projectId],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["goal", chat.id] });
+    },
+    onError: (error) => {
+      if (isConflictError(error)) setConflict(true);
+      setOperationNotice(errorMessage(error));
+    },
+  });
 
   const savePlan = async () => {
     if (!planDraft.trim()) {
@@ -326,20 +351,28 @@ export function TaskPlanReview({
     task.currentQuestions,
     answers,
   );
+  const immutableFinalizationPending =
+    task.state === "failed" &&
+    task.lastError?.operationKind === "finalize" &&
+    Boolean(task.finalPlanMarkdown && task.goalPrompt);
   const operationallyBlocked =
     conflict ||
     planDirty ||
     inputDirty ||
     saveReview.isPending ||
     continuePlanning.isPending ||
+    beginImplementation.isPending ||
     retryPlanning.isPending ||
     chat.status === "running" ||
+    immutableFinalizationPending ||
     !workerOnline;
   const reviewFieldsDisabled =
     conflict ||
     saveReview.isPending ||
     continuePlanning.isPending ||
+    beginImplementation.isPending ||
     retryPlanning.isPending ||
+    immutableFinalizationPending ||
     chat.status === "running";
   const saveLabel = taskReviewSaveLabel({
     conflict,
@@ -376,8 +409,16 @@ export function TaskPlanReview({
             ) : (
               <RefreshCw className="size-3.5" />
             )}
-            Retry planning
+            {task.lastError.operationKind === "finalize"
+              ? "Retry implementation"
+              : "Retry planning"}
           </Button>
+          {immutableFinalizationPending ? (
+            <span className="basis-full text-xs text-muted-foreground">
+              The final plan is immutable. Retry resumes Goal startup without
+              rerunning finalization.
+            </span>
+          ) : null}
         </div>
       ) : null}
       {!workerOnline ? (
@@ -595,11 +636,24 @@ export function TaskPlanReview({
               Continue Planning
             </Button>
             <Button
-              disabled
-              title="Goal finalization is enabled in the next Task milestone."
+              disabled={operationallyBlocked}
               type="button"
+              onClick={() => {
+                setShowValidation(true);
+                if (missingRequired.length === 0) {
+                  implementationOperationIdRef.current ??= crypto.randomUUID();
+                  beginImplementation.mutate(
+                    implementationOperationIdRef.current,
+                  );
+                }
+              }}
             >
-              <Play className="size-4" /> Begin Implementation
+              {beginImplementation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Play className="size-4" />
+              )}
+              Begin Implementation
             </Button>
           </div>
         </div>

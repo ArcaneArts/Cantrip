@@ -1,6 +1,7 @@
 import {
   taskDetailSchema,
   taskDraftUpdateSchema,
+  taskFinalizerResultSchema,
   taskPlanUpdateSchema,
   taskPlannerResultSchema,
   taskPlanningRoundListSchema,
@@ -8,6 +9,7 @@ import {
   TASK_ERROR_MESSAGE_LIMIT,
   type TaskDetail,
   type TaskDraftUpdate,
+  type TaskFinalizerResult,
   type TaskOperationKind,
   type TaskPlanUpdate,
   type TaskPlannerResult,
@@ -388,8 +390,14 @@ export class TaskRepository {
           "stale-version",
         );
       }
-      if (input.kind === "continue-plan") {
+      if (input.kind !== "initial-plan") {
         validateAnswers(current, answers);
+      }
+      if (input.kind === "finalize" && current.finalPlanMarkdown) {
+        throw new TaskConflictError(
+          "This Task already has immutable final artifacts. Retry Goal startup instead.",
+          "idempotency-conflict",
+        );
       }
       const ordinal = task.planningRound + 1;
       const now = new Date();
@@ -596,6 +604,283 @@ export class TaskRepository {
           currentQuestions: result.questions,
           currentAnswers: [],
           additionalDirection: "",
+          lastError: null,
+          rowVersion: task.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return {
+        task: toTaskDetail(updatedTasks[0]!),
+        round: toTaskPlanningRound(updatedRounds[0]!),
+      };
+    });
+  }
+
+  async stageFinalizationResult(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    rawResult: TaskFinalizerResult,
+    turnId: string | null,
+  ): Promise<TaskOperationContext | null> {
+    const result = taskFinalizerResultSchema.parse(rawResult);
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round) return null;
+      if (round.kind !== "finalize") {
+        throw new TaskConflictError(
+          "A planning round cannot accept a finalization result.",
+          "idempotency-conflict",
+        );
+      }
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (round.status === "completed") {
+        return {
+          task: toTaskDetail(task),
+          round: toTaskPlanningRound(round),
+        };
+      }
+      const recoveringInterruptedResult =
+        task.activeOperationId === null &&
+        task.state === "failed" &&
+        task.stableStateBeforeFailure === "review" &&
+        task.planningRound === round.ordinal;
+      if (
+        !recoveringInterruptedResult &&
+        round.outputPlanMarkdown === result.finalPlanMarkdown &&
+        round.outputGoalPrompt === result.goalPrompt
+      ) {
+        return {
+          task: toTaskDetail(task),
+          round: toTaskPlanningRound(round),
+        };
+      }
+      if (
+        (task.activeOperationId !== operationId &&
+          !recoveringInterruptedResult) ||
+        task.planningRound !== round.ordinal
+      ) {
+        throw new TaskConflictError(
+          "A newer Task operation superseded this finalization result.",
+          "idempotency-conflict",
+        );
+      }
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({
+          outputPlanMarkdown: result.finalPlanMarkdown,
+          outputGoalPrompt: result.goalPrompt,
+          turnId,
+          status: "running",
+          error: null,
+          completedAt: null,
+        })
+        .where(eq(schema.taskPlanningRounds.id, operationId))
+        .returning();
+      const updatedTasks = await transaction
+        .update(schema.tasks)
+        .set({
+          planMarkdown: result.finalPlanMarkdown,
+          finalPlanMarkdown: result.finalPlanMarkdown,
+          goalPrompt: result.goalPrompt,
+          currentQuestions: [],
+          ...(recoveringInterruptedResult
+            ? {
+                state: "finalizing" as const,
+                stableStateBeforeFailure: "review" as const,
+                activeOperationId: operationId,
+                activeOperationKind: "finalize" as const,
+              }
+            : {}),
+          lastError: null,
+          rowVersion: task.rowVersion + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return {
+        task: toTaskDetail(updatedTasks[0]!),
+        round: toTaskPlanningRound(updatedRounds[0]!),
+      };
+    });
+  }
+
+  async resumeFinalizationGoalLaunch(
+    ownerId: string,
+    chatId: string,
+    rowVersion: number,
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (task.rowVersion !== rowVersion) {
+        throw new TaskConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      }
+      if (
+        task.state !== "failed" ||
+        task.stableStateBeforeFailure !== "review"
+      ) {
+        throw new TaskStateTransitionError(task.state, "finalizing");
+      }
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.chatId, chatId),
+            eq(schema.taskPlanningRounds.ordinal, task.planningRound),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (
+        !round ||
+        round.kind !== "finalize" ||
+        !round.outputPlanMarkdown ||
+        !round.outputGoalPrompt
+      ) {
+        throw new TaskConflictError(
+          "This Task has no prepared Goal to resume.",
+          "idempotency-conflict",
+        );
+      }
+      const now = new Date();
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({ status: "running", error: null, completedAt: null })
+        .where(eq(schema.taskPlanningRounds.id, round.id))
+        .returning();
+      const updatedTasks = await transaction
+        .update(schema.tasks)
+        .set({
+          state: "finalizing",
+          stableStateBeforeFailure: "review",
+          activeOperationId: round.id,
+          activeOperationKind: "finalize",
+          lastError: null,
+          rowVersion: task.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.tasks.chatId, chatId),
+            eq(schema.tasks.rowVersion, rowVersion),
+          ),
+        )
+        .returning();
+      if (!updatedTasks[0]) {
+        throw new TaskConflictError(
+          "The Task changed in another client.",
+          "stale-version",
+        );
+      }
+      return {
+        task: toTaskDetail(updatedTasks[0]),
+        round: toTaskPlanningRound(updatedRounds[0]!),
+      };
+    });
+  }
+
+  async completeFinalizationOperation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round) return null;
+      if (round.kind !== "finalize") {
+        throw new TaskConflictError(
+          "A planning round cannot complete Goal startup.",
+          "idempotency-conflict",
+        );
+      }
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (round.status === "completed") {
+        return {
+          task: toTaskDetail(task),
+          round: toTaskPlanningRound(round),
+        };
+      }
+      if (!round.outputPlanMarkdown || !round.outputGoalPrompt) {
+        throw new TaskConflictError(
+          "The final Task artifacts are not ready.",
+          "idempotency-conflict",
+        );
+      }
+      if (
+        task.activeOperationId !== operationId ||
+        task.planningRound !== round.ordinal
+      ) {
+        throw new TaskConflictError(
+          "A newer Task operation superseded Goal startup.",
+          "idempotency-conflict",
+        );
+      }
+      const now = new Date();
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({ status: "completed", error: null, completedAt: now })
+        .where(eq(schema.taskPlanningRounds.id, operationId))
+        .returning();
+      const updatedTasks = await transaction
+        .update(schema.tasks)
+        .set({
+          state: "implementing",
+          stableStateBeforeFailure: null,
+          activeOperationId: null,
+          activeOperationKind: null,
+          implementationStartedAt: task.implementationStartedAt ?? now,
           lastError: null,
           rowVersion: task.rowVersion + 1,
           updatedAt: now,

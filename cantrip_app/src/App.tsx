@@ -167,6 +167,7 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
   SettingsPage,
@@ -267,6 +268,7 @@ import {
   getServerBootstrap,
   getSettings,
   getSkills,
+  getTask,
   getTerminals,
   getWorkers,
   getWorkflows,
@@ -1023,6 +1025,13 @@ function ChatTranscript({
         "chatgpt"
       );
     });
+  const taskState = useQuery({
+    enabled: inspectOnly && chat.experience === "task",
+    queryFn: () => getTask(chat.id),
+    queryKey: ["task", chat.id],
+  });
+  const effectiveInspectOnly =
+    inspectOnly && taskChatIsInspectOnly(taskState.data?.state);
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
@@ -1790,7 +1799,7 @@ function ChatTranscript({
         ref={transcriptViewportRef}
         className={cn(
           "chat-message-scroll flex-1 overflow-y-auto px-4 pt-6 sm:px-8",
-          inspectOnly ? "pb-10" : "pb-72",
+          effectiveInspectOnly ? "pb-10" : "pb-72",
         )}
         onScroll={handleTranscriptScroll}
       >
@@ -1944,7 +1953,7 @@ function ChatTranscript({
         aria-hidden="true"
         className={cn(
           "chat-composer-fade pointer-events-none absolute bottom-0 left-0 z-10 h-56 transition-[right] duration-150 ease-out motion-reduce:transition-none",
-          inspectOnly && "hidden",
+          effectiveInspectOnly && "hidden",
         )}
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       />
@@ -1952,7 +1961,7 @@ function ChatTranscript({
         onSubmit={submit}
         className={cn(
           "pointer-events-none absolute bottom-0 left-0 z-20 px-4 pb-3 transition-[right] duration-150 ease-out motion-reduce:transition-none sm:px-8 sm:pb-4",
-          inspectOnly && "hidden",
+          effectiveInspectOnly && "hidden",
         )}
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       >
@@ -2574,7 +2583,7 @@ function ChatTranscript({
           ) : null}
         </div>
       </form>
-      {inspectOnly ? (
+      {effectiveInspectOnly ? (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 border-t bg-background/95 px-4 py-2 text-center text-[11px] text-muted-foreground backdrop-blur">
           Task planning controls are available in Task view.
         </div>

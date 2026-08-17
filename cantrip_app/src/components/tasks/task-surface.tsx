@@ -15,6 +15,7 @@ import {
   Paperclip,
   Play,
   RefreshCw,
+  Target,
   WifiOff,
 } from "lucide-react";
 import {
@@ -40,6 +41,7 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
+import { Markdown } from "@/components/chat/markdown";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { Button } from "@/components/ui/button";
@@ -79,7 +81,8 @@ interface PendingTaskAttachment {
   source: "file" | "paste";
 }
 
-export type TaskSurfaceMode = "activity" | "draft" | "failed" | "review";
+export type TaskSurfaceMode =
+  "activity" | "draft" | "failed" | "implementation" | "review";
 
 export function taskSurfaceMode(task: TaskDetail): TaskSurfaceMode {
   if (task.state === "planning" || task.state === "finalizing") {
@@ -94,6 +97,14 @@ export function taskSurfaceMode(task: TaskDetail): TaskSurfaceMode {
   }
   if (task.state === "review") return "review";
   if (task.state === "failed") return "failed";
+  if (
+    task.state === "implementing" ||
+    task.state === "paused" ||
+    task.state === "blocked" ||
+    task.state === "complete"
+  ) {
+    return "implementation";
+  }
   return "draft";
 }
 
@@ -511,6 +522,36 @@ export function TaskSurface({
         workerOnline={workerOnline}
         onReload={async () => (await task.refetch()).data ?? null}
       />
+    );
+  }
+
+  if (mode === "implementation" && task.data.finalPlanMarkdown) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-10">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-5 flex items-center gap-3 border-b pb-4">
+            <Target className="size-5 text-violet-500" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold">Implementation Goal started</h2>
+              <p className="text-xs text-muted-foreground">
+                The finalized objective is running in this Task&apos;s Chat.
+                Switch to Chat for the live transcript and Goal controls.
+              </p>
+            </div>
+          </div>
+          <Markdown>{task.data.finalPlanMarkdown}</Markdown>
+          {task.data.goalPrompt ? (
+            <details className="mt-8 border-y py-3 text-sm">
+              <summary className="cursor-pointer font-medium">
+                Immutable Goal objective
+              </summary>
+              <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
+                {task.data.goalPrompt}
+              </pre>
+            </details>
+          ) : null}
+        </div>
+      </div>
     );
   }
 
