@@ -64,9 +64,9 @@ import { cn } from "@/lib/utils";
 import { TaskPlanReview } from "./task-plan-review";
 import { TaskImplementationDashboard } from "./task-implementation-dashboard";
 
-const MonacoFileEditor = lazy(() =>
-  import("@/components/explorer/monaco-file-editor").then((module) => ({
-    default: module.MonacoFileEditor,
+const TaskMarkdownEditor = lazy(() =>
+  import("./task-markdown-editor").then((module) => ({
+    default: module.TaskMarkdownEditor,
   })),
 );
 
@@ -659,11 +659,11 @@ export function TaskSurface({
             </div>
           }
         >
-          <MonacoFileEditor
-            language="markdown"
-            modelPath={`cantrip-task://${chat.id}/brief.md`}
+          <TaskMarkdownEditor
+            ariaLabel="Task brief"
             onChange={setBrief}
             onSave={() => void saveCurrentDraft().catch(() => undefined)}
+            placeholder="Describe the outcome, constraints, and context for this Task…"
             value={brief}
           />
         </Suspense>
