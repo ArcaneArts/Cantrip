@@ -131,6 +131,10 @@ review remain App Store Connect operations.
 The iOS job reuses the App Store Connect API key already required for desktop
 notarization and additionally requires these Actions secrets:
 
+- `IOS_DEVELOPMENT_CERTIFICATE`: a base64-encoded `.p12` containing an
+  **Apple Development** certificate and its private key;
+- `IOS_DEVELOPMENT_CERTIFICATE_PASSWORD`: the password used to export that
+  development `.p12`;
 - `IOS_DISTRIBUTION_CERTIFICATE`: a base64-encoded `.p12` containing an
   **Apple Distribution** certificate and its private key;
 - `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`: the password used to export that
@@ -141,13 +145,17 @@ notarization and additionally requires these Actions secrets:
 - `APPSTORE_CONNECT_KEY_ID`: the App Store Connect API key ID; and
 - `APPSTORE_CONNECT_KEY`: the raw or base64-encoded `.p8` private key.
 
-The Apple Distribution identity is separate from the Developer ID Application
-identity used by the macOS desktop lane. CI derives the team ID from the iOS
-certificate, uses automatic provisioning authenticated by the API key, and
-deletes the temporary keychain and private key even if archiving or upload
-fails. The final GitHub release waits for the successful TestFlight upload and
-Android artifact, so a published release cannot silently omit either mobile
-track.
+The Apple Development and Apple Distribution identities must belong to the
+same team. Reusing the development identity lets automatic provisioning create
+or refresh the app-specific profile without creating a new development
+certificate on every ephemeral runner and exhausting Apple's certificate
+quota. The Apple Distribution identity is separate from the Developer ID
+Application identity used by the macOS desktop lane. CI derives the team ID
+from the iOS certificates, uses automatic provisioning authenticated by the
+API key, and deletes the temporary keychain and private key even if archiving
+or upload fails. The final GitHub release waits for the successful TestFlight
+upload and Android artifact, so a published release cannot silently omit either
+mobile track.
 
 ### macOS distribution
 
