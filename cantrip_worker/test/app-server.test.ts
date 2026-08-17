@@ -628,6 +628,9 @@ describe("Cantrip CLI cutover", () => {
 
   it("directs Codex to the documented CLI instead of private tools", () => {
     expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
+    expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).toContain(
+      "`cantrip policy read <policy-key>`",
+    );
     expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).not.toContain("cantrip_");
   });
 });
@@ -716,6 +719,23 @@ describe("codexWorktreeTurnPolicy", () => {
         },
       },
     });
+  });
+
+  it("adds current policy summaries as separate application context", () => {
+    const policy = codexWorktreeTurnPolicy({
+      cwd: "/workspace/project",
+      isPrimary: false,
+      policyContext:
+        "Effective Cantrip policies apply.\n\n[review] Review\nRead the policy.",
+      worktreeMode: "agent-managed",
+      worktreePolicy: "agent-managed",
+    });
+    expect(policy.additionalContext["cantrip.policies"]).toEqual({
+      kind: "application",
+      value:
+        "Effective Cantrip policies apply.\n\n[review] Review\nRead the policy.",
+    });
+    expect(policy.additionalContext["cantrip.worktree-policy"]).toBeDefined();
   });
 });
 

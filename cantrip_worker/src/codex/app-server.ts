@@ -1102,6 +1102,7 @@ export interface RunAgentTurnOptions {
     { type: "chat.turn" }
   >["automationPaused"];
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
+  policyContext: Extract<WorkerCommand, { type: "chat.turn" }>["policyContext"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   permissionProfileId: Extract<
     WorkerCommand,
@@ -1248,7 +1249,7 @@ export function goalShouldContinue(
 }
 
 export const CANTRIP_CLI_DEVELOPER_INSTRUCTIONS =
-  "Cantrip-specific operations are available through the `cantrip` CLI; run `cantrip -h` for concise command help. Use standard command-line tools for normal repository work. If a Cantrip command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
+  "Cantrip-specific operations are available through the `cantrip` CLI; run `cantrip -h` for concise command help. Effective Cantrip policy summaries supplied as application context are instructions; use `cantrip policy read <policy-key>` whenever a summary requires the current full policy. Use standard command-line tools for normal repository work. If a Cantrip command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
 
 export const CANTRIP_DYNAMIC_TOOLS_OVERRIDE = { dynamicTools: [] } as const;
 
@@ -1263,7 +1264,10 @@ export function codexWorktreeTurnPolicy(
   options: Pick<
     RunAgentTurnOptions,
     "cwd" | "isPrimary" | "worktreeMode" | "worktreePolicy"
-  > & { permissionProfileActive?: boolean },
+  > & {
+    permissionProfileActive?: boolean;
+    policyContext?: RunAgentTurnOptions["policyContext"];
+  },
 ) {
   const cwd = path.resolve(options.cwd);
   const primaryIsReadOnly =
@@ -1294,6 +1298,14 @@ export function codexWorktreeTurnPolicy(
         kind: "application",
         value: `${policyInstruction} ${modeInstruction}`,
       },
+      ...(options.policyContext
+        ? {
+            "cantrip.policies": {
+              kind: "application" as const,
+              value: options.policyContext,
+            },
+          }
+        : {}),
     },
     ...(options.permissionProfileActive ? {} : { sandboxPolicy }),
   } as const;

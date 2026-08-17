@@ -26,6 +26,8 @@ export * from "./live.js";
 
 export * from "./policies.js";
 
+import { agentPolicyContextSchema } from "./policies.js";
+
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
   workflowJsonObjectSchema,
@@ -5230,6 +5232,8 @@ export const cantripCliCommandResultSchema = z.object({
 
 export const cantripCliCommandNameSchema = z.enum([
   "status",
+  "policy.list",
+  "policy.read",
   "worktree.list",
   "worktree.create",
   "worktree.switch",
@@ -8676,6 +8680,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     isPrimary: z.boolean(),
     worktreeMode: z.enum(["agent-managed", "pinned"]),
     worktreePolicy: worktreePolicySchema,
+    policyContext: agentPolicyContextSchema.nullable().default(null),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
     attachments: z.array(workerChatAttachmentSchema).max(20).default([]),

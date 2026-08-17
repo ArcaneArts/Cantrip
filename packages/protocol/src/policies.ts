@@ -194,8 +194,35 @@ export const effectivePolicySummarySchema = z.object({
 });
 
 export const effectivePolicyListSchema = z.object({
-  policies: z.array(effectivePolicySummarySchema).max(EFFECTIVE_POLICY_LIMIT),
+  policies: z
+    .array(effectivePolicySummarySchema)
+    .max(EFFECTIVE_POLICY_LIMIT)
+    .refine(
+      (policies) =>
+        new Set(policies.map(({ key }) => key)).size === policies.length,
+      "Effective policies cannot contain duplicate keys.",
+    ),
 });
+
+export const policyCliListResultSchema = effectivePolicyListSchema;
+
+export const policyCliReadResultSchema = z.object({
+  policy: z.object({
+    key: policyKeySchema,
+    name: policyNameSchema,
+    summary: policySummaryTextSchema,
+    bodyMarkdown: policyBodyMarkdownSchema,
+  }),
+});
+
+export const agentPolicyContextSchema = z
+  .string()
+  .max(POLICY_CONTEXT_BYTES_LIMIT)
+  .refine(
+    (value) =>
+      new TextEncoder().encode(value).byteLength <= POLICY_CONTEXT_BYTES_LIMIT,
+    `Agent policy context cannot exceed ${POLICY_CONTEXT_BYTES_LIMIT} UTF-8 bytes.`,
+  );
 
 export type PolicyTemplateSummary = z.infer<typeof policyTemplateSummarySchema>;
 export type PolicyTemplateDetail = z.infer<typeof policyTemplateDetailSchema>;
@@ -219,3 +246,5 @@ export type EffectivePolicySummary = z.infer<
   typeof effectivePolicySummarySchema
 >;
 export type EffectivePolicyList = z.infer<typeof effectivePolicyListSchema>;
+export type PolicyCliListResult = z.infer<typeof policyCliListResultSchema>;
+export type PolicyCliReadResult = z.infer<typeof policyCliReadResultSchema>;

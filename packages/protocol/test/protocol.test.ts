@@ -438,6 +438,16 @@ describe("Cantrip protocol", () => {
       target: null,
       worktreeId: null,
     });
+    expect(
+      cantripCliCommandRequestSchema.parse({
+        command: "policy.read",
+        context: request.context,
+        arguments: { key: "manual-change-protocol" },
+      }),
+    ).toMatchObject({
+      command: "policy.read",
+      arguments: { key: "manual-change-protocol" },
+    });
   });
 
   it("keeps project replica contracts compatible across rolling clients", () => {
@@ -3151,7 +3161,7 @@ describe("Cantrip protocol", () => {
     ).toBe("chat.compact");
   });
 
-  it("carries project worktree policy into worker-backed turns", () => {
+  it("carries project worktree and effective policy context into worker-backed turns", () => {
     const turn = workerCommandSchema.parse({
       type: "chat.turn",
       chatId: "chat-1",
@@ -3162,6 +3172,8 @@ describe("Cantrip protocol", () => {
       isPrimary: true,
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
+      policyContext:
+        "Effective Cantrip policies apply.\n\n[review] Review\nRead the current policy.",
       threadId: null,
       prompt: "Implement this safely.",
       skillNames: [],
@@ -3186,6 +3198,7 @@ describe("Cantrip protocol", () => {
       isPrimary: true,
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
+      policyContext: expect.stringContaining("[review]"),
       planMode: "plan",
       automationPaused: true,
     });

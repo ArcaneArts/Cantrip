@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  POLICY_CONTEXT_BYTES_LIMIT,
+  agentPolicyContextSchema,
+  effectivePolicyListSchema,
   policyAssignmentListSchema,
   policyAssignmentUpdateSchema,
   policyCreateSchema,
@@ -8,6 +11,7 @@ import {
   policyFromTemplateCreateSchema,
   policyKeySchema,
   policyOrderUpdateSchema,
+  policyCliReadResultSchema,
   policyTemplateDetailSchema,
   policyTemplateResetSchema,
   policyUpdateSchema,
@@ -102,5 +106,34 @@ describe("policy protocol", () => {
         suggestedMandatory: true,
       }),
     ).toMatchObject({ version: 1, suggestedMandatory: true });
+  });
+
+  it("bounds and deduplicates agent-facing policy data", () => {
+    const effective = {
+      key: "manual-change-protocol",
+      name: "Manual Change Protocol",
+      summary: "Read the current policy before changing repository state.",
+      mandatory: true,
+      sources: [{ type: "mandatory" as const }],
+    };
+    expect(
+      effectivePolicyListSchema.safeParse({ policies: [effective, effective] })
+        .success,
+    ).toBe(false);
+    expect(
+      agentPolicyContextSchema.safeParse(
+        "🙂".repeat(POLICY_CONTEXT_BYTES_LIMIT / 2),
+      ).success,
+    ).toBe(false);
+    expect(
+      policyCliReadResultSchema.parse({
+        policy: {
+          key: effective.key,
+          name: effective.name,
+          summary: effective.summary,
+          bodyMarkdown: "# Current instructions",
+        },
+      }).policy,
+    ).not.toHaveProperty("id");
   });
 });

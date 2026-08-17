@@ -40,6 +40,11 @@ struct Cli {
 enum Command {
     /// Show the worker connection and inferred project context.
     Status,
+    /// Read effective Cantrip policies for the current project.
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommand,
+    },
     /// Manage Cantrip-owned Git worktrees.
     Worktree {
         #[command(subcommand)]
@@ -65,6 +70,14 @@ enum Command {
         #[command(subcommand)]
         command: BrowserCommand,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum PolicyCommand {
+    /// List effective policies without their full bodies.
+    List,
+    /// Read the current full body of an effective policy.
+    Read { policy_key: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -250,6 +263,16 @@ fn invocation(command: Command) -> Result<Invocation, String> {
             command: "status",
             arguments: json!({}),
         },
+        Command::Policy { command } => match command {
+            PolicyCommand::List => Invocation {
+                command: "policy.list",
+                arguments: json!({}),
+            },
+            PolicyCommand::Read { policy_key } => Invocation {
+                command: "policy.read",
+                arguments: json!({ "key": policy_key }),
+            },
+        },
         Command::Worktree { command } => match command {
             WorktreeCommand::List => Invocation {
                 command: "worktree.list",
@@ -411,7 +434,7 @@ fn main() -> ExitCode {
 mod tests {
     use clap::{CommandFactory, Parser, error::ErrorKind};
 
-    use super::Cli;
+    use super::{Cli, Command, invocation};
 
     #[test]
     fn top_level_help_stays_brief_and_layered() {
@@ -422,6 +445,7 @@ mod tests {
         let help = String::from_utf8(output).expect("UTF-8 help");
         assert!(help.contains("Usage: cantrip [OPTIONS] [COMMAND]"));
         assert!(help.contains("worktree"));
+        assert!(help.contains("policy"));
         assert!(help.contains("explorer"));
         assert!(help.contains("-v, --version"));
         assert!(!help.contains("-V, --version"));
@@ -460,6 +484,8 @@ mod tests {
         for arguments in [
             &["cantrip", "status"][..],
             &["cantrip", "status", "--json"][..],
+            &["cantrip", "policy", "list"][..],
+            &["cantrip", "policy", "read", "manual-change-protocol"][..],
             &["cantrip", "worktree", "list"][..],
             &["cantrip", "target", "list"][..],
             &["cantrip", "explorer", "list"][..],
@@ -470,5 +496,32 @@ mod tests {
                 panic!("failed to parse {arguments:?} without -v: {error}")
             });
         }
+    }
+
+    #[test]
+    fn policy_commands_use_the_stable_wire_names() {
+        let list = Cli::try_parse_from(["cantrip", "policy", "list"]).expect("parse policy list");
+        let read = Cli::try_parse_from([
+            "cantrip",
+            "--json",
+            "policy",
+            "read",
+            "manual-change-protocol",
+        ])
+        .expect("parse policy read");
+
+        let Some(Command::Policy { command: list }) = list.command else {
+            panic!("expected policy list command");
+        };
+        let Some(Command::Policy { command: read }) = read.command else {
+            panic!("expected policy read command");
+        };
+        let list =
+            invocation(Command::Policy { command: list }).expect("build policy list invocation");
+        let read =
+            invocation(Command::Policy { command: read }).expect("build policy read invocation");
+        assert_eq!(list.command, "policy.list");
+        assert_eq!(read.command, "policy.read");
+        assert_eq!(read.arguments["key"], "manual-change-protocol");
     }
 }

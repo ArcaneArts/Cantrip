@@ -199,7 +199,7 @@ describe("Cantrip CLI worker broker", () => {
         execute: async (request, requestId, chatContext) => {
           calls.push({ chatContext, request, requestId });
           return {
-            summary: "Found the current worktree.",
+            summary: "Read the current policy.",
             target: null,
             worktreeId: "worktree-one",
             continuationScheduled: false,
@@ -222,18 +222,18 @@ describe("Cantrip CLI worker broker", () => {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          command: "worktree.status",
+          command: "policy.read",
           context: {
             codexThreadId: "thread-one",
             terminalId: null,
             cwd: "/workspace/project",
           },
-          arguments: {},
+          arguments: { key: "manual-change-protocol" },
         }),
       });
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
-        summary: "Found the current worktree.",
+        summary: "Read the current policy.",
         worktreeId: "worktree-one",
       });
       expect(calls).toEqual([
@@ -243,8 +243,9 @@ describe("Cantrip CLI worker broker", () => {
             executionLaneId: "lane-one",
           },
           request: expect.objectContaining({
-            command: "worktree.status",
+            command: "policy.read",
             context: expect.objectContaining({ codexThreadId: "thread-one" }),
+            arguments: { key: "manual-change-protocol" },
           }),
           requestId: expect.any(String),
         },
@@ -267,7 +268,7 @@ describe("Cantrip CLI worker broker", () => {
       }).records,
     );
     expect(serializedLogs).toContain("cli.command.completed");
-    expect(serializedLogs).toContain("worktree.status");
+    expect(serializedLogs).toContain("policy.read");
     expect(serializedLogs).toContain("chat-one");
     expect(serializedLogs).not.toContain("/workspace/project");
     expect(serializedLogs).not.toContain("worker-token");

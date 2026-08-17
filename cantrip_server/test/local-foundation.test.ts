@@ -136,6 +136,7 @@ const turnPrompts: string[] = [];
 const turnSkillNames: string[][] = [];
 const turnAttachmentIds: string[][] = [];
 const turnPlanModes: PlanMode[] = [];
+const turnPolicyContexts: Array<string | null> = [];
 const turnTimeouts: Array<number | null | undefined> = [];
 const deletedProjectPaths: string[] = [];
 const openedProjectShares: Array<
@@ -1247,6 +1248,7 @@ const workerBridge = {
             command.attachments.map((attachment) => attachment.id),
           );
           turnPlanModes.push(command.planMode);
+          turnPolicyContexts.push(command.policyContext);
           turnTimeouts.push(options?.timeoutMs);
         }
         codexPlanMode = command.planMode;
@@ -4069,6 +4071,9 @@ describe("local server foundation", () => {
       expect(messages).toHaveLength(4);
     });
     expect(turnRequests).toBe(1);
+    expect(turnPolicyContexts[0]).toContain("[manual-change-protocol]");
+    expect(turnPolicyContexts[0]).toContain("cantrip policy read");
+    expect(turnPolicyContexts[0]).not.toContain("bodyMarkdown");
     expect(turnSkillNames[0]).toEqual(["skill-creator"]);
     expect(turnAttachmentIds[0]).toEqual([uploadedAttachment.id]);
     expect(firstMessage.content).toContainEqual({
@@ -4167,6 +4172,19 @@ describe("local server foundation", () => {
         ).json(),
       ),
     ).toHaveLength(completedMessages.length);
+    const manualPolicy = await firstDatabase.repository.policies.getByKey(
+      LOCAL_USER_ID,
+      "manual-change-protocol",
+    );
+    expect(manualPolicy).not.toBeNull();
+    await firstDatabase.repository.policies.update(
+      LOCAL_USER_ID,
+      manualPolicy!.id,
+      {
+        rowVersion: manualPolicy!.rowVersion,
+        summary: "Use the newly saved policy summary on the next turn.",
+      },
+    );
     expect(
       await firstApp.inject({
         method: "POST",
@@ -4178,6 +4196,10 @@ describe("local server foundation", () => {
       }),
     ).toMatchObject({ statusCode: 202 });
     await vi.waitFor(() => expect(turnPrompts).toHaveLength(2));
+    expect(turnPolicyContexts[1]).toContain(
+      "Use the newly saved policy summary on the next turn.",
+    );
+    expect(turnPolicyContexts[1]).not.toContain(manualPolicy!.summary);
     expect(turnPrompts[1]).toContain(
       "Continue this existing Cantrip conversation",
     );
@@ -5715,6 +5737,12 @@ describe("local server foundation", () => {
       expect(turnRequests).toBe(turnsBeforeGoalResume + 1),
     );
     expect(turnPrompts.at(-1)).toContain("Continue working toward");
+    expect(turnPolicyContexts).toHaveLength(turnRequests);
+    expect(
+      turnPolicyContexts.every((context) =>
+        context?.includes("[manual-change-protocol]"),
+      ),
+    ).toBe(true);
     expect(
       (
         await firstApp.inject({

@@ -682,7 +682,7 @@ export class PolicyRepository {
     });
     if (effective.length > EFFECTIVE_POLICY_LIMIT) {
       throw new PolicyConflictError(
-        `Project ${projectId} has more than ${EFFECTIVE_POLICY_LIMIT} effective policies.`,
+        `Project ${projectId} has more than ${EFFECTIVE_POLICY_LIMIT} effective policies. Reduce or consolidate its effective policies before starting another Agent turn.`,
         "limit-exceeded",
       );
     }
