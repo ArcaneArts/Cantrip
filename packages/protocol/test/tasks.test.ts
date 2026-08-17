@@ -6,6 +6,7 @@ import {
   taskDraftUpdateSchema,
   taskFinalizerResultSchema,
   taskOperationStartSchema,
+  taskPlanUpdateSchema,
   taskPlannerResultSchema,
   taskQuestionAnswerListSchema,
   taskQuestionListSchema,
@@ -99,6 +100,29 @@ describe("Task protocol", () => {
       taskDraftUpdateSchema.safeParse({
         rowVersion: 1,
         draftAttachmentIds: ["one", "one"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts independent optimistic review edits", () => {
+    expect(taskPlanUpdateSchema.safeParse({ rowVersion: 1 }).success).toBe(
+      false,
+    );
+    expect(
+      taskPlanUpdateSchema.parse({
+        rowVersion: 2,
+        answers: [],
+        additionalDirection: "Recheck rollout safety.",
+      }),
+    ).toEqual({
+      rowVersion: 2,
+      answers: [],
+      additionalDirection: "Recheck rollout safety.",
+    });
+    expect(
+      taskPlanUpdateSchema.safeParse({
+        rowVersion: 2,
+        planMarkdown: "",
       }).success,
     ).toBe(false);
   });

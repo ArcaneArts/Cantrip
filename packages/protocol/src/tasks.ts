@@ -192,10 +192,23 @@ export const taskDraftUpdateSchema = z
     { message: "At least one Task draft field is required." },
   );
 
-export const taskPlanUpdateSchema = z.object({
-  rowVersion: z.number().int().positive(),
-  planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
-});
+export const taskPlanUpdateSchema = z
+  .object({
+    rowVersion: z.number().int().positive(),
+    planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT).optional(),
+    answers: taskQuestionAnswerListSchema.optional(),
+    additionalDirection: z
+      .string()
+      .max(TASK_ADDITIONAL_DIRECTION_LIMIT)
+      .optional(),
+  })
+  .refine(
+    (value) =>
+      value.planMarkdown !== undefined ||
+      value.answers !== undefined ||
+      value.additionalDirection !== undefined,
+    { message: "At least one Task review field is required." },
+  );
 
 export const taskPlannerResultSchema = z.object({
   planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),

@@ -15,6 +15,7 @@ import {
   Paperclip,
   Play,
   RefreshCw,
+  WifiOff,
 } from "lucide-react";
 import {
   lazy,
@@ -39,7 +40,6 @@ import {
   shouldAttachPastedText,
 } from "@/components/chat/attachment-utils";
 import { AgentInspectContent } from "@/components/chat/agent-inspect-content";
-import { Markdown } from "@/components/chat/markdown";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,8 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
+
+import { TaskPlanReview } from "./task-plan-review";
 
 const MonacoFileEditor = lazy(() =>
   import("@/components/explorer/monaco-file-editor").then((module) => ({
@@ -82,6 +84,13 @@ export type TaskSurfaceMode = "activity" | "draft" | "failed" | "review";
 export function taskSurfaceMode(task: TaskDetail): TaskSurfaceMode {
   if (task.state === "planning" || task.state === "finalizing") {
     return "activity";
+  }
+  if (
+    task.state === "failed" &&
+    task.stableStateBeforeFailure === "review" &&
+    task.planMarkdown
+  ) {
+    return "review";
   }
   if (task.state === "review") return "review";
   if (task.state === "failed") return "failed";
@@ -111,10 +120,14 @@ export function TaskSurface({
   chat,
   onRename,
   settings,
+  workerName,
+  workerOnline,
 }: {
   chat: ChatSummary;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
+  workerName?: string;
+  workerOnline: boolean;
 }) {
   const queryClient = useQueryClient();
   const [brief, setBrief] = useState("");
@@ -136,6 +149,7 @@ export function TaskSurface({
     useState<ReasoningEffort | null>(chat.reasoningEffort);
   const rowVersionRef = useRef(1);
   const pendingDeletionIdsRef = useRef(new Set<string>());
+  const failedDraftSignatureRef = useRef<string | null>(null);
   const savedSignatureRef = useRef(taskDraftSignature("", []));
   const fileInputRef = useRef<HTMLInputElement>(null);
   const briefRef = useRef(brief);
@@ -251,6 +265,7 @@ export function TaskSurface({
         rowVersion: rowVersionRef.current,
       }).then((updated) => ({ snapshot, updated })),
     onSuccess: ({ snapshot, updated }) => {
+      failedDraftSignatureRef.current = null;
       rowVersionRef.current = updated.rowVersion;
       queryClient.setQueryData(["task", chat.id], updated);
       if (
@@ -272,7 +287,8 @@ export function TaskSurface({
         );
       }
     },
-    onError: (error) => {
+    onError: (error, snapshot) => {
+      failedDraftSignatureRef.current = snapshot.signature;
       if (typeof error === "object" && error !== null && "status" in error) {
         if ((error as { status?: unknown }).status === 409) setConflict(true);
       }
@@ -304,6 +320,7 @@ export function TaskSurface({
       !dirty ||
       conflict ||
       saveDraft.isPending ||
+      failedDraftSignatureRef.current === currentSignature ||
       task.data?.state !== "draft"
     ) {
       return;
@@ -487,21 +504,13 @@ export function TaskSurface({
 
   if (mode === "review" && task.data.planMarkdown) {
     return (
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-10">
-        <div className="mx-auto max-w-5xl">
-          <div className="mb-6 flex items-center gap-3 border-b pb-4">
-            <ListTodo className="size-5 text-violet-500" />
-            <div>
-              <h2 className="font-semibold">Plan ready for review</h2>
-              <p className="text-xs text-muted-foreground">
-                The Task remains separate from implementation until you
-                continue.
-              </p>
-            </div>
-          </div>
-          <Markdown>{task.data.planMarkdown}</Markdown>
-        </div>
-      </div>
+      <TaskPlanReview
+        chat={chat}
+        task={task.data}
+        workerName={workerName}
+        workerOnline={workerOnline}
+        onReload={async () => (await task.refetch()).data ?? null}
+      />
     );
   }
 
@@ -521,7 +530,9 @@ export function TaskSurface({
     pendingAttachments.length === 0 &&
     !conflict &&
     !saveDraft.isPending &&
-    !planning.isPending;
+    !planning.isPending &&
+    workerOnline &&
+    chat.status !== "running";
 
   return (
     <div
@@ -576,6 +587,16 @@ export function TaskSurface({
         <div className="flex shrink-0 items-start gap-3 border-b border-destructive/30 bg-destructive/5 px-5 py-3 text-sm text-destructive">
           <CircleAlert className="mt-0.5 size-4 shrink-0" />
           <span>{task.data.lastError.message}</span>
+        </div>
+      ) : null}
+
+      {!workerOnline ? (
+        <div className="flex shrink-0 items-center gap-3 border-b bg-muted/35 px-5 py-3 text-sm">
+          <WifiOff className="size-4 text-muted-foreground" />
+          <span>
+            {workerName ?? "The selected worker"} is offline. Your Task draft is
+            saved and planning can begin when it reconnects.
+          </span>
         </div>
       ) : null}
 

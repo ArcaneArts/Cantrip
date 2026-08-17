@@ -6943,6 +6943,32 @@ export async function buildApp({
       additionalDirection?: string;
     },
   ) {
+    const prior = await repository.tasks.getOperationContext(
+      applicationOwnerId(),
+      context.chatId,
+      { operationId: input.operationId },
+    );
+    if (prior) {
+      if (prior.round.kind !== kind) {
+        throw new TaskConflictError(
+          "This Task operation ID was already used for a different operation.",
+          "idempotency-conflict",
+        );
+      }
+      if (
+        (input.answers !== undefined &&
+          JSON.stringify(input.answers) !==
+            JSON.stringify(prior.round.inputAnswers)) ||
+        (input.additionalDirection !== undefined &&
+          input.additionalDirection !== prior.round.additionalDirection)
+      ) {
+        throw new TaskConflictError(
+          "This Task operation ID was already used with different input.",
+          "idempotency-conflict",
+        );
+      }
+      return prior.task;
+    }
     if (!bridge.isConnected(context.workerId)) {
       throw new WorkerUnavailableError("Project worker is offline.");
     }
@@ -16087,6 +16113,51 @@ export async function buildApp({
         );
         return task
           ? reply.code(202).send(taskDetailSchema.parse(task))
+          : reply.code(404).send({ error: "Task not found." });
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/retry",
+    async (request, reply) => {
+      const input = taskOperationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      const task = await repository.tasks.get(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (task?.state !== "failed" || !task.lastError) {
+        return reply
+          .code(409)
+          .send({ error: "This Task has no failed operation to retry." });
+      }
+      if (task.lastError.operationKind === "finalize") {
+        return reply.code(409).send({
+          error: "Task finalization retry is not available yet.",
+        });
+      }
+      try {
+        const retried = await beginTaskPlanningOperation(
+          context,
+          task.lastError.operationKind,
+          input.data,
+        );
+        return retried
+          ? reply.code(202).send(taskDetailSchema.parse(retried))
           : reply.code(404).send({ error: "Task not found." });
       } catch (error) {
         const response = taskMutationError(error, reply);
