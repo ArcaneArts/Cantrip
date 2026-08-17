@@ -5,17 +5,35 @@ import { taskChatIsInspectOnly } from "./task-chat-access";
 describe("Task Chat access", () => {
   it("keeps planning states inspect-only", () => {
     expect(taskChatIsInspectOnly(undefined)).toBe(true);
-    expect(taskChatIsInspectOnly("draft")).toBe(true);
-    expect(taskChatIsInspectOnly("planning")).toBe(true);
-    expect(taskChatIsInspectOnly("review")).toBe(true);
-    expect(taskChatIsInspectOnly("finalizing")).toBe(true);
-    expect(taskChatIsInspectOnly("failed")).toBe(true);
+    for (const state of [
+      "draft",
+      "planning",
+      "review",
+      "finalizing",
+      "failed",
+    ] as const) {
+      expect(
+        taskChatIsInspectOnly({ state, implementationStartedAt: null }),
+      ).toBe(true);
+    }
   });
 
   it("enables normal Chat controls after implementation starts", () => {
-    expect(taskChatIsInspectOnly("implementing")).toBe(false);
-    expect(taskChatIsInspectOnly("paused")).toBe(false);
-    expect(taskChatIsInspectOnly("blocked")).toBe(false);
-    expect(taskChatIsInspectOnly("complete")).toBe(false);
+    for (const state of [
+      "implementing",
+      "paused",
+      "blocked",
+      "complete",
+    ] as const) {
+      expect(
+        taskChatIsInspectOnly({ state, implementationStartedAt: "now" }),
+      ).toBe(false);
+    }
+    expect(
+      taskChatIsInspectOnly({
+        state: "failed",
+        implementationStartedAt: "now",
+      }),
+    ).toBe(false);
   });
 });

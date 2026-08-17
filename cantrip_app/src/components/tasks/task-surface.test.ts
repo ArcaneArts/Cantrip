@@ -47,6 +47,14 @@ describe("Task draft presentation", () => {
       taskSurfaceMode({
         ...baseTask,
         state: "failed",
+        implementationStartedAt: "2026-08-17T01:00:00.000Z",
+        finalPlanMarkdown: "# Final plan",
+      }),
+    ).toBe("implementation");
+    expect(
+      taskSurfaceMode({
+        ...baseTask,
+        state: "failed",
         stableStateBeforeFailure: "review",
         planMarkdown: "# Stable plan",
       }),

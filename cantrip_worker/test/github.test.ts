@@ -674,6 +674,70 @@ describe("GitHub project files", () => {
     ).resolves.toMatchObject({ number: 42 });
   });
 
+  it("lists pull requests with branch metadata in one bounded request", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-github-pr-list-test-"),
+    );
+    directories.push(dataDirectory);
+    const binDirectory = path.join(dataDirectory, "bin");
+    const logPath = path.join(dataDirectory, "gh.log");
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    const pullRequest = {
+      number: 43,
+      title: "Task implementation",
+      state: "open",
+      html_url: "https://github.com/ArcaneArts/Cantrip/pull/43",
+      user: { login: "author" },
+      comments: 1,
+      labels: [],
+      created_at: "2026-08-07T12:00:00.000Z",
+      updated_at: "2026-08-07T13:00:00.000Z",
+      closed_at: null,
+      body: "Implements the Task.",
+      draft: false,
+      merged: false,
+      head: { ref: "agent/manual/task-cycle", sha: "1".repeat(40) },
+      base: { ref: "main", sha: "2".repeat(40) },
+    };
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const fs = require("node:fs");',
+        `fs.writeFileSync(${JSON.stringify(logPath)}, process.argv.slice(2).join("\\0"));`,
+        `process.stdout.write(${JSON.stringify(JSON.stringify([pullRequest]))});`,
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = `${binDirectory}:${originalPath ?? ""}`;
+
+    await expect(
+      new GithubClient(dataDirectory).listPullRequests(
+        "ArcaneArts/Cantrip",
+        "open",
+        2,
+        50,
+      ),
+    ).resolves.toMatchObject({
+      state: "open",
+      total: 1,
+      pullRequests: [
+        {
+          number: 43,
+          headRef: "agent/manual/task-cycle",
+          baseRef: "main",
+        },
+      ],
+      nextPage: null,
+    });
+    const invocation = await readFile(logPath, "utf8");
+    expect(invocation).toContain("/pulls");
+    expect(invocation).toContain("per_page=50");
+    expect(invocation).toContain("page=2");
+    expect(invocation).toContain("state=open");
+  });
+
   it("creates pull requests only from an exactly published local branch", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-github-pr-create-"),

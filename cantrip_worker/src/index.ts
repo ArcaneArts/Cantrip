@@ -794,6 +794,13 @@ async function start(): Promise<void> {
           command.page,
           command.limit,
         );
+      case "github.pull-requests.list":
+        return github.listPullRequests(
+          command.repository,
+          command.state,
+          command.page,
+          command.limit,
+        );
       case "github.issue.get":
         return github.getIssue(command.repository, command.number);
       case "github.issue.comment":

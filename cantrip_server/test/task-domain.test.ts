@@ -9,6 +9,7 @@ import {
   chatMessageListSchema,
   chatSummarySchema,
   taskCreateResultSchema,
+  taskImplementationDashboardSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -72,6 +73,22 @@ let goalTurnCount = 0;
 let structuredTurnCount = 0;
 let failNextGoalCreate = false;
 let nextTaskStructuredResult: unknown = plannerResult;
+let activeGoal: {
+  threadId: string;
+  objective: string;
+  status:
+    | "active"
+    | "paused"
+    | "blocked"
+    | "usageLimited"
+    | "budgetLimited"
+    | "complete";
+  tokenBudget: number | null;
+  tokensUsed: number;
+  timeUsedSeconds: number;
+  createdAt: number;
+  updatedAt: number;
+} | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -102,7 +119,7 @@ const workerBridge: WorkerCommandBus = {
         return {
           threadId: "task-planner-thread",
           turnId: "task-goal-turn",
-          text: "Implementation is underway.",
+          text: "Implementation is underway: https://github.com/ArcaneArts/TaskDomain/pull/77",
           structuredResult: null,
           status: "completed",
         };
@@ -142,17 +159,50 @@ const workerBridge: WorkerCommandBus = {
         failNextGoalCreate = false;
         throw new Error("Goal runtime temporarily unavailable.");
       }
+      activeGoal = {
+        threadId: command.threadId ?? "task-planner-thread",
+        objective: command.objective,
+        status: "active",
+        tokenBudget: command.tokenBudget,
+        tokensUsed: 0,
+        timeUsedSeconds: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      return { goal: activeGoal };
+    }
+    if (command.type === "chat.goal.get") {
+      return { goal: activeGoal };
+    }
+    if (command.type === "github.pull-requests.list") {
       return {
-        goal: {
-          threadId: command.threadId ?? "task-planner-thread",
-          objective: command.objective,
-          status: "active",
-          tokenBudget: command.tokenBudget,
-          tokensUsed: 0,
-          timeUsedSeconds: 0,
-          createdAt: 1,
-          updatedAt: 1,
-        },
+        state: command.state,
+        total: command.state === "open" ? 1 : 0,
+        nextPage: null,
+        pullRequests:
+          command.state === "open"
+            ? [
+                {
+                  number: 77,
+                  title: "Implement the Task dashboard",
+                  state: "open",
+                  url: "https://github.com/ArcaneArts/TaskDomain/pull/77",
+                  author: "cantrip-test",
+                  commentCount: 0,
+                  labels: [],
+                  createdAt: "2026-08-17T12:00:00.000Z",
+                  updatedAt: "2026-08-17T12:00:00.000Z",
+                  closedAt: null,
+                  body: "Task implementation",
+                  draft: false,
+                  merged: false,
+                  headRef: "agent/manual/task-dashboard",
+                  headSha: "1".repeat(40),
+                  baseRef: "main",
+                  baseSha: "2".repeat(40),
+                },
+              ]
+            : [],
       };
     }
     throw new Error(`Unexpected Task foundation command ${command.type}.`);
@@ -750,6 +800,60 @@ describe.sequential("Task domain foundation", () => {
     );
     expect(goalCreateCount - goalsBefore).toBe(1);
     expect(goalTurnCount - goalTurnsBefore).toBe(1);
+
+    const dashboardResponse = await app.inject({
+      method: "GET",
+      url: `/api/tasks/${created!.chat.id}/dashboard`,
+    });
+    expect(dashboardResponse.statusCode).toBe(200);
+    expect(
+      taskImplementationDashboardSchema.parse(dashboardResponse.json()),
+    ).toMatchObject({
+      task: { state: "implementing" },
+      goal: { status: "active" },
+      pullRequests: [
+        {
+          number: 77,
+          associationKind: "explicit",
+          associationSource: "message-url",
+        },
+      ],
+      warnings: [],
+    });
+
+    activeGoal = {
+      ...activeGoal!,
+      status: "usageLimited",
+      tokensUsed: 500,
+      timeUsedSeconds: 30,
+      updatedAt: 2,
+    };
+    const blockedDashboard = taskImplementationDashboardSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/tasks/${created!.chat.id}/dashboard`,
+        })
+      ).json(),
+    );
+    expect(blockedDashboard.task).toMatchObject({
+      state: "blocked",
+      lastError: {
+        code: "goal-usage-limited",
+        operationKind: "implementation",
+      },
+    });
+    activeGoal = { ...activeGoal, status: "active", updatedAt: 3 };
+    expect(
+      taskImplementationDashboardSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/tasks/${created!.chat.id}/dashboard`,
+          })
+        ).json(),
+      ).task,
+    ).toMatchObject({ state: "implementing", lastError: null });
 
     expect(
       (

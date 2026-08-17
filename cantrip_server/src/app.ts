@@ -137,6 +137,7 @@ import {
   githubIssueDetailSchema,
   githubIssueKindSchema,
   githubIssueListSchema,
+  githubPullRequestListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
   githubPullRequestCheckoutResultSchema,
@@ -481,11 +482,21 @@ import {
   taskOperationStartSchema,
   taskPlannerOutputJsonSchema,
   taskPlanUpdateSchema,
+  taskImplementationDashboardSchema,
+  type TaskAssociatedPullRequest,
+  type TaskDetail,
 } from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
 import { buildAgentPolicyContext } from "./policies/agent-context.js";
+import {
+  associateTaskPullRequests,
+  latestTaskImplementationReason,
+  projectTaskImplementationState,
+  taskAdvisoryWarnings,
+  type TaskWorktreeObservation,
+} from "./tasks/dashboard.js";
 import {
   authenticatedPrincipal,
   AuthenticationRequiredError,
@@ -7489,6 +7500,43 @@ export async function buildApp({
       : beginTurn(context, input);
   }
 
+  const reconcileTaskImplementation = async (
+    context: ChatExecutionContext,
+    goal: Awaited<ReturnType<typeof chatGoalResponseSchema.parse>>["goal"],
+    cached?: { messages?: ChatMessage[]; task?: TaskDetail },
+  ): Promise<TaskDetail | null> => {
+    if (context.experience !== "task") return null;
+    const task =
+      cached?.task ??
+      (await repository.tasks.get(applicationOwnerId(), context.chatId));
+    if (!task?.implementationStartedAt || !task.finalPlanMarkdown) {
+      return task;
+    }
+    const messages =
+      cached?.messages ??
+      (await repository.listMessages(applicationOwnerId(), context.chatId));
+    const projection = projectTaskImplementationState({
+      automationPaused: context.automationPaused,
+      chatStatus: context.status,
+      goal,
+      latestReason: latestTaskImplementationReason(
+        messages,
+        task.implementationStartedAt,
+      ),
+    });
+    if (!projection) return task;
+    const reconciled =
+      (await repository.tasks.syncImplementationState(
+        applicationOwnerId(),
+        context.chatId,
+        projection,
+      )) ?? task;
+    if (reconciled.rowVersion !== task.rowVersion) {
+      publishChatInvalidation(context.chatId, "task");
+    }
+    return reconciled;
+  };
+
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
     let context = await repository.getChatExecutionContext(
       applicationOwnerId(),
@@ -7528,6 +7576,7 @@ export async function buildApp({
           permissionProfileId: effectivePermissionProfile(context).effectiveId,
         }),
       );
+      await reconcileTaskImplementation(context, result.goal);
       if (result.goal?.status === "active") {
         const modelId = await resolveModelId(context);
         await beginTurn(
@@ -16308,6 +16357,158 @@ export async function buildApp({
   );
 
   app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/dashboard",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      let task = await repository.tasks.get(ownerId, request.params.chatId);
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!task || !context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      if (!task.implementationStartedAt || !task.finalPlanMarkdown) {
+        return reply
+          .code(409)
+          .send({ error: "Task implementation has not started." });
+      }
+
+      const [lanes, messages, worktrees, githubContext] = await Promise.all([
+        repository.listChatExecutionLanes(ownerId, context.chatId),
+        repository.listMessages(ownerId, context.chatId),
+        repository.listProjectWorktrees(ownerId, context.projectId),
+        repository.getGithubProjectExecutionContext(ownerId, context.projectId),
+      ]);
+      const observations: TaskWorktreeObservation[] = await Promise.all(
+        worktrees.map(async (worktree) => {
+          const snapshot = await repository.getProjectWorktreeStatusSnapshot(
+            ownerId,
+            context.projectId,
+            worktree.id,
+          );
+          return {
+            dirty: Boolean(snapshot?.status.files.length),
+            dirtyFileCount: snapshot?.status.files.length ?? 0,
+            worktree,
+          };
+        }),
+      );
+      const activeObservation = observations.find(
+        ({ worktree }) => worktree.id === context.worktreeId,
+      );
+      if (!activeObservation) {
+        return reply.code(409).send({ error: "Task worktree was not found." });
+      }
+
+      let goal = null;
+      let goalUnavailableReason: string | null = null;
+      if (!context.threadId) {
+        goalUnavailableReason = "The Task Chat has no active Codex thread.";
+      } else if (!bridge.isConnected(context.workerId)) {
+        goalUnavailableReason = "The project worker is offline.";
+      } else {
+        try {
+          const runtime = await runtimeForContext(context);
+          if (!runtime) {
+            goalUnavailableReason =
+              "The selected model runtime is unavailable.";
+          } else {
+            const response = chatGoalResponseSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "chat.goal.get",
+                chatId: context.chatId,
+                cwd: context.cwd,
+                threadId: context.threadId,
+                model: runtime.model,
+                provider: runtime.provider,
+                permissionProfileId:
+                  effectivePermissionProfile(context).effectiveId,
+              }),
+            );
+            goal = response.goal;
+            if (!goal) {
+              goalUnavailableReason = "Codex no longer reports an active Goal.";
+            }
+          }
+        } catch (error) {
+          goalUnavailableReason = errorMessage(error).slice(0, 2_000);
+        }
+      }
+
+      task =
+        (await reconcileTaskImplementation(context, goal, {
+          messages,
+          task,
+        })) ?? task;
+
+      let pullRequestsUnavailableReason: string | null = null;
+      let pullRequests: TaskAssociatedPullRequest[] = [];
+      if (!githubContext) {
+        pullRequestsUnavailableReason =
+          "This project is not linked to a GitHub repository.";
+      } else if (!bridge.isConnected(githubContext.workerId)) {
+        pullRequestsUnavailableReason = "The GitHub project worker is offline.";
+      } else {
+        try {
+          const results = await Promise.all(
+            (["open", "closed"] as const).map(async (state) =>
+              githubPullRequestListSchema.parse(
+                await bridge.request(githubContext.workerId, {
+                  type: "github.pull-requests.list",
+                  repository: githubContext.nameWithOwner,
+                  state,
+                  page: 1,
+                  limit: 100,
+                }),
+              ),
+            ),
+          );
+          const open = results[0]!;
+          const closed = results[1]!;
+          pullRequests = associateTaskPullRequests({
+            activeWorktreeId: context.worktreeId,
+            implementationStartedAt: task.implementationStartedAt,
+            lanes,
+            messages,
+            pullRequests: [...open.pullRequests, ...closed.pullRequests],
+            repository: githubContext.nameWithOwner,
+            worktrees: observations,
+          });
+        } catch (error) {
+          pullRequestsUnavailableReason = errorMessage(error).slice(0, 2_000);
+        }
+      }
+      const warnings = taskAdvisoryWarnings({
+        activeWorktreeId: context.worktreeId,
+        lanes,
+        pullRequests,
+        state: task.state,
+        worktrees: observations,
+      });
+      return reply.send(
+        taskImplementationDashboardSchema.parse({
+          task,
+          goal,
+          goalUnavailableReason,
+          placement: {
+            workerId: context.workerId,
+            worktreeId: activeObservation.worktree.id,
+            worktreeName: activeObservation.worktree.name,
+            branch: activeObservation.worktree.branch,
+            isPrimary: activeObservation.worktree.isPrimary,
+            dirty: activeObservation.dirty,
+            dirtyFileCount: activeObservation.dirtyFileCount,
+          },
+          pullRequests,
+          pullRequestsUnavailableReason,
+          warnings,
+        }),
+      );
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
     "/api/tasks/:chatId/attachments",
     async (request, reply) => {
       const task = await repository.tasks.get(
@@ -16550,6 +16751,12 @@ export async function buildApp({
           return retried
             ? reply.code(202).send(taskDetailSchema.parse(retried))
             : reply.code(404).send({ error: "Task not found." });
+        }
+        if (task.lastError.operationKind === "implementation") {
+          return reply.code(409).send({
+            error:
+              "Use the implementation Goal controls to resume or restart this Task.",
+          });
         }
         const retried = await beginTaskPlanningOperation(
           context,
@@ -19973,16 +20180,20 @@ export async function buildApp({
             .code(409)
             .send({ error: "Selected model was not found." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "chat.goal.get",
-          chatId: context.chatId,
-          cwd: context.cwd,
-          threadId: context.threadId,
-          model: runtime.model,
-          provider: runtime.provider,
-          permissionProfileId: effectivePermissionProfile(context).effectiveId,
-        });
-        return reply.send(chatGoalResponseSchema.parse(result));
+        const result = chatGoalResponseSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "chat.goal.get",
+            chatId: context.chatId,
+            cwd: context.cwd,
+            threadId: context.threadId,
+            model: runtime.model,
+            provider: runtime.provider,
+            permissionProfileId:
+              effectivePermissionProfile(context).effectiveId,
+          }),
+        );
+        await reconcileTaskImplementation(context, result.goal);
+        return reply.send(result);
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -20070,6 +20281,7 @@ export async function buildApp({
               effectivePermissionProfile(context).effectiveId,
           }),
         );
+        await reconcileTaskImplementation(context, result.goal);
         if (
           input.data.status === "active" &&
           !context.automationPaused &&

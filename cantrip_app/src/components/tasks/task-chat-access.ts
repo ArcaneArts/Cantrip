@@ -1,4 +1,4 @@
-import type { TaskState } from "@cantrip/protocol";
+import type { TaskDetail, TaskState } from "@cantrip/protocol";
 
 const INTERACTIVE_TASK_STATES: ReadonlySet<TaskState> = new Set([
   "implementing",
@@ -7,6 +7,10 @@ const INTERACTIVE_TASK_STATES: ReadonlySet<TaskState> = new Set([
   "complete",
 ]);
 
-export function taskChatIsInspectOnly(state: TaskState | undefined): boolean {
-  return !state || !INTERACTIVE_TASK_STATES.has(state);
+export function taskChatIsInspectOnly(
+  task: Pick<TaskDetail, "state" | "implementationStartedAt"> | undefined,
+): boolean {
+  if (!task) return true;
+  if (task.state === "failed" && task.implementationStartedAt) return false;
+  return !INTERACTIVE_TASK_STATES.has(task.state);
 }
