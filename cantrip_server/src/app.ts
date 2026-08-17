@@ -6004,7 +6004,7 @@ export async function buildApp({
           let attemptActivity = false;
           const canResume = runtimeCanResumeContext(execution, runtime);
           const threadId = canResume ? execution.threadId : null;
-          const finalAgentTurns = new Set<string>();
+          const finals = createStreamedFinalTracker();
           const requestedPrompt =
             options.workerPrompt ??
             (input.text ||
@@ -6237,14 +6237,14 @@ export async function buildApp({
                         },
                         attribution,
                       );
-                      if (event.message.phase !== "commentary" && turnId) {
-                        finalAgentTurns.add(turnId);
+                      if (event.message.phase !== "commentary") {
+                        recordFinal(finals, turnId, event.message.text);
                       }
                       return;
                     }
                     if (event.type === "agent.checkpoint") {
                       if (!event.text.trim()) return;
-                      if (finalAgentTurns.has(event.turnId)) return;
+                      if (finals.turnIds.has(event.turnId)) return;
                       behaviorTurnId = event.turnId;
                       behaviorTracker.markVisibleResponse(true, observedAt);
                       await upsertLiveChatMessage(
@@ -6428,7 +6428,7 @@ export async function buildApp({
               "ready",
               runtime.provider.accountId,
             );
-            if (!result.turnId || !finalAgentTurns.has(result.turnId)) {
+            if (!hasFinal(finals, result.turnId, result.text)) {
               await appendLiveChatMessage(
                 ownerId,
                 execution.chatId,
@@ -21458,4 +21458,34 @@ export async function buildApp({
   });
 
   return app;
+}
+
+type StreamedFinalTracker = {
+  turnIds: Set<string>;
+  texts: Set<string>;
+};
+
+function createStreamedFinalTracker(): StreamedFinalTracker {
+  return { turnIds: new Set(), texts: new Set() };
+}
+
+function recordFinal(
+  tracker: StreamedFinalTracker,
+  turnId: string | null | undefined,
+  text: string,
+): void {
+  tracker.texts.add(text.trim());
+  if (turnId) tracker.turnIds.add(turnId);
+}
+
+function hasFinal(
+  tracker: StreamedFinalTracker,
+  turnId: string | null | undefined,
+  text: string,
+): boolean {
+  if (turnId && tracker.turnIds.has(turnId)) return true;
+  const normalizedText = text.trim();
+  return normalizedText
+    ? tracker.texts.has(normalizedText)
+    : tracker.texts.size > 0;
 }
