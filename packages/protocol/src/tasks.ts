@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { WorkflowJsonObject } from "./workflows.js";
+
 export const TASK_MARKDOWN_LIMIT = 100_000;
 export const TASK_QUESTION_LIMIT = 12;
 export const TASK_QUESTION_HEADER_LIMIT = 80;
@@ -195,6 +197,116 @@ export const taskPlanUpdateSchema = z.object({
   planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
 });
 
+export const taskPlannerResultSchema = z.object({
+  planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
+  questions: taskQuestionListSchema,
+});
+
+export const taskFinalizerResultSchema = z.object({
+  finalPlanMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT),
+  goalPrompt: z.string().min(1).max(TASK_GOAL_PROMPT_LIMIT),
+});
+
+export const taskOperationStartSchema = z.object({
+  operationId: z.string().uuid(),
+  rowVersion: z.number().int().positive(),
+});
+
+export const taskContinuationStartSchema = taskOperationStartSchema.extend({
+  answers: taskQuestionAnswerListSchema,
+  additionalDirection: z.string().max(TASK_ADDITIONAL_DIRECTION_LIMIT),
+});
+
+export const taskPlannerOutputJsonSchema: WorkflowJsonObject = {
+  type: "object",
+  additionalProperties: false,
+  required: ["planMarkdown", "questions"],
+  properties: {
+    planMarkdown: {
+      type: "string",
+      minLength: 1,
+      maxLength: TASK_MARKDOWN_LIMIT,
+    },
+    questions: {
+      type: "array",
+      maxItems: TASK_QUESTION_LIMIT,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "header",
+          "question",
+          "options",
+          "recommendedOptionId",
+          "allowFreeform",
+          "required",
+        ],
+        properties: {
+          id: { type: "string", minLength: 1, maxLength: 200 },
+          header: {
+            type: "string",
+            minLength: 1,
+            maxLength: TASK_QUESTION_HEADER_LIMIT,
+          },
+          question: {
+            type: "string",
+            minLength: 1,
+            maxLength: TASK_QUESTION_TEXT_LIMIT,
+          },
+          options: {
+            type: "array",
+            maxItems: TASK_QUESTION_OPTION_LIMIT,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["id", "label", "description"],
+              properties: {
+                id: { type: "string", minLength: 1, maxLength: 200 },
+                label: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: TASK_QUESTION_OPTION_LABEL_LIMIT,
+                },
+                description: {
+                  type: "string",
+                  maxLength: TASK_QUESTION_OPTION_DESCRIPTION_LIMIT,
+                },
+              },
+            },
+          },
+          recommendedOptionId: {
+            anyOf: [
+              { type: "string", minLength: 1, maxLength: 200 },
+              { type: "null" },
+            ],
+          },
+          allowFreeform: { type: "boolean" },
+          required: { type: "boolean" },
+        },
+      },
+    },
+  },
+};
+
+export const taskFinalizerOutputJsonSchema: WorkflowJsonObject = {
+  type: "object",
+  additionalProperties: false,
+  required: ["finalPlanMarkdown", "goalPrompt"],
+  properties: {
+    finalPlanMarkdown: {
+      type: "string",
+      minLength: 1,
+      maxLength: TASK_MARKDOWN_LIMIT,
+    },
+    goalPrompt: {
+      type: "string",
+      minLength: 1,
+      maxLength: TASK_GOAL_PROMPT_LIMIT,
+    },
+  },
+};
+
 export const taskPlanningRoundSchema = z.object({
   id: z.string().min(1),
   chatId: z.string().min(1),
@@ -237,4 +349,8 @@ export type TaskLastError = z.infer<typeof taskLastErrorSchema>;
 export type TaskDetail = z.infer<typeof taskDetailSchema>;
 export type TaskDraftUpdate = z.infer<typeof taskDraftUpdateSchema>;
 export type TaskPlanUpdate = z.infer<typeof taskPlanUpdateSchema>;
+export type TaskPlannerResult = z.infer<typeof taskPlannerResultSchema>;
+export type TaskFinalizerResult = z.infer<typeof taskFinalizerResultSchema>;
+export type TaskOperationStart = z.infer<typeof taskOperationStartSchema>;
+export type TaskContinuationStart = z.infer<typeof taskContinuationStartSchema>;
 export type TaskPlanningRound = z.infer<typeof taskPlanningRoundSchema>;

@@ -2,15 +2,20 @@ import {
   taskDetailSchema,
   taskDraftUpdateSchema,
   taskPlanUpdateSchema,
+  taskPlannerResultSchema,
   taskPlanningRoundListSchema,
   taskPlanningRoundSchema,
+  TASK_ERROR_MESSAGE_LIMIT,
   type TaskDetail,
   type TaskDraftUpdate,
   type TaskOperationKind,
   type TaskPlanUpdate,
+  type TaskPlannerResult,
   type TaskPlanningRound,
+  type TaskQuestionAnswer,
+  type TaskLastError,
 } from "@cantrip/protocol/tasks";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
@@ -24,16 +29,23 @@ type TaskDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type TaskRow = typeof schema.tasks.$inferSelect;
 type TaskPlanningRoundRow = typeof schema.taskPlanningRounds.$inferSelect;
 
-export interface TaskOperationStart {
+export interface TaskOperationStartInput {
   operationId: string;
   kind: TaskOperationKind;
   rowVersion: number;
+  answers?: TaskQuestionAnswer[];
+  additionalDirection?: string;
 }
 
 export interface TaskOperationStartResult {
   task: TaskDetail;
   round: TaskPlanningRound;
   idempotent: boolean;
+}
+
+export interface TaskOperationContext {
+  task: TaskDetail;
+  round: TaskPlanningRound;
 }
 
 export class TaskConflictError extends Error {
@@ -100,6 +112,52 @@ function toTaskPlanningRound(row: TaskPlanningRoundRow): TaskPlanningRound {
     startedAt: toISOString(row.startedAt),
     completedAt: row.completedAt ? toISOString(row.completedAt) : null,
   });
+}
+
+function validateAnswers(
+  task: TaskDetail,
+  answers: TaskQuestionAnswer[],
+): void {
+  const byQuestion = new Map(
+    task.currentQuestions.map((question) => [question.id, question]),
+  );
+  const byAnswer = new Map(
+    answers.map((answer) => [answer.questionId, answer]),
+  );
+  for (const answer of answers) {
+    const question = byQuestion.get(answer.questionId);
+    if (!question) {
+      throw new TaskConflictError(
+        "An answer referred to an outdated Task question.",
+        "stale-version",
+      );
+    }
+    if (
+      answer.optionId &&
+      !question.options.some((option) => option.id === answer.optionId)
+    ) {
+      throw new TaskConflictError(
+        "An answer selected an unavailable Task option.",
+        "stale-version",
+      );
+    }
+    if (answer.freeform?.trim() && !question.allowFreeform) {
+      throw new TaskConflictError(
+        "This Task question does not accept a freeform answer.",
+        "stale-version",
+      );
+    }
+  }
+  if (
+    task.currentQuestions.some(
+      (question) => question.required && !byAnswer.has(question.id),
+    )
+  ) {
+    throw new TaskConflictError(
+      "Answer every required Task question before continuing.",
+      "stale-version",
+    );
+  }
 }
 
 export class TaskRepository {
@@ -220,7 +278,7 @@ export class TaskRepository {
   async beginOperation(
     ownerId: string,
     chatId: string,
-    input: TaskOperationStart,
+    input: TaskOperationStartInput,
   ): Promise<TaskOperationStartResult | null> {
     if (!input.operationId.trim() || input.operationId.length > 200) {
       throw new TaskConflictError(
@@ -294,6 +352,19 @@ export class TaskRepository {
         task.stableStateBeforeFailure,
         input.kind,
       );
+      const current = toTaskDetail(task);
+      const answers = input.answers ?? current.currentAnswers;
+      const additionalDirection =
+        input.additionalDirection ?? current.additionalDirection;
+      if (input.kind === "initial-plan" && !current.briefMarkdown.trim()) {
+        throw new TaskConflictError(
+          "Write a Task brief before planning.",
+          "stale-version",
+        );
+      }
+      if (input.kind === "continue-plan") {
+        validateAnswers(current, answers);
+      }
       const ordinal = task.planningRound + 1;
       const now = new Date();
       const insertedRounds = await transaction
@@ -306,8 +377,8 @@ export class TaskRepository {
           inputBriefMarkdown: task.briefMarkdown,
           inputPlanMarkdown: task.planMarkdown,
           inputQuestions: task.currentQuestions,
-          inputAnswers: task.currentAnswers,
-          additionalDirection: task.additionalDirection,
+          inputAnswers: answers,
+          additionalDirection,
           startedAt: now,
         })
         .returning();
@@ -319,6 +390,8 @@ export class TaskRepository {
           activeOperationId: input.operationId,
           activeOperationKind: input.kind,
           planningRound: ordinal,
+          currentAnswers: answers,
+          additionalDirection,
           lastError: null,
           rowVersion: task.rowVersion + 1,
           updatedAt: now,
@@ -343,5 +416,306 @@ export class TaskRepository {
         idempotent: false,
       };
     });
+  }
+
+  async getOperationContext(
+    ownerId: string,
+    chatId: string,
+    lookup: {
+      operationId?: string;
+      executionLaneId?: string;
+      userMessageId?: string;
+    },
+  ): Promise<TaskOperationContext | null> {
+    const task = await this.get(ownerId, chatId);
+    if (!task) return null;
+    const rounds = await this.listRounds(ownerId, chatId);
+    const round = rounds.find(
+      (candidate) =>
+        (lookup.operationId && candidate.id === lookup.operationId) ||
+        (lookup.executionLaneId &&
+          candidate.executionLaneId === lookup.executionLaneId) ||
+        (lookup.userMessageId &&
+          candidate.userMessageId === lookup.userMessageId),
+    );
+    return round ? { task, round } : null;
+  }
+
+  async attachOperationExecution(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    input: { executionLaneId: string; userMessageId: string },
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    await this.database
+      .update(schema.taskPlanningRounds)
+      .set({
+        executionLaneId: input.executionLaneId,
+        userMessageId: input.userMessageId,
+      })
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, operationId),
+          eq(schema.taskPlanningRounds.chatId, chatId),
+          or(
+            eq(schema.taskPlanningRounds.status, "running"),
+            isNull(schema.taskPlanningRounds.userMessageId),
+            eq(schema.taskPlanningRounds.userMessageId, input.userMessageId),
+          ),
+        ),
+      );
+    return this.getOperationContext(ownerId, chatId, { operationId });
+  }
+
+  async attachOperationAssistantMessage(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    assistantMessageId: string,
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    await this.database
+      .update(schema.taskPlanningRounds)
+      .set({ assistantMessageId })
+      .where(
+        and(
+          eq(schema.taskPlanningRounds.id, operationId),
+          eq(schema.taskPlanningRounds.chatId, chatId),
+        ),
+      );
+    return this.getOperationContext(ownerId, chatId, { operationId });
+  }
+
+  async completePlanningOperation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    rawResult: TaskPlannerResult,
+    turnId: string | null,
+  ): Promise<TaskOperationContext | null> {
+    const result = taskPlannerResultSchema.parse(rawResult);
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round) return null;
+      if (round.kind === "finalize") {
+        throw new TaskConflictError(
+          "A finalization round cannot accept a planner result.",
+          "idempotency-conflict",
+        );
+      }
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (round.status === "completed") {
+        return {
+          task: toTaskDetail(task),
+          round: toTaskPlanningRound(round),
+        };
+      }
+      if (
+        task.activeOperationId !== null &&
+        task.activeOperationId !== operationId
+      ) {
+        throw new TaskConflictError(
+          "A newer Task operation is active.",
+          "operation-active",
+        );
+      }
+      if (task.planningRound !== round.ordinal) {
+        throw new TaskConflictError(
+          "A newer Task planning round already superseded this outcome.",
+          "idempotency-conflict",
+        );
+      }
+      const now = new Date();
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({
+          status: "completed",
+          outputPlanMarkdown: result.planMarkdown,
+          outputQuestions: result.questions,
+          turnId,
+          error: null,
+          completedAt: now,
+        })
+        .where(eq(schema.taskPlanningRounds.id, operationId))
+        .returning();
+      const updatedTasks = await transaction
+        .update(schema.tasks)
+        .set({
+          state: "review",
+          stableStateBeforeFailure: null,
+          activeOperationId: null,
+          activeOperationKind: null,
+          planMarkdown: result.planMarkdown,
+          planAuthorship: "agent",
+          currentQuestions: result.questions,
+          currentAnswers: [],
+          additionalDirection: "",
+          lastError: null,
+          rowVersion: task.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return {
+        task: toTaskDetail(updatedTasks[0]!),
+        round: toTaskPlanningRound(updatedRounds[0]!),
+      };
+    });
+  }
+
+  async failOperation(
+    ownerId: string,
+    chatId: string,
+    operationId: string,
+    input: {
+      code: string;
+      message: string;
+      interrupted?: boolean;
+    },
+  ): Promise<TaskOperationContext | null> {
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      const roundRows = await transaction
+        .select()
+        .from(schema.taskPlanningRounds)
+        .where(
+          and(
+            eq(schema.taskPlanningRounds.id, operationId),
+            eq(schema.taskPlanningRounds.chatId, chatId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const round = roundRows[0];
+      if (!round) return null;
+      const taskRows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const task = taskRows[0];
+      if (!task) return null;
+      if (round.status === "completed") {
+        return {
+          task: toTaskDetail(task),
+          round: toTaskPlanningRound(round),
+        };
+      }
+      const now = new Date();
+      const error: TaskLastError = {
+        code: input.code.slice(0, 200) || "task-operation-failed",
+        message:
+          input.message.slice(0, TASK_ERROR_MESSAGE_LIMIT) ||
+          "The Task operation failed.",
+        operationKind: round.kind,
+        occurredAt: now.toISOString(),
+      };
+      const updatedRounds = await transaction
+        .update(schema.taskPlanningRounds)
+        .set({
+          status: input.interrupted ? "interrupted" : "failed",
+          error,
+          completedAt: now,
+        })
+        .where(eq(schema.taskPlanningRounds.id, operationId))
+        .returning();
+      if (task.planningRound !== round.ordinal) {
+        return {
+          task: toTaskDetail(task),
+          round: toTaskPlanningRound(updatedRounds[0]!),
+        };
+      }
+      const updatedTasks = await transaction
+        .update(schema.tasks)
+        .set({
+          state: "failed",
+          stableStateBeforeFailure:
+            round.kind === "initial-plan" ? "draft" : "review",
+          ...(task.activeOperationId === operationId
+            ? { activeOperationId: null, activeOperationKind: null }
+            : {}),
+          lastError: error,
+          rowVersion: task.rowVersion + 1,
+          updatedAt: now,
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return {
+        task: toTaskDetail(updatedTasks[0]!),
+        round: toTaskPlanningRound(updatedRounds[0]!),
+      };
+    });
+  }
+
+  async reconcileInterruptedOperations(): Promise<number> {
+    const active = await this.database
+      .select({ task: schema.tasks, round: schema.taskPlanningRounds })
+      .from(schema.tasks)
+      .innerJoin(
+        schema.taskPlanningRounds,
+        eq(schema.taskPlanningRounds.id, schema.tasks.activeOperationId),
+      )
+      .where(eq(schema.taskPlanningRounds.status, "running"));
+    for (const { task, round } of active) {
+      const now = new Date();
+      const error: TaskLastError = {
+        code: "server-restarted",
+        message:
+          "Task planning was interrupted by a server restart. A late durable worker outcome can still recover this round; otherwise retry it.",
+        operationKind: round.kind,
+        occurredAt: now.toISOString(),
+      };
+      await this.database.transaction(async (transaction) => {
+        await transaction
+          .update(schema.taskPlanningRounds)
+          .set({ status: "interrupted", error, completedAt: now })
+          .where(
+            and(
+              eq(schema.taskPlanningRounds.id, round.id),
+              eq(schema.taskPlanningRounds.status, "running"),
+            ),
+          );
+        await transaction
+          .update(schema.tasks)
+          .set({
+            state: "failed",
+            stableStateBeforeFailure:
+              round.kind === "initial-plan" ? "draft" : "review",
+            activeOperationId: null,
+            activeOperationKind: null,
+            lastError: error,
+            rowVersion: task.rowVersion + 1,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.tasks.chatId, task.chatId),
+              eq(schema.tasks.activeOperationId, round.id),
+            ),
+          );
+      });
+    }
+    return active.length;
   }
 }

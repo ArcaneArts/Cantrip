@@ -7136,8 +7136,17 @@ export const agentTurnResultSchema = z.object({
   threadId: z.string().min(1),
   turnId: z.string().min(1).optional(),
   text: z.string(),
+  structuredResult: z.unknown().optional(),
   status: z.literal("completed"),
 });
+
+export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("visible") }),
+  z.object({
+    kind: z.literal("structured"),
+    outputSchema: workflowJsonObjectSchema,
+  }),
+]);
 
 export const normalizedAgentMessageSchema = z.object({
   id: z.string().min(1),
@@ -8713,6 +8722,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     planMode: planModeSchema,
     mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
     automationPaused: z.boolean().default(false),
+    resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
   }),
   workflowNodeExecutionRequestSchema.extend({
     type: z.literal("workflow.node.execute"),
@@ -10006,6 +10016,7 @@ export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
 export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
 export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
+export type AgentTurnResultMode = z.infer<typeof agentTurnResultModeSchema>;
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;

@@ -178,6 +178,7 @@ interface ActiveTurn {
   reject(error: Error): void;
   resolve(result: AgentTurnResult | WorkflowNodeExecutionResult): void;
   startedAtMs: number;
+  structuredChat: boolean;
   threadId: string;
   timeout: ReturnType<typeof setTimeout> | null;
   workflowOutputSchema: Record<string, unknown> | null;
@@ -1103,6 +1104,7 @@ export interface RunAgentTurnOptions {
   >["automationPaused"];
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
   policyContext: Extract<WorkerCommand, { type: "chat.turn" }>["policyContext"];
+  resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   permissionProfileId: Extract<
     WorkerCommand,
@@ -1263,13 +1265,14 @@ export function cantripChatThreadParams() {
 export function codexWorktreeTurnPolicy(
   options: Pick<
     RunAgentTurnOptions,
-    "cwd" | "isPrimary" | "worktreeMode" | "worktreePolicy"
+    "cwd" | "isPrimary" | "resultMode" | "worktreeMode" | "worktreePolicy"
   > & {
     permissionProfileActive?: boolean;
     policyContext?: RunAgentTurnOptions["policyContext"];
   },
 ) {
   const cwd = path.resolve(options.cwd);
+  const structuredReadOnly = options.resultMode?.kind === "structured";
   const primaryIsReadOnly =
     options.isPrimary && options.worktreePolicy === "required-for-writes";
   const modeInstruction =
@@ -1283,20 +1286,23 @@ export function codexWorktreeTurnPolicy(
       : options.worktreePolicy === "required-for-writes"
         ? "The project policy is Required for writes and this turn is in a secondary worktree, so writes are permitted here."
         : "The project policy is Agent managed. You may work in the current checkout or acquire a secondary worktree when the task benefits from isolation.";
-  const sandboxPolicy = primaryIsReadOnly
-    ? { type: "readOnly" as const, networkAccess: false }
-    : {
-        type: "workspaceWrite" as const,
-        writableRoots: [cwd],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      };
+  const sandboxPolicy =
+    structuredReadOnly || primaryIsReadOnly
+      ? { type: "readOnly" as const, networkAccess: false }
+      : {
+          type: "workspaceWrite" as const,
+          writableRoots: [cwd],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        };
   return {
     additionalContext: {
       "cantrip.worktree-policy": {
         kind: "application",
-        value: `${policyInstruction} ${modeInstruction}`,
+        value: structuredReadOnly
+          ? "This is a Cantrip Task planning turn. It is unconditionally read-only: inspect the repository and effective policies, but do not modify files, Git state, GitHub state, or external systems."
+          : `${policyInstruction} ${modeInstruction}`,
       },
       ...(options.policyContext
         ? {
@@ -1307,7 +1313,9 @@ export function codexWorktreeTurnPolicy(
           }
         : {}),
     },
-    ...(options.permissionProfileActive ? {} : { sandboxPolicy }),
+    ...(options.permissionProfileActive && !structuredReadOnly
+      ? {}
+      : { sandboxPolicy }),
   } as const;
 }
 
@@ -1391,6 +1399,25 @@ export function codexChatApprovalPolicy(
     permissionProfileId === YOLO_PERMISSION_PROFILE_ID
     ? ("never" as const)
     : ("on-request" as const);
+}
+
+export function codexChatThreadSecurityParams(
+  permissionProfileId: string,
+  permissionProfilesSupported: boolean,
+  structuredReadOnly: boolean,
+) {
+  return structuredReadOnly
+    ? ({ approvalPolicy: "never", sandbox: "read-only" } as const)
+    : {
+        approvalPolicy: codexChatApprovalPolicy(
+          permissionProfileId,
+          permissionProfilesSupported,
+        ),
+        ...codexThreadPermissionParams(
+          permissionProfileId,
+          permissionProfilesSupported,
+        ),
+      };
 }
 
 export interface CodexSkill {
@@ -2634,6 +2661,7 @@ export class CodexAppServer implements CodexRuntime {
   private async runTurnAttempt(
     options: RunAgentTurnOptions,
   ): Promise<AgentTurnResult> {
+    const resultMode = options.resultMode ?? { kind: "visible" as const };
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
     await this.ensureStarted(options.model, options.provider);
     const baseline = await workspaceSnapshot(options.cwd);
@@ -2697,9 +2725,11 @@ export class CodexAppServer implements CodexRuntime {
         reject,
         resolve,
         startedAtMs: Date.now(),
+        structuredChat: resultMode.kind === "structured",
         threadId,
         timeout: null,
-        workflowOutputSchema: null,
+        workflowOutputSchema:
+          resultMode.kind === "structured" ? resultMode.outputSchema : null,
         workflowRunId: null,
         workflowNodeId: null,
       };
@@ -2738,6 +2768,9 @@ export class CodexAppServer implements CodexRuntime {
       model: options.model.name,
       ...codexReasoningEffortParams(options.model),
       ...(collaborationMode ? { collaborationMode } : {}),
+      ...(resultMode.kind === "structured"
+        ? { outputSchema: resultMode.outputSchema }
+        : {}),
     })) as TurnStartResponse;
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex turn.");
@@ -2829,6 +2862,7 @@ export class CodexAppServer implements CodexRuntime {
         reject,
         resolve,
         startedAtMs: Date.now(),
+        structuredChat: false,
         threadId,
         timeout: null,
         workflowOutputSchema: options.outputSchema,
@@ -3928,13 +3962,18 @@ export class CodexAppServer implements CodexRuntime {
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    >,
+    > & { resultMode?: RunAgentTurnOptions["resultMode"] },
     create = true,
   ): Promise<string | null> {
+    const structuredReadOnly = options.resultMode?.kind === "structured";
+    const permissionKey = structuredReadOnly
+      ? "cantrip:task-read-only"
+      : options.permissionProfileId;
     const modelProvider = codexModelProviderName(options.provider);
-    const mcpConfig = options.mcpServers
-      ? codexMcpConfigOverride(options.mcpServers)
-      : null;
+    const mcpConfig =
+      !structuredReadOnly && options.mcpServers
+        ? codexMcpConfigOverride(options.mcpServers)
+        : null;
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     let threadId = options.threadId;
     if (threadId && this.#threadKinds.get(threadId) === "workflow") {
@@ -3945,8 +3984,7 @@ export class CodexAppServer implements CodexRuntime {
     if (
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
-        this.#permissionProfilesByThread.get(threadId) !==
-          options.permissionProfileId ||
+        this.#permissionProfilesByThread.get(threadId) !== permissionKey ||
         (mcpConfigFingerprint !== null &&
           this.#mcpConfigFingerprintsByThread.get(threadId) !==
             mcpConfigFingerprint))
@@ -3976,20 +4014,17 @@ export class CodexAppServer implements CodexRuntime {
           ...codexReasoningEffortParams(options.model),
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
-          approvalPolicy: codexChatApprovalPolicy(
+          ...codexChatThreadSecurityParams(
             options.permissionProfileId,
             this.permissionProfilesSupported(),
+            structuredReadOnly,
           ),
           ...cantripChatThreadParams(),
-          ...this.threadPermissionParams(options.permissionProfileId),
           ...(mcpConfig ? { config: mcpConfig } : {}),
         })) as ThreadResponse;
         threadId = resumed.thread.id;
         this.#loadedThreads.add(threadId);
-        this.#permissionProfilesByThread.set(
-          threadId,
-          options.permissionProfileId,
-        );
+        this.#permissionProfilesByThread.set(threadId, permissionKey);
         if (mcpConfigFingerprint !== null) {
           this.#mcpConfigFingerprintsByThread.set(
             threadId,
@@ -4030,20 +4065,17 @@ export class CodexAppServer implements CodexRuntime {
         ...codexReasoningEffortParams(options.model),
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
-        approvalPolicy: codexChatApprovalPolicy(
+        ...codexChatThreadSecurityParams(
           options.permissionProfileId,
           this.permissionProfilesSupported(),
+          structuredReadOnly,
         ),
-        ...this.threadPermissionParams(options.permissionProfileId),
         ...cantripChatThreadParams(),
         ...(mcpConfig ? { config: mcpConfig } : {}),
       })) as ThreadResponse;
       threadId = started.thread.id;
       this.#loadedThreads.add(threadId);
-      this.#permissionProfilesByThread.set(
-        threadId,
-        options.permissionProfileId,
-      );
+      this.#permissionProfilesByThread.set(threadId, permissionKey);
       if (mcpConfigFingerprint !== null) {
         this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
       }
@@ -5065,7 +5097,12 @@ export class CodexAppServer implements CodexRuntime {
             params.item.id,
           ),
         );
-        if (normalized) active.onMessage?.(normalized);
+        if (
+          normalized &&
+          (!active.structuredChat || normalized.phase === "commentary")
+        ) {
+          active.onMessage?.(normalized);
+        }
       } else if (active && params.item.type === "commandExecution") {
         const correlation = eventCorrelation(
           message.method,
@@ -5479,6 +5516,14 @@ export class CodexAppServer implements CodexRuntime {
               threadId: active.threadId,
               turnId,
               text,
+              ...(active.structuredChat
+                ? {
+                    structuredResult: parseWorkflowStructuredResult(
+                      text,
+                      active.workflowOutputSchema ?? {},
+                    ),
+                  }
+                : {}),
               status: "completed",
             }),
       );
