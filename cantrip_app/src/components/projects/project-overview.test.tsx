@@ -121,6 +121,7 @@ function chatSurface(status: ChatSummary["status"]): ProjectSurface {
     id: "chat-1",
     projectId: project.id,
     title: "Ship project overview",
+    experience: "agent",
     position: 0,
     status,
     activeWorkerId: "worker-1",

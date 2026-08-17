@@ -38,6 +38,16 @@ import type {
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
+  TaskLastError,
+  TaskOperationKind,
+  TaskPlanAuthorship,
+  TaskPlanningRoundStatus,
+  TaskQuestion,
+  TaskQuestionAnswer,
+  TaskStableState,
+  TaskState,
+} from "@cantrip/protocol/tasks";
+import type {
   ProjectAutomationCondition,
   ProjectAutomationSchedule,
 } from "@cantrip/protocol/automations";
@@ -1687,6 +1697,7 @@ export const chats = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    experience: text("experience").notNull().default("agent"),
     position: integer("position").notNull().default(0),
     status: text("status").notNull().default("idle"),
     activeWorkerId: text("active_worker_id").references(() => workers.id, {
@@ -1719,6 +1730,196 @@ export const chats = pgTable(
   },
   (table) => [
     index("chats_project_archived_index").on(table.projectId, table.archivedAt),
+    check(
+      "chats_experience_check",
+      sql`${table.experience} IN ('agent', 'task')`,
+    ),
+  ],
+);
+
+export const tasks = pgTable(
+  "tasks",
+  {
+    chatId: text("chat_id")
+      .primaryKey()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    state: text("state").$type<TaskState>().notNull().default("draft"),
+    stableStateBeforeFailure: text(
+      "stable_state_before_failure",
+    ).$type<TaskStableState>(),
+    activeOperationId: text("active_operation_id"),
+    activeOperationKind: text(
+      "active_operation_kind",
+    ).$type<TaskOperationKind>(),
+    briefMarkdown: text("brief_markdown").notNull().default(""),
+    draftAttachmentIds: jsonb("draft_attachment_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    planMarkdown: text("plan_markdown"),
+    planAuthorship: text("plan_authorship")
+      .$type<TaskPlanAuthorship>()
+      .notNull()
+      .default("agent"),
+    currentQuestions: jsonb("current_questions")
+      .$type<TaskQuestion[]>()
+      .notNull()
+      .default([]),
+    currentAnswers: jsonb("current_answers")
+      .$type<TaskQuestionAnswer[]>()
+      .notNull()
+      .default([]),
+    additionalDirection: text("additional_direction").notNull().default(""),
+    finalPlanMarkdown: text("final_plan_markdown"),
+    goalPrompt: text("goal_prompt"),
+    planningRound: integer("planning_round").notNull().default(0),
+    implementationStartedAt: timestamp("implementation_started_at", {
+      withTimezone: true,
+    }),
+    lastError: jsonb("last_error").$type<TaskLastError>(),
+    rowVersion: integer("row_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("tasks_active_operation_unique")
+      .on(table.activeOperationId)
+      .where(sql`${table.activeOperationId} IS NOT NULL`),
+    check(
+      "tasks_state_check",
+      sql`${table.state} IN ('draft', 'planning', 'review', 'finalizing', 'implementing', 'paused', 'blocked', 'complete', 'failed')`,
+    ),
+    check(
+      "tasks_stable_failure_state_check",
+      sql`${table.stableStateBeforeFailure} IS NULL OR ${table.stableStateBeforeFailure} IN ('draft', 'review')`,
+    ),
+    check(
+      "tasks_active_operation_kind_check",
+      sql`${table.activeOperationKind} IS NULL OR ${table.activeOperationKind} IN ('initial-plan', 'continue-plan', 'finalize')`,
+    ),
+    check(
+      "tasks_active_operation_pair_check",
+      sql`(${table.activeOperationId} IS NULL) = (${table.activeOperationKind} IS NULL)`,
+    ),
+    check(
+      "tasks_plan_authorship_check",
+      sql`${table.planAuthorship} IN ('agent', 'user-edited', 'mixed')`,
+    ),
+    check(
+      "tasks_brief_length_check",
+      sql`length(${table.briefMarkdown}) <= 100000`,
+    ),
+    check(
+      "tasks_plan_length_check",
+      sql`${table.planMarkdown} IS NULL OR length(${table.planMarkdown}) BETWEEN 1 AND 100000`,
+    ),
+    check(
+      "tasks_final_plan_length_check",
+      sql`${table.finalPlanMarkdown} IS NULL OR length(${table.finalPlanMarkdown}) BETWEEN 1 AND 100000`,
+    ),
+    check(
+      "tasks_goal_prompt_length_check",
+      sql`${table.goalPrompt} IS NULL OR length(${table.goalPrompt}) BETWEEN 1 AND 100000`,
+    ),
+    check(
+      "tasks_direction_length_check",
+      sql`length(${table.additionalDirection}) <= 10000`,
+    ),
+    check("tasks_planning_round_check", sql`${table.planningRound} >= 0`),
+    check("tasks_row_version_check", sql`${table.rowVersion} >= 1`),
+  ],
+);
+
+export const taskPlanningRounds = pgTable(
+  "task_planning_rounds",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => tasks.chatId, { onDelete: "cascade" }),
+    ordinal: integer("ordinal").notNull(),
+    kind: text("kind").$type<TaskOperationKind>().notNull(),
+    status: text("status")
+      .$type<TaskPlanningRoundStatus>()
+      .notNull()
+      .default("running"),
+    inputBriefMarkdown: text("input_brief_markdown").notNull(),
+    inputPlanMarkdown: text("input_plan_markdown"),
+    inputQuestions: jsonb("input_questions")
+      .$type<TaskQuestion[]>()
+      .notNull()
+      .default([]),
+    inputAnswers: jsonb("input_answers")
+      .$type<TaskQuestionAnswer[]>()
+      .notNull()
+      .default([]),
+    additionalDirection: text("additional_direction").notNull().default(""),
+    outputPlanMarkdown: text("output_plan_markdown"),
+    outputQuestions: jsonb("output_questions")
+      .$type<TaskQuestion[]>()
+      .notNull()
+      .default([]),
+    outputGoalPrompt: text("output_goal_prompt"),
+    userMessageId: text("user_message_id").references(() => chatMessages.id, {
+      onDelete: "set null",
+    }),
+    assistantMessageId: text("assistant_message_id").references(
+      () => chatMessages.id,
+      { onDelete: "set null" },
+    ),
+    executionLaneId: text("execution_lane_id").references(
+      () => chatExecutionLanes.id,
+      { onDelete: "set null" },
+    ),
+    turnId: text("turn_id"),
+    error: jsonb("error").$type<TaskLastError>(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("task_planning_rounds_chat_ordinal_unique").on(
+      table.chatId,
+      table.ordinal,
+    ),
+    index("task_planning_rounds_chat_started_index").on(
+      table.chatId,
+      table.startedAt,
+    ),
+    check("task_planning_rounds_ordinal_check", sql`${table.ordinal} >= 0`),
+    check(
+      "task_planning_rounds_kind_check",
+      sql`${table.kind} IN ('initial-plan', 'continue-plan', 'finalize')`,
+    ),
+    check(
+      "task_planning_rounds_status_check",
+      sql`${table.status} IN ('running', 'completed', 'failed', 'interrupted')`,
+    ),
+    check(
+      "task_planning_rounds_input_brief_length_check",
+      sql`length(${table.inputBriefMarkdown}) <= 100000`,
+    ),
+    check(
+      "task_planning_rounds_input_plan_length_check",
+      sql`${table.inputPlanMarkdown} IS NULL OR length(${table.inputPlanMarkdown}) <= 100000`,
+    ),
+    check(
+      "task_planning_rounds_output_plan_length_check",
+      sql`${table.outputPlanMarkdown} IS NULL OR length(${table.outputPlanMarkdown}) <= 100000`,
+    ),
+    check(
+      "task_planning_rounds_goal_prompt_length_check",
+      sql`${table.outputGoalPrompt} IS NULL OR length(${table.outputGoalPrompt}) <= 100000`,
+    ),
+    check(
+      "task_planning_rounds_direction_length_check",
+      sql`length(${table.additionalDirection}) <= 10000`,
+    ),
   ],
 );
 

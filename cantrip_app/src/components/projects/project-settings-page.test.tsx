@@ -108,6 +108,7 @@ describe("project settings", () => {
       id: "chat-1",
       projectId: "project-1",
       title: "Implementation",
+      experience: "agent",
       position: 0,
       status: "idle",
       activeWorkerId: null,

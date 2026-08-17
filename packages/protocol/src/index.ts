@@ -26,7 +26,10 @@ export * from "./live.js";
 
 export * from "./policies.js";
 
+export * from "./tasks.js";
+
 import { agentPolicyContextSchema } from "./policies.js";
+import { taskDetailSchema } from "./tasks.js";
 
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
@@ -3071,13 +3074,26 @@ export const providerTelemetryDeleteResultSchema = z.object({
   }),
 });
 
+const chatPlacementCreateFields = {
+  worktreeId: z.string().min(1).optional(),
+  worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
+  tabGroupId: z.string().min(1).optional(),
+  target: executionTargetSchema.optional(),
+} as const;
+
 export const chatCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(200).default("New agent"),
-    worktreeId: z.string().min(1).optional(),
-    worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
+    ...chatPlacementCreateFields,
+  })
+  .refine((input) => !(input.worktreeId && input.target), {
+    message: "Choose either a legacy worktreeId or an execution target.",
+  });
+
+export const taskCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("New task"),
+    ...chatPlacementCreateFields,
   })
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",
@@ -3101,6 +3117,7 @@ export const chatSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  experience: z.enum(["agent", "task"]).default("agent"),
   position: z.number().int().nonnegative(),
   status: z.enum([
     "idle",
@@ -3121,6 +3138,11 @@ export const chatSummarySchema = z.object({
   automationPaused: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+});
+
+export const taskCreateResultSchema = z.object({
+  chat: chatSummarySchema,
+  task: taskDetailSchema,
 });
 
 export const chatListSchema = z.array(chatSummarySchema);
@@ -9661,6 +9683,8 @@ export type ProjectWorktreePolicyUpdate = z.infer<
 export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
 export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
+export type TaskCreate = z.infer<typeof taskCreateSchema>;
+export type TaskCreateResult = z.infer<typeof taskCreateResultSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
