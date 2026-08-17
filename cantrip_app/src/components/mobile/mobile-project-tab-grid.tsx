@@ -119,7 +119,12 @@ export function MobileProjectTabGrid({
                     {group.representative ? (
                       <ProjectSurfaceIcon
                         className="size-4"
-                        kind={group.representative.kind}
+                        kind={
+                          group.representative.kind === "chat" &&
+                          group.representative.entity.experience === "task"
+                            ? "task"
+                            : group.representative.kind
+                        }
                       />
                     ) : (
                       <Loader2 className="size-4 animate-spin" />

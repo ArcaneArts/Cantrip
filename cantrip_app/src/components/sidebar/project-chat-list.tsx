@@ -137,7 +137,12 @@ function SortableChat({
     <SortableSidebarSurfaceRow
       active={active}
       editing={editing}
-      icon={<ProjectSurfaceIcon kind="chat" className="size-3.5 shrink-0" />}
+      icon={
+        <ProjectSurfaceIcon
+          kind={chat.experience === "task" ? "task" : "chat"}
+          className="size-3.5 shrink-0"
+        />
+      }
       sortId={chatId(chat.id)}
       status={
         chat.hasPendingPlanQuestion ? (
@@ -695,7 +700,11 @@ export function ProjectChatList({
         : [];
     }) ?? [];
   const tabVisualKind = (tab: SidebarTab): ProjectTabGroupVisualKind =>
-    tab.kind === "view" ? tab.view.kind : tab.kind;
+    tab.kind === "view"
+      ? tab.view.kind
+      : tab.kind === "chat" && tab.chat.experience === "task"
+        ? "task"
+        : tab.kind;
   const tabTitle = (tab: SidebarTab): string =>
     tab.kind === "chat"
       ? tab.chat.title

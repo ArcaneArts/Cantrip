@@ -94,6 +94,7 @@ describe("ContentHeaderActions", () => {
         terminalService={{ active: true, open: vi.fn() }}
         terminalCommandPalette={{ active: true, open: vi.fn() }}
         popout={{ error: null, pending: false, open: vi.fn() }}
+        task={{ change: vi.fn(), view: "task" }}
         chat={{
           consoleActive: false,
           consolePending: false,
@@ -128,6 +129,9 @@ describe("ContentHeaderActions", () => {
       markup.indexOf("Run a project command"),
     );
     expect(markup).toContain('title="Open this tab in a new window"');
+    expect(markup).toContain('title="Show Task"');
+    expect(markup).toContain('title="Show Task chat"');
+    expect(markup).toContain('aria-label="Task view"');
     expect(markup).toContain('title="Inspect Codex customizations"');
     expect(markup).toContain('title="View agent move progress"');
     expect(markup).toContain('title="Show Codex console"');

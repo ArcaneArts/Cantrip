@@ -69,6 +69,7 @@ import {
   chatCompactAcceptedSchema,
   chatAttachmentKindSchema,
   chatAttachmentSourceSchema,
+  chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   archivedChatCleanupResultSchema,
   archivedChatListSchema,
@@ -15950,6 +15951,23 @@ export async function buildApp({
       return task
         ? reply.send(taskDetailSchema.parse(task))
         : reply.code(404).send({ error: "Task not found." });
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/attachments",
+    async (request, reply) => {
+      const task = await repository.tasks.get(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!task) return reply.code(404).send({ error: "Task not found." });
+      const attachments = await repository.getChatAttachments(
+        applicationOwnerId(),
+        request.params.chatId,
+        task.draftAttachmentIds,
+      );
+      return reply.send(chatAttachmentListSchema.parse(attachments));
     },
   );
 

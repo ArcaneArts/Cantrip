@@ -420,7 +420,12 @@ export function ProjectOverview({
                             <td className="px-4 py-2">
                               <div className="flex min-w-0 items-center gap-2">
                                 <ProjectSurfaceIcon
-                                  kind={surface.kind}
+                                  kind={
+                                    surface.kind === "chat" &&
+                                    surface.entity.experience === "task"
+                                      ? "task"
+                                      : surface.kind
+                                  }
                                   className="size-3.5 shrink-0 text-muted-foreground"
                                 />
                                 <span className="truncate text-xs font-medium">
