@@ -103,6 +103,7 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
@@ -1920,25 +1921,11 @@ function ChatTranscript({
             );
           })}
 
-          {chat.status === "running" ||
-          chat.status === "waiting-for-approval" ? (
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <div className="grid size-7 place-items-center rounded-lg border bg-card">
-                {chat.automationPaused ? (
-                  <Pause className="size-3.5 text-amber-500" />
-                ) : (
-                  <Loader2 className="size-3.5 animate-spin" />
-                )}
-              </div>
-              {chat.status === "waiting-for-approval"
-                ? "Codex is waiting for your approval…"
-                : chat.automationPaused
-                  ? "Pause requested — Codex will hold at its next safe boundary…"
-                  : planState.data?.question
-                    ? "Codex is waiting for your plan answer…"
-                    : `${selectedModel?.name ?? "Agent"} is working through Codex…`}
-            </div>
-          ) : null}
+          <ChatRunStatus
+            automationPaused={chat.automationPaused}
+            status={chat.status}
+            waitingForPlanAnswer={Boolean(planState.data?.question)}
+          />
         </div>
       </div>
 
