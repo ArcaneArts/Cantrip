@@ -1442,7 +1442,7 @@ const workerBridge = {
           });
           return {
             threadId: "codex-rich-thread-1",
-            turnId: "rich-turn-1",
+            // Keep turnId absent: older/provider-specific workers may omit it.
             text: "Rich events are preserved.",
             status: "completed",
           };
