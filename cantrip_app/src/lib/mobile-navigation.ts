@@ -74,15 +74,19 @@ export function removeMobileBottomTab(
 
 export function projectSelectionAction({
   compact,
+  preserveCurrentDestination = false,
   projects,
   selectedProjectId,
   visibleProjects,
 }: {
   compact: boolean;
+  preserveCurrentDestination?: boolean;
   projects: readonly Pick<ProjectSummary, "id">[];
   selectedProjectId: string | null;
   visibleProjects: readonly Pick<ProjectSummary, "id">[];
 }): ProjectSelectionAction | null {
+  if (preserveCurrentDestination) return null;
+
   if (compact) {
     if (
       selectedProjectId === null ||
