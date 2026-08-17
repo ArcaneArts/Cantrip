@@ -35,12 +35,25 @@ function materialize(
 ): GitChangeTreeNode[] {
   const nodes: GitChangeTreeNode[] = [];
   for (const [name, child] of directory.directories) {
-    const childPath = parentPath ? `${parentPath}/${name}` : name;
+    let compactName = name;
+    let compactDirectory = child;
+    let childPath = parentPath ? `${parentPath}/${name}` : name;
+    while (
+      compactDirectory.files.length === 0 &&
+      compactDirectory.directories.size === 1
+    ) {
+      const [nextName, nextDirectory] = compactDirectory.directories
+        .entries()
+        .next().value!;
+      compactName = `${compactName}/${nextName}`;
+      childPath = `${childPath}/${nextName}`;
+      compactDirectory = nextDirectory;
+    }
     nodes.push({
       type: "directory",
-      name,
+      name: compactName,
       path: childPath,
-      children: materialize(child, childPath),
+      children: materialize(compactDirectory, childPath),
     });
   }
   for (const { change, name } of directory.files) {
