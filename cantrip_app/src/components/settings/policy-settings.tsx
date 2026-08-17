@@ -1,6 +1,7 @@
 import {
   closestCenter,
   DndContext,
+  KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
@@ -8,6 +9,7 @@ import {
 } from "@dnd-kit/core";
 import {
   arrayMove,
+  sortableKeyboardCoordinates,
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
@@ -204,6 +206,20 @@ function SortablePolicyRow({
         >
           {policy.summary}
         </p>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 sm:hidden">
+          <Badge variant={policy.enabled ? "secondary" : "outline"}>
+            {policy.enabled ? "Enabled" : "Disabled"}
+          </Badge>
+          {policy.mandatory ? (
+            <Badge variant="secondary">
+              <ShieldCheck className="size-3" /> Mandatory
+            </Badge>
+          ) : null}
+          <span className="text-[10px] text-muted-foreground">
+            {policy.templateKey ? "Template" : "Custom"} · {assignments}{" "}
+            assignment{assignments === 1 ? "" : "s"}
+          </span>
+        </div>
       </div>
       <div className="hidden items-center gap-1 sm:flex">
         <Badge variant={policy.enabled ? "secondary" : "outline"}>
@@ -287,6 +303,9 @@ export function PolicySettings({
   });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   useEffect(() => {
@@ -494,7 +513,11 @@ export function PolicySettings({
 
       <div className="min-w-0 divide-y overflow-hidden border-y">
         {policies.isLoading ? (
-          <div className="grid place-items-center py-12 text-muted-foreground">
+          <div
+            role="status"
+            aria-label="Loading policies"
+            className="grid place-items-center py-12 text-muted-foreground"
+          >
             <Loader2 className="size-5 animate-spin" />
           </div>
         ) : visiblePolicies.length ? (
@@ -533,7 +556,9 @@ export function PolicySettings({
         )}
       </div>
       {error ? (
-        <p className="text-sm text-destructive">{errorMessage(error)}</p>
+        <p role="alert" className="text-sm text-destructive">
+          {errorMessage(error)}
+        </p>
       ) : null}
       <p className="text-xs text-muted-foreground">
         Enabled mandatory policies apply to every project. Other policy
@@ -583,13 +608,17 @@ export function PolicySettings({
               </button>
             ))}
             {templates.isLoading ? (
-              <div className="grid place-items-center px-3 py-4 text-muted-foreground">
+              <div
+                role="status"
+                aria-label="Loading policy templates"
+                className="grid place-items-center px-3 py-4 text-muted-foreground"
+              >
                 <Loader2 className="size-4 animate-spin" />
               </div>
             ) : null}
           </div>
           {templates.isError || loadTemplate.isError ? (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {errorMessage(templates.error ?? loadTemplate.error)}
             </p>
           ) : null}
@@ -597,7 +626,7 @@ export function PolicySettings({
       </Dialog>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="flex h-[min(52rem,calc(100vh-2rem))] max-w-5xl flex-col overflow-hidden">
+        <DialogContent className="flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-5xl flex-col overflow-hidden sm:h-[min(52rem,calc(100vh-2rem))] sm:w-full">
           <DialogHeader>
             <DialogTitle>
               {editingPolicyId ? "Edit policy" : "New policy"}
@@ -621,7 +650,11 @@ export function PolicySettings({
               </Button>
             </div>
           ) : !editorReady ? (
-            <div className="grid min-h-0 flex-1 place-items-center text-muted-foreground">
+            <div
+              role="status"
+              aria-label="Loading policy"
+              className="grid min-h-0 flex-1 place-items-center text-muted-foreground"
+            >
               <Loader2 className="size-5 animate-spin" />
             </div>
           ) : (
@@ -688,6 +721,7 @@ export function PolicySettings({
                     size="sm"
                     className="h-7 px-2 text-xs"
                     variant={bodyMode === "edit" ? "default" : "ghost"}
+                    aria-pressed={bodyMode === "edit"}
                     onClick={() => setBodyMode("edit")}
                   >
                     <Pencil className="size-3" /> Edit
@@ -697,6 +731,7 @@ export function PolicySettings({
                     size="sm"
                     className="h-7 px-2 text-xs"
                     variant={bodyMode === "preview" ? "default" : "ghost"}
+                    aria-pressed={bodyMode === "preview"}
                     onClick={() => setBodyMode("preview")}
                   >
                     <Eye className="size-3" /> Preview
@@ -791,7 +826,7 @@ export function PolicySettings({
                 </div>
               </div>
               {save.isError ? (
-                <p className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-destructive">
                   {errorMessage(save.error)}
                 </p>
               ) : null}
@@ -812,7 +847,7 @@ export function PolicySettings({
             </DialogDescription>
           </DialogHeader>
           {remove.isError ? (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {errorMessage(remove.error)}
             </p>
           ) : null}
@@ -850,7 +885,7 @@ export function PolicySettings({
             </Button>
           </DialogFooter>
           {reset.isError ? (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {errorMessage(reset.error)}
             </p>
           ) : null}

@@ -183,6 +183,134 @@ describe("policy persistence", () => {
     }
   });
 
+  it("serializes concurrent edits, reorders, assignments, and deletes", async () => {
+    const { client, repository } = await fixture();
+    try {
+      const editedPolicy = await repository.policies.create(LOCAL_USER_ID, {
+        key: "concurrent-edit",
+        name: "Concurrent edit",
+        summary: "Exercise simultaneous optimistic edits.",
+        bodyMarkdown: "# Concurrent edit",
+        enabled: true,
+        mandatory: false,
+      });
+      const editResults = await Promise.allSettled([
+        repository.policies.update(LOCAL_USER_ID, editedPolicy.id, {
+          rowVersion: editedPolicy.rowVersion,
+          name: "First saved edit",
+        }),
+        repository.policies.update(LOCAL_USER_ID, editedPolicy.id, {
+          rowVersion: editedPolicy.rowVersion,
+          name: "Second saved edit",
+        }),
+      ]);
+      expect(
+        editResults.filter(({ status }) => status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(editResults.filter(({ status }) => status === "rejected")).toEqual(
+        [
+          expect.objectContaining({
+            reason: expect.objectContaining({ code: "stale-version" }),
+          }),
+        ],
+      );
+
+      await repository.policies.create(LOCAL_USER_ID, {
+        key: "concurrent-order",
+        name: "Concurrent order",
+        summary: "Exercise simultaneous optimistic ordering.",
+        bodyMarkdown: "# Concurrent order",
+        enabled: true,
+        mandatory: false,
+      });
+      const beforeOrder = await repository.policies.list(LOCAL_USER_ID);
+      const orderIds = beforeOrder.policies.map(({ id }) => id);
+      const orderResults = await Promise.allSettled([
+        repository.policies.reorder(LOCAL_USER_ID, {
+          collectionVersion: beforeOrder.collectionVersion,
+          policyIds: [...orderIds].reverse(),
+        }),
+        repository.policies.reorder(LOCAL_USER_ID, {
+          collectionVersion: beforeOrder.collectionVersion,
+          policyIds: [...orderIds.slice(1), orderIds[0]!],
+        }),
+      ]);
+      expect(
+        orderResults.filter(({ status }) => status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        orderResults.filter(({ status }) => status === "rejected"),
+      ).toEqual([
+        expect.objectContaining({
+          reason: expect.objectContaining({ code: "collection-changed" }),
+        }),
+      ]);
+
+      const project = await repository.createGithubProject(LOCAL_USER_ID, {
+        workerId: "not-needed-for-concurrency",
+        repositoryId: "concurrent-policy-project",
+        nameWithOwner: "ArcaneArts/ConcurrentPolicyProject",
+        url: "https://github.com/ArcaneArts/ConcurrentPolicyProject",
+      });
+      const beforeAssignments = await repository.policies.list(LOCAL_USER_ID);
+      const assignmentResults = await Promise.allSettled([
+        repository.policies.replaceProjectAssignments(
+          LOCAL_USER_ID,
+          project.id,
+          {
+            collectionVersion: beforeAssignments.collectionVersion,
+            policyIds: [editedPolicy.id],
+          },
+        ),
+        repository.policies.replaceProjectAssignments(
+          LOCAL_USER_ID,
+          project.id,
+          {
+            collectionVersion: beforeAssignments.collectionVersion,
+            policyIds: [],
+          },
+        ),
+      ]);
+      expect(
+        assignmentResults.filter(({ status }) => status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        assignmentResults.filter(({ status }) => status === "rejected"),
+      ).toEqual([
+        expect.objectContaining({
+          reason: expect.objectContaining({ code: "collection-changed" }),
+        }),
+      ]);
+
+      const deletedPolicy = await repository.policies.create(LOCAL_USER_ID, {
+        key: "concurrent-delete",
+        name: "Concurrent delete",
+        summary: "Exercise simultaneous deletes.",
+        bodyMarkdown: "# Concurrent delete",
+        enabled: true,
+        mandatory: false,
+      });
+      const deleteResults = await Promise.all([
+        repository.policies.delete(
+          LOCAL_USER_ID,
+          deletedPolicy.id,
+          deletedPolicy.rowVersion,
+        ),
+        repository.policies.delete(
+          LOCAL_USER_ID,
+          deletedPolicy.id,
+          deletedPolicy.rowVersion,
+        ),
+      ]);
+      expect(deleteResults.sort()).toEqual([false, true]);
+      expect(
+        await repository.policies.get(LOCAL_USER_ID, deletedPolicy.id),
+      ).toBeNull();
+    } finally {
+      await client.close();
+    }
+  });
+
   it("unions mandatory, workspace, and direct policies without duplicates", async () => {
     const { client, repository } = await fixture();
     try {

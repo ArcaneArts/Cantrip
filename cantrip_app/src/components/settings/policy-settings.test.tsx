@@ -95,5 +95,6 @@ describe("policy settings", () => {
     expect(markup).toContain("3 assignments");
     expect(markup).toContain("Drag Manual Change Protocol to reorder");
     expect(markup).toContain("Template");
+    expect(markup).toContain("Enabled");
   });
 });

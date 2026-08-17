@@ -13,6 +13,24 @@ const serverLogFile = configuredLogFile
   ? new RotatingJsonlLog({ filePath: configuredLogFile })
   : null;
 
+export const SERVER_LOG_REDACTION_PATHS = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "req.headers.x-cantrip-csrf",
+  "req.headers.x-cantrip-bootstrap-token",
+  "req.body.code",
+  "req.body.credential",
+  "req.body.apiKey",
+  "req.body.enrollmentCode",
+  "req.body.password",
+  "req.body.accessToken",
+  "req.body.refreshToken",
+  "req.body.idToken",
+  "req.body.summary",
+  "req.body.bodyMarkdown",
+  "res.headers.set-cookie",
+] as const;
+
 function captureServerLog(record: ServiceLogRecordInput): void {
   const stored = serverLogBuffer.append(record);
   serverLogFile?.write(stored);

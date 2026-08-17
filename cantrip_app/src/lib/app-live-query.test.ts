@@ -200,6 +200,40 @@ describe("application live query bridge", () => {
     });
   });
 
+  it("invalidates policy state in every connected Settings window", async () => {
+    const clients = [new QueryClient(), new QueryClient()];
+    const invalidations = clients.map((client) =>
+      vi.spyOn(client, "invalidateQueries").mockResolvedValue(),
+    );
+    const policyEvent = event({
+      entityId: "policy-one",
+      resource: "policy",
+      scope: { kind: "current-user" },
+    });
+
+    for (const client of clients) {
+      new AppLiveQueryBridge(client).handleEvent(policyEvent);
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+
+    for (const invalidate of invalidations) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["policies"] });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workspace-policy-assignments"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["project-policy-assignments"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["effective-policies"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["policy", "policy-one"],
+      });
+    }
+  });
+
   it("reconciles durable messages when a turn boundary follows lost live events", async () => {
     const queryClient = new QueryClient();
     const invalidate = vi
