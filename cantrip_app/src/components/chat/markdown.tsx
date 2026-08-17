@@ -1,6 +1,7 @@
 import MarkdownRenderer from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { SyntaxHighlightedCode } from "@/components/chat/markdown-code";
 import { cn } from "@/lib/utils";
 
 export function Markdown({
@@ -48,17 +49,25 @@ export function Markdown({
               {quoteChildren}
             </blockquote>
           ),
-          code: ({ children: codeChildren, className, ...props }) => {
-            const fenced = Boolean(className);
+          code: ({ children: codeChildren, className, node, ...props }) => {
+            const fenced =
+              Boolean(className) ||
+              (node?.position?.start.line !== node?.position?.end.line &&
+                String(codeChildren).endsWith("\n"));
+            if (fenced) {
+              return (
+                <SyntaxHighlightedCode {...props} className={className}>
+                  {codeChildren}
+                </SyntaxHighlightedCode>
+              );
+            }
             return (
               <code
                 {...props}
                 className={cn(
                   className,
-                  fenced
-                    ? "block min-w-max font-mono text-xs leading-5"
-                    : "whitespace-pre-wrap break-all rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground",
-                  !fenced && inverse && "bg-white/15 text-white",
+                  "whitespace-pre-wrap break-all rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground",
+                  inverse && "bg-white/15 text-white",
                 )}
               >
                 {codeChildren}
@@ -94,7 +103,9 @@ export function Markdown({
             <pre
               className={cn(
                 "my-3 max-w-full overflow-x-auto rounded-lg border p-3",
-                inverse ? "border-white/15 bg-black/25" : "bg-muted/60",
+                inverse
+                  ? "markdown-code-inverse border-white/15 bg-black/25"
+                  : "bg-muted/60",
               )}
             >
               {preChildren}

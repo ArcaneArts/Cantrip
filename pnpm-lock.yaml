@@ -110,6 +110,9 @@ importers:
       prism-react-renderer:
         specifier: ^2.4.1
         version: 2.4.1(react@19.2.8)
+      prismjs:
+        specifier: ^1.30.0
+        version: 1.30.0
       qrcode.react:
         specifier: ^4.2.0
         version: 4.2.0(react@19.2.8)
@@ -150,6 +153,9 @@ importers:
       "@tauri-apps/cli":
         specifier: ^2.11.4
         version: 2.11.4
+      "@types/prismjs":
+        specifier: ^1.26.6
+        version: 1.26.6
       "@types/react":
         specifier: ^19.2.18
         version: 19.2.18
@@ -3322,6 +3328,7 @@ packages:
         integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==,
       }
     engines: { node: ">=14.6" }
+
   "@xterm/addon-fit@0.11.0":
     resolution:
       {
@@ -6275,6 +6282,13 @@ packages:
       }
     peerDependencies:
       react: ">=16.0.0"
+
+  prismjs@1.30.0:
+    resolution:
+      {
+        integrity: sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==,
+      }
+    engines: { node: ">=6" }
 
   process-warning@4.0.1:
     resolution:
@@ -11087,6 +11101,8 @@ snapshots:
       "@types/prismjs": 1.26.6
       clsx: 2.1.1
       react: 19.2.8
+
+  prismjs@1.30.0: {}
 
   process-warning@4.0.1: {}
 
