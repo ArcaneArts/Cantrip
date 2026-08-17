@@ -5,7 +5,14 @@ import type {
   ProjectWorktreeSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
-import { ChevronRight, Cpu, GitFork, HardDrive, Sparkles } from "lucide-react";
+import {
+  ChevronRight,
+  Cpu,
+  GitFork,
+  HardDrive,
+  ListTodo,
+  Sparkles,
+} from "lucide-react";
 import { type ReactNode } from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
@@ -18,7 +25,7 @@ import {
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
 
-export type ProjectSurfaceCreateKind = ProjectSurface["kind"];
+export type ProjectSurfaceCreateKind = ProjectSurface["kind"] | "task";
 
 export interface ProjectSurfaceCreateDefinition {
   kind: ProjectSurfaceCreateKind;
@@ -42,6 +49,7 @@ export interface ProjectSurfaceWorkerPlacement {
 
 export const projectSurfaceCreateDefinitions = [
   { kind: "chat", label: "Agent" },
+  { kind: "task", label: "Task" },
   { kind: "terminal", label: "Terminal" },
   { kind: "explorer", label: "Explorer" },
   { kind: "code", label: "Code" },
@@ -54,6 +62,7 @@ const noCreatingKinds: ReadonlySet<ProjectSurfaceCreateKind> = new Set();
 
 const worktreePlacementKinds = new Set<ProjectSurfaceCreateKind>([
   "chat",
+  "task",
   "terminal",
   "explorer",
   "code",
@@ -177,7 +186,11 @@ export function ProjectSurfaceCreateMenu({
                     disabled={disabled}
                     onSelect={() => onCreate(kind)}
                   >
-                    <ProjectSurfaceIcon kind={kind} className="size-4" />
+                    {kind === "task" ? (
+                      <ListTodo className="size-4" />
+                    ) : (
+                      <ProjectSurfaceIcon kind={kind} className="size-4" />
+                    )}
                     {label}
                   </StyledDropdownMenuItem>
                 );
@@ -186,7 +199,11 @@ export function ProjectSurfaceCreateMenu({
               return (
                 <DropdownMenu.Sub key={kind}>
                   <StyledDropdownMenuSubTrigger disabled={disabled}>
-                    <ProjectSurfaceIcon kind={kind} className="size-4" />
+                    {kind === "task" ? (
+                      <ListTodo className="size-4" />
+                    ) : (
+                      <ProjectSurfaceIcon kind={kind} className="size-4" />
+                    )}
                     {label}
                     <ChevronRight className="ml-auto size-3.5" />
                   </StyledDropdownMenuSubTrigger>

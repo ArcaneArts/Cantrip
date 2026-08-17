@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  chatAttachmentListSchema,
   chatListSchema,
   chatMessageListSchema,
   chatSummarySchema,
@@ -282,6 +283,51 @@ describe.sequential("Task domain foundation", () => {
     expect(
       await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
     ).toMatchObject({ briefMarkdown: "A durable implementation brief" });
+  });
+
+  it("hydrates only the ordered attachments selected by the Task draft", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Attachment hydration", worktreeMode: "agent-managed" },
+    );
+    const attachmentId = randomUUID();
+    await database.repository.createChatAttachment(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        fileName: "architecture.md",
+        id: attachmentId,
+        kind: "text",
+        mimeType: "text/markdown",
+        previewText: "# Architecture",
+        sha256: "a".repeat(64),
+        sizeBytes: 14,
+        source: "file",
+        workerId: "task-worker",
+      },
+    );
+    await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        draftAttachmentIds: [attachmentId],
+      },
+    );
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/tasks/${created!.chat.id}/attachments`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(chatAttachmentListSchema.parse(response.json())).toEqual([
+      expect.objectContaining({
+        chatId: created!.chat.id,
+        fileName: "architecture.md",
+        id: attachmentId,
+      }),
+    ]);
   });
 
   it("starts one idempotent planning round with a stable input snapshot", async () => {

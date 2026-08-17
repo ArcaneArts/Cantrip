@@ -135,7 +135,12 @@ export function MobileBottomNavigation({
                   <ProjectSurfaceIcon
                     className="size-4"
                     filled={active}
-                    kind={item.surface.kind}
+                    kind={
+                      item.surface.kind === "chat" &&
+                      item.surface.entity.experience === "task"
+                        ? "task"
+                        : item.surface.kind
+                    }
                   />
                 )}
                 <span className="max-w-full truncate">

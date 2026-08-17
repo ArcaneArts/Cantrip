@@ -119,6 +119,7 @@ describe("project surface creation menu", () => {
   it("defines every project surface once in display order", () => {
     expect(projectSurfaceCreateDefinitions).toEqual([
       { kind: "chat", label: "Agent" },
+      { kind: "task", label: "Task" },
       { kind: "terminal", label: "Terminal" },
       { kind: "explorer", label: "Explorer" },
       { kind: "code", label: "Code" },
@@ -126,6 +127,12 @@ describe("project surface creation menu", () => {
       { kind: "history", label: "Git" },
       { kind: "remote-desktop", label: "Remote Desktop" },
     ]);
+  });
+
+  it("uses the checklist icon for Task creation", () => {
+    const markup = renderToStaticMarkup(<ProjectSurfaceIcon kind="task" />);
+
+    expect(markup).toContain("lucide-list-todo");
   });
 
   it("marks only actively creating surface kinds as disabled", () => {

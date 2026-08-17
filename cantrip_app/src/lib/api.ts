@@ -21,6 +21,7 @@ import {
   browserTunnelRequestSchema,
   agentThreadSyncSchema,
   chatListSchema,
+  chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
@@ -221,6 +222,10 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  taskCreateResultSchema,
+  taskDetailSchema,
+  taskDraftUpdateSchema,
+  taskOperationStartSchema,
   terminalListSchema,
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
@@ -328,6 +333,8 @@ import type {
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
   TerminalServiceConfiguration,
+  TaskDraftUpdate,
+  TaskOperationStart,
   TunnelAttachmentCreate,
   BrowserTunnelRequest,
   TunnelUserCreate,
@@ -2504,6 +2511,58 @@ export async function createChat(
       ...(tabGroupId ? { tabGroupId } : {}),
       ...(target ? { target } : {}),
     }),
+  );
+}
+
+export async function createTask(
+  projectId: string,
+  title: string,
+  worktreeId?: string,
+  worktreeMode?: "agent-managed" | "pinned",
+  tabGroupId?: string,
+  target?: ExecutionTarget,
+) {
+  return taskCreateResultSchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
+      title,
+      ...(worktreeId ? { worktreeId } : {}),
+      ...(worktreeMode ? { worktreeMode } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
+    }),
+  );
+}
+
+export async function getTask(chatId: string) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}`),
+  );
+}
+
+export async function getTaskAttachments(chatId: string) {
+  return chatAttachmentListSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/attachments`),
+  );
+}
+
+export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/draft`, {
+      method: "PATCH",
+      body: JSON.stringify(taskDraftUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function startTaskPlanning(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/plan`,
+      taskOperationStartSchema.parse(input),
+    ),
   );
 }
 
