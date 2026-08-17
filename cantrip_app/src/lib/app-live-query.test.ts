@@ -74,6 +74,14 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "task",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+      ),
+    ).toEqual([["task", "chat-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           entityId: "relocation-one",
           resource: "chat-relocation-job",
           scope: { kind: "chat", chatId: "chat-one" },
@@ -116,7 +124,11 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([["projects"], ["project-tab-layout", "project-one"]]);
+    ).toEqual([
+      ["projects"],
+      ["project-workspaces"],
+      ["project-tab-layout", "project-one"],
+    ]);
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-tab-layout", "project-one"]);
@@ -145,6 +157,27 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([["tunnels"], ["project-tunnels", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          entityId: "policy-one",
+          resource: "policy",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([
+      ["policies"],
+      ["workspace-policy-assignments"],
+      ["project-policy-assignments"],
+      ["effective-policies"],
+      ["policy", "policy-one"],
+    ]);
+    expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+      "policies",
+    ]);
+    expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+      "workspace-policy-assignments",
+    ]);
   });
 
   it("coalesces repeated events before invalidating TanStack Query", async () => {
@@ -173,6 +206,40 @@ describe("application live query bridge", () => {
       invalidationFlushCount: 1,
       receivedEventCount: 2,
     });
+  });
+
+  it("invalidates policy state in every connected Settings window", async () => {
+    const clients = [new QueryClient(), new QueryClient()];
+    const invalidations = clients.map((client) =>
+      vi.spyOn(client, "invalidateQueries").mockResolvedValue(),
+    );
+    const policyEvent = event({
+      entityId: "policy-one",
+      resource: "policy",
+      scope: { kind: "current-user" },
+    });
+
+    for (const client of clients) {
+      new AppLiveQueryBridge(client).handleEvent(policyEvent);
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+
+    for (const invalidate of invalidations) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ["policies"] });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workspace-policy-assignments"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["project-policy-assignments"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["effective-policies"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["policy", "policy-one"],
+      });
+    }
   });
 
   it("reconciles durable messages when a turn boundary follows lost live events", async () => {

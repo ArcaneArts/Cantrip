@@ -2,15 +2,22 @@ import type { TabGroupSummary } from "@cantrip/protocol";
 
 import type { ProjectSurface } from "@/lib/project-surface";
 
-export type ProjectTabGroupVisualKind = ProjectSurface["kind"] | "mixed";
+export type ProjectTabGroupVisualKind =
+  ProjectSurface["kind"] | "task" | "mixed";
 
 export function projectTabGroupVisualKind(
   surfaces: readonly ProjectSurface[],
 ): ProjectTabGroupVisualKind | null {
-  const kinds = new Set(surfaces.map((surface) => surface.kind));
+  const kinds = new Set(
+    surfaces.map((surface) =>
+      surface.kind === "chat" && surface.entity.experience === "task"
+        ? "task"
+        : surface.kind,
+    ),
+  );
   if (kinds.size === 0) return null;
   if (kinds.size > 1) return "mixed";
-  return surfaces[0]?.kind ?? null;
+  return kinds.values().next().value ?? null;
 }
 
 export function projectTabGroupAnchor(

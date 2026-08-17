@@ -21,6 +21,7 @@ import {
   browserTunnelRequestSchema,
   agentThreadSyncSchema,
   chatListSchema,
+  chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
@@ -160,6 +161,19 @@ import {
   mcpServerListSchema,
   mcpServerSummarySchema,
   orderedIdsSchema,
+  effectivePolicyListSchema,
+  policyAssignmentListSchema,
+  policyAssignmentUpdateSchema,
+  policyCreateSchema,
+  policyDeleteSchema,
+  policyDetailSchema,
+  policyFromTemplateCreateSchema,
+  policyListSchema,
+  policyOrderUpdateSchema,
+  policyTemplateDetailSchema,
+  policyTemplateListSchema,
+  policyTemplateResetSchema,
+  policyUpdateSchema,
   projectListSchema,
   projectExternalChatDiscoverySchema,
   projectPreferredWorkerUpdateSchema,
@@ -208,6 +222,13 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  taskCreateResultSchema,
+  taskContinuationStartSchema,
+  taskDetailSchema,
+  taskImplementationDashboardSchema,
+  taskDraftUpdateSchema,
+  taskOperationStartSchema,
+  taskPlanUpdateSchema,
   terminalListSchema,
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
@@ -287,6 +308,12 @@ import type {
   ModelProviderAccountCreate,
   ModelProviderAccountUpdate,
   ModelProviderUpdate,
+  PolicyCreate,
+  PolicyAssignmentUpdate,
+  PolicyFromTemplateCreate,
+  PolicyOrderUpdate,
+  PolicyTemplateReset,
+  PolicyUpdate,
   McpServerConfiguration,
   McpServerCopy,
   ProjectViewKind,
@@ -309,6 +336,10 @@ import type {
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
   TerminalServiceConfiguration,
+  TaskDraftUpdate,
+  TaskOperationStart,
+  TaskContinuationStart,
+  TaskPlanUpdate,
   TunnelAttachmentCreate,
   BrowserTunnelRequest,
   TunnelUserCreate,
@@ -649,6 +680,130 @@ export async function updateSettings(input: UserSettingsUpdate) {
       method: "PATCH",
       body: JSON.stringify(input),
     }),
+  );
+}
+
+export async function getPolicyTemplates() {
+  return policyTemplateListSchema.parse(await request("/api/policy-templates"));
+}
+
+export async function getPolicyTemplate(templateKey: string) {
+  return policyTemplateDetailSchema.parse(
+    await request(`/api/policy-templates/${encodeURIComponent(templateKey)}`),
+  );
+}
+
+export async function getPolicies() {
+  return policyListSchema.parse(await request("/api/policies"));
+}
+
+export async function getPolicy(policyId: string) {
+  return policyDetailSchema.parse(
+    await request(`/api/policies/${encodeURIComponent(policyId)}`),
+  );
+}
+
+export async function createPolicy(input: PolicyCreate) {
+  return policyDetailSchema.parse(
+    await post("/api/policies", policyCreateSchema.parse(input)),
+  );
+}
+
+export async function createPolicyFromTemplate(
+  templateKey: string,
+  input: PolicyFromTemplateCreate = {},
+) {
+  return policyDetailSchema.parse(
+    await post(
+      `/api/policies/from-template/${encodeURIComponent(templateKey)}`,
+      policyFromTemplateCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function updatePolicy(policyId: string, input: PolicyUpdate) {
+  return policyDetailSchema.parse(
+    await request(`/api/policies/${encodeURIComponent(policyId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(policyUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function deletePolicy(policyId: string, rowVersion: number) {
+  await request(`/api/policies/${encodeURIComponent(policyId)}`, {
+    method: "DELETE",
+    body: JSON.stringify(policyDeleteSchema.parse({ rowVersion })),
+  });
+}
+
+export async function reorderPolicies(input: PolicyOrderUpdate) {
+  return policyListSchema.parse(
+    await request("/api/policies/order", {
+      method: "PATCH",
+      body: JSON.stringify(policyOrderUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function resetPolicyFromTemplate(
+  policyId: string,
+  input: PolicyTemplateReset,
+) {
+  return policyDetailSchema.parse(
+    await post(
+      `/api/policies/${encodeURIComponent(policyId)}/reset-template`,
+      policyTemplateResetSchema.parse(input),
+    ),
+  );
+}
+
+export async function getWorkspacePolicyAssignments(workspaceId: string) {
+  return policyAssignmentListSchema.parse(
+    await request(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+    ),
+  );
+}
+
+export async function updateWorkspacePolicyAssignments(
+  workspaceId: string,
+  input: PolicyAssignmentUpdate,
+) {
+  return policyAssignmentListSchema.parse(
+    await request(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(policyAssignmentUpdateSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function getProjectPolicyAssignments(projectId: string) {
+  return policyAssignmentListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/policies`),
+  );
+}
+
+export async function updateProjectPolicyAssignments(
+  projectId: string,
+  input: PolicyAssignmentUpdate,
+) {
+  return policyAssignmentListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/policies`, {
+      method: "PATCH",
+      body: JSON.stringify(policyAssignmentUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function getProjectEffectivePolicies(projectId: string) {
+  return effectivePolicyListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/effective-policies`,
+    ),
   );
 }
 
@@ -2361,6 +2516,109 @@ export async function createChat(
       ...(tabGroupId ? { tabGroupId } : {}),
       ...(target ? { target } : {}),
     }),
+  );
+}
+
+export async function createTask(
+  projectId: string,
+  title: string,
+  worktreeId?: string,
+  worktreeMode?: "agent-managed" | "pinned",
+  tabGroupId?: string,
+  target?: ExecutionTarget,
+) {
+  return taskCreateResultSchema.parse(
+    await post(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
+      title,
+      ...(worktreeId ? { worktreeId } : {}),
+      ...(worktreeMode ? { worktreeMode } : {}),
+      ...(tabGroupId ? { tabGroupId } : {}),
+      ...(target ? { target } : {}),
+    }),
+  );
+}
+
+export async function getTask(chatId: string) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}`),
+  );
+}
+
+export async function getTaskImplementationDashboard(chatId: string) {
+  return taskImplementationDashboardSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/dashboard`),
+  );
+}
+
+export async function getTaskAttachments(chatId: string) {
+  return chatAttachmentListSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/attachments`),
+  );
+}
+
+export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/draft`, {
+      method: "PATCH",
+      body: JSON.stringify(taskDraftUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function startTaskPlanning(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/plan`,
+      taskOperationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {
+  return taskDetailSchema.parse(
+    await request(`/api/tasks/${encodeURIComponent(chatId)}/plan`, {
+      method: "PATCH",
+      body: JSON.stringify(taskPlanUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function continueTaskPlanning(
+  chatId: string,
+  input: TaskContinuationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/continue`,
+      taskContinuationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function beginTaskImplementation(
+  chatId: string,
+  input: TaskContinuationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/begin-implementation`,
+      taskContinuationStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function retryTaskPlanning(
+  chatId: string,
+  input: TaskOperationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/retry`,
+      taskOperationStartSchema.parse(input),
+    ),
   );
 }
 

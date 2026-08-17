@@ -22,8 +22,8 @@ bootstrap and marks it mandatory by default. This is a convenience default from
 the user to their projects, not an administrator rule imposed by Cantrip. The
 user may edit, disable, unmark, reorder, or delete it.
 
-This document defines the first complete Policy implementation. It intentionally
-does not implement Task tabs; Tasks are designed separately in
+This document defines the implemented first complete Policy system. It
+intentionally does not implement Task tabs; Tasks are designed separately in
 [TASKS.md](TASKS.md) and assume this Policy system is already available.
 
 ## Product language
@@ -584,6 +584,25 @@ observed merged before the dependent milestone starts.
   messaging.
 - Policy ordering does not claim semantic override behavior.
 - All mutations enforce owner isolation and optimistic concurrency.
+
+## Implemented contract notes
+
+- The packaged server catalog currently contains the immutable Manual Change
+  Protocol template. **Blank** is an explicit root-Settings creation path, not
+  a second packaged template asset.
+- Policy collection versions serialize create/delete/order/assignment changes;
+  row versions serialize individual edits, resets, and deletes.
+- Policy mutations publish the owner-scoped `policy` live resource. Each app
+  window maps that event to root lists/details, workspace assignments, project
+  assignments, and effective-policy queries.
+- Agent summary context is built once per turn by the shared server turn path
+  and regenerated for the next turn. Retries within one already-started turn
+  retain that turn's snapshot.
+- CLI Policy commands use the existing authenticated loopback broker and server
+  context resolver. They do not add policy files or filesystem commands to a
+  worker.
+- The application context cap is exactly 32 KiB of UTF-8 data, in addition to
+  the 64-policy and 1,000-character-per-summary limits.
 
 ## Explicit non-goals
 

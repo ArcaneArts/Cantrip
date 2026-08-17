@@ -11,6 +11,15 @@ The project is inspired by the Codex desktop experience, but its architecture is
 Cantrip organizes work into GitHub-backed projects. Import an existing repository or create a public or private repository in a personal account or organization directly from the project picker. Empty repositories remain usable while they wait for their first commit. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
+- Task-backed chats for large jobs. A Task starts as a full Markdown brief with
+  attachments, runs strictly read-only planning into a durable Markdown plan
+  and structured questions, supports repeated refinements and revision-safe
+  user edits, then finalizes and automatically starts one Goal on the same
+  Codex thread. Its dashboard keeps the immutable plan, Goal usage and controls,
+  live Agent activity, worker/worktree state, associated pull requests, and
+  nonblocking policy-cycle warnings together. Tasks survive tab changes,
+  desktop pop-outs, worker outages, relocation, archive/restore, and server
+  restarts. See [the Tasks contract](docs/TASKS.md).
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
@@ -26,7 +35,7 @@ Cantrip organizes work into GitHub-backed projects. Import an existing repositor
 
 Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
-Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, model providers, models, and the default model. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, workflow/run, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
+Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, reusable Agent Policies, model providers, models, and the default model. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, workflow/run, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
 
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
@@ -95,7 +104,7 @@ The React frontend is the control surface. Vite provides the browser development
 
 ### `cantrip_server`
 
-The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations plus project-wide logical branch leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout. It also keeps ChatGPT and Grok OAuth credentials in its encrypted account vault, serializes refreshes, and issues bounded access-token leases to authenticated owner-bound workers.
+The server is the control plane and configuration authority. It announces deployment and authentication capabilities, owns the Cantrip user/account settings and Policies, stores projects, durable conversation history, workflow definitions, runs, and triggers, tracks worker presence, persists worktree observations plus project-wide logical branch leases, and routes every file, terminal, Git, Codex, and workflow operation to the correct worker checkout. It also keeps ChatGPT and Grok OAuth credentials in its encrypted account vault, serializes refreshes, and issues bounded access-token leases to authenticated owner-bound workers.
 
 Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATABASE_URL` can be supplied for a standalone database. Source files and attachment bytes are not copied into the server database. The server stores attachment metadata with conversation history and relays bounded upload and preview chunks to the owning worker.
 
@@ -186,10 +195,45 @@ See the [orchestration contract](docs/WORKFLOW_ORCHESTRATION.md),
 
 Cantrip-specific agent operations are also available through the
 worker-authenticated Rust CLI. Its layered `cantrip -h` command tree covers
-worktrees, execution targets, Explorer, Terminal, and Browser surfaces while
-ordinary file and Git work continues to use ordinary shell commands. See the
-[CLI guide](docs/CLI.md) for examples, context resolution, and the transport
-security boundary.
+Policies, worktrees, execution targets, Explorer, Terminal, and Browser
+surfaces while ordinary file and Git work continues to use ordinary shell
+commands. See the [CLI guide](docs/CLI.md) for examples, context resolution,
+and the transport security boundary.
+
+### Reusable Agent Policies
+
+Policies are owner-scoped Markdown instruction documents stored by Cantrip
+Server. Root **Settings → Policies** can create a blank policy or copy the
+packaged Manual Change Protocol template, then search, edit, enable/disable,
+mark/unmark Mandatory, and keyboard- or pointer-sort the resulting policies.
+Nonmandatory policies can be assigned from Workspace or Project Settings; a
+project receives the ordered union of mandatory, workspace-inherited, and
+direct assignments without duplicates.
+
+Each owner receives one editable, enabled, mandatory Manual Change Protocol
+policy exactly once. It is a user-controlled default: it can be changed or
+deleted and is not recreated, while the immutable packaged template remains
+available for future copies. Policy rows, assignments, optimistic versions,
+and bootstrap state stay on the server and are isolated by account.
+
+Before each Agent, Plan, Goal, queued, or automatic-continuation turn, the
+server resolves the current effective set and supplies only ordered summaries
+to Codex as bounded application context. Full bodies, assignment internals, and
+database identifiers are not injected. Agents can inspect the same effective
+set with:
+
+```console
+cantrip policy list
+cantrip policy read manual-change-protocol
+cantrip --json policy list
+```
+
+`policy read` always returns the current body and only for a policy effective
+in the resolved project. Policy changes publish live invalidations to other
+Settings windows. The first implementation permits at most 64 effective
+summaries and 32 KiB of encoded summary context; an oversized set rejects the
+turn with a consolidation instruction instead of silently dropping policies.
+See [the Policies design and behavior guide](docs/POLICIES.md).
 
 ## Agent-managed worktrees
 

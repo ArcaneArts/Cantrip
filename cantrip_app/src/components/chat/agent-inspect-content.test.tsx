@@ -135,7 +135,7 @@ describe("AgentInspectPresentation", () => {
   it("renders visible thought, file previews, recent commands, and bounded output state", () => {
     const running = {
       ...command("serve"),
-      command: "pnpm dev --filter <unsafe>",
+      command: '/bin/zsh -lc "pnpm dev --filter <unsafe>"',
       output: "latest output\ncontinues",
       outputTruncated: true,
     };
@@ -207,6 +207,7 @@ describe("AgentInspectPresentation", () => {
     expect(markup).toContain("latest output");
     expect(markup).not.toContain("too-fast");
     expect(markup).toContain("pnpm dev --filter &lt;unsafe&gt;");
+    expect(markup).not.toContain("/bin/zsh");
   });
 
   it("splits one to three cards evenly and scrolls four or more", () => {

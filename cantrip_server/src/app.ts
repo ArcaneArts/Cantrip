@@ -69,6 +69,7 @@ import {
   chatCompactAcceptedSchema,
   chatAttachmentKindSchema,
   chatAttachmentSourceSchema,
+  chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   archivedChatCleanupResultSchema,
   archivedChatListSchema,
@@ -108,6 +109,8 @@ import {
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   chatSummarySchema,
+  taskCreateResultSchema,
+  taskCreateSchema,
   chatTurnCreateSchema,
   chatUpdateSchema,
   chatWorktreeUpdateSchema,
@@ -134,6 +137,7 @@ import {
   githubIssueDetailSchema,
   githubIssueKindSchema,
   githubIssueListSchema,
+  githubPullRequestListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCreateSchema,
   githubPullRequestCheckoutResultSchema,
@@ -374,6 +378,7 @@ import {
 import Fastify from "fastify";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
+  AgentTurnResult,
   AppLiveResource,
   AppLiveScope,
   BrowserUpdate,
@@ -450,9 +455,48 @@ import {
   workflowRepositoryWriteResultSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
+import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
+import {
+  effectivePolicyListSchema,
+  policyCliListResultSchema,
+  policyCliReadResultSchema,
+  policyAssignmentListSchema,
+  policyAssignmentUpdateSchema,
+  policyCreateSchema,
+  policyDeleteSchema,
+  policyDetailSchema,
+  policyFromTemplateCreateSchema,
+  policyKeySchema,
+  policyListSchema,
+  policyOrderUpdateSchema,
+  policyTemplateDetailSchema,
+  policyTemplateListSchema,
+  policyTemplateResetSchema,
+  policyUpdateSchema,
+} from "@cantrip/protocol/policies";
+import {
+  taskContinuationStartSchema,
+  taskDetailSchema,
+  taskDraftUpdateSchema,
+  taskFinalizerOutputJsonSchema,
+  taskOperationStartSchema,
+  taskPlannerOutputJsonSchema,
+  taskPlanUpdateSchema,
+  taskImplementationDashboardSchema,
+  type TaskAssociatedPullRequest,
+  type TaskDetail,
+} from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
+import { buildAgentPolicyContext } from "./policies/agent-context.js";
+import {
+  associateTaskPullRequests,
+  latestTaskImplementationReason,
+  projectTaskImplementationState,
+  taskAdvisoryWarnings,
+  type TaskWorktreeObservation,
+} from "./tasks/dashboard.js";
 import {
   authenticatedPrincipal,
   AuthenticationRequiredError,
@@ -499,6 +543,17 @@ import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { browserTunnelTarget } from "./tunnels/browser-target.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
+import { TaskConflictError } from "./db/tasks.js";
+import { TaskStateTransitionError } from "./tasks/state.js";
+import {
+  buildTaskFinalizerPrompt,
+  buildTaskGoalObjective,
+  buildTaskPlannerPrompt,
+  normalizedTaskFinalizationMessage,
+  normalizedTaskPlanMessage,
+  parseTaskFinalizerResult,
+  parseTaskPlannerResult,
+} from "./tasks/planner.js";
 import {
   TabLayoutConflictError,
   TabLayoutInvariantError,
@@ -518,6 +573,10 @@ import {
   type ModelRuntime,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
+import {
+  PolicyConflictError,
+  PolicyScopeNotFoundError,
+} from "./db/policies.js";
 import {
   prepareRuntimesForReasoning,
   reasoningStateForRuntimes,
@@ -585,7 +644,11 @@ import {
   sendWorkerRequestFailure,
 } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
-import { createServerLogStream, serverLogger } from "./logger.js";
+import {
+  createServerLogStream,
+  SERVER_LOG_REDACTION_PATHS,
+  serverLogger,
+} from "./logger.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -759,6 +822,7 @@ function auditResourceId(request: FastifyRequest): string | null {
     "credentialId",
     "workerId",
     "providerId",
+    "policyId",
     "serverId",
     "projectReplicaId",
     "replicaId",
@@ -779,9 +843,27 @@ type ChatLiveResource = Extract<
   | "chat-plan"
   | "chat-queue"
   | "customization"
+  | "task"
 >;
 
 function mutationLiveResources(route: string): AppLiveResource[] {
+  if (
+    route === "/api/projects/:projectId/tasks" ||
+    route.startsWith("/api/tasks/:chatId/")
+  ) {
+    return ["task", "chat"];
+  }
+  if (
+    route === "/api/policies" ||
+    route.startsWith("/api/policies/") ||
+    route === "/api/projects/:projectId/policies" ||
+    route === "/api/workspaces/:workspaceId/policies"
+  ) {
+    return ["policy"];
+  }
+  if (route === "/api/workspaces" || route.startsWith("/api/workspaces/")) {
+    return ["project", "policy"];
+  }
   if (route === "/api/tunnels" || route.startsWith("/api/tunnels/")) {
     return ["tunnel"];
   }
@@ -944,21 +1026,7 @@ export async function buildApp({
       ? {
           stream: createServerLogStream(),
           redact: {
-            paths: [
-              "req.headers.authorization",
-              "req.headers.cookie",
-              "req.headers.x-cantrip-csrf",
-              "req.headers.x-cantrip-bootstrap-token",
-              "req.body.code",
-              "req.body.credential",
-              "req.body.apiKey",
-              "req.body.enrollmentCode",
-              "req.body.password",
-              "req.body.accessToken",
-              "req.body.refreshToken",
-              "req.body.idToken",
-              "res.headers.set-cookie",
-            ],
+            paths: [...SERVER_LOG_REDACTION_PATHS],
             censor: "[REDACTED]",
           },
         }
@@ -2175,6 +2243,7 @@ export async function buildApp({
     await repository.resetTransientRemoteSurfaceStatuses();
     await repository.resetTransientTunnelAttachments();
     await repository.resetInterruptedChatExecutions();
+    await repository.tasks.reconcileInterruptedOperations();
   } else {
     app.log.info(
       { coordinationInstances: coordinator.stats().instanceCount },
@@ -2873,12 +2942,22 @@ export async function buildApp({
       params.surfaceId,
       params.viewId,
       params.workerId,
+      params.policyId,
+      params.workspaceId,
       params.tunnelId,
       params.attachmentId,
       params.projectId,
     ].find((value): value is string => typeof value === "string");
     for (const resource of resources) {
-      publishLiveInvalidation(resource, { entityId, projectId });
+      publishLiveInvalidation(resource, {
+        entityId:
+          resource === "policy"
+            ? typeof params.policyId === "string"
+              ? params.policyId
+              : null
+            : entityId,
+        projectId: resource === "policy" ? null : projectId,
+      });
     }
     const chatId = typeof params.chatId === "string" ? params.chatId : null;
     if (chatId) {
@@ -4647,6 +4726,68 @@ export async function buildApp({
       return cantripCliCommandResultSchema.parse({ ...result, mutated: true });
     };
     switch (call.command) {
+      case "policy.list": {
+        const effective = await repository.policies.resolveEffective(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        if (!effective) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "The current project no longer exists.",
+          );
+        }
+        const data = policyCliListResultSchema.parse(effective);
+        return cantripCliCommandResultSchema.parse({
+          summary: `Found ${data.policies.length} effective polic${data.policies.length === 1 ? "y" : "ies"}.`,
+          worktreeId: context.worktreeId,
+          data,
+        });
+      }
+      case "policy.read": {
+        const key = policyKeySchema.parse(
+          requiredToolString(call.arguments, "key"),
+        );
+        const effective = await repository.policies.resolveEffective(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        const summary = effective?.policies.find(
+          (policy) => policy.key === key,
+        );
+        if (!summary) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            `Policy ${key} is not effective for the current project.`,
+          );
+        }
+        const current = await repository.policies.getByKey(
+          applicationOwnerId(),
+          key,
+        );
+        if (!current?.enabled) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            `Policy ${key} is not effective for the current project.`,
+          );
+        }
+        const data = policyCliReadResultSchema.parse({
+          policy: {
+            key: current.key,
+            name: current.name,
+            summary: current.summary,
+            bodyMarkdown: current.bodyMarkdown,
+          },
+        });
+        return cantripCliCommandResultSchema.parse({
+          summary: `Read policy ${key}.`,
+          worktreeId: context.worktreeId,
+          data,
+        });
+      }
       case "worktree.list":
         return executeExecutionOperation(context, {
           operation: "worktrees.list",
@@ -5724,6 +5865,129 @@ export async function buildApp({
       executionLaneId: notification.executionLaneId,
       worktreeId: notification.worktreeId,
     };
+    const taskOperation = await repository.tasks.getOperationContext(
+      ownerId,
+      notification.chatId,
+      {
+        executionLaneId: notification.executionLaneId,
+        userMessageId: notification.clientMessageId,
+      },
+    );
+    let recoveredOutcomeOk = notification.outcome.ok;
+    let recoveredFinalizationOperationId: string | null = null;
+    if (taskOperation) {
+      if (notification.outcome.ok) {
+        try {
+          if (taskOperation.round.kind === "finalize") {
+            const finalizerResult = parseTaskFinalizerResult(
+              notification.outcome.result.structuredResult,
+            );
+            await repository.tasks.stageFinalizationResult(
+              ownerId,
+              notification.chatId,
+              taskOperation.round.id,
+              {
+                finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+                goalPrompt: buildTaskGoalObjective(finalizerResult),
+              },
+              notification.outcome.result.turnId ?? null,
+            );
+            recoveredFinalizationOperationId = taskOperation.round.id;
+          } else {
+            const plannerResult = parseTaskPlannerResult(
+              notification.outcome.result.structuredResult,
+            );
+            await repository.tasks.completePlanningOperation(
+              ownerId,
+              notification.chatId,
+              taskOperation.round.id,
+              plannerResult,
+              notification.outcome.result.turnId ?? null,
+            );
+          }
+          const normalizedResult =
+            taskOperation.round.kind === "finalize"
+              ? normalizedTaskFinalizationMessage(
+                  parseTaskFinalizerResult(
+                    notification.outcome.result.structuredResult,
+                  ),
+                )
+              : normalizedTaskPlanMessage(
+                  parseTaskPlannerResult(
+                    notification.outcome.result.structuredResult,
+                  ),
+                );
+          const assistantMessage = await appendLiveChatMessage(
+            ownerId,
+            notification.chatId,
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "text",
+                  text: normalizedResult,
+                  phase: "final_answer",
+                },
+              ],
+              idempotencyKey:
+                taskOperation.round.kind === "finalize"
+                  ? `task-finalization-result:${taskOperation.round.id}`
+                  : `task-plan-result:${taskOperation.round.id}`,
+            },
+            attribution,
+          );
+          if (!assistantMessage) {
+            throw new Error("Task planning Chat was not found.");
+          }
+          await repository.tasks.attachOperationAssistantMessage(
+            ownerId,
+            notification.chatId,
+            taskOperation.round.id,
+            assistantMessage.id,
+          );
+          publishChatInvalidation(notification.chatId, "task");
+        } catch (error) {
+          recoveredOutcomeOk = false;
+          await repository.tasks.failOperation(
+            ownerId,
+            notification.chatId,
+            taskOperation.round.id,
+            {
+              code: "task-result-invalid",
+              message: errorMessage(error),
+            },
+          );
+          await appendLiveChatMessage(
+            ownerId,
+            notification.chatId,
+            {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text: "Task planning finished with an invalid structured result. Retry the planning round.",
+                },
+              ],
+              idempotencyKey: `task-plan-error:${taskOperation.round.id}`,
+            },
+            attribution,
+          );
+          publishChatInvalidation(notification.chatId, "task");
+        }
+      } else {
+        recoveredOutcomeOk = false;
+        await repository.tasks.failOperation(
+          ownerId,
+          notification.chatId,
+          taskOperation.round.id,
+          {
+            code: "task-planning-failed",
+            message: notification.outcome.error,
+          },
+        );
+        publishChatInvalidation(notification.chatId, "task");
+      }
+    }
     const assistantKey = `assistant:${notification.clientMessageId}`;
     const errorKey = `error:${notification.clientMessageId}`;
     const existingAssistant = await repository.getMessageByIdempotencyKey(
@@ -5744,7 +6008,7 @@ export async function buildApp({
         notification.outcome.result.threadId,
         "ready",
       );
-      if (!existingAssistant) {
+      if (!taskOperation && !existingAssistant) {
         await upsertLiveChatMessage(
           ownerId,
           notification.chatId,
@@ -5764,7 +6028,7 @@ export async function buildApp({
           attribution,
         );
       }
-    } else if (!existingAssistant) {
+    } else if (!taskOperation && !existingAssistant) {
       await repository.updateChatExecutionLaneRuntime(
         notification.chatId,
         notification.executionLaneId,
@@ -5792,7 +6056,7 @@ export async function buildApp({
     const finished = await repository.finishChatExecutionLane(
       notification.chatId,
       notification.executionLaneId,
-      notification.outcome.ok ? "idle" : "failed",
+      recoveredOutcomeOk ? "idle" : "failed",
     );
     let recoveredFailedStatus = false;
     if (!finished && notification.outcome.ok) {
@@ -5811,15 +6075,29 @@ export async function buildApp({
         cwd: laneContext.worktree.path,
         workerId,
       },
-      notification.outcome.ok ? "completed" : "failed",
+      recoveredOutcomeOk ? "completed" : "failed",
     );
     publishChatTurnBoundary(notification.chatId, laneContext.chat.projectId);
+    if (recoveredFinalizationOperationId && recoveredOutcomeOk) {
+      try {
+        await launchPreparedTaskGoal(
+          notification.chatId,
+          recoveredFinalizationOperationId,
+        );
+      } catch (error) {
+        await failTaskGoalLaunch(
+          notification.chatId,
+          recoveredFinalizationOperationId,
+          error,
+        );
+      }
+    }
     app.log.info(
       {
         event: "chat.turn.outcome-recovered",
         subsystem: "chat-execution",
         operation: "recover-outcome",
-        status: notification.outcome.ok ? "completed" : "failed",
+        status: recoveredOutcomeOk ? "completed" : "failed",
         chatId: notification.chatId,
         clientMessageId: notification.clientMessageId,
         executionLaneId: notification.executionLaneId,
@@ -5853,6 +6131,26 @@ export async function buildApp({
       messageRole?: "system" | "user";
       purpose?: string;
       runtimes?: ModelRuntime[];
+      structuredResult?: {
+        outputSchema: WorkflowJsonObject;
+        afterCompleted?(input: {
+          attribution: { executionLaneId: string; worktreeId: string };
+          execution: ChatExecutionContext;
+          result: AgentTurnResult;
+          userMessage: ChatMessage;
+        }): Promise<void>;
+        onCompleted(input: {
+          attribution: { executionLaneId: string; worktreeId: string };
+          execution: ChatExecutionContext;
+          result: AgentTurnResult;
+          userMessage: ChatMessage;
+        }): Promise<void>;
+        onFailed(input: {
+          error: unknown;
+          execution: ChatExecutionContext;
+          userMessage: ChatMessage;
+        }): Promise<void>;
+      };
       workerPrompt?: string;
     } = {},
   ): Promise<ChatMessage> {
@@ -5879,11 +6177,21 @@ export async function buildApp({
     );
     const turnMode = input.mode ?? "default";
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
-    await prepareCodeEditorsForTurn(context);
-    const mcpServers = await repository.listEffectiveMcpServers(
+    const effectivePolicies = await repository.policies.resolveEffective(
       ownerId,
       context.projectId,
     );
+    if (!effectivePolicies) {
+      throw new Error("The chat project is no longer available.");
+    }
+    const policyContext = buildAgentPolicyContext(
+      effectivePolicies,
+      context.projectId,
+    );
+    if (!options.structuredResult) await prepareCodeEditorsForTurn(context);
+    const mcpServers = options.structuredResult
+      ? []
+      : await repository.listEffectiveMcpServers(ownerId, context.projectId);
     const execution = await repository.startChatExecutionLane(
       ownerId,
       context.chatId,
@@ -6128,6 +6436,7 @@ export async function buildApp({
                 isPrimary: execution.isPrimary,
                 worktreeMode: execution.worktreeMode,
                 worktreePolicy: execution.worktreePolicy,
+                policyContext,
                 prompt: workerPrompt,
                 attachments: attachments.map((attachment) => ({
                   id: attachment.id,
@@ -6136,7 +6445,9 @@ export async function buildApp({
                   sizeBytes: attachment.sizeBytes,
                   kind: attachment.kind,
                 })),
-                skillNames: mentionedSkillNames(input.text),
+                skillNames: options.structuredResult
+                  ? []
+                  : mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
                 permissionProfileId:
@@ -6144,6 +6455,12 @@ export async function buildApp({
                 planMode: turnPlanMode,
                 mcpServers,
                 automationPaused: execution.automationPaused,
+                resultMode: options.structuredResult
+                  ? {
+                      kind: "structured",
+                      outputSchema: options.structuredResult.outputSchema,
+                    }
+                  : { kind: "visible" },
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -6216,6 +6533,12 @@ export async function buildApp({
                           observedAt,
                         );
                       }
+                      if (
+                        options.structuredResult &&
+                        event.message.phase !== "commentary"
+                      ) {
+                        return;
+                      }
                       await upsertLiveChatMessage(
                         ownerId,
                         execution.chatId,
@@ -6239,6 +6562,7 @@ export async function buildApp({
                       return;
                     }
                     if (event.type === "agent.checkpoint") {
+                      if (options.structuredResult) return;
                       if (!event.text.trim()) return;
                       if (finals.turnIds.has(event.turnId)) return;
                       behaviorTurnId = event.turnId;
@@ -6424,7 +6748,14 @@ export async function buildApp({
               "ready",
               runtime.provider.accountId,
             );
-            if (!hasFinal(finals, result.turnId, result.text)) {
+            if (options.structuredResult) {
+              await options.structuredResult.onCompleted({
+                attribution,
+                execution,
+                result,
+                userMessage,
+              });
+            } else if (!hasFinal(finals, result.turnId, result.text)) {
               await appendLiveChatMessage(
                 ownerId,
                 execution.chatId,
@@ -6450,6 +6781,21 @@ export async function buildApp({
               "idle",
             );
             publishChatTurnBoundary(execution.chatId, execution.projectId);
+            if (options.structuredResult?.afterCompleted) {
+              try {
+                await options.structuredResult.afterCompleted({
+                  attribution,
+                  execution,
+                  result,
+                  userMessage,
+                });
+              } catch (error) {
+                app.log.error(
+                  { chatId: execution.chatId, err: error },
+                  "Task post-processing failed after its structured turn completed",
+                );
+              }
+            }
             if (
               finished &&
               !(await continuePendingWorktreeTransition(execution.chatId))
@@ -6569,6 +6915,20 @@ export async function buildApp({
           }
         }
       } catch (error: unknown) {
+        if (options.structuredResult) {
+          try {
+            await options.structuredResult.onFailed({
+              error,
+              execution,
+              userMessage,
+            });
+          } catch (taskError) {
+            app.log.error(
+              { chatId: execution.chatId, err: taskError },
+              "Could not persist a failed Task planning operation",
+            );
+          }
+        }
         await notifyCodeAgentState(execution, "failed", changedPaths);
         if (!anyActivity && execution.modelRouteId) {
           await repository.updateChatRuntime(
@@ -6646,10 +7006,422 @@ export async function buildApp({
     };
   }
 
-  async function beginGoalTurn(
+  async function beginTaskPlanningOperation(
+    context: ChatExecutionContext,
+    kind: "initial-plan" | "continue-plan",
+    input: {
+      operationId: string;
+      rowVersion: number;
+      answers?: Parameters<
+        typeof repository.tasks.beginOperation
+      >[2]["answers"];
+      additionalDirection?: string;
+    },
+  ) {
+    const prior = await repository.tasks.getOperationContext(
+      applicationOwnerId(),
+      context.chatId,
+      { operationId: input.operationId },
+    );
+    if (prior) {
+      if (prior.round.kind !== kind) {
+        throw new TaskConflictError(
+          "This Task operation ID was already used for a different operation.",
+          "idempotency-conflict",
+        );
+      }
+      if (
+        (input.answers !== undefined &&
+          JSON.stringify(input.answers) !==
+            JSON.stringify(prior.round.inputAnswers)) ||
+        (input.additionalDirection !== undefined &&
+          input.additionalDirection !== prior.round.additionalDirection)
+      ) {
+        throw new TaskConflictError(
+          "This Task operation ID was already used with different input.",
+          "idempotency-conflict",
+        );
+      }
+      return prior.task;
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      throw new WorkerUnavailableError("Project worker is offline.");
+    }
+    if (chatIsExecuting(context.status)) {
+      throw new TaskConflictError(
+        "The Task already has an active Chat turn.",
+        "operation-active",
+      );
+    }
+    const started = await repository.tasks.beginOperation(
+      applicationOwnerId(),
+      context.chatId,
+      { ...input, kind },
+    );
+    if (!started) return null;
+    publishChatInvalidation(context.chatId, "task");
+    if (started.idempotent) return started.task;
+
+    const plannerPrompt = buildTaskPlannerPrompt(started.task, kind);
+    try {
+      const userMessage = await beginTurn(
+        context,
+        {
+          text:
+            kind === "initial-plan"
+              ? "Plan this Task from the saved brief."
+              : "Continue planning this Task with the saved answers and direction.",
+          attachmentIds: started.task.draftAttachmentIds,
+          idempotencyKey: `task-operation:${input.operationId}`,
+        },
+        {
+          purpose:
+            kind === "initial-plan"
+              ? "Task initial planning"
+              : "Task continued planning",
+          workerPrompt: plannerPrompt,
+          structuredResult: {
+            outputSchema: taskPlannerOutputJsonSchema,
+            async onCompleted({ attribution, result }) {
+              const plannerResult = parseTaskPlannerResult(
+                result.structuredResult,
+              );
+              const completed =
+                await repository.tasks.completePlanningOperation(
+                  applicationOwnerId(),
+                  context.chatId,
+                  input.operationId,
+                  plannerResult,
+                  result.turnId ?? null,
+                );
+              if (!completed) {
+                throw new Error("Task planning operation was not found.");
+              }
+              const assistantMessage = await appendLiveChatMessage(
+                applicationOwnerId(),
+                context.chatId,
+                {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: normalizedTaskPlanMessage(plannerResult),
+                      phase: "final_answer",
+                    },
+                  ],
+                  idempotencyKey: `task-plan-result:${input.operationId}`,
+                },
+                attribution,
+              );
+              if (!assistantMessage) {
+                throw new Error("Task planning Chat was not found.");
+              }
+              await repository.tasks.attachOperationAssistantMessage(
+                applicationOwnerId(),
+                context.chatId,
+                input.operationId,
+                assistantMessage.id,
+              );
+              publishChatInvalidation(context.chatId, "task");
+            },
+            async onFailed({ error }) {
+              await repository.tasks.failOperation(
+                applicationOwnerId(),
+                context.chatId,
+                input.operationId,
+                {
+                  code: "task-planning-failed",
+                  message: errorMessage(error),
+                  interrupted: /interrupt|cancel/i.test(errorMessage(error)),
+                },
+              );
+              publishChatInvalidation(context.chatId, "task");
+            },
+          },
+        },
+      );
+      if (!userMessage.executionLaneId) {
+        throw new Error("Task planning did not acquire an execution lane.");
+      }
+      await repository.tasks.attachOperationExecution(
+        applicationOwnerId(),
+        context.chatId,
+        input.operationId,
+        {
+          executionLaneId: userMessage.executionLaneId,
+          userMessageId: userMessage.id,
+        },
+      );
+      return (
+        (await repository.tasks.get(applicationOwnerId(), context.chatId)) ??
+        started.task
+      );
+    } catch (error) {
+      await repository.tasks.failOperation(
+        applicationOwnerId(),
+        context.chatId,
+        input.operationId,
+        {
+          code: "task-planning-start-failed",
+          message: errorMessage(error),
+          interrupted: /interrupt|cancel/i.test(errorMessage(error)),
+        },
+      );
+      publishChatInvalidation(context.chatId, "task");
+      throw error;
+    }
+  }
+
+  async function launchPreparedTaskGoal(chatId: string, operationId: string) {
+    const ownerId = applicationOwnerId();
+    const taskOperation = await repository.tasks.getOperationContext(
+      ownerId,
+      chatId,
+      { operationId },
+    );
+    if (
+      !taskOperation ||
+      taskOperation.round.kind !== "finalize" ||
+      !taskOperation.task.finalPlanMarkdown ||
+      !taskOperation.task.goalPrompt
+    ) {
+      throw new Error("The finalized Task objective is not available.");
+    }
+    if (taskOperation.round.status === "completed") {
+      return taskOperation.task;
+    }
+
+    const goalStartKey = `task-goal:${operationId}`;
+    const existingMessage = await repository.getMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      goalStartKey,
+    );
+    if (!existingMessage) {
+      const context = await repository.getChatExecutionContext(ownerId, chatId);
+      if (!context || context.experience !== "task") {
+        throw new Error("Task Chat source not found.");
+      }
+      await startGoalTurn(
+        context,
+        {
+          attachmentIds: [],
+          text: taskOperation.task.goalPrompt,
+          mode: "goal",
+          idempotencyKey: goalStartKey,
+        },
+        {
+          idempotencyKey: goalStartKey,
+          purpose: "Task implementation Goal",
+        },
+      );
+    }
+
+    const completed = await repository.tasks.completeFinalizationOperation(
+      ownerId,
+      chatId,
+      operationId,
+    );
+    if (!completed) throw new Error("Task finalization was not found.");
+    publishChatInvalidation(chatId, "task");
+    return completed.task;
+  }
+
+  async function failTaskGoalLaunch(
+    chatId: string,
+    operationId: string,
+    error: unknown,
+  ): Promise<void> {
+    await repository.tasks.failOperation(
+      applicationOwnerId(),
+      chatId,
+      operationId,
+      {
+        code: "task-goal-start-failed",
+        message: errorMessage(error),
+        interrupted: /interrupt|cancel/i.test(errorMessage(error)),
+      },
+    );
+    publishChatInvalidation(chatId, "task");
+  }
+
+  async function beginTaskFinalizationOperation(
+    context: ChatExecutionContext,
+    input: {
+      operationId: string;
+      rowVersion: number;
+      answers: Parameters<typeof repository.tasks.beginOperation>[2]["answers"];
+      additionalDirection: string;
+    },
+  ) {
+    const ownerId = applicationOwnerId();
+    const prior = await repository.tasks.getOperationContext(
+      ownerId,
+      context.chatId,
+      { operationId: input.operationId },
+    );
+    if (prior) {
+      if (prior.round.kind !== "finalize") {
+        throw new TaskConflictError(
+          "This Task operation ID was already used for a different operation.",
+          "idempotency-conflict",
+        );
+      }
+      if (
+        JSON.stringify(input.answers) !==
+          JSON.stringify(prior.round.inputAnswers) ||
+        input.additionalDirection !== prior.round.additionalDirection
+      ) {
+        throw new TaskConflictError(
+          "This Task operation ID was already used with different input.",
+          "idempotency-conflict",
+        );
+      }
+      return prior.task;
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      throw new WorkerUnavailableError("Project worker is offline.");
+    }
+    if (chatIsExecuting(context.status)) {
+      throw new TaskConflictError(
+        "The Task already has an active Chat turn.",
+        "operation-active",
+      );
+    }
+    const started = await repository.tasks.beginOperation(
+      ownerId,
+      context.chatId,
+      { ...input, kind: "finalize" },
+    );
+    if (!started) return null;
+    publishChatInvalidation(context.chatId, "task");
+    if (started.idempotent) return started.task;
+
+    try {
+      const userMessage = await beginTurn(
+        context,
+        {
+          text: "Finalize this Task and prepare its implementation Goal.",
+          attachmentIds: started.task.draftAttachmentIds,
+          idempotencyKey: `task-operation:${input.operationId}`,
+        },
+        {
+          purpose: "Task finalization",
+          workerPrompt: buildTaskFinalizerPrompt(started.task),
+          structuredResult: {
+            outputSchema: taskFinalizerOutputJsonSchema,
+            async onCompleted({ attribution, result }) {
+              const finalizerResult = parseTaskFinalizerResult(
+                result.structuredResult,
+              );
+              const storedResult = {
+                finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
+                goalPrompt: buildTaskGoalObjective(finalizerResult),
+              };
+              const staged = await repository.tasks.stageFinalizationResult(
+                ownerId,
+                context.chatId,
+                input.operationId,
+                storedResult,
+                result.turnId ?? null,
+              );
+              if (!staged) {
+                throw new Error("Task finalization was not found.");
+              }
+              const assistantMessage = await appendLiveChatMessage(
+                ownerId,
+                context.chatId,
+                {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "text",
+                      text: normalizedTaskFinalizationMessage(finalizerResult),
+                      phase: "final_answer",
+                    },
+                  ],
+                  idempotencyKey: `task-finalization-result:${input.operationId}`,
+                },
+                attribution,
+              );
+              if (!assistantMessage) {
+                throw new Error("Task finalization Chat was not found.");
+              }
+              await repository.tasks.attachOperationAssistantMessage(
+                ownerId,
+                context.chatId,
+                input.operationId,
+                assistantMessage.id,
+              );
+              publishChatInvalidation(context.chatId, "task");
+            },
+            async afterCompleted() {
+              try {
+                await launchPreparedTaskGoal(context.chatId, input.operationId);
+              } catch (error) {
+                await failTaskGoalLaunch(
+                  context.chatId,
+                  input.operationId,
+                  error,
+                );
+              }
+            },
+            async onFailed({ error }) {
+              await repository.tasks.failOperation(
+                ownerId,
+                context.chatId,
+                input.operationId,
+                {
+                  code: "task-finalization-failed",
+                  message: errorMessage(error),
+                  interrupted: /interrupt|cancel/i.test(errorMessage(error)),
+                },
+              );
+              publishChatInvalidation(context.chatId, "task");
+            },
+          },
+        },
+      );
+      if (!userMessage.executionLaneId) {
+        throw new Error("Task finalization did not acquire an execution lane.");
+      }
+      await repository.tasks.attachOperationExecution(
+        ownerId,
+        context.chatId,
+        input.operationId,
+        {
+          executionLaneId: userMessage.executionLaneId,
+          userMessageId: userMessage.id,
+        },
+      );
+      return (
+        (await repository.tasks.get(ownerId, context.chatId)) ?? started.task
+      );
+    } catch (error) {
+      await repository.tasks.failOperation(
+        ownerId,
+        context.chatId,
+        input.operationId,
+        {
+          code: "task-finalization-start-failed",
+          message: errorMessage(error),
+          interrupted: /interrupt|cancel/i.test(errorMessage(error)),
+        },
+      );
+      publishChatInvalidation(context.chatId, "task");
+      throw error;
+    }
+  }
+
+  async function startGoalTurn(
     context: ChatExecutionContext,
     input: ChatTurnCreate,
-  ): Promise<ChatMessage> {
+    options: {
+      idempotencyKey?: string;
+      purpose?: string;
+      tokenBudget?: number | null;
+    } = {},
+  ) {
     if (!input.text) throw new Error("Goal mode needs a text objective.");
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
@@ -6673,7 +7445,7 @@ export async function buildApp({
           ? context.threadId
           : null,
         objective: input.text,
-        tokenBudget: null,
+        tokenBudget: options.tokenBudget ?? null,
         model: runtime.model,
         provider: runtime.provider,
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
@@ -6695,11 +7467,24 @@ export async function buildApp({
       context.chatId,
     );
     if (!updatedContext) throw new Error("Chat source not found.");
-    return beginTurn(
+    const message = await beginTurn(
       updatedContext,
-      { ...input, modelId, mode: "goal" },
-      { purpose: "Codex goal", runtimes: [runtime] },
+      {
+        ...input,
+        idempotencyKey: options.idempotencyKey ?? input.idempotencyKey,
+        modelId,
+        mode: "goal",
+      },
+      { purpose: options.purpose ?? "Codex goal", runtimes: [runtime] },
     );
+    return { goal: result, message };
+  }
+
+  async function beginGoalTurn(
+    context: ChatExecutionContext,
+    input: ChatTurnCreate,
+  ): Promise<ChatMessage> {
+    return (await startGoalTurn(context, input)).message;
   }
 
   function beginPromptTurn(
@@ -6710,6 +7495,43 @@ export async function buildApp({
       ? beginGoalTurn(context, input)
       : beginTurn(context, input);
   }
+
+  const reconcileTaskImplementation = async (
+    context: ChatExecutionContext,
+    goal: Awaited<ReturnType<typeof chatGoalResponseSchema.parse>>["goal"],
+    cached?: { messages?: ChatMessage[]; task?: TaskDetail },
+  ): Promise<TaskDetail | null> => {
+    if (context.experience !== "task") return null;
+    const task =
+      cached?.task ??
+      (await repository.tasks.get(applicationOwnerId(), context.chatId));
+    if (!task?.implementationStartedAt || !task.finalPlanMarkdown) {
+      return task;
+    }
+    const messages =
+      cached?.messages ??
+      (await repository.listMessages(applicationOwnerId(), context.chatId));
+    const projection = projectTaskImplementationState({
+      automationPaused: context.automationPaused,
+      chatStatus: context.status,
+      goal,
+      latestReason: latestTaskImplementationReason(
+        messages,
+        task.implementationStartedAt,
+      ),
+    });
+    if (!projection) return task;
+    const reconciled =
+      (await repository.tasks.syncImplementationState(
+        applicationOwnerId(),
+        context.chatId,
+        projection,
+      )) ?? task;
+    if (reconciled.rowVersion !== task.rowVersion) {
+      publishChatInvalidation(context.chatId, "task");
+    }
+    return reconciled;
+  };
 
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
     let context = await repository.getChatExecutionContext(
@@ -6750,6 +7572,7 @@ export async function buildApp({
           permissionProfileId: effectivePermissionProfile(context).effectiveId,
         }),
       );
+      await reconcileTaskImplementation(context, result.goal);
       if (result.goal?.status === "active") {
         const modelId = await resolveModelId(context);
         await beginTurn(
@@ -15462,6 +16285,479 @@ export async function buildApp({
     },
   );
 
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tasks",
+    async (request, reply) => {
+      const input = taskCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const created = await repository.createTask(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        if (!created) {
+          return reply.code(404).send({ error: "Project source not found" });
+        }
+        publishChatSummary(created.chat.id, created.chat.projectId);
+        publishChatInvalidation(created.chat.id, "task", created.chat.id);
+        return reply.code(201).send(taskCreateResultSchema.parse(created));
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          if (error.code === "project-not-found") {
+            return reply.code(404).send({ error: "Project source not found" });
+          }
+          return reply
+            .code(409)
+            .send({ code: error.code, error: error.message });
+        }
+        if (
+          error instanceof ExecutionLaneConflictError ||
+          /unique|duplicate/i.test(errorMessage(error))
+        ) {
+          return reply.code(409).send({
+            error: "This worktree is already leased by another chat.",
+          });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId",
+    async (request, reply) => {
+      const task = await repository.tasks.get(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return task
+        ? reply.send(taskDetailSchema.parse(task))
+        : reply.code(404).send({ error: "Task not found." });
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/dashboard",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      let task = await repository.tasks.get(ownerId, request.params.chatId);
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!task || !context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      if (!task.implementationStartedAt || !task.finalPlanMarkdown) {
+        return reply
+          .code(409)
+          .send({ error: "Task implementation has not started." });
+      }
+
+      const [lanes, messages, worktrees, githubContext] = await Promise.all([
+        repository.listChatExecutionLanes(ownerId, context.chatId),
+        repository.listMessages(ownerId, context.chatId),
+        repository.listProjectWorktrees(ownerId, context.projectId),
+        repository.getGithubProjectExecutionContext(ownerId, context.projectId),
+      ]);
+      const observations: TaskWorktreeObservation[] = await Promise.all(
+        worktrees.map(async (worktree) => {
+          const snapshot = await repository.getProjectWorktreeStatusSnapshot(
+            ownerId,
+            context.projectId,
+            worktree.id,
+          );
+          return {
+            dirty: Boolean(snapshot?.status.files.length),
+            dirtyFileCount: snapshot?.status.files.length ?? 0,
+            worktree,
+          };
+        }),
+      );
+      const activeObservation = observations.find(
+        ({ worktree }) => worktree.id === context.worktreeId,
+      );
+      if (!activeObservation) {
+        return reply.code(409).send({ error: "Task worktree was not found." });
+      }
+
+      let goal = null;
+      let goalUnavailableReason: string | null = null;
+      if (!context.threadId) {
+        goalUnavailableReason = "The Task Chat has no active Codex thread.";
+      } else if (!bridge.isConnected(context.workerId)) {
+        goalUnavailableReason = "The project worker is offline.";
+      } else {
+        try {
+          const runtime = await runtimeForContext(context);
+          if (!runtime) {
+            goalUnavailableReason =
+              "The selected model runtime is unavailable.";
+          } else {
+            const response = chatGoalResponseSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "chat.goal.get",
+                chatId: context.chatId,
+                cwd: context.cwd,
+                threadId: context.threadId,
+                model: runtime.model,
+                provider: runtime.provider,
+                permissionProfileId:
+                  effectivePermissionProfile(context).effectiveId,
+              }),
+            );
+            goal = response.goal;
+            if (!goal) {
+              goalUnavailableReason = "Codex no longer reports an active Goal.";
+            }
+          }
+        } catch (error) {
+          goalUnavailableReason = errorMessage(error).slice(0, 2_000);
+        }
+      }
+
+      task =
+        (await reconcileTaskImplementation(context, goal, {
+          messages,
+          task,
+        })) ?? task;
+
+      let pullRequestsUnavailableReason: string | null = null;
+      let pullRequests: TaskAssociatedPullRequest[] = [];
+      if (!githubContext) {
+        pullRequestsUnavailableReason =
+          "This project is not linked to a GitHub repository.";
+      } else if (!bridge.isConnected(githubContext.workerId)) {
+        pullRequestsUnavailableReason = "The GitHub project worker is offline.";
+      } else {
+        try {
+          const results = await Promise.all(
+            (["open", "closed"] as const).map(async (state) =>
+              githubPullRequestListSchema.parse(
+                await bridge.request(githubContext.workerId, {
+                  type: "github.pull-requests.list",
+                  repository: githubContext.nameWithOwner,
+                  state,
+                  page: 1,
+                  limit: 100,
+                }),
+              ),
+            ),
+          );
+          const open = results[0]!;
+          const closed = results[1]!;
+          pullRequests = associateTaskPullRequests({
+            activeWorktreeId: context.worktreeId,
+            implementationStartedAt: task.implementationStartedAt,
+            lanes,
+            messages,
+            pullRequests: [...open.pullRequests, ...closed.pullRequests],
+            repository: githubContext.nameWithOwner,
+            worktrees: observations,
+          });
+        } catch (error) {
+          pullRequestsUnavailableReason = errorMessage(error).slice(0, 2_000);
+        }
+      }
+      const warnings = taskAdvisoryWarnings({
+        activeWorktreeId: context.worktreeId,
+        lanes,
+        pullRequests,
+        state: task.state,
+        worktrees: observations,
+      });
+      return reply.send(
+        taskImplementationDashboardSchema.parse({
+          task,
+          goal,
+          goalUnavailableReason,
+          placement: {
+            workerId: context.workerId,
+            worktreeId: activeObservation.worktree.id,
+            worktreeName: activeObservation.worktree.name,
+            branch: activeObservation.worktree.branch,
+            isPrimary: activeObservation.worktree.isPrimary,
+            dirty: activeObservation.dirty,
+            dirtyFileCount: activeObservation.dirtyFileCount,
+          },
+          pullRequests,
+          pullRequestsUnavailableReason,
+          warnings,
+        }),
+      );
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/attachments",
+    async (request, reply) => {
+      const task = await repository.tasks.get(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!task) return reply.code(404).send({ error: "Task not found." });
+      const attachments = await repository.getChatAttachments(
+        applicationOwnerId(),
+        request.params.chatId,
+        task.draftAttachmentIds,
+      );
+      return reply.send(chatAttachmentListSchema.parse(attachments));
+    },
+  );
+
+  const taskMutationError = (
+    error: unknown,
+    reply: FastifyReply,
+  ): FastifyReply | null => {
+    if (error instanceof TaskConflictError) {
+      return reply.code(409).send({ code: error.code, error: error.message });
+    }
+    if (error instanceof TaskStateTransitionError) {
+      return reply
+        .code(409)
+        .send({ code: "invalid-state", error: error.message });
+    }
+    return null;
+  };
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/draft",
+    async (request, reply) => {
+      const input = taskDraftUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const task = await repository.tasks.updateDraft(
+          applicationOwnerId(),
+          request.params.chatId,
+          input.data,
+        );
+        if (!task) return reply.code(404).send({ error: "Task not found." });
+        publishChatInvalidation(request.params.chatId, "task");
+        return reply.send(taskDetailSchema.parse(task));
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/plan",
+    async (request, reply) => {
+      const input = taskPlanUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const task = await repository.tasks.updatePlan(
+          applicationOwnerId(),
+          request.params.chatId,
+          input.data,
+        );
+        if (!task) return reply.code(404).send({ error: "Task not found." });
+        publishChatInvalidation(request.params.chatId, "task");
+        return reply.send(taskDetailSchema.parse(task));
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/plan",
+    async (request, reply) => {
+      const input = taskOperationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      try {
+        const task = await beginTaskPlanningOperation(
+          context,
+          "initial-plan",
+          input.data,
+        );
+        return task
+          ? reply.code(202).send(taskDetailSchema.parse(task))
+          : reply.code(404).send({ error: "Task not found." });
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/continue",
+    async (request, reply) => {
+      const input = taskContinuationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      try {
+        const task = await beginTaskPlanningOperation(
+          context,
+          "continue-plan",
+          input.data,
+        );
+        return task
+          ? reply.code(202).send(taskDetailSchema.parse(task))
+          : reply.code(404).send({ error: "Task not found." });
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/begin-implementation",
+    async (request, reply) => {
+      const input = taskContinuationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      try {
+        const task = await beginTaskFinalizationOperation(context, input.data);
+        return task
+          ? reply.code(202).send(taskDetailSchema.parse(task))
+          : reply.code(404).send({ error: "Task not found." });
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/retry",
+    async (request, reply) => {
+      const input = taskOperationStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context || context.experience !== "task") {
+        return reply.code(404).send({ error: "Task not found." });
+      }
+      const task = await repository.tasks.get(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (
+        task?.state === "implementing" &&
+        task.finalPlanMarkdown &&
+        task.goalPrompt
+      ) {
+        return reply.code(202).send(taskDetailSchema.parse(task));
+      }
+      if (task?.state !== "failed" || !task.lastError) {
+        return reply
+          .code(409)
+          .send({ error: "This Task has no failed operation to retry." });
+      }
+      try {
+        if (task.lastError.operationKind === "finalize") {
+          const rounds = await repository.tasks.listRounds(
+            applicationOwnerId(),
+            request.params.chatId,
+          );
+          const latest = rounds.find(
+            (round) => round.ordinal === task.planningRound,
+          );
+          if (latest?.outputPlanMarkdown && latest.outputGoalPrompt) {
+            if (!bridge.isConnected(context.workerId)) {
+              throw new WorkerUnavailableError("Project worker is offline.");
+            }
+            if (chatIsExecuting(context.status)) {
+              throw new TaskConflictError(
+                "The Task already has an active Chat turn.",
+                "operation-active",
+              );
+            }
+            await repository.tasks.resumeFinalizationGoalLaunch(
+              applicationOwnerId(),
+              request.params.chatId,
+              input.data.rowVersion,
+            );
+            publishChatInvalidation(request.params.chatId, "task");
+            try {
+              const resumed = await launchPreparedTaskGoal(
+                request.params.chatId,
+                latest.id,
+              );
+              return reply.code(202).send(taskDetailSchema.parse(resumed));
+            } catch (error) {
+              await failTaskGoalLaunch(request.params.chatId, latest.id, error);
+              throw error;
+            }
+          }
+          const retried = await beginTaskFinalizationOperation(context, {
+            ...input.data,
+            answers: task.currentAnswers,
+            additionalDirection: task.additionalDirection,
+          });
+          return retried
+            ? reply.code(202).send(taskDetailSchema.parse(retried))
+            : reply.code(404).send({ error: "Task not found." });
+        }
+        if (task.lastError.operationKind === "implementation") {
+          return reply.code(409).send({
+            error:
+              "Use the implementation Goal controls to resume or restart this Task.",
+          });
+        }
+        const retried = await beginTaskPlanningOperation(
+          context,
+          task.lastError.operationKind,
+          input.data,
+        );
+        return retried
+          ? reply.code(202).send(taskDetailSchema.parse(retried))
+          : reply.code(404).send({ error: "Task not found." });
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/console",
     async (request, reply) => {
@@ -18868,16 +20164,20 @@ export async function buildApp({
             .code(409)
             .send({ error: "Selected model was not found." });
         }
-        const result = await bridge.request(context.workerId, {
-          type: "chat.goal.get",
-          chatId: context.chatId,
-          cwd: context.cwd,
-          threadId: context.threadId,
-          model: runtime.model,
-          provider: runtime.provider,
-          permissionProfileId: effectivePermissionProfile(context).effectiveId,
-        });
-        return reply.send(chatGoalResponseSchema.parse(result));
+        const result = chatGoalResponseSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "chat.goal.get",
+            chatId: context.chatId,
+            cwd: context.cwd,
+            threadId: context.threadId,
+            model: runtime.model,
+            provider: runtime.provider,
+            permissionProfileId:
+              effectivePermissionProfile(context).effectiveId,
+          }),
+        );
+        await reconcileTaskImplementation(context, result.goal);
+        return reply.send(result);
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -18912,52 +20212,17 @@ export async function buildApp({
         return reply.code(503).send({ error: "Project worker is offline." });
       }
       try {
-        const modelId = await resolveModelId(context);
-        const runtime = (await availableModelRuntimes(context, modelId))[0]!;
-        const result = chatGoalResponseSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "chat.goal.create",
-            chatId: context.chatId,
-            cwd: context.cwd,
-            threadId: runtimeCanResumeContext(context, runtime)
-              ? context.threadId
-              : null,
-            objective: input.data.objective,
-            tokenBudget: input.data.tokenBudget ?? null,
-            model: runtime.model,
-            provider: runtime.provider,
-            permissionProfileId:
-              effectivePermissionProfile(context).effectiveId,
-          }),
-        );
-        if (!result.goal) {
-          throw new Error("Codex did not create the goal.");
-        }
-        await repository.updateChatRuntime(
-          context.chatId,
-          context.workerId,
-          context.worktreeId,
-          result.goal.threadId,
-          runtime.routeId,
-          "ready",
-          runtime.provider.accountId,
-        );
-        const updatedContext = await repository.getChatExecutionContext(
-          applicationOwnerId(),
-          context.chatId,
-        );
-        if (!updatedContext) throw new Error("Chat source not found.");
-        await beginTurn(
-          updatedContext,
+        const started = await startGoalTurn(
+          context,
           {
+            attachmentIds: [],
             text: input.data.objective,
             mode: "goal",
-            modelId,
-            idempotencyKey: `goal:${result.goal.createdAt}:${randomUUID()}`,
+            idempotencyKey: `goal:${randomUUID()}`,
           },
-          { purpose: "Codex goal", runtimes: [runtime] },
+          { tokenBudget: input.data.tokenBudget ?? null },
         );
-        return reply.code(202).send(result);
+        return reply.code(202).send(started.goal);
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -19000,6 +20265,7 @@ export async function buildApp({
               effectivePermissionProfile(context).effectiveId,
           }),
         );
+        await reconcileTaskImplementation(context, result.goal);
         if (
           input.data.status === "active" &&
           !context.automationPaused &&
@@ -21386,6 +22652,281 @@ export async function buildApp({
       publishChatImportChange({ ownerId: applicationOwnerId(), job });
       chatImportJobExecutor.queueAvailable();
       return reply.send(chatImportJobSummarySchema.parse(job));
+    },
+  );
+
+  app.get("/api/policy-templates", async (_request, reply) =>
+    reply.send(
+      policyTemplateListSchema.parse(repository.policies.listTemplates()),
+    ),
+  );
+
+  app.get<{ Params: { templateKey: string } }>(
+    "/api/policy-templates/:templateKey",
+    async (request, reply) => {
+      const template = repository.policies.getTemplate(
+        request.params.templateKey,
+      );
+      return template
+        ? reply.send(policyTemplateDetailSchema.parse(template))
+        : reply.code(404).send({ error: "Policy template not found." });
+    },
+  );
+
+  app.get("/api/policies", async (_request, reply) =>
+    reply.send(
+      policyListSchema.parse(
+        await repository.policies.list(applicationOwnerId()),
+      ),
+    ),
+  );
+
+  app.post("/api/policies", async (request, reply) => {
+    const input = policyCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const policy = await repository.policies.create(
+        applicationOwnerId(),
+        input.data,
+      );
+      return reply.code(201).send(policyDetailSchema.parse(policy));
+    } catch (error) {
+      const status = error instanceof PolicyConflictError ? 409 : 500;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.patch("/api/policies/order", async (request, reply) => {
+    const input = policyOrderUpdateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      const policies = await repository.policies.reorder(
+        applicationOwnerId(),
+        input.data,
+      );
+      return reply.send(policyListSchema.parse(policies));
+    } catch (error) {
+      const status = error instanceof PolicyConflictError ? 409 : 500;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
+  app.post<{ Params: { templateKey: string } }>(
+    "/api/policies/from-template/:templateKey",
+    async (request, reply) => {
+      const input = policyFromTemplateCreateSchema.safeParse(
+        request.body ?? {},
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (!repository.policies.getTemplate(request.params.templateKey)) {
+        return reply.code(404).send({ error: "Policy template not found." });
+      }
+      try {
+        const policy = await repository.policies.createFromTemplate(
+          applicationOwnerId(),
+          request.params.templateKey,
+          input.data,
+        );
+        return reply.code(201).send(policyDetailSchema.parse(policy));
+      } catch (error) {
+        const status = error instanceof PolicyConflictError ? 409 : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId",
+    async (request, reply) => {
+      const policy = await repository.policies.get(
+        applicationOwnerId(),
+        request.params.policyId,
+      );
+      return policy
+        ? reply.send(policyDetailSchema.parse(policy))
+        : reply.code(404).send({ error: "Policy not found." });
+    },
+  );
+
+  app.patch<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId",
+    async (request, reply) => {
+      const input = policyUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const policy = await repository.policies.update(
+          applicationOwnerId(),
+          request.params.policyId,
+          input.data,
+        );
+        return policy
+          ? reply.send(policyDetailSchema.parse(policy))
+          : reply.code(404).send({ error: "Policy not found." });
+      } catch (error) {
+        const status = error instanceof PolicyConflictError ? 409 : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.post<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId/reset-template",
+    async (request, reply) => {
+      const input = policyTemplateResetSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const policy = await repository.policies.resetFromTemplate(
+          applicationOwnerId(),
+          request.params.policyId,
+          input.data,
+        );
+        return policy
+          ? reply.send(policyDetailSchema.parse(policy))
+          : reply.code(404).send({ error: "Policy not found." });
+      } catch (error) {
+        const status =
+          error instanceof PolicyConflictError
+            ? 409
+            : error instanceof PolicyScopeNotFoundError
+              ? 404
+              : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.delete<{ Params: { policyId: string } }>(
+    "/api/policies/:policyId",
+    async (request, reply) => {
+      const input = policyDeleteSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        return (await repository.policies.delete(
+          applicationOwnerId(),
+          request.params.policyId,
+          input.data.rowVersion,
+        ))
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "Policy not found." });
+      } catch (error) {
+        const status = error instanceof PolicyConflictError ? 409 : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/policies",
+    async (request, reply) => {
+      const assignments = await repository.policies.listWorkspaceAssignments(
+        applicationOwnerId(),
+        request.params.workspaceId,
+      );
+      return assignments
+        ? reply.send(policyAssignmentListSchema.parse(assignments))
+        : reply.code(404).send({ error: "Workspace not found." });
+    },
+  );
+
+  app.patch<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/policies",
+    async (request, reply) => {
+      const input = policyAssignmentUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        await repository.policies.replaceWorkspaceAssignments(
+          applicationOwnerId(),
+          request.params.workspaceId,
+          input.data,
+        );
+        const assignments = await repository.policies.listWorkspaceAssignments(
+          applicationOwnerId(),
+          request.params.workspaceId,
+        );
+        return assignments
+          ? reply.send(policyAssignmentListSchema.parse(assignments))
+          : reply.code(404).send({ error: "Workspace not found." });
+      } catch (error) {
+        const status =
+          error instanceof PolicyScopeNotFoundError
+            ? 404
+            : error instanceof PolicyConflictError
+              ? 409
+              : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/policies",
+    async (request, reply) => {
+      const assignments = await repository.policies.listProjectAssignments(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return assignments
+        ? reply.send(policyAssignmentListSchema.parse(assignments))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/policies",
+    async (request, reply) => {
+      const input = policyAssignmentUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        await repository.policies.replaceProjectAssignments(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        const assignments = await repository.policies.listProjectAssignments(
+          applicationOwnerId(),
+          request.params.projectId,
+        );
+        return assignments
+          ? reply.send(policyAssignmentListSchema.parse(assignments))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        const status =
+          error instanceof PolicyScopeNotFoundError
+            ? 404
+            : error instanceof PolicyConflictError
+              ? 409
+              : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/effective-policies",
+    async (request, reply) => {
+      const effective = await repository.policies.resolveEffective(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return effective
+        ? reply.send(effectivePolicyListSchema.parse(effective))
+        : reply.code(404).send({ error: "Project not found." });
     },
   );
 

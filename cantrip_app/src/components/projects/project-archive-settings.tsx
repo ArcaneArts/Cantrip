@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArchiveRestore,
   Clock3,
+  ListTodo,
   Loader2,
   MessageSquare,
   Trash2,
@@ -81,12 +82,12 @@ export function ProjectArchiveSettings({
       <section aria-labelledby="project-archive-title">
         <div className="mb-4">
           <h2 id="project-archive-title" className="font-semibold">
-            Archived agents{" "}
+            Archived agents and tasks{" "}
             <span className="text-muted-foreground">{chats.length}</span>
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Agents with conversation history remain recoverable for 90 days.
-            Empty agents are removed immediately.
+            Agents and Tasks with conversation history remain recoverable for 90
+            days. Empty items are removed immediately.
           </p>
         </div>
 
@@ -106,9 +107,9 @@ export function ProjectArchiveSettings({
           ) : chats.length === 0 ? (
             <div className="px-4 py-10 text-center">
               <ArchiveRestore className="mx-auto mb-3 size-5 text-muted-foreground" />
-              <p className="text-sm font-medium">No archived agents</p>
+              <p className="text-sm font-medium">No archived agents or Tasks</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Removed agents with messages will appear here.
+                Removed agents and Tasks with messages will appear here.
               </p>
             </div>
           ) : (
@@ -119,7 +120,14 @@ export function ProjectArchiveSettings({
                   className="grid min-h-14 gap-2 px-3 py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{chat.title}</p>
+                    <p className="flex min-w-0 items-center gap-2 truncate text-sm font-medium">
+                      {chat.experience === "task" ? (
+                        <ListTodo className="size-3.5 shrink-0" />
+                      ) : (
+                        <MessageSquare className="size-3.5 shrink-0" />
+                      )}
+                      <span className="truncate">{chat.title}</span>
+                    </p>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1">
                         <MessageSquare className="size-3" />
@@ -170,9 +178,12 @@ export function ProjectArchiveSettings({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Permanently delete this agent?</DialogTitle>
+            <DialogTitle>
+              Permanently delete this{" "}
+              {deleteTarget?.experience === "task" ? "Task" : "agent"}?
+            </DialogTitle>
             <DialogDescription>
-              {deleteTarget?.title ?? "This agent"} and its entire conversation
+              {deleteTarget?.title ?? "This item"} and its entire conversation
               history will be deleted. This cannot be undone.
             </DialogDescription>
           </DialogHeader>

@@ -59,5 +59,6 @@ describe("workspace settings", () => {
     expect(markup).not.toContain("Make Main Workspace the default workspace");
     expect(markup).not.toContain("Delete Main Workspace");
     expect(markup).toContain("Delete Personal");
+    expect(markup).toContain("Policies");
   });
 });

@@ -8,6 +8,11 @@ import type {
   ProjectWorktreeSummary,
   TerminalSummary,
 } from "@cantrip/protocol";
+import {
+  effectivePolicyListSchema,
+  policyAssignmentListSchema,
+  policySummarySchema,
+} from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -103,6 +108,7 @@ describe("project settings", () => {
       id: "chat-1",
       projectId: "project-1",
       title: "Implementation",
+      experience: "agent",
       position: 0,
       status: "idle",
       activeWorkerId: null,
@@ -208,12 +214,50 @@ describe("project settings", () => {
         | "general"
         | "workflows"
         | "replicas"
+        | "policies"
         | "worktrees"
         | "tunnels" = "general",
     ) => {
       const queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
       });
+      const projectPolicy = policySummarySchema.parse({
+        id: "policy-1",
+        key: "project-review",
+        name: "Project review",
+        summary: "Review changes in this project.",
+        enabled: true,
+        mandatory: false,
+        position: 0,
+        templateKey: null,
+        rowVersion: 1,
+        workspaceAssignmentCount: 0,
+        projectAssignmentCount: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+      queryClient.setQueryData(
+        ["project-policy-assignments", project.id],
+        policyAssignmentListSchema.parse({
+          collectionVersion: 1,
+          policies: [projectPolicy],
+          directPolicyIds: [projectPolicy.id],
+        }),
+      );
+      queryClient.setQueryData(
+        ["effective-policies", project.id],
+        effectivePolicyListSchema.parse({
+          policies: [
+            {
+              key: projectPolicy.key,
+              name: projectPolicy.name,
+              summary: projectPolicy.summary,
+              mandatory: false,
+              sources: [{ type: "project", projectId: project.id }],
+            },
+          ],
+        }),
+      );
       return renderToStaticMarkup(
         <QueryClientProvider client={queryClient}>
           <ProjectSettingsPage
@@ -248,6 +292,7 @@ describe("project settings", () => {
     expect(markup).toContain("Worktrees");
     expect(markup).toContain("Replicas");
     expect(markup).toContain("Tunnels");
+    expect(markup).toContain("Policies");
     expect(markup).toContain("Skills");
     expect(markup).toContain("MCP");
     expect(markup).not.toContain("MCP servers");
@@ -278,5 +323,10 @@ describe("project settings", () => {
     expect(tunnelsMarkup).toContain("Project Tunnels");
     expect(tunnelsMarkup).toContain("All Tunnels");
     expect(tunnelsMarkup).not.toContain("New workflow");
+
+    const policiesMarkup = renderSection("policies");
+    expect(policiesMarkup).toContain("Project review");
+    expect(policiesMarkup).toContain("Assigned directly to this project");
+    expect(policiesMarkup).not.toContain("New workflow");
   });
 });

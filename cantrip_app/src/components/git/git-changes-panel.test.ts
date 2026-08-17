@@ -2,7 +2,7 @@ import type { GitFileChange } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import { buildGitChangeTree } from "./git-change-tree";
-import { parseSideBySideDiff } from "./git-diff";
+import { parseUnifiedDiff } from "./git-diff";
 import {
   buildPartialPatchRequest,
   partialPatchUnavailableReason,
@@ -60,8 +60,42 @@ describe("Git changes panel helpers", () => {
     ]);
   });
 
-  it("aligns replacement, addition, and context lines side by side", () => {
-    const rows = parseSideBySideDiff(
+  it("collapses directory-only chains until files or branches appear", () => {
+    expect(
+      buildGitChangeTree([
+        change("a/b/c/d/e/file1.ts"),
+        change("a/b/c/d/ee/file2.ts"),
+        change("standalone/path/file3.ts"),
+      ]),
+    ).toMatchObject([
+      {
+        type: "directory",
+        name: "a/b/c/d",
+        path: "a/b/c/d",
+        children: [
+          {
+            type: "directory",
+            name: "e",
+            children: [{ type: "file", name: "file1.ts" }],
+          },
+          {
+            type: "directory",
+            name: "ee",
+            children: [{ type: "file", name: "file2.ts" }],
+          },
+        ],
+      },
+      {
+        type: "directory",
+        name: "standalone/path",
+        path: "standalone/path",
+        children: [{ type: "file", name: "file3.ts" }],
+      },
+    ]);
+  });
+
+  it("renders replacement, addition, and context as unified diff lines", () => {
+    const rows = parseUnifiedDiff(
       [
         "diff --git a/src/app.ts b/src/app.ts",
         "@@ -10,3 +10,4 @@",
@@ -79,44 +113,43 @@ describe("Git changes panel helpers", () => {
         kind: "line",
         oldNumber: 10,
         newNumber: 10,
-        oldText: "context",
-        newText: "context",
-        oldKind: "context",
-        newKind: "context",
+        text: "context",
+        lineKind: "context",
       },
       {
         kind: "line",
         oldNumber: 11,
+        newNumber: null,
+        text: "old value",
+        lineKind: "delete",
+      },
+      {
+        kind: "line",
+        oldNumber: null,
         newNumber: 11,
-        oldText: "old value",
-        newText: "new value",
-        oldKind: "delete",
-        newKind: "add",
+        text: "new value",
+        lineKind: "add",
       },
       {
         kind: "line",
         oldNumber: null,
         newNumber: 12,
-        oldText: null,
-        newText: "another value",
-        oldKind: "empty",
-        newKind: "add",
+        text: "another value",
+        lineKind: "add",
       },
       {
         kind: "line",
         oldNumber: 12,
         newNumber: 13,
-        oldText: "unchanged",
-        newText: "unchanged",
-        oldKind: "context",
-        newKind: "context",
+        text: "unchanged",
+        lineKind: "context",
       },
     ]);
   });
 
   it("surfaces binary diff metadata", () => {
     expect(
-      parseSideBySideDiff("Binary files a/image.png and b/image.png differ\n"),
+      parseUnifiedDiff("Binary files a/image.png and b/image.png differ\n"),
     ).toEqual([
       {
         kind: "meta",

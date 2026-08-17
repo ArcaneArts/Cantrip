@@ -38,12 +38,24 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return [["server-bootstrap"]];
     case "settings":
       return [["settings"]];
+    case "policy":
+      return [
+        ["policies"],
+        ["workspace-policy-assignments"],
+        ["project-policy-assignments"],
+        ["effective-policies"],
+        ...(event.entityId ? [["policy", event.entityId]] : []),
+      ];
     case "worker":
       return [["workers"], ["worker-management"], ["chat-sync"]];
     case "project":
       return projectId
-        ? [["projects"], ["project-tab-layout", projectId]]
-        : [["projects"]];
+        ? [
+            ["projects"],
+            ["project-workspaces"],
+            ["project-tab-layout", projectId],
+          ]
+        : [["projects"], ["project-workspaces"]];
     case "project-replica-job":
       return projectId
         ? [
@@ -102,6 +114,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           : event.scope.kind === "current-user"
             ? [["chats"]]
             : [];
+    case "task":
+      return event.scope.kind === "chat"
+        ? [["task", event.scope.chatId]]
+        : event.entityId
+          ? [["task", event.entityId]]
+          : [["tasks"]];
     case "chat-import-job":
       return projectId
         ? [
@@ -216,14 +234,22 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       return [
         ["server-bootstrap"],
         ["settings"],
+        ["policies"],
+        ["policy-templates"],
+        ["workspace-policy-assignments"],
+        ["project-policy-assignments"],
+        ["effective-policies"],
         ["workers"],
         ["worker-management"],
         ["projects"],
+        ["project-workspaces"],
         ["tunnels"],
         ["workflows"],
       ];
     case "project":
       return [
+        ["project-policy-assignments", scope.projectId],
+        ["effective-policies", scope.projectId],
         ["project-tab-layout", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],

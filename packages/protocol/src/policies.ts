@@ -122,6 +122,53 @@ export const policyAssignmentUpdateSchema = z.object({
     ),
 });
 
+export const policyAssignmentListSchema = z
+  .object({
+    collectionVersion: z.number().int().positive(),
+    policies: z.array(policySummarySchema).max(POLICY_LIMIT),
+    directPolicyIds: z
+      .array(z.string().min(1))
+      .max(POLICY_LIMIT)
+      .refine(
+        uniquePolicyIds,
+        "Direct policy assignments cannot contain duplicate IDs.",
+      ),
+  })
+  .superRefine((value, context) => {
+    const available = new Set(value.policies.map(({ id }) => id));
+    for (const [index, policyId] of value.directPolicyIds.entries()) {
+      if (!available.has(policyId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Direct assignments must reference a listed policy.",
+          path: ["directPolicyIds", index],
+        });
+      }
+    }
+  });
+
+export const policyFromTemplateCreateSchema = z
+  .object({
+    key: policyKeySchema.optional(),
+    name: policyNameSchema.optional(),
+    summary: policySummaryTextSchema.optional(),
+    bodyMarkdown: policyBodyMarkdownSchema.optional(),
+    enabled: z.boolean().optional(),
+    mandatory: z.boolean().optional(),
+  })
+  .strict();
+
+export const policyTemplateResetSchema = z
+  .object({
+    rowVersion: z.number().int().positive(),
+    restoreDefaults: z.boolean().default(false),
+  })
+  .strict();
+
+export const policyDeleteSchema = z
+  .object({ rowVersion: z.number().int().positive() })
+  .strict();
+
 export const effectivePolicySourceSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mandatory") }),
   z.object({
@@ -147,8 +194,35 @@ export const effectivePolicySummarySchema = z.object({
 });
 
 export const effectivePolicyListSchema = z.object({
-  policies: z.array(effectivePolicySummarySchema).max(EFFECTIVE_POLICY_LIMIT),
+  policies: z
+    .array(effectivePolicySummarySchema)
+    .max(EFFECTIVE_POLICY_LIMIT)
+    .refine(
+      (policies) =>
+        new Set(policies.map(({ key }) => key)).size === policies.length,
+      "Effective policies cannot contain duplicate keys.",
+    ),
 });
+
+export const policyCliListResultSchema = effectivePolicyListSchema;
+
+export const policyCliReadResultSchema = z.object({
+  policy: z.object({
+    key: policyKeySchema,
+    name: policyNameSchema,
+    summary: policySummaryTextSchema,
+    bodyMarkdown: policyBodyMarkdownSchema,
+  }),
+});
+
+export const agentPolicyContextSchema = z
+  .string()
+  .max(POLICY_CONTEXT_BYTES_LIMIT)
+  .refine(
+    (value) =>
+      new TextEncoder().encode(value).byteLength <= POLICY_CONTEXT_BYTES_LIMIT,
+    `Agent policy context cannot exceed ${POLICY_CONTEXT_BYTES_LIMIT} UTF-8 bytes.`,
+  );
 
 export type PolicyTemplateSummary = z.infer<typeof policyTemplateSummarySchema>;
 export type PolicyTemplateDetail = z.infer<typeof policyTemplateDetailSchema>;
@@ -161,8 +235,16 @@ export type PolicyOrderUpdate = z.infer<typeof policyOrderUpdateSchema>;
 export type PolicyAssignmentUpdate = z.infer<
   typeof policyAssignmentUpdateSchema
 >;
+export type PolicyAssignmentList = z.infer<typeof policyAssignmentListSchema>;
+export type PolicyFromTemplateCreate = z.infer<
+  typeof policyFromTemplateCreateSchema
+>;
+export type PolicyTemplateReset = z.infer<typeof policyTemplateResetSchema>;
+export type PolicyDelete = z.infer<typeof policyDeleteSchema>;
 export type EffectivePolicySource = z.infer<typeof effectivePolicySourceSchema>;
 export type EffectivePolicySummary = z.infer<
   typeof effectivePolicySummarySchema
 >;
 export type EffectivePolicyList = z.infer<typeof effectivePolicyListSchema>;
+export type PolicyCliListResult = z.infer<typeof policyCliListResultSchema>;
+export type PolicyCliReadResult = z.infer<typeof policyCliReadResultSchema>;

@@ -321,22 +321,31 @@ jobs:
         run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
       - name: Synchronize iOS project
         run: pnpm --filter @cantrip/app cap:sync ios
-      - name: Import Apple Distribution certificate
+      - name: Import iOS signing certificates
         shell: bash
         env:
+          IOS_DEVELOPMENT_CERTIFICATE: ${{ secrets.IOS_DEVELOPMENT_CERTIFICATE }}
+          IOS_DEVELOPMENT_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DEVELOPMENT_CERTIFICATE_PASSWORD }}
           IOS_DISTRIBUTION_CERTIFICATE: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
+          : "${IOS_DEVELOPMENT_CERTIFICATE:?Configure the IOS_DEVELOPMENT_CERTIFICATE Actions secret.}"
+          : "${IOS_DEVELOPMENT_CERTIFICATE_PASSWORD:?Configure the IOS_DEVELOPMENT_CERTIFICATE_PASSWORD Actions secret.}"
           : "${IOS_DISTRIBUTION_CERTIFICATE:?Configure the IOS_DISTRIBUTION_CERTIFICATE Actions secret.}"
           : "${IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:?Configure the IOS_DISTRIBUTION_CERTIFICATE_PASSWORD Actions secret.}"
           : "${KEYCHAIN_PASSWORD:?Configure the KEYCHAIN_PASSWORD Actions secret.}"
-          certificate="$RUNNER_TEMP/cantrip-ios-distribution.p12"
+          development_certificate="$RUNNER_TEMP/cantrip-ios-development.p12"
+          distribution_certificate="$RUNNER_TEMP/cantrip-ios-distribution.p12"
           keychain="$RUNNER_TEMP/cantrip-ios-signing.keychain-db"
-          leaf_certificate="$RUNNER_TEMP/cantrip-ios-distribution-leaf.pem"
+          development_leaf_certificate="$RUNNER_TEMP/cantrip-ios-development-leaf.pem"
+          distribution_leaf_certificate="$RUNNER_TEMP/cantrip-ios-distribution-leaf.pem"
           echo "CANTRIP_IOS_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
-          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE" | openssl base64 -d -A -out "$certificate"
+          printf '%s' "$IOS_DEVELOPMENT_CERTIFICATE" \
+            | openssl base64 -d -A -out "$development_certificate"
+          printf '%s' "$IOS_DISTRIBUTION_CERTIFICATE" \
+            | openssl base64 -d -A -out "$distribution_certificate"
 
           existing_keychains=()
           while IFS= read -r existing_keychain; do
@@ -351,7 +360,11 @@ jobs:
           security list-keychains -d user -s "$keychain" "${existing_keychains[@]}"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain"
           security set-keychain-settings -t 3600 -u "$keychain"
-          security import "$certificate" \
+          security import "$development_certificate" \
+            -k "$keychain" \
+            -P "$IOS_DEVELOPMENT_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security import "$distribution_certificate" \
             -k "$keychain" \
             -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" \
             -T /usr/bin/codesign
@@ -366,26 +379,59 @@ jobs:
             -c 'Apple Distribution' \
             -p \
             "$keychain" \
-            > "$leaf_certificate"
-          if [ ! -s "$leaf_certificate" ]; then
+            > "$distribution_leaf_certificate"
+          if [ ! -s "$distribution_leaf_certificate" ]; then
             echo "IOS_DISTRIBUTION_CERTIFICATE does not contain an Apple Distribution certificate." >&2
             exit 1
           fi
           team_id="$(
-            openssl x509 -in "$leaf_certificate" -noout -subject -nameopt RFC2253 \
+            openssl x509 -in "$distribution_leaf_certificate" -noout -subject -nameopt RFC2253 \
               | sed -nE 's/.*OU=([^,]+).*/\1/p'
           )"
           if [ -z "$team_id" ]; then
             echo "Could not determine the Apple team ID from the distribution certificate." >&2
             exit 1
           fi
+
+          security find-certificate \
+            -a \
+            -c 'Apple Development' \
+            -p \
+            "$keychain" \
+            > "$development_leaf_certificate"
+          if [ ! -s "$development_leaf_certificate" ]; then
+            echo "IOS_DEVELOPMENT_CERTIFICATE does not contain an Apple Development certificate." >&2
+            exit 1
+          fi
+          development_team_id="$(
+            openssl x509 -in "$development_leaf_certificate" -noout -subject -nameopt RFC2253 \
+              | sed -nE 's/.*OU=([^,]+).*/\1/p'
+          )"
+          if [ -z "$development_team_id" ]; then
+            echo "Could not determine the Apple team ID from the development certificate." >&2
+            exit 1
+          fi
+          if [ "$development_team_id" != "$team_id" ]; then
+            echo "The iOS development and distribution certificates belong to different Apple teams." >&2
+            exit 1
+          fi
+
           identities="$(security find-identity -v -p codesigning "$keychain" || true)"
+          if ! printf '%s\n' "$identities" | grep -q 'Apple Development:'; then
+            printf '%s\n' "$identities" >&2
+            echo "The imported Apple Development certificate and private key did not form a valid code-signing identity." >&2
+            exit 1
+          fi
           if ! printf '%s\n' "$identities" | grep -q 'Apple Distribution:'; then
             printf '%s\n' "$identities" >&2
             echo "The imported Apple Distribution certificate and private key did not form a valid code-signing identity." >&2
             exit 1
           fi
-          rm -f "$certificate" "$leaf_certificate"
+          rm -f \
+            "$development_certificate" \
+            "$distribution_certificate" \
+            "$development_leaf_certificate" \
+            "$distribution_leaf_certificate"
           echo "CANTRIP_IOS_TEAM_ID=$team_id" >> "$GITHUB_ENV"
       - name: Prepare App Store Connect API key
         shell: bash

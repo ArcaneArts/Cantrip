@@ -33,6 +33,7 @@ import {
   Route,
   Search,
   Server,
+  ShieldCheck,
   ScrollText,
   SlidersHorizontal,
   Sparkles,
@@ -100,6 +101,7 @@ import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
 import { TunnelSettings } from "./tunnel-settings";
 import { LogSettings } from "./log-settings";
+import { PolicySettings } from "./policy-settings";
 import {
   availableCatalogModelIds,
   catalogDisplayStatus,
@@ -125,6 +127,7 @@ export type SettingsSection =
   | "tunnels"
   | "skills"
   | "mcp"
+  | "policies"
   | "workspaces";
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
@@ -134,6 +137,7 @@ const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "logs", label: "Logs", icon: ScrollText },
   { id: "tunnels", label: "Tunnels", icon: Route },
   { id: "workspaces", label: "Workspaces", icon: Layers3 },
+  { id: "policies", label: "Policies", icon: ShieldCheck },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP", icon: Cable },
 ];
@@ -542,12 +546,19 @@ function CatalogModelMetadata({
 
 export function SettingsPage({
   initialSection = "general",
+  initialPolicyId = null,
+  onPolicyOpenHandled,
   onOpenTunnelOwner,
 }: {
   initialSection?: SettingsSection;
+  initialPolicyId?: string | null;
+  onPolicyOpenHandled?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [policyEditorId, setPolicyEditorId] = useState<string | null>(
+    initialPolicyId,
+  );
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const desktopUpdateCapability = useDesktopUpdateCapability();
@@ -943,6 +954,9 @@ export function SettingsPage({
   useEffect(() => {
     setSection(initialSection);
   }, [initialSection]);
+  useEffect(() => {
+    if (initialPolicyId) setPolicyEditorId(initialPolicyId);
+  }, [initialPolicyId]);
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
@@ -1420,7 +1434,23 @@ export function SettingsPage({
         </div>
         {section === "workspaces" ? (
           <div className="w-full min-w-0">
-            <WorkspaceSettings />
+            <WorkspaceSettings
+              onOpenPolicySettings={(policyId) => {
+                setPolicyEditorId(policyId ?? null);
+                setSection("policies");
+              }}
+            />
+          </div>
+        ) : null}
+        {section === "policies" ? (
+          <div className="w-full min-w-0">
+            <PolicySettings
+              initialPolicyId={policyEditorId}
+              onInitialPolicyHandled={() => {
+                setPolicyEditorId(null);
+                onPolicyOpenHandled?.();
+              }}
+            />
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}

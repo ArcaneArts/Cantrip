@@ -26,6 +26,11 @@ export * from "./live.js";
 
 export * from "./policies.js";
 
+export * from "./tasks.js";
+
+import { agentPolicyContextSchema } from "./policies.js";
+import { taskDetailSchema } from "./tasks.js";
+
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
   workflowJsonObjectSchema,
@@ -1700,6 +1705,13 @@ export const githubPullRequestSummarySchema = githubIssueSummarySchema.extend({
   baseSha: z.string().regex(/^[0-9a-f]{40}$/u),
 });
 
+export const githubPullRequestListSchema = z.object({
+  state: githubIssueStateSchema,
+  total: z.number().int().nonnegative(),
+  pullRequests: z.array(githubPullRequestSummarySchema),
+  nextPage: z.number().int().positive().nullable().default(null),
+});
+
 export const githubPullRequestCreateResultSchema = z.object({
   pullRequest: githubPullRequestSummarySchema,
   warnings: z.array(z.string().min(1).max(1_000)).max(100),
@@ -3069,13 +3081,26 @@ export const providerTelemetryDeleteResultSchema = z.object({
   }),
 });
 
+const chatPlacementCreateFields = {
+  worktreeId: z.string().min(1).optional(),
+  worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
+  tabGroupId: z.string().min(1).optional(),
+  target: executionTargetSchema.optional(),
+} as const;
+
 export const chatCreateSchema = z
   .object({
     title: z.string().trim().min(1).max(200).default("New agent"),
-    worktreeId: z.string().min(1).optional(),
-    worktreeMode: z.enum(["agent-managed", "pinned"]).default("agent-managed"),
-    tabGroupId: z.string().min(1).optional(),
-    target: executionTargetSchema.optional(),
+    ...chatPlacementCreateFields,
+  })
+  .refine((input) => !(input.worktreeId && input.target), {
+    message: "Choose either a legacy worktreeId or an execution target.",
+  });
+
+export const taskCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).default("New task"),
+    ...chatPlacementCreateFields,
   })
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",
@@ -3099,6 +3124,7 @@ export const chatSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  experience: z.enum(["agent", "task"]).default("agent"),
   position: z.number().int().nonnegative(),
   status: z.enum([
     "idle",
@@ -3121,12 +3147,18 @@ export const chatSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const taskCreateResultSchema = z.object({
+  chat: chatSummarySchema,
+  task: taskDetailSchema,
+});
+
 export const chatListSchema = z.array(chatSummarySchema);
 
 export const archivedChatSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  experience: z.enum(["agent", "task"]).default("agent"),
   messageCount: z.number().int().nonnegative(),
   archivedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),
@@ -5230,6 +5262,8 @@ export const cantripCliCommandResultSchema = z.object({
 
 export const cantripCliCommandNameSchema = z.enum([
   "status",
+  "policy.list",
+  "policy.read",
   "worktree.list",
   "worktree.create",
   "worktree.switch",
@@ -7110,8 +7144,17 @@ export const agentTurnResultSchema = z.object({
   threadId: z.string().min(1),
   turnId: z.string().min(1).optional(),
   text: z.string(),
+  structuredResult: z.unknown().optional(),
   status: z.literal("completed"),
 });
+
+export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("visible") }),
+  z.object({
+    kind: z.literal("structured"),
+    outputSchema: workflowJsonObjectSchema,
+  }),
+]);
 
 export const normalizedAgentMessageSchema = z.object({
   id: z.string().min(1),
@@ -7840,6 +7883,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1).max(8_192),
     repository: githubRepositorySchema.shape.nameWithOwner,
     request: githubPullRequestCreateSchema,
+  }),
+  z.object({
+    type: z.literal("github.pull-requests.list"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    state: githubIssueStateSchema,
+    page: z.number().int().positive().default(1),
+    limit: z.number().int().min(1).max(100).default(100),
   }),
   z.object({
     type: z.literal("github.pull-request.get"),
@@ -8676,6 +8726,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     isPrimary: z.boolean(),
     worktreeMode: z.enum(["agent-managed", "pinned"]),
     worktreePolicy: worktreePolicySchema,
+    policyContext: agentPolicyContextSchema.nullable().default(null),
     threadId: z.string().min(1).nullable(),
     prompt: z.string().min(1),
     attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
@@ -8686,6 +8737,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     planMode: planModeSchema,
     mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
     automationPaused: z.boolean().default(false),
+    resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
   }),
   workflowNodeExecutionRequestSchema.extend({
     type: z.literal("workflow.node.execute"),
@@ -9380,6 +9432,7 @@ export type GithubIssueState = z.infer<typeof githubIssueStateSchema>;
 export type GithubIssueKind = z.infer<typeof githubIssueKindSchema>;
 export type GithubIssueSummary = z.infer<typeof githubIssueSummarySchema>;
 export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
+export type GithubPullRequestList = z.infer<typeof githubPullRequestListSchema>;
 export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
 export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
 export type GithubPullRequestCreate = z.infer<
@@ -9656,6 +9709,8 @@ export type ProjectWorktreePolicyUpdate = z.infer<
 export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
 export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
+export type TaskCreate = z.infer<typeof taskCreateSchema>;
+export type TaskCreateResult = z.infer<typeof taskCreateResultSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
@@ -9977,6 +10032,7 @@ export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
 export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
 export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;
 export type AgentTurnResult = z.infer<typeof agentTurnResultSchema>;
+export type AgentTurnResultMode = z.infer<typeof agentTurnResultModeSchema>;
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
 >;

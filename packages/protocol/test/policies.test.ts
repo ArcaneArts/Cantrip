@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  POLICY_CONTEXT_BYTES_LIMIT,
+  agentPolicyContextSchema,
+  effectivePolicyListSchema,
+  policyAssignmentListSchema,
   policyAssignmentUpdateSchema,
   policyCreateSchema,
+  policyDeleteSchema,
+  policyFromTemplateCreateSchema,
   policyKeySchema,
   policyOrderUpdateSchema,
+  policyCliReadResultSchema,
   policyTemplateDetailSchema,
+  policyTemplateResetSchema,
   policyUpdateSchema,
 } from "../src/policies.js";
 
@@ -52,6 +60,37 @@ describe("policy protocol", () => {
         policyIds: ["one", "one"],
       }).success,
     ).toBe(false);
+    expect(
+      policyAssignmentListSchema.safeParse({
+        collectionVersion: 1,
+        policies: [],
+        directPolicyIds: ["one", "one"],
+      }).success,
+    ).toBe(false);
+    expect(
+      policyAssignmentListSchema.safeParse({
+        collectionVersion: 1,
+        policies: [],
+        directPolicyIds: ["missing"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds template creation, reset, and deletion inputs", () => {
+    expect(policyFromTemplateCreateSchema.parse({})).toEqual({});
+    expect(
+      policyFromTemplateCreateSchema.parse({
+        key: "manual-change-protocol-2",
+      }),
+    ).toEqual({ key: "manual-change-protocol-2" });
+    expect(policyTemplateResetSchema.parse({ rowVersion: 2 })).toEqual({
+      rowVersion: 2,
+      restoreDefaults: false,
+    });
+    expect(policyDeleteSchema.parse({ rowVersion: 3 })).toEqual({
+      rowVersion: 3,
+    });
+    expect(() => policyTemplateResetSchema.parse({ rowVersion: 0 })).toThrow();
   });
 
   it("validates immutable packaged template metadata", () => {
@@ -67,5 +106,34 @@ describe("policy protocol", () => {
         suggestedMandatory: true,
       }),
     ).toMatchObject({ version: 1, suggestedMandatory: true });
+  });
+
+  it("bounds and deduplicates agent-facing policy data", () => {
+    const effective = {
+      key: "manual-change-protocol",
+      name: "Manual Change Protocol",
+      summary: "Read the current policy before changing repository state.",
+      mandatory: true,
+      sources: [{ type: "mandatory" as const }],
+    };
+    expect(
+      effectivePolicyListSchema.safeParse({ policies: [effective, effective] })
+        .success,
+    ).toBe(false);
+    expect(
+      agentPolicyContextSchema.safeParse(
+        "🙂".repeat(POLICY_CONTEXT_BYTES_LIMIT / 2),
+      ).success,
+    ).toBe(false);
+    expect(
+      policyCliReadResultSchema.parse({
+        policy: {
+          key: effective.key,
+          name: effective.name,
+          summary: effective.summary,
+          bodyMarkdown: "# Current instructions",
+        },
+      }).policy,
+    ).not.toHaveProperty("id");
   });
 });

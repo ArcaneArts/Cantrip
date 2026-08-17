@@ -747,6 +747,8 @@ describe.sequential("project execution placement API", () => {
     const cli = (
       command:
         | "status"
+        | "policy.list"
+        | "policy.read"
         | "target.list"
         | "target.show"
         | "explorer.list"
@@ -794,6 +796,101 @@ describe.sequential("project execution placement API", () => {
       worker: { id: "worker-alpha", online: true },
       context: { projectId, worktreeId: alphaWorktreeId },
     });
+    const hiddenPolicy = await database.repository.policies.create(
+      LOCAL_USER_ID,
+      {
+        key: "hidden-project-policy",
+        name: "Hidden project policy",
+        summary: "This policy has not been assigned to the current project.",
+        bodyMarkdown: "# Hidden policy\n\nDo not expose this body.",
+        enabled: true,
+        mandatory: false,
+      },
+    );
+    const visiblePolicy = await database.repository.policies.create(
+      LOCAL_USER_ID,
+      {
+        key: "visible-project-policy",
+        name: "Visible project policy",
+        summary: "This mandatory policy is effective in the current project.",
+        bodyMarkdown: "# Visible policy",
+        enabled: true,
+        mandatory: true,
+      },
+    );
+    const policyOrder = await database.repository.policies.list(LOCAL_USER_ID);
+    await database.repository.policies.reorder(LOCAL_USER_ID, {
+      collectionVersion: policyOrder.collectionVersion,
+      policyIds: [
+        visiblePolicy.id,
+        hiddenPolicy.id,
+        ...policyOrder.policies
+          .filter(({ id }) => id !== visiblePolicy.id && id !== hiddenPolicy.id)
+          .map(({ id }) => id),
+      ],
+    });
+    const cliPolicies = await cli("policy.list");
+    expect(cliPolicies.statusCode).toBe(200);
+    const listedPolicies = cantripCliCommandResultSchema.parse(
+      cliPolicies.json(),
+    ).data as { policies: Array<{ key: string }> };
+    expect(listedPolicies.policies.map(({ key }) => key)).toEqual([
+      visiblePolicy.key,
+      "manual-change-protocol",
+    ]);
+    expect(listedPolicies.policies[0]).toMatchObject({
+      mandatory: true,
+      sources: [{ type: "mandatory" }],
+    });
+    expect(JSON.stringify(cliPolicies.json())).not.toContain(
+      "# Visible policy",
+    );
+    expect(JSON.stringify(cliPolicies.json())).not.toContain(
+      hiddenPolicy.bodyMarkdown,
+    );
+    const cliPolicy = await cli("policy.read", {
+      key: "manual-change-protocol",
+    });
+    expect(cliPolicy.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(cliPolicy.json()).data,
+    ).toMatchObject({
+      policy: {
+        key: "manual-change-protocol",
+        bodyMarkdown: expect.stringContaining("# Manual Change Protocol"),
+      },
+    });
+    expect(JSON.stringify(cliPolicy.json())).not.toContain("rowVersion");
+    const defaultPolicy = await database.repository.policies.getByKey(
+      LOCAL_USER_ID,
+      "manual-change-protocol",
+    );
+    expect(defaultPolicy).not.toBeNull();
+    await database.repository.policies.update(
+      LOCAL_USER_ID,
+      defaultPolicy!.id,
+      {
+        rowVersion: defaultPolicy!.rowVersion,
+        bodyMarkdown: "# Updated instructions\n\nUse the current value.",
+      },
+    );
+    const updatedCliPolicy = await cli("policy.read", {
+      key: "manual-change-protocol",
+    });
+    expect(
+      cantripCliCommandResultSchema.parse(updatedCliPolicy.json()).data,
+    ).toMatchObject({
+      policy: {
+        bodyMarkdown: "# Updated instructions\n\nUse the current value.",
+      },
+    });
+    const hiddenPolicyRead = await cli("policy.read", {
+      key: hiddenPolicy.key,
+    });
+    expect(hiddenPolicyRead.statusCode).toBe(404);
+    expect(JSON.stringify(hiddenPolicyRead.json())).not.toContain(
+      hiddenPolicy.bodyMarkdown,
+    );
     const cliCurrentTarget = await cli("target.show");
     expect(cliCurrentTarget.statusCode).toBe(200);
     expect(

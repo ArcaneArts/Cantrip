@@ -17,6 +17,7 @@ import {
   githubAuthStatusSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
+  githubPullRequestListSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
@@ -48,6 +49,7 @@ import {
   type GithubPullRequestLifecycleAction,
   type GithubPullRequestLifecycleApply,
   type GithubPullRequestLifecyclePreview,
+  type GithubPullRequestList,
   type GithubPullRequestReview,
   type GithubPullRequestReviewComment,
   type GithubPullRequestReviewSubmit,
@@ -388,6 +390,7 @@ interface GithubApiPullRequest extends GithubApiIssue {
   mergeable?: unknown;
   mergeable_state?: unknown;
   merged?: unknown;
+  merged_at?: unknown;
   requested_reviewers?: unknown;
 }
 
@@ -626,7 +629,7 @@ function parsePullRequest(
     ...parseIssue(value),
     body: typeof value.body === "string" ? value.body : null,
     draft: value.draft === true,
-    merged: value.merged === true,
+    merged: value.merged === true || typeof value.merged_at === "string",
     headRef: head.ref,
     headSha: head.sha,
     baseRef: base.ref,
@@ -1169,6 +1172,38 @@ export class GithubClient {
       state,
       total: issues.length,
       issues,
+      nextPage: values.length === limit ? page + 1 : null,
+    });
+  }
+
+  async listPullRequests(
+    nameWithOwner: string,
+    state: GithubIssueState,
+    page = 1,
+    limit = 100,
+  ): Promise<GithubPullRequestList> {
+    const values = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/pulls`,
+      [
+        "--method",
+        "GET",
+        "-f",
+        `per_page=${limit}`,
+        "-f",
+        `page=${page}`,
+        "-f",
+        `state=${state}`,
+        "-f",
+        "sort=updated",
+        "-f",
+        "direction=desc",
+      ],
+    )) as GithubApiPullRequest[];
+    const pullRequests = values.map(parsePullRequest);
+    return githubPullRequestListSchema.parse({
+      state,
+      total: pullRequests.length,
+      pullRequests,
       nextPage: values.length === limit ? page + 1 : null,
     });
   }

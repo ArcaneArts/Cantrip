@@ -174,10 +174,12 @@ interface ActiveTurn {
   }) => void;
   onPlanQuestion?: (question: PendingPlanQuestion) => void;
   onPlanQuestionResolved?: (questionId: string) => void;
+  pendingAgentMessage: NormalizedAgentMessage | null;
   reasoningSummaries: Map<string, string[]>;
   reject(error: Error): void;
   resolve(result: AgentTurnResult | WorkflowNodeExecutionResult): void;
   startedAtMs: number;
+  structuredChat: boolean;
   threadId: string;
   timeout: ReturnType<typeof setTimeout> | null;
   workflowOutputSchema: Record<string, unknown> | null;
@@ -1102,6 +1104,8 @@ export interface RunAgentTurnOptions {
     { type: "chat.turn" }
   >["automationPaused"];
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
+  policyContext: Extract<WorkerCommand, { type: "chat.turn" }>["policyContext"];
+  resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   permissionProfileId: Extract<
     WorkerCommand,
@@ -1248,7 +1252,7 @@ export function goalShouldContinue(
 }
 
 export const CANTRIP_CLI_DEVELOPER_INSTRUCTIONS =
-  "Cantrip-specific operations are available through the `cantrip` CLI; run `cantrip -h` for concise command help. Use standard command-line tools for normal repository work. If a Cantrip command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
+  "Cantrip-specific operations are available through the `cantrip` CLI; run `cantrip -h` for concise command help. Effective Cantrip policy summaries supplied as application context are instructions; use `cantrip policy read <policy-key>` whenever a summary requires the current full policy. Use standard command-line tools for normal repository work. If a Cantrip command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
 
 export const CANTRIP_DYNAMIC_TOOLS_OVERRIDE = { dynamicTools: [] } as const;
 
@@ -1262,10 +1266,14 @@ export function cantripChatThreadParams() {
 export function codexWorktreeTurnPolicy(
   options: Pick<
     RunAgentTurnOptions,
-    "cwd" | "isPrimary" | "worktreeMode" | "worktreePolicy"
-  > & { permissionProfileActive?: boolean },
+    "cwd" | "isPrimary" | "resultMode" | "worktreeMode" | "worktreePolicy"
+  > & {
+    permissionProfileActive?: boolean;
+    policyContext?: RunAgentTurnOptions["policyContext"];
+  },
 ) {
   const cwd = path.resolve(options.cwd);
+  const structuredReadOnly = options.resultMode?.kind === "structured";
   const primaryIsReadOnly =
     options.isPrimary && options.worktreePolicy === "required-for-writes";
   const modeInstruction =
@@ -1279,23 +1287,36 @@ export function codexWorktreeTurnPolicy(
       : options.worktreePolicy === "required-for-writes"
         ? "The project policy is Required for writes and this turn is in a secondary worktree, so writes are permitted here."
         : "The project policy is Agent managed. You may work in the current checkout or acquire a secondary worktree when the task benefits from isolation.";
-  const sandboxPolicy = primaryIsReadOnly
-    ? { type: "readOnly" as const, networkAccess: false }
-    : {
-        type: "workspaceWrite" as const,
-        writableRoots: [cwd],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      };
+  const sandboxPolicy =
+    structuredReadOnly || primaryIsReadOnly
+      ? { type: "readOnly" as const, networkAccess: false }
+      : {
+          type: "workspaceWrite" as const,
+          writableRoots: [cwd],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        };
   return {
     additionalContext: {
       "cantrip.worktree-policy": {
         kind: "application",
-        value: `${policyInstruction} ${modeInstruction}`,
+        value: structuredReadOnly
+          ? "This is a Cantrip Task planning turn. It is unconditionally read-only: inspect the repository and effective policies, but do not modify files, Git state, GitHub state, or external systems."
+          : `${policyInstruction} ${modeInstruction}`,
       },
+      ...(options.policyContext
+        ? {
+            "cantrip.policies": {
+              kind: "application" as const,
+              value: options.policyContext,
+            },
+          }
+        : {}),
     },
-    ...(options.permissionProfileActive ? {} : { sandboxPolicy }),
+    ...(options.permissionProfileActive && !structuredReadOnly
+      ? {}
+      : { sandboxPolicy }),
   } as const;
 }
 
@@ -1379,6 +1400,25 @@ export function codexChatApprovalPolicy(
     permissionProfileId === YOLO_PERMISSION_PROFILE_ID
     ? ("never" as const)
     : ("on-request" as const);
+}
+
+export function codexChatThreadSecurityParams(
+  permissionProfileId: string,
+  permissionProfilesSupported: boolean,
+  structuredReadOnly: boolean,
+) {
+  return structuredReadOnly
+    ? ({ approvalPolicy: "never", sandbox: "read-only" } as const)
+    : {
+        approvalPolicy: codexChatApprovalPolicy(
+          permissionProfileId,
+          permissionProfilesSupported,
+        ),
+        ...codexThreadPermissionParams(
+          permissionProfileId,
+          permissionProfilesSupported,
+        ),
+      };
 }
 
 export interface CodexSkill {
@@ -2109,6 +2149,62 @@ export function normalizeAgentMessage(
   });
 }
 
+export interface StagedAgentMessageResult {
+  emitted: NormalizedAgentMessage[];
+  pending: NormalizedAgentMessage | null;
+}
+
+function asCommentary(message: NormalizedAgentMessage): NormalizedAgentMessage {
+  return message.phase === "commentary"
+    ? message
+    : { ...message, phase: "commentary" };
+}
+
+export function stageAgentMessage(
+  pending: NormalizedAgentMessage | null,
+  message: NormalizedAgentMessage,
+): StagedAgentMessageResult {
+  if (message.phase === "commentary") {
+    return {
+      emitted: pending ? [asCommentary(pending), message] : [message],
+      pending: null,
+    };
+  }
+  return {
+    emitted: pending ? [asCommentary(pending)] : [],
+    pending: message,
+  };
+}
+
+export function flushStagedAgentMessage(
+  pending: NormalizedAgentMessage | null,
+  completed: boolean,
+): StagedAgentMessageResult {
+  return {
+    emitted: pending ? [completed ? pending : asCommentary(pending)] : [],
+    pending: null,
+  };
+}
+
+function publishStagedAgentMessages(
+  active: ActiveTurn,
+  staged: StagedAgentMessageResult,
+): void {
+  active.pendingAgentMessage = staged.pending;
+  for (const message of staged.emitted) {
+    if (!active.structuredChat || message.phase === "commentary") {
+      active.onMessage?.(message);
+    }
+  }
+}
+
+function flushActiveAgentMessage(active: ActiveTurn, completed: boolean): void {
+  publishStagedAgentMessages(
+    active,
+    flushStagedAgentMessage(active.pendingAgentMessage, completed),
+  );
+}
+
 export function normalizeTokenUsageActivity(
   params: ThreadTokenUsageUpdatedParams,
   correlation: CodexEventCorrelation,
@@ -2200,7 +2296,20 @@ export function normalizeCodexThreadTurn(
   threadId: string,
   externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
 ): AgentThreadSync["turns"][number] {
-  const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
+  let lastFinalMessageIndex = -1;
+  if (turn.status === "completed") {
+    for (let index = 0; index < turn.items.length; index += 1) {
+      const item = turn.items[index];
+      if (
+        item?.type === "agentMessage" &&
+        item.phase !== "commentary" &&
+        item.text?.trim()
+      ) {
+        lastFinalMessageIndex = index;
+      }
+    }
+  }
+  const items = turn.items.flatMap((item, index): AgentThreadSyncItem[] => {
     if (item.type === "userMessage") {
       const text = item.content
         .flatMap((content) =>
@@ -2226,7 +2335,15 @@ export function normalizeCodexThreadTurn(
         item,
         eventCorrelation("thread/read", null, threadId, turn.id, item.id),
       );
-      return message ? [{ type: "agentMessage", ...message }] : [];
+      if (!message) return [];
+      return [
+        {
+          type: "agentMessage",
+          ...(message.phase !== "commentary" && index !== lastFinalMessageIndex
+            ? asCommentary(message)
+            : message),
+        },
+      ];
     }
     const activity = normalizeCodexThreadItem(
       item,
@@ -2622,6 +2739,7 @@ export class CodexAppServer implements CodexRuntime {
   private async runTurnAttempt(
     options: RunAgentTurnOptions,
   ): Promise<AgentTurnResult> {
+    const resultMode = options.resultMode ?? { kind: "visible" as const };
     if (options.automationPaused) this.#pausedChats.add(options.chatId);
     await this.ensureStarted(options.model, options.provider);
     const baseline = await workspaceSnapshot(options.cwd);
@@ -2681,13 +2799,16 @@ export class CodexAppServer implements CodexRuntime {
         onPlan: options.onPlan,
         onPlanQuestion: options.onPlanQuestion,
         onPlanQuestionResolved: options.onPlanQuestionResolved,
+        pendingAgentMessage: null,
         reasoningSummaries: new Map(),
         reject,
         resolve,
         startedAtMs: Date.now(),
+        structuredChat: resultMode.kind === "structured",
         threadId,
         timeout: null,
-        workflowOutputSchema: null,
+        workflowOutputSchema:
+          resultMode.kind === "structured" ? resultMode.outputSchema : null,
         workflowRunId: null,
         workflowNodeId: null,
       };
@@ -2726,6 +2847,9 @@ export class CodexAppServer implements CodexRuntime {
       model: options.model.name,
       ...codexReasoningEffortParams(options.model),
       ...(collaborationMode ? { collaborationMode } : {}),
+      ...(resultMode.kind === "structured"
+        ? { outputSchema: resultMode.outputSchema }
+        : {}),
     })) as TurnStartResponse;
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex turn.");
@@ -2813,10 +2937,12 @@ export class CodexAppServer implements CodexRuntime {
         onInteractionExpired: options.onInteractionExpired,
         onInteractionRequest: options.onInteractionRequest,
         onPlan: options.onPlan,
+        pendingAgentMessage: null,
         reasoningSummaries: new Map(),
         reject,
         resolve,
         startedAtMs: Date.now(),
+        structuredChat: false,
         threadId,
         timeout: null,
         workflowOutputSchema: options.outputSchema,
@@ -3916,13 +4042,18 @@ export class CodexAppServer implements CodexRuntime {
       | "permissionProfileId"
       | "provider"
       | "threadId"
-    >,
+    > & { resultMode?: RunAgentTurnOptions["resultMode"] },
     create = true,
   ): Promise<string | null> {
+    const structuredReadOnly = options.resultMode?.kind === "structured";
+    const permissionKey = structuredReadOnly
+      ? "cantrip:task-read-only"
+      : options.permissionProfileId;
     const modelProvider = codexModelProviderName(options.provider);
-    const mcpConfig = options.mcpServers
-      ? codexMcpConfigOverride(options.mcpServers)
-      : null;
+    const mcpConfig =
+      !structuredReadOnly && options.mcpServers
+        ? codexMcpConfigOverride(options.mcpServers)
+        : null;
     const mcpConfigFingerprint = mcpConfig ? JSON.stringify(mcpConfig) : null;
     let threadId = options.threadId;
     if (threadId && this.#threadKinds.get(threadId) === "workflow") {
@@ -3933,8 +4064,7 @@ export class CodexAppServer implements CodexRuntime {
     if (
       threadId &&
       (!this.#loadedThreads.has(threadId) ||
-        this.#permissionProfilesByThread.get(threadId) !==
-          options.permissionProfileId ||
+        this.#permissionProfilesByThread.get(threadId) !== permissionKey ||
         (mcpConfigFingerprint !== null &&
           this.#mcpConfigFingerprintsByThread.get(threadId) !==
             mcpConfigFingerprint))
@@ -3964,20 +4094,17 @@ export class CodexAppServer implements CodexRuntime {
           ...codexReasoningEffortParams(options.model),
           modelProvider,
           ...codexWorkspaceContext(options.cwd),
-          approvalPolicy: codexChatApprovalPolicy(
+          ...codexChatThreadSecurityParams(
             options.permissionProfileId,
             this.permissionProfilesSupported(),
+            structuredReadOnly,
           ),
           ...cantripChatThreadParams(),
-          ...this.threadPermissionParams(options.permissionProfileId),
           ...(mcpConfig ? { config: mcpConfig } : {}),
         })) as ThreadResponse;
         threadId = resumed.thread.id;
         this.#loadedThreads.add(threadId);
-        this.#permissionProfilesByThread.set(
-          threadId,
-          options.permissionProfileId,
-        );
+        this.#permissionProfilesByThread.set(threadId, permissionKey);
         if (mcpConfigFingerprint !== null) {
           this.#mcpConfigFingerprintsByThread.set(
             threadId,
@@ -4018,20 +4145,17 @@ export class CodexAppServer implements CodexRuntime {
         ...codexReasoningEffortParams(options.model),
         modelProvider,
         ...codexWorkspaceContext(options.cwd),
-        approvalPolicy: codexChatApprovalPolicy(
+        ...codexChatThreadSecurityParams(
           options.permissionProfileId,
           this.permissionProfilesSupported(),
+          structuredReadOnly,
         ),
-        ...this.threadPermissionParams(options.permissionProfileId),
         ...cantripChatThreadParams(),
         ...(mcpConfig ? { config: mcpConfig } : {}),
       })) as ThreadResponse;
       threadId = started.thread.id;
       this.#loadedThreads.add(threadId);
-      this.#permissionProfilesByThread.set(
-        threadId,
-        options.permissionProfileId,
-      );
+      this.#permissionProfilesByThread.set(threadId, permissionKey);
       if (mcpConfigFingerprint !== null) {
         this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
       }
@@ -4968,6 +5092,7 @@ export class CodexAppServer implements CodexRuntime {
       const params = message.params as ItemLifecycleParams;
       const active = this.#activeTurns.get(params.turnId);
       if (active && params.item.type !== "agentMessage") {
+        flushActiveAgentMessage(active, false);
         const observedAtMs = Date.now();
         const startedAtMs = params.startedAtMs ?? observedAtMs;
         const correlation = eventCorrelation(
@@ -5053,8 +5178,14 @@ export class CodexAppServer implements CodexRuntime {
             params.item.id,
           ),
         );
-        if (normalized) active.onMessage?.(normalized);
+        if (normalized) {
+          publishStagedAgentMessages(
+            active,
+            stageAgentMessage(active.pendingAgentMessage, normalized),
+          );
+        }
       } else if (active && params.item.type === "commandExecution") {
+        flushActiveAgentMessage(active, false);
         const correlation = eventCorrelation(
           message.method,
           diagnosticId,
@@ -5086,6 +5217,7 @@ export class CodexAppServer implements CodexRuntime {
         active.commandTelemetry.delete(params.item.id);
         rememberCompletedCommand(active, params.item.id);
       } else if (active && params.item.type === "fileChange") {
+        flushActiveAgentMessage(active, false);
         const startedAtMs =
           active.fileStartedAtMs.get(params.item.id) ?? observedAtMs;
         active.fileStartedAtMs.delete(params.item.id);
@@ -5108,6 +5240,7 @@ export class CodexAppServer implements CodexRuntime {
         );
         if (activity) active.onActivity?.(activity);
       } else if (active) {
+        flushActiveAgentMessage(active, false);
         const activity = normalizeCodexThreadItem(
           params.item,
           active.cwd,
@@ -5301,6 +5434,7 @@ export class CodexAppServer implements CodexRuntime {
           }),
         );
       }
+      flushActiveAgentMessage(active, params.turn.status === "completed");
       active.onActivity?.(
         turnSummaryActivity(
           {
@@ -5467,6 +5601,14 @@ export class CodexAppServer implements CodexRuntime {
               threadId: active.threadId,
               turnId,
               text,
+              ...(active.structuredChat
+                ? {
+                    structuredResult: parseWorkflowStructuredResult(
+                      text,
+                      active.workflowOutputSchema ?? {},
+                    ),
+                  }
+                : {}),
               status: "completed",
             }),
       );

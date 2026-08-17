@@ -72,6 +72,7 @@ const appLiveScopesSchema = z
 export const appLiveResourceSchema = z.enum([
   "server",
   "settings",
+  "policy",
   "worker",
   "project",
   "project-replica-job",
@@ -87,6 +88,7 @@ export const appLiveResourceSchema = z.enum([
   "chat-queue",
   "chat-goal",
   "chat-plan",
+  "task",
   "agent-interaction",
   "terminal",
   "explorer",
