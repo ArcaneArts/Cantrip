@@ -4584,9 +4584,9 @@ export function App() {
   useEffect(() => {
     if (!projects.data) return;
     if (explorerFileTarget) return;
-    if (showServerAdmin) return;
     const action = projectSelectionAction({
       compact: compactShell,
+      preserveCurrentDestination: showServerAdmin || showSettings,
       projects: projects.data,
       selectedProjectId,
       visibleProjects,
@@ -4612,6 +4612,7 @@ export function App() {
     projects.data,
     selectedProjectId,
     showServerAdmin,
+    showSettings,
     visibleProjects,
   ]);
 

@@ -62,6 +62,18 @@ describe("mobile project selection", () => {
       }),
     ).toEqual({ projectId: null, showImporter: true });
   });
+
+  it("preserves a managed root screen while workspace data refreshes", () => {
+    expect(
+      projectSelectionAction({
+        compact: false,
+        preserveCurrentDestination: true,
+        projects: [],
+        selectedProjectId: null,
+        visibleProjects: [],
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("mobile bottom tabs", () => {
