@@ -11,7 +11,7 @@ function usageContexts(symbol: string): string[] {
   return [...appSource.matchAll(new RegExp(symbol, "gu"))]
     .slice(1)
     .map((match) =>
-      appSource.slice(Math.max(0, match.index - 1_500), match.index + 200),
+      appSource.slice(Math.max(0, match.index - 4_000), match.index + 200),
     );
 }
 

@@ -11,6 +11,7 @@ import {
   boundedCommandOutput,
   changedFiles,
   codexChatApprovalPolicy,
+  codexChatThreadSecurityParams,
   codexResultForAgentInteraction,
   CodexAppServer,
   codexEndpointFromLine,
@@ -669,6 +670,7 @@ describe("codexWorktreeTurnPolicy", () => {
       codexWorktreeTurnPolicy({
         cwd: "/workspace/project",
         isPrimary: true,
+        resultMode: { kind: "visible" },
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
       }),
@@ -687,6 +689,7 @@ describe("codexWorktreeTurnPolicy", () => {
     const policy = codexWorktreeTurnPolicy({
       cwd: "/workspace/project/../project/feature",
       isPrimary: false,
+      resultMode: { kind: "visible" },
       worktreeMode: "pinned",
       worktreePolicy: "required-for-writes",
     });
@@ -707,6 +710,7 @@ describe("codexWorktreeTurnPolicy", () => {
       codexWorktreeTurnPolicy({
         cwd: "/workspace/project",
         isPrimary: true,
+        resultMode: { kind: "visible" },
         worktreeMode: "agent-managed",
         worktreePolicy: "required-for-writes",
         permissionProfileActive: true,
@@ -725,6 +729,7 @@ describe("codexWorktreeTurnPolicy", () => {
     const policy = codexWorktreeTurnPolicy({
       cwd: "/workspace/project",
       isPrimary: false,
+      resultMode: { kind: "visible" },
       policyContext:
         "Effective Cantrip policies apply.\n\n[review] Review\nRead the policy.",
       worktreeMode: "agent-managed",
@@ -737,9 +742,37 @@ describe("codexWorktreeTurnPolicy", () => {
     });
     expect(policy.additionalContext["cantrip.worktree-policy"]).toBeDefined();
   });
+
+  it("forces structured Task turns read-only even with implementation access", () => {
+    const policy = codexWorktreeTurnPolicy({
+      cwd: "/workspace/project",
+      isPrimary: false,
+      resultMode: { kind: "structured", outputSchema: { type: "object" } },
+      worktreeMode: "pinned",
+      worktreePolicy: "direct",
+      permissionProfileActive: true,
+      policyContext: "Effective policy summaries",
+    });
+    expect(policy.sandboxPolicy).toEqual({
+      type: "readOnly",
+      networkAccess: false,
+    });
+    expect(policy.additionalContext["cantrip.worktree-policy"].value).toContain(
+      "unconditionally read-only",
+    );
+    expect(policy.additionalContext["cantrip.policies"]?.value).toBe(
+      "Effective policy summaries",
+    );
+  });
 });
 
 describe("Codex permission profile params", () => {
+  it("disables approval escalation and implementation access for Task planning", () => {
+    expect(
+      codexChatThreadSecurityParams(":danger-full-access", true, true),
+    ).toEqual({ approvalPolicy: "never", sandbox: "read-only" });
+  });
+
   it("never composes beta permission profiles with the legacy sandbox", () => {
     expect(codexThreadPermissionParams(":read-only", true)).toEqual({
       permissions: ":read-only",

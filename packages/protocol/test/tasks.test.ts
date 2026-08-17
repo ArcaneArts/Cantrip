@@ -4,6 +4,9 @@ import {
   TASK_MARKDOWN_LIMIT,
   taskDetailSchema,
   taskDraftUpdateSchema,
+  taskFinalizerResultSchema,
+  taskOperationStartSchema,
+  taskPlannerResultSchema,
   taskQuestionAnswerListSchema,
   taskQuestionListSchema,
   taskQuestionSchema,
@@ -61,6 +64,27 @@ describe("Task protocol", () => {
       taskQuestionAnswerListSchema.safeParse([
         { questionId: "empty", optionId: null, freeform: "   " },
       ]).success,
+    ).toBe(false);
+  });
+
+  it("validates planner, finalizer, and idempotent operation contracts", () => {
+    expect(
+      taskPlannerResultSchema.parse({
+        planMarkdown: "# Complete plan",
+        questions: [question],
+      }).questions,
+    ).toHaveLength(1);
+    expect(
+      taskFinalizerResultSchema.parse({
+        finalPlanMarkdown: "# Final plan",
+        goalPrompt: "Implement every milestone in the final plan.",
+      }).goalPrompt,
+    ).toContain("every milestone");
+    expect(
+      taskOperationStartSchema.safeParse({
+        operationId: "not-an-idempotency-uuid",
+        rowVersion: 1,
+      }).success,
     ).toBe(false);
   });
 

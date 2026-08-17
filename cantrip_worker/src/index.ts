@@ -1498,6 +1498,7 @@ async function start(): Promise<void> {
           provider: command.provider,
           planMode: command.planMode,
           policyContext: command.policyContext,
+          resultMode: command.resultMode,
           prompt: command.prompt,
           skillNames: command.skillNames,
           threadId: command.threadId,

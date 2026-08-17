@@ -348,6 +348,7 @@ export interface ChatExecutionContext {
   automationPaused: boolean;
   chatId: string;
   cwd: string;
+  experience: ChatSummary["experience"];
   defaultPermissionProfileId?: UserSettings["defaultPermissionProfileId"];
   executionLaneId: string | null;
   isPrimary: boolean;
@@ -10287,6 +10288,7 @@ export class ServerRepository {
           automationPaused: row.chat.automationPaused,
           chatId,
           cwd: row.worktree.absolutePath,
+          experience: row.chat.experience as ChatSummary["experience"],
           defaultPermissionProfileId:
             (row.settings?.defaultPermissionProfileId as
               UserSettings["defaultPermissionProfileId"] | undefined) ??
@@ -13874,6 +13876,7 @@ export class ServerRepository {
       automationPaused: row.chat.automationPaused,
       chatId: row.chat.id,
       cwd: row.worktree.absolutePath,
+      experience: row.chat.experience as ChatSummary["experience"],
       defaultPermissionProfileId:
         (row.settings?.defaultPermissionProfileId as
           UserSettings["defaultPermissionProfileId"] | undefined) ??
