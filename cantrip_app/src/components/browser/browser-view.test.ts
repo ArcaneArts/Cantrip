@@ -5,6 +5,7 @@ import {
   browserPointerCoordinates,
   browserServiceDisplayName,
   browserServiceRequiresNewSurface,
+  browserSurfaceStartupState,
   browserTouchPoints,
   browserTunnelLocalUrl,
   filterBrowserServices,
@@ -206,5 +207,43 @@ describe("browserPointerCoordinates", () => {
         height: 600,
       }),
     ).toEqual({ x: 0, y: 600 });
+  });
+});
+
+describe("browserSurfaceStartupState", () => {
+  it("replaces the loading veil with an actionable startup failure", () => {
+    expect(
+      browserSurfaceStartupState({
+        error: "Could not connect to the worker browser.",
+        runtimeMessage: null,
+        runtimeStatus: "ready",
+        surfaceReady: false,
+      }),
+    ).toEqual({
+      failure: "Could not connect to the worker browser.",
+      loading: false,
+    });
+  });
+
+  it("keeps loading until the first frame and preserves runtime failures", () => {
+    expect(
+      browserSurfaceStartupState({
+        error: null,
+        runtimeMessage: null,
+        runtimeStatus: "ready",
+        surfaceReady: false,
+      }),
+    ).toEqual({ failure: null, loading: true });
+    expect(
+      browserSurfaceStartupState({
+        error: null,
+        runtimeMessage: "Chromium exited during startup.",
+        runtimeStatus: "error",
+        surfaceReady: false,
+      }),
+    ).toEqual({
+      failure: "Chromium exited during startup.",
+      loading: false,
+    });
   });
 });

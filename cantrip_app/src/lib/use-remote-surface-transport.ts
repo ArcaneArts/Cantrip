@@ -24,6 +24,7 @@ import {
 } from "./remote-surface-webrtc";
 
 const MAX_BUFFERED_SURFACE_BYTES = 8 * 1_024 * 1_024;
+export const REMOTE_SURFACE_SOCKET_OPEN_TIMEOUT_MS = 10_000;
 const encoder = new TextEncoder();
 
 export type RemoteSurfaceConnectionState =
@@ -80,6 +81,7 @@ export class RemoteSurfaceTransportClient {
   #lastInboundSequence = -1;
   #reconnectAttempt = 0;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  #socketOpenTimer: ReturnType<typeof setTimeout> | null = null;
   #sequence = 0;
   #socket: WebSocket | null = null;
   #started = false;
@@ -163,7 +165,6 @@ export class RemoteSurfaceTransportClient {
     this.#connectStartedAt = performance.now();
     this.#options.onConnectionState(state);
     this.#options.onConnecting?.(state);
-    this.#options.onError(null);
     clientLogger.debug("Remote surface transport connecting", {
       attempt: this.#reconnectAttempt + 1,
       event: "surface.transport.connecting",
@@ -204,6 +205,10 @@ export class RemoteSurfaceTransportClient {
     socket.binaryType = "arraybuffer";
     this.#socket = socket;
 
+    socket.addEventListener("open", () => {
+      if (this.#socket !== socket || this.#disposed) return;
+      this.cancelSocketOpenTimeout();
+    });
     socket.addEventListener("message", (event) => {
       if (this.#socket !== socket || this.#disposed) return;
       if (typeof event.data === "string") {
@@ -228,6 +233,7 @@ export class RemoteSurfaceTransportClient {
     });
     socket.addEventListener("close", (event) => {
       if (this.#socket !== socket || this.#disposed) return;
+      this.cancelSocketOpenTimeout();
       this.#attachmentId = null;
       clientLogger.debug("Remote surface transport disconnected", {
         closeCode: event.code,
@@ -257,6 +263,31 @@ export class RemoteSurfaceTransportClient {
       );
       this.scheduleReconnect();
     });
+    this.#socketOpenTimer = setTimeout(() => {
+      if (this.#socket !== socket || this.#disposed) return;
+      if (socket.readyState === 1) {
+        this.#socketOpenTimer = null;
+        return;
+      }
+      this.#socketOpenTimer = null;
+      this.#options.onError(this.#options.messages.connectionError);
+      clientLogger.rateLimited(
+        `surface-socket-timeout:${this.#options.surfaceKind ?? "remote"}:${this.#options.surfaceId}`,
+        "warn",
+        "Remote surface socket timed out while opening",
+        {
+          attempt: this.#reconnectAttempt + 1,
+          durationMs: REMOTE_SURFACE_SOCKET_OPEN_TIMEOUT_MS,
+          event: "surface.transport.socket-timeout",
+          operation: "connect",
+          reasonCode: "socket-open-timeout",
+          status: "timed-out",
+          subsystem: this.#options.surfaceKind ?? "remote-surface",
+          surfaceId: this.#options.surfaceId,
+        },
+      );
+      socket.close(1013, "Connection timed out");
+    }, REMOTE_SURFACE_SOCKET_OPEN_TIMEOUT_MS);
   }
 
   private handleConnectionMessage(data: string): void {
@@ -278,6 +309,7 @@ export class RemoteSurfaceTransportClient {
       }
       this.#reconnectAttempt = 0;
       this.#attachmentId = message.attachmentId;
+      this.#options.onError(null);
       this.#options.onConnectionState("ready");
       clientLogger.info("Remote surface transport is ready", {
         attempt: this.#reconnectAttempt + 1,
@@ -410,7 +442,14 @@ export class RemoteSurfaceTransportClient {
     this.#reconnectTimer = null;
   }
 
+  private cancelSocketOpenTimeout(): void {
+    if (!this.#socketOpenTimer) return;
+    clearTimeout(this.#socketOpenTimer);
+    this.#socketOpenTimer = null;
+  }
+
   private teardownConnection(): void {
+    this.cancelSocketOpenTimeout();
     const socket = this.#socket;
     this.#socket = null;
     const webRtc = this.#webRtc;

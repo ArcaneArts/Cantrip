@@ -7,6 +7,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  REMOTE_SURFACE_SOCKET_OPEN_TIMEOUT_MS,
   RemoteSurfaceTransportClient,
   remoteSurfaceReconnectDelay,
   type RemoteSurfaceTransportClientOptions,
@@ -40,6 +41,7 @@ class FakeWebSocket {
 
   open(): void {
     this.readyState = 1;
+    this.emit("open", {});
   }
 
   message(data: unknown): void {
@@ -169,6 +171,7 @@ describe("RemoteSurfaceTransportClient", () => {
     expect(run.onConnectionState).toHaveBeenLastCalledWith("connecting");
 
     ready(run.sockets[0]!, "websocket");
+    expect(run.onError).toHaveBeenLastCalledWith(null);
     expect(run.onConnectionState).toHaveBeenLastCalledWith("ready");
     expect(run.onTransportState).toHaveBeenLastCalledWith("fallback");
     expect(run.onActiveTransport).toHaveBeenLastCalledWith("websocket-relay");
@@ -251,6 +254,42 @@ describe("RemoteSurfaceTransportClient", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(run.sockets).toHaveLength(2);
     expect(run.onConnectionState).toHaveBeenLastCalledWith("reconnecting");
+    run.client.close();
+  });
+
+  it("bounds a stalled socket handshake and preserves the error while retrying", async () => {
+    vi.useFakeTimers();
+    const run = harness();
+
+    await vi.advanceTimersByTimeAsync(
+      REMOTE_SURFACE_SOCKET_OPEN_TIMEOUT_MS - 1,
+    );
+    expect(run.sockets[0]!.close).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(run.onError).toHaveBeenLastCalledWith("Could not connect");
+    expect(run.sockets[0]!.close).toHaveBeenCalledWith(
+      1013,
+      "Connection timed out",
+    );
+    expect(run.onConnectionState).toHaveBeenLastCalledWith("reconnecting");
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(run.sockets).toHaveLength(2);
+    expect(run.onError).toHaveBeenLastCalledWith("Could not connect");
+    run.client.close();
+  });
+
+  it("allows an open socket to wait for the worker attachment", async () => {
+    vi.useFakeTimers();
+    const run = harness();
+    run.sockets[0]!.open();
+
+    await vi.advanceTimersByTimeAsync(
+      REMOTE_SURFACE_SOCKET_OPEN_TIMEOUT_MS * 2,
+    );
+    expect(run.sockets[0]!.close).not.toHaveBeenCalled();
+    ready(run.sockets[0]!, "websocket");
+    expect(run.onConnectionState).toHaveBeenLastCalledWith("ready");
     run.client.close();
   });
 

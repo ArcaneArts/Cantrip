@@ -189,6 +189,23 @@ export function browserTouchPoints(
   return remoteSurfaceTouchPoints(touches, bounds, viewport);
 }
 
+export function browserSurfaceStartupState(input: {
+  error: string | null;
+  runtimeMessage: string | null;
+  runtimeStatus: "ready" | "recovering" | "error";
+  surfaceReady: boolean;
+}): { failure: string | null; loading: boolean } {
+  const failure =
+    input.error ??
+    (input.runtimeStatus === "error"
+      ? (input.runtimeMessage ?? "The worker browser could not recover.")
+      : null);
+  return {
+    failure,
+    loading: !input.surfaceReady && !failure,
+  };
+}
+
 export function BrowserView({
   browser,
   fleetDiscovery,
@@ -330,16 +347,22 @@ export function BrowserView({
     [browser.id],
   );
 
-  const { activeTransport, connectionState, error, sendFrame, setError } =
-    useRemoteSurfaceTransport({
-      surfaceKind: "browser",
-      surfaceId: browser.id,
-      webSocketUrl: () =>
-        remoteSurfaceWebSocketUrl(browser.id, viewportRef.current),
-      messages: browserTransportMessages,
-      onConnecting: () => remoteCanvasRef.current?.reset(),
-      onFrame: handleFrame,
-    });
+  const {
+    activeTransport,
+    connectionState,
+    error,
+    retry,
+    sendFrame,
+    setError,
+  } = useRemoteSurfaceTransport({
+    surfaceKind: "browser",
+    surfaceId: browser.id,
+    webSocketUrl: () =>
+      remoteSurfaceWebSocketUrl(browser.id, viewportRef.current),
+    messages: browserTransportMessages,
+    onConnecting: () => remoteCanvasRef.current?.reset(),
+    onFrame: handleFrame,
+  });
 
   const send = useCallback(
     (message: RemoteBrowserClientMessage) =>
@@ -351,6 +374,19 @@ export function BrowserView({
       ),
     [sendFrame],
   );
+
+  const startupState = browserSurfaceStartupState({
+    error,
+    runtimeMessage,
+    runtimeStatus,
+    surfaceReady,
+  });
+  const retryBrowser = () => {
+    setRuntimeStatus("ready");
+    setRuntimeMessage(null);
+    setError(null);
+    retry();
+  };
 
   useEffect(() => {
     setAddress(browser.url);
@@ -894,7 +930,7 @@ export function BrowserView({
                 ? "Reconnecting to browser…"
                 : "Starting browser…"
           }
-          visible={!surfaceReady}
+          visible={startupState.loading}
         />
         {surfaceReady &&
         (connectionState !== "ready" || runtimeStatus === "recovering") ? (
@@ -907,9 +943,22 @@ export function BrowserView({
                 : "Reconnecting…"}
           </div>
         ) : null}
-        {error || runtimeStatus === "error" ? (
-          <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-xl -translate-x-1/2 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg">
-            {error ?? runtimeMessage ?? "The worker browser could not recover."}
+        {startupState.failure ? (
+          <div
+            className={`absolute left-1/2 z-40 flex max-w-xl -translate-x-1/2 items-center gap-3 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg ${surfaceReady ? "bottom-4" : "top-1/2 -translate-y-1/2"}`}
+            role="alert"
+          >
+            <span>{startupState.failure}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 shrink-0"
+              onClick={retryBrowser}
+            >
+              <RefreshCw className="size-3.5" />
+              Retry
+            </Button>
           </div>
         ) : null}
         {clipboardMessage ? (
