@@ -38,6 +38,11 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return [["server-bootstrap"]];
     case "settings":
       return [["settings"]];
+    case "policy":
+      return [
+        ["policies"],
+        ...(event.entityId ? [["policy", event.entityId]] : []),
+      ];
     case "worker":
       return [["workers"], ["worker-management"], ["chat-sync"]];
     case "project":
@@ -216,6 +221,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       return [
         ["server-bootstrap"],
         ["settings"],
+        ["policies"],
+        ["policy-templates"],
         ["workers"],
         ["worker-management"],
         ["projects"],

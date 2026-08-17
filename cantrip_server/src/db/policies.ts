@@ -10,6 +10,7 @@ import {
   policyListSchema,
   policyOrderUpdateSchema,
   policySummarySchema,
+  policyTemplateResetSchema,
   policyUpdateSchema,
   type EffectivePolicyList,
   type EffectivePolicySource,
@@ -19,6 +20,7 @@ import {
   type PolicyList,
   type PolicyOrderUpdate,
   type PolicySummary,
+  type PolicyTemplateReset,
   type PolicyUpdate,
 } from "@cantrip/protocol/policies";
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
@@ -369,6 +371,63 @@ export class PolicyRepository {
         ...overrides,
       }),
       template.templateKey,
+    );
+  }
+
+  async resetFromTemplate(
+    ownerId: string,
+    policyId: string,
+    rawInput: PolicyTemplateReset,
+  ): Promise<PolicyDetail | null> {
+    const input = policyTemplateResetSchema.parse(rawInput);
+    const current = await this.database
+      .select()
+      .from(schema.policies)
+      .where(
+        and(
+          eq(schema.policies.id, policyId),
+          eq(schema.policies.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const policy = current[0];
+    if (!policy) return null;
+    if (!policy.templateKey) {
+      throw new PolicyScopeNotFoundError(
+        "This policy was not created from a packaged template.",
+      );
+    }
+    const template = getPackagedPolicyTemplate(policy.templateKey);
+    if (!template) {
+      throw new PolicyScopeNotFoundError("Policy template not found.");
+    }
+    const rows = await this.database
+      .update(schema.policies)
+      .set({
+        name: template.name,
+        summary: template.summary,
+        bodyMarkdown: template.bodyMarkdown,
+        ...(input.restoreDefaults
+          ? {
+              enabled: template.suggestedEnabled,
+              mandatory: template.suggestedMandatory,
+            }
+          : {}),
+        rowVersion: input.rowVersion + 1,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.policies.id, policyId),
+          eq(schema.policies.ownerId, ownerId),
+          eq(schema.policies.rowVersion, input.rowVersion),
+        ),
+      )
+      .returning();
+    if (rows[0]) return this.detail(rows[0]);
+    throw new PolicyConflictError(
+      "The policy changed in another session.",
+      "stale-version",
     );
   }
 

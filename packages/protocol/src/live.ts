@@ -72,6 +72,7 @@ const appLiveScopesSchema = z
 export const appLiveResourceSchema = z.enum([
   "server",
   "settings",
+  "policy",
   "worker",
   "project",
   "project-replica-job",

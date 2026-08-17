@@ -160,6 +160,16 @@ import {
   mcpServerListSchema,
   mcpServerSummarySchema,
   orderedIdsSchema,
+  policyCreateSchema,
+  policyDeleteSchema,
+  policyDetailSchema,
+  policyFromTemplateCreateSchema,
+  policyListSchema,
+  policyOrderUpdateSchema,
+  policyTemplateDetailSchema,
+  policyTemplateListSchema,
+  policyTemplateResetSchema,
+  policyUpdateSchema,
   projectListSchema,
   projectExternalChatDiscoverySchema,
   projectPreferredWorkerUpdateSchema,
@@ -287,6 +297,11 @@ import type {
   ModelProviderAccountCreate,
   ModelProviderAccountUpdate,
   ModelProviderUpdate,
+  PolicyCreate,
+  PolicyFromTemplateCreate,
+  PolicyOrderUpdate,
+  PolicyTemplateReset,
+  PolicyUpdate,
   McpServerConfiguration,
   McpServerCopy,
   ProjectViewKind,
@@ -649,6 +664,81 @@ export async function updateSettings(input: UserSettingsUpdate) {
       method: "PATCH",
       body: JSON.stringify(input),
     }),
+  );
+}
+
+export async function getPolicyTemplates() {
+  return policyTemplateListSchema.parse(await request("/api/policy-templates"));
+}
+
+export async function getPolicyTemplate(templateKey: string) {
+  return policyTemplateDetailSchema.parse(
+    await request(`/api/policy-templates/${encodeURIComponent(templateKey)}`),
+  );
+}
+
+export async function getPolicies() {
+  return policyListSchema.parse(await request("/api/policies"));
+}
+
+export async function getPolicy(policyId: string) {
+  return policyDetailSchema.parse(
+    await request(`/api/policies/${encodeURIComponent(policyId)}`),
+  );
+}
+
+export async function createPolicy(input: PolicyCreate) {
+  return policyDetailSchema.parse(
+    await post("/api/policies", policyCreateSchema.parse(input)),
+  );
+}
+
+export async function createPolicyFromTemplate(
+  templateKey: string,
+  input: PolicyFromTemplateCreate = {},
+) {
+  return policyDetailSchema.parse(
+    await post(
+      `/api/policies/from-template/${encodeURIComponent(templateKey)}`,
+      policyFromTemplateCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function updatePolicy(policyId: string, input: PolicyUpdate) {
+  return policyDetailSchema.parse(
+    await request(`/api/policies/${encodeURIComponent(policyId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(policyUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function deletePolicy(policyId: string, rowVersion: number) {
+  await request(`/api/policies/${encodeURIComponent(policyId)}`, {
+    method: "DELETE",
+    body: JSON.stringify(policyDeleteSchema.parse({ rowVersion })),
+  });
+}
+
+export async function reorderPolicies(input: PolicyOrderUpdate) {
+  return policyListSchema.parse(
+    await request("/api/policies/order", {
+      method: "PATCH",
+      body: JSON.stringify(policyOrderUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function resetPolicyFromTemplate(
+  policyId: string,
+  input: PolicyTemplateReset,
+) {
+  return policyDetailSchema.parse(
+    await post(
+      `/api/policies/${encodeURIComponent(policyId)}/reset-template`,
+      policyTemplateResetSchema.parse(input),
+    ),
   );
 }
 

@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   policyAssignmentUpdateSchema,
   policyCreateSchema,
+  policyDeleteSchema,
+  policyFromTemplateCreateSchema,
   policyKeySchema,
   policyOrderUpdateSchema,
   policyTemplateDetailSchema,
+  policyTemplateResetSchema,
   policyUpdateSchema,
 } from "../src/policies.js";
 
@@ -52,6 +55,23 @@ describe("policy protocol", () => {
         policyIds: ["one", "one"],
       }).success,
     ).toBe(false);
+  });
+
+  it("bounds template creation, reset, and deletion inputs", () => {
+    expect(policyFromTemplateCreateSchema.parse({})).toEqual({});
+    expect(
+      policyFromTemplateCreateSchema.parse({
+        key: "manual-change-protocol-2",
+      }),
+    ).toEqual({ key: "manual-change-protocol-2" });
+    expect(policyTemplateResetSchema.parse({ rowVersion: 2 })).toEqual({
+      rowVersion: 2,
+      restoreDefaults: false,
+    });
+    expect(policyDeleteSchema.parse({ rowVersion: 3 })).toEqual({
+      rowVersion: 3,
+    });
+    expect(() => policyTemplateResetSchema.parse({ rowVersion: 0 })).toThrow();
   });
 
   it("validates immutable packaged template metadata", () => {
