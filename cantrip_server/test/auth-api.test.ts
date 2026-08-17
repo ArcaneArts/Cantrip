@@ -77,6 +77,91 @@ afterAll(async () => {
 });
 
 describe("server account authentication", () => {
+  it("fails closed when session cookies or the pinned account disagree", async () => {
+    const config = await createConfig("accounts");
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      const owner = await app.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        headers: { origin, "x-cantrip-bootstrap-token": bootstrapToken },
+        payload: {
+          displayName: "First Owner",
+          email: "owner@example.com",
+          password,
+        },
+      });
+      const member = await database.repository.createAccount({
+        displayName: "Other Account",
+        email: "other@example.com",
+        normalizedEmail: "other@example.com",
+        passwordHash: await hashPassword(password),
+        role: "member",
+      });
+      const otherLogin = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        headers: { origin },
+        payload: { email: "other@example.com", password },
+      });
+      expect(otherLogin.statusCode).toBe(200);
+
+      const conflicting = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: {
+          cookie: `${sessionCookie(owner)}; ${sessionCookie(
+            otherLogin,
+            "__Host-cantrip_partitioned_session",
+          )}`,
+          origin,
+        },
+      });
+      expect(conflicting.statusCode).toBe(401);
+      expect(conflicting.json()).toMatchObject({
+        code: "session-cookie-conflict",
+      });
+      expect(responseCookies(conflicting)).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("__Host-cantrip_session="),
+          expect.stringContaining("__Host-cantrip_partitioned_session="),
+        ]),
+      );
+
+      const mismatchedPin = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: {
+          cookie: sessionCookie(owner),
+          origin,
+          "x-cantrip-account-id": member.id,
+        },
+      });
+      expect(mismatchedPin.statusCode).toBe(401);
+      expect(mismatchedPin.json()).toMatchObject({
+        code: "session-account-mismatch",
+      });
+      expect(responseCookies(mismatchedPin)).toHaveLength(2);
+
+      const matchingPair = await app.inject({
+        method: "GET",
+        url: "/api/auth/session",
+        headers: {
+          cookie: `${sessionCookie(owner)}; ${sessionCookie(
+            owner,
+            "__Host-cantrip_partitioned_session",
+          )}`,
+          origin,
+          "x-cantrip-account-id": owner.json().currentUser.id as string,
+        },
+      });
+      expect(matchingPair.statusCode).toBe(200);
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
   it("bootstraps an owner, protects owner data, enforces CSRF, and revokes sessions", async () => {
     const config = await createConfig("accounts");
     const database = await connectDatabase(config);

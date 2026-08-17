@@ -18,6 +18,7 @@ export interface WorkerConfig {
   name: string;
   serverUrl: string;
   enrollmentCode: string | null;
+  replacement: { workerId: string; credential: string } | null;
   token: string;
   tokenSource: "development" | "enrollment" | "environment" | "persisted";
   workerId: string;
@@ -60,6 +61,24 @@ export function readWorkerConfig(): WorkerConfig {
   );
   const enrollmentCode =
     process.env.CANTRIP_WORKER_ENROLLMENT_CODE?.trim() || null;
+  const replacementWorkerId =
+    process.env.CANTRIP_WORKER_REPLACES_ID?.trim() || null;
+  const replacementCredential =
+    process.env.CANTRIP_WORKER_REPLACES_CREDENTIAL?.trim() || null;
+  if (Boolean(replacementWorkerId) !== Boolean(replacementCredential)) {
+    throw new Error(
+      "CANTRIP_WORKER_REPLACES_ID and CANTRIP_WORKER_REPLACES_CREDENTIAL must be configured together.",
+    );
+  }
+  if ((replacementWorkerId || replacementCredential) && !enrollmentCode) {
+    throw new Error("Worker replacement requires an enrollment code.");
+  }
+  if (
+    replacementCredential &&
+    !/^ctwk_[A-Za-z0-9_-]{43}$/u.test(replacementCredential)
+  ) {
+    throw new Error("CANTRIP_WORKER_REPLACES_CREDENTIAL is malformed.");
+  }
   const environmentCredential =
     process.env.CANTRIP_WORKER_CREDENTIAL?.trim() || null;
   const legacyToken = process.env.CANTRIP_WORKER_TOKEN?.trim() || null;
@@ -131,6 +150,10 @@ export function readWorkerConfig(): WorkerConfig {
     dataDirectory,
     enrollmentCode: pendingEnrollmentCode,
     name: process.env.CANTRIP_WORKER_NAME ?? "Local Worker",
+    replacement:
+      replacementWorkerId && replacementCredential
+        ? { workerId: replacementWorkerId, credential: replacementCredential }
+        : null,
     serverUrl,
     token,
     tokenSource: pendingEnrollmentCode

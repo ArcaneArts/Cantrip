@@ -325,6 +325,8 @@ export interface ActiveWorkerCredential {
 export interface WorkerEnrollmentProvision {
   credential: WorkerCredentialSummary;
   ownerId: string;
+  replacedWorkerId: string | null;
+  revokedCredentialIds: string[];
   worker: WorkerSummary;
 }
 
@@ -6354,6 +6356,7 @@ export class ServerRepository {
     credentialHash: string;
     credentialId: string;
     heartbeat: WorkerHeartbeat;
+    replacement: { workerId: string; credentialHash: string } | null;
     scopes: WorkerCredentialScope[];
   }): Promise<WorkerEnrollmentProvision> {
     const now = new Date();
@@ -6375,6 +6378,74 @@ export class ServerRepository {
         throw new WorkerEnrollmentError(
           "This worker link code is invalid, expired, or already used.",
         );
+      }
+
+      if (input.replacement?.workerId === input.heartbeat.workerId) {
+        throw new WorkerEnrollmentError(
+          "A worker cannot replace its own identity during enrollment.",
+        );
+      }
+      let revokedCredentialIds: string[] = [];
+      if (input.replacement) {
+        const replacementCredentials = await transaction
+          .select()
+          .from(schema.workerCredentials)
+          .where(
+            and(
+              eq(schema.workerCredentials.workerId, input.replacement.workerId),
+              eq(
+                schema.workerCredentials.secretHash,
+                input.replacement.credentialHash,
+              ),
+              isNull(schema.workerCredentials.revokedAt),
+              or(
+                isNull(schema.workerCredentials.expiresAt),
+                gt(schema.workerCredentials.expiresAt, now),
+              ),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        const replacementCredential = replacementCredentials[0];
+        if (!replacementCredential) {
+          throw new WorkerEnrollmentError(
+            "The previous worker credential could not authorize reassignment.",
+          );
+        }
+        const replacementWorkers = await transaction
+          .select()
+          .from(schema.workers)
+          .where(eq(schema.workers.id, input.replacement.workerId))
+          .for("update")
+          .limit(1);
+        const replacementWorker = replacementWorkers[0];
+        if (
+          !replacementWorker ||
+          replacementWorker.ownerId !== replacementCredential.ownerId
+        ) {
+          throw new WorkerEnrollmentError(
+            "The previous worker identity and credential do not match.",
+          );
+        }
+        const revokedRows = await transaction
+          .update(schema.workerCredentials)
+          .set({
+            revokedAt: now,
+            revokedReason: "Worker reassigned to another account.",
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.workerCredentials.workerId, input.replacement.workerId),
+              isNull(schema.workerCredentials.revokedAt),
+            ),
+          )
+          .returning({ id: schema.workerCredentials.id });
+        revokedCredentialIds = revokedRows.map(({ id }) => id);
+        await transaction
+          .update(schema.workers)
+          .set({ unlinkedAt: now, updatedAt: now })
+          .where(eq(schema.workers.id, input.replacement.workerId));
       }
 
       const existingWorkers = await transaction
@@ -6480,6 +6551,8 @@ export class ServerRepository {
         .returning();
       return {
         ownerId: code.ownerId,
+        replacedWorkerId: input.replacement?.workerId ?? null,
+        revokedCredentialIds,
         worker: toWorkerSummary(firstOrThrow(workerRows, "enrolling a worker")),
         credential: toWorkerCredentialSummary(
           firstOrThrow(credentialRows, "creating a worker credential"),

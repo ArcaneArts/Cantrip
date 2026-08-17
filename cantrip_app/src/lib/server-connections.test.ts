@@ -14,6 +14,7 @@ import {
   getServerConnections,
   initializeServerConnections,
   normalizeServerUrl,
+  rememberActiveServerAccount,
   removeServerConnection,
   saveServerConnection,
   selectServerConnection,
@@ -99,6 +100,7 @@ describe("server connections", () => {
     expect(tauriApi.invoke).toHaveBeenCalledWith("local_server_url");
     expect(getServerConnections()).toEqual([
       {
+        accountId: null,
         id: "local",
         kind: "local",
         name: "Local",
@@ -106,6 +108,27 @@ describe("server connections", () => {
       },
     ]);
     expect(getActiveServerConnection()?.kind).toBe("local");
+  });
+
+  it("pins a remote server to one account unless sign-in explicitly replaces it", async () => {
+    await initializeServerConnections();
+    const remote = await saveServerConnection({
+      name: "Hosted",
+      url: "https://hosted.example",
+    });
+    await selectServerConnection(remote.id);
+
+    await expect(rememberActiveServerAccount("account-a")).resolves.toBe(true);
+    expect(getActiveServerConnection()?.accountId).toBe("account-a");
+    await expect(rememberActiveServerAccount("account-b")).resolves.toBe(false);
+    expect(getActiveServerConnection()?.accountId).toBe("account-a");
+    await expect(rememberActiveServerAccount("account-b", true)).resolves.toBe(
+      true,
+    );
+    expect(getActiveServerConnection()?.accountId).toBe("account-b");
+
+    await initializeServerConnections();
+    expect(getActiveServerConnection()?.accountId).toBe("account-b");
   });
 
   it("preserves profiles saved by another browser tab", async () => {

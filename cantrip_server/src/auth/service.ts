@@ -60,6 +60,16 @@ export function safeSecretMatch(candidate: string, expected: string): boolean {
   return timingSafeEqual(candidateBuffer, expectedBuffer);
 }
 
+export class ConflictingSessionCookiesError extends Error {
+  readonly statusCode = 401;
+
+  constructor() {
+    super(
+      "Conflicting Cantrip sessions were found. They were cleared; sign in again.",
+    );
+  }
+}
+
 function cookieValue(request: FastifyRequest, name: string): string | null {
   const header = request.headers.cookie;
   if (!header) return null;
@@ -116,6 +126,10 @@ export class UserSessionService {
   async resolve(
     request: FastifyRequest,
   ): Promise<(ActiveUserSession & { csrfToken: string }) | null> {
+    const resolved = new Map<
+      string,
+      { session: ActiveUserSession; token: string }
+    >();
     for (const name of [this.cookieName, this.partitionedCookieName]) {
       if (!name) continue;
       const token = cookieValue(request, name);
@@ -123,19 +137,21 @@ export class UserSessionService {
       const session = await this.repository.getActiveUserSession(
         hashSecret(token),
       );
-      if (session) {
-        const csrfToken = csrfTokenForSessionToken(token);
-        const csrfTokenHash = hashSecret(csrfToken);
-        if (session.csrfTokenHash !== csrfTokenHash) {
-          await this.repository.rotateSessionCsrfToken(
-            session.id,
-            csrfTokenHash,
-          );
-        }
-        return { ...session, csrfToken, csrfTokenHash };
-      }
+      if (session) resolved.set(session.id, { session, token });
     }
-    return null;
+    if (resolved.size > 1) throw new ConflictingSessionCookiesError();
+    const selected = resolved.values().next().value as
+      { session: ActiveUserSession; token: string } | undefined;
+    if (!selected) return null;
+    const csrfToken = csrfTokenForSessionToken(selected.token);
+    const csrfTokenHash = hashSecret(csrfToken);
+    if (selected.session.csrfTokenHash !== csrfTokenHash) {
+      await this.repository.rotateSessionCsrfToken(
+        selected.session.id,
+        csrfTokenHash,
+      );
+    }
+    return { ...selected.session, csrfToken, csrfTokenHash };
   }
 
   async resolvePrincipal(request: FastifyRequest) {

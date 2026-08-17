@@ -16,7 +16,7 @@ import {
 import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
-import { hashSecret } from "../src/auth/service.js";
+import { hashPassword, hashSecret } from "../src/auth/service.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { WorkerBridge } from "../src/workers/bridge.js";
@@ -90,6 +90,103 @@ afterAll(async () => {
 });
 
 describe("per-worker enrollment credentials", () => {
+  it("reassigns a desktop worker only with its old credential and revokes the prior account", async () => {
+    const config = await createConfig();
+    const database = await connectDatabase(config);
+    const bridge = new WorkerBridge();
+    const disconnect = vi.spyOn(bridge, "disconnect");
+    const app = await buildApp({
+      config,
+      database,
+      logger: false,
+      workerBridge: bridge,
+    });
+    try {
+      const passwordHash = await hashPassword(password);
+      const ownerA = await database.repository.createAccount({
+        displayName: "Owner A",
+        email: "a@example.com",
+        normalizedEmail: "a@example.com",
+        passwordHash,
+        role: "member",
+      });
+      const ownerB = await database.repository.createAccount({
+        displayName: "Owner B",
+        email: "b@example.com",
+        normalizedEmail: "b@example.com",
+        passwordHash,
+        role: "member",
+      });
+      const codeA = `ctwl_${"a".repeat(32)}`;
+      await database.repository.createWorkerEnrollmentCode({
+        codeHash: hashSecret(codeA),
+        createdBySessionId: null,
+        expiresAt: new Date(Date.now() + 60_000),
+        label: "Desktop A",
+        ownerId: ownerA.id,
+      });
+      const firstResponse = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/enroll",
+        payload: {
+          code: codeA,
+          heartbeat: heartbeat("desktop-old"),
+          replacement: null,
+        },
+      });
+      expect(firstResponse.statusCode).toBe(201);
+      const first = workerEnrollmentResultSchema.parse(firstResponse.json());
+
+      const codeB = `ctwl_${"b".repeat(32)}`;
+      await database.repository.createWorkerEnrollmentCode({
+        codeHash: hashSecret(codeB),
+        createdBySessionId: null,
+        expiresAt: new Date(Date.now() + 60_000),
+        label: "Desktop B",
+        ownerId: ownerB.id,
+      });
+      const reassignedResponse = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/enroll",
+        payload: {
+          code: codeB,
+          heartbeat: heartbeat("desktop-new"),
+          replacement: {
+            workerId: "desktop-old",
+            credential: first.credential,
+          },
+        },
+      });
+      expect(reassignedResponse.statusCode).toBe(201);
+      expect(
+        await database.repository.listWorkerManagement(ownerA.id),
+      ).toHaveLength(0);
+      expect(await database.repository.listWorkerManagement(ownerB.id)).toEqual(
+        [
+          expect.objectContaining({
+            worker: expect.objectContaining({ workerId: "desktop-new" }),
+          }),
+        ],
+      );
+      expect(disconnect).toHaveBeenCalledWith(
+        "desktop-old",
+        "Worker was reassigned to another account",
+      );
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/internal/workers/heartbeat",
+            headers: { authorization: `Bearer ${first.credential}` },
+            payload: heartbeat("desktop-old"),
+          })
+        ).statusCode,
+      ).toBe(401);
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
   it("pairs once, binds identity, rotates, and revokes without legacy fallback", async () => {
     const config = await createConfig();
     const database = await connectDatabase(config);

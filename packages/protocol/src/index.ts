@@ -546,6 +546,13 @@ export const workerCredentialListSchema = z.array(
 export const workerEnrollmentExchangeSchema = z.object({
   code: workerEnrollmentCodeSchema,
   heartbeat: workerHeartbeatSchema,
+  replacement: z
+    .object({
+      workerId: z.string().min(1).max(255),
+      credential: workerCredentialSecretSchema,
+    })
+    .nullable()
+    .default(null),
 });
 
 export const workerEnrollmentResultSchema = z.object({

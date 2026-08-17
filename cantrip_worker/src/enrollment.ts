@@ -39,6 +39,7 @@ export async function enrollWorker(
         workerEnrollmentExchangeSchema.parse({
           code: config.enrollmentCode,
           heartbeat,
+          replacement: config.replacement,
         }),
       ),
       headers: { "content-type": "application/json" },
@@ -91,6 +92,7 @@ export async function enrollWorker(
   config.token = enrolled.credential;
   config.tokenSource = "persisted";
   config.enrollmentCode = null;
+  config.replacement = null;
   workerLogger.event("info", "Worker enrollment completed", {
     event: "worker.enrollment.completed",
     subsystem: "worker-auth",

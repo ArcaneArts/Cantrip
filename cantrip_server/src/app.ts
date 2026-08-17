@@ -462,6 +462,7 @@ import {
 } from "./auth/principal.js";
 import {
   AuthRateLimiter,
+  ConflictingSessionCookiesError,
   createMobileSignInCode,
   DUMMY_PASSWORD_HASH,
   hashSecret,
@@ -2545,6 +2546,28 @@ export async function buildApp({
       );
       return reply.code(401).send({ error: "Authentication is required." });
     }
+    const expectedAccountId = request.headers["x-cantrip-account-id"];
+    if (
+      (!publicRoute(route) || route === "/api/auth/session") &&
+      typeof expectedAccountId === "string" &&
+      request.principal.state === "authenticated" &&
+      request.principal.user.id !== expectedAccountId
+    ) {
+      sessionService.clear(reply);
+      serverLogger.warn("Application session account pin did not match", {
+        event: "security.session-account-mismatch",
+        subsystem: "security",
+        operation: request.method,
+        reasonCode: "session-account-mismatch",
+        requestId: request.id,
+        status: "rejected",
+        route,
+      });
+      return reply.code(401).send({
+        code: "session-account-mismatch",
+        error: "This server connection changed accounts. Sign in again.",
+      });
+    }
     if (
       !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
       !csrfExemptRoute(route)
@@ -2660,6 +2683,21 @@ export async function buildApp({
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ConflictingSessionCookiesError) {
+      sessionService.clear(reply);
+      request.log.warn(
+        {
+          event: "security.session-cookie-conflict",
+          requestId: request.id,
+          route: request.routeOptions.url ?? request.url.split("?", 1)[0],
+        },
+        "Conflicting application session cookies were cleared",
+      );
+      return reply.code(401).send({
+        code: "session-cookie-conflict",
+        error: error.message,
+      });
+    }
     if (error instanceof AuthenticationRequiredError) {
       return reply.code(401).send({ error: error.message });
     }
@@ -20481,8 +20519,27 @@ export async function buildApp({
           credentialHash: generated.credentialHash,
           credentialId: generated.credentialId,
           heartbeat: input.data.heartbeat,
+          replacement: input.data.replacement
+            ? {
+                workerId: input.data.replacement.workerId,
+                credentialHash: hashSecret(input.data.replacement.credential),
+              }
+            : null,
           scopes: DEFAULT_WORKER_CREDENTIAL_SCOPES,
         });
+        for (const credentialId of provision.revokedCredentialIds) {
+          revokedWorkerCredentialIds.add(credentialId);
+        }
+        if (provision.replacedWorkerId) {
+          bridge.disconnect?.(
+            provision.replacedWorkerId,
+            "Worker was reassigned to another account",
+          );
+          workerPresenceFingerprints.delete(provision.replacedWorkerId);
+          publishLiveInvalidation("worker", {
+            entityId: provision.replacedWorkerId,
+          });
+        }
         await appendAudit(request, {
           action: "worker.paired",
           metadata: {
@@ -20505,6 +20562,7 @@ export async function buildApp({
           workerId: provision.worker.workerId,
           platform: provision.worker.platform,
           architecture: provision.worker.architecture,
+          replacedWorkerId: provision.replacedWorkerId ?? undefined,
         });
         return reply.code(201).send(
           workerEnrollmentResultSchema.parse({

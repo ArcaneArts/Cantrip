@@ -12,6 +12,7 @@ import {
 } from "./log-viewer-model";
 
 const localConnection: ServerConnection = {
+  accountId: null,
   id: "local",
   kind: "local",
   name: "Local",
