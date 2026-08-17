@@ -350,6 +350,67 @@ Capabilities are negotiated rather than inferred from a CLI version. Unsupported
 or development-only APIs are shown as unavailable instead of being invoked
 optimistically.
 
+### Policies
+
+Policies are reusable, owner-scoped Agent instructions stored by Cantrip Server
+rather than copied into repository files. Each policy has a stable CLI key,
+name, compact Agent-visible summary, full Markdown body, Enabled and Mandatory
+flags, global sort position, optional packaged-template provenance, and
+optimistic row version.
+
+Root **Settings → Policies** is the only policy-authoring surface. It supports:
+
+- search and a flat, divider-based ordered list;
+- pointer and keyboard sorting;
+- blank creation or copying the packaged Manual Change Protocol template;
+- Markdown edit/preview with bounded name, key, summary, and body fields;
+- enable/disable and user-controlled Mandatory scope;
+- assignment counts, template/custom provenance, reset confirmation, and
+  assignment-aware deletion confirmation;
+- optimistic conflict handling so another Settings window cannot silently
+  overwrite a newer edit or order.
+
+The packaged template catalog is immutable server distribution data. On the
+first Policy bootstrap for an owner, Cantrip copies the Manual Change Protocol
+template into one independent editable policy, enables it, and marks it
+Mandatory. A durable bootstrap marker makes this exactly-once: deleting the
+copy does not recreate it, and the packaged template remains available.
+
+Nonmandatory policies can be assigned to workspaces and projects. Effectiveness
+is:
+
+```text
+enabled AND (mandatory OR directly assigned OR inherited from any workspace)
+```
+
+A project in several workspaces receives the union. One policy row shows all
+effective sources—Mandatory, named workspaces, and direct project assignment—
+without duplication. Disabled policies retain assignments but stop applying.
+Workspace and Project Settings expose assignment controls and inherited-source
+labels; creation and content editing link back to root Settings.
+
+Every centralized Agent turn construction path resolves the current effective
+set before dispatch. Ordinary, Plan, Goal, queued, automation-delivered, and
+automatic-continuation turns receive one application-owned context value
+containing ordered keys, names, and summaries. Bodies, IDs, revisions,
+timestamps, and assignment internals are excluded. The context is limited to
+64 effective policies and 32 KiB of UTF-8 data; overflow rejects the whole turn
+with an actionable error rather than truncating an arbitrary tail.
+
+The Rust CLI exposes `cantrip policy list` and
+`cantrip policy read <policy-key>`, including global `--json` output. It
+uses the normal thread, terminal, or working-directory context resolver and
+authenticated worker broker, but the server performs the owner/project lookup.
+List output is body-free; read returns the current full Markdown only when the
+key is effective in that project. There are no policy mutation commands for
+Agents.
+
+Policy mutations publish owner-scoped live invalidations for root lists,
+details, workspace/project assignments, and effective queries, so independent
+Settings windows naturally refetch. Summaries and bodies are explicitly
+redacted from routine HTTP request logging. See [POLICIES.md](POLICIES.md) for
+the complete product, security, and failure contract.
+
 ### Terminal
 
 Terminal tabs are real worker PTYs, not command-output text areas. They support:
@@ -813,6 +874,8 @@ dashboards. Major sections are:
 - **Logs:** client, embedded-server, and worker logs;
 - **Tunnels:** global tunnel status/control;
 - **Workspaces:** names, default workspace, project memberships;
+- **Policies:** reusable instruction documents, template copies, ordering,
+  Enabled/Mandatory scope, and assignment counts;
 - **Skills:** global/project skill discovery and file management;
 - **MCP:** global/project MCP server configuration.
 
@@ -827,6 +890,7 @@ Project settings include:
 - Replicas;
 - Worktrees;
 - Tunnels;
+- Policies, including direct assignments and inherited/Mandatory sources;
 - Skills;
 - MCP.
 
@@ -914,6 +978,7 @@ origin, and a pairing code—not the user's password or a reusable session.
 - providers/models/routes/account priorities;
 - worker enrollment, replica/worktree metadata, placement, leases;
 - automations, workflow definitions/runs/triggers/gates;
+- policies, bootstrap state, and workspace/project policy assignments;
 - telemetry, audit, and update metadata.
 
 ### Worker-owned state
@@ -1054,6 +1119,7 @@ It resolves context primarily from injected thread/terminal identifiers and then
 from the current working directory. Representative operations include:
 
 - status/context inspection;
+- effective Policy list/read;
 - worktree list/create/status/switch/release/remove;
 - execution target list/show;
 - Explorer list/read/write;
@@ -1082,6 +1148,8 @@ inspection can still use standard shell tools.
 - **Cantrip Code:** bundled browser-native VS Code-derived workbench.
 - **Workflow:** durable graph orchestration above individual Codex turns.
 - **Automation:** simpler scheduled prompt with an optional single condition.
+- **Policy:** a server-owned reusable Agent instruction that is Mandatory or
+  assigned to selected workspaces/projects.
 
 ## Narrower design documents
 
@@ -1101,6 +1169,7 @@ summary:
 - [HOSTED_SECURITY_ARCHITECTURE.md](HOSTED_SECURITY_ARCHITECTURE.md)
 - [LIVE_TRANSPORT.md](LIVE_TRANSPORT.md)
 - [MULTI_WORKER_ARCHITECTURE.md](MULTI_WORKER_ARCHITECTURE.md)
+- [POLICIES.md](POLICIES.md)
 - [PROJECT_NETWORK_SHARES.md](PROJECT_NETWORK_SHARES.md)
 - [PROVIDER_AUTHENTICATION.md](PROVIDER_AUTHENTICATION.md)
 - [SERVICE_LOGS.md](SERVICE_LOGS.md)

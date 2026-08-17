@@ -292,6 +292,33 @@ describe.sequential("application live WebSocket", () => {
       ).toBe(true),
     );
 
+    const policyEventStart = messages.length;
+    const policyResponse = await app.inject({
+      method: "POST",
+      url: "/api/policies",
+      payload: {
+        key: "live-policy",
+        name: "Live policy",
+        summary: "Verify live invalidation across Settings windows.",
+        bodyMarkdown: "# Live policy",
+        enabled: true,
+        mandatory: false,
+      },
+    });
+    expect(policyResponse.statusCode).toBe(201);
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(policyEventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "policy" &&
+              message.scope.kind === "current-user",
+          ),
+      ).toBe(true),
+    );
+
     const messageEventStart = messages.length;
     const messageResponse = await app.inject({
       method: "POST",

@@ -191,6 +191,107 @@ describe("hosted tenant authorization", () => {
       expect(secondPolicies.policies[0]!.id).not.toBe(
         firstPolicies.policies[0]!.id,
       );
+      const privatePolicyBody =
+        "# First account instructions\n\nNever disclose tenant-policy-secret.";
+      const privatePolicyResponse = await app.inject({
+        method: "POST",
+        url: "/api/policies",
+        headers: headers(first, true),
+        payload: {
+          key: "first-private-policy",
+          name: "First private policy",
+          summary: "Instructions private to the first account.",
+          bodyMarkdown: privatePolicyBody,
+          enabled: true,
+          mandatory: false,
+        },
+      });
+      expect(privatePolicyResponse.statusCode).toBe(201);
+      const privatePolicyId = privatePolicyResponse.json().id as string;
+      const unknownPolicyId = "00000000-0000-0000-0000-00000000fff0";
+      for (const policyId of [privatePolicyId, unknownPolicyId]) {
+        const read = await app.inject({
+          method: "GET",
+          url: `/api/policies/${policyId}`,
+          headers: headers(second),
+        });
+        expect({
+          body: read.json(),
+          statusCode: read.statusCode,
+        }).toEqual({
+          body: { error: "Policy not found." },
+          statusCode: 404,
+        });
+
+        const update = await app.inject({
+          method: "PATCH",
+          url: `/api/policies/${policyId}`,
+          headers: headers(second, true),
+          payload: { rowVersion: 1, name: "Unauthorized policy update" },
+        });
+        expect({
+          body: update.json(),
+          statusCode: update.statusCode,
+        }).toEqual({
+          body: { error: "Policy not found." },
+          statusCode: 404,
+        });
+
+        const reset = await app.inject({
+          method: "POST",
+          url: `/api/policies/${policyId}/reset-template`,
+          headers: headers(second, true),
+          payload: { rowVersion: 1 },
+        });
+        expect({
+          body: reset.json(),
+          statusCode: reset.statusCode,
+        }).toEqual({
+          body: { error: "Policy not found." },
+          statusCode: 404,
+        });
+
+        const remove = await app.inject({
+          method: "DELETE",
+          url: `/api/policies/${policyId}`,
+          headers: headers(second, true),
+          payload: { rowVersion: 1 },
+        });
+        expect({
+          body: remove.json(),
+          statusCode: remove.statusCode,
+        }).toEqual({
+          body: { error: "Policy not found." },
+          statusCode: 404,
+        });
+        expect(
+          JSON.stringify([
+            read.json(),
+            update.json(),
+            reset.json(),
+            remove.json(),
+          ]),
+        ).not.toContain("tenant-policy-secret");
+      }
+      const secondPoliciesAfterCreate = await app.inject({
+        method: "GET",
+        url: "/api/policies",
+        headers: headers(second),
+      });
+      const firstPoliciesAfterCreate = (
+        await app.inject({
+          method: "GET",
+          url: "/api/policies",
+          headers: headers(first),
+        })
+      ).json() as {
+        collectionVersion: number;
+        policies: Array<{ id: string }>;
+      };
+      expect(JSON.stringify(secondPoliciesAfterCreate.json())).not.toContain(
+        "first-private-policy",
+      );
+
       expect(
         await app.inject({
           method: "GET",
@@ -211,11 +312,53 @@ describe("hosted tenant authorization", () => {
           url: `/api/projects/${project.id}/policies`,
           headers: headers(first, true),
           payload: {
-            collectionVersion: firstPolicies.collectionVersion,
+            collectionVersion: firstPoliciesAfterCreate.collectionVersion,
             policyIds: [secondPolicies.policies[0]!.id],
           },
         }),
       ).toMatchObject({ statusCode: 404 });
+      const privateWorkspace = await database.repository.createProjectWorkspace(
+        first.userId,
+        {
+          name: "First private workspace",
+        },
+      );
+      const secondPolicyCollection = secondPoliciesAfterCreate.json() as {
+        collectionVersion: number;
+        policies: Array<{ id: string }>;
+      };
+      for (const workspaceId of [
+        privateWorkspace.id,
+        "00000000-0000-0000-0000-00000000fff1",
+      ]) {
+        for (const method of ["GET", "PATCH"] as const) {
+          const response = await app.inject({
+            method,
+            url: `/api/workspaces/${workspaceId}/policies`,
+            headers: headers(second, method === "PATCH"),
+            ...(method === "PATCH"
+              ? {
+                  payload: {
+                    collectionVersion: secondPolicyCollection.collectionVersion,
+                    policyIds: [secondPolicyCollection.policies[0]!.id],
+                  },
+                }
+              : {}),
+          });
+          expect({
+            body: response.json(),
+            statusCode: response.statusCode,
+          }).toEqual({
+            body: {
+              error:
+                method === "GET"
+                  ? "Workspace not found."
+                  : "Policy workspace not found.",
+            },
+            statusCode: 404,
+          });
+        }
+      }
       const firstProjects = await app.inject({
         method: "GET",
         url: "/api/projects",

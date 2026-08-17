@@ -12,6 +12,7 @@ Help is layered so the root page remains readable:
 
 ```console
 cantrip -h
+cantrip policy -h
 cantrip worktree -h
 cantrip worktree create -h
 cantrip target -h
@@ -29,6 +30,11 @@ missing/ambiguous context, conflicts, or unavailable workers.
 ```console
 # Inspect where this shell or Codex turn is running.
 cantrip status
+
+# Read server-owned instructions effective for the current project.
+cantrip policy list
+cantrip policy read manual-change-protocol
+cantrip --json policy list
 
 # Worktrees use the current project automatically.
 cantrip worktree list
@@ -62,6 +68,24 @@ current revision. Use `--from`, `--existing`, or `--detach` only when that
 default is not appropriate. Removal deliberately reuses Cantrip's existing
 safety policy: Primary, dirty, externally created, leased, or actively bound
 worktrees cannot be removed through this command.
+
+## Policies
+
+`cantrip policy list` returns the current project's effective policies in
+configured order with key, name, summary, Mandatory flag, and effective source
+labels. It intentionally omits full bodies.
+
+`cantrip policy read <policy-key>` returns the current key, name, summary,
+and full Markdown body. The key must be effective for the resolved project;
+foreign, disabled, unassigned, and unknown keys all fail without revealing
+another policy. Policy operations are read-only in the CLI. Creation, editing,
+ordering, and assignment remain authenticated Settings operations owned by
+Cantrip Server.
+
+Agents receive the same effective summaries as bounded application context.
+The global Cantrip developer instruction directs them to read a full policy
+when its summary requires that. Policy bodies remain server-owned and are
+fetched only through the authenticated broker/server path.
 
 ## Context resolution
 

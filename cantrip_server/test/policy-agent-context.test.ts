@@ -75,4 +75,22 @@ describe("agent policy context", () => {
       ),
     ).toBeGreaterThan(POLICY_CONTEXT_BYTES_LIMIT);
   });
+
+  it("accepts the largest whole ordered set that fits the byte budget", () => {
+    const policies = Array.from({ length: 31 }, (_, index) => ({
+      key: `policy-${index}`,
+      name: `Policy ${index}`,
+      summary: "x".repeat(1_000),
+      mandatory: true,
+      sources: [{ type: "mandatory" as const }],
+    }));
+    const context = buildAgentPolicyContext({ policies }, "Budgeted project");
+
+    expect(context).not.toBeNull();
+    expect(Buffer.byteLength(context!, "utf8")).toBeLessThanOrEqual(
+      POLICY_CONTEXT_BYTES_LIMIT,
+    );
+    expect(context).toContain("[policy-0]");
+    expect(context).toContain("[policy-30]");
+  });
 });

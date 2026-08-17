@@ -608,7 +608,11 @@ import {
   sendWorkerRequestFailure,
 } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
-import { createServerLogStream, serverLogger } from "./logger.js";
+import {
+  createServerLogStream,
+  SERVER_LOG_REDACTION_PATHS,
+  serverLogger,
+} from "./logger.js";
 import type { RelayCoordinator } from "./coordination/relay-coordinator.js";
 import { OperationalMetrics } from "./operations/metrics.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
@@ -979,21 +983,7 @@ export async function buildApp({
       ? {
           stream: createServerLogStream(),
           redact: {
-            paths: [
-              "req.headers.authorization",
-              "req.headers.cookie",
-              "req.headers.x-cantrip-csrf",
-              "req.headers.x-cantrip-bootstrap-token",
-              "req.body.code",
-              "req.body.credential",
-              "req.body.apiKey",
-              "req.body.enrollmentCode",
-              "req.body.password",
-              "req.body.accessToken",
-              "req.body.refreshToken",
-              "req.body.idToken",
-              "res.headers.set-cookie",
-            ],
+            paths: [...SERVER_LOG_REDACTION_PATHS],
             censor: "[REDACTED]",
           },
         }

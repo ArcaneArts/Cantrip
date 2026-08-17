@@ -1,9 +1,18 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
 
-import { createServerLogStream } from "../src/logger.js";
+import {
+  createServerLogStream,
+  SERVER_LOG_REDACTION_PATHS,
+} from "../src/logger.js";
 
 describe("server logging", () => {
+  it("treats policy summaries and bodies as redacted request fields", () => {
+    expect(SERVER_LOG_REDACTION_PATHS).toEqual(
+      expect.arrayContaining(["req.body.summary", "req.body.bodyMarkdown"]),
+    );
+  });
+
   it("renders Fastify requests as one concise completion line", async () => {
     const lines: string[] = [];
     const app = Fastify({

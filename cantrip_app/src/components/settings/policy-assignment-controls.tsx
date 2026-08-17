@@ -133,7 +133,11 @@ export function PolicyAssignmentControls({
 
   if (assignments.isLoading && !assignments.data) {
     return (
-      <div className="grid min-h-36 place-items-center text-muted-foreground">
+      <div
+        role="status"
+        aria-label="Loading policy assignments"
+        className="grid min-h-36 place-items-center text-muted-foreground"
+      >
         <Loader2 className="size-5 animate-spin" />
       </div>
     );
@@ -165,7 +169,7 @@ export function PolicyAssignmentControls({
       </div>
 
       {requestError ? (
-        <p className="mb-3 text-sm text-destructive">
+        <p role="alert" className="mb-3 text-sm text-destructive">
           {errorMessage(
             requestError,
             "Policy assignments could not be loaded.",
