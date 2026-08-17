@@ -216,6 +216,11 @@ let projectId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId: "task-worker",
     name: "Task Worker",

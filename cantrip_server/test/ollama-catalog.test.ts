@@ -93,6 +93,7 @@ describe("Ollama catalog", () => {
         }),
       );
       await repository.ensureLocalIdentity();
+      await repository.ensureAccountConfiguration(LOCAL_USER_ID);
       await client.exec(`
         INSERT INTO workers (
           id, owner_id, name, platform, architecture, started_at, last_seen_at

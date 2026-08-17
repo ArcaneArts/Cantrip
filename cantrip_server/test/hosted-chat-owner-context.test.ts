@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
+import { DEFAULT_MODEL_ID } from "../src/db/repository.js";
 import type {
   WorkerCommandBus,
   WorkerRequestOptions,
@@ -132,6 +133,11 @@ describe("hosted chat owner context", () => {
       });
       expect(registration.statusCode).toBe(201);
       const ownerId = registration.json().currentUser.id as string;
+      await database.repository.ensureDefaultModelConfiguration(
+        ownerId,
+        config.agentModel,
+        config.ollamaBaseUrl,
+      );
       const authHeaders = {
         cookie: sessionCookie(registration),
         origin,
@@ -179,6 +185,13 @@ describe("hosted chat owner context", () => {
       });
       expect(chatResponse.statusCode, chatResponse.body).toBe(201);
       const chatId = chatResponse.json().id as string;
+      const modelResponse = await app.inject({
+        method: "PATCH",
+        url: `/api/chats/${chatId}/model`,
+        headers: authHeaders,
+        payload: { modelId: DEFAULT_MODEL_ID },
+      });
+      expect(modelResponse.statusCode, modelResponse.body).toBe(200);
 
       const turnResponse = await app.inject({
         method: "POST",
