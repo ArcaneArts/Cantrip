@@ -869,6 +869,88 @@ export const userSettings = pgTable(
   ],
 );
 
+export const policyOwnerStates = pgTable(
+  "policy_owner_states",
+  {
+    ownerId: text("owner_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    bootstrapVersion: integer("bootstrap_version").notNull().default(0),
+    collectionVersion: integer("collection_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "policy_owner_states_bootstrap_version_check",
+      sql`${table.bootstrapVersion} >= 0`,
+    ),
+    check(
+      "policy_owner_states_collection_version_check",
+      sql`${table.collectionVersion} >= 1`,
+    ),
+  ],
+);
+
+export const policies = pgTable(
+  "policies",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    summary: text("summary").notNull(),
+    bodyMarkdown: text("body_markdown").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    mandatory: boolean("mandatory").notNull().default(false),
+    position: integer("position").notNull().default(0),
+    templateKey: text("template_key"),
+    rowVersion: integer("row_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("policies_owner_key_unique").on(table.ownerId, table.key),
+    index("policies_owner_position_index").on(
+      table.ownerId,
+      table.position,
+      table.key,
+    ),
+    check(
+      "policies_key_length_check",
+      sql`length(${table.key}) BETWEEN 1 AND 80`,
+    ),
+    check(
+      "policies_key_format_check",
+      sql`${table.key} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    ),
+    check(
+      "policies_name_length_check",
+      sql`length(btrim(${table.name})) BETWEEN 1 AND 120`,
+    ),
+    check(
+      "policies_summary_length_check",
+      sql`length(btrim(${table.summary})) BETWEEN 1 AND 1000`,
+    ),
+    check(
+      "policies_body_length_check",
+      sql`length(${table.bodyMarkdown}) BETWEEN 1 AND 100000`,
+    ),
+    check("policies_position_check", sql`${table.position} >= 0`),
+    check("policies_row_version_check", sql`${table.rowVersion} >= 1`),
+  ],
+);
+
 export const workers = pgTable("workers", {
   id: text("id").primaryKey(),
   ownerId: text("owner_id")
@@ -1271,6 +1353,44 @@ export const projectWorkspaceMemberships = pgTable(
   (table) => [
     primaryKey({ columns: [table.workspaceId, table.projectId] }),
     index("project_workspace_memberships_project_index").on(table.projectId),
+  ],
+);
+
+export const projectPolicyAssignments = pgTable(
+  "project_policy_assignments",
+  {
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => policies.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.policyId, table.projectId] }),
+    index("project_policy_assignments_project_index").on(table.projectId),
+  ],
+);
+
+export const workspacePolicyAssignments = pgTable(
+  "workspace_policy_assignments",
+  {
+    policyId: text("policy_id")
+      .notNull()
+      .references(() => policies.id, { onDelete: "cascade" }),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => projectWorkspaces.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.policyId, table.workspaceId] }),
+    index("workspace_policy_assignments_workspace_index").on(table.workspaceId),
   ],
 );
 
