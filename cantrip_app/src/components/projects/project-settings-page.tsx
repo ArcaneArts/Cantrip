@@ -35,6 +35,7 @@ import {
   Route,
   ScanLine,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   SquareTerminal,
@@ -81,6 +82,7 @@ import { ProjectReplicaSettings } from "./project-replica-settings";
 import { ExternalChatImportSettings } from "./external-chat-import";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
+import { PolicyAssignmentControls } from "@/components/settings/policy-assignment-controls";
 import {
   SettingsSearchField,
   SettingsTabBar,
@@ -98,7 +100,8 @@ type ProjectSettingsSection =
   | "worktrees"
   | "tunnels"
   | "skills"
-  | "mcp";
+  | "mcp"
+  | "policies";
 
 const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
@@ -108,6 +111,7 @@ const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "replicas", label: "Replicas", icon: Database },
   { id: "worktrees", label: "Worktrees", icon: GitFork },
   { id: "tunnels", label: "Tunnels", icon: Route },
+  { id: "policies", label: "Policies", icon: ShieldCheck },
   { id: "skills", label: "Skills", icon: Sparkles },
   { id: "mcp", label: "MCP", icon: Cable },
 ];
@@ -221,6 +225,7 @@ export function ProjectSettingsPage({
   onRestoreChat,
   onOpenTunnelOwner,
   onOpenImportedChat,
+  onOpenPolicySettings,
   project,
   projectViews,
   statuses,
@@ -242,6 +247,7 @@ export function ProjectSettingsPage({
   onRestoreChat?(chat: ChatSummary): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
   onOpenImportedChat(chatId: string): void;
+  onOpenPolicySettings?(policyId?: string): void;
   project: ProjectSummary;
   projectViews: ProjectViewSummary[];
   statuses: WorktreeStatusMap;
@@ -436,6 +442,15 @@ export function ProjectSettingsPage({
       ) : null}
       {section === "replicas" ? (
         <ProjectReplicaSettings project={project} workers={workers} />
+      ) : null}
+      {section === "policies" ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+          <PolicyAssignmentControls
+            scope={{ kind: "project", id: project.id, name: project.name }}
+            onEditPolicy={onOpenPolicySettings}
+            onManagePolicies={onOpenPolicySettings}
+          />
+        </div>
       ) : null}
       <div
         className={cn(

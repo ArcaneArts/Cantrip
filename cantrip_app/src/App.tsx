@@ -2687,6 +2687,7 @@ export function App() {
   const [showServerAdmin, setShowServerAdmin] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
+  const [settingsPolicyId, setSettingsPolicyId] = useState<string | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
   const projectOverviewSelected =
     !isPopout &&
@@ -6019,6 +6020,8 @@ export function App() {
         ) : showSettings ? (
           <SettingsPage
             initialSection={settingsSection}
+            initialPolicyId={settingsPolicyId}
+            onPolicyOpenHandled={() => setSettingsPolicyId(null)}
             onOpenTunnelOwner={openTunnelOwner}
           />
         ) : showServerAdmin ? (
@@ -6075,6 +6078,14 @@ export function App() {
             onOpenImportedChat={(chatId) =>
               openCreatedTab(selectedProject.id, "chat", chatId)
             }
+            onOpenPolicySettings={(policyId) => {
+              setSettingsPolicyId(policyId ?? null);
+              setSettingsSection("policies");
+              setShowSettings(true);
+              setShowServerAdmin(false);
+              setShowImporter(false);
+              setShowProjectSettings(false);
+            }}
           />
         ) : showImporter ? (
           <RepositoryImporter

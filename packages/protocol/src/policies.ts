@@ -122,6 +122,31 @@ export const policyAssignmentUpdateSchema = z.object({
     ),
 });
 
+export const policyAssignmentListSchema = z
+  .object({
+    collectionVersion: z.number().int().positive(),
+    policies: z.array(policySummarySchema).max(POLICY_LIMIT),
+    directPolicyIds: z
+      .array(z.string().min(1))
+      .max(POLICY_LIMIT)
+      .refine(
+        uniquePolicyIds,
+        "Direct policy assignments cannot contain duplicate IDs.",
+      ),
+  })
+  .superRefine((value, context) => {
+    const available = new Set(value.policies.map(({ id }) => id));
+    for (const [index, policyId] of value.directPolicyIds.entries()) {
+      if (!available.has(policyId)) {
+        context.addIssue({
+          code: "custom",
+          message: "Direct assignments must reference a listed policy.",
+          path: ["directPolicyIds", index],
+        });
+      }
+    }
+  });
+
 export const policyFromTemplateCreateSchema = z
   .object({
     key: policyKeySchema.optional(),
@@ -183,6 +208,7 @@ export type PolicyOrderUpdate = z.infer<typeof policyOrderUpdateSchema>;
 export type PolicyAssignmentUpdate = z.infer<
   typeof policyAssignmentUpdateSchema
 >;
+export type PolicyAssignmentList = z.infer<typeof policyAssignmentListSchema>;
 export type PolicyFromTemplateCreate = z.infer<
   typeof policyFromTemplateCreateSchema
 >;

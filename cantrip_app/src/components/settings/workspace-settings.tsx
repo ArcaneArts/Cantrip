@@ -9,6 +9,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  ShieldCheck,
   Star,
   Trash2,
 } from "lucide-react";
@@ -34,6 +35,7 @@ import {
   updateProjectWorkspace,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { PolicyAssignmentControls } from "./policy-assignment-controls";
 
 function message(error: unknown): string {
   return errorMessage(error, "Workspace update failed.");
@@ -52,7 +54,11 @@ export function promoteDefaultWorkspace(
   );
 }
 
-export function WorkspaceSettings() {
+export function WorkspaceSettings({
+  onOpenPolicySettings,
+}: {
+  onOpenPolicySettings?(policyId?: string): void;
+}) {
   const queryClient = useQueryClient();
   const projects = useQuery({ queryFn: getProjects, queryKey: ["projects"] });
   const workspaces = useQuery({
@@ -64,8 +70,11 @@ export function WorkspaceSettings() {
   const [name, setName] = useState("");
   const [deleteTarget, setDeleteTarget] =
     useState<ProjectWorkspaceSummary | null>(null);
+  const [workspaceSections, setWorkspaceSections] = useState<
+    Record<string, "policies" | "projects">
+  >({});
 
-  const replaceWorkspace = (workspace: ProjectWorkspaceSummary) =>
+  const replaceWorkspace = (workspace: ProjectWorkspaceSummary) => {
     queryClient.setQueryData<ProjectWorkspaceSummary[]>(
       ["project-workspaces"],
       (current = []) =>
@@ -73,6 +82,8 @@ export function WorkspaceSettings() {
           ? current.map((item) => (item.id === workspace.id ? workspace : item))
           : [...current, workspace],
     );
+    void queryClient.invalidateQueries({ queryKey: ["effective-policies"] });
+  };
 
   const save = useMutation({
     mutationFn: () =>
@@ -116,6 +127,7 @@ export function WorkspaceSettings() {
         ["project-workspaces"],
         (current = []) => current.filter(({ id }) => id !== workspaceId),
       );
+      void queryClient.invalidateQueries({ queryKey: ["effective-policies"] });
       setDeleteTarget(null);
     },
   });
@@ -215,43 +227,100 @@ export function WorkspaceSettings() {
                   </Button>
                 ) : null}
               </div>
-              <div className="border-t p-2">
-                {(projects.data ?? []).length ? (
-                  <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {(projects.data ?? []).map((project: ProjectSummary) => {
-                      const checked = workspace.projectIds.includes(project.id);
-                      return (
-                        <label
-                          key={project.id}
-                          className="flex cursor-pointer items-center gap-2 px-2 py-2 text-sm hover:bg-muted/50"
-                        >
-                          <input
-                            type="checkbox"
-                            className="size-3.5 accent-primary"
-                            checked={checked}
-                            disabled={membership.isPending}
-                            onChange={(event) => {
-                              const ids = new Set(workspace.projectIds);
-                              if (event.target.checked) ids.add(project.id);
-                              else ids.delete(project.id);
-                              membership.mutate({
-                                workspaceId: workspace.id,
-                                projectIds: [...ids],
-                              });
-                            }}
-                          />
-                          <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="truncate">{project.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-                    Import a project before assigning workspace visibility.
-                  </p>
-                )}
+              <div className="flex items-center gap-1 border-t px-3 py-1.5">
+                <Button
+                  size="sm"
+                  variant={
+                    (workspaceSections[workspace.id] ?? "projects") ===
+                    "projects"
+                      ? "outline"
+                      : "ghost"
+                  }
+                  aria-pressed={
+                    (workspaceSections[workspace.id] ?? "projects") ===
+                    "projects"
+                  }
+                  onClick={() =>
+                    setWorkspaceSections((current) => ({
+                      ...current,
+                      [workspace.id]: "projects",
+                    }))
+                  }
+                >
+                  <FolderGit2 className="size-3.5" /> Projects
+                </Button>
+                <Button
+                  size="sm"
+                  variant={
+                    workspaceSections[workspace.id] === "policies"
+                      ? "outline"
+                      : "ghost"
+                  }
+                  aria-pressed={workspaceSections[workspace.id] === "policies"}
+                  onClick={() =>
+                    setWorkspaceSections((current) => ({
+                      ...current,
+                      [workspace.id]: "policies",
+                    }))
+                  }
+                >
+                  <ShieldCheck className="size-3.5" /> Policies
+                </Button>
               </div>
+              {(workspaceSections[workspace.id] ?? "projects") ===
+              "projects" ? (
+                <div className="border-t p-2">
+                  {(projects.data ?? []).length ? (
+                    <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
+                      {(projects.data ?? []).map((project: ProjectSummary) => {
+                        const checked = workspace.projectIds.includes(
+                          project.id,
+                        );
+                        return (
+                          <label
+                            key={project.id}
+                            className="flex cursor-pointer items-center gap-2 px-2 py-2 text-sm hover:bg-muted/50"
+                          >
+                            <input
+                              type="checkbox"
+                              className="size-3.5 accent-primary"
+                              checked={checked}
+                              disabled={membership.isPending}
+                              onChange={(event) => {
+                                const ids = new Set(workspace.projectIds);
+                                if (event.target.checked) ids.add(project.id);
+                                else ids.delete(project.id);
+                                membership.mutate({
+                                  workspaceId: workspace.id,
+                                  projectIds: [...ids],
+                                });
+                              }}
+                            />
+                            <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{project.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="px-2 py-4 text-center text-sm text-muted-foreground">
+                      Import a project before assigning workspace visibility.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="border-t p-3">
+                  <PolicyAssignmentControls
+                    scope={{
+                      kind: "workspace",
+                      id: workspace.id,
+                      name: workspace.name,
+                    }}
+                    onEditPolicy={onOpenPolicySettings}
+                    onManagePolicies={onOpenPolicySettings}
+                  />
+                </div>
+              )}
             </section>
           ))}
         </div>

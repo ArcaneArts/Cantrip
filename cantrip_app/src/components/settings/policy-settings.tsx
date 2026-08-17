@@ -252,7 +252,13 @@ function draftFromPolicy(policy: PolicyDetail): PolicyDraft {
   };
 }
 
-export function PolicySettings() {
+export function PolicySettings({
+  initialPolicyId = null,
+  onInitialPolicyHandled,
+}: {
+  initialPolicyId?: string | null;
+  onInitialPolicyHandled?(): void;
+}) {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
   const [chooserOpen, setChooserOpen] = useState(false);
@@ -262,6 +268,9 @@ export function PolicySettings() {
     null,
   );
   const [hydratedPolicyId, setHydratedPolicyId] = useState<string | null>(null);
+  const [handledInitialPolicyId, setHandledInitialPolicyId] = useState<
+    string | null
+  >(null);
   const [draft, setDraft] = useState<PolicyDraft>(emptyDraft);
   const [bodyMode, setBodyMode] = useState<"edit" | "preview">("edit");
   const [deleteTarget, setDeleteTarget] = useState<PolicySummary | null>(null);
@@ -294,6 +303,18 @@ export function PolicySettings() {
   }, [detail.data, editingPolicyId, editorOpen, hydratedPolicyId]);
   const activeDetail =
     editingPolicyId && detail.data?.id === editingPolicyId ? detail.data : null;
+
+  useEffect(() => {
+    if (!initialPolicyId || handledInitialPolicyId === initialPolicyId) return;
+    setEditingPolicyId(initialPolicyId);
+    setCreatingTemplateKey(null);
+    setHydratedPolicyId(null);
+    setDraft(emptyDraft);
+    setBodyMode("edit");
+    setEditorOpen(true);
+    setHandledInitialPolicyId(initialPolicyId);
+    onInitialPolicyHandled?.();
+  }, [handledInitialPolicyId, initialPolicyId, onInitialPolicyHandled]);
 
   const invalidatePolicies = async () => {
     await queryClient.invalidateQueries({ queryKey: ["policies"] });
