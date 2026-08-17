@@ -11,6 +11,15 @@ The project is inspired by the Codex desktop experience, but its architecture is
 Cantrip organizes work into GitHub-backed projects. Import an existing repository or create a public or private repository in a personal account or organization directly from the project picker. Empty repositories remain usable while they wait for their first commit. Each project has one source folder owned by a worker and can contain an ordered mix of:
 
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
+- Task-backed chats for large jobs. A Task starts as a full Markdown brief with
+  attachments, runs strictly read-only planning into a durable Markdown plan
+  and structured questions, supports repeated refinements and revision-safe
+  user edits, then finalizes and automatically starts one Goal on the same
+  Codex thread. Its dashboard keeps the immutable plan, Goal usage and controls,
+  live Agent activity, worker/worktree state, associated pull requests, and
+  nonblocking policy-cycle warnings together. Tasks survive tab changes,
+  desktop pop-outs, worker outages, relocation, archive/restore, and server
+  restarts. See [the Tasks contract](docs/TASKS.md).
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).

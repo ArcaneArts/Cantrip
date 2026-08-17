@@ -323,7 +323,12 @@ export function TaskImplementationDashboard({
             {tokenProgress !== null ? (
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
                 <div
+                  aria-label="Goal token budget used"
+                  aria-valuemax={100}
+                  aria-valuemin={0}
+                  aria-valuenow={Math.round(tokenProgress)}
                   className="h-full rounded-full bg-violet-500 transition-[width]"
+                  role="progressbar"
                   style={{ width: `${tokenProgress}%` }}
                 />
               </div>

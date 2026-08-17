@@ -334,6 +334,49 @@ On macOS and Windows, Cantrip can discover local Codex/ChatGPT CLI histories and
 import them as resumable forks. Import preserves source attribution without
 claiming ownership of the original history.
 
+### Tasks
+
+A Task is a specialized durable Chat experience for planning and completing a
+large job without inventing a second agent runtime. It uses the same project,
+worker/worktree placement, Codex thread, transcript, attachments, Inspector,
+console, permission profile, tab grouping, pop-out, relocation, and archive
+lifecycle as an Agent Chat. Only Task-backed Chats show the compact Task/Chat
+view toggle; the Chat side exposes the underlying transcript.
+
+The Task side moves through durable draft, planning, review, finalizing,
+implementing, paused, blocked, complete, and recoverable failure states:
+
+- The draft is a full-content Markdown editor with rename, attachment
+  drag/drop/paste, model/reasoning controls, Implementation access selection,
+  autosave, and optimistic conflict handling.
+- Planning and finalization always use a server-selected read-only execution
+  profile, regardless of Implementation access. Codex can inspect repository,
+  Git, attachments, and effective Policies, but cannot mutate files, Git,
+  GitHub, or side-effecting external tools.
+- A structured planner result replaces one server-owned Markdown plan and up to
+  twelve bounded questions with options, recommendations, required/freeform
+  behavior, saved answers, and optional overall direction.
+- Review supports repeated Continue Planning rounds and a revision-safe Monaco
+  Edit Plan flow. The durable planning-round history retains correlated inputs,
+  outputs, messages, execution lane, turn, and bounded failure state.
+- Begin Implementation performs one structured finalization, freezes an
+  immutable final plan and Goal prompt, and idempotently starts one Goal on the
+  same Chat. Effective Policy summaries and CLI policy-read instructions shape
+  the objective without copying Policy bodies into Task state.
+- The implementation dashboard shows Goal status, elapsed time and token use,
+  cooperative pause/resume/stop controls, active worker/worktree/branch and
+  dirty state, live Inspector activity, immutable plan, generated objective,
+  Task-associated GitHub pull requests, and advisory workflow warnings.
+
+Task state is server-authoritative and tenant-scoped. Row versions prevent
+cross-window draft/plan overwrites; operation and Goal-start keys prevent
+duplicate planning rounds or Goals after retries/restarts. Draft attachments are
+included in cross-worker relocation snapshots even before a transcript message
+references them. A worker outage leaves every artifact readable and retryable.
+Archiving preserves the Task and restores the Task view; permanent deletion
+cascades Task-only rows. Forking its transcript creates a normal Agent Chat.
+See [TASKS.md](TASKS.md) for the complete contract and acceptance criteria.
+
 #### Codex customization
 
 Project/global customization surfaces expose capabilities supported by the
@@ -1134,8 +1177,10 @@ inspection can still use standard shell tools.
 ## Terminology quick reference
 
 - **Agent:** user-facing name for a Codex-backed chat surface.
-- **Chat/thread/task:** the same durable conversation concept; APIs may use
-  “thread,” UI generally uses “Agent” or task.
+- **Chat/thread:** the same durable Agent conversation concept; Codex commonly
+  calls it a thread while Cantrip APIs use Chat.
+- **Task:** a specialized Chat experience with durable planning artifacts and
+  an automatic same-thread Goal handoff.
 - **Lane:** a concrete worker/replica/worktree runtime segment of a chat.
 - **Primary:** mandatory default worktree inside each replica.
 - **Replica:** one worker-local copy/installation of a logical project.
@@ -1144,7 +1189,8 @@ inspection can still use standard shell tools.
 - **Logical model:** user-facing model profile with ordered concrete routes.
 - **Attempt:** one concrete provider route execution for a turn.
 - **Interaction:** durable question/approval awaiting user resolution.
-- **Surface:** Agent, Terminal, Explorer, Code, Git, Browser, Remote Desktop.
+- **Surface:** Agent/Task, Terminal, Explorer, Code, Git, Browser, Remote
+  Desktop.
 - **Cantrip Code:** bundled browser-native VS Code-derived workbench.
 - **Workflow:** durable graph orchestration above individual Codex turns.
 - **Automation:** simpler scheduled prompt with an optional single condition.
@@ -1170,6 +1216,7 @@ summary:
 - [LIVE_TRANSPORT.md](LIVE_TRANSPORT.md)
 - [MULTI_WORKER_ARCHITECTURE.md](MULTI_WORKER_ARCHITECTURE.md)
 - [POLICIES.md](POLICIES.md)
+- [TASKS.md](TASKS.md)
 - [PROJECT_NETWORK_SHARES.md](PROJECT_NETWORK_SHARES.md)
 - [PROVIDER_AUTHENTICATION.md](PROVIDER_AUTHENTICATION.md)
 - [SERVICE_LOGS.md](SERVICE_LOGS.md)

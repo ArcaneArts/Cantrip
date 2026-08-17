@@ -1374,6 +1374,7 @@ function toArchivedChatSummary(
     id: chat.id,
     projectId: chat.projectId,
     title: chat.title,
+    experience: chat.experience as ArchivedChatSummary["experience"],
     messageCount,
     archivedAt: toISOString(chat.archivedAt),
     expiresAt: new Date(
