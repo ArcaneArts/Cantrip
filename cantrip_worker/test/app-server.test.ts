@@ -32,6 +32,7 @@ import {
   goalShouldContinue,
   isKnownCodexNotificationMethod,
   normalizeAgentMessage,
+  normalizeCodexThreadTurn,
   normalizeCodexThreadItem,
   normalizeNoticeActivity,
   normalizeRateLimitActivity,
@@ -42,6 +43,8 @@ import {
   parsePermissionProfileList,
   parseWorkflowStructuredResult,
   planQuestionId,
+  flushStagedAgentMessage,
+  stageAgentMessage,
   workflowMeasuredUsage,
 } from "../src/codex/app-server.js";
 
@@ -439,6 +442,150 @@ describe("Codex rich event normalization", () => {
       status: "failed",
       willRetry: true,
       correlation: { diagnosticId: "runtime-session:12" },
+    });
+  });
+
+  it("keeps model final-answer items provisional until the turn completes", () => {
+    const first = normalizeAgentMessage(
+      {
+        type: "agentMessage",
+        id: "message-1",
+        text: "I’ll inspect the repository first.",
+        phase: "final_answer",
+      },
+      { ...correlation, itemId: "message-1" },
+    )!;
+    const second = normalizeAgentMessage(
+      {
+        type: "agentMessage",
+        id: "message-2",
+        text: "Here is the completed answer.",
+        phase: "final_answer",
+      },
+      { ...correlation, itemId: "message-2" },
+    )!;
+
+    const stagedFirst = stageAgentMessage(null, first);
+    expect(stagedFirst).toMatchObject({ emitted: [], pending: first });
+
+    const continued = flushStagedAgentMessage(stagedFirst.pending, false);
+    expect(continued).toMatchObject({
+      emitted: [{ id: "message-1", phase: "commentary" }],
+      pending: null,
+    });
+
+    const stagedSecond = stageAgentMessage(continued.pending, second);
+    const completed = flushStagedAgentMessage(stagedSecond.pending, true);
+    expect(completed).toMatchObject({
+      emitted: [{ id: "message-2", phase: "final_answer" }],
+      pending: null,
+    });
+  });
+
+  it("demotes an earlier provisional answer when another answer arrives", () => {
+    const first = normalizeAgentMessage(
+      {
+        type: "agentMessage",
+        id: "message-1",
+        text: "First progress update.",
+        phase: "final_answer",
+      },
+      { ...correlation, itemId: "message-1" },
+    )!;
+    const second = normalizeAgentMessage(
+      {
+        type: "agentMessage",
+        id: "message-2",
+        text: "Second progress update.",
+        phase: "final_answer",
+      },
+      { ...correlation, itemId: "message-2" },
+    )!;
+
+    const stagedFirst = stageAgentMessage(null, first);
+    expect(stageAgentMessage(stagedFirst.pending, second)).toMatchObject({
+      emitted: [{ id: "message-1", phase: "commentary" }],
+      pending: { id: "message-2", phase: "final_answer" },
+    });
+  });
+
+  it("keeps only the last completed thread message as the final answer", () => {
+    const completed = normalizeCodexThreadTurn(
+      {
+        id: "turn-1",
+        status: "completed",
+        startedAt: 1,
+        completedAt: 2,
+        durationMs: 1_000,
+        error: null,
+        items: [
+          {
+            type: "agentMessage",
+            id: "message-1",
+            text: "I’ll inspect the repository first.",
+            phase: "final_answer",
+          },
+          {
+            type: "commandExecution",
+            id: "command-1",
+            command: "rg --files",
+            cwd: "/workspace",
+            status: "completed",
+            exitCode: 0,
+            aggregatedOutput: "README.md",
+            durationMs: 50,
+          },
+          {
+            type: "agentMessage",
+            id: "message-2",
+            text: "Here is the answer.",
+            phase: "final_answer",
+          },
+        ],
+      },
+      "/workspace",
+      "thread-1",
+    );
+
+    expect(completed.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "agentMessage",
+          id: "message-1",
+          phase: "commentary",
+        }),
+        expect.objectContaining({
+          type: "agentMessage",
+          id: "message-2",
+          phase: "final_answer",
+        }),
+      ]),
+    );
+
+    const running = normalizeCodexThreadTurn(
+      {
+        id: "turn-2",
+        status: "inProgress",
+        startedAt: 1,
+        completedAt: null,
+        durationMs: null,
+        error: null,
+        items: [
+          {
+            type: "agentMessage",
+            id: "message-running",
+            text: "I’m still looking.",
+            phase: "final_answer",
+          },
+        ],
+      },
+      "/workspace",
+      "thread-1",
+    );
+    expect(running.items[0]).toMatchObject({
+      type: "agentMessage",
+      id: "message-running",
+      phase: "commentary",
     });
   });
 });

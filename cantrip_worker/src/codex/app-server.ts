@@ -174,6 +174,7 @@ interface ActiveTurn {
   }) => void;
   onPlanQuestion?: (question: PendingPlanQuestion) => void;
   onPlanQuestionResolved?: (questionId: string) => void;
+  pendingAgentMessage: NormalizedAgentMessage | null;
   reasoningSummaries: Map<string, string[]>;
   reject(error: Error): void;
   resolve(result: AgentTurnResult | WorkflowNodeExecutionResult): void;
@@ -2148,6 +2149,62 @@ export function normalizeAgentMessage(
   });
 }
 
+export interface StagedAgentMessageResult {
+  emitted: NormalizedAgentMessage[];
+  pending: NormalizedAgentMessage | null;
+}
+
+function asCommentary(message: NormalizedAgentMessage): NormalizedAgentMessage {
+  return message.phase === "commentary"
+    ? message
+    : { ...message, phase: "commentary" };
+}
+
+export function stageAgentMessage(
+  pending: NormalizedAgentMessage | null,
+  message: NormalizedAgentMessage,
+): StagedAgentMessageResult {
+  if (message.phase === "commentary") {
+    return {
+      emitted: pending ? [asCommentary(pending), message] : [message],
+      pending: null,
+    };
+  }
+  return {
+    emitted: pending ? [asCommentary(pending)] : [],
+    pending: message,
+  };
+}
+
+export function flushStagedAgentMessage(
+  pending: NormalizedAgentMessage | null,
+  completed: boolean,
+): StagedAgentMessageResult {
+  return {
+    emitted: pending ? [completed ? pending : asCommentary(pending)] : [],
+    pending: null,
+  };
+}
+
+function publishStagedAgentMessages(
+  active: ActiveTurn,
+  staged: StagedAgentMessageResult,
+): void {
+  active.pendingAgentMessage = staged.pending;
+  for (const message of staged.emitted) {
+    if (!active.structuredChat || message.phase === "commentary") {
+      active.onMessage?.(message);
+    }
+  }
+}
+
+function flushActiveAgentMessage(active: ActiveTurn, completed: boolean): void {
+  publishStagedAgentMessages(
+    active,
+    flushStagedAgentMessage(active.pendingAgentMessage, completed),
+  );
+}
+
 export function normalizeTokenUsageActivity(
   params: ThreadTokenUsageUpdatedParams,
   correlation: CodexEventCorrelation,
@@ -2239,7 +2296,20 @@ export function normalizeCodexThreadTurn(
   threadId: string,
   externalAttachmentIdsByItemId: ReadonlyMap<string, string[]> = new Map(),
 ): AgentThreadSync["turns"][number] {
-  const items = turn.items.flatMap((item): AgentThreadSyncItem[] => {
+  let lastFinalMessageIndex = -1;
+  if (turn.status === "completed") {
+    for (let index = 0; index < turn.items.length; index += 1) {
+      const item = turn.items[index];
+      if (
+        item?.type === "agentMessage" &&
+        item.phase !== "commentary" &&
+        item.text?.trim()
+      ) {
+        lastFinalMessageIndex = index;
+      }
+    }
+  }
+  const items = turn.items.flatMap((item, index): AgentThreadSyncItem[] => {
     if (item.type === "userMessage") {
       const text = item.content
         .flatMap((content) =>
@@ -2265,7 +2335,15 @@ export function normalizeCodexThreadTurn(
         item,
         eventCorrelation("thread/read", null, threadId, turn.id, item.id),
       );
-      return message ? [{ type: "agentMessage", ...message }] : [];
+      if (!message) return [];
+      return [
+        {
+          type: "agentMessage",
+          ...(message.phase !== "commentary" && index !== lastFinalMessageIndex
+            ? asCommentary(message)
+            : message),
+        },
+      ];
     }
     const activity = normalizeCodexThreadItem(
       item,
@@ -2721,6 +2799,7 @@ export class CodexAppServer implements CodexRuntime {
         onPlan: options.onPlan,
         onPlanQuestion: options.onPlanQuestion,
         onPlanQuestionResolved: options.onPlanQuestionResolved,
+        pendingAgentMessage: null,
         reasoningSummaries: new Map(),
         reject,
         resolve,
@@ -2858,6 +2937,7 @@ export class CodexAppServer implements CodexRuntime {
         onInteractionExpired: options.onInteractionExpired,
         onInteractionRequest: options.onInteractionRequest,
         onPlan: options.onPlan,
+        pendingAgentMessage: null,
         reasoningSummaries: new Map(),
         reject,
         resolve,
@@ -5012,6 +5092,7 @@ export class CodexAppServer implements CodexRuntime {
       const params = message.params as ItemLifecycleParams;
       const active = this.#activeTurns.get(params.turnId);
       if (active && params.item.type !== "agentMessage") {
+        flushActiveAgentMessage(active, false);
         const observedAtMs = Date.now();
         const startedAtMs = params.startedAtMs ?? observedAtMs;
         const correlation = eventCorrelation(
@@ -5097,13 +5178,14 @@ export class CodexAppServer implements CodexRuntime {
             params.item.id,
           ),
         );
-        if (
-          normalized &&
-          (!active.structuredChat || normalized.phase === "commentary")
-        ) {
-          active.onMessage?.(normalized);
+        if (normalized) {
+          publishStagedAgentMessages(
+            active,
+            stageAgentMessage(active.pendingAgentMessage, normalized),
+          );
         }
       } else if (active && params.item.type === "commandExecution") {
+        flushActiveAgentMessage(active, false);
         const correlation = eventCorrelation(
           message.method,
           diagnosticId,
@@ -5135,6 +5217,7 @@ export class CodexAppServer implements CodexRuntime {
         active.commandTelemetry.delete(params.item.id);
         rememberCompletedCommand(active, params.item.id);
       } else if (active && params.item.type === "fileChange") {
+        flushActiveAgentMessage(active, false);
         const startedAtMs =
           active.fileStartedAtMs.get(params.item.id) ?? observedAtMs;
         active.fileStartedAtMs.delete(params.item.id);
@@ -5157,6 +5240,7 @@ export class CodexAppServer implements CodexRuntime {
         );
         if (activity) active.onActivity?.(activity);
       } else if (active) {
+        flushActiveAgentMessage(active, false);
         const activity = normalizeCodexThreadItem(
           params.item,
           active.cwd,
@@ -5350,6 +5434,7 @@ export class CodexAppServer implements CodexRuntime {
           }),
         );
       }
+      flushActiveAgentMessage(active, params.turn.status === "completed");
       active.onActivity?.(
         turnSummaryActivity(
           {
