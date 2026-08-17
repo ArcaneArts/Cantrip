@@ -119,6 +119,27 @@ test("publishes signed Android artifacts and uploads iOS to TestFlight", async (
   assert.match(exportOptions, /<string>app-store-connect<\/string>/u);
 });
 
+test("reuses matching iOS development and distribution identities", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+
+  assert.match(
+    workflow,
+    /IOS_DEVELOPMENT_CERTIFICATE: \$\{\{ secrets\.IOS_DEVELOPMENT_CERTIFICATE \}\}/u,
+  );
+  assert.match(
+    workflow,
+    /IOS_DEVELOPMENT_CERTIFICATE_PASSWORD: \$\{\{ secrets\.IOS_DEVELOPMENT_CERTIFICATE_PASSWORD \}\}/u,
+  );
+  assert.match(workflow, /security import "\$development_certificate"/u);
+  assert.match(workflow, /security import "\$distribution_certificate"/u);
+  assert.match(workflow, /grep -q 'Apple Development:'/u);
+  assert.match(workflow, /grep -q 'Apple Distribution:'/u);
+  assert.match(workflow, /"\$development_team_id" != "\$team_id"/u);
+});
+
 test("saves Codex before building Cantrip Code", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),
