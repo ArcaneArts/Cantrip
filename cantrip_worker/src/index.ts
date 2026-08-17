@@ -1497,6 +1497,7 @@ async function start(): Promise<void> {
           permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           planMode: command.planMode,
+          policyContext: command.policyContext,
           prompt: command.prompt,
           skillNames: command.skillNames,
           threadId: command.threadId,

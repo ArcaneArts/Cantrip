@@ -452,12 +452,15 @@ import {
 } from "@cantrip/protocol/workflows";
 import {
   effectivePolicyListSchema,
+  policyCliListResultSchema,
+  policyCliReadResultSchema,
   policyAssignmentListSchema,
   policyAssignmentUpdateSchema,
   policyCreateSchema,
   policyDeleteSchema,
   policyDetailSchema,
   policyFromTemplateCreateSchema,
+  policyKeySchema,
   policyListSchema,
   policyOrderUpdateSchema,
   policyTemplateDetailSchema,
@@ -468,6 +471,7 @@ import {
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
+import { buildAgentPolicyContext } from "./policies/agent-context.js";
 import {
   authenticatedPrincipal,
   AuthenticationRequiredError,
@@ -4692,6 +4696,68 @@ export async function buildApp({
       return cantripCliCommandResultSchema.parse({ ...result, mutated: true });
     };
     switch (call.command) {
+      case "policy.list": {
+        const effective = await repository.policies.resolveEffective(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        if (!effective) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "The current project no longer exists.",
+          );
+        }
+        const data = policyCliListResultSchema.parse(effective);
+        return cantripCliCommandResultSchema.parse({
+          summary: `Found ${data.policies.length} effective polic${data.policies.length === 1 ? "y" : "ies"}.`,
+          worktreeId: context.worktreeId,
+          data,
+        });
+      }
+      case "policy.read": {
+        const key = policyKeySchema.parse(
+          requiredToolString(call.arguments, "key"),
+        );
+        const effective = await repository.policies.resolveEffective(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        const summary = effective?.policies.find(
+          (policy) => policy.key === key,
+        );
+        if (!summary) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            `Policy ${key} is not effective for the current project.`,
+          );
+        }
+        const current = await repository.policies.getByKey(
+          applicationOwnerId(),
+          key,
+        );
+        if (!current?.enabled) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            `Policy ${key} is not effective for the current project.`,
+          );
+        }
+        const data = policyCliReadResultSchema.parse({
+          policy: {
+            key: current.key,
+            name: current.name,
+            summary: current.summary,
+            bodyMarkdown: current.bodyMarkdown,
+          },
+        });
+        return cantripCliCommandResultSchema.parse({
+          summary: `Read policy ${key}.`,
+          worktreeId: context.worktreeId,
+          data,
+        });
+      }
       case "worktree.list":
         return executeExecutionOperation(context, {
           operation: "worktrees.list",
@@ -5924,6 +5990,17 @@ export async function buildApp({
     );
     const turnMode = input.mode ?? "default";
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
+    const effectivePolicies = await repository.policies.resolveEffective(
+      ownerId,
+      context.projectId,
+    );
+    if (!effectivePolicies) {
+      throw new Error("The chat project is no longer available.");
+    }
+    const policyContext = buildAgentPolicyContext(
+      effectivePolicies,
+      context.projectId,
+    );
     await prepareCodeEditorsForTurn(context);
     const mcpServers = await repository.listEffectiveMcpServers(
       ownerId,
@@ -6173,6 +6250,7 @@ export async function buildApp({
                 isPrimary: execution.isPrimary,
                 worktreeMode: execution.worktreeMode,
                 worktreePolicy: execution.worktreePolicy,
+                policyContext,
                 prompt: workerPrompt,
                 attachments: attachments.map((attachment) => ({
                   id: attachment.id,
