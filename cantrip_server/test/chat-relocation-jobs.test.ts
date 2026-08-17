@@ -51,6 +51,20 @@ async function createChat(title: string) {
   return chat!;
 }
 
+async function createTask(title: string) {
+  const created = await database.repository.createTask(
+    LOCAL_USER_ID,
+    projectId,
+    {
+      title,
+      worktreeId: alphaWorktreeId,
+      worktreeMode: "agent-managed",
+    },
+    () => true,
+  );
+  return created!;
+}
+
 function betaPlacement(chatId: string) {
   return {
     projectId,
@@ -301,6 +315,90 @@ describe.sequential("durable chat relocation jobs", () => {
       },
       job: { state: "succeeded", targetRuntimeThreadId: "thread-beta" },
     });
+  });
+
+  it("includes Task draft attachments before and after an idle relocation wait", async () => {
+    const created = await createTask("Relocate a draft Task");
+    const attachment = await database.repository.createChatAttachment(
+      LOCAL_USER_ID,
+      created.chat.id,
+      {
+        id: "task-draft-relocation-attachment",
+        workerId: "worker-alpha",
+        fileName: "task-context.md",
+        mimeType: "text/markdown",
+        sizeBytes: 14,
+        kind: "text",
+        source: "file",
+        previewText: "# Task context",
+        sha256: "b".repeat(64),
+      },
+    );
+    expect(attachment).not.toBeNull();
+    await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created.chat.id,
+      {
+        rowVersion: created.task.rowVersion,
+        briefMarkdown: "Use the selected attachment while planning.",
+        draftAttachmentIds: [attachment!.id],
+      },
+    );
+
+    const immediateJob = await database.repository.chatRelocationJobs.create(
+      LOCAL_USER_ID,
+      created.chat.id,
+      betaPlacement(created.chat.id),
+      "relocate:task-draft-immediate",
+    );
+    expect(
+      await database.repository.chatRelocationJobs.getSnapshot(
+        LOCAL_USER_ID,
+        immediateJob.id,
+      ),
+    ).toMatchObject({
+      summary: { attachmentCount: 1, messageCount: 0 },
+      payload: {
+        attachments: [
+          expect.objectContaining({
+            attachment: expect.objectContaining({ id: attachment!.id }),
+            sourceWorkerId: "worker-alpha",
+          }),
+        ],
+      },
+    });
+    await database.repository.chatRelocationJobs.cancel(
+      LOCAL_USER_ID,
+      immediateJob.id,
+      immediateJob.stateRevision,
+    );
+
+    await database.repository.setChatStatus(created.chat.id, "running");
+    const waitingJob = await database.repository.chatRelocationJobs.create(
+      LOCAL_USER_ID,
+      created.chat.id,
+      betaPlacement(created.chat.id),
+      "relocate:task-draft-waiting",
+    );
+    expect(waitingJob.state).toBe("waiting-for-idle");
+    await database.repository.setChatStatus(created.chat.id, "idle");
+    const claimed = await database.repository.chatRelocationJobs.claimNext();
+    expect(claimed?.job.id).toBe(waitingJob.id);
+    expect(claimed?.snapshot).toMatchObject({
+      summary: { attachmentCount: 1, messageCount: 0 },
+      payload: {
+        attachments: [
+          expect.objectContaining({
+            attachment: expect.objectContaining({ id: attachment!.id }),
+          }),
+        ],
+      },
+    });
+    await database.repository.chatRelocationJobs.cancel(
+      LOCAL_USER_ID,
+      waitingJob.id,
+      claimed!.job.stateRevision,
+    );
   });
 
   it("waits for idle, supports safe cancellation, and leaves placement intact on stale commit", async () => {

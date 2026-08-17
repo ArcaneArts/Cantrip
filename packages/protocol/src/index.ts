@@ -3158,6 +3158,7 @@ export const archivedChatSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   title: z.string().min(1),
+  experience: z.enum(["agent", "task"]).default("agent"),
   messageCount: z.number().int().nonnegative(),
   archivedAt: z.string().datetime(),
   expiresAt: z.string().datetime(),

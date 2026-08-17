@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  archivedChatListSchema,
   chatAttachmentListSchema,
   chatListSchema,
   chatMessageListSchema,
@@ -374,6 +375,128 @@ describe.sequential("Task domain foundation", () => {
     expect(
       await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
     ).toMatchObject({ briefMarkdown: "A durable implementation brief" });
+
+    expect(
+      await database.repository.tasks.updateDraft(
+        "other-owner",
+        created!.chat.id,
+        {
+          rowVersion: updated.rowVersion,
+          briefMarkdown: "Cross-tenant overwrite",
+        },
+      ),
+    ).toBeNull();
+    expect(
+      await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
+    ).toMatchObject({ briefMarkdown: "A durable implementation brief" });
+  });
+
+  it("preserves Task state through archive, restore, and ordinary Chat forking", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Lifecycle Task", worktreeMode: "agent-managed" },
+    );
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown: "Keep this durable Task state across archival.",
+      },
+    );
+    await database.repository.appendMessage(LOCAL_USER_ID, created!.chat.id, {
+      role: "user",
+      content: [{ type: "text", text: "A canonical Task message." }],
+      idempotencyKey: "task-lifecycle-message",
+    });
+
+    const forkedResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${created!.chat.id}/fork`,
+      payload: {},
+    });
+    expect(forkedResponse.statusCode).toBe(201);
+    expect(chatSummarySchema.parse(forkedResponse.json())).toMatchObject({
+      experience: "agent",
+      title: "Lifecycle Task (fork)",
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${created!.chat.id}`,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      archivedChatListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/projects/${projectId}/archived-chats`,
+          })
+        ).json(),
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          experience: "task",
+          id: created!.chat.id,
+          messageCount: 1,
+        }),
+      ]),
+    );
+    expect(
+      await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
+    ).toMatchObject({
+      briefMarkdown: drafted!.briefMarkdown,
+      rowVersion: drafted!.rowVersion,
+    });
+
+    const restoredResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${created!.chat.id}/restore`,
+    });
+    expect(restoredResponse.statusCode).toBe(200);
+    expect(chatSummarySchema.parse(restoredResponse.json())).toMatchObject({
+      experience: "task",
+      id: created!.chat.id,
+    });
+    expect(
+      taskDetailSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/tasks/${created!.chat.id}`,
+          })
+        ).json(),
+      ),
+    ).toMatchObject({
+      briefMarkdown: drafted!.briefMarkdown,
+      rowVersion: drafted!.rowVersion,
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${created!.chat.id}`,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/chats/${created!.chat.id}/permanent`,
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      await database.repository.tasks.get(LOCAL_USER_ID, created!.chat.id),
+    ).toBeNull();
   });
 
   it("hydrates only the ordered attachments selected by the Task draft", async () => {
