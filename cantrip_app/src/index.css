@@ -360,12 +360,44 @@
   }
 }
 
+@keyframes chat-working-shimmer {
+  from {
+    background-position: 150% 50%;
+  }
+
+  to {
+    background-position: -50% 50%;
+  }
+}
+
+.chat-working-shimmer {
+  display: inline-block;
+  color: transparent;
+  background-image: linear-gradient(
+    105deg,
+    color-mix(in oklab, var(--muted-foreground) 55%, transparent) 25%,
+    var(--foreground) 48%,
+    color-mix(in oklab, var(--muted-foreground) 55%, transparent) 72%
+  );
+  background-position: 150% 50%;
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: chat-working-shimmer 1.8s linear infinite;
+}
+
 .agent-inspect-recent-command {
   animation: agent-inspect-recent-command 3s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .agent-inspect-recent-command {
+    animation: none;
+  }
+
+  .chat-working-shimmer {
+    color: var(--muted-foreground);
+    background: none;
     animation: none;
   }
 }
