@@ -2591,6 +2591,18 @@ export async function continueTaskPlanning(
   );
 }
 
+export async function beginTaskImplementation(
+  chatId: string,
+  input: TaskContinuationStart,
+) {
+  return taskDetailSchema.parse(
+    await post(
+      `/api/tasks/${encodeURIComponent(chatId)}/begin-implementation`,
+      taskContinuationStartSchema.parse(input),
+    ),
+  );
+}
+
 export async function retryTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
