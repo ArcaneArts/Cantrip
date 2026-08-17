@@ -237,6 +237,19 @@ describe("policy persistence", () => {
         },
       );
 
+      expect(
+        await repository.policies.listWorkspaceAssignments(
+          LOCAL_USER_ID,
+          secondWorkspace.id,
+        ),
+      ).toMatchObject({ directPolicyIds: [scoped.id] });
+      expect(
+        await repository.policies.listProjectAssignments(
+          LOCAL_USER_ID,
+          project.id,
+        ),
+      ).toMatchObject({ directPolicyIds: [scoped.id, disabled.id] });
+
       const effective = await repository.policies.resolveEffective(
         LOCAL_USER_ID,
         project.id,
@@ -286,6 +299,12 @@ describe("policy persistence", () => {
       });
       expect(
         await repository.policies.resolveEffective("other-owner", project.id),
+      ).toBeNull();
+      expect(
+        await repository.policies.listProjectAssignments(
+          "other-owner",
+          project.id,
+        ),
       ).toBeNull();
       const otherCollection = await repository.policies.list("other-owner");
       await expect(

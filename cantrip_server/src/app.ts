@@ -451,6 +451,9 @@ import {
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 import {
+  effectivePolicyListSchema,
+  policyAssignmentListSchema,
+  policyAssignmentUpdateSchema,
   policyCreateSchema,
   policyDeleteSchema,
   policyDetailSchema,
@@ -799,8 +802,16 @@ type ChatLiveResource = Extract<
 >;
 
 function mutationLiveResources(route: string): AppLiveResource[] {
-  if (route === "/api/policies" || route.startsWith("/api/policies/")) {
+  if (
+    route === "/api/policies" ||
+    route.startsWith("/api/policies/") ||
+    route === "/api/projects/:projectId/policies" ||
+    route === "/api/workspaces/:workspaceId/policies"
+  ) {
     return ["policy"];
+  }
+  if (route === "/api/workspaces" || route.startsWith("/api/workspaces/")) {
+    return ["project", "policy"];
   }
   if (route === "/api/tunnels" || route.startsWith("/api/tunnels/")) {
     return ["tunnel"];
@@ -2898,12 +2909,21 @@ export async function buildApp({
       params.viewId,
       params.workerId,
       params.policyId,
+      params.workspaceId,
       params.tunnelId,
       params.attachmentId,
       params.projectId,
     ].find((value): value is string => typeof value === "string");
     for (const resource of resources) {
-      publishLiveInvalidation(resource, { entityId, projectId });
+      publishLiveInvalidation(resource, {
+        entityId:
+          resource === "policy"
+            ? typeof params.policyId === "string"
+              ? params.policyId
+              : null
+            : entityId,
+        projectId: resource === "policy" ? null : projectId,
+      });
     }
     const chatId = typeof params.chatId === "string" ? params.chatId : null;
     if (chatId) {
@@ -21595,6 +21615,109 @@ export async function buildApp({
         const status = error instanceof PolicyConflictError ? 409 : 500;
         return reply.code(status).send({ error: errorMessage(error) });
       }
+    },
+  );
+
+  app.get<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/policies",
+    async (request, reply) => {
+      const assignments = await repository.policies.listWorkspaceAssignments(
+        applicationOwnerId(),
+        request.params.workspaceId,
+      );
+      return assignments
+        ? reply.send(policyAssignmentListSchema.parse(assignments))
+        : reply.code(404).send({ error: "Workspace not found." });
+    },
+  );
+
+  app.patch<{ Params: { workspaceId: string } }>(
+    "/api/workspaces/:workspaceId/policies",
+    async (request, reply) => {
+      const input = policyAssignmentUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        await repository.policies.replaceWorkspaceAssignments(
+          applicationOwnerId(),
+          request.params.workspaceId,
+          input.data,
+        );
+        const assignments = await repository.policies.listWorkspaceAssignments(
+          applicationOwnerId(),
+          request.params.workspaceId,
+        );
+        return assignments
+          ? reply.send(policyAssignmentListSchema.parse(assignments))
+          : reply.code(404).send({ error: "Workspace not found." });
+      } catch (error) {
+        const status =
+          error instanceof PolicyScopeNotFoundError
+            ? 404
+            : error instanceof PolicyConflictError
+              ? 409
+              : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/policies",
+    async (request, reply) => {
+      const assignments = await repository.policies.listProjectAssignments(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return assignments
+        ? reply.send(policyAssignmentListSchema.parse(assignments))
+        : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.patch<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/policies",
+    async (request, reply) => {
+      const input = policyAssignmentUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        await repository.policies.replaceProjectAssignments(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+        );
+        const assignments = await repository.policies.listProjectAssignments(
+          applicationOwnerId(),
+          request.params.projectId,
+        );
+        return assignments
+          ? reply.send(policyAssignmentListSchema.parse(assignments))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        const status =
+          error instanceof PolicyScopeNotFoundError
+            ? 404
+            : error instanceof PolicyConflictError
+              ? 409
+              : 500;
+        return reply.code(status).send({ error: errorMessage(error) });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/effective-policies",
+    async (request, reply) => {
+      const effective = await repository.policies.resolveEffective(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return effective
+        ? reply.send(effectivePolicyListSchema.parse(effective))
+        : reply.code(404).send({ error: "Project not found." });
     },
   );
 

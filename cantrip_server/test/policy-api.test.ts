@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  effectivePolicyListSchema,
+  policyAssignmentListSchema,
   policyDetailSchema,
   policyListSchema,
   policyTemplateDetailSchema,
@@ -13,6 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
+import { LOCAL_USER_ID } from "../src/db/repository.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-policy-api-"));
 const config: ServerConfig = {
@@ -242,5 +245,129 @@ describe.sequential("policy API", () => {
         })
       ).statusCode,
     ).toBe(404);
+  });
+
+  it("assigns workspace and project policies and resolves membership sources", async () => {
+    const workspace = await database.repository.createProjectWorkspace(
+      LOCAL_USER_ID,
+      { name: "Policy workspace" },
+    );
+    const project = await database.repository.createGithubProject(
+      LOCAL_USER_ID,
+      {
+        workerId: "policy-api-worker",
+        repositoryId: "policy-api-project",
+        nameWithOwner: "ArcaneArts/PolicyApiProject",
+        url: "https://github.com/ArcaneArts/PolicyApiProject",
+        workspaceIds: [workspace.id],
+      },
+    );
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: "/api/policies",
+      payload: {
+        key: "assignment-policy",
+        name: "Assignment policy",
+        summary: "Apply only where this policy is assigned.",
+        bodyMarkdown: "# Assignment policy",
+        enabled: true,
+        mandatory: false,
+      },
+    });
+    const policy = policyDetailSchema.parse(createdResponse.json());
+
+    const workspaceState = policyAssignmentListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/workspaces/${workspace.id}/policies`,
+        })
+      ).json(),
+    );
+    const workspaceUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/workspaces/${workspace.id}/policies`,
+      payload: {
+        collectionVersion: workspaceState.collectionVersion,
+        policyIds: [policy.id],
+      },
+    });
+    expect(workspaceUpdate.statusCode).toBe(200);
+    expect(
+      policyAssignmentListSchema.parse(workspaceUpdate.json()).directPolicyIds,
+    ).toEqual([policy.id]);
+
+    const projectState = policyAssignmentListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/policies`,
+        })
+      ).json(),
+    );
+    const projectUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${project.id}/policies`,
+      payload: {
+        collectionVersion: projectState.collectionVersion,
+        policyIds: [policy.id],
+      },
+    });
+    expect(projectUpdate.statusCode).toBe(200);
+
+    const effectiveResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.id}/effective-policies`,
+    });
+    expect(effectiveResponse.statusCode).toBe(200);
+    const effective = effectivePolicyListSchema.parse(effectiveResponse.json());
+    expect(
+      effective.policies.find(({ key }) => key === policy.key)?.sources,
+    ).toEqual([
+      {
+        type: "workspace",
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+      },
+      { type: "project", projectId: project.id },
+    ]);
+
+    const staleUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${project.id}/policies`,
+      payload: {
+        collectionVersion: projectState.collectionVersion,
+        policyIds: [],
+      },
+    });
+    expect(staleUpdate.statusCode).toBe(409);
+
+    const workspaceMembershipUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/workspaces/${workspace.id}`,
+      payload: { projectIds: [] },
+    });
+    expect(workspaceMembershipUpdate.statusCode).toBe(200);
+    const afterMembership = effectivePolicyListSchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/effective-policies`,
+        })
+      ).json(),
+    );
+    expect(
+      afterMembership.policies.find(({ key }) => key === policy.key)?.sources,
+    ).toEqual([{ type: "project", projectId: project.id }]);
+
+    for (const path of [
+      "/api/projects/missing/policies",
+      "/api/projects/missing/effective-policies",
+      "/api/workspaces/missing/policies",
+    ]) {
+      expect((await app.inject({ method: "GET", url: path })).statusCode).toBe(
+        404,
+      );
+    }
   });
 });

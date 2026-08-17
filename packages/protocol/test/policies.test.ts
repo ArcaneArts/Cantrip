@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  policyAssignmentListSchema,
   policyAssignmentUpdateSchema,
   policyCreateSchema,
   policyDeleteSchema,
@@ -53,6 +54,20 @@ describe("policy protocol", () => {
       policyAssignmentUpdateSchema.safeParse({
         collectionVersion: 1,
         policyIds: ["one", "one"],
+      }).success,
+    ).toBe(false);
+    expect(
+      policyAssignmentListSchema.safeParse({
+        collectionVersion: 1,
+        policies: [],
+        directPolicyIds: ["one", "one"],
+      }).success,
+    ).toBe(false);
+    expect(
+      policyAssignmentListSchema.safeParse({
+        collectionVersion: 1,
+        policies: [],
+        directPolicyIds: ["missing"],
       }).success,
     ).toBe(false);
   });

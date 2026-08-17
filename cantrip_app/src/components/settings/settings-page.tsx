@@ -546,12 +546,19 @@ function CatalogModelMetadata({
 
 export function SettingsPage({
   initialSection = "general",
+  initialPolicyId = null,
+  onPolicyOpenHandled,
   onOpenTunnelOwner,
 }: {
   initialSection?: SettingsSection;
+  initialPolicyId?: string | null;
+  onPolicyOpenHandled?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
+  const [policyEditorId, setPolicyEditorId] = useState<string | null>(
+    initialPolicyId,
+  );
   const queryClient = useQueryClient();
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const desktopUpdateCapability = useDesktopUpdateCapability();
@@ -947,6 +954,9 @@ export function SettingsPage({
   useEffect(() => {
     setSection(initialSection);
   }, [initialSection]);
+  useEffect(() => {
+    if (initialPolicyId) setPolicyEditorId(initialPolicyId);
+  }, [initialPolicyId]);
 
   return (
     <div className="flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden">
@@ -1424,12 +1434,23 @@ export function SettingsPage({
         </div>
         {section === "workspaces" ? (
           <div className="w-full min-w-0">
-            <WorkspaceSettings />
+            <WorkspaceSettings
+              onOpenPolicySettings={(policyId) => {
+                setPolicyEditorId(policyId ?? null);
+                setSection("policies");
+              }}
+            />
           </div>
         ) : null}
         {section === "policies" ? (
           <div className="w-full min-w-0">
-            <PolicySettings />
+            <PolicySettings
+              initialPolicyId={policyEditorId}
+              onInitialPolicyHandled={() => {
+                setPolicyEditorId(null);
+                onPolicyOpenHandled?.();
+              }}
+            />
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}

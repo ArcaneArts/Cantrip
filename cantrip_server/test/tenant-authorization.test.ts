@@ -165,6 +165,57 @@ describe("hosted tenant authorization", () => {
           url: "https://github.com/first/private-project.git",
         },
       );
+      const [firstPoliciesResponse, secondPoliciesResponse] = await Promise.all(
+        [
+          app.inject({
+            method: "GET",
+            url: "/api/policies",
+            headers: headers(first),
+          }),
+          app.inject({
+            method: "GET",
+            url: "/api/policies",
+            headers: headers(second),
+          }),
+        ],
+      );
+      const firstPolicies = firstPoliciesResponse.json() as {
+        collectionVersion: number;
+        policies: Array<{ id: string }>;
+      };
+      const secondPolicies = secondPoliciesResponse.json() as {
+        policies: Array<{ id: string }>;
+      };
+      expect(firstPolicies.policies).toHaveLength(1);
+      expect(secondPolicies.policies).toHaveLength(1);
+      expect(secondPolicies.policies[0]!.id).not.toBe(
+        firstPolicies.policies[0]!.id,
+      );
+      expect(
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/policies`,
+          headers: headers(first),
+        }),
+      ).toMatchObject({ statusCode: 200 });
+      expect(
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/policies`,
+          headers: headers(second),
+        }),
+      ).toMatchObject({ statusCode: 404 });
+      expect(
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${project.id}/policies`,
+          headers: headers(first, true),
+          payload: {
+            collectionVersion: firstPolicies.collectionVersion,
+            policyIds: [secondPolicies.policies[0]!.id],
+          },
+        }),
+      ).toMatchObject({ statusCode: 404 });
       const firstProjects = await app.inject({
         method: "GET",
         url: "/api/projects",

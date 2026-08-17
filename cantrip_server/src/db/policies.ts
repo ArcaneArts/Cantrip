@@ -4,6 +4,7 @@ import {
   EFFECTIVE_POLICY_LIMIT,
   POLICY_LIMIT,
   effectivePolicyListSchema,
+  policyAssignmentListSchema,
   policyAssignmentUpdateSchema,
   policyCreateSchema,
   policyDetailSchema,
@@ -14,6 +15,7 @@ import {
   policyUpdateSchema,
   type EffectivePolicyList,
   type EffectivePolicySource,
+  type PolicyAssignmentList,
   type PolicyAssignmentUpdate,
   type PolicyCreate,
   type PolicyDetail,
@@ -554,6 +556,13 @@ export class PolicyRepository {
     return this.replaceAssignments(ownerId, "project", projectId, input);
   }
 
+  async listProjectAssignments(
+    ownerId: string,
+    projectId: string,
+  ): Promise<PolicyAssignmentList | null> {
+    return this.listAssignments(ownerId, "project", projectId);
+  }
+
   async replaceWorkspaceAssignments(
     ownerId: string,
     workspaceId: string,
@@ -561,6 +570,13 @@ export class PolicyRepository {
   ): Promise<number> {
     const input = policyAssignmentUpdateSchema.parse(rawInput);
     return this.replaceAssignments(ownerId, "workspace", workspaceId, input);
+  }
+
+  async listWorkspaceAssignments(
+    ownerId: string,
+    workspaceId: string,
+  ): Promise<PolicyAssignmentList | null> {
+    return this.listAssignments(ownerId, "workspace", workspaceId);
   }
 
   async resolveEffective(
@@ -815,6 +831,78 @@ export class PolicyRepository {
         }
       }
       return collectionVersion;
+    });
+  }
+
+  private async listAssignments(
+    ownerId: string,
+    scope: "project" | "workspace",
+    scopeId: string,
+  ): Promise<PolicyAssignmentList | null> {
+    await this.ensureBootstrap(ownerId);
+    const scopeRows =
+      scope === "project"
+        ? await this.database
+            .select({ id: schema.projects.id })
+            .from(schema.projects)
+            .where(
+              and(
+                eq(schema.projects.id, scopeId),
+                eq(schema.projects.ownerId, ownerId),
+              ),
+            )
+            .limit(1)
+        : await this.database
+            .select({ id: schema.projectWorkspaces.id })
+            .from(schema.projectWorkspaces)
+            .where(
+              and(
+                eq(schema.projectWorkspaces.id, scopeId),
+                eq(schema.projectWorkspaces.ownerId, ownerId),
+              ),
+            )
+            .limit(1);
+    if (!scopeRows[0]) return null;
+
+    const [list, assignmentRows] = await Promise.all([
+      this.list(ownerId),
+      scope === "project"
+        ? this.database
+            .select({ policyId: schema.projectPolicyAssignments.policyId })
+            .from(schema.projectPolicyAssignments)
+            .innerJoin(
+              schema.policies,
+              and(
+                eq(
+                  schema.policies.id,
+                  schema.projectPolicyAssignments.policyId,
+                ),
+                eq(schema.policies.ownerId, ownerId),
+              ),
+            )
+            .where(eq(schema.projectPolicyAssignments.projectId, scopeId))
+        : this.database
+            .select({ policyId: schema.workspacePolicyAssignments.policyId })
+            .from(schema.workspacePolicyAssignments)
+            .innerJoin(
+              schema.policies,
+              and(
+                eq(
+                  schema.policies.id,
+                  schema.workspacePolicyAssignments.policyId,
+                ),
+                eq(schema.policies.ownerId, ownerId),
+              ),
+            )
+            .where(eq(schema.workspacePolicyAssignments.workspaceId, scopeId)),
+    ]);
+    const assigned = new Set(assignmentRows.map(({ policyId }) => policyId));
+    return policyAssignmentListSchema.parse({
+      collectionVersion: list.collectionVersion,
+      policies: list.policies,
+      directPolicyIds: list.policies.flatMap(({ id }) =>
+        assigned.has(id) ? [id] : [],
+      ),
     });
   }
 }

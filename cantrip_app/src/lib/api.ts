@@ -160,6 +160,9 @@ import {
   mcpServerListSchema,
   mcpServerSummarySchema,
   orderedIdsSchema,
+  effectivePolicyListSchema,
+  policyAssignmentListSchema,
+  policyAssignmentUpdateSchema,
   policyCreateSchema,
   policyDeleteSchema,
   policyDetailSchema,
@@ -298,6 +301,7 @@ import type {
   ModelProviderAccountUpdate,
   ModelProviderUpdate,
   PolicyCreate,
+  PolicyAssignmentUpdate,
   PolicyFromTemplateCreate,
   PolicyOrderUpdate,
   PolicyTemplateReset,
@@ -738,6 +742,55 @@ export async function resetPolicyFromTemplate(
     await post(
       `/api/policies/${encodeURIComponent(policyId)}/reset-template`,
       policyTemplateResetSchema.parse(input),
+    ),
+  );
+}
+
+export async function getWorkspacePolicyAssignments(workspaceId: string) {
+  return policyAssignmentListSchema.parse(
+    await request(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+    ),
+  );
+}
+
+export async function updateWorkspacePolicyAssignments(
+  workspaceId: string,
+  input: PolicyAssignmentUpdate,
+) {
+  return policyAssignmentListSchema.parse(
+    await request(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/policies`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(policyAssignmentUpdateSchema.parse(input)),
+      },
+    ),
+  );
+}
+
+export async function getProjectPolicyAssignments(projectId: string) {
+  return policyAssignmentListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/policies`),
+  );
+}
+
+export async function updateProjectPolicyAssignments(
+  projectId: string,
+  input: PolicyAssignmentUpdate,
+) {
+  return policyAssignmentListSchema.parse(
+    await request(`/api/projects/${encodeURIComponent(projectId)}/policies`, {
+      method: "PATCH",
+      body: JSON.stringify(policyAssignmentUpdateSchema.parse(input)),
+    }),
+  );
+}
+
+export async function getProjectEffectivePolicies(projectId: string) {
+  return effectivePolicyListSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/effective-policies`,
     ),
   );
 }

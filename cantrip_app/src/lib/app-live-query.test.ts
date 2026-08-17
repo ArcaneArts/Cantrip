@@ -116,7 +116,11 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([["projects"], ["project-tab-layout", "project-one"]]);
+    ).toEqual([
+      ["projects"],
+      ["project-workspaces"],
+      ["project-tab-layout", "project-one"],
+    ]);
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-tab-layout", "project-one"]);
@@ -153,9 +157,18 @@ describe("application live query bridge", () => {
           scope: { kind: "current-user" },
         }),
       ),
-    ).toEqual([["policies"], ["policy", "policy-one"]]);
+    ).toEqual([
+      ["policies"],
+      ["workspace-policy-assignments"],
+      ["project-policy-assignments"],
+      ["effective-policies"],
+      ["policy", "policy-one"],
+    ]);
     expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
       "policies",
+    ]);
+    expect(appLiveScopeQueryKeys({ kind: "current-user" })).toContainEqual([
+      "workspace-policy-assignments",
     ]);
   });
 
