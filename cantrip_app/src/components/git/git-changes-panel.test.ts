@@ -60,6 +60,40 @@ describe("Git changes panel helpers", () => {
     ]);
   });
 
+  it("collapses directory-only chains until files or branches appear", () => {
+    expect(
+      buildGitChangeTree([
+        change("a/b/c/d/e/file1.ts"),
+        change("a/b/c/d/ee/file2.ts"),
+        change("standalone/path/file3.ts"),
+      ]),
+    ).toMatchObject([
+      {
+        type: "directory",
+        name: "a/b/c/d",
+        path: "a/b/c/d",
+        children: [
+          {
+            type: "directory",
+            name: "e",
+            children: [{ type: "file", name: "file1.ts" }],
+          },
+          {
+            type: "directory",
+            name: "ee",
+            children: [{ type: "file", name: "file2.ts" }],
+          },
+        ],
+      },
+      {
+        type: "directory",
+        name: "standalone/path",
+        path: "standalone/path",
+        children: [{ type: "file", name: "file3.ts" }],
+      },
+    ]);
+  });
+
   it("aligns replacement, addition, and context lines side by side", () => {
     const rows = parseSideBySideDiff(
       [
