@@ -8,6 +8,7 @@ import {
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 
 export type ServerConnection = {
+  accountId: string | null;
   id: string;
   kind: "local" | "remote";
   name: string;
@@ -86,6 +87,10 @@ function readStoredConnections(
         return [
           {
             id: item.id,
+            accountId:
+              typeof item.accountId === "string" && item.accountId.trim()
+                ? item.accountId
+                : null,
             kind: "remote" as const,
             name: item.name.trim() || "Cantrip Server",
             url: normalizeServerUrl(item.url),
@@ -184,7 +189,13 @@ export async function initializeServerConnections(): Promise<void> {
   }
   const connections: ServerConnection[] = desktopApp
     ? [
-        { id: localId, kind: "local", name: "Local", url: localUrl },
+        {
+          accountId: null,
+          id: localId,
+          kind: "local",
+          name: "Local",
+          url: localUrl,
+        },
         ...(stored?.connections ?? []),
       ]
     : [...(stored?.connections ?? [])];
@@ -242,7 +253,13 @@ export async function saveServerConnection(input: {
   );
   const connection: ServerConnection = existing
     ? { ...existing, name }
-    : { id: crypto.randomUUID(), kind: "remote", name, url };
+    : {
+        accountId: null,
+        id: crypto.randomUUID(),
+        kind: "remote",
+        name,
+        url,
+      };
   const previousState = state;
   state = {
     ...state,
@@ -312,6 +329,60 @@ export async function selectServerConnection(id: string): Promise<void> {
     status: "completed",
     subsystem: "server-connections",
   });
+}
+
+export async function rememberActiveServerAccount(
+  accountId: string,
+  replace = false,
+): Promise<boolean> {
+  const normalized = accountId.trim();
+  if (!normalized) throw new Error("The account identity is missing.");
+  await refreshServerConnections();
+  const active = getActiveServerConnection();
+  if (!active || active.kind === "local") return true;
+  if (active.accountId && active.accountId !== normalized && !replace) {
+    return false;
+  }
+  if (active.accountId === normalized) return true;
+  const previousState = state;
+  state = {
+    ...state,
+    connections: state.connections.map((connection) =>
+      connection.id === active.id
+        ? { ...connection, accountId: normalized }
+        : connection,
+    ),
+    updatedAt: nextUpdatedAt(),
+  };
+  try {
+    await persist();
+  } catch (error) {
+    state = previousState;
+    throw error;
+  }
+  return true;
+}
+
+export async function forgetActiveServerAccount(): Promise<void> {
+  await refreshServerConnections();
+  const active = getActiveServerConnection();
+  if (!active || active.kind === "local" || !active.accountId) return;
+  const previousState = state;
+  state = {
+    ...state,
+    connections: state.connections.map((connection) =>
+      connection.id === active.id
+        ? { ...connection, accountId: null }
+        : connection,
+    ),
+    updatedAt: nextUpdatedAt(),
+  };
+  try {
+    await persist();
+  } catch (error) {
+    state = previousState;
+    throw error;
+  }
 }
 
 export async function removeServerConnection(id: string): Promise<void> {

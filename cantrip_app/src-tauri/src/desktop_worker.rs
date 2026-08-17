@@ -24,9 +24,10 @@ struct DesktopWorkerProfile {
     worker_id: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredWorkerCredentialIdentity {
+    credential: String,
     server_url: String,
     worker_id: String,
 }
@@ -203,6 +204,7 @@ impl DesktopWorkers {
         &self,
         profile: &DesktopWorkerProfile,
         enrollment_code: Option<&str>,
+        replacement: Option<&StoredWorkerCredentialIdentity>,
     ) -> Result<Child, String> {
         let log_path = self
             .logs_directory
@@ -236,7 +238,9 @@ impl DesktopWorkers {
             )
             .env_remove("CANTRIP_WORKER_TOKEN")
             .env_remove("CANTRIP_WORKER_DEVELOPMENT_BOOTSTRAP")
-            .env_remove("CANTRIP_WORKER_CREDENTIAL");
+            .env_remove("CANTRIP_WORKER_CREDENTIAL")
+            .env_remove("CANTRIP_WORKER_REPLACES_ID")
+            .env_remove("CANTRIP_WORKER_REPLACES_CREDENTIAL");
         if cfg!(debug_assertions) {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         } else {
@@ -252,6 +256,14 @@ impl DesktopWorkers {
             command.env("CANTRIP_WORKER_ENROLLMENT_CODE", code);
         } else {
             command.env_remove("CANTRIP_WORKER_ENROLLMENT_CODE");
+        }
+        if let Some(replacement) = replacement {
+            command
+                .env("CANTRIP_WORKER_REPLACES_ID", &replacement.worker_id)
+                .env(
+                    "CANTRIP_WORKER_REPLACES_CREDENTIAL",
+                    &replacement.credential,
+                );
         }
         let mut child = command.spawn().map_err(|error| {
             format!(
@@ -274,6 +286,7 @@ impl DesktopWorkers {
         &self,
         profile: &DesktopWorkerProfile,
         enrollment_code: Option<&str>,
+        replacement: Option<&StoredWorkerCredentialIdentity>,
     ) -> Result<(), String> {
         let mut children = self
             .children
@@ -289,7 +302,7 @@ impl DesktopWorkers {
             }
             children.remove(&profile.worker_id);
         }
-        let child = self.spawn(profile, enrollment_code)?;
+        let child = self.spawn(profile, enrollment_code, replacement)?;
         children.insert(profile.worker_id.clone(), child);
         Ok(())
     }
@@ -421,7 +434,7 @@ pub fn build(app: &App) -> Result<DesktopWorkers, String> {
     };
     for profile in profiles {
         if manager.has_stored_credential(&profile.worker_id) {
-            if let Err(_error) = manager.ensure_running(&profile, None) {
+            if let Err(_error) = manager.ensure_running(&profile, None, None) {
                 app.state::<crate::local_logs::LocalServiceLogs>()
                     .runtime_event(
                         "warn",
@@ -452,7 +465,7 @@ pub fn list_desktop_workers(
         .clone();
     for profile in &profiles {
         if workers.has_stored_credential(&profile.worker_id) {
-            if let Err(_error) = workers.ensure_running(profile, None) {
+            if let Err(_error) = workers.ensure_running(profile, None, None) {
                 app.state::<crate::local_logs::LocalServiceLogs>()
                     .runtime_event(
                         "warn",
@@ -530,6 +543,29 @@ pub fn pair_desktop_worker(
         .cloned();
     let (replaced_worker_id, profile) =
         replacement_profile(existing.as_ref(), name, &server_url, worker_id.as_deref());
+    let replacement = replaced_worker_id
+        .as_ref()
+        .filter(|worker_id| worker_id.as_str() != profile.worker_id)
+        .and_then(|worker_id| {
+            let contents = fs::read_to_string(
+                workers
+                    .profile_directory(worker_id)
+                    .join("worker-credential.json"),
+            )
+            .ok()?;
+            let stored = serde_json::from_str::<StoredWorkerCredentialIdentity>(&contents).ok()?;
+            (stored.worker_id == *worker_id && stored.server_url == server_url).then_some(stored)
+        });
+    if replaced_worker_id
+        .as_ref()
+        .is_some_and(|worker_id| worker_id != &profile.worker_id)
+        && replacement.is_none()
+    {
+        return Err(
+            "The previous linked worker credential is unavailable, so its old account cannot be safely unlinked. Forget the old worker explicitly before pairing again."
+                .into(),
+        );
+    }
     if let Some(worker_id) = replaced_worker_id {
         workers.stop(&worker_id)?;
     }
@@ -550,7 +586,7 @@ pub fn pair_desktop_worker(
         profiles.push(profile.clone());
         write_profiles(&workers.profiles_path, &profiles)?;
     }
-    workers.ensure_running(&profile, Some(&enrollment_code))?;
+    workers.ensure_running(&profile, Some(&enrollment_code), replacement.as_ref())?;
     app.state::<crate::local_logs::LocalServiceLogs>()
         .runtime_event(
             "info",

@@ -24,6 +24,7 @@ import { logout, logoutAll } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import { clearClientSession, getClientSession } from "@/lib/client-session";
 import {
+  forgetActiveServerAccount,
   getActiveServerConnection,
   getServerConnections,
   removeServerConnection,
@@ -101,6 +102,7 @@ export function ServerSwitcher({
         });
         throw error;
       }
+      await forgetActiveServerAccount();
       clearClientSession();
       window.location.reload();
     } catch (signOutError) {

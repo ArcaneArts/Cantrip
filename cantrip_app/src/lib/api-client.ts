@@ -1,4 +1,7 @@
-import { getActiveServerUrl } from "@/lib/server-connections";
+import {
+  getActiveServerConnection,
+  getActiveServerUrl,
+} from "@/lib/server-connections";
 import {
   type ClientSessionContext,
   getClientSession,
@@ -64,7 +67,7 @@ async function recoverCsrfSession(): Promise<boolean> {
     try {
       const response = await fetch(`${getActiveServerUrl()}/api/auth/session`, {
         credentials: "include",
-        headers: { accept: "application/json" },
+        headers: requestHeaders(undefined, "GET"),
       });
       if (!response.ok) {
         clientLogger.warn("Client CSRF session recovery was rejected", {
@@ -147,6 +150,10 @@ function requestHeaders(
     headers.set("content-type", "application/json");
   }
   const session = getClientSession();
+  const expectedAccountId = getActiveServerConnection()?.accountId;
+  if (expectedAccountId) {
+    headers.set("x-cantrip-account-id", expectedAccountId);
+  }
   if (session?.csrfToken && !SAFE_METHODS.has(method)) {
     headers.set("x-cantrip-csrf", session.csrfToken);
   }

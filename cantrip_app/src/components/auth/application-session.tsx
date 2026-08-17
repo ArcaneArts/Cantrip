@@ -44,6 +44,7 @@ import { errorMessage } from "@/lib/error-message";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   getActiveServerConnection,
+  rememberActiveServerAccount,
   selectServerConnection,
   type ServerConnectionFailureKind,
 } from "@/lib/server-connections";
@@ -110,7 +111,19 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     });
     return { kind: "server-required" };
   }
-  const bootstrap = await getServerBootstrap();
+  let clearedConflictingSession = false;
+  let bootstrap: ServerBootstrap;
+  try {
+    bootstrap = await getServerBootstrap();
+  } catch (error) {
+    const status =
+      error && typeof error === "object" && "status" in error
+        ? Number(error.status)
+        : null;
+    if (status !== 401) throw error;
+    clearedConflictingSession = true;
+    bootstrap = await getServerBootstrap();
+  }
   if (bootstrap.auth.mode === "none") {
     if (!bootstrap.auth.currentUser) {
       throw new Error("The local server did not provide its anonymous user.");
@@ -132,7 +145,30 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     });
     return state;
   }
-  const session = await getAuthSession();
+  if (clearedConflictingSession) {
+    return {
+      kind: "signed-out",
+      bootstrap,
+      notice: "A stale or conflicting session was cleared. Sign in again.",
+    };
+  }
+  let session: Awaited<ReturnType<typeof getAuthSession>>;
+  try {
+    session = await getAuthSession();
+  } catch (error) {
+    const status =
+      error && typeof error === "object" && "status" in error
+        ? Number(error.status)
+        : null;
+    if (status === 401) {
+      return {
+        kind: "signed-out",
+        bootstrap,
+        notice: "A stale or conflicting session was cleared. Sign in again.",
+      };
+    }
+    throw error;
+  }
   if (!session.currentUser || !session.csrfToken) {
     clientLogger.info("Application session requires sign-in", {
       durationMs: Math.round(performance.now() - startedAt),
@@ -143,6 +179,14 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
       subsystem: "authentication",
     });
     return { kind: "signed-out", bootstrap, notice: null };
+  }
+  if (!(await rememberActiveServerAccount(session.currentUser.id))) {
+    return {
+      kind: "signed-out",
+      bootstrap,
+      notice:
+        "Another window pinned this server to a different account. Sign in again.",
+    };
   }
   const state: ApplicationSessionState = {
     kind: "authenticated",
@@ -284,7 +328,7 @@ function AuthenticationScreen({
 }: {
   bootstrap: ServerBootstrap;
   notice: string | null;
-  onAuthenticated(session: AuthSession): void;
+  onAuthenticated(session: AuthSession): Promise<void>;
 }) {
   const accounts = bootstrap.auth.mode === "accounts";
   const canRegister = accounts && bootstrap.auth.registration.enabled;
@@ -342,7 +386,7 @@ function AuthenticationScreen({
           subsystem: "authentication",
         },
       );
-      onAuthenticated(session);
+      await onAuthenticated(session);
     } catch (submitError) {
       clientLogger.warn(
         registering ? "Account registration failed" : "Sign-in failed",
@@ -657,7 +701,8 @@ export function ApplicationSession() {
       <AuthenticationScreen
         bootstrap={state.bootstrap}
         notice={state.notice}
-        onAuthenticated={(session) => {
+        onAuthenticated={async (session) => {
+          await rememberActiveServerAccount(session.currentUser.id, true);
           const next = sessionState(state.bootstrap, session);
           if (next.kind === "authenticated") {
             setClientSession({
