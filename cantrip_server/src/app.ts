@@ -2166,11 +2166,7 @@ export async function buildApp({
       : repository.ensureLocalIdentity(),
   ]);
   if (localUser) {
-    await repository.ensureDefaultModelConfiguration(
-      LOCAL_USER_ID,
-      config.agentModel,
-      config.ollamaBaseUrl,
-    );
+    await repository.ensureAccountConfiguration(LOCAL_USER_ID);
     await repository.ensureBrowserRemoteSurfaces(LOCAL_USER_ID);
   }
   const recoverGlobalStartupState =
@@ -6939,11 +6935,7 @@ export async function buildApp({
               ? "owner"
               : "member",
         });
-        await repository.ensureAccountConfiguration(
-          user.id,
-          config.agentModel,
-          config.ollamaBaseUrl,
-        );
+        await repository.ensureAccountConfiguration(user.id);
         await appendAudit(request, {
           action: "auth.registration-succeeded",
           actorUserId: user.id,
@@ -7026,11 +7018,7 @@ export async function buildApp({
       });
       return reply.code(401).send({ error: "Email or password is incorrect." });
     }
-    await repository.ensureAccountConfiguration(
-      user.id,
-      config.agentModel,
-      config.ollamaBaseUrl,
-    );
+    await repository.ensureAccountConfiguration(user.id);
     await appendAudit(request, {
       action: "auth.login-succeeded",
       actorUserId: user.id,
@@ -7118,11 +7106,7 @@ export async function buildApp({
         error: "This mobile sign-in code is invalid, expired, or already used.",
       });
     }
-    await repository.ensureAccountConfiguration(
-      user.id,
-      config.agentModel,
-      config.ollamaBaseUrl,
-    );
+    await repository.ensureAccountConfiguration(user.id);
     await appendAudit(request, {
       action: "auth.mobile-sign-in-succeeded",
       actorUserId: user.id,

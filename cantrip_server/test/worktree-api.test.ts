@@ -1410,6 +1410,11 @@ let linkedConsoleId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   const recordedWorker = await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId: "test-worker",
     name: "Test Worker",

@@ -2765,51 +2765,22 @@ export class ServerRepository {
     `);
   }
 
-  async ensureAccountConfiguration(
-    ownerId: string,
-    modelName: string,
-    ollamaBaseUrl: string,
-  ): Promise<void> {
-    const existing = await this.database
-      .select({ userId: schema.userSettings.userId })
-      .from(schema.userSettings)
-      .where(eq(schema.userSettings.userId, ownerId))
-      .limit(1);
-    if (existing.length > 0) return;
-
-    const providerId = randomUUID();
-    const modelId = randomUUID();
-    await this.database.insert(schema.modelProviders).values({
-      id: providerId,
-      ownerId,
-      name: "Ollama",
-      kind: "ollama",
-      baseUrl: ollamaBaseUrl,
-    });
-    await this.database.insert(schema.modelProfiles).values({
-      id: modelId,
-      ownerId,
-      name: modelName,
-    });
-    await this.database.insert(schema.modelRoutes).values({
-      id: randomUUID(),
-      modelId,
-      providerId,
-      modelName,
-      position: 0,
-    });
-    await this.database.insert(schema.userSettings).values({
-      userId: ownerId,
-      theme: "system",
-      highContrast: false,
-      proMode: false,
-      proModeOpacity: 80,
-      sidebarWidth: 288,
-      desktopFrameRate: 30,
-      desktopStreamQuality: "adaptive",
-      defaultModelId: modelId,
-      defaultPermissionProfileId: DEFAULT_PERMISSION_PROFILE_ID,
-    });
+  async ensureAccountConfiguration(ownerId: string): Promise<void> {
+    await this.database
+      .insert(schema.userSettings)
+      .values({
+        userId: ownerId,
+        theme: "system",
+        highContrast: false,
+        proMode: false,
+        proModeOpacity: 80,
+        sidebarWidth: 288,
+        desktopFrameRate: 30,
+        desktopStreamQuality: "adaptive",
+        defaultModelId: null,
+        defaultPermissionProfileId: DEFAULT_PERMISSION_PROFILE_ID,
+      })
+      .onConflictDoNothing({ target: schema.userSettings.userId });
   }
 
   async getSettings(ownerId: string): Promise<SettingsBundle> {

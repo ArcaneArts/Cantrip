@@ -235,6 +235,17 @@ describe("server account authentication", () => {
         registered,
         "__Host-cantrip_partitioned_session",
       );
+      const initialSettings = await app.inject({
+        method: "GET",
+        url: "/api/settings",
+        headers: { cookie, origin },
+      });
+      expect(initialSettings.statusCode).toBe(200);
+      expect(initialSettings.json()).toMatchObject({
+        preferences: { defaultModelId: null },
+        providers: [],
+        models: [],
+      });
       let csrfToken = registered.json().csrfToken as string;
 
       const restoredSession = await app.inject({

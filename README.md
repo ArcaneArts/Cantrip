@@ -267,7 +267,7 @@ pnpm install
 Defaults are suitable for local development. The first development start builds
 the pinned Codex source; subsequent starts reuse Cargo's cache. Copy
 `.env.example` into your preferred environment setup if you need to override
-ports, data directories, the server origin, or the default local model.
+ports, data directories, the server origin, or local model metadata.
 
 ## Command quick reference
 
@@ -528,7 +528,11 @@ are documented in [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#desktop-updater-si
 
 ## Test with Ollama
 
-The development seed includes an Ollama provider at `http://127.0.0.1:11434/v1` and a `gemma4:26b` model entry. Make the configured model available in Ollama, start Ollama, then select that model in Cantrip. Providers and model names can be changed from Settings without storing credentials in the browser.
+Cantrip starts without a model provider or default model. To test with Ollama,
+start Ollama, then add an Ollama provider and the model you want through
+**Settings → Models**. The usual local endpoint is
+`http://127.0.0.1:11434/v1`. Provider configuration remains server-owned rather
+than being stored in the browser.
 
 ## PostgreSQL development
 
