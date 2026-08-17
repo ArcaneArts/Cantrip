@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { parseSideBySideDiff } from "./git-diff";
+import { parseUnifiedDiff } from "./git-diff";
 
 export function GitPatchView({
   error,
@@ -33,7 +33,7 @@ export function GitPatchView({
   subtitle: string;
   truncated: boolean;
 }) {
-  const rows = useMemo(() => parseSideBySideDiff(patch ?? ""), [patch]);
+  const rows = useMemo(() => parseUnifiedDiff(patch ?? ""), [patch]);
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -82,7 +82,7 @@ export function GitPatchView({
           {error instanceof Error ? error.message : "Diff could not be loaded."}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto bg-muted/10">
+        <div className="min-h-0 flex-1 overflow-auto">
           {truncated ? (
             <div className="sticky left-0 top-0 z-10 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
               This diff is very large, so only the first portion is shown.
@@ -93,26 +93,20 @@ export function GitPatchView({
               No textual line changes to display.
             </div>
           ) : (
-            <div className="min-w-[720px] font-mono text-[11px] leading-5">
-              <div
-                data-slot="table-header-surface"
-                className="sticky top-0 z-[1] grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)] border-b bg-muted/90 text-[10px] font-semibold text-muted-foreground backdrop-blur"
-              >
-                <span className="px-2 text-right">Old</span>
-                <span className="border-l px-2">{oldLabel}</span>
-                <span className="border-l px-2 text-right">New</span>
-                <span className="border-l px-2">{newLabel}</span>
-              </div>
+            <div
+              aria-label={`${oldLabel} to ${newLabel}`}
+              className="w-max min-w-full py-1 font-mono text-[11px] leading-5"
+            >
               {rows.map((row, index) => {
                 if (row.kind !== "line") {
                   return (
                     <div
                       key={`${row.kind}:${index}`}
                       className={cn(
-                        "border-b px-3 py-1 whitespace-pre-wrap",
+                        "px-3 py-1 whitespace-pre-wrap",
                         row.kind === "hunk"
                           ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
-                          : "bg-muted/40 text-muted-foreground",
+                          : "text-muted-foreground",
                       )}
                     >
                       {row.text}
@@ -122,77 +116,81 @@ export function GitPatchView({
                 return (
                   <div
                     key={`line:${index}`}
-                    className="grid grid-cols-[3rem_minmax(0,1fr)_3rem_minmax(0,1fr)]"
+                    className={cn(
+                      "grid min-h-5",
+                      onCommentLine
+                        ? "grid-cols-[2.75rem_2.75rem_1rem_minmax(max-content,1fr)]"
+                        : "grid-cols-[1rem_minmax(max-content,1fr)]",
+                      row.lineKind === "delete" &&
+                        "bg-red-500/10 text-red-950 dark:text-red-100",
+                      row.lineKind === "add" &&
+                        "bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
+                    )}
                   >
-                    <button
-                      type="button"
-                      disabled={!onCommentLine || row.oldNumber === null}
-                      title={
-                        onCommentLine && row.oldNumber !== null
-                          ? `Comment on old line ${row.oldNumber}`
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (row.oldNumber !== null) {
-                          onCommentLine?.(row.oldNumber, "LEFT");
-                        }
-                      }}
+                    {onCommentLine ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={row.oldNumber === null}
+                          title={
+                            row.oldNumber !== null
+                              ? `Comment on old line ${row.oldNumber}`
+                              : undefined
+                          }
+                          onClick={() => {
+                            if (row.oldNumber !== null) {
+                              onCommentLine(row.oldNumber, "LEFT");
+                            }
+                          }}
+                          className={cn(
+                            "select-none px-1 text-right text-muted-foreground/60",
+                            row.oldNumber !== null &&
+                              "cursor-pointer hover:bg-blue-500/20 hover:text-foreground",
+                          )}
+                        >
+                          {row.oldNumber}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={row.newNumber === null}
+                          title={
+                            row.newNumber !== null
+                              ? `Comment on new line ${row.newNumber}`
+                              : undefined
+                          }
+                          onClick={() => {
+                            if (row.newNumber !== null) {
+                              onCommentLine(row.newNumber, "RIGHT");
+                            }
+                          }}
+                          className={cn(
+                            "select-none px-1 text-right text-muted-foreground/60",
+                            row.newNumber !== null &&
+                              "cursor-pointer hover:bg-blue-500/20 hover:text-foreground",
+                          )}
+                        >
+                          {row.newNumber}
+                        </button>
+                      </>
+                    ) : null}
+                    <span
+                      aria-hidden="true"
                       className={cn(
-                        "select-none border-b px-2 text-right text-muted-foreground/70",
-                        onCommentLine &&
-                          row.oldNumber !== null &&
-                          "cursor-pointer hover:bg-blue-500/20 hover:text-foreground",
-                        row.oldKind === "delete" && "bg-red-500/15",
-                        row.oldKind === "empty" && "bg-muted/30",
+                        "select-none text-center",
+                        row.lineKind === "delete" && "text-red-500",
+                        row.lineKind === "add" && "text-emerald-500",
+                        row.lineKind === "context" &&
+                          "text-muted-foreground/40",
                       )}
                     >
-                      {row.oldNumber}
-                    </button>
-                    <pre
-                      className={cn(
-                        "overflow-hidden border-b border-l px-2 whitespace-pre [tab-size:4]",
-                        row.oldKind === "delete" &&
-                          "bg-red-500/15 text-red-950 dark:text-red-100",
-                        row.oldKind === "empty" &&
-                          "bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,var(--color-muted)_4px,var(--color-muted)_5px)]",
-                      )}
-                    >
-                      {row.oldText ?? " "}
-                    </pre>
-                    <button
-                      type="button"
-                      disabled={!onCommentLine || row.newNumber === null}
-                      title={
-                        onCommentLine && row.newNumber !== null
-                          ? `Comment on new line ${row.newNumber}`
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (row.newNumber !== null) {
-                          onCommentLine?.(row.newNumber, "RIGHT");
-                        }
-                      }}
-                      className={cn(
-                        "select-none border-b border-l px-2 text-right text-muted-foreground/70",
-                        onCommentLine &&
-                          row.newNumber !== null &&
-                          "cursor-pointer hover:bg-blue-500/20 hover:text-foreground",
-                        row.newKind === "add" && "bg-emerald-500/15",
-                        row.newKind === "empty" && "bg-muted/30",
-                      )}
-                    >
-                      {row.newNumber}
-                    </button>
-                    <pre
-                      className={cn(
-                        "overflow-hidden border-b border-l px-2 whitespace-pre [tab-size:4]",
-                        row.newKind === "add" &&
-                          "bg-emerald-500/15 text-emerald-950 dark:text-emerald-100",
-                        row.newKind === "empty" &&
-                          "bg-[repeating-linear-gradient(-45deg,transparent,transparent_4px,var(--color-muted)_4px,var(--color-muted)_5px)]",
-                      )}
-                    >
-                      {row.newText ?? " "}
+                      {row.lineKind === "delete"
+                        ? "-"
+                        : row.lineKind === "add"
+                          ? "+"
+                          : " "}
+                    </span>
+                    <pre className="overflow-hidden pr-4 whitespace-pre [tab-size:4]">
+                      {row.text || " "}
                     </pre>
                   </div>
                 );
