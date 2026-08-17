@@ -19,6 +19,10 @@
     "./policies": {
       "types": "./src/policies.ts",
       "import": "./dist/policies.js"
+    },
+    "./tasks": {
+      "types": "./src/tasks.ts",
+      "import": "./dist/tasks.js"
     }
   },
   "files": [

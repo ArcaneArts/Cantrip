@@ -108,6 +108,8 @@ import {
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
   chatSummarySchema,
+  taskCreateResultSchema,
+  taskCreateSchema,
   chatTurnCreateSchema,
   chatUpdateSchema,
   chatWorktreeUpdateSchema,
@@ -468,6 +470,11 @@ import {
   policyTemplateResetSchema,
   policyUpdateSchema,
 } from "@cantrip/protocol/policies";
+import {
+  taskDetailSchema,
+  taskDraftUpdateSchema,
+  taskPlanUpdateSchema,
+} from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
@@ -518,6 +525,8 @@ import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { browserTunnelTarget } from "./tunnels/browser-target.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
+import { TaskConflictError } from "./db/tasks.js";
+import { TaskStateTransitionError } from "./tasks/state.js";
 import {
   TabLayoutConflictError,
   TabLayoutInvariantError,
@@ -807,9 +816,16 @@ type ChatLiveResource = Extract<
   | "chat-plan"
   | "chat-queue"
   | "customization"
+  | "task"
 >;
 
 function mutationLiveResources(route: string): AppLiveResource[] {
+  if (
+    route === "/api/projects/:projectId/tasks" ||
+    route.startsWith("/api/tasks/:chatId/")
+  ) {
+    return ["task", "chat"];
+  }
   if (
     route === "/api/policies" ||
     route.startsWith("/api/policies/") ||
@@ -15582,6 +15598,124 @@ export async function buildApp({
             error: "This worktree is already leased by another chat.",
           });
         }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/tasks",
+    async (request, reply) => {
+      const input = taskCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const created = await repository.createTask(
+          applicationOwnerId(),
+          request.params.projectId,
+          input.data,
+          (workerId) => bridge.isConnected(workerId),
+        );
+        if (!created) {
+          return reply.code(404).send({ error: "Project source not found" });
+        }
+        publishChatSummary(created.chat.id, created.chat.projectId);
+        publishChatInvalidation(created.chat.id, "task", created.chat.id);
+        return reply.code(201).send(taskCreateResultSchema.parse(created));
+      } catch (error) {
+        if (error instanceof ExecutionPlacementUnavailableError) {
+          if (error.code === "project-not-found") {
+            return reply.code(404).send({ error: "Project source not found" });
+          }
+          return reply
+            .code(409)
+            .send({ code: error.code, error: error.message });
+        }
+        if (
+          error instanceof ExecutionLaneConflictError ||
+          /unique|duplicate/i.test(errorMessage(error))
+        ) {
+          return reply.code(409).send({
+            error: "This worktree is already leased by another chat.",
+          });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId",
+    async (request, reply) => {
+      const task = await repository.tasks.get(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return task
+        ? reply.send(taskDetailSchema.parse(task))
+        : reply.code(404).send({ error: "Task not found." });
+    },
+  );
+
+  const taskMutationError = (
+    error: unknown,
+    reply: FastifyReply,
+  ): FastifyReply | null => {
+    if (error instanceof TaskConflictError) {
+      return reply.code(409).send({ code: error.code, error: error.message });
+    }
+    if (error instanceof TaskStateTransitionError) {
+      return reply
+        .code(409)
+        .send({ code: "invalid-state", error: error.message });
+    }
+    return null;
+  };
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/draft",
+    async (request, reply) => {
+      const input = taskDraftUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const task = await repository.tasks.updateDraft(
+          applicationOwnerId(),
+          request.params.chatId,
+          input.data,
+        );
+        if (!task) return reply.code(404).send({ error: "Task not found." });
+        publishChatInvalidation(request.params.chatId, "task");
+        return reply.send(taskDetailSchema.parse(task));
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { chatId: string } }>(
+    "/api/tasks/:chatId/plan",
+    async (request, reply) => {
+      const input = taskPlanUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const task = await repository.tasks.updatePlan(
+          applicationOwnerId(),
+          request.params.chatId,
+          input.data,
+        );
+        if (!task) return reply.code(404).send({ error: "Task not found." });
+        publishChatInvalidation(request.params.chatId, "task");
+        return reply.send(taskDetailSchema.parse(task));
+      } catch (error) {
+        const response = taskMutationError(error, reply);
+        if (response) return response;
         throw error;
       }
     },

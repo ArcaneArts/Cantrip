@@ -28,6 +28,7 @@ import type {
   ChatAttachmentSource,
   ChatAttachmentSummary,
   ChatCreate,
+  ChatExperience,
   ChatExecutionLaneSummary,
   ChatFork,
   ChatModelUpdate,
@@ -113,6 +114,9 @@ import type {
   TerminalServiceRuntimeConfiguration,
   TerminalSummary,
   TerminalUpdate,
+  TaskCreate,
+  TaskCreateResult,
+  TaskDetail,
   ThemePreference,
   TunnelAttachmentSummary,
   TunnelDestinationEndpoint,
@@ -208,6 +212,7 @@ import {
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
+import { TaskRepository, toTaskDetail } from "./tasks.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
@@ -1339,6 +1344,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     id: chat.id,
     projectId: chat.projectId,
     title: chat.title,
+    experience: chat.experience as ChatSummary["experience"],
     position: chat.position,
     status: chat.status as ChatSummary["status"],
     activeWorkerId: chat.activeWorkerId,
@@ -1954,6 +1960,7 @@ export class ServerRepository {
   readonly chatRelocationJobs: ChatRelocationJobRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
+  readonly tasks: TaskRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
@@ -1968,6 +1975,7 @@ export class ServerRepository {
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
+    this.tasks = new TaskRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
@@ -11362,6 +11370,43 @@ export class ServerRepository {
     input: ChatCreate,
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<ChatSummary | null> {
+    const created = await this.createChatExperience(
+      ownerId,
+      projectId,
+      input,
+      "agent",
+      isWorkerConnected,
+    );
+    return created?.chat ?? null;
+  }
+
+  async createTask(
+    ownerId: string,
+    projectId: string,
+    input: TaskCreate,
+    isWorkerConnected?: (workerId: string) => boolean,
+  ): Promise<TaskCreateResult | null> {
+    const created = await this.createChatExperience(
+      ownerId,
+      projectId,
+      input,
+      "task",
+      isWorkerConnected,
+    );
+    if (!created) return null;
+    if (!created.task) {
+      throw new Error("Task-backed Chat creation omitted its Task record.");
+    }
+    return { chat: created.chat, task: created.task };
+  }
+
+  private async createChatExperience(
+    ownerId: string,
+    projectId: string,
+    input: ChatCreate | TaskCreate,
+    experience: ChatExperience,
+    isWorkerConnected?: (workerId: string) => boolean,
+  ): Promise<{ chat: ChatSummary; task: TaskDetail | null } | null> {
     const target =
       input.target ??
       (input.worktreeId
@@ -11397,6 +11442,7 @@ export class ServerRepository {
           id: randomUUID(),
           projectId,
           title: input.title,
+          experience,
           position,
           activeWorkerId: workerId,
           activeWorktreeId: worktreeId,
@@ -11429,7 +11475,20 @@ export class ServerRepository {
         tabId: chat.id,
         tabKind: "chat",
       });
-      return toChatSummary(chat);
+      const task =
+        experience === "task"
+          ? firstOrThrow(
+              await transaction
+                .insert(schema.tasks)
+                .values({ chatId: chat.id })
+                .returning(),
+              "creating a Task record",
+            )
+          : null;
+      return {
+        chat: toChatSummary(chat),
+        task: task ? toTaskDetail(task) : null,
+      };
     });
   }
 

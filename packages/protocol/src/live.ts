@@ -88,6 +88,7 @@ export const appLiveResourceSchema = z.enum([
   "chat-queue",
   "chat-goal",
   "chat-plan",
+  "task",
   "agent-interaction",
   "terminal",
   "explorer",

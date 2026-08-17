@@ -22,6 +22,7 @@ describe("application live protocol", () => {
   it("advertises tunnel state as an invalidation resource", () => {
     expect(appLiveResourceSchema.parse("tunnel")).toBe("tunnel");
     expect(appLiveResourceSchema.parse("policy")).toBe("policy");
+    expect(appLiveResourceSchema.parse("task")).toBe("task");
   });
 
   it("initializes with an optional same-epoch replay cursor", () => {

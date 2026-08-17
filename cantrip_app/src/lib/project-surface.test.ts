@@ -57,6 +57,7 @@ describe("project surfaces", () => {
           id: "chat-1",
           projectId: "project-1",
           title: "Chat",
+          experience: "agent",
           position: 0,
           status: "idle",
           activeWorkerId: "worker-1",
