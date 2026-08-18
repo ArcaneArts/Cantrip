@@ -10,6 +10,10 @@ import type {
   UserSettings,
   TunnelSummary,
 } from "@cantrip/protocol";
+import {
+  isZaiCodingPlanBaseUrl,
+  ZAI_CODING_PLAN_BASE_URL,
+} from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Cable,
@@ -147,7 +151,8 @@ const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "mcp", label: "MCP", icon: Cable },
 ];
 
-type ProviderSetupKind = ModelProviderKind | "openai" | "openrouter" | "xai";
+type ProviderSetupKind =
+  ModelProviderKind | "openai" | "openrouter" | "xai" | "zai";
 
 const providerSetups: Record<
   Exclude<ProviderSetupKind, "chatgpt" | "grok" | "openai-compatible">,
@@ -162,6 +167,11 @@ const providerSetups: Record<
     baseUrl: "https://openrouter.ai/api/v1",
     kind: "openai-compatible",
     label: "OpenRouter",
+  },
+  zai: {
+    baseUrl: ZAI_CODING_PLAN_BASE_URL,
+    kind: "openai-compatible",
+    label: "Z.ai Coding Plan",
   },
   xai: {
     baseUrl: "https://api.x.ai/v1",
@@ -183,6 +193,7 @@ function providerSetupFor(provider: ModelProviderSummary): ProviderSetupKind {
   ) {
     return provider.kind;
   }
+  if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "zai";
   const match = Object.entries(providerSetups).find(
     ([key, setup]) => key !== "ollama" && setup.baseUrl === provider.baseUrl,
   );
@@ -1627,6 +1638,7 @@ export function SettingsPage({
                 >
                   <option value="ollama">Ollama</option>
                   <option value="openrouter">OpenRouter</option>
+                  <option value="zai">Z.ai Coding Plan</option>
                   <option value="xai">xAI API key</option>
                   <option value="openai">OpenAI API</option>
                   <option value="openai-compatible">
@@ -1636,7 +1648,8 @@ export function SettingsPage({
                   <option value="grok">Grok / SuperGrok Account</option>
                 </select>
               </Field>
-              {!isAccountProviderKind(providerKind) ? (
+              {!isAccountProviderKind(providerKind) &&
+              providerSetup !== "zai" ? (
                 <Field label="Base URL">
                   <div className="space-y-1.5">
                     <input
@@ -1662,17 +1675,55 @@ export function SettingsPage({
                     </p>
                   </div>
                 </Field>
-              ) : (
+              ) : isAccountProviderKind(providerKind) ? (
                 <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
                   Cantrip stores each {accountProviderName(providerKind)}
                   sign-in securely on the server and makes it available to every
                   compatible worker.
                 </div>
+              ) : (
+                <div className="grid gap-1.5 text-sm">
+                  <span className="font-medium">Responses endpoint</span>
+                  <div className="rounded-md border bg-muted/30 px-3 py-2 font-mono text-xs text-muted-foreground">
+                    {ZAI_CODING_PLAN_BASE_URL}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Uses Z.ai Coding Plan quota through Codex. Obtain an{" "}
+                    <a
+                      className="underline underline-offset-2 hover:text-foreground"
+                      href="https://z.ai/manage-apikey/apikey-list"
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Individual Plan key
+                    </a>{" "}
+                    or a{" "}
+                    <a
+                      className="underline underline-offset-2 hover:text-foreground"
+                      href="https://z.ai/manage-apikey/coding-plan/team/my-plan"
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Team Plan key
+                    </a>
+                    . Team Plan keys are separate from other Z.ai API keys.
+                  </p>
+                </div>
               )}
               {!isAccountProviderKind(providerKind) ? (
-                <Field label="API key (optional)">
+                <Field
+                  label={
+                    providerSetup === "zai"
+                      ? "Coding Plan API key"
+                      : "API key (optional)"
+                  }
+                >
                   <input
                     type="password"
+                    required={
+                      providerSetup === "zai" &&
+                      editingProvider?.hasApiKey !== true
+                    }
                     value={apiKey}
                     disabled={removeApiKey}
                     onChange={(event) => setApiKey(event.target.value)}
