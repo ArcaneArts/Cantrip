@@ -1145,8 +1145,9 @@ type WorkflowNodeExecuteCommand = Extract<
 
 export interface RunWorkflowNodeOptions extends Omit<
   WorkflowNodeExecuteCommand,
-  "type"
+  "rootKind" | "type"
 > {
+  rootKind?: WorkflowNodeExecuteCommand["rootKind"];
   onActivity?: ActiveTurn["onActivity"];
   onMessage?: ActiveTurn["onMessage"];
   onInteractionCleared?: ActiveTurn["onInteractionCleared"];
@@ -1372,6 +1373,19 @@ export function codexWorkflowTurnPolicy(
       excludeSlashTmp: false,
     },
   };
+}
+
+export function workflowDeveloperInstructions(
+  options: Pick<RunWorkflowNodeOptions, "developerInstructions" | "rootKind">,
+): string | null {
+  if (options.rootKind !== "folder-root") {
+    return options.developerInstructions;
+  }
+  const folderContext =
+    "Cantrip execution context: This workflow runs directly in a worker-managed folder without Git protection. Writes modify the shared folder immediately, Cantrip worktree commands are unavailable, and no Git checkpoint will be created.";
+  return options.developerInstructions
+    ? `${options.developerInstructions}\n\n${folderContext}`
+    : folderContext;
 }
 
 export function parseWorkflowStructuredResult(
@@ -4239,7 +4253,7 @@ export class CodexAppServer implements CodexRuntime {
           ...codexWorkspaceContext(options.cwd),
           approvalPolicy,
           ...this.workflowThreadPermissionParams(options),
-          developerInstructions: options.developerInstructions,
+          developerInstructions: workflowDeveloperInstructions(options),
           config: mcpConfig,
         })) as ThreadResponse;
         threadId = resumed.thread.id;
@@ -4280,7 +4294,7 @@ export class CodexAppServer implements CodexRuntime {
         ...codexWorkspaceContext(options.cwd),
         approvalPolicy,
         ...this.workflowThreadPermissionParams(options),
-        developerInstructions: options.developerInstructions,
+        developerInstructions: workflowDeveloperInstructions(options),
         config: mcpConfig,
       })) as ThreadResponse;
       threadId = started.thread.id;

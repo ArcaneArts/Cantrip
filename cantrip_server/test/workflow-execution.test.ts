@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   agentInteractionRequestListSchema,
   appLiveServerMessageSchema,
+  projectSummarySchema,
   type AppLiveServerMessage,
   type WorkerCommand,
   type WorkerWorktreeSummary,
@@ -252,6 +253,16 @@ const workerBridge: WorkerCommandBus = {
   },
   async request(_workerId, command, options) {
     if (!connected) throw new WorkerUnavailableError("Worker disconnected.");
+    if (command.type === "project.folder.materialize") {
+      return {
+        status: "ready",
+        jobId: command.jobId,
+        attempt: command.attempt,
+        path: path.join(dataDirectory, "managed-folders", command.projectId),
+        displayPath: `managed-folders/${command.projectId}`,
+        reused: false,
+      };
+    }
     if (command.type === "worktree.reconcile") {
       worktreeCommands.push(command);
       return worktreeInventory();
@@ -781,6 +792,7 @@ function testWorkerHeartbeat() {
     architecture: "arm64",
     codexVersion: "0.146.1",
     codexRuntime: unprobedCodexRuntimeReport,
+    managedFolders: { create: true, remove: true },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket" as const],
@@ -1173,6 +1185,7 @@ describe.sequential("single-agent workflow execution", () => {
           cwd: source!.cwd,
           modelRouteId: DEFAULT_MODEL_ROUTE_ID,
           permissionProfileId: null,
+          rootKind: "git-worktree",
           workerId: source!.workerId,
           worktreeId: source!.worktreeId,
         },
@@ -1668,6 +1681,225 @@ describe.sequential("single-agent workflow execution", () => {
       expect.objectContaining({ state: "checkpointed", worktreeDirty: true }),
       expect.objectContaining({ state: "checkpointed", worktreeDirty: true }),
     ]);
+  });
+
+  it("runs folder writes directly with parallelism, retries, and repeat state", async () => {
+    const githubProjectId = projectId;
+    const worktreeCommandsBefore = worktreeCommands.length;
+    try {
+      const createFolderResponse = await app.inject({
+        method: "POST",
+        url: "/api/projects/from-folder",
+        payload: { name: "Workflow scratch", workerId: "test-worker" },
+      });
+      expect(createFolderResponse.statusCode).toBe(202);
+      const folderProject = projectSummarySchema.parse(
+        createFolderResponse.json(),
+      );
+      projectId = folderProject.id;
+      const source = await vi.waitFor(async () => {
+        const candidate = await database.repository.getProjectSource(
+          LOCAL_USER_ID,
+          projectId,
+        );
+        expect(candidate).not.toBeNull();
+        return candidate!;
+      });
+
+      const parallelRevision = await createWorkflowRevision(
+        "folder-parallel-writes",
+        [
+          {
+            key: "alpha",
+            type: "agent",
+            name: "Alpha",
+            mutationMode: "write",
+            permissionRequirements: { filesystem: "workspace-write" },
+            configuration: { prompt: "Alpha branch." },
+          },
+          {
+            key: "beta",
+            type: "agent",
+            name: "Beta",
+            mutationMode: "write",
+            permissionRequirements: { filesystem: "workspace-write" },
+            configuration: { prompt: "Beta branch." },
+          },
+        ],
+      );
+      mode = "parallel";
+      parallelInFlight = 0;
+      parallelPeak = 0;
+      parallelWaiters = [];
+      parallelBarrierReleased = false;
+      const parallelCommandsBefore = executionCommands.length;
+      const parallelResponse = await createRunForRevision(
+        parallelRevision,
+        "execute-folder-parallel-writes",
+        { maxParallelism: 2 },
+        { target: "generated.txt" },
+        { filesystem: "workspace-write" },
+      );
+      expect(parallelResponse.statusCode).toBe(201);
+      const parallelRunId = workflowRunDetailSchema.parse(
+        parallelResponse.json(),
+      ).run.id;
+      await vi.waitFor(async () => {
+        expect((await runDetail(parallelRunId)).run.status).toBe("completed");
+      });
+      mode = "success";
+
+      const parallelCommands = executionCommands.slice(parallelCommandsBefore);
+      expect(parallelCommands).toHaveLength(2);
+      expect(parallelPeak).toBe(2);
+      expect(parallelCommands).toEqual([
+        expect.objectContaining({
+          rootKind: "folder-root",
+          mutationMode: "write",
+          cwd: source.cwd,
+          worktreeId: source.worktreeId,
+        }),
+        expect.objectContaining({
+          rootKind: "folder-root",
+          mutationMode: "write",
+          cwd: source.cwd,
+          worktreeId: source.worktreeId,
+        }),
+      ]);
+      const parallelDetail = await runDetail(parallelRunId);
+      expect(parallelDetail.worktreeLeases).toEqual([]);
+      expect(parallelDetail.attempts).toEqual([
+        expect.objectContaining({
+          startingRevision: null,
+          endingRevision: null,
+          worktreeDirty: null,
+          producedChanges: {
+            folder: {
+              executionMode: "direct-folder",
+              checkpointAvailable: false,
+            },
+          },
+        }),
+        expect.objectContaining({
+          startingRevision: null,
+          endingRevision: null,
+          worktreeDirty: null,
+          producedChanges: {
+            folder: {
+              executionMode: "direct-folder",
+              checkpointAvailable: false,
+            },
+          },
+        }),
+      ]);
+      const events = workflowRunEventPageSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: `/api/workflow-runs/${parallelRunId}/events`,
+          })
+        ).json(),
+      );
+      expect(
+        events.events.filter(({ type }) => type === "folder.changes.recorded"),
+      ).toHaveLength(2);
+
+      const retryRevision = await createWorkflowRevision("folder-write-retry", [
+        {
+          key: "write",
+          type: "agent",
+          name: "Write with retry",
+          mutationMode: "write",
+          permissionRequirements: { filesystem: "workspace-write" },
+          configuration: {
+            prompt: "Write isolated change.",
+            automaticRetries: 1,
+          },
+        },
+      ]);
+      mode = "failure";
+      const retryCommandsBefore = executionCommands.length;
+      const retryResponse = await createRunForRevision(
+        retryRevision,
+        "execute-folder-write-retry",
+        {},
+        { target: "retry.txt" },
+        { filesystem: "workspace-write" },
+      );
+      expect(retryResponse.statusCode).toBe(201);
+      const retryRunId = workflowRunDetailSchema.parse(retryResponse.json()).run
+        .id;
+      await vi.waitFor(async () => {
+        expect((await runDetail(retryRunId)).run.status).toBe("completed");
+      });
+      const retryCommands = executionCommands.slice(retryCommandsBefore);
+      expect(retryCommands).toHaveLength(2);
+      expect(
+        retryCommands.every(
+          ({ cwd, rootKind, worktreeId }) =>
+            cwd === source.cwd &&
+            rootKind === "folder-root" &&
+            worktreeId === source.worktreeId,
+        ),
+      ).toBe(true);
+
+      const repeatRevision = await createWorkflowRevision(
+        "folder-repeat-write",
+        [
+          {
+            key: "repeat_until_stable",
+            type: "repeatUntil",
+            name: "Repeat until stable",
+            mutationMode: "write",
+            permissionRequirements: { filesystem: "workspace-write" },
+            configuration: {
+              prompt: "Repeat until stable.",
+              successCondition: {
+                path: "/done",
+                operator: "equals",
+                value: true,
+              },
+              progressPath: "/progress",
+              maxUnchangedIterations: 2,
+              maxIterations: 5,
+              maxDurationMs: 60_000,
+            },
+          },
+        ],
+      );
+      const repeatCommandsBefore = executionCommands.length;
+      const repeatResponse = await createRunForRevision(
+        repeatRevision,
+        "execute-folder-repeat-write",
+        { maxNodes: 10 },
+        { progress: 0 },
+        { filesystem: "workspace-write" },
+      );
+      expect(repeatResponse.statusCode).toBe(201);
+      const repeatRunId = workflowRunDetailSchema.parse(repeatResponse.json())
+        .run.id;
+      await vi.waitFor(async () => {
+        expect((await runDetail(repeatRunId)).run.status).toBe("completed");
+      });
+      const repeatCommands = executionCommands.slice(repeatCommandsBefore);
+      expect(repeatCommands).toHaveLength(3);
+      expect(
+        repeatCommands.every(
+          ({ cwd, rootKind, worktreeId }) =>
+            cwd === source.cwd &&
+            rootKind === "folder-root" &&
+            worktreeId === source.worktreeId,
+        ),
+      ).toBe(true);
+      expect((await runDetail(repeatRunId)).run.structuredResult).toEqual({
+        progress: 3,
+        done: true,
+      });
+      expect(worktreeCommands).toHaveLength(worktreeCommandsBefore);
+    } finally {
+      mode = "success";
+      projectId = githubProjectId;
+    }
   });
 
   it("runs independent roots in parallel and durably reduces their mapped results", async () => {
@@ -3716,6 +3948,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },
@@ -3752,6 +3985,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },
@@ -4142,6 +4376,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },
@@ -4178,6 +4413,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },
@@ -4382,6 +4618,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },
@@ -5257,6 +5494,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },
@@ -5309,6 +5547,7 @@ describe.sequential("single-agent workflow execution", () => {
         cwd: source!.cwd,
         modelRouteId: DEFAULT_MODEL_ROUTE_ID,
         permissionProfileId: null,
+        rootKind: "git-worktree",
         workerId: source!.workerId,
         worktreeId: source!.worktreeId,
       },

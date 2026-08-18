@@ -308,6 +308,21 @@ export const workflowNodeTypeSchema = z.enum([
   "gate",
 ]);
 export const workflowMutationModeSchema = z.enum(["read-only", "write"]);
+export const workflowExecutionRootKindSchema = z.enum([
+  "git-worktree",
+  "folder-root",
+]);
+
+export const workflowFolderProducedChangesSchema = z
+  .object({
+    folder: z
+      .object({
+        executionMode: z.literal("direct-folder"),
+        checkpointAvailable: z.literal(false),
+      })
+      .strict(),
+  })
+  .strict();
 
 export const workflowAgentNodeConfigurationSchema = z
   .object({
@@ -1722,6 +1737,7 @@ export const workflowNodeExecutionRequestSchema = z.object({
   attemptId: idSchema,
   idempotencyKey: z.string().trim().min(1).max(200),
   worktreeId: optionalIdSchema,
+  rootKind: workflowExecutionRootKindSchema.default("git-worktree"),
   cwd: z.string().trim().min(1).max(8_192),
   threadId: optionalIdSchema,
   prompt: z.string().trim().min(1).max(100_000),

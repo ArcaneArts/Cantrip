@@ -1,7 +1,10 @@
 import type { TaskDetail, TaskGoalSnapshot } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { taskImplementationStatusLabel } from "./task-implementation-dashboard";
+import {
+  taskImplementationPlacementLabel,
+  taskImplementationStatusLabel,
+} from "./task-implementation-dashboard";
 
 const task = {
   state: "implementing",
@@ -11,6 +14,17 @@ const goal = {
 } as TaskGoalSnapshot;
 
 describe("Task implementation dashboard presentation", () => {
+  it("labels managed folder placement without Git terminology", () => {
+    expect(
+      taskImplementationPlacementLabel({
+        kind: "folder",
+        workerId: "worker",
+        rootId: "root",
+        displayPath: "folders/root",
+      }),
+    ).toBe("Direct folder");
+  });
+
   it("prioritizes durable Task lifecycle states over stale Goal labels", () => {
     expect(taskImplementationStatusLabel(task, goal)).toBe("Running");
     expect(

@@ -3,6 +3,7 @@ import type {
   TaskAssociatedPullRequest,
   TaskDetail,
   TaskGoalSnapshot,
+  TaskImplementationPlacement,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,6 +13,7 @@ import {
   CircleStop,
   ClipboardCopy,
   ExternalLink,
+  Folder,
   GitBranch,
   GitPullRequest,
   Loader2,
@@ -57,6 +59,12 @@ export function taskImplementationStatusLabel(
     return goal ? goalLabels[goal.status] : "Blocked";
   if (task.state === "complete") return "Complete";
   return goal ? goalLabels[goal.status] : "Starting";
+}
+
+export function taskImplementationPlacementLabel(
+  placement: TaskImplementationPlacement,
+) {
+  return placement.kind === "folder" ? "Direct folder" : "Git worktree";
 }
 
 function PullRequestRow({
@@ -191,6 +199,8 @@ export function TaskImplementationDashboard({
     goal?.status === "blocked";
   const showPause = task.state === "implementing" && goal?.status === "active";
   const latestMessages = useMemo(() => messages.data ?? [], [messages.data]);
+  const placement = dashboard.data?.placement;
+  const directFolder = placement?.kind === "folder";
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -279,34 +289,52 @@ export function TaskImplementationDashboard({
           </p>
         ) : null}
 
-        <section className="grid gap-0 border-b py-4 sm:grid-cols-3">
+        <section
+          className={cn(
+            "grid gap-0 border-b py-4",
+            directFolder ? "sm:grid-cols-2" : "sm:grid-cols-3",
+          )}
+        >
           <div className="flex items-center gap-2 py-1 text-sm">
             <Server className="size-3.5 text-muted-foreground" />
             <span className="truncate">
-              {workerName ?? dashboard.data?.placement.workerId ?? "Worker"}
+              {workerName ?? placement?.workerId ?? "Worker"}
             </span>
           </div>
-          <div className="flex items-center gap-2 py-1 text-sm">
-            <GitBranch className="size-3.5 text-muted-foreground" />
-            <span className="truncate">
-              {dashboard.data?.placement.worktreeName ?? "Worktree"}
-              {dashboard.data?.placement.branch
-                ? ` · ${dashboard.data.placement.branch}`
-                : " · detached"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 py-1 text-sm">
-            {dashboard.data?.placement.dirty ? (
-              <CirclePause className="size-3.5 text-amber-500" />
-            ) : (
-              <Check className="size-3.5 text-emerald-500" />
-            )}
-            <span>
-              {dashboard.data?.placement.dirty
-                ? `${dashboard.data.placement.dirtyFileCount} local change${dashboard.data.placement.dirtyFileCount === 1 ? "" : "s"}`
-                : "Worktree clean"}
-            </span>
-          </div>
+          {placement?.kind === "folder" ? (
+            <div className="flex items-center gap-2 py-1 text-sm">
+              <Folder className="size-3.5 text-muted-foreground" />
+              <span className="min-w-0">
+                <span className="block truncate">{placement.displayPath}</span>
+                <span className="block text-xs text-muted-foreground">
+                  {taskImplementationPlacementLabel(placement)} · direct writes
+                  · no Git checkpoint
+                </span>
+              </span>
+            </div>
+          ) : placement?.kind === "git" ? (
+            <>
+              <div className="flex items-center gap-2 py-1 text-sm">
+                <GitBranch className="size-3.5 text-muted-foreground" />
+                <span className="truncate">
+                  {placement?.worktreeName ?? "Worktree"}
+                  {placement?.branch ? ` · ${placement.branch}` : " · detached"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 py-1 text-sm">
+                {placement?.dirty ? (
+                  <CirclePause className="size-3.5 text-amber-500" />
+                ) : (
+                  <Check className="size-3.5 text-emerald-500" />
+                )}
+                <span>
+                  {placement?.dirty
+                    ? `${placement.dirtyFileCount} local change${placement.dirtyFileCount === 1 ? "" : "s"}`
+                    : "Worktree clean"}
+                </span>
+              </div>
+            </>
+          ) : null}
         </section>
 
         {goal ? (
@@ -393,36 +421,38 @@ export function TaskImplementationDashboard({
           </div>
         </section>
 
-        <section className="border-b py-5" aria-labelledby="task-pr-heading">
-          <div className="flex items-center gap-2">
-            <h3
-              id="task-pr-heading"
-              className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-            >
-              Implementation pull requests
-            </h3>
-            {dashboard.data?.pullRequests.length ? (
-              <Badge variant="outline" className="h-5 text-[10px]">
-                {dashboard.data.pullRequests.length}
-              </Badge>
-            ) : null}
-          </div>
-          {dashboard.data?.pullRequests.length ? (
-            <div className="mt-2 divide-y">
-              {dashboard.data.pullRequests.map((pullRequest) => (
-                <PullRequestRow
-                  key={pullRequest.number}
-                  pullRequest={pullRequest}
-                />
-              ))}
+        {placement && !directFolder ? (
+          <section className="border-b py-5" aria-labelledby="task-pr-heading">
+            <div className="flex items-center gap-2">
+              <h3
+                id="task-pr-heading"
+                className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+              >
+                Implementation pull requests
+              </h3>
+              {dashboard.data?.pullRequests.length ? (
+                <Badge variant="outline" className="h-5 text-[10px]">
+                  {dashboard.data.pullRequests.length}
+                </Badge>
+              ) : null}
             </div>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {dashboard.data?.pullRequestsUnavailableReason ??
-                "No Task-associated pull requests detected yet."}
-            </p>
-          )}
-        </section>
+            {dashboard.data?.pullRequests.length ? (
+              <div className="mt-2 divide-y">
+                {dashboard.data.pullRequests.map((pullRequest) => (
+                  <PullRequestRow
+                    key={pullRequest.number}
+                    pullRequest={pullRequest}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">
+                {dashboard.data?.pullRequestsUnavailableReason ??
+                  "No Task-associated pull requests detected yet."}
+              </p>
+            )}
+          </section>
+        ) : null}
 
         <section className="py-6" aria-labelledby="task-plan-heading">
           <h3

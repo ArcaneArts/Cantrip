@@ -196,7 +196,8 @@ export const taskGoalSnapshotSchema = z.object({
   updatedAt: z.number().int().nonnegative(),
 });
 
-export const taskImplementationPlacementSchema = z.object({
+const taskGitImplementationPlacementSchema = z.object({
+  kind: z.literal("git").default("git"),
   workerId: z.string().min(1),
   worktreeId: z.string().min(1),
   worktreeName: z.string().min(1),
@@ -205,6 +206,18 @@ export const taskImplementationPlacementSchema = z.object({
   dirty: z.boolean(),
   dirtyFileCount: z.number().int().nonnegative(),
 });
+
+const taskFolderImplementationPlacementSchema = z.object({
+  kind: z.literal("folder"),
+  workerId: z.string().min(1),
+  rootId: z.string().min(1),
+  displayPath: z.string().min(1),
+});
+
+export const taskImplementationPlacementSchema = z.union([
+  taskGitImplementationPlacementSchema,
+  taskFolderImplementationPlacementSchema,
+]);
 
 export const taskPullRequestAssociationSourceSchema = z.enum([
   "lane-branch",

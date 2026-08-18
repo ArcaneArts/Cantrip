@@ -21,6 +21,22 @@ import { errorMessage } from "@/lib/error-message";
 
 type AutomationType = WorkflowAutomationTrigger["type"];
 
+const automationTypeLabels: Record<AutomationType, string> = {
+  schedule: "Schedule",
+  api: "Cantrip API",
+  webhook: "Scoped webhook",
+  git: "Git / GitHub event",
+  "saved-command": "Saved command",
+};
+
+export function availableWorkflowAutomationTypes(
+  gitAvailable: boolean,
+): AutomationType[] {
+  return ["schedule", "api", "webhook", "git", "saved-command"].filter(
+    (type) => gitAvailable || type !== "git",
+  ) as AutomationType[];
+}
+
 const automationBudget = {
   maxNodes: 100,
   maxAttemptsPerNode: 3,
@@ -67,12 +83,14 @@ function errorText(error: unknown) {
 }
 
 export function WorkflowAutomationDialog({
+  gitAvailable,
   onCreated,
   onOpenChange,
   open,
   projectId,
   workflow,
 }: {
+  gitAvailable: boolean;
   onCreated(trigger: WorkflowAutomationTrigger): void;
   onOpenChange(open: boolean): void;
   open: boolean;
@@ -256,11 +274,13 @@ export function WorkflowAutomationDialog({
                 setIntervalSeconds(next === "schedule" ? "3600" : "1");
               }}
             >
-              <option value="schedule">Schedule</option>
-              <option value="api">Cantrip API</option>
-              <option value="webhook">Scoped webhook</option>
-              <option value="git">Git / GitHub event</option>
-              <option value="saved-command">Saved command</option>
+              {availableWorkflowAutomationTypes(gitAvailable).map(
+                (automationType) => (
+                  <option key={automationType} value={automationType}>
+                    {automationTypeLabels[automationType]}
+                  </option>
+                ),
+              )}
             </select>
           </label>
 

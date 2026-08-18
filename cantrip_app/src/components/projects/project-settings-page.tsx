@@ -421,7 +421,11 @@ export function ProjectSettingsPage({
 
       {section === "automations" ? (
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <ProjectAutomationsSettings chats={chats} projectId={project.id} />
+          <ProjectAutomationsSettings
+            chats={chats}
+            githubAvailable={project.capabilities.github}
+            projectId={project.id}
+          />
         </div>
       ) : null}
       {section === "archive" ? (
@@ -434,6 +438,7 @@ export function ProjectSettingsPage({
         <div className="min-h-0 w-full flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <WorkflowCenter
             chats={chats}
+            directFolder={!project.capabilities.git}
             initialWorkflowId={initialWorkflowId}
             projectId={project.id}
             onOpenHistory={onCreateHistory}

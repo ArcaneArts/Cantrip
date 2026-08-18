@@ -8,6 +8,7 @@ import {
   type WorkerEvent,
 } from "@cantrip/protocol";
 import {
+  workflowFolderProducedChangesSchema,
   workflowNodeExecutionResultSchema,
   type WorkflowAgentNodeConfiguration,
   type WorkflowGateDecision,
@@ -28,7 +29,7 @@ import type {
   WorkflowAttemptLease,
   WorkflowAgentCandidate,
   WorkflowCancellationExecutionContext,
-  WorkflowWorktreeCheckpoint,
+  WorkflowChangeCheckpoint,
 } from "../db/workflow-runs.js";
 import {
   type WorkerCommandBus,
@@ -690,13 +691,16 @@ export class WorkflowExecutor {
         break;
       }
       const candidate = candidates[0];
-      const source = candidate?.projectId
-        ? await this.repository.getProjectSource(
-            this.#ownerId(),
-            candidate.projectId,
-          )
-        : null;
-      if (candidate?.projectId && !source) break;
+      const [project, source] = candidate?.projectId
+        ? await Promise.all([
+            this.repository.getProject(this.#ownerId(), candidate.projectId),
+            this.repository.getProjectSource(
+              this.#ownerId(),
+              candidate.projectId,
+            ),
+          ])
+        : [null, null];
+      if (candidate?.projectId && (!project || !source)) break;
       if (source && !this.bridge.isConnected(source.workerId)) break;
       if (candidates.length > 0 && !source) {
         await this.repository.workflowRuns.failUnsupportedRun(
@@ -719,8 +723,14 @@ export class WorkflowExecutor {
           this.notifyRunChanged(runId, projectId, "workflow-node");
           break;
         }
-        let target = source!;
-        if (ready.node.writeCapable) {
+        let target = {
+          ...source!,
+          rootKind:
+            project!.originKind === "managed-folder"
+              ? ("folder-root" as const)
+              : ("git-worktree" as const),
+        };
+        if (ready.node.writeCapable && project!.capabilities.worktrees) {
           try {
             const allocation =
               await this.worktreeCoordinator.allocateWorkflowLane(
@@ -740,6 +750,7 @@ export class WorkflowExecutor {
             target = {
               cwd: allocation.worktree.path,
               projectReplicaId: allocation.worktree.projectSourceId,
+              rootKind: "git-worktree",
               workerId: allocation.worktree.workerId,
               worktreeId: allocation.worktree.id,
             };
@@ -764,6 +775,7 @@ export class WorkflowExecutor {
             cwd: target.cwd,
             modelRouteId: runtime.routeId,
             permissionProfileId: ready.node.permissionProfileId,
+            rootKind: target.rootKind,
             workerId: target.workerId,
             worktreeId: target.worktreeId,
           },
@@ -866,6 +878,7 @@ export class WorkflowExecutor {
           attemptId: lease.attemptId,
           idempotencyKey: lease.idempotencyKey,
           worktreeId,
+          rootKind: lease.assignment.rootKind,
           cwd,
           threadId:
             lease.candidate.item?.codexThreadId ??
@@ -932,7 +945,7 @@ export class WorkflowExecutor {
         this.#ownerId(),
         lease,
         result,
-        await this.captureWorktreeCheckpoint(lease),
+        await this.captureWorkflowChanges(lease),
       );
       const completedAt = new Date();
       await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
@@ -1004,10 +1017,26 @@ export class WorkflowExecutor {
     }
   }
 
-  private async captureWorktreeCheckpoint(
+  private async captureWorkflowChanges(
     lease: WorkflowAttemptLease,
-  ): Promise<WorkflowWorktreeCheckpoint | null> {
+  ): Promise<WorkflowChangeCheckpoint | null> {
     if (!lease.candidate.node.writeCapable) return null;
+    if (lease.assignment.rootKind === "folder-root") {
+      if (lease.worktreeLeaseId) {
+        throw new Error(
+          "A direct folder workflow attempt unexpectedly acquired a Git worktree lease.",
+        );
+      }
+      return {
+        kind: "folder",
+        producedChanges: workflowFolderProducedChangesSchema.parse({
+          folder: {
+            executionMode: "direct-folder",
+            checkpointAvailable: false,
+          },
+        }),
+      };
+    }
     const projectId = lease.candidate.projectId;
     if (!projectId || !lease.worktreeLeaseId) {
       throw new Error(
@@ -1056,6 +1085,7 @@ export class WorkflowExecutor {
       throw new Error("The workflow worktree is not ready to checkpoint.");
     }
     return {
+      kind: "git",
       endingRevision: result.status.head,
       worktreeDirty: result.status.files.length > 0,
       producedChanges: {
