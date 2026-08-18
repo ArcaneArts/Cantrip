@@ -1,4 +1,5 @@
 import {
+  isZaiCodingPlanBaseUrl,
   normalizeResponsesBaseUrl,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -10,6 +11,13 @@ export type CodexModelProviderName = "cantrip_runtime" | "ollama" | "openai";
 export interface CodexProviderConfiguration {
   arguments: string[];
   environment: Record<string, string>;
+}
+
+export function isZaiRuntimeProvider(provider: CodexProvider): boolean {
+  return (
+    provider.kind === "openai-compatible" &&
+    isZaiCodingPlanBaseUrl(provider.baseUrl)
+  );
 }
 
 export function codexModelProviderName(
@@ -38,10 +46,13 @@ export function codexProviderConfiguration(
       },
     };
   }
+  const providerName = isZaiRuntimeProvider(provider)
+    ? "Z.ai Coding Plan"
+    : provider.name;
   return {
     arguments: [
       'model_provider="cantrip_runtime"',
-      `model_providers.cantrip_runtime.name=${JSON.stringify(provider.name)}`,
+      `model_providers.cantrip_runtime.name=${JSON.stringify(providerName)}`,
       `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
       'model_providers.cantrip_runtime.wire_api="responses"',
       ...(provider.kind === "grok" ? ['web_search="disabled"'] : []),
