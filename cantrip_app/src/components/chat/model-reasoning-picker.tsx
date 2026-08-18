@@ -85,7 +85,7 @@ export function modelReasoningChoices(
   return [
     ...(state.reasoningMandatory
       ? []
-      : [{ effort: null, label: "Provider default" } as const]),
+      : [{ effort: null, label: "Default" } as const]),
     ...orderedOptions.map((option) => ({
       effort: option.effort,
       label: option.effort,

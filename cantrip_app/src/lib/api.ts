@@ -153,6 +153,7 @@ import {
   modelProviderAccountSummarySchema,
   modelProviderAccountUpdateSchema,
   modelProviderCreateSchema,
+  providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
@@ -875,6 +876,19 @@ export async function refreshProviderModelCatalog(
   return providerModelCatalogResultSchema.parse(
     await request(
       `/api/settings/providers/${encodeURIComponent(providerId)}/catalog/refresh${query}`,
+      { method: "POST" },
+    ),
+  );
+}
+
+export async function testModelProviderConnection(
+  providerId: string,
+  workerId?: string | null,
+) {
+  const query = workerId ? `?workerId=${encodeURIComponent(workerId)}` : "";
+  return providerConnectionTestResultSchema.parse(
+    await request(
+      `/api/settings/providers/${encodeURIComponent(providerId)}/test${query}`,
       { method: "POST" },
     ),
   );

@@ -246,9 +246,11 @@ import {
   modelProviderCreateSchema,
   providerAccessTokenLeaseRequestSchema,
   providerAccessTokenLeaseSchema,
+  providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
   providerTelemetryAnalyticsSchema,
   providerTelemetryDeleteResultSchema,
+  workerProviderConnectionTestResultSchema,
   providerTelemetryExportSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
@@ -678,6 +680,10 @@ import {
   isZaiCodingPlanProvider,
   ZaiCatalogService,
 } from "./models/zai-catalog.js";
+import {
+  providerConnectionFailureMessage,
+  providerConnectionFailureStage,
+} from "./models/provider-connection-test.js";
 import {
   ProviderAccessTokenError,
   ProviderAccessTokenService,
@@ -9997,7 +10003,14 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
-      if (provider.kind === "ollama" || isZaiCodingPlanProvider(provider)) {
+      if (isZaiCodingPlanProvider(provider)) {
+        await loadProviderCatalog(
+          applicationOwnerId(),
+          provider.id,
+          undefined,
+          false,
+        );
+      } else if (provider.kind === "ollama") {
         void loadProviderCatalog(
           applicationOwnerId(),
           provider.id,
@@ -10090,10 +10103,14 @@ export async function buildApp({
           request.params.providerId,
           input.data,
         );
-        if (
-          provider &&
-          (provider.kind === "ollama" || isZaiCodingPlanProvider(provider))
-        ) {
+        if (provider && isZaiCodingPlanProvider(provider)) {
+          await loadProviderCatalog(
+            applicationOwnerId(),
+            provider.id,
+            undefined,
+            true,
+          );
+        } else if (provider?.kind === "ollama") {
           void loadProviderCatalog(
             applicationOwnerId(),
             provider.id,
@@ -10371,6 +10388,116 @@ export async function buildApp({
       }
     },
   );
+
+  app.post<{
+    Params: { providerId: string };
+    Querystring: { workerId?: string };
+  }>("/api/settings/providers/:providerId/test", async (request, reply) => {
+    const startedAtMs = Date.now();
+    const ownerId = applicationOwnerId();
+    const provider = await repository.getModelProvider(
+      ownerId,
+      request.params.providerId,
+    );
+    if (!provider) {
+      return reply.code(404).send({ error: "Provider not found." });
+    }
+    if (!isZaiCodingPlanProvider(provider)) {
+      return reply.code(409).send({
+        error:
+          "Connection testing is currently available for Z.ai Coding Plan providers.",
+      });
+    }
+
+    const runtimes = (await repository.getModelRuntimes(ownerId)).filter(
+      (runtime) => runtime.provider.id === provider.id,
+    );
+    const runtime =
+      runtimes.find(({ model }) => model.name === "glm-5.3") ?? runtimes[0];
+    if (!runtime) {
+      return reply.send(
+        providerConnectionTestResultSchema.parse({
+          ok: false,
+          stage: "model-availability",
+          message:
+            "No enabled Z.ai model route is available. Refresh the bundled catalog and try again.",
+          workerId: null,
+          modelName: null,
+          durationMs: Date.now() - startedAtMs,
+        }),
+      );
+    }
+
+    const [settings, workers] = await Promise.all([
+      repository.getSettings(ownerId),
+      repository.listWorkers(ownerId),
+    ]);
+    const requestedWorkerId = request.query.workerId;
+    const requestedWorker = requestedWorkerId
+      ? workers.find(({ workerId }) => workerId === requestedWorkerId)
+      : null;
+    const defaultWorkerId = settings.preferences.defaultWorkerId;
+    const workerId = requestedWorkerId
+      ? (requestedWorker?.workerId ?? null)
+      : defaultWorkerId && bridge.isConnected(defaultWorkerId)
+        ? defaultWorkerId
+        : (workers.find(({ workerId }) => bridge.isConnected(workerId))
+            ?.workerId ?? null);
+    if (!workerId || !bridge.isConnected(workerId)) {
+      return reply.send(
+        providerConnectionTestResultSchema.parse({
+          ok: false,
+          stage: "worker-placement",
+          message: request.query.workerId
+            ? "The selected worker is offline or unavailable."
+            : "No compatible online worker could run the test.",
+          workerId: workerId ?? requestedWorkerId ?? null,
+          modelName: runtime.model.name,
+          durationMs: Date.now() - startedAtMs,
+        }),
+      );
+    }
+
+    try {
+      workerProviderConnectionTestResultSchema.parse(
+        await bridge.request(
+          workerId,
+          {
+            type: "model.provider.test",
+            model: runtime.model,
+            provider: runtime.provider,
+          },
+          { ownerId, timeoutMs: 120_000 },
+        ),
+      );
+      return reply.send(
+        providerConnectionTestResultSchema.parse({
+          ok: true,
+          stage: "completed",
+          message: `Connected to Z.ai through bundled Codex using ${runtime.model.name}.`,
+          workerId,
+          modelName: runtime.model.name,
+          durationMs: Date.now() - startedAtMs,
+        }),
+      );
+    } catch (error) {
+      const rawDetail = errorMessage(error);
+      const detail = runtime.provider.apiKey
+        ? rawDetail.replaceAll(runtime.provider.apiKey, "[REDACTED]")
+        : rawDetail;
+      const stage = providerConnectionFailureStage(detail);
+      return reply.send(
+        providerConnectionTestResultSchema.parse({
+          ok: false,
+          stage,
+          message: providerConnectionFailureMessage(stage, detail),
+          workerId,
+          modelName: runtime.model.name,
+          durationMs: Date.now() - startedAtMs,
+        }),
+      );
+    }
+  });
 
   app.post("/api/settings/models", async (request, reply) => {
     const input = modelProfileCreateSchema.safeParse(request.body);

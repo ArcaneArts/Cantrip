@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import {
   providerQuotaSnapshotSchema,
+  workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type WorkerCommand,
   type WorkerEvent,
@@ -1494,6 +1497,45 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return desktopAdapter.probe();
       case "surface.desktop.targets":
         return desktopAdapter.targets();
+      case "model.provider.test": {
+        const startedAtMs = Date.now();
+        const testId = randomUUID();
+        const cwd = await mkdtemp(
+          path.join(os.tmpdir(), "cantrip-provider-test-"),
+        );
+        try {
+          await runtimeFor(command).runWorkflowNode({
+            workflowRunId: `provider-test:${testId}`,
+            runNodeId: "connection",
+            attemptId: testId,
+            idempotencyKey: testId,
+            worktreeId: null,
+            cwd,
+            threadId: null,
+            prompt: "Reply with exactly OK.",
+            developerInstructions:
+              "This is a provider connection check. Do not call tools or inspect files. Reply with exactly OK.",
+            skillNames: [],
+            outputSchema: {},
+            mutationMode: "read-only",
+            networkAccess: "none",
+            approvalMode: "preauthorized",
+            permissionProfileId: null,
+            timeoutMs: 90_000,
+            model: command.model,
+            provider: command.provider,
+            mcpServers: [],
+          });
+          return workerProviderConnectionTestResultSchema.parse({
+            accepted: true,
+            durationMs: Date.now() - startedAtMs,
+          });
+        } finally {
+          await rm(cwd, { force: true, recursive: true }).catch(
+            () => undefined,
+          );
+        }
+      }
       case "chat.turn": {
         if (command.automationPaused) pausedChats.add(command.chatId);
         const runtime = runtimeFor(command);
