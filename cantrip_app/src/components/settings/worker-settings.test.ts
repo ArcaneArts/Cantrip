@@ -86,6 +86,18 @@ describe("worker settings helpers", () => {
     ).toBeNull();
   });
 
+  it("does not offer recovery when the linked identity already owns sources", () => {
+    expect(
+      recoverableDesktopWorkerId({
+        candidates: [
+          { repositoryCount: 1, workerId: "desktop-retained" },
+          { repositoryCount: 1, workerId: "desktop-current" },
+        ],
+        linkedWorkerId: "desktop-current",
+      }),
+    ).toBeNull();
+  });
+
   it("only reuses a worker identity authorized by the server", () => {
     expect(
       resolveDesktopWorkerPairingId({
