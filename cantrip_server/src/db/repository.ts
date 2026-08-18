@@ -5,6 +5,7 @@ import {
   MCP_SECRET_MASK,
   agentInteractionRequestSchema,
   normalizeResponsesBaseUrl,
+  projectCapabilitiesForOriginKind,
   unavailableCodeCapabilities,
   unavailableProjectReplicaCapabilities,
 } from "@cantrip/protocol";
@@ -883,6 +884,8 @@ function toProjectSummary(
     id: project.id,
     name: project.name,
     position: project.position,
+    originKind: project.originKind,
+    capabilities: projectCapabilitiesForOriginKind(project.originKind),
     setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
     setupError: project.setupError,
     worktreePolicy: project.worktreePolicy as ProjectSummary["worktreePolicy"],
@@ -891,6 +894,7 @@ function toProjectSummary(
     source: replicas[0]
       ? {
           id: replicas[0].id,
+          sourceKind: replicas[0].sourceKind,
           workerId: replicas[0].workerId,
           path: replicas[0].path,
           displayPath: replicas[0].displayPath,
@@ -1014,6 +1018,7 @@ function toProjectReplicaSummary(
   return {
     id: source.id,
     projectId: source.projectId,
+    sourceKind: source.sourceKind,
     workerId: source.workerId,
     workerName: workerSummary.name,
     workerOnline: workerSummary.online,
@@ -1261,6 +1266,7 @@ function toProjectWorktreeSummary(
     id: worktree.id,
     projectSourceId: worktree.projectSourceId,
     projectId,
+    rootKind: worktree.rootKind,
     workerId: worktree.workerId,
     name: worktree.name,
     path: worktree.absolutePath,
@@ -8012,6 +8018,28 @@ export class ServerRepository {
     );
   }
 
+  async getProject(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectSummary | null> {
+    const projects = await this.database
+      .select()
+      .from(schema.projects)
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .limit(1);
+    const project = projects[0];
+    if (!project) return null;
+    return toProjectSummary(
+      project,
+      (await this.listProjectReplicas(ownerId, projectId)) ?? [],
+    );
+  }
+
   async listMcpServers(
     ownerId: string,
     projectId: string | null,
@@ -11058,6 +11086,7 @@ export class ServerRepository {
           ownerId,
           name: input.nameWithOwner.split("/")[1] ?? input.nameWithOwner,
           position: (lastProjects[0]?.position ?? -1) + 1,
+          originKind: "github",
           setupStatus: "cloning",
           setupError: null,
           githubRepositoryId: input.repositoryId,
@@ -11101,6 +11130,7 @@ export class ServerRepository {
           id: randomUUID(),
           projectId,
           workerId,
+          sourceKind: "git",
           absolutePath: clone.path,
           displayPath: clone.displayPath,
         })
@@ -11110,6 +11140,7 @@ export class ServerRepository {
         id: randomUUID(),
         projectSourceId: source.id,
         workerId,
+        rootKind: "git-worktree",
         name: "Primary",
         absolutePath: clone.path,
         displayPath: clone.displayPath,

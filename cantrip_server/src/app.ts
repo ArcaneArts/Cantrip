@@ -547,6 +547,11 @@ import {
   ProjectReplicaJobExecutor,
   type ProjectReplicaJobLiveChange,
 } from "./project-replicas/executor.js";
+import {
+  ProjectCapabilityUnavailableError,
+  projectCapabilityForRoute,
+  requireProjectCapability,
+} from "./projects/capabilities.js";
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { browserTunnelTarget } from "./tunnels/browser-target.js";
@@ -2780,6 +2785,21 @@ export async function buildApp({
     uploadReleases.delete(request);
   });
 
+  app.addHook("preHandler", async (request) => {
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const capability = projectCapabilityForRoute(request.method, route);
+    if (!capability || !request.params || typeof request.params !== "object") {
+      return;
+    }
+    const projectId = (request.params as Record<string, unknown>).projectId;
+    if (typeof projectId !== "string" || projectId.length === 0) return;
+    const project = await repository.getProject(
+      applicationOwnerId(),
+      projectId,
+    );
+    if (project) requireProjectCapability(project, capability);
+  });
+
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ConflictingSessionCookiesError) {
       sessionService.clear(reply);
@@ -2804,6 +2824,9 @@ export async function buildApp({
         .header("retry-after", String(error.retryAfterSeconds))
         .code(429)
         .send({ error: error.message });
+    }
+    if (error instanceof ProjectCapabilityUnavailableError) {
+      return reply.code(error.statusCode).send(error.response());
     }
     const statusCode =
       error &&

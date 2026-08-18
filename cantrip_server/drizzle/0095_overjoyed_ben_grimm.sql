@@ -1,0 +1,8 @@
+ALTER TABLE "project_sources" ADD COLUMN "source_kind" text DEFAULT 'git' NOT NULL;--> statement-breakpoint
+ALTER TABLE "project_worktrees" ADD COLUMN "root_kind" text DEFAULT 'git-worktree' NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN "origin_kind" text DEFAULT 'github' NOT NULL;--> statement-breakpoint
+ALTER TABLE "project_sources" ADD CONSTRAINT "project_sources_source_kind_check" CHECK ("project_sources"."source_kind" IN ('git', 'folder'));--> statement-breakpoint
+ALTER TABLE "project_worktrees" ADD CONSTRAINT "project_worktrees_root_kind_check" CHECK ("project_worktrees"."root_kind" IN ('git-worktree', 'folder-root'));--> statement-breakpoint
+ALTER TABLE "project_worktrees" ADD CONSTRAINT "project_worktrees_folder_root_shape_check" CHECK ("project_worktrees"."root_kind" <> 'folder-root' OR ("project_worktrees"."is_primary" = true AND "project_worktrees"."is_default" = true AND "project_worktrees"."origin" = 'cantrip' AND "project_worktrees"."branch" IS NULL AND "project_worktrees"."head" IS NULL AND "project_worktrees"."detached" = false));--> statement-breakpoint
+ALTER TABLE "projects" ADD CONSTRAINT "projects_origin_kind_check" CHECK ("projects"."origin_kind" IN ('github', 'managed-folder'));--> statement-breakpoint
+ALTER TABLE "projects" ADD CONSTRAINT "projects_managed_folder_identity_check" CHECK ("projects"."origin_kind" <> 'managed-folder' OR ("projects"."github_repository_id" IS NULL AND "projects"."github_repository_full_name" IS NULL AND "projects"."github_repository_url" IS NULL AND "projects"."worktree_policy" = 'direct'));

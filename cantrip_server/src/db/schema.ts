@@ -23,11 +23,14 @@ import type {
   ModelReasoningEffortOption,
   PendingPlanQuestion,
   PlanStep,
+  ProjectOriginKind,
   ProjectReplicaCapabilities,
   ProjectReplicaJobErrorCode,
   ProjectReplicaJobKind,
   ProjectReplicaJobProgress,
   ProjectReplicaJobState,
+  ProjectRootKind,
+  ProjectSourceKind,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
   ExecutionPlacement,
@@ -1061,6 +1064,10 @@ export const projects = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     position: integer("position").notNull().default(0),
+    originKind: text("origin_kind")
+      .$type<ProjectOriginKind>()
+      .notNull()
+      .default("github"),
     setupStatus: text("setup_status").notNull().default("ready"),
     setupError: text("setup_error"),
     worktreePolicy: text("worktree_policy").notNull().default("agent-managed"),
@@ -1083,6 +1090,14 @@ export const projects = pgTable(
     uniqueIndex("projects_owner_github_repository_unique").on(
       table.ownerId,
       table.githubRepositoryId,
+    ),
+    check(
+      "projects_origin_kind_check",
+      sql`${table.originKind} IN ('github', 'managed-folder')`,
+    ),
+    check(
+      "projects_managed_folder_identity_check",
+      sql`${table.originKind} <> 'managed-folder' OR (${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct')`,
     ),
   ],
 );
@@ -1477,6 +1492,10 @@ export const projectSources = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    sourceKind: text("source_kind")
+      .$type<ProjectSourceKind>()
+      .notNull()
+      .default("git"),
     absolutePath: text("absolute_path").notNull(),
     displayPath: text("display_path").notNull(),
     repositoryFingerprint: text("repository_fingerprint"),
@@ -1492,6 +1511,10 @@ export const projectSources = pgTable(
     uniqueIndex("project_sources_project_worker_unique")
       .on(table.projectId, table.workerId)
       .where(sql`${table.removedAt} IS NULL`),
+    check(
+      "project_sources_source_kind_check",
+      sql`${table.sourceKind} IN ('git', 'folder')`,
+    ),
   ],
 );
 
@@ -1505,6 +1528,10 @@ export const projectWorktrees = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    rootKind: text("root_kind")
+      .$type<ProjectRootKind>()
+      .notNull()
+      .default("git-worktree"),
     name: text("name").notNull(),
     absolutePath: text("absolute_path").notNull(),
     displayPath: text("display_path").notNull(),
@@ -1538,6 +1565,14 @@ export const projectWorktrees = pgTable(
     uniqueIndex("project_worktrees_source_default_unique")
       .on(table.projectSourceId)
       .where(sql`${table.isDefault} = true`),
+    check(
+      "project_worktrees_root_kind_check",
+      sql`${table.rootKind} IN ('git-worktree', 'folder-root')`,
+    ),
+    check(
+      "project_worktrees_folder_root_shape_check",
+      sql`${table.rootKind} <> 'folder-root' OR (${table.isPrimary} = true AND ${table.isDefault} = true AND ${table.origin} = 'cantrip' AND ${table.branch} IS NULL AND ${table.head} IS NULL AND ${table.detached} = false)`,
+    ),
   ],
 );
 

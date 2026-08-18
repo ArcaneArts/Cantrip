@@ -7,6 +7,7 @@ const worktree: ProjectWorktreeSummary = {
   id: "worktree-2",
   projectSourceId: "source-1",
   projectId: "project-1",
+  rootKind: "git-worktree",
   workerId: "worker-1",
   name: "Fix auth",
   path: "/managed/worktrees/fix-auth",

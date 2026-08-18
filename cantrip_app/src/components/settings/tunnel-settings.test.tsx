@@ -16,6 +16,14 @@ const project = {
   id: "project-1",
   name: "Cantrip",
   position: 0,
+  originKind: "github",
+  capabilities: {
+    git: true,
+    github: true,
+    worktrees: true,
+    replicas: true,
+    relocation: true,
+  },
   setupStatus: "ready",
   setupError: null,
   worktreePolicy: "agent-managed",
@@ -26,6 +34,7 @@ const project = {
   },
   source: {
     id: "source-1",
+    sourceKind: "git",
     workerId: "worker-1",
     path: "/worker/repos/cantrip",
     displayPath: "~/repos/cantrip",

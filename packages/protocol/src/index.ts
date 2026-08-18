@@ -2085,8 +2085,46 @@ export const projectWorkspaceListSchema = z.array(
   projectWorkspaceSummarySchema,
 );
 
+export const projectOriginKindSchema = z.enum(["github", "managed-folder"]);
+export const projectSourceKindSchema = z.enum(["git", "folder"]);
+export const projectRootKindSchema = z.enum(["git-worktree", "folder-root"]);
+
+export const projectCapabilitiesSchema = z
+  .object({
+    git: z.boolean(),
+    github: z.boolean(),
+    worktrees: z.boolean(),
+    replicas: z.boolean(),
+    relocation: z.boolean(),
+  })
+  .strict();
+
+export const projectCapabilitySchema = projectCapabilitiesSchema.keyof();
+
+export const projectCapabilityUnavailableErrorSchema = z
+  .object({
+    code: z.literal("project-capability-unavailable"),
+    capability: projectCapabilitySchema,
+    error: z.string().min(1).max(1_000),
+  })
+  .strict();
+
+export function projectCapabilitiesForOriginKind(
+  originKind: z.infer<typeof projectOriginKindSchema>,
+): z.infer<typeof projectCapabilitiesSchema> {
+  const available = originKind === "github";
+  return {
+    git: available,
+    github: available,
+    worktrees: available,
+    replicas: available,
+    relocation: available,
+  };
+}
+
 export const projectSourceSummarySchema = z.object({
   id: z.string().min(1),
+  sourceKind: projectSourceKindSchema.default("git"),
   workerId: z.string().min(1),
   path: z.string().min(1),
   displayPath: z.string().min(1),
@@ -2095,6 +2133,7 @@ export const projectSourceSummarySchema = z.object({
 export const projectReplicaSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
+  sourceKind: projectSourceKindSchema.default("git"),
   workerId: z.string().min(1),
   workerName: z.string().min(1),
   workerOnline: z.boolean(),
@@ -2410,6 +2449,7 @@ export const projectWorktreeSummarySchema = z.object({
   id: z.string().min(1),
   projectSourceId: z.string().min(1),
   projectId: z.string().min(1),
+  rootKind: projectRootKindSchema.default("git-worktree"),
   workerId: z.string().min(1),
   name: z.string().min(1),
   path: z.string().min(1),
@@ -2436,28 +2476,50 @@ export const githubPullRequestCheckoutResultSchema = z.object({
   reused: z.boolean(),
 });
 
-export const projectSetupStatusSchema = z.enum(["cloning", "ready", "failed"]);
+export const projectSetupStatusSchema = z.enum([
+  "preparing",
+  "cloning",
+  "ready",
+  "failed",
+]);
 
-export const projectSummarySchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1),
-  position: z.number().int().nonnegative(),
-  setupStatus: projectSetupStatusSchema,
-  setupError: z.string().min(1).nullable(),
-  worktreePolicy: worktreePolicySchema,
-  preferredWorkerId: z.string().min(1).nullable().optional(),
-  github: z
-    .object({
-      repositoryId: z.string().min(1),
-      nameWithOwner: z.string().min(1),
-      url: z.url(),
-    })
-    .nullable(),
-  source: projectSourceSummarySchema.nullable(),
-  replicas: projectReplicaListSchema.default([]),
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
-});
+export const projectSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    position: z.number().int().nonnegative(),
+    originKind: projectOriginKindSchema.default("github"),
+    capabilities: projectCapabilitiesSchema.default(
+      projectCapabilitiesForOriginKind("github"),
+    ),
+    setupStatus: projectSetupStatusSchema,
+    setupError: z.string().min(1).nullable(),
+    worktreePolicy: worktreePolicySchema,
+    preferredWorkerId: z.string().min(1).nullable().optional(),
+    github: z
+      .object({
+        repositoryId: z.string().min(1),
+        nameWithOwner: z.string().min(1),
+        url: z.url(),
+      })
+      .nullable(),
+    source: projectSourceSummarySchema.nullable(),
+    replicas: projectReplicaListSchema.default([]),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .superRefine((project, context) => {
+    const expected = projectCapabilitiesForOriginKind(project.originKind);
+    for (const capability of projectCapabilitySchema.options) {
+      if (project.capabilities[capability] !== expected[capability]) {
+        context.addIssue({
+          code: "custom",
+          message: `${capability} capability does not match ${project.originKind} origin`,
+          path: ["capabilities", capability],
+        });
+      }
+    }
+  });
 
 export const projectListSchema = z.array(projectSummarySchema);
 
@@ -9347,6 +9409,14 @@ export type MobileProjectTabConfigurations = z.infer<
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
+export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
+export type ProjectSourceKind = z.infer<typeof projectSourceKindSchema>;
+export type ProjectRootKind = z.infer<typeof projectRootKindSchema>;
+export type ProjectCapabilities = z.infer<typeof projectCapabilitiesSchema>;
+export type ProjectCapability = z.infer<typeof projectCapabilitySchema>;
+export type ProjectCapabilityUnavailableError = z.infer<
+  typeof projectCapabilityUnavailableErrorSchema
+>;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
 export type ProjectPreferredWorkerUpdate = z.infer<
   typeof projectPreferredWorkerUpdateSchema

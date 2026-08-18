@@ -476,7 +476,17 @@ describe("Cantrip protocol", () => {
       createdAt: "2026-08-11T12:00:00.000Z",
       updatedAt: "2026-08-11T12:00:00.000Z",
     };
-    expect(projectSummarySchema.parse(legacy).replicas).toEqual([]);
+    const parsedLegacy = projectSummarySchema.parse(legacy);
+    expect(parsedLegacy.replicas).toEqual([]);
+    expect(parsedLegacy.originKind).toBe("github");
+    expect(parsedLegacy.capabilities).toEqual({
+      git: true,
+      github: true,
+      worktrees: true,
+      replicas: true,
+      relocation: true,
+    });
+    expect(parsedLegacy.source?.sourceKind).toBe("git");
     expect(
       projectSummarySchema.parse(legacy).preferredWorkerId,
     ).toBeUndefined();
@@ -502,9 +512,43 @@ describe("Cantrip protocol", () => {
         updatedAt: "2026-08-11T12:00:00.000Z",
       },
     ]);
-    expect(projectSummarySchema.parse({ ...legacy, replicas }).source).toEqual(
-      legacy.source,
-    );
+    expect(projectSummarySchema.parse({ ...legacy, replicas }).source).toEqual({
+      ...legacy.source,
+      sourceKind: "git",
+    });
+  });
+
+  it("validates authoritative managed-folder project capabilities", () => {
+    const folder = projectSummarySchema.parse({
+      id: "folder-project",
+      name: "Scratch prototype",
+      position: 1,
+      originKind: "managed-folder",
+      capabilities: {
+        git: false,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+      setupStatus: "preparing",
+      setupError: null,
+      worktreePolicy: "direct",
+      preferredWorkerId: "worker-one",
+      github: null,
+      source: null,
+      replicas: [],
+      createdAt: "2026-08-18T12:00:00.000Z",
+      updatedAt: "2026-08-18T12:00:00.000Z",
+    });
+    expect(folder.originKind).toBe("managed-folder");
+    expect(folder.capabilities.git).toBe(false);
+    expect(
+      projectSummarySchema.safeParse({
+        ...folder,
+        capabilities: { ...folder.capabilities, git: true },
+      }).success,
+    ).toBe(false);
   });
 
   it("validates resolved execution placements and untrusted target selectors", () => {
@@ -2947,29 +2991,29 @@ describe("Cantrip protocol", () => {
   });
 
   it("validates durable worktree and execution-lane summaries", () => {
-    expect(
-      projectWorktreeSummarySchema.parse({
-        id: "worktree-1",
-        projectSourceId: "source-1",
-        projectId: "project-1",
-        workerId: "worker-1",
-        name: "Primary",
-        path: "/workspace/project",
-        displayPath: "ArcaneArts/Cantrip",
-        isPrimary: true,
-        isDefault: true,
-        origin: "cantrip",
-        lifecycleState: "ready",
-        branch: "main",
-        head: "0123456789abcdef",
-        detached: false,
-        locked: false,
-        lockReason: null,
-        lastScannedAt: "2026-08-08T12:00:00.000Z",
-        createdAt: "2026-08-08T12:00:00.000Z",
-        updatedAt: "2026-08-08T12:00:00.000Z",
-      }).isPrimary,
-    ).toBe(true);
+    const worktree = projectWorktreeSummarySchema.parse({
+      id: "worktree-1",
+      projectSourceId: "source-1",
+      projectId: "project-1",
+      workerId: "worker-1",
+      name: "Primary",
+      path: "/workspace/project",
+      displayPath: "ArcaneArts/Cantrip",
+      isPrimary: true,
+      isDefault: true,
+      origin: "cantrip",
+      lifecycleState: "ready",
+      branch: "main",
+      head: "0123456789abcdef",
+      detached: false,
+      locked: false,
+      lockReason: null,
+      lastScannedAt: "2026-08-08T12:00:00.000Z",
+      createdAt: "2026-08-08T12:00:00.000Z",
+      updatedAt: "2026-08-08T12:00:00.000Z",
+    });
+    expect(worktree.isPrimary).toBe(true);
+    expect(worktree.rootKind).toBe("git-worktree");
 
     expect(
       chatExecutionLaneSummarySchema.parse({
