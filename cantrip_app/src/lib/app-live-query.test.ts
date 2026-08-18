@@ -133,6 +133,9 @@ describe("application live query bridge", () => {
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-tab-layout", "project-one"]);
     expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["project-repository-stats", "project-one"]);
+    expect(
       appLiveEventQueryKeys(
         event({
           resource: "terminal",
@@ -194,15 +197,18 @@ describe("application live query bridge", () => {
     bridge.handleEvent({ ...workerEvent, cursor: 2 });
     await Promise.resolve();
     await Promise.resolve();
-    expect(invalidate).toHaveBeenCalledTimes(3);
+    expect(invalidate).toHaveBeenCalledTimes(4);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["workers"] });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["worker-management"],
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chat-sync"] });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["project-repository-stats"],
+    });
     expect(bridge.stats()).toMatchObject({
-      coalescedInvalidationCount: 3,
-      invalidatedQueryCount: 3,
+      coalescedInvalidationCount: 4,
+      invalidatedQueryCount: 4,
       invalidationFlushCount: 1,
       receivedEventCount: 2,
     });
