@@ -47,6 +47,7 @@ import {
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
 import { ManagedFolderManager } from "./managed-folders.js";
+import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
@@ -373,6 +374,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   );
   const github = new GithubClient(config.dataDirectory);
   const managedFolders = new ManagedFolderManager(config.dataDirectory);
+  const projectGithubConverter = new ProjectGithubConverter(managedFolders);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
   const providerAccessTokens = new ProviderAccessTokenClient(config);
@@ -911,6 +913,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return managedFolders.materialize(command);
       case "project.folder.delete":
         return managedFolders.delete(command.projectId);
+      case "project.folder-conversion.preflight":
+        return projectGithubConverter.preflight(command);
+      case "project.folder-conversion.execute":
+        return projectGithubConverter.execute(command);
       case "project.replica.provision":
         return github.provisionReplica(
           {

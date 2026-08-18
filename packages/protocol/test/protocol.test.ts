@@ -200,6 +200,32 @@ describe("worker channel JSON codec", () => {
         projectId: "../outside",
       }).success,
     ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "project.folder-conversion.preflight",
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        repository: {
+          repositoryId: "42",
+          nameWithOwner: "ArcaneArts/Scratch",
+          url: "https://github.com/ArcaneArts/Scratch",
+        },
+      }),
+    ).not.toHaveProperty("path");
+    expect(
+      workerCommandSchema.parse({
+        type: "project.folder-conversion.execute",
+        jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+        attempt: 1,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        repository: {
+          repositoryId: "42",
+          nameWithOwner: "ArcaneArts/Scratch",
+          url: "https://github.com/ArcaneArts/Scratch",
+        },
+        confirmationToken: "a".repeat(64),
+        initialCommit: { message: "Initial commit" },
+      }),
+    ).not.toHaveProperty("path");
   });
 
   it("round-trips request and server envelopes", () => {
@@ -844,6 +870,7 @@ describe("Cantrip protocol", () => {
     });
     expect(heartbeat.managedFolders).toEqual({
       create: false,
+      convertToGithub: false,
       remove: false,
     });
     expect(heartbeat.chatRelocation).toBe(false);
@@ -2750,6 +2777,7 @@ describe("Cantrip protocol", () => {
       description: "A Cantrip project",
       visibility: "private",
     });
+    expect(request.initialize).toBe("readme");
     expect(
       workerCommandSchema.parse({
         type: "github.repository-owners.list",

@@ -180,6 +180,11 @@ import {
   projectExternalChatDiscoverySchema,
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
+  projectGithubConversionJobSummarySchema,
+  projectGithubConversionPreflightRequestSchema,
+  projectGithubConversionPreflightResultSchema,
+  projectGithubConversionRetrySchema,
+  projectGithubConversionStartSchema,
   projectPreferredWorkerUpdateSchema,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
@@ -333,6 +338,8 @@ import type {
   ExecutionTarget,
   ExecutionTargetResolveRequest,
   ProjectPreferredWorkerUpdate,
+  ProjectGithubConversionPreflightRequest,
+  ProjectGithubConversionStart,
   ProjectWorkspaceCreate,
   ProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
@@ -2343,6 +2350,55 @@ export async function retryProjectFolderSetup(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/folder-setup/retry`,
       projectFolderSetupRetrySchema.parse({ stateRevision }),
+    ),
+  );
+}
+
+export async function preflightProjectGithubConversion(
+  projectId: string,
+  input: ProjectGithubConversionPreflightRequest,
+) {
+  return projectGithubConversionPreflightResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/github-conversion/preflight`,
+      projectGithubConversionPreflightRequestSchema.parse(input),
+    ),
+  );
+}
+
+export async function startProjectGithubConversion(
+  projectId: string,
+  input: ProjectGithubConversionStart,
+) {
+  return projectGithubConversionJobSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/github-conversion`,
+      projectGithubConversionStartSchema.parse(input),
+    ),
+  );
+}
+
+export async function getProjectGithubConversion(projectId: string) {
+  try {
+    return projectGithubConversionJobSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/github-conversion`,
+      ),
+    );
+  } catch (error) {
+    if (error instanceof CantripApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function retryProjectGithubConversion(
+  projectId: string,
+  stateRevision: number,
+) {
+  return projectGithubConversionJobSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/github-conversion/retry`,
+      projectGithubConversionRetrySchema.parse({ stateRevision }),
     ),
   );
 }

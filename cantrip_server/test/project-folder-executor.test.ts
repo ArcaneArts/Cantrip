@@ -66,7 +66,7 @@ function worker(): WorkerSummary {
       remove: false,
       exactRevision: false,
     },
-    managedFolders: { create: true, remove: true },
+    managedFolders: { create: true, convertToGithub: true, remove: true },
     chatRelocation: false,
     externalCodexHistory: false,
     startedAt: now,

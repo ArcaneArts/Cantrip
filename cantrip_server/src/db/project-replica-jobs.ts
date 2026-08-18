@@ -1203,6 +1203,20 @@ export class ProjectReplicaJobRepository {
         .update(schema.projectSources)
         .set({ removedAt: now, updatedAt: now })
         .where(eq(schema.projectSources.id, job.projectReplicaId));
+      if (result.localFilesDeleted) {
+        await transaction
+          .update(schema.projectGithubConversionJobs)
+          .set({ localFilesDeletedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(
+                schema.projectGithubConversionJobs.projectSourceId,
+                job.projectReplicaId,
+              ),
+              eq(schema.projectGithubConversionJobs.state, "succeeded"),
+            ),
+          );
+      }
       await transaction
         .update(schema.projectWorktrees)
         .set({ lifecycleState: "missing", updatedAt: now })

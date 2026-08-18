@@ -792,7 +792,7 @@ function testWorkerHeartbeat() {
     architecture: "arm64",
     codexVersion: "0.146.1",
     codexRuntime: unprobedCodexRuntimeReport,
-    managedFolders: { create: true, remove: true },
+    managedFolders: { create: true, convertToGithub: true, remove: true },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket" as const],

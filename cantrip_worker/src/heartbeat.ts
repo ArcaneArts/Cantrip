@@ -46,6 +46,7 @@ export function createHeartbeat(
     },
     managedFolders: {
       create: true,
+      convertToGithub: true,
       remove: true,
     },
     chatRelocation: true,

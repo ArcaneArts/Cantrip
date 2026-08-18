@@ -80,6 +80,7 @@ import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";
 import { ProjectReplicaSettings } from "./project-replica-settings";
 import { ExternalChatImportSettings } from "./external-chat-import";
+import { ProjectGithubConversion } from "./project-github-conversion";
 import { SkillsSettings } from "@/components/settings/skills-settings";
 import { TunnelSettings } from "@/components/settings/tunnel-settings";
 import { PolicyAssignmentControls } from "@/components/settings/policy-assignment-controls";
@@ -559,6 +560,12 @@ export function ProjectSettingsPage({
               </DetailRow>
             </dl>
           </section>
+        ) : null}
+
+        {section === "general" ? (
+          project.originKind === "managed-folder" ? (
+            <ProjectGithubConversion project={project} workers={workers} />
+          ) : null
         ) : null}
 
         {section === "general" ? (

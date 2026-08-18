@@ -1,4 +1,5 @@
 import {
+  managedFolderDeleteResultSchema,
   projectReplicaProvisionResultSchema,
   projectReplicaRemoveResultSchema,
   projectReplicaSynchronizeResultSchema,
@@ -181,6 +182,14 @@ export class ProjectReplicaJobExecutor {
         this.onChanged({ ownerId: claimed.ownerId, job: blocked });
         return;
       }
+      const convertedManagedFolderSource =
+        job.kind === "remove" && job.projectReplicaId
+          ? await this.repository.projectGithubConversionJobs.isConvertedManagedFolderSource(
+              claimed.ownerId,
+              job.projectId,
+              job.projectReplicaId,
+            )
+          : false;
       const capable =
         job.kind === "provision"
           ? worker.projectReplicas.provision &&
@@ -188,7 +197,9 @@ export class ProjectReplicaJobExecutor {
           : job.kind === "synchronize"
             ? worker.projectReplicas.synchronize &&
               worker.projectReplicas.exactRevision
-            : worker.projectReplicas.remove;
+            : convertedManagedFolderSource
+              ? !(job.deleteLocalFiles ?? true) || worker.managedFolders.remove
+              : worker.projectReplicas.remove;
       if (!capable) {
         const blocked = await this.repository.projectReplicaJobs.block(
           job.id,
@@ -341,20 +352,40 @@ export class ProjectReplicaJobExecutor {
                 },
               );
             } else {
-              const result = projectReplicaRemoveResultSchema.parse(
-                await this.bridge.request(
-                  job.workerId,
-                  {
-                    type: "project.replica.remove",
-                    jobId: job.id,
-                    attempt: job.attempt,
-                    repository: { nameWithOwner: job.repository },
-                    sourcePath: context.sourcePath,
-                    deleteLocalFiles: job.deleteLocalFiles ?? true,
-                  },
-                  options,
-                ),
-              );
+              const deleteLocalFiles = job.deleteLocalFiles ?? true;
+              let result;
+              if (convertedManagedFolderSource) {
+                if (deleteLocalFiles) {
+                  managedFolderDeleteResultSchema.parse(
+                    await this.bridge.request(job.workerId, {
+                      type: "project.folder.delete",
+                      projectId: job.projectId,
+                    }),
+                  );
+                }
+                result = projectReplicaRemoveResultSchema.parse({
+                  status: "removed",
+                  jobId: job.id,
+                  attempt: job.attempt,
+                  path: context.sourcePath,
+                  localFilesDeleted: deleteLocalFiles,
+                });
+              } else {
+                result = projectReplicaRemoveResultSchema.parse(
+                  await this.bridge.request(
+                    job.workerId,
+                    {
+                      type: "project.replica.remove",
+                      jobId: job.id,
+                      attempt: job.attempt,
+                      repository: { nameWithOwner: job.repository },
+                      sourcePath: context.sourcePath,
+                      deleteLocalFiles,
+                    },
+                    options,
+                  ),
+                );
+              }
               this.assertCurrentResult(job, result);
               if (result.status === "blocked") {
                 await this.repository.projectReplicaJobs.restoreRemovalReady(

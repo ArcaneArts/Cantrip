@@ -77,6 +77,11 @@ function worker(): WorkerSummary {
       remove: true,
       exactRevision: true,
     },
+    managedFolders: {
+      create: true,
+      convertToGithub: true,
+      remove: true,
+    },
   };
 }
 
@@ -97,6 +102,9 @@ describe("project replica job executor", () => {
     const completeSynchronize = vi.fn().mockResolvedValue(completed);
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      projectGithubConversionJobs: {
+        isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
+      },
       projectReplicaJobs: {
         claimNext: vi
           .fn()
@@ -160,6 +168,9 @@ describe("project replica job executor", () => {
     const markRemovalStarted = vi.fn();
     const repository = {
       getWorker: vi.fn().mockResolvedValue(worker()),
+      projectGithubConversionJobs: {
+        isConvertedManagedFolderSource: vi.fn().mockResolvedValue(false),
+      },
       projectReplicaJobs: {
         claimNext: vi
           .fn()
@@ -199,5 +210,62 @@ describe("project replica job executor", () => {
     );
     expect(markRemovalStarted).not.toHaveBeenCalled();
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("removes a converted managed source through the UUID-scoped folder command", async () => {
+    const active = job("remove");
+    const completed = { ...active, state: "succeeded" as const };
+    const request = vi.fn().mockResolvedValue({ deleted: true });
+    const completeRemove = vi.fn().mockResolvedValue(completed);
+    const repository = {
+      getWorker: vi.fn().mockResolvedValue(worker()),
+      projectGithubConversionJobs: {
+        isConvertedManagedFolderSource: vi.fn().mockResolvedValue(true),
+      },
+      projectReplicaJobs: {
+        claimNext: vi
+          .fn()
+          .mockResolvedValueOnce({
+            ownerId: "owner-one",
+            commandId: "command-one",
+            job: active,
+          })
+          .mockResolvedValue(null),
+        operationContext: vi.fn().mockResolvedValue({
+          primaryWorktreeId: "worktree-one",
+          sourcePath: "/worker/folders/project-one",
+        }),
+        removalBlocker: vi.fn().mockResolvedValue(null),
+        markRemovalStarted: vi.fn().mockResolvedValue(true),
+        completeRemove,
+        updateProgress: vi.fn(),
+      },
+    } as unknown as ServerRepository;
+    const bridge = {
+      isConnected: vi.fn().mockReturnValue(true),
+      request,
+    } as unknown as WorkerCommandBus;
+    const executor = new ProjectReplicaJobExecutor(repository, bridge, {
+      error: vi.fn(),
+      warn: vi.fn(),
+    });
+
+    executor.queueAvailable();
+    await executor.drain();
+
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith("worker-one", {
+      type: "project.folder.delete",
+      projectId: "project-one",
+    });
+    expect(completeRemove).toHaveBeenCalledWith(
+      active.id,
+      "command-one",
+      expect.objectContaining({
+        status: "removed",
+        path: "/worker/folders/project-one",
+        localFilesDeleted: true,
+      }),
+    );
   });
 });

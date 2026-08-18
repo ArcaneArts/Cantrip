@@ -27,6 +27,8 @@ import type {
   ProjectOriginKind,
   ProjectFolderSetupJobError,
   ProjectFolderSetupJobState,
+  ProjectGithubConversionError,
+  ProjectGithubConversionJobState,
   ProjectReplicaCapabilities,
   ProjectReplicaJobErrorCode,
   ProjectReplicaJobKind,
@@ -104,6 +106,7 @@ const unavailableProjectReplicaCapabilities = {
 
 const unavailableManagedFolderCapabilities = {
   create: false,
+  convertToGithub: false,
   remove: false,
 } satisfies ManagedFolderCapabilities;
 
@@ -1650,6 +1653,89 @@ export const projectFolderSetupJobs = pgTable(
     ),
     check(
       "project_folder_setup_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const projectGithubConversionJobs = pgTable(
+  "project_github_conversion_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    projectSourceId: text("project_source_id")
+      .notNull()
+      .references(() => projectSources.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    repositoryId: text("repository_id").notNull(),
+    repositoryFullName: text("repository_full_name").notNull(),
+    repositoryUrl: text("repository_url").notNull(),
+    confirmationToken: text("confirmation_token").notNull(),
+    initialCommitMessage: text("initial_commit_message"),
+    state: text("state").$type<ProjectGithubConversionJobState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    lastErrorCode:
+      text("last_error_code").$type<ProjectGithubConversionError["code"]>(),
+    lastErrorMessage: text("last_error_message"),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    localFilesDeletedAt: timestamp("local_files_deleted_at", {
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_github_conversion_jobs_project_active_unique")
+      .on(table.projectId)
+      .where(sql`${table.state} IN ('queued', 'running', 'blocked')`),
+    uniqueIndex("project_github_conversion_jobs_repository_active_unique")
+      .on(table.ownerId, table.repositoryId)
+      .where(sql`${table.state} IN ('queued', 'running', 'blocked')`),
+    uniqueIndex("project_github_conversion_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    index("project_github_conversion_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("project_github_conversion_jobs_worker_state_index").on(
+      table.workerId,
+      table.state,
+    ),
+    check(
+      "project_github_conversion_jobs_state_check",
+      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed')`,
+    ),
+    check(
+      "project_github_conversion_jobs_revision_check",
+      sql`${table.stateRevision} > 0`,
+    ),
+    check(
+      "project_github_conversion_jobs_attempt_check",
+      sql`${table.attempt} >= 0`,
+    ),
+    check(
+      "project_github_conversion_jobs_error_shape_check",
       sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
     ),
   ],
