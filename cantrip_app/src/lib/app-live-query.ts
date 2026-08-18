@@ -70,6 +70,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
               : []),
           ]
         : [["project-replica-jobs"]];
+    case "project-folder-setup-job":
+      return projectId
+        ? [["project-folder-setup", projectId], ["projects"]]
+        : [["project-folder-setup"], ["projects"]];
     case "project-tab-layout":
       return projectId
         ? [["project-tab-layout", projectId]]

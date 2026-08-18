@@ -7,6 +7,7 @@ import {
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
   unavailableCodeCapabilities,
+  unavailableManagedFolderCapabilities,
   unavailableProjectReplicaCapabilities,
 } from "@cantrip/protocol";
 import type {
@@ -59,6 +60,7 @@ import type {
   ExecutionTargetCatalog,
   ExecutionTargetResolution,
   GithubProjectCreate,
+  ManagedFolderProjectCreate,
   GitManagedOperationContext,
   GitManagedOperationRecord,
   GitManagedOperationWorkerState,
@@ -95,6 +97,7 @@ import type {
   RemoteSurfaceSummary,
   RemoteSurfaceUpdate,
   ProjectCloneResult,
+  ProjectFolderSetupJobSummary,
   ProjectReplicaSummary,
   ProjectSummary,
   ProjectTokenUsage,
@@ -212,6 +215,7 @@ import {
   releaseChatLogicalBranchLease,
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
+import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
 import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { TaskRepository, toTaskDetail } from "./tasks.js";
@@ -420,6 +424,8 @@ export interface TerminalExecutionContext {
 }
 
 export interface ProjectRemovalContext {
+  originKind: ProjectSummary["originKind"];
+  preferredWorkerId: string | null;
   replicas: Array<{
     cwd: string;
     id: string;
@@ -1525,6 +1531,7 @@ function toWorkerSummary(
     directBroker: worker.directBrokerAdvertisement,
     code: worker.codeCapabilities,
     projectReplicas: worker.projectReplicaCapabilities,
+    managedFolders: worker.managedFolderCapabilities,
     chatRelocation: worker.chatRelocationCapability,
     externalCodexHistory: worker.externalCodexHistoryCapability,
     startedAt: toISOString(worker.startedAt),
@@ -1971,6 +1978,7 @@ export class ServerRepository {
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
+  readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
   readonly workflowRuns: WorkflowRunRepository;
@@ -1986,6 +1994,7 @@ export class ServerRepository {
     this.policies = new PolicyRepository(database);
     this.tasks = new TaskRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
+    this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
     this.workflowTriggers = new WorkflowTriggerRepository(database);
@@ -6502,6 +6511,9 @@ export class ServerRepository {
         projectReplicaCapabilities:
           input.heartbeat.projectReplicas ??
           unavailableProjectReplicaCapabilities,
+        managedFolderCapabilities:
+          input.heartbeat.managedFolders ??
+          unavailableManagedFolderCapabilities,
         chatRelocationCapability: input.heartbeat.chatRelocation ?? false,
         externalCodexHistoryCapability:
           input.heartbeat.externalCodexHistory ?? false,
@@ -6721,6 +6733,8 @@ export class ServerRepository {
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
+      managedFolderCapabilities:
+        heartbeat.managedFolders ?? unavailableManagedFolderCapabilities,
       chatRelocationCapability: heartbeat.chatRelocation ?? false,
       externalCodexHistoryCapability: heartbeat.externalCodexHistory ?? false,
       startedAt: new Date(heartbeat.startedAt),
@@ -11106,6 +11120,90 @@ export class ServerRepository {
     return toProjectSummary(project);
   }
 
+  async createManagedFolderProject(
+    ownerId: string,
+    input: ManagedFolderProjectCreate,
+  ): Promise<{
+    job: ProjectFolderSetupJobSummary;
+    project: ProjectSummary;
+  }> {
+    const defaultWorkspace = await this.ensureDefaultProjectWorkspace(ownerId);
+    const workspaceIds = [
+      ...new Set(input.workspaceIds ?? [defaultWorkspace.id]),
+    ];
+    const ownedWorkspaces = await this.database
+      .select({ id: schema.projectWorkspaces.id })
+      .from(schema.projectWorkspaces)
+      .where(
+        and(
+          eq(schema.projectWorkspaces.ownerId, ownerId),
+          inArray(schema.projectWorkspaces.id, workspaceIds),
+        ),
+      );
+    if (ownedWorkspaces.length !== workspaceIds.length) {
+      throw new ProjectWorkspaceInvariantError(
+        "Folder project creation referenced an unknown workspace.",
+      );
+    }
+    const projectId = randomUUID();
+    const jobId = randomUUID();
+    const project = await this.database.transaction(async (transaction) => {
+      const workers = await transaction
+        .select({ id: schema.workers.id })
+        .from(schema.workers)
+        .where(
+          and(
+            eq(schema.workers.id, input.workerId),
+            eq(schema.workers.ownerId, ownerId),
+            isNull(schema.workers.unlinkedAt),
+          ),
+        )
+        .limit(1);
+      if (!workers[0]) {
+        throw new ProjectWorkspaceInvariantError("Worker not found.");
+      }
+      const lastProjects = await transaction
+        .select({ position: schema.projects.position })
+        .from(schema.projects)
+        .where(eq(schema.projects.ownerId, ownerId))
+        .orderBy(desc(schema.projects.position))
+        .limit(1);
+      const projectRows = await transaction
+        .insert(schema.projects)
+        .values({
+          id: projectId,
+          ownerId,
+          name: input.name,
+          position: (lastProjects[0]?.position ?? -1) + 1,
+          originKind: "managed-folder",
+          setupStatus: "preparing",
+          setupError: null,
+          worktreePolicy: "direct",
+          preferredWorkerId: input.workerId,
+          githubRepositoryId: null,
+          githubRepositoryFullName: null,
+          githubRepositoryUrl: null,
+        })
+        .returning();
+      await transaction
+        .insert(schema.projectWorkspaceMemberships)
+        .values(
+          workspaceIds.map((workspaceId) => ({ workspaceId, projectId })),
+        );
+      await transaction.insert(schema.projectFolderSetupJobs).values({
+        id: jobId,
+        ownerId,
+        projectId,
+        workerId: input.workerId,
+        state: "queued",
+      });
+      return firstOrThrow(projectRows, "creating a folder project");
+    });
+    const job = await this.projectFolderSetupJobs.get(ownerId, projectId);
+    if (!job) throw new Error("Folder setup job was not created.");
+    return { job, project: toProjectSummary(project) };
+  }
+
   async completeGithubProjectSetup(
     ownerId: string,
     projectId: string,
@@ -11197,6 +11295,8 @@ export class ServerRepository {
   ): Promise<ProjectRemovalContext | null> {
     const rows = await this.database
       .select({
+        originKind: schema.projects.originKind,
+        preferredWorkerId: schema.projects.preferredWorkerId,
         projectId: schema.projects.id,
         setupStatus: schema.projects.setupStatus,
       })
@@ -11239,6 +11339,8 @@ export class ServerRepository {
       .from(schema.remoteSurfaces)
       .where(eq(schema.remoteSurfaces.projectId, projectId));
     return {
+      originKind: project.originKind,
+      preferredWorkerId: project.preferredWorkerId,
       replicas,
       remoteSurfaces: remoteSurfaces.map(({ surface }) =>
         toRemoteSurfaceSummary(surface),

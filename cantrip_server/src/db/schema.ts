@@ -19,11 +19,14 @@ import type {
   GitManagedOperationState,
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
+  ManagedFolderCapabilities,
   MobileProjectTabConfigurations,
   ModelReasoningEffortOption,
   PendingPlanQuestion,
   PlanStep,
   ProjectOriginKind,
+  ProjectFolderSetupJobError,
+  ProjectFolderSetupJobState,
   ProjectReplicaCapabilities,
   ProjectReplicaJobErrorCode,
   ProjectReplicaJobKind,
@@ -98,6 +101,11 @@ const unavailableProjectReplicaCapabilities = {
   remove: false,
   exactRevision: false,
 } satisfies ProjectReplicaCapabilities;
+
+const unavailableManagedFolderCapabilities = {
+  create: false,
+  remove: false,
+} satisfies ManagedFolderCapabilities;
 
 const unavailableDirectBroker = {
   available: false,
@@ -1000,6 +1008,10 @@ export const workers = pgTable("workers", {
     .$type<ProjectReplicaCapabilities>()
     .notNull()
     .default(unavailableProjectReplicaCapabilities),
+  managedFolderCapabilities: jsonb("managed_folder_capabilities")
+    .$type<ManagedFolderCapabilities>()
+    .notNull()
+    .default(unavailableManagedFolderCapabilities),
   chatRelocationCapability: boolean("chat_relocation_capability")
     .notNull()
     .default(false),
@@ -1572,6 +1584,73 @@ export const projectWorktrees = pgTable(
     check(
       "project_worktrees_folder_root_shape_check",
       sql`${table.rootKind} <> 'folder-root' OR (${table.isPrimary} = true AND ${table.isDefault} = true AND ${table.origin} = 'cantrip' AND ${table.branch} IS NULL AND ${table.head} IS NULL AND ${table.detached} = false)`,
+    ),
+  ],
+);
+
+export const projectFolderSetupJobs = pgTable(
+  "project_folder_setup_jobs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    state: text("state").$type<ProjectFolderSetupJobState>().notNull(),
+    stateRevision: integer("state_revision").notNull().default(1),
+    attempt: integer("attempt").notNull().default(0),
+    commandId: text("command_id"),
+    lastErrorCode:
+      text("last_error_code").$type<ProjectFolderSetupJobError["code"]>(),
+    lastErrorMessage: text("last_error_message"),
+    errorRetryable: boolean("error_retryable"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("project_folder_setup_jobs_project_unique").on(table.projectId),
+    uniqueIndex("project_folder_setup_jobs_command_unique")
+      .on(table.commandId)
+      .where(sql`${table.commandId} IS NOT NULL`),
+    index("project_folder_setup_jobs_dispatch_index").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+    ),
+    index("project_folder_setup_jobs_worker_state_index").on(
+      table.workerId,
+      table.state,
+    ),
+    check(
+      "project_folder_setup_jobs_state_check",
+      sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed')`,
+    ),
+    check(
+      "project_folder_setup_jobs_revision_check",
+      sql`${table.stateRevision} > 0`,
+    ),
+    check(
+      "project_folder_setup_jobs_attempt_check",
+      sql`${table.attempt} >= 0`,
+    ),
+    check(
+      "project_folder_setup_jobs_error_shape_check",
+      sql`(${table.lastErrorCode} IS NULL AND ${table.lastErrorMessage} IS NULL AND ${table.errorRetryable} IS NULL) OR (${table.lastErrorCode} IS NOT NULL AND ${table.lastErrorMessage} IS NOT NULL AND ${table.errorRetryable} IS NOT NULL)`,
     ),
   ],
 );
