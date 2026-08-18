@@ -47,7 +47,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ...(event.entityId ? [["policy", event.entityId]] : []),
       ];
     case "worker":
-      return [["workers"], ["worker-management"], ["chat-sync"]];
+      return [
+        ["workers"],
+        ["worker-management"],
+        ["chat-sync"],
+        ["project-repository-stats"],
+      ];
     case "project":
       return projectId
         ? [
@@ -261,6 +266,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["browsers", scope.projectId],
         ["code-tabs", scope.projectId],
         ["project-views", scope.projectId],
+        ["project-repository-stats", scope.projectId],
         ["project-tunnels", scope.projectId],
         ["workflow-repository", scope.projectId],
         ["workflow-runs", scope.projectId],
