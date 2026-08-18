@@ -15,6 +15,7 @@ const layout = {
     {
       id: "group-1",
       projectId: "project-1",
+      title: "First chat",
       position: 0,
       anchorTabKey: "chat:one",
       createdAt: now,
@@ -47,6 +48,7 @@ const layout = {
     {
       id: "group-2",
       projectId: "project-1",
+      title: "Terminal",
       position: 1,
       anchorTabKey: "terminal:one",
       createdAt: now,
@@ -116,10 +118,11 @@ describe("mobile project shell", () => {
 
     expect(markup).toContain("Group 1");
     expect(markup).toContain("Group 2");
-    expect(markup.indexOf("Chat One")).toBeLessThan(
-      markup.indexOf("Terminal One"),
+    expect(markup.indexOf("First chat")).toBeLessThan(
+      markup.indexOf("Terminal"),
     );
-    expect(markup).toContain('aria-label="Open Group 1: Chat One"');
+    expect(markup).toContain('aria-label="Open Group 1: First chat"');
+    expect(markup).not.toContain("Chat One");
     expect(markup).not.toContain("Chat Two");
     expect(markup).not.toContain("Actions for");
     expect(markup).not.toContain("Remove bottom tab");
@@ -148,7 +151,7 @@ describe("mobile project shell", () => {
         activeItemId="primary"
         gridOpen={false}
         items={[
-          { id: "primary", surface: surfaces[1] },
+          { id: "primary", label: "Agents", surface: surfaces[1] },
           { id: "mobile-1", surface: surfaces[2] },
           { id: "mobile-2", surface: surfaces[1] },
         ]}
@@ -162,7 +165,7 @@ describe("mobile project shell", () => {
 
     expect(markup.match(/<button/g)).toHaveLength(5);
     expect(markup).toContain("Overview");
-    expect(markup).toContain("Chat One");
+    expect(markup).toContain("Agents");
     expect(markup).toContain("Terminal One");
     expect(markup).toContain('aria-label="Add bottom tab"');
     expect(markup).toContain('aria-current="page"');

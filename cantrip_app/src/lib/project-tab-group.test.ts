@@ -47,6 +47,7 @@ describe("project tab group presentation", () => {
         {
           id: "group-1",
           projectId: "project-1",
+          title: "Anchor",
           position: 0,
           anchorTabKey: "chat:anchor",
           members: surfaces.map(({ member }) => member),

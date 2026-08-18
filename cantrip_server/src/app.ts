@@ -333,6 +333,7 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  tabGroupUpdateSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
   terminalCreateSchema,
@@ -19430,6 +19431,37 @@ export async function buildApp({
         const layout = await repository.tabLayouts.reorderGroups(
           applicationOwnerId(),
           request.params.projectId,
+          input.data,
+        );
+        return layout
+          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          : reply.code(404).send({ error: "Project not found." });
+      } catch (error) {
+        if (
+          error instanceof TabLayoutConflictError ||
+          error instanceof TabLayoutInvariantError
+        ) {
+          return reply
+            .code(error instanceof TabLayoutConflictError ? 409 : 400)
+            .send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.patch<{ Params: { projectId: string; groupId: string } }>(
+    "/api/projects/:projectId/tab-groups/:groupId",
+    async (request, reply) => {
+      const input = tabGroupUpdateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const layout = await repository.tabLayouts.updateGroup(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.groupId,
           input.data,
         );
         return layout

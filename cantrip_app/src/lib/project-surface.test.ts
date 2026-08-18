@@ -16,6 +16,7 @@ const layout: ProjectTabLayoutSummary = {
     {
       id: "group-1",
       projectId: "project-1",
+      title: "Chat",
       position: 0,
       anchorTabKey: "chat:chat-1",
       createdAt: timestamp,

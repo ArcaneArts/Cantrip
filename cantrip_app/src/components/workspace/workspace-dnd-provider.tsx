@@ -107,11 +107,7 @@ function dragData(
     type: "group",
     projectId: group.projectId,
     groupId: group.id,
-    label:
-      group.members.find(({ tabKey }) => tabKey === group.anchorTabKey)
-        ?.title ??
-      group.members[0]?.title ??
-      "Tab group",
+    label: group.title,
     visualKind:
       kinds.size > 1 ? "mixed" : (group.members[0]?.tabKind ?? "mixed"),
   };

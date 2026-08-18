@@ -519,6 +519,7 @@ export function ProjectChatList({
   onRenameBrowser,
   onRenameCode,
   onRenameExplorer,
+  onRenameGroup,
   onRenameProjectView,
   onRenameTerminal,
   onSelectGroup,
@@ -569,6 +570,7 @@ export function ProjectChatList({
   onRenameBrowser(browserId: string, title: string): void;
   onRenameCode(codeTabId: string, title: string): void;
   onRenameExplorer(explorerId: string, title: string): void;
+  onRenameGroup(groupId: string, title: string): void;
   onRenameProjectView(viewId: string, title: string): void;
   onRenameTerminal(terminalId: string, title: string): void;
   onSelectGroup(groupId: string): void;
@@ -596,6 +598,7 @@ export function ProjectChatList({
   const [editingProjectViewId, setEditingProjectViewId] = useState<
     string | null
   >(null);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
   const [deleteBrowserTarget, setDeleteBrowserTarget] =
@@ -695,6 +698,7 @@ export function ProjectChatList({
               id: group.id,
               members,
               sortId: anchor.id,
+              title: group.title,
             },
           ]
         : [];
@@ -705,18 +709,6 @@ export function ProjectChatList({
       : tab.kind === "chat" && tab.chat.experience === "task"
         ? "task"
         : tab.kind;
-  const tabTitle = (tab: SidebarTab): string =>
-    tab.kind === "chat"
-      ? tab.chat.title
-      : tab.kind === "terminal"
-        ? tab.terminal.title
-        : tab.kind === "explorer"
-          ? tab.explorer.title
-          : tab.kind === "browser"
-            ? tab.browser.title
-            : tab.kind === "code"
-              ? tab.codeTab.title
-              : tab.view.title;
   const selectedGroupId = tabLayout?.groups.find(({ members }) =>
     members.some(({ tabKey }) => tabKey === selectedTabKey),
   )?.id;
@@ -802,33 +794,18 @@ export function ProjectChatList({
     setEditingProjectViewId(null);
     if (title && title !== view.title) onRenameProjectView(view.id, title);
   };
-  const tabIsEditing = (tab: SidebarTab): boolean =>
-    tab.kind === "chat"
-      ? editingChatId === tab.chat.id
-      : tab.kind === "terminal"
-        ? editingTerminalId === tab.terminal.id
-        : tab.kind === "explorer"
-          ? editingExplorerId === tab.explorer.id
-          : tab.kind === "browser"
-            ? editingBrowserId === tab.browser.id
-            : tab.kind === "code"
-              ? editingCodeId === tab.codeTab.id
-              : editingProjectViewId === tab.view.id;
-  const beginTabRename = (tab: SidebarTab) => {
-    if (tab.kind === "chat") beginRename(tab.chat);
-    else if (tab.kind === "terminal") beginTerminalRename(tab.terminal);
-    else if (tab.kind === "explorer") beginExplorerRename(tab.explorer);
-    else if (tab.kind === "browser") beginBrowserRename(tab.browser);
-    else if (tab.kind === "code") beginCodeRename(tab.codeTab);
-    else beginProjectViewRename(tab.view);
+  const beginGroupRename = (groupId: string, title: string) => {
+    if (editingGroupId === groupId) {
+      setEditingGroupId(null);
+      return;
+    }
+    setEditingGroupId(groupId);
+    setRenameValue(title);
   };
-  const finishTabRename = (tab: SidebarTab) => {
-    if (tab.kind === "chat") finishRename(tab.chat);
-    else if (tab.kind === "terminal") finishTerminalRename(tab.terminal);
-    else if (tab.kind === "explorer") finishExplorerRename(tab.explorer);
-    else if (tab.kind === "browser") finishBrowserRename(tab.browser);
-    else if (tab.kind === "code") finishCodeRename(tab.codeTab);
-    else finishProjectViewRename(tab.view);
+  const finishGroupRename = (groupId: string, currentTitle: string) => {
+    const title = renameValue.trim();
+    setEditingGroupId(null);
+    if (title && title !== currentTitle) onRenameGroup(groupId, title);
   };
   const requestTabDelete = (tab: SidebarTab) => {
     if (tab.kind === "chat") setDeleteTarget(tab.chat);
@@ -950,7 +927,7 @@ export function ProjectChatList({
                                 (tab.chat.status === "running" ||
                                   tab.chat.status === "waiting-for-approval")
                               }
-                              editing={tabIsEditing(tab)}
+                              editing={editingGroupId === group.id}
                               onClose={() => closeTabImmediately(tab)}
                               onDelete={() => requestTabDelete(tab)}
                               onDuplicate={
@@ -958,13 +935,17 @@ export function ProjectChatList({
                                   ? () => onDuplicateChat(tab.chat.id)
                                   : undefined
                               }
-                              onRename={() => beginTabRename(tab)}
+                              onRename={() =>
+                                beginGroupRename(group.id, group.title)
+                              }
                               onSelect={selectGroup}
                               renameValue={renameValue}
                               setRenameValue={setRenameValue}
                               sortId={group.sortId}
-                              submitRename={() => finishTabRename(tab)}
-                              title={tabTitle(tab)}
+                              submitRename={() =>
+                                finishGroupRename(group.id, group.title)
+                              }
+                              title={group.title}
                               visualKind={
                                 visualKinds.size > 1
                                   ? "mixed"

@@ -106,7 +106,7 @@ export function MobileProjectTabGrid({
               return (
                 <button
                   aria-current={active ? "page" : undefined}
-                  aria-label={`Open Group ${groupIndex + 1}: ${representativeMember.title}`}
+                  aria-label={`Open Group ${groupIndex + 1}: ${group.title}`}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-lg px-2 py-3 text-left outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
                     active && "bg-muted",
@@ -132,7 +132,7 @@ export function MobileProjectTabGrid({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">
-                      {representativeMember.title}
+                      {group.title}
                     </span>
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       Group {groupIndex + 1} · {group.members.length}{" "}

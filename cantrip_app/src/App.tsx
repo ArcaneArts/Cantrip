@@ -300,6 +300,7 @@ import {
   updateCodeTabWorktree,
   updateExplorerWorktree,
   updateProjectViewWorktree,
+  updateProjectTabGroup,
   updateQueuedPrompt,
   updateSettings,
   updateTerminalWorktree,
@@ -3993,6 +3994,33 @@ export function App() {
         queryKey: ["project-tab-layout", input.projectId],
       }),
   });
+  const renameTabGroupMutation = useMutation({
+    mutationFn: ({
+      groupId,
+      projectId,
+      title,
+    }: {
+      groupId: string;
+      projectId: string;
+      title: string;
+    }) => {
+      const current = queryClient.getQueryData<ProjectTabLayoutSummary>([
+        "project-tab-layout",
+        projectId,
+      ]);
+      if (!current) throw new Error("The project tab layout is not loaded.");
+      return updateProjectTabGroup(projectId, groupId, current.revision, title);
+    },
+    onSuccess: (layout) =>
+      queryClient.setQueryData(
+        ["project-tab-layout", layout.projectId],
+        layout,
+      ),
+    onSettled: (_data, _error, input) =>
+      queryClient.invalidateQueries({
+        queryKey: ["project-tab-layout", input.projectId],
+      }),
+  });
 
   const onlineWorker = workers.data?.find((worker) => worker.online) ?? null;
   const activeProjectWorkspace = resolveProjectWorkspace(
@@ -4078,6 +4106,7 @@ export function App() {
       : null;
     return {
       id: tab.id,
+      label: group?.title,
       surface: tabKey ? projectSurfaceIndex.byTabKey.get(tabKey) : undefined,
     };
   });
@@ -5528,6 +5557,14 @@ export function App() {
                 onRenameChat={(chatId, title) =>
                   renameChatMutation.mutate({ chatId, title })
                 }
+                onRenameGroup={(groupId, title) => {
+                  if (!selectedProjectId) return;
+                  renameTabGroupMutation.mutate({
+                    groupId,
+                    projectId: selectedProjectId,
+                    title,
+                  });
+                }}
                 onDuplicateChat={(chatId) => forkChatMutation.mutate(chatId)}
                 onDeleteChat={(chatId) => deleteChatMutation.mutate(chatId)}
                 onRenameCode={(codeTabId, title) =>
