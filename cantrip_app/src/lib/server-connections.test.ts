@@ -18,6 +18,7 @@ import {
   removeServerConnection,
   saveServerConnection,
   selectServerConnection,
+  suggestedServerUrlForName,
   testServerConnection,
 } from "./server-connections";
 
@@ -59,12 +60,24 @@ describe("server connections", () => {
       "https://cantrip.example",
     );
     expect(() => normalizeServerUrl("ws://cantrip.example")).toThrow(/http/);
-    expect(() => normalizeServerUrl("cantrip.example")).toThrow(
-      /valid server URL/,
+    expect(normalizeServerUrl("cantrip.example")).toBe(
+      "https://cantrip.example",
+    );
+    expect(normalizeServerUrl("localhost:4310")).toBe("https://localhost:4310");
+    expect(normalizeServerUrl("http://localhost:4310")).toBe(
+      "http://localhost:4310",
     );
     expect(() => normalizeServerUrl("https://cantrip.example/prefix")).toThrow(
       /without a path/,
     );
+  });
+
+  it("suggests the hosted server only for the exact Winterhold name", () => {
+    expect(suggestedServerUrlForName("Winterhold")).toBe(
+      "https://winterhold.cantrip.art/",
+    );
+    expect(suggestedServerUrlForName("winterhold")).toBeNull();
+    expect(suggestedServerUrlForName("Winterhold ")).toBeNull();
   });
 
   it("requires a remote profile outside the desktop app", async () => {

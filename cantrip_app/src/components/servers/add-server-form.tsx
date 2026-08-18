@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   saveServerConnection,
+  suggestedServerUrlForName,
   testServerConnection,
   type ServerConnection,
 } from "@/lib/server-connections";
@@ -77,7 +78,16 @@ export function AddServerForm({
         Name
         <Input
           autoFocus={autoFocus}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            const nextName = event.target.value;
+            setName(nextName);
+            const suggestedUrl = suggestedServerUrlForName(nextName);
+            if (suggestedUrl) {
+              setUrl(suggestedUrl);
+              setError(null);
+              setTestResult(null);
+            }
+          }}
           placeholder="Home server"
           required
           value={name}
