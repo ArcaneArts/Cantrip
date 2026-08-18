@@ -465,12 +465,28 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
     });
 }
 
+#[cfg(target_os = "macos")]
+const MACOS_TRAY_ICON_SIZE: u32 = 36;
+#[cfg(target_os = "macos")]
+const MACOS_TRAY_ICON_RGBA: &[u8; (MACOS_TRAY_ICON_SIZE * MACOS_TRAY_ICON_SIZE * 4) as usize] =
+    include_bytes!("../icons/tray-icon-macos.rgba");
+
 #[cfg(desktop)]
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Open Cantrip", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cantrip", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
     let mut tray = TrayIconBuilder::new().menu(&menu).tooltip("Cantrip");
+    #[cfg(target_os = "macos")]
+    {
+        let icon = tauri::image::Image::new(
+            MACOS_TRAY_ICON_RGBA,
+            MACOS_TRAY_ICON_SIZE,
+            MACOS_TRAY_ICON_SIZE,
+        );
+        tray = tray.icon(icon).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
     }
