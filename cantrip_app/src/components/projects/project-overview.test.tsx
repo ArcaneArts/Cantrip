@@ -236,6 +236,16 @@ describe("project overview", () => {
       excludedFileCount: 2,
       truncated: false,
     } satisfies ProjectRepositoryStats;
+    const folderRoot = {
+      ...worktree,
+      id: "folder-root-1",
+      rootKind: "folder-root" as const,
+      name: "Folder root",
+      path: folderProject.source.path,
+      displayPath: folderProject.source.displayPath,
+      branch: null,
+      head: null,
+    } satisfies ProjectWorktreeSummary;
     const markup = renderToStaticMarkup(
       <ProjectOverview
         creatingKinds={new Set()}
@@ -245,7 +255,7 @@ describe("project overview", () => {
         usageLoading={false}
         surfaces={[]}
         workerOnline
-        worktrees={[]}
+        worktrees={[folderRoot]}
         onCreateSurface={vi.fn()}
         onOpenSurface={vi.fn()}
       />,
@@ -255,6 +265,11 @@ describe("project overview", () => {
     expect(markup).toContain("Folder size");
     expect(markup).toContain("2 KB");
     expect(markup).toContain("Files in this folder");
+    expect(markup).toContain("folders/project-1");
+    expect(markup).toContain("Folder");
+    expect(markup).not.toContain("worktree");
+    expect(markup).not.toContain("Detached");
+    expect(markup).not.toContain("Primary");
     expect(markup).not.toContain("Reachable repository history");
   });
 

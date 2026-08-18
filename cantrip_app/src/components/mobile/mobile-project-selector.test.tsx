@@ -1,4 +1,5 @@
 import type {
+  ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
   ProjectSummary,
   ProjectWorkspaceSummary,
@@ -103,6 +104,53 @@ describe("mobile project selector", () => {
     );
 
     expect(markup).toContain("Cloning · 47%");
+  });
+
+  it("shows worker-bound folder preparation and offline recovery states", () => {
+    const project = {
+      ...projects[0]!,
+      originKind: "managed-folder",
+      capabilities: {
+        git: false,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+      github: null,
+      setupStatus: "preparing",
+      source: null,
+    } as ProjectSummary;
+    const setupJob = {
+      state: "blocked",
+      error: {
+        code: "worker-offline",
+        message: "The owning worker is offline.",
+        retryable: true,
+      },
+    } as ProjectFolderSetupJobSummary;
+    const markup = renderToStaticMarkup(
+      <MobileProjectSelector
+        activeWorkspace={workspaces[0]!}
+        currentUserName="Local User"
+        folderSetupJobs={new Map([[project.id, setupJob]])}
+        loading={false}
+        projects={[project]}
+        workers={workers}
+        workspaces={workspaces}
+        onCreateWorkspace={vi.fn()}
+        onManageWorkspaces={vi.fn()}
+        onNewProject={vi.fn()}
+        onOpenAdmin={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onSelectProject={vi.fn()}
+        onSelectWorkspace={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Worker offline");
+    expect(markup).toContain("lucide-folder");
+    expect(markup).not.toContain("lucide-folder-git");
   });
 
   it("exposes project settings and close actions in the overview header", () => {

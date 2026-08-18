@@ -15,6 +15,7 @@ import type {
   ExplorerSummary,
   GithubRepository,
   ModelProfileSummary,
+  ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
   ProjectSummary,
   ProjectTabLayoutSummary,
@@ -30,6 +31,7 @@ import type {
   SkillSummary,
   TerminalSummary,
   TunnelSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import {
   useMutation,
@@ -45,6 +47,7 @@ import {
   Code2,
   Copy,
   ExternalLink,
+  Folder,
   FolderGit2,
   FolderTree,
   GitFork,
@@ -61,6 +64,7 @@ import {
   SquareTerminal,
   User,
   WandSparkles,
+  WifiOff,
 } from "lucide-react";
 import {
   lazy,
@@ -230,6 +234,7 @@ import {
   createChatConsole,
   createExplorer,
   createGithubProject,
+  createManagedFolderProject,
   createProjectWorktree,
   createProjectView,
   createProjectWorkspace,
@@ -263,6 +268,7 @@ import {
   getAgentInteractionRequests,
   getProjects,
   getProjectReplicaJobs,
+  getProjectFolderSetupJob,
   getProjectWorkspaces,
   getProjectTabLayout,
   getProjectWorktrees,
@@ -287,6 +293,7 @@ import {
   renameProjectView,
   renameTerminal,
   removeProject,
+  retryProjectFolderSetup,
   moveProjectTabGroupMember,
   reorderProjectTabGroupMembers,
   reorderProjectTabGroups,
@@ -513,6 +520,7 @@ function RepositoryImporter({
   projectSetupJobs,
   projects,
   workerId,
+  workers,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
@@ -520,9 +528,17 @@ function RepositoryImporter({
   projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projects: ProjectSummary[];
   workerId: string | null;
+  workers: WorkerSummary[];
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const queryClient = useQueryClient();
+  const [importMode, setImportMode] = useState<"folder" | "github">("folder");
+  const [folderName, setFolderName] = useState("");
+  const [folderWorkerId, setFolderWorkerId] = useState(workerId ?? "");
+  const [folderCreateError, setFolderCreateError] = useState<string | null>(
+    null,
+  );
+  const [folderCreating, setFolderCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [createRepositoryOpen, setCreateRepositoryOpen] = useState(false);
   const [pendingRepositoryIds, setPendingRepositoryIds] = useState<Set<string>>(
@@ -540,24 +556,88 @@ function RepositoryImporter({
       new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
     );
   }, [activeWorkspaceId]);
+  const folderWorkers = useMemo(
+    () => workers.filter(({ managedFolders }) => managedFolders.create),
+    [workers],
+  );
+  useEffect(() => {
+    if (folderWorkers.some(({ workerId: id }) => id === folderWorkerId)) return;
+    setFolderWorkerId(
+      folderWorkers.find(({ online }) => online)?.workerId ??
+        folderWorkers[0]?.workerId ??
+        "",
+    );
+  }, [folderWorkerId, folderWorkers]);
   const github = useQuery({
-    enabled: Boolean(workerId),
+    enabled: importMode === "github" && Boolean(workerId),
     queryFn: () => getGithubStatus(workerId!),
     queryKey: ["github-status", workerId],
   });
   const repositories = useQuery({
-    enabled: Boolean(workerId && github.data?.authenticated),
+    enabled: Boolean(
+      importMode === "github" && workerId && github.data?.authenticated,
+    ),
     queryFn: () => getGithubRepositories(workerId!),
     queryKey: ["github-repositories", workerId],
   });
   const cachedRepositories = useQuery({
     enabled: Boolean(
-      workerId && github.data?.authenticated && github.data.login,
+      importMode === "github" &&
+      workerId &&
+      github.data?.authenticated &&
+      github.data.login,
     ),
     queryFn: () => getCachedGithubRepositories(workerId!, github.data!.login!),
     queryKey: ["github-repositories-cache", workerId, github.data?.login],
     staleTime: 30_000,
   });
+  const rememberProject = (
+    project: ProjectSummary,
+    workspaceIds: ReadonlySet<string>,
+  ) => {
+    queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
+      [...current.filter((item) => item.id !== project.id), project].sort(
+        (left, right) => left.position - right.position,
+      ),
+    );
+    queryClient.setQueryData<ProjectWorkspaceSummary[]>(
+      ["project-workspaces"],
+      (current) =>
+        current?.map((workspace) =>
+          workspaceIds.has(workspace.id) &&
+          !workspace.projectIds.includes(project.id)
+            ? {
+                ...workspace,
+                projectIds: [...workspace.projectIds, project.id],
+              }
+            : workspace,
+        ),
+    );
+    void queryClient.invalidateQueries({ queryKey: ["project-workspaces"] });
+  };
+  const createFolder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = folderName.trim();
+    if (!name || !folderWorkerId || !activeWorkspaceId || folderCreating)
+      return;
+    setFolderCreating(true);
+    setFolderCreateError(null);
+    const workspaceIds = new Set(selectedWorkspaceIds);
+    workspaceIds.add(activeWorkspaceId);
+    try {
+      const project = await createManagedFolderProject({
+        name,
+        workerId: folderWorkerId,
+        workspaceIds: [...workspaceIds],
+      });
+      rememberProject(project, workspaceIds);
+      onCreatedProject(project);
+    } catch (error) {
+      setFolderCreateError(errorText(error));
+    } finally {
+      setFolderCreating(false);
+    }
+  };
   const importRepository = async (repository: GithubRepository) => {
     if (
       !workerId ||
@@ -583,24 +663,7 @@ function RepositoryImporter({
         url: repository.url,
         workspaceIds: [...workspaceIds],
       });
-      queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
-        [...current.filter((item) => item.id !== project.id), project].sort(
-          (left, right) => left.position - right.position,
-        ),
-      );
-      queryClient.setQueryData<ProjectWorkspaceSummary[]>(
-        ["project-workspaces"],
-        (current) =>
-          current?.map((workspace) =>
-            workspaceIds.has(workspace.id) &&
-            !workspace.projectIds.includes(project.id)
-              ? {
-                  ...workspace,
-                  projectIds: [...workspace.projectIds, project.id],
-                }
-              : workspace,
-          ),
-      );
+      rememberProject(project, workspaceIds);
       const markImported = (queryKey: readonly unknown[]) =>
         queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
           current?.map((item) =>
@@ -615,9 +678,6 @@ function RepositoryImporter({
           github.data.login,
         ]);
       }
-      void queryClient.invalidateQueries({
-        queryKey: ["project-workspaces"],
-      });
       return project;
     } catch (error) {
       setImportErrors((current) =>
@@ -662,7 +722,131 @@ function RepositoryImporter({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex w-full flex-1 flex-col gap-4 overflow-hidden p-5 sm:p-8">
-        {!workerId ? (
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">New project</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Create a worker-bound folder or clone an existing GitHub repository.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <button
+              aria-pressed={importMode === "folder"}
+              className={cn(
+                "rounded-xl border p-4 text-left transition-colors hover:bg-muted/50",
+                importMode === "folder" && "border-primary bg-primary/5",
+              )}
+              onClick={() => setImportMode("folder")}
+              type="button"
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <Folder className="size-4" /> New folder
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Start with an empty Cantrip-managed directory on one worker.
+              </span>
+            </button>
+            <button
+              aria-pressed={importMode === "github"}
+              className={cn(
+                "rounded-xl border p-4 text-left transition-colors hover:bg-muted/50",
+                importMode === "github" && "border-primary bg-primary/5",
+              )}
+              onClick={() => setImportMode("github")}
+              type="button"
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <FolderGit2 className="size-4" /> GitHub repository
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                Clone an existing repository with Git and GitHub features.
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {importMode === "folder" ? (
+          <Card className="max-w-2xl">
+            <CardHeader>
+              <CardTitle>Create a managed folder</CardTitle>
+              <CardDescription>
+                Cantrip creates a new empty directory. It stays on the selected
+                worker and is unavailable while that worker is offline.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-4" onSubmit={createFolder}>
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">Project name</span>
+                  <input
+                    autoFocus
+                    className="h-10 w-full rounded-md border bg-background px-3 outline-none ring-ring focus:ring-2"
+                    maxLength={120}
+                    placeholder="My project"
+                    required
+                    value={folderName}
+                    onChange={(event) => setFolderName(event.target.value)}
+                  />
+                  <span className="block text-xs text-muted-foreground">
+                    Names may repeat; Cantrip uses a unique physical directory.
+                  </span>
+                </label>
+                <label className="block space-y-1.5 text-sm">
+                  <span className="font-medium">Owning worker</span>
+                  <select
+                    className="h-10 w-full rounded-md border bg-background px-3 outline-none ring-ring focus:ring-2"
+                    disabled={folderWorkers.length === 0}
+                    required
+                    value={folderWorkerId}
+                    onChange={(event) => setFolderWorkerId(event.target.value)}
+                  >
+                    {folderWorkers.map((worker) => (
+                      <option key={worker.workerId} value={worker.workerId}>
+                        {worker.name} · {worker.online ? "online" : "offline"}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="block text-xs text-muted-foreground">
+                    Remote clients can use this project through Cantrip, but its
+                    files are not replicated or relocated.
+                  </span>
+                </label>
+                {activeWorkspaceId ? (
+                  <WorkspaceMembershipPicker
+                    requiredWorkspaceId={activeWorkspaceId}
+                    selectedIds={selectedWorkspaceIds}
+                    workspaces={workspaces}
+                    onChange={setSelectedWorkspaceIds}
+                  />
+                ) : null}
+                {folderWorkers.length === 0 ? (
+                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
+                    No enrolled worker supports managed folders yet.
+                  </p>
+                ) : null}
+                {folderCreateError ? (
+                  <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                    {folderCreateError}
+                  </p>
+                ) : null}
+                <Button
+                  disabled={
+                    folderCreating ||
+                    !folderName.trim() ||
+                    !folderWorkerId ||
+                    !activeWorkspaceId
+                  }
+                  type="submit"
+                >
+                  {folderCreating ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Folder className="size-4" />
+                  )}
+                  {folderCreating ? "Creating…" : "Create folder"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        ) : !workerId ? (
           <Card>
             <CardHeader>
               <CardTitle>No worker available</CardTitle>
@@ -3051,7 +3235,11 @@ export function App() {
     queryFn: getProjects,
     queryKey: ["projects"],
     refetchInterval: (query) =>
-      query.state.data?.some((project) => project.setupStatus === "cloning")
+      query.state.data?.some(
+        (project) =>
+          project.setupStatus === "cloning" ||
+          project.setupStatus === "preparing",
+      )
         ? 3_000
         : projectResourcesLive
           ? false
@@ -3101,6 +3289,27 @@ export function App() {
     const job = latestProjectProvisionJob(projectSetupJobQueries[index]?.data);
     if (job) projectSetupJobs.set(projectId, job);
   });
+  const folderSetupProjects = (projects.data ?? []).filter(
+    (project) =>
+      project.originKind === "managed-folder" &&
+      project.setupStatus !== "ready",
+  );
+  const folderSetupJobQueries = useQueries({
+    queries: folderSetupProjects.map((project) => ({
+      queryFn: () => getProjectFolderSetupJob(project.id),
+      queryKey: ["project-folder-setup", project.id],
+      refetchInterval:
+        projectResourcesLive || project.setupStatus === "failed"
+          ? false
+          : 2_000,
+      retry: false,
+    })),
+  });
+  const folderSetupJobs = new Map<string, ProjectFolderSetupJobSummary>();
+  folderSetupProjects.forEach((project, index) => {
+    const job = folderSetupJobQueries[index]?.data;
+    if (job) folderSetupJobs.set(project.id, job);
+  });
   const projectWorkspaces = useQuery({
     queryFn: getProjectWorkspaces,
     queryKey: ["project-workspaces"],
@@ -3140,7 +3349,9 @@ export function App() {
   });
   const worktreeStatusQueries = useQueries({
     queries: (worktrees.data ?? []).map((worktree) => ({
-      enabled: worktree.lifecycleState === "ready",
+      enabled:
+        worktree.rootKind === "git-worktree" &&
+        worktree.lifecycleState === "ready",
       queryFn: () =>
         getProjectWorktreeStatus(worktree.projectId, worktree.id).then(
           ({ status }) => status,
@@ -3977,6 +4188,19 @@ export function App() {
       ]);
     },
   });
+  const retryFolderSetupMutation = useMutation({
+    mutationFn: ({
+      projectId,
+      stateRevision,
+    }: {
+      projectId: string;
+      stateRevision: number;
+    }) => retryProjectFolderSetup(projectId, stateRevision),
+    onSuccess: (job) => {
+      queryClient.setQueryData(["project-folder-setup", job.projectId], job);
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
   const reorderProjectsMutation = useMutation({
     mutationFn: (ids: string[]) => reorderProjects(ids),
     onMutate: async (ids) => {
@@ -4095,6 +4319,15 @@ export function App() {
   const selectedProjectSetupJob = selectedProject
     ? projectSetupJobs.get(selectedProject.id)
     : undefined;
+  const selectedFolderSetupJob = selectedProject
+    ? folderSetupJobs.get(selectedProject.id)
+    : undefined;
+  const selectedFolderSetupNeedsAttention = Boolean(
+    selectedProject?.originKind === "managed-folder" &&
+    (selectedProject.setupStatus === "failed" ||
+      selectedFolderSetupJob?.state === "blocked" ||
+      selectedFolderSetupJob?.state === "failed"),
+  );
   const mobileProjectSelectorOpen =
     compactShell &&
     selectedProjectId === null &&
@@ -4175,8 +4408,9 @@ export function App() {
       ? selectedSurface.entity
       : undefined;
   const gitHistoryProject =
-    selectedProjectView?.kind === "history" ||
-    selectedProjectView?.kind === "issues"
+    selectedProject?.capabilities.git &&
+    (selectedProjectView?.kind === "history" ||
+      selectedProjectView?.kind === "issues")
       ? selectedProject
       : undefined;
   const selectedChat =
@@ -4207,7 +4441,9 @@ export function App() {
   const activeChat = selectedChat;
   const chatRelocations = useQuery({
     enabled: Boolean(
-      activeChat && bootstrap.data?.capabilities.workerSwitching,
+      activeChat &&
+      selectedProject?.capabilities.relocation &&
+      bootstrap.data?.capabilities.workerSwitching,
     ),
     queryFn: () => getChatRelocations(activeChat!.id),
     queryKey: ["chat-relocation-jobs", activeChat?.id],
@@ -5230,6 +5466,7 @@ export function App() {
   const selectedPlacementContext: ProjectSurfacePlacementContext | undefined =
     selectedProject
       ? {
+          capabilities: selectedProject.capabilities,
           projectId: selectedProject.id,
           replicas: selectedProject.replicas,
           workers: workers.data ?? [],
@@ -5346,6 +5583,7 @@ export function App() {
             relocation: {
               active: Boolean(activeRelocation),
               available: Boolean(
+                selectedProject?.capabilities.relocation &&
                 bootstrap.data?.capabilities.workerSwitching &&
                 selectedPlacementContext &&
                 (selectedPlacementContext.workers.length > 1 ||
@@ -5579,6 +5817,7 @@ export function App() {
             <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
               <ProjectChatList
                 browsers={browsers.data ?? []}
+                folderSetupJobs={folderSetupJobs}
                 projects={visibleProjects}
                 projectSetupJobs={projectSetupJobs}
                 chats={chats.data ?? []}
@@ -5660,10 +5899,9 @@ export function App() {
                   deleteTerminalMutation.mutate(terminalId)
                 }
                 onRemoveProject={(projectId, deleteLocalFiles) =>
-                  removeProjectMutation.mutate({
-                    projectId,
-                    deleteLocalFiles,
-                  })
+                  removeProjectMutation
+                    .mutateAsync({ projectId, deleteLocalFiles })
+                    .then(() => undefined)
                 }
                 onOpenProjectSettings={openProjectSettings}
                 projectRevealLabel={projectRevealLabel ?? undefined}
@@ -5861,7 +6099,7 @@ export function App() {
                   data-tauri-drag-region={overlayTitlebar ? "" : undefined}
                 >
                   {showImporter
-                    ? "GitHub repositories"
+                    ? "New project"
                     : showSettings
                       ? "Settings"
                       : showServerAdmin
@@ -5895,6 +6133,7 @@ export function App() {
                 !showServerAdmin &&
                 activeWorktreeTarget &&
                 activeWorktreeId &&
+                selectedProject?.capabilities.worktrees &&
                 (!gitHistoryProject ||
                   gitHistoryHeader?.section === "history") ? (
                   <WorktreeControl
@@ -6223,6 +6462,7 @@ export function App() {
             }
             error={projects.isError ? errorText(projects.error) : null}
             loading={projects.isLoading || projectWorkspaces.isLoading}
+            folderSetupJobs={folderSetupJobs}
             projects={projects.data ?? []}
             projectSetupJobs={projectSetupJobs}
             workers={workers.data ?? []}
@@ -6329,14 +6569,17 @@ export function App() {
               setShowSettings(false);
               setShowServerAdmin(false);
               setShowProjectSettings(false);
-              setCreatedRepositoryOnboarding({
-                openInitialChat: !compactShell,
-                projectId: project.id,
-              });
+              if (project.originKind === "github") {
+                setCreatedRepositoryOnboarding({
+                  openInitialChat: !compactShell,
+                  projectId: project.id,
+                });
+              }
             }}
             projects={projects.data ?? []}
             projectSetupJobs={projectSetupJobs}
             workerId={onlineWorker?.workerId ?? null}
+            workers={workers.data ?? []}
             workspaces={projectWorkspaces.data ?? []}
           />
         ) : compactShell && mobileTabGridOpen && selectedProject ? (
@@ -6602,15 +6845,24 @@ export function App() {
             onRename={(title) =>
               renameChatMutation.mutate({ chatId: selectedChat.id, title })
             }
-            relocationJob={currentRelocation}
+            relocationJob={
+              selectedProject?.capabilities.relocation
+                ? currentRelocation
+                : null
+            }
           />
         ) : selectedProject ? (
           selectedProject.setupStatus !== "ready" ? (
             <div className="grid flex-1 place-items-center p-6 text-center">
               <div>
                 <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
-                  {selectedProject.setupStatus === "cloning" ? (
+                  {selectedProject.setupStatus === "cloning" ||
+                  (selectedProject.setupStatus === "preparing" &&
+                    !selectedFolderSetupNeedsAttention) ? (
                     <Loader2 className="size-5 animate-spin" />
+                  ) : selectedFolderSetupJob?.error?.code ===
+                    "worker-offline" ? (
+                    <WifiOff className="size-5 text-amber-500" />
                   ) : (
                     <CircleAlert className="size-5 text-destructive" />
                   )}
@@ -6618,13 +6870,24 @@ export function App() {
                 <h1 className="mt-4 font-semibold">
                   {selectedProject.setupStatus === "cloning"
                     ? "Cloning repository…"
-                    : "Repository setup failed"}
+                    : selectedProject.setupStatus === "preparing" &&
+                        !selectedFolderSetupNeedsAttention
+                      ? "Preparing folder…"
+                      : selectedFolderSetupJob?.error?.code === "worker-offline"
+                        ? "Owning worker offline"
+                        : selectedProject.originKind === "managed-folder"
+                          ? "Folder setup needs attention"
+                          : "Repository setup failed"}
                 </h1>
                 <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
                   {selectedProject.setupStatus === "cloning"
                     ? `${selectedProject.github?.nameWithOwner ?? selectedProject.name} is being prepared on the worker. You can keep adding other projects while it finishes.`
-                    : (selectedProject.setupError ??
-                      "The worker could not prepare this repository.")}
+                    : selectedProject.setupStatus === "preparing" &&
+                        !selectedFolderSetupNeedsAttention
+                      ? `${selectedProject.name} is getting a new empty directory on its owning worker.`
+                      : (selectedFolderSetupJob?.error?.message ??
+                        selectedProject.setupError ??
+                        "The worker could not prepare this project.")}
                 </p>
                 {selectedProject.setupStatus === "cloning" ? (
                   <div className="mx-auto mt-4 w-full max-w-sm text-left">
@@ -6659,6 +6922,40 @@ export function App() {
                           : "Starting"}
                       </span>
                     </div>
+                  </div>
+                ) : selectedProject.originKind === "managed-folder" &&
+                  selectedFolderSetupNeedsAttention ? (
+                  <div className="mx-auto mt-4 max-w-md space-y-3">
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      This folder is worker-bound. Cantrip will not move it to
+                      another worker;{" "}
+                      {selectedFolderSetupJob?.error?.code === "worker-offline"
+                        ? "bring the owning worker online and retry."
+                        : "resolve the reported setup problem on the owning worker."}
+                    </p>
+                    {selectedFolderSetupJob?.error?.retryable ? (
+                      <Button
+                        disabled={retryFolderSetupMutation.isPending}
+                        onClick={() =>
+                          retryFolderSetupMutation.mutate({
+                            projectId: selectedProject.id,
+                            stateRevision: selectedFolderSetupJob.stateRevision,
+                          })
+                        }
+                      >
+                        {retryFolderSetupMutation.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <RefreshCw className="size-4" />
+                        )}
+                        Retry on owning worker
+                      </Button>
+                    ) : null}
+                    {retryFolderSetupMutation.isError ? (
+                      <p className="text-xs text-destructive">
+                        {errorText(retryFolderSetupMutation.error)}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -6796,12 +7093,12 @@ export function App() {
           <div className="grid flex-1 place-items-center p-6 text-center">
             <div>
               <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
-                <GitBranch className="size-5" />
+                <Folder className="size-5" />
               </div>
               <h1 className="mt-4 font-semibold">Add your first project</h1>
               <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
-                Choose an accessible GitHub repository and Cantrip will clone it
-                onto the local worker.
+                Create a new worker-bound folder or clone an accessible GitHub
+                repository.
               </p>
               <Button
                 className="mt-5"
@@ -6813,7 +7110,7 @@ export function App() {
                 }}
               >
                 <Plus className="size-4" />
-                Add from GitHub
+                New project
               </Button>
             </div>
           </div>
@@ -6876,7 +7173,9 @@ export function App() {
         />
       ) : null}
 
-      {activeChat && selectedPlacementContext ? (
+      {activeChat &&
+      selectedProject?.capabilities.relocation &&
+      selectedPlacementContext ? (
         <ChatRelocationDialog
           key={`relocation:${activeChat.id}`}
           available={Boolean(bootstrap.data?.capabilities.workerSwitching)}

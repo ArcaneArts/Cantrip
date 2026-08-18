@@ -10,6 +10,7 @@ import {
   ArrowUpRight,
   Coins,
   Files,
+  Folder,
   FolderGit2,
   GitBranch,
   GitCommitHorizontal,
@@ -233,7 +234,11 @@ export function ProjectOverview({
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 gap-4">
               <div className="grid size-12 shrink-0 place-items-center rounded-xl border bg-background/80 shadow-sm">
-                <FolderGit2 className="size-5" />
+                {folderProject ? (
+                  <Folder className="size-5" />
+                ) : (
+                  <FolderGit2 className="size-5" />
+                )}
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -253,24 +258,28 @@ export function ProjectOverview({
                 <p className="mt-1 truncate text-sm text-muted-foreground">
                   {project.github?.nameWithOwner ??
                     project.source?.displayPath ??
-                    "Repository overview"}
+                    "Project overview"}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-                  {primaryWorktree?.branch ? (
+                  {folderProject ? (
+                    <Badge variant="secondary">Folder</Badge>
+                  ) : primaryWorktree?.branch ? (
                     <span className="inline-flex items-center gap-1.5">
                       <GitBranch className="size-3.5" />
                       {primaryWorktree.branch}
                     </span>
                   ) : null}
-                  {primaryWorktree?.head ? (
+                  {!folderProject && primaryWorktree?.head ? (
                     <span className="font-mono">
                       @{primaryWorktree.head.slice(0, 8)}
                     </span>
                   ) : null}
-                  <span>
-                    {worktrees.length} worktree
-                    {worktrees.length === 1 ? "" : "s"}
-                  </span>
+                  {!folderProject ? (
+                    <span>
+                      {worktrees.length} worktree
+                      {worktrees.length === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -312,7 +321,13 @@ export function ProjectOverview({
             detail="Agents, terminals, and Code"
           />
           <MetricCard
-            icon={<GitCommitHorizontal className="size-3.5" />}
+            icon={
+              folderProject ? (
+                <Folder className="size-3.5" />
+              ) : (
+                <GitCommitHorizontal className="size-3.5" />
+              )
+            }
             label={folderProject ? "Files" : "Commits"}
             value={
               folderStats
@@ -412,7 +427,7 @@ export function ProjectOverview({
                           Type
                         </th>
                         <th className="hidden w-28 px-3 py-2 font-medium md:table-cell">
-                          Worktree
+                          {folderProject ? "Folder" : "Worktree"}
                         </th>
                         <th className="w-24 px-3 py-2 text-right font-medium">
                           Status
@@ -465,7 +480,9 @@ export function ProjectOverview({
                               {surfaceKindLabel(surface.kind)}
                             </td>
                             <td className="hidden truncate px-3 py-2 text-xs text-muted-foreground md:table-cell">
-                              {worktree?.name ?? "—"}
+                              {folderProject
+                                ? (project.source?.displayPath ?? "—")
+                                : (worktree?.name ?? "—")}
                             </td>
                             <td className="px-3 py-2 text-right">
                               <span
@@ -547,27 +564,44 @@ export function ProjectOverview({
             </div>
 
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <h2 className="font-semibold">Workspace</h2>
-              <div className="mt-4 space-y-3">
-                {worktrees.slice(0, 4).map((worktree) => (
-                  <div key={worktree.id} className="flex items-center gap-3">
-                    <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">
-                        {worktree.name}
-                      </div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {worktree.branch ?? "Detached"}
-                      </div>
-                    </div>
-                    {worktree.isPrimary ? (
-                      <Badge variant="outline" className="text-[10px]">
-                        Primary
-                      </Badge>
-                    ) : null}
+              <h2 className="font-semibold">
+                {folderProject ? "Location" : "Workspace"}
+              </h2>
+              {folderProject ? (
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <Folder className="size-4 text-muted-foreground" />
+                    Worker-bound folder
                   </div>
-                ))}
-              </div>
+                  <code className="block break-all text-xs text-muted-foreground">
+                    {project.source?.displayPath ?? "Source unavailable"}
+                  </code>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    Available through Cantrip while the owning worker is online.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {worktrees.slice(0, 4).map((worktree) => (
+                    <div key={worktree.id} className="flex items-center gap-3">
+                      <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">
+                          {worktree.name}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {worktree.branch ?? "Detached"}
+                        </div>
+                      </div>
+                      {worktree.isPrimary ? (
+                        <Badge variant="outline" className="text-[10px]">
+                          Primary
+                        </Badge>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </aside>
         </section>

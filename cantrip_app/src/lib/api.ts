@@ -157,6 +157,7 @@ import {
   providerModelCatalogResultSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
+  managedFolderProjectCreateSchema,
   mcpServerConfigurationSchema,
   mcpServerCopySchema,
   mcpServerListSchema,
@@ -177,6 +178,8 @@ import {
   policyUpdateSchema,
   projectListSchema,
   projectExternalChatDiscoverySchema,
+  projectFolderSetupJobSummarySchema,
+  projectFolderSetupRetrySchema,
   projectPreferredWorkerUpdateSchema,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
@@ -305,6 +308,7 @@ import type {
   GithubReleaseCreate,
   GithubProjectCreate,
   GithubRepositoryCreate,
+  ManagedFolderProjectCreate,
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
@@ -2309,6 +2313,37 @@ export async function cancelProjectReplicaJob(
 export async function createGithubProject(input: GithubProjectCreate) {
   return projectSummarySchema.parse(
     await post("/api/projects/from-github", input),
+  );
+}
+
+export async function createManagedFolderProject(
+  input: ManagedFolderProjectCreate,
+) {
+  return projectSummarySchema.parse(
+    await post(
+      "/api/projects/from-folder",
+      managedFolderProjectCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function getProjectFolderSetupJob(projectId: string) {
+  return projectFolderSetupJobSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/folder-setup`,
+    ),
+  );
+}
+
+export async function retryProjectFolderSetup(
+  projectId: string,
+  stateRevision: number,
+) {
+  return projectFolderSetupJobSummarySchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/folder-setup/retry`,
+      projectFolderSetupRetrySchema.parse({ stateRevision }),
+    ),
   );
 }
 
