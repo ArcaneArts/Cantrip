@@ -11,6 +11,29 @@ import {
 const PROJECT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+type ManagedFolderPathApi = Pick<typeof path, "dirname" | "join" | "resolve">;
+
+export function deriveManagedFolderLocation(
+  dataDirectory: string,
+  projectId: string,
+  pathApi: ManagedFolderPathApi = path,
+): { displayPath: string; root: string; target: string } {
+  if (!PROJECT_ID_PATTERN.test(projectId)) {
+    throw new Error("Managed folder commands require a project UUID.");
+  }
+  const normalizedProjectId = projectId.toLowerCase();
+  const root = pathApi.resolve(dataDirectory, "folders");
+  const target = pathApi.join(root, normalizedProjectId);
+  if (pathApi.dirname(target) !== root) {
+    throw new Error("Managed folder target escaped its storage root.");
+  }
+  return {
+    displayPath: pathApi.join("folders", normalizedProjectId),
+    root,
+    target,
+  };
+}
+
 async function directoryEntry(target: string) {
   try {
     return await lstat(target);
@@ -27,13 +50,6 @@ export class ManagedFolderManager {
     return path.resolve(this.dataDirectory, "folders");
   }
 
-  private projectPath(projectId: string): string {
-    if (!PROJECT_ID_PATTERN.test(projectId)) {
-      throw new Error("Managed folder commands require a project UUID.");
-    }
-    return path.join(this.foldersRoot(), projectId.toLowerCase());
-  }
-
   private async canonicalRoot(): Promise<string> {
     const root = this.foldersRoot();
     await mkdir(root, { recursive: true, mode: 0o700 });
@@ -46,21 +62,20 @@ export class ManagedFolderManager {
 
   private async verifiedTarget(projectId: string): Promise<{
     canonicalRoot: string;
+    displayPath: string;
     target: string;
   }> {
+    const location = deriveManagedFolderLocation(this.dataDirectory, projectId);
     const canonicalRoot = await this.canonicalRoot();
-    const target = this.projectPath(projectId);
-    if (path.dirname(target) !== this.foldersRoot()) {
-      throw new Error("Managed folder target escaped its storage root.");
-    }
-    return { canonicalRoot, target };
+    return { canonicalRoot, ...location };
   }
 
   async resolve(projectId: string): Promise<{
     displayPath: string;
     path: string;
   }> {
-    const { canonicalRoot, target } = await this.verifiedTarget(projectId);
+    const { canonicalRoot, displayPath, target } =
+      await this.verifiedTarget(projectId);
     const entry = await directoryEntry(target);
     if (!entry || !entry.isDirectory() || entry.isSymbolicLink()) {
       throw new Error("The managed folder target is not a safe directory.");
@@ -71,7 +86,7 @@ export class ManagedFolderManager {
     }
     return {
       path: canonicalTarget,
-      displayPath: path.join("folders", projectId.toLowerCase()),
+      displayPath,
     };
   }
 
@@ -80,7 +95,7 @@ export class ManagedFolderManager {
     jobId: string;
     projectId: string;
   }): Promise<ManagedFolderMaterializeReady> {
-    const { canonicalRoot, target } = await this.verifiedTarget(
+    const { canonicalRoot, displayPath, target } = await this.verifiedTarget(
       input.projectId,
     );
     const existing = await directoryEntry(target);
@@ -106,7 +121,7 @@ export class ManagedFolderManager {
       jobId: input.jobId,
       attempt: input.attempt,
       path: canonicalTarget,
-      displayPath: path.join("folders", input.projectId.toLowerCase()),
+      displayPath,
       reused: Boolean(existing),
     });
   }

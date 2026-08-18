@@ -70,10 +70,19 @@ Closing the app does not cancel server-owned work.
 
 ## Write-capable workflows
 
-Write nodes never mutate an arbitrary app-selected path. The server reserves a
-worker-owned workflow worktree identity, the worker creates and verifies it
-against the project Git common directory, and the server activates an exclusive
-lease before dispatch.
+Write nodes never mutate an arbitrary app-selected path. For a GitHub-backed
+project, the server reserves a worker-owned workflow worktree identity, the
+worker creates and verifies it against the project Git common directory, and
+the server activates an exclusive lease before dispatch.
+
+For a worker-managed folder, every node resolves to the single UUID-derived
+execution root on its owning worker. Writes run there directly, including
+parallel write nodes when the workflow permits them. Cantrip does not serialize
+those writes merely because Git protection is absent, and it creates no Git
+lease or checkpoint. Permission manifests, approval mode, run/node budgets,
+retries, repeat ledgers, pause/cancel behavior, and normal durable attempt
+records remain enforced. Operators should choose graph concurrency with the
+knowledge that concurrent nodes can edit the same files.
 
 Successful write work checkpoints its starting and ending revision, dirty
 state, and produced-change summary. The operator then chooses an explicit lane
@@ -89,6 +98,10 @@ Outcome intents are persisted before worker mutation and replay after a server
 restart or worker reconnect. Revision drift, dirty state, mismatched identity,
 active tabs/terminals/chats, Primary, and unapproved external worktrees fail
 closed.
+
+The Keep/Deliver/Discard/Release outcome flow applies only to Git-backed
+workflow lanes. A successful managed-folder attempt is already delivered in
+place and reports that checkpoint recovery is unavailable.
 
 ## Configure automation
 
@@ -170,6 +183,11 @@ audited. This route is a local/trusted adapter surface; direct public GitHub
 webhooks require a future authenticated provider integration with native HMAC
 verification.
 
+This trigger type is unavailable for a managed-folder project. Use a schedule,
+scoped API, credentialed webhook, or saved command instead. Simple project
+automations may use a worker-side script condition in a folder; the GitHub
+open-issues condition is unavailable.
+
 ### Saved command
 
 An enabled saved-command trigger appears in chat autocomplete as
@@ -218,9 +236,10 @@ restore the pre-upgrade database backup together with the matching application
 version. Never drop workflow tables from a live database as a substitute for a
 backup restore: they contain run, approval, worktree, and idempotency evidence.
 
-Repository workflow exports under `.cantrip/workflows` are normal project files
-and are not removed by a database restore. Review them independently when
-rolling application state backward.
+Workflow exports under `.cantrip/workflows` are normal project files and are
+not removed by a database restore. For a managed-folder project they exist only
+on the owning worker and must be covered by its filesystem backup. Review
+exports independently when rolling application state backward.
 
 ## Validation and troubleshooting
 

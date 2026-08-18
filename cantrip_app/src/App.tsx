@@ -78,6 +78,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
 import {
@@ -3314,6 +3315,9 @@ export function App() {
     queryFn: getProjectWorkspaces,
     queryKey: ["project-workspaces"],
   });
+  const selectedProject = projects.data?.find(
+    (project) => project.id === selectedProjectId,
+  );
   const createWorkspaceMutation = useMutation({
     mutationFn: (name: string) => createProjectWorkspace({ name }),
     onSuccess: (workspace) => {
@@ -3342,7 +3346,9 @@ export function App() {
     refetchInterval: projectResourcesLive ? false : 10_000,
   });
   const worktrees = useQuery({
-    enabled: Boolean(selectedProjectId),
+    enabled: Boolean(
+      selectedProjectId && selectedProject?.capabilities.worktrees,
+    ),
     queryFn: () => getProjectWorktrees(selectedProjectId!),
     queryKey: ["worktrees", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 15_000,
@@ -3420,7 +3426,7 @@ export function App() {
     if (
       projectResourcesLoggedRef.current === selectedProjectId ||
       !tabLayout.isSuccess ||
-      !worktrees.isSuccess ||
+      (selectedProject?.capabilities.worktrees && !worktrees.isSuccess) ||
       !chats.isSuccess ||
       !terminals.isSuccess ||
       !explorers.isSuccess ||
@@ -3440,7 +3446,7 @@ export function App() {
         tabGroups: tabLayout.data.groups.length,
         terminals: terminals.data.length,
         views: projectViews.data.length,
-        worktrees: worktrees.data.length,
+        worktrees: (worktrees.data ?? []).length,
       },
       event: "project.resources.loaded",
       operation: "load-project",
@@ -3460,6 +3466,7 @@ export function App() {
     projectViews.data,
     projectViews.isSuccess,
     selectedProjectId,
+    selectedProject?.capabilities.worktrees,
     tabLayout.data,
     tabLayout.isSuccess,
     terminals.data,
@@ -4173,20 +4180,57 @@ export function App() {
       projectId: string;
       deleteLocalFiles: boolean;
     }) => removeProject(projectId, deleteLocalFiles),
-    onSuccess: async (_value, { projectId }) => {
-      if (selectedProjectId === projectId) {
-        setSelectedProjectId(null);
-        setWorkspaceSelection(emptyWorkspaceSelection());
-        setPendingSurfaceSelection(null);
-        setChatConsoleChatId(null);
-        setShowProjectSettings(false);
+    onMutate: async ({ projectId }) => {
+      await queryClient.cancelQueries({ queryKey: ["projects"] });
+      const previousProjects = queryClient.getQueryData<ProjectSummary[]>([
+        "projects",
+      ]);
+      const restoreSelection =
+        selectedProjectId === projectId
+          ? {
+              chatConsoleChatId,
+              pendingSurfaceSelection,
+              showProjectSettings,
+              workspaceSelection,
+            }
+          : null;
+      flushSync(() => {
+        queryClient.setQueryData<ProjectSummary[]>(
+          ["projects"],
+          (current = []) =>
+            current.filter((project) => project.id !== projectId),
+        );
+        if (restoreSelection) {
+          setSelectedProjectId(null);
+          setWorkspaceSelection(emptyWorkspaceSelection());
+          setPendingSurfaceSelection(null);
+          setChatConsoleChatId(null);
+          setShowProjectSettings(false);
+        }
+      });
+      return { previousProjects, restoreSelection };
+    },
+    onError: (_error, { projectId }, context) => {
+      if (context?.previousProjects) {
+        queryClient.setQueryData(["projects"], context.previousProjects);
       }
+      if (context?.restoreSelection) {
+        setSelectedProjectId(projectId);
+        setWorkspaceSelection(context.restoreSelection.workspaceSelection);
+        setPendingSurfaceSelection(
+          context.restoreSelection.pendingSurfaceSelection,
+        );
+        setChatConsoleChatId(context.restoreSelection.chatConsoleChatId);
+        setShowProjectSettings(context.restoreSelection.showProjectSettings);
+      }
+    },
+    onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["projects"] }),
         queryClient.invalidateQueries({ queryKey: ["project-workspaces"] }),
         queryClient.invalidateQueries({ queryKey: ["github-repositories"] }),
       ]);
     },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["projects"] }),
   });
   const retryFolderSetupMutation = useMutation({
     mutationFn: ({
@@ -4312,9 +4356,6 @@ export function App() {
   const visibleProjects = useMemo(
     () => projectsInWorkspace(projects.data ?? [], activeProjectWorkspace),
     [activeProjectWorkspace, projects.data],
-  );
-  const selectedProject = projects.data?.find(
-    (project) => project.id === selectedProjectId,
   );
   const selectedProjectSetupJob = selectedProject
     ? projectSetupJobs.get(selectedProject.id)

@@ -223,10 +223,16 @@ node-local concurrency and loop limits.
 
 Write-capable `agent`, `map`, `pipeline`, `reduce`, `verify`, and `repeatUntil`
 nodes use the same declared filesystem permission invariant as other workflow
-nodes. `condition` and `gate` nodes are always read-only. Every write-capable
-execution unit is dispatched into its attributed non-Primary workflow lane;
-the repository rejects a write attempt that does not hold the exact active
-run/node/item lease for that worker and worktree.
+nodes. `condition` and `gate` nodes are always read-only.
+
+On GitHub-backed projects, every write-capable execution unit is dispatched
+into its attributed non-Primary workflow lane; the repository rejects a write
+attempt that does not hold the exact active run/node/item lease for that worker
+and worktree. On a worker-managed folder, write units instead run directly in
+the one owning execution root. The graph's normal `maxParallelism`, node/item
+concurrency, permission, retry, and repeat rules still apply. Folder attempts
+record a `direct-folder` change summary, but create no worktree lease, Git
+checkpoint, branch, or revision claim.
 
 The durable allocation boundary is represented by a workflow worktree lease.
 Each lease belongs to exactly one node or collection item, reserves a
@@ -410,3 +416,8 @@ Enable and Disable actions. Webhook credentials are hashed in the client and
 cleared from the form; only the SHA-256 hash crosses the app/server boundary.
 The app remains a client of Cantrip Server, and Cantrip's trigger adapters remain
 control-plane consumers rather than alternate agent runtimes.
+
+Git triggers and open-issue automation conditions require the corresponding
+project capability. Managed-folder projects keep schedules, scoped API,
+credentialed webhooks, saved commands, and script conditions, while Git events
+and open-issue conditions are hidden and rejected by the server.
