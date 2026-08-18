@@ -71,6 +71,7 @@ describe("GitHub pull request review presentation", () => {
       id: "pr-worktree",
       projectSourceId: "source",
       projectId: "project",
+      rootKind: "git-worktree",
       workerId: "worker",
       name: "PR #44 Review",
       path: "/repo/pr-44",

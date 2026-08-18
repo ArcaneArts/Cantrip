@@ -2263,6 +2263,14 @@ describe("local server foundation", () => {
     expect(projectResponse.statusCode).toBe(202);
     const queuedProject = projectSummarySchema.parse(projectResponse.json());
     expect(queuedProject).toMatchObject({
+      originKind: "github",
+      capabilities: {
+        git: true,
+        github: true,
+        worktrees: true,
+        replicas: true,
+        relocation: true,
+      },
       setupStatus: "cloning",
       setupError: null,
       source: null,
@@ -2331,7 +2339,11 @@ describe("local server foundation", () => {
       expect(current).toMatchObject({
         setupStatus: "ready",
         setupError: null,
-        source: expect.objectContaining({ workerId: "test-worker" }),
+        source: expect.objectContaining({
+          sourceKind: "git",
+          workerId: "test-worker",
+        }),
+        replicas: [expect.objectContaining({ sourceKind: "git" })],
       });
       return current!;
     });

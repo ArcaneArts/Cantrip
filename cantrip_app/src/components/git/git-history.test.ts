@@ -47,6 +47,7 @@ function worktree(
     id,
     projectSourceId: "source-1",
     projectId: "project-1",
+    rootKind: "git-worktree",
     workerId: "worker-1",
     name: id,
     path: `/tmp/${id}`,
