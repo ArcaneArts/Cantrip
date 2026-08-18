@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
 
 import { getProviderModelCatalog } from "@/lib/api";
 import {
@@ -14,20 +13,16 @@ export function providerCatalogQueryKey(
   return ["provider-catalog", providerId ?? null, workerId] as const;
 }
 
-export function useProviderCatalog(
+export function providerCatalogQueryOptions(
   providerId: string | null | undefined,
   workerId: string | null,
   enabled: boolean,
 ) {
-  const cachedCatalog = useMemo(
-    () =>
-      providerId ? cachedProviderModelCatalog(providerId, workerId) : undefined,
-    [providerId, workerId],
-  );
-
-  return useQuery({
+  return {
     enabled: Boolean(enabled && providerId),
-    placeholderData: cachedCatalog,
+    placeholderData: providerId
+      ? cachedProviderModelCatalog(providerId, workerId)
+      : undefined,
     queryFn: async () => {
       const catalog = await getProviderModelCatalog(providerId!, workerId);
       cacheProviderModelCatalog(providerId!, workerId, catalog);
@@ -36,5 +31,13 @@ export function useProviderCatalog(
     queryKey: providerCatalogQueryKey(providerId, workerId),
     retry: false,
     staleTime: 60_000,
-  });
+  };
+}
+
+export function useProviderCatalog(
+  providerId: string | null | undefined,
+  workerId: string | null,
+  enabled: boolean,
+) {
+  return useQuery(providerCatalogQueryOptions(providerId, workerId, enabled));
 }
