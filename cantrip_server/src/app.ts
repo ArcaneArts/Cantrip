@@ -9779,6 +9779,7 @@ export async function buildApp({
 
   app.get("/api/settings", async (_request, reply) => {
     const ownerId = applicationOwnerId();
+    await zaiCatalogService.reconcileOwnerProviders(ownerId);
     const settings = await repository.getSettings(ownerId);
     for (const provider of settings.providers) {
       if (provider.kind !== "ollama" && !isAccountProviderKind(provider.kind)) {

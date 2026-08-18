@@ -24,4 +24,30 @@ describe("Codex provider errors", () => {
     expect(message).not.toContain(secret);
     expect(message).toContain("[REDACTED]");
   });
+
+  it.each([1305, 1308, 1310])(
+    "classifies documented Z.ai business code %i as a limit",
+    (code) => {
+      expect(
+        readableCodexProviderError(`provider error code: ${code}`, {
+          zai: true,
+        }),
+      ).toContain("rate limit reached");
+    },
+  );
+
+  it("surfaces reset and retry hints when Codex includes them", () => {
+    expect(
+      readableCodexProviderError(
+        'status 429; retry-after: 45; message="too many requests"',
+        { zai: true },
+      ),
+    ).toContain("Retry after 45");
+    expect(
+      readableCodexProviderError(
+        'error code: 1310, next_flush_time: "2026-08-19T00:00:00Z"',
+        { zai: true },
+      ),
+    ).toContain("Provider reset: 2026-08-19T00:00:00Z");
+  });
 });
