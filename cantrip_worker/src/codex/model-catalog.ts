@@ -18,6 +18,30 @@ const SUPPORTED_INPUT_MODALITIES = new Set(["text", "image", "audio"]);
 export const CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS =
   "You are Codex, a coding agent. Follow the developer and user instructions. Use the available tools to inspect and modify the repository, run commands, and verify your work. Continue until the user's request is complete.";
 
+function isKnownGrokVisionModel(modelName: string): boolean {
+  const slug = modelName.trim().toLowerCase().split("/").at(-1) ?? "";
+  return /^grok-4(?:[.-]|$)/u.test(slug);
+}
+
+export function runtimeModelSupportsImages(
+  model: RuntimeModel,
+  providerKind: RuntimeProvider["kind"],
+): boolean {
+  const catalog = model.catalog;
+  if (catalog?.supportsVision === true) return true;
+  if (
+    catalog?.inputModalities.some(
+      (modality) => modality.trim().toLowerCase() === "image",
+    )
+  ) {
+    return true;
+  }
+  if (catalog?.supportsVision === false) return false;
+  // Grok's subscription catalog currently omits modality metadata even for
+  // the Grok 4 family that xAI documents as accepting Responses input_image.
+  return providerKind === "grok" && isKnownGrokVisionModel(model.name);
+}
+
 export function codexCatalogForRuntimeModel(
   model: RuntimeModel,
   providerKind: RuntimeProvider["kind"] = "ollama",
@@ -28,9 +52,15 @@ export function codexCatalogForRuntimeModel(
   const supportsFreeformTools =
     providerKind !== "openai-compatible" && providerKind !== "grok";
   const supportsReasoning = catalog.supportsReasoning === true;
-  const inputModalities = catalog.inputModalities.filter((modality) =>
-    SUPPORTED_INPUT_MODALITIES.has(modality),
-  );
+  const inputModalities = catalog.inputModalities
+    .map((modality) => modality.trim().toLowerCase())
+    .filter((modality) => SUPPORTED_INPUT_MODALITIES.has(modality));
+  if (
+    runtimeModelSupportsImages(model, providerKind) &&
+    !inputModalities.includes("image")
+  ) {
+    inputModalities.push("image");
+  }
   const supportedReasoningLevels = supportsReasoning
     ? catalog.supportedReasoningEfforts.map((option) => ({
         effort: option.effort,

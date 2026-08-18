@@ -82,7 +82,10 @@ import {
   codexModelProviderName,
   codexProviderConfiguration,
 } from "./provider-config.js";
-import { writeManagedCodexModelCatalog } from "./model-catalog.js";
+import {
+  runtimeModelSupportsImages,
+  writeManagedCodexModelCatalog,
+} from "./model-catalog.js";
 import {
   customizationInventory,
   parseExternalImportStatus,
@@ -3859,7 +3862,9 @@ export class CodexAppServer implements CodexRuntime {
     const key = `${provider.id}:${model.name}`;
     const cached = this.#imageSupport.get(key);
     if (cached !== undefined) return cached;
-    let supported = provider.kind === "chatgpt";
+    let supported =
+      provider.kind === "chatgpt" ||
+      runtimeModelSupportsImages(model, provider.kind);
     if (this.methodAvailable("model/list")) {
       try {
         const response = (await this.request("model/list", {
@@ -3878,6 +3883,7 @@ export class CodexAppServer implements CodexRuntime {
         );
         if (entry) {
           supported =
+            supported ||
             entry.inputModalities === undefined ||
             entry.inputModalities.includes("image");
         }

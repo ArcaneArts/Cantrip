@@ -103,6 +103,33 @@ function stringArrayField(
   return [];
 }
 
+function objectField(
+  value: Record<string, unknown>,
+  ...keys: string[]
+): Record<string, unknown> {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate)
+    ) {
+      return candidate as Record<string, unknown>;
+    }
+  }
+  return {};
+}
+
+function normalizedModalities(...candidates: string[][]): string[] {
+  return [
+    ...new Set(
+      candidates
+        .find((candidate) => candidate.length > 0)
+        ?.map((modality) => modality.trim().toLowerCase()) ?? [],
+    ),
+  ];
+}
+
 function normalizeReasoningEfforts(
   value: Record<string, unknown>,
   meta: Record<string, unknown>,
@@ -147,16 +174,55 @@ export function normalizeGrokModel(
   const defaultReasoningEffort =
     stringField(value, "reasoningEffort", "reasoning_effort") ??
     stringField(meta, "reasoningEffort", "reasoning_effort");
-  const inputModalities = stringArrayField(
-    value,
-    "inputModalities",
-    "input_modalities",
+  const architecture = objectField(value, "architecture");
+  const metaArchitecture = objectField(meta, "architecture");
+  const capabilities = objectField(value, "capabilities");
+  const metaCapabilities = objectField(meta, "capabilities");
+  const inputModalities = normalizedModalities(
+    stringArrayField(value, "inputModalities", "input_modalities"),
+    stringArrayField(meta, "inputModalities", "input_modalities"),
+    stringArrayField(architecture, "inputModalities", "input_modalities"),
+    stringArrayField(metaArchitecture, "inputModalities", "input_modalities"),
   );
-  const outputModalities = stringArrayField(
-    value,
-    "outputModalities",
-    "output_modalities",
+  const outputModalities = normalizedModalities(
+    stringArrayField(value, "outputModalities", "output_modalities"),
+    stringArrayField(meta, "outputModalities", "output_modalities"),
+    stringArrayField(architecture, "outputModalities", "output_modalities"),
+    stringArrayField(metaArchitecture, "outputModalities", "output_modalities"),
   );
+  const supportsVision =
+    booleanField(
+      value,
+      "supportsVision",
+      "supports_vision",
+      "supportsImageInput",
+      "supports_image_input",
+    ) ??
+    booleanField(
+      meta,
+      "supportsVision",
+      "supports_vision",
+      "supportsImageInput",
+      "supports_image_input",
+    ) ??
+    booleanField(
+      capabilities,
+      "vision",
+      "image",
+      "imageInput",
+      "image_input",
+    ) ??
+    booleanField(
+      metaCapabilities,
+      "vision",
+      "image",
+      "imageInput",
+      "image_input",
+    );
+  if (supportsVision === true) {
+    if (inputModalities.length === 0) inputModalities.push("text");
+    if (!inputModalities.includes("image")) inputModalities.push("image");
+  }
   return grokModelInventorySchema.shape.models.element.parse({
     id,
     displayName: stringField(value, "name", "displayName") ?? id,

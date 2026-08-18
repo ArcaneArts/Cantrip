@@ -20,7 +20,18 @@ export function exactOpenRouterAliases(
   if (providerKind === "chatgpt") {
     aliases.add(`openai/${catalog.nativeModelId.trim().toLowerCase()}`);
   }
+  if (providerKind === "grok") {
+    aliases.add(`x-ai/${catalog.nativeModelId.trim().toLowerCase()}`);
+  }
   return aliases;
+}
+
+function inheritedInputModalities(
+  catalog: ProviderModelCatalogEntry,
+  source: ProviderModelCatalogEntry,
+): string[] {
+  if (catalog.supportsVision !== null) return catalog.inputModalities;
+  return [...new Set([...catalog.inputModalities, ...source.inputModalities])];
 }
 
 export function enrichCatalogFromExactOpenRouterMatch(
@@ -44,10 +55,7 @@ export function enrichCatalogFromExactOpenRouterMatch(
     description: catalog.description ?? source.description,
     contextWindow: catalog.contextWindow ?? source.contextWindow,
     maxOutputTokens: catalog.maxOutputTokens ?? source.maxOutputTokens,
-    inputModalities:
-      catalog.inputModalities.length > 0
-        ? catalog.inputModalities
-        : source.inputModalities,
+    inputModalities: inheritedInputModalities(catalog, source),
     outputModalities:
       catalog.outputModalities.length > 0
         ? catalog.outputModalities

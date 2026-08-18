@@ -93,6 +93,27 @@ describe("provider catalog enrichment", () => {
     ]).toContain("openai/gpt-5.6-sol");
   });
 
+  it("recognizes the deterministic xAI namespace alias", () => {
+    expect([...exactOpenRouterAliases(catalog("grok-4.6"), "grok")]).toContain(
+      "x-ai/grok-4.6",
+    );
+  });
+
+  it("inherits exact vision modalities when native metadata is unknown", () => {
+    const target = catalog("grok-4.6");
+    const source = catalog("x-ai/grok-4.6", {
+      inputModalities: ["text", "image"],
+      supportsVision: true,
+      metadataSource: "openrouter",
+    });
+    expect(
+      enrichCatalogFromExactOpenRouterMatch(target, "grok", [source]),
+    ).toMatchObject({
+      inputModalities: ["text", "image"],
+      supportsVision: true,
+    });
+  });
+
   it("fills unknown metadata from one exact OpenRouter match", () => {
     const target = catalog("gpt-5.6-sol", { contextWindow: 200_000 });
     const source = catalog("openai/gpt-5.6-sol", {
