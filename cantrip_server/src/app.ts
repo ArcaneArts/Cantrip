@@ -259,9 +259,13 @@ import {
   mcpServerListSchema,
   mcpServerSummarySchema,
   mentionedSkillNames,
+  managedFolderDeleteResultSchema,
+  managedFolderProjectCreateSchema,
   orderedIdsSchema,
   operationalProbeSchema,
   projectListSchema,
+  projectFolderSetupJobSummarySchema,
+  projectFolderSetupRetrySchema,
   projectExternalChatDiscoverySchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
@@ -543,6 +547,10 @@ import {
 } from "./chat-relocations/executor.js";
 import { CodeTunnelBroker } from "./code/tunnel.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
+import {
+  ProjectFolderSetupJobExecutor,
+  type ProjectFolderSetupLiveChange,
+} from "./project-folders/executor.js";
 import {
   ProjectReplicaJobExecutor,
   type ProjectReplicaJobLiveChange,
@@ -899,6 +907,8 @@ function mutationLiveResources(route: string): AppLiveResource[] {
   if (route.startsWith("/api/workers/")) return ["worker"];
   if (
     route === "/api/projects/from-github" ||
+    route === "/api/projects/from-folder" ||
+    route === "/api/projects/:projectId/folder-setup/retry" ||
     route === "/api/projects/order" ||
     route === "/api/projects/:projectId" ||
     route === "/api/projects/:projectId/preferred-worker" ||
@@ -2102,6 +2112,72 @@ export async function buildApp({
     app.log,
     publishProjectReplicaJobChange,
   );
+  const publishProjectFolderSetupChange = (
+    change: ProjectFolderSetupLiveChange,
+  ): void => {
+    const context = {
+      event: "project-folder.setup.transitioned",
+      subsystem: "project-folder",
+      operation: "materialize",
+      status: change.job.state,
+      runId: change.job.id,
+      projectId: change.job.projectId,
+      workerId: change.job.workerId,
+      attempt: change.job.attempt,
+    };
+    if (change.job.state === "failed") {
+      app.log.error(context, "Project folder setup failed");
+    } else if (change.job.state === "blocked") {
+      app.log.warn(context, "Project folder setup blocked");
+    } else if (change.job.state === "succeeded") {
+      app.log.info(context, "Project folder setup completed");
+    } else {
+      app.log.debug(context, "Project folder setup transitioned");
+    }
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project-folder-setup-job",
+        action: "invalidated",
+        entityId: change.job.id,
+        revision: change.job.stateRevision,
+        payload: null,
+      });
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project",
+        action: "invalidated",
+        entityId: change.job.projectId,
+        revision: null,
+        payload: null,
+      });
+      if (change.job.state === "succeeded") {
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "project", projectId: change.job.projectId },
+          resource: "worktree",
+          action: "invalidated",
+          entityId: change.job.projectId,
+          revision: null,
+          payload: null,
+        });
+      }
+    } catch (error) {
+      app.log.error(
+        { err: error, projectFolderSetupJobId: change.job.id },
+        "Could not publish project folder setup change",
+      );
+    }
+  };
+  const projectFolderSetupJobExecutor = new ProjectFolderSetupJobExecutor(
+    repository,
+    bridge,
+    app.log,
+    publishProjectFolderSetupChange,
+  );
   const publishChatImportChange = (change: ChatImportLiveChange): void => {
     const importLogContext = {
       event: "chat-import.job.transitioned",
@@ -2291,6 +2367,9 @@ export async function buildApp({
   await projectReplicaJobExecutor.recoverAfterRestart(!coordinator);
   projectReplicaJobExecutor.queueAvailable();
   projectReplicaJobExecutor.startRecoverySweep();
+  await projectFolderSetupJobExecutor.recoverAfterRestart(!coordinator);
+  projectFolderSetupJobExecutor.queueAvailable();
+  projectFolderSetupJobExecutor.startRecoverySweep();
   await chatRelocationJobExecutor.recoverAfterRestart(!coordinator);
   chatRelocationJobExecutor.queueAvailable();
   chatRelocationJobExecutor.startRecoverySweep();
@@ -16318,10 +16397,13 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Project not found." });
       }
-      if (context.setupStatus === "cloning") {
+      if (
+        context.setupStatus === "cloning" ||
+        context.setupStatus === "preparing"
+      ) {
         return reply
           .code(409)
-          .send({ error: "Wait for the repository clone to finish." });
+          .send({ error: "Wait for project setup to finish." });
       }
       const replicaJobs =
         (await repository.projectReplicaJobs.list(
@@ -16342,14 +16424,41 @@ export async function buildApp({
       );
       try {
         if (input.data.deleteLocalFiles) {
-          const offlineReplica = context.replicas.find(
-            ({ workerId }) => !bridge.isConnected(workerId),
-          );
-          if (offlineReplica) {
-            return reply.code(503).send({
-              error:
-                "Every replica worker must be online before deleting local project files.",
-            });
+          if (context.originKind === "managed-folder") {
+            const workerId =
+              context.replicas[0]?.workerId ?? context.preferredWorkerId;
+            if (!workerId) {
+              return reply.code(409).send({
+                error: "The folder project no longer has an owning worker.",
+              });
+            }
+            const worker = await repository.getWorker(
+              applicationOwnerId(),
+              workerId,
+            );
+            if (!worker?.managedFolders.remove) {
+              return reply.code(409).send({
+                code: "managed-folder-capability-unavailable",
+                error:
+                  "The owning worker does not support safe managed folder deletion.",
+              });
+            }
+            if (!bridge.isConnected(workerId)) {
+              return reply.code(503).send({
+                error:
+                  "The owning worker must be online before deleting local folder files.",
+              });
+            }
+          } else {
+            const offlineReplica = context.replicas.find(
+              ({ workerId }) => !bridge.isConnected(workerId),
+            );
+            if (offlineReplica) {
+              return reply.code(503).send({
+                error:
+                  "Every replica worker must be online before deleting local project files.",
+              });
+            }
           }
           await Promise.all(
             context.terminals.map(({ id, workerId }) =>
@@ -16359,11 +16468,22 @@ export async function buildApp({
               }),
             ),
           );
-          for (const replica of context.replicas) {
-            await bridge.request(replica.workerId, {
-              type: "project.files.delete",
-              path: replica.cwd,
-            });
+          if (context.originKind === "managed-folder") {
+            const workerId =
+              context.replicas[0]?.workerId ?? context.preferredWorkerId!;
+            managedFolderDeleteResultSchema.parse(
+              await bridge.request(workerId, {
+                type: "project.folder.delete",
+                projectId: request.params.projectId,
+              }),
+            );
+          } else {
+            for (const replica of context.replicas) {
+              await bridge.request(replica.workerId, {
+                type: "project.files.delete",
+                path: replica.cwd,
+              });
+            }
           }
         } else {
           for (const terminal of context.terminals) {
@@ -16395,6 +16515,108 @@ export async function buildApp({
       ))
         ? reply.code(204).send()
         : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.post("/api/projects/from-folder", async (request, reply) => {
+    const input = managedFolderProjectCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const worker = await repository.getWorker(
+      applicationOwnerId(),
+      input.data.workerId,
+    );
+    if (!worker) {
+      return reply.code(404).send({ error: "Worker not found." });
+    }
+    if (!worker.managedFolders.create) {
+      return reply.code(409).send({
+        code: "managed-folder-capability-unavailable",
+        error: "This worker does not support managed folder creation.",
+      });
+    }
+    try {
+      const created = await repository.createManagedFolderProject(
+        applicationOwnerId(),
+        input.data,
+      );
+      publishProjectFolderSetupChange({
+        ownerId: applicationOwnerId(),
+        job: created.job,
+      });
+      projectFolderSetupJobExecutor.queueAvailable();
+      return reply.code(202).send(projectSummarySchema.parse(created.project));
+    } catch (error) {
+      if (error instanceof ProjectWorkspaceInvariantError) {
+        return reply.code(400).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/folder-setup",
+    async (request, reply) => {
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      if (project.originKind !== "managed-folder") {
+        return reply.code(409).send({
+          code: "managed-folder-capability-unavailable",
+          error: "Folder setup is available only for folder projects.",
+        });
+      }
+      const job = await repository.projectFolderSetupJobs.get(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      return job
+        ? reply.send(projectFolderSetupJobSummarySchema.parse(job))
+        : reply.code(404).send({ error: "Folder setup job not found." });
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/folder-setup/retry",
+    async (request, reply) => {
+      const input = projectFolderSetupRetrySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      if (project.originKind !== "managed-folder") {
+        return reply.code(409).send({
+          code: "managed-folder-capability-unavailable",
+          error: "Folder setup retry is available only for folder projects.",
+        });
+      }
+      const job = await repository.projectFolderSetupJobs.retry(
+        applicationOwnerId(),
+        request.params.projectId,
+        input.data.stateRevision,
+      );
+      if (!job) {
+        return reply.code(409).send({
+          error: "Folder setup changed or is not retryable.",
+        });
+      }
+      publishProjectFolderSetupChange({
+        ownerId: applicationOwnerId(),
+        job,
+      });
+      projectFolderSetupJobExecutor.queueAvailable();
+      return reply.send(projectFolderSetupJobSummarySchema.parse(job));
     },
   );
 
@@ -22734,6 +22956,14 @@ export async function buildApp({
             "Could not resume project replica jobs",
           );
         });
+      void projectFolderSetupJobExecutor
+        .workerConnected(workerId)
+        .catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not resume project folder setup jobs",
+          );
+        });
       void chatRelocationJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -23233,6 +23463,7 @@ export async function buildApp({
     for (const timer of workerOfflineTimers.values()) clearTimeout(timer);
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
+    projectFolderSetupJobExecutor.stop();
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
     workflowExecutor.stop();

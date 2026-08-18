@@ -46,6 +46,7 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
+import { ManagedFolderManager } from "./managed-folders.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
@@ -370,6 +371,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     config.dataDirectory,
   );
   const github = new GithubClient(config.dataDirectory);
+  const managedFolders = new ManagedFolderManager(config.dataDirectory);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
   const providerAccessTokens = new ProviderAccessTokenClient(config);
@@ -904,6 +906,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "project.clone":
         return github.cloneRepository(command.repository.nameWithOwner);
+      case "project.folder.materialize":
+        return managedFolders.materialize(command);
+      case "project.folder.delete":
+        return managedFolders.delete(command.projectId);
       case "project.replica.provision":
         return github.provisionReplica(
           {

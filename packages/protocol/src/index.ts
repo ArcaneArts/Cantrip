@@ -441,6 +441,17 @@ export const unavailableProjectReplicaCapabilities =
     exactRevision: false,
   });
 
+export const managedFolderCapabilitiesSchema = z.object({
+  create: z.boolean(),
+  remove: z.boolean(),
+});
+
+export const unavailableManagedFolderCapabilities =
+  managedFolderCapabilitiesSchema.parse({
+    create: false,
+    remove: false,
+  });
+
 export const workerHeartbeatSchema = z.object({
   workerId: z.string().min(1),
   name: z.string().min(1),
@@ -457,6 +468,9 @@ export const workerHeartbeatSchema = z.object({
   code: codeCapabilitiesSchema.optional(),
   projectReplicas: projectReplicaCapabilitiesSchema.default(
     unavailableProjectReplicaCapabilities,
+  ),
+  managedFolders: managedFolderCapabilitiesSchema.default(
+    unavailableManagedFolderCapabilities,
   ),
   chatRelocation: z.boolean().default(false),
   externalCodexHistory: z.boolean().default(false),
@@ -2050,6 +2064,12 @@ export const githubProjectCreateSchema = z.object({
   repositoryId: z.string().min(1),
   nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
   url: z.url(),
+  workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
+});
+
+export const managedFolderProjectCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  workerId: z.string().min(1),
   workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
 });
 
@@ -5651,6 +5671,55 @@ export const projectCloneResultSchema = z.object({
   worktreePolicy: worktreePolicySchema.nullable().optional(),
 });
 
+export const managedFolderMaterializeReadySchema = z.object({
+  status: z.literal("ready"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
+  reused: z.boolean(),
+});
+
+export const managedFolderDeleteResultSchema = z.object({
+  deleted: z.boolean(),
+});
+
+export const projectFolderSetupJobStateSchema = z.enum([
+  "queued",
+  "running",
+  "blocked",
+  "succeeded",
+  "failed",
+]);
+
+export const projectFolderSetupJobErrorSchema = z.object({
+  code: z.enum([
+    "worker-offline",
+    "capability-missing",
+    "materialization-failed",
+  ]),
+  message: z.string().min(1).max(4_000),
+  retryable: z.boolean(),
+});
+
+export const projectFolderSetupJobSummarySchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().uuid(),
+  workerId: z.string().min(1),
+  state: projectFolderSetupJobStateSchema,
+  stateRevision: z.number().int().positive(),
+  attempt: z.number().int().nonnegative(),
+  error: projectFolderSetupJobErrorSchema.nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+});
+
+export const projectFolderSetupRetrySchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
+
 export const projectReplicaProvisionBlockedSchema = z.object({
   status: z.literal("blocked"),
   jobId: z.string().uuid(),
@@ -8092,6 +8161,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     }),
   }),
   z.object({
+    type: z.literal("project.folder.materialize"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    projectId: z.string().uuid(),
+    displayName: z.string().trim().min(1).max(120),
+  }),
+  z.object({
+    type: z.literal("project.folder.delete"),
+    projectId: z.string().uuid(),
+  }),
+  z.object({
     type: z.literal("project.replica.provision"),
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
@@ -9283,6 +9363,9 @@ export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 export type ProjectReplicaCapabilities = z.infer<
   typeof projectReplicaCapabilitiesSchema
 >;
+export type ManagedFolderCapabilities = z.infer<
+  typeof managedFolderCapabilitiesSchema
+>;
 export type WorkerManagementSource = z.infer<
   typeof workerManagementSourceSchema
 >;
@@ -9639,7 +9722,25 @@ export type GithubWorkerRepository = z.infer<
   typeof githubWorkerRepositorySchema
 >;
 export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
+export type ManagedFolderProjectCreate = z.infer<
+  typeof managedFolderProjectCreateSchema
+>;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
+export type ManagedFolderMaterializeReady = z.infer<
+  typeof managedFolderMaterializeReadySchema
+>;
+export type ManagedFolderDeleteResult = z.infer<
+  typeof managedFolderDeleteResultSchema
+>;
+export type ProjectFolderSetupJobState = z.infer<
+  typeof projectFolderSetupJobStateSchema
+>;
+export type ProjectFolderSetupJobError = z.infer<
+  typeof projectFolderSetupJobErrorSchema
+>;
+export type ProjectFolderSetupJobSummary = z.infer<
+  typeof projectFolderSetupJobSummarySchema
+>;
 export type ProjectReplicaProvisionResult = z.infer<
   typeof projectReplicaProvisionResultSchema
 >;

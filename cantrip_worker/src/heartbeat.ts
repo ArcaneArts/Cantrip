@@ -44,6 +44,10 @@ export function createHeartbeat(
       remove: true,
       exactRevision: true,
     },
+    managedFolders: {
+      create: true,
+      remove: true,
+    },
     chatRelocation: true,
     externalCodexHistory:
       process.platform === "darwin" || process.platform === "win32",

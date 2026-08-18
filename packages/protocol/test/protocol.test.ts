@@ -175,6 +175,33 @@ describe("worker channel JSON codec", () => {
     });
   });
 
+  it("validates worker-derived managed folder commands", () => {
+    expect(
+      workerCommandSchema.parse({
+        type: "project.folder.materialize",
+        jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+        attempt: 1,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        displayName: "Scratch prototype",
+      }),
+    ).not.toHaveProperty("path");
+    expect(
+      workerCommandSchema.parse({
+        type: "project.folder.delete",
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+      }),
+    ).toEqual({
+      type: "project.folder.delete",
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+    });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "project.folder.delete",
+        projectId: "../outside",
+      }).success,
+    ).toBe(false);
+  });
+
   it("round-trips request and server envelopes", () => {
     const request = {
       kind: "request" as const,
@@ -814,6 +841,10 @@ describe("Cantrip protocol", () => {
       synchronize: false,
       remove: false,
       exactRevision: false,
+    });
+    expect(heartbeat.managedFolders).toEqual({
+      create: false,
+      remove: false,
     });
     expect(heartbeat.chatRelocation).toBe(false);
     expect(
