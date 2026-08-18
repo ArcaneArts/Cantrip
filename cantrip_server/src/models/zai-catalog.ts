@@ -108,6 +108,44 @@ export class ZaiCatalogService {
     this.#repository = repository;
   }
 
+  /**
+   * Hydrate built-in catalogs for providers created before Z.ai discovery was
+   * introduced. Reconciliation is deliberately provider-local: repository
+   * catalog writes preserve provider/model/route identities and user-owned
+   * ordering while adding only missing discovery-managed records.
+   */
+  async reconcileOwnerProviders(ownerId: string): Promise<string[]> {
+    const settings = await this.#repository.getSettings(ownerId);
+    const providerIds = settings.providers
+      .filter(isZaiCodingPlanProvider)
+      .map(({ id }) => id);
+    for (const providerId of providerIds) {
+      const existing = await this.#repository.getProviderModelCatalog(
+        ownerId,
+        providerId,
+      );
+      const current = existing?.syncStates.some(
+        (state) =>
+          state.scopeKey === ZAI_CODEX_CATALOG_SCOPE &&
+          state.status === "current" &&
+          state.etag === `built-in-v${ZAI_CODEX_CATALOG_VERSION}`,
+      );
+      const nativeModelIds = new Set(
+        existing?.models.map(({ nativeModelId }) => nativeModelId),
+      );
+      if (
+        current &&
+        ZAI_CODEX_MODELS.every(({ nativeModelId }) =>
+          nativeModelIds.has(nativeModelId),
+        )
+      ) {
+        continue;
+      }
+      await this.getProviderCatalog(ownerId, providerId);
+    }
+    return providerIds;
+  }
+
   async getProviderCatalog(
     ownerId: string,
     providerId: string,

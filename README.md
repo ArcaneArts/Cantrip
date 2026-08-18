@@ -39,6 +39,10 @@ Settings are stored by the server for the current Cantrip identity rather than i
 
 - Ollama and other worker-local endpoints.
 - OpenAI-compatible APIs such as OpenRouter.
+- Z.ai GLM Coding Plan through Codex's Responses integration. Cantrip supplies
+  the documented Coding Plan endpoint and model catalog, keeps each API key in
+  the encrypted server vault, and supports ordered fallback alongside other
+  provider routes.
 - Portable ChatGPT account providers authenticated through Codex. Durable OAuth
   credentials and refresh authority live in the encrypted server vault; workers
   receive only short-lived access leases and account metadata.
@@ -610,6 +614,13 @@ pnpm --filter @cantrip/server test
 pnpm --filter @cantrip/worker test
 pnpm --filter @cantrip/app test
 pnpm --filter @cantrip/site build
+```
+
+The opt-in Z.ai end-to-end smoke test uses the bundled Codex runtime and only
+runs when a real Coding Plan key is explicitly supplied:
+
+```shell
+ZAI_CODING_PLAN_API_KEY=... pnpm --filter @cantrip/worker exec vitest run test/zai-live.test.ts
 ```
 
 Worktree-focused tests and manual PGlite/PostgreSQL checks are documented in

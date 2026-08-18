@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { PGlite } from "@electric-sql/pglite";
+import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -150,6 +151,166 @@ describe("Z.ai Coding Plan catalog", () => {
         name: "My GLM flagship",
         discoveryManaged: false,
         routes: [expect.objectContaining({ modelName: "glm-5.3" })],
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("migrates existing providers without changing mixed routes or resumed chats", async () => {
+    const { client, database, repository } = await setup();
+    const secret = "existing-zai-coding-plan-secret";
+    try {
+      const fallback = await repository.createModelProvider(LOCAL_USER_ID, {
+        name: "Compatible fallback",
+        kind: "openai-compatible",
+        baseUrl: "https://models.example.test/v1",
+        apiKey: "fallback-secret",
+      });
+      const zaiPrimary = await repository.createModelProvider(LOCAL_USER_ID, {
+        name: "Existing Z.ai primary",
+        kind: "openai-compatible",
+        baseUrl: "https://api.z.ai/api/v1/responses",
+        apiKey: secret,
+      });
+      const zaiSecondary = await repository.createModelProvider(LOCAL_USER_ID, {
+        name: "Existing Z.ai secondary",
+        kind: "openai-compatible",
+        baseUrl: "https://api.z.ai/api/v1",
+        apiKey: "secondary-secret",
+      });
+      const logicalModel = await repository.createModelProfile(LOCAL_USER_ID, {
+        name: "Portable GLM",
+        routes: [
+          {
+            providerId: fallback.id,
+            modelName: "fallback-model",
+            enabled: true,
+          },
+          {
+            providerId: zaiPrimary.id,
+            modelName: "glm-5.3",
+            enabled: true,
+          },
+          {
+            providerId: zaiSecondary.id,
+            modelName: "glm-5-turbo",
+            enabled: true,
+          },
+        ],
+      });
+      if (!logicalModel) throw new Error("Could not create logical model.");
+      const originalRoutes = logicalModel.routes.map((route) => ({
+        id: route.id,
+        providerId: route.providerId,
+        modelName: route.modelName,
+        enabled: route.enabled,
+      }));
+
+      await repository.recordWorker(LOCAL_USER_ID, {
+        workerId: "zai-worker",
+        name: "Z.ai Worker",
+        platform: "darwin",
+        architecture: "arm64",
+        codexVersion: "0.147.0",
+        codexRuntime: unprobedCodexRuntimeReport,
+        remoteSurfaces: {
+          browser: false,
+          transports: ["websocket"],
+          maxSessions: 1,
+        },
+        startedAt: new Date().toISOString(),
+      });
+      const project = await repository.createGithubProject(LOCAL_USER_ID, {
+        workerId: "zai-worker",
+        repositoryId: "zai-migration-repository",
+        nameWithOwner: "ArcaneArts/ZaiMigration",
+        url: "https://github.com/ArcaneArts/ZaiMigration",
+      });
+      await repository.completeGithubProjectSetup(
+        LOCAL_USER_ID,
+        project.id,
+        "zai-worker",
+        {
+          path: "/tmp/cantrip-zai-migration",
+          displayPath: "ArcaneArts/ZaiMigration",
+          reused: false,
+          updated: false,
+          warning: null,
+        },
+      );
+      const chat = await repository.createChat(LOCAL_USER_ID, project.id, {
+        title: "Existing GLM chat",
+        worktreeMode: "agent-managed",
+      });
+      if (!chat) throw new Error("Could not create chat.");
+      await repository.setChatModel(LOCAL_USER_ID, chat.id, {
+        modelId: logicalModel.id,
+      });
+      const context = await repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chat.id,
+      );
+      if (!context) throw new Error("Could not resolve chat context.");
+      await repository.updateChatRuntime(
+        chat.id,
+        context.workerId,
+        context.worktreeId,
+        "thread-existing-zai",
+        logicalModel.routes[1]!.id,
+      );
+
+      const reconciled = await new ZaiCatalogService(
+        repository,
+      ).reconcileOwnerProviders(LOCAL_USER_ID);
+      expect(reconciled.sort()).toEqual(
+        [zaiPrimary.id, zaiSecondary.id].sort(),
+      );
+
+      const settings = await repository.getSettings(LOCAL_USER_ID);
+      expect(settings.providers.map(({ id }) => id)).toEqual(
+        expect.arrayContaining([zaiPrimary.id, zaiSecondary.id]),
+      );
+      expect(JSON.stringify(settings)).not.toContain(secret);
+      const storedProvider = await database
+        .select()
+        .from(schema.modelProviders)
+        .where(eq(schema.modelProviders.id, zaiPrimary.id));
+      expect(storedProvider[0]?.apiKeyEnvelope).toBeTruthy();
+      expect(JSON.stringify(storedProvider[0]?.apiKeyEnvelope)).not.toContain(
+        secret,
+      );
+
+      const preserved = settings.models.find(
+        ({ id }) => id === logicalModel.id,
+      );
+      expect(
+        preserved?.routes.map((route) => ({
+          id: route.id,
+          providerId: route.providerId,
+          modelName: route.modelName,
+          enabled: route.enabled,
+        })),
+      ).toEqual(originalRoutes);
+      expect(
+        (await repository.getModelRuntimes(LOCAL_USER_ID, logicalModel.id)).map(
+          ({ provider, model }) => ({
+            providerId: provider.id,
+            modelName: model.name,
+          }),
+        ),
+      ).toEqual(
+        originalRoutes.map(({ providerId, modelName }) => ({
+          providerId,
+          modelName,
+        })),
+      );
+      expect(
+        await repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
+      ).toMatchObject({
+        modelId: logicalModel.id,
+        modelRouteId: logicalModel.routes[1]!.id,
+        threadId: "thread-existing-zai",
       });
     } finally {
       await client.close();

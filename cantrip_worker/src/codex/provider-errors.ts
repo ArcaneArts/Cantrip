@@ -13,6 +13,19 @@ function hasStatus(message: string, status: number): boolean {
   );
 }
 
+function zaiRateLimitHint(message: string): string | null {
+  const retryAfter = message.match(
+    /retry-after["']?\s*(?::|=)\s*["']?([^\r\n,;"'}]+)/iu,
+  )?.[1];
+  if (retryAfter) return `Retry after ${retryAfter.trim()}.`;
+
+  const reset = message.match(
+    /(?:next_flush_time|reset(?:s|\s+at|\s+time)?)\s*(?::|=|\bis\b)?\s*["']?([^\r\n,"'}]+)/iu,
+  )?.[1];
+  if (reset) return `Provider reset: ${reset.trim()}.`;
+  return null;
+}
+
 /**
  * Convert Codex/provider failures into actionable messages while keeping the
  * original redacted diagnostic for cases we do not recognize. This belongs on
@@ -46,9 +59,12 @@ export function readableCodexProviderError(
   }
   if (
     hasStatus(sanitized, 429) ||
-    /rate[ -]?limit|quota exceeded/iu.test(sanitized)
+    /rate[ -]?limit|quota exceeded|(?:business|error|code)["'\s:=]+(?:1305|1308|1310)\b/iu.test(
+      sanitized,
+    )
   ) {
-    return "Z.ai Coding Plan rate limit reached (HTTP 429). Wait for the provider reset and retry.";
+    const hint = zaiRateLimitHint(sanitized);
+    return `Z.ai Coding Plan rate limit reached. ${hint ?? "Wait for the provider reset and retry."}`;
   }
   if (/stream|connection reset|unexpected eof|timed? out/iu.test(sanitized)) {
     return `The Z.ai response stream was interrupted. ${sanitized}`;
