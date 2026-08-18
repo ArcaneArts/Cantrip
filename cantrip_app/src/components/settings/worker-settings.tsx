@@ -106,6 +106,12 @@ export function recoverableDesktopWorkerId(input: {
   candidates: Array<{ repositoryCount: number; workerId: string }>;
   linkedWorkerId: string | null;
 }): string | null {
+  if (input.linkedWorkerId) {
+    const linkedWorker = input.candidates.find(
+      (candidate) => candidate.workerId === input.linkedWorkerId,
+    );
+    if (!linkedWorker || linkedWorker.repositoryCount > 0) return null;
+  }
   return (
     input.candidates.find(
       (candidate) =>
