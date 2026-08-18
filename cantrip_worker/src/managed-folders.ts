@@ -56,6 +56,25 @@ export class ManagedFolderManager {
     return { canonicalRoot, target };
   }
 
+  async resolve(projectId: string): Promise<{
+    displayPath: string;
+    path: string;
+  }> {
+    const { canonicalRoot, target } = await this.verifiedTarget(projectId);
+    const entry = await directoryEntry(target);
+    if (!entry || !entry.isDirectory() || entry.isSymbolicLink()) {
+      throw new Error("The managed folder target is not a safe directory.");
+    }
+    const canonicalTarget = await realpath(target);
+    if (path.dirname(canonicalTarget) !== canonicalRoot) {
+      throw new Error("The managed folder target escaped its storage root.");
+    }
+    return {
+      path: canonicalTarget,
+      displayPath: path.join("folders", projectId.toLowerCase()),
+    };
+  }
+
   async materialize(input: {
     attempt: number;
     jobId: string;

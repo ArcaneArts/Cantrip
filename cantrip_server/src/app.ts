@@ -266,6 +266,11 @@ import {
   projectListSchema,
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
+  projectGithubConversionJobSummarySchema,
+  projectGithubConversionPreflightRequestSchema,
+  projectGithubConversionPreflightResultSchema,
+  projectGithubConversionRetrySchema,
+  projectGithubConversionStartSchema,
   projectExternalChatDiscoverySchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
@@ -552,6 +557,10 @@ import {
   type ProjectFolderSetupLiveChange,
 } from "./project-folders/executor.js";
 import {
+  ProjectGithubConversionJobExecutor,
+  type ProjectGithubConversionLiveChange,
+} from "./project-github-conversions/executor.js";
+import {
   ProjectReplicaJobExecutor,
   type ProjectReplicaJobLiveChange,
 } from "./project-replicas/executor.js";
@@ -615,6 +624,10 @@ import {
   ProjectReplicaJobConflictError,
   ProjectReplicaJobNotFoundError,
 } from "./db/project-replica-jobs.js";
+import {
+  ProjectGithubConversionJobConflictError,
+  ProjectGithubConversionJobNotFoundError,
+} from "./db/project-github-conversion-jobs.js";
 import {
   WorkflowControlConflictError,
   WorkflowRunConflictError,
@@ -909,6 +922,8 @@ function mutationLiveResources(route: string): AppLiveResource[] {
     route === "/api/projects/from-github" ||
     route === "/api/projects/from-folder" ||
     route === "/api/projects/:projectId/folder-setup/retry" ||
+    route === "/api/projects/:projectId/github-conversion" ||
+    route === "/api/projects/:projectId/github-conversion/retry" ||
     route === "/api/projects/order" ||
     route === "/api/projects/:projectId" ||
     route === "/api/projects/:projectId/preferred-worker" ||
@@ -2194,6 +2209,82 @@ export async function buildApp({
     app.log,
     publishProjectFolderSetupChange,
   );
+  const publishProjectGithubConversionChange = (
+    change: ProjectGithubConversionLiveChange,
+  ): void => {
+    const context = {
+      event: "project.github-conversion.transitioned",
+      subsystem: "project-github-conversion",
+      operation: "convert",
+      status: change.job.state,
+      runId: change.job.id,
+      projectId: change.job.projectId,
+      workerId: change.job.workerId,
+      attempt: change.job.attempt,
+      repository: change.job.repository.nameWithOwner,
+    };
+    if (change.job.state === "failed") {
+      app.log.error(context, "Project GitHub conversion failed");
+    } else if (change.job.state === "blocked") {
+      app.log.warn(context, "Project GitHub conversion blocked");
+    } else if (change.job.state === "succeeded") {
+      app.log.info(context, "Project GitHub conversion completed");
+    } else {
+      app.log.debug(context, "Project GitHub conversion transitioned");
+    }
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project-github-conversion-job",
+        action: "invalidated",
+        entityId: change.job.id,
+        revision: change.job.stateRevision,
+        payload: null,
+      });
+      liveHub.publish({
+        ownerId: change.ownerId,
+        scope: { kind: "project", projectId: change.job.projectId },
+        resource: "project",
+        action: "invalidated",
+        entityId: change.job.projectId,
+        revision: null,
+        payload: null,
+      });
+      if (change.job.state === "succeeded") {
+        for (const resource of [
+          "worktree",
+          "worktree-status",
+          "git-operation",
+          "settings",
+        ] as const) {
+          liveHub.publish({
+            ownerId: change.ownerId,
+            scope: { kind: "project", projectId: change.job.projectId },
+            resource,
+            action: "invalidated",
+            entityId: change.job.projectId,
+            revision: null,
+            payload: null,
+          });
+        }
+        scheduleWorkerWorktreeObservation(change.job.workerId);
+      }
+    } catch (error) {
+      app.log.error(
+        { err: error, projectGithubConversionJobId: change.job.id },
+        "Could not publish project GitHub conversion change",
+      );
+    }
+  };
+  const projectGithubConversionJobExecutor =
+    new ProjectGithubConversionJobExecutor(
+      repository,
+      bridge,
+      app.log,
+      publishProjectGithubConversionChange,
+    );
   const publishChatImportChange = (change: ChatImportLiveChange): void => {
     const importLogContext = {
       event: "chat-import.job.transitioned",
@@ -2386,6 +2477,9 @@ export async function buildApp({
   await projectFolderSetupJobExecutor.recoverAfterRestart(!coordinator);
   projectFolderSetupJobExecutor.queueAvailable();
   projectFolderSetupJobExecutor.startRecoverySweep();
+  await projectGithubConversionJobExecutor.recoverAfterRestart(!coordinator);
+  projectGithubConversionJobExecutor.queueAvailable();
+  projectGithubConversionJobExecutor.startRecoverySweep();
   await chatRelocationJobExecutor.recoverAfterRestart(!coordinator);
   chatRelocationJobExecutor.queueAvailable();
   chatRelocationJobExecutor.startRecoverySweep();
@@ -16553,6 +16647,16 @@ export async function buildApp({
             "Cancel or wait for active project replica jobs before deleting the project.",
         });
       }
+      if (
+        await repository.projectGithubConversionJobs.hasActiveProjectJob(
+          request.params.projectId,
+        )
+      ) {
+        return reply.code(409).send({
+          error:
+            "Wait for the active GitHub conversion to finish before deleting the project.",
+        });
+      }
       await projectShareTunnel.revokeProject(
         request.params.projectId,
         applicationOwnerId(),
@@ -16585,8 +16689,33 @@ export async function buildApp({
               });
             }
           } else {
+            const managedFolderSource =
+              context.convertedManagedFolderSource?.localFilesDeleted === false
+                ? context.convertedManagedFolderSource
+                : null;
+            if (managedFolderSource) {
+              const worker = await repository.getWorker(
+                applicationOwnerId(),
+                managedFolderSource.workerId,
+              );
+              if (!worker?.managedFolders.remove) {
+                return reply.code(409).send({
+                  code: "managed-folder-capability-unavailable",
+                  error:
+                    "The converted folder's worker does not support safe managed folder deletion.",
+                });
+              }
+              if (!bridge.isConnected(managedFolderSource.workerId)) {
+                return reply.code(503).send({
+                  error:
+                    "The converted folder's worker must be online before deleting its local files.",
+                });
+              }
+            }
             const offlineReplica = context.replicas.find(
-              ({ workerId }) => !bridge.isConnected(workerId),
+              ({ id, workerId }) =>
+                id !== managedFolderSource?.projectSourceId &&
+                !bridge.isConnected(workerId),
             );
             if (offlineReplica) {
               return reply.code(503).send({
@@ -16613,7 +16742,20 @@ export async function buildApp({
               }),
             );
           } else {
+            const managedFolderSource =
+              context.convertedManagedFolderSource?.localFilesDeleted === false
+                ? context.convertedManagedFolderSource
+                : null;
+            if (managedFolderSource) {
+              managedFolderDeleteResultSchema.parse(
+                await bridge.request(managedFolderSource.workerId, {
+                  type: "project.folder.delete",
+                  projectId: request.params.projectId,
+                }),
+              );
+            }
             for (const replica of context.replicas) {
+              if (replica.id === managedFolderSource?.projectSourceId) continue;
               await bridge.request(replica.workerId, {
                 type: "project.files.delete",
                 path: replica.cwd,
@@ -16752,6 +16894,226 @@ export async function buildApp({
       });
       projectFolderSetupJobExecutor.queueAvailable();
       return reply.send(projectFolderSetupJobSummarySchema.parse(job));
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/github-conversion/preflight",
+    async (request, reply) => {
+      const input = projectGithubConversionPreflightRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      if (
+        project.originKind !== "managed-folder" ||
+        project.setupStatus !== "ready"
+      ) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error: "Only a ready managed folder project can be converted.",
+        });
+      }
+      if (
+        await repository.projectGithubConversionJobs.hasActiveProjectJob(
+          project.id,
+        )
+      ) {
+        return reply.code(409).send({
+          code: "transition-active",
+          error: "A GitHub conversion is already active for this project.",
+        });
+      }
+      if (
+        await repository.hasGithubProject(
+          applicationOwnerId(),
+          input.data.repository.repositoryId,
+        )
+      ) {
+        return reply.code(409).send({
+          code: "repository-collision",
+          error:
+            "This GitHub repository is already bound to another Cantrip project.",
+        });
+      }
+      const workerId = project.preferredWorkerId;
+      if (!workerId) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error: "The folder project no longer has an owning worker.",
+        });
+      }
+      const worker = await repository.getWorker(applicationOwnerId(), workerId);
+      if (!worker?.managedFolders.convertToGithub) {
+        return reply.code(409).send({
+          code: "capability-missing",
+          error:
+            "The owning worker does not support managed folder conversion.",
+        });
+      }
+      if (!bridge.isConnected(workerId)) {
+        return reply.code(503).send({
+          code: "worker-offline",
+          error: "The owning worker must be online before conversion.",
+        });
+      }
+      try {
+        return reply.send(
+          projectGithubConversionPreflightResultSchema.parse(
+            await bridge.request(
+              workerId,
+              {
+                type: "project.folder-conversion.preflight",
+                projectId: project.id,
+                repository: input.data.repository,
+              },
+              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+            ),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/github-conversion",
+    async (request, reply) => {
+      const input = projectGithubConversionStartSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const workerId = project.preferredWorkerId;
+      if (!workerId) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error: "The folder project no longer has an owning worker.",
+        });
+      }
+      const worker = await repository.getWorker(applicationOwnerId(), workerId);
+      if (!worker?.managedFolders.convertToGithub) {
+        return reply.code(409).send({
+          code: "capability-missing",
+          error:
+            "The owning worker does not support managed folder conversion.",
+        });
+      }
+      if (!bridge.isConnected(workerId)) {
+        return reply.code(503).send({
+          code: "worker-offline",
+          error: "The owning worker must be online before conversion.",
+        });
+      }
+      if (
+        await repository.hasGithubProject(
+          applicationOwnerId(),
+          input.data.repository.repositoryId,
+        )
+      ) {
+        return reply.code(409).send({
+          code: "repository-collision",
+          error:
+            "This GitHub repository is already bound to another Cantrip project.",
+        });
+      }
+      try {
+        const job = await repository.projectGithubConversionJobs.create(
+          applicationOwnerId(),
+          project.id,
+          workerId,
+          input.data,
+        );
+        publishProjectGithubConversionChange({
+          ownerId: applicationOwnerId(),
+          job,
+        });
+        projectGithubConversionJobExecutor.queueAvailable();
+        return reply
+          .code(202)
+          .send(projectGithubConversionJobSummarySchema.parse(job));
+      } catch (error) {
+        if (error instanceof ProjectGithubConversionJobNotFoundError) {
+          return reply.code(404).send({ error: "Project not found." });
+        }
+        if (error instanceof ProjectGithubConversionJobConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/github-conversion",
+    async (request, reply) => {
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const job = await repository.projectGithubConversionJobs.get(
+        applicationOwnerId(),
+        project.id,
+      );
+      return job
+        ? reply.send(projectGithubConversionJobSummarySchema.parse(job))
+        : reply.code(404).send({ error: "GitHub conversion job not found." });
+    },
+  );
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/github-conversion/retry",
+    async (request, reply) => {
+      const input = projectGithubConversionRetrySchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      if (project.originKind !== "managed-folder") {
+        return reply.code(409).send({
+          error: "The project is no longer a managed folder.",
+        });
+      }
+      const job = await repository.projectGithubConversionJobs.retry(
+        applicationOwnerId(),
+        project.id,
+        input.data.stateRevision,
+      );
+      if (!job) {
+        return reply.code(409).send({
+          error: "GitHub conversion changed or is not retryable.",
+        });
+      }
+      publishProjectGithubConversionChange({
+        ownerId: applicationOwnerId(),
+        job,
+      });
+      projectGithubConversionJobExecutor.queueAvailable();
+      return reply.send(projectGithubConversionJobSummarySchema.parse(job));
     },
   );
 
@@ -23191,6 +23553,14 @@ export async function buildApp({
             "Could not resume project folder setup jobs",
           );
         });
+      void projectGithubConversionJobExecutor
+        .workerConnected(workerId)
+        .catch((error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not resume project GitHub conversion jobs",
+          );
+        });
       void chatRelocationJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -23691,6 +24061,7 @@ export async function buildApp({
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
     projectFolderSetupJobExecutor.stop();
+    projectGithubConversionJobExecutor.stop();
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
     workflowExecutor.stop();
@@ -23707,6 +24078,8 @@ export async function buildApp({
     await coordinator?.close();
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
+    await projectFolderSetupJobExecutor.drain();
+    await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();
     await workflowExecutor.drain();

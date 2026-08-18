@@ -241,7 +241,7 @@ beforeAll(async () => {
     architecture: "arm64",
     codexVersion: "0.147.0",
     codexRuntime: unprobedCodexRuntimeReport,
-    managedFolders: { create: true, remove: true },
+    managedFolders: { create: true, convertToGithub: true, remove: true },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket"],

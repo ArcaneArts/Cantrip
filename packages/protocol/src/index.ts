@@ -443,12 +443,14 @@ export const unavailableProjectReplicaCapabilities =
 
 export const managedFolderCapabilitiesSchema = z.object({
   create: z.boolean(),
+  convertToGithub: z.boolean().default(false),
   remove: z.boolean(),
 });
 
 export const unavailableManagedFolderCapabilities =
   managedFolderCapabilitiesSchema.parse({
     create: false,
+    convertToGithub: false,
     remove: false,
   });
 
@@ -1668,6 +1670,7 @@ export const githubRepositoryCreateSchema = z.object({
   name: githubRepositorySegmentSchema,
   description: z.string().trim().max(350),
   visibility: githubRepositoryVisibilitySchema,
+  initialize: z.enum(["readme", "empty"]).default("readme"),
 });
 
 export const githubIssueStateSchema = z.enum(["open", "closed"]);
@@ -5736,6 +5739,134 @@ export const projectFolderSetupRetrySchema = z.object({
   stateRevision: z.number().int().positive(),
 });
 
+export const projectGithubConversionRepositorySchema = z.object({
+  repositoryId: z.string().min(1),
+  nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+  url: githubRepositorySchema.shape.url,
+});
+
+export const projectGithubConversionErrorSchema = z.object({
+  code: z.enum([
+    "worker-offline",
+    "capability-missing",
+    "project-not-ready",
+    "transition-active",
+    "repository-collision",
+    "github-auth-required",
+    "repository-unavailable",
+    "repository-not-empty",
+    "local-git-ambiguous",
+    "preflight-changed",
+    "initial-commit-required",
+    "git-initialization-failed",
+    "commit-failed",
+    "push-failed",
+    "reconciliation-failed",
+  ]),
+  message: z.string().min(1).max(4_000),
+  retryable: z.boolean(),
+});
+
+const projectGithubConversionPreflightBaseSchema = z.object({
+  projectId: z.string().uuid(),
+  repository: projectGithubConversionRepositorySchema,
+});
+
+export const projectGithubConversionPreflightReadySchema =
+  projectGithubConversionPreflightBaseSchema.extend({
+    status: z.literal("ready"),
+    confirmationToken: z.string().regex(/^[0-9a-f]{64}$/u),
+    localState: z.enum(["not-initialized", "unborn", "committed"]),
+    branch: z.string().min(1).max(255).nullable(),
+    head: gitObjectRevisionSchema.nullable(),
+    dirty: z.boolean(),
+    originUrl: z.string().min(1).max(8_192).nullable(),
+    requiresInitialCommit: z.boolean(),
+    warnings: z.array(z.string().min(1).max(1_000)).max(20),
+  });
+
+export const projectGithubConversionPreflightBlockedSchema =
+  projectGithubConversionPreflightBaseSchema.extend({
+    status: z.literal("blocked"),
+    error: projectGithubConversionErrorSchema,
+  });
+
+export const projectGithubConversionPreflightResultSchema =
+  z.discriminatedUnion("status", [
+    projectGithubConversionPreflightReadySchema,
+    projectGithubConversionPreflightBlockedSchema,
+  ]);
+
+export const projectGithubConversionPreflightRequestSchema = z.object({
+  repository: projectGithubConversionRepositorySchema,
+});
+
+export const projectGithubConversionStartSchema = z.object({
+  repository: projectGithubConversionRepositorySchema,
+  confirmationToken:
+    projectGithubConversionPreflightReadySchema.shape.confirmationToken,
+  initialCommit: z
+    .object({
+      message: z.string().trim().min(1).max(1_000),
+    })
+    .nullable()
+    .default(null),
+});
+
+export const projectGithubConversionJobStateSchema = z.enum([
+  "queued",
+  "running",
+  "blocked",
+  "succeeded",
+  "failed",
+]);
+
+export const projectGithubConversionJobSummarySchema = z.object({
+  id: z.string().uuid(),
+  projectId: z.string().uuid(),
+  workerId: z.string().min(1),
+  repository: projectGithubConversionRepositorySchema,
+  state: projectGithubConversionJobStateSchema,
+  stateRevision: z.number().int().positive(),
+  attempt: z.number().int().nonnegative(),
+  initialCommitRequested: z.boolean(),
+  error: projectGithubConversionErrorSchema.nullable(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  startedAt: z.string().datetime().nullable(),
+  completedAt: z.string().datetime().nullable(),
+});
+
+export const projectGithubConversionRetrySchema = z.object({
+  stateRevision: z.number().int().positive(),
+});
+
+export const projectGithubConversionReadySchema = z.object({
+  status: z.literal("ready"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  repository: projectGithubConversionRepositorySchema,
+  path: z.string().min(1),
+  displayPath: z.string().min(1),
+  repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+  branch: z.string().min(1).max(255),
+  head: gitObjectRevisionSchema,
+  worktreePolicy: worktreePolicySchema,
+});
+
+export const projectGithubConversionBlockedSchema = z.object({
+  status: z.literal("blocked"),
+  jobId: z.string().uuid(),
+  attempt: z.number().int().positive(),
+  error: projectGithubConversionErrorSchema,
+});
+
+export const projectGithubConversionExecutionResultSchema =
+  z.discriminatedUnion("status", [
+    projectGithubConversionReadySchema,
+    projectGithubConversionBlockedSchema,
+  ]);
+
 export const projectReplicaProvisionBlockedSchema = z.object({
   status: z.literal("blocked"),
   jobId: z.string().uuid(),
@@ -8188,6 +8319,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     projectId: z.string().uuid(),
   }),
   z.object({
+    type: z.literal("project.folder-conversion.preflight"),
+    projectId: z.string().uuid(),
+    repository: projectGithubConversionRepositorySchema,
+  }),
+  z.object({
+    type: z.literal("project.folder-conversion.execute"),
+    jobId: z.string().uuid(),
+    attempt: z.number().int().positive(),
+    projectId: z.string().uuid(),
+    repository: projectGithubConversionRepositorySchema,
+    confirmationToken:
+      projectGithubConversionPreflightReadySchema.shape.confirmationToken,
+    initialCommit: projectGithubConversionStartSchema.shape.initialCommit,
+  }),
+  z.object({
     type: z.literal("project.replica.provision"),
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
@@ -9765,6 +9911,36 @@ export type ProjectFolderSetupJobError = z.infer<
 >;
 export type ProjectFolderSetupJobSummary = z.infer<
   typeof projectFolderSetupJobSummarySchema
+>;
+export type ProjectGithubConversionRepository = z.infer<
+  typeof projectGithubConversionRepositorySchema
+>;
+export type ProjectGithubConversionError = z.infer<
+  typeof projectGithubConversionErrorSchema
+>;
+export type ProjectGithubConversionPreflightResult = z.infer<
+  typeof projectGithubConversionPreflightResultSchema
+>;
+export type ProjectGithubConversionPreflightReady = z.infer<
+  typeof projectGithubConversionPreflightReadySchema
+>;
+export type ProjectGithubConversionPreflightRequest = z.infer<
+  typeof projectGithubConversionPreflightRequestSchema
+>;
+export type ProjectGithubConversionStart = z.infer<
+  typeof projectGithubConversionStartSchema
+>;
+export type ProjectGithubConversionJobState = z.infer<
+  typeof projectGithubConversionJobStateSchema
+>;
+export type ProjectGithubConversionJobSummary = z.infer<
+  typeof projectGithubConversionJobSummarySchema
+>;
+export type ProjectGithubConversionReady = z.infer<
+  typeof projectGithubConversionReadySchema
+>;
+export type ProjectGithubConversionExecutionResult = z.infer<
+  typeof projectGithubConversionExecutionResultSchema
 >;
 export type ProjectReplicaProvisionResult = z.infer<
   typeof projectReplicaProvisionResultSchema

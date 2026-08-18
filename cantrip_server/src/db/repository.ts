@@ -216,6 +216,7 @@ import {
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
+import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
 import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { TaskRepository, toTaskDetail } from "./tasks.js";
@@ -426,6 +427,11 @@ export interface TerminalExecutionContext {
 }
 
 export interface ProjectRemovalContext {
+  convertedManagedFolderSource: {
+    localFilesDeleted: boolean;
+    projectSourceId: string;
+    workerId: string;
+  } | null;
   originKind: ProjectSummary["originKind"];
   preferredWorkerId: string | null;
   replicas: Array<{
@@ -1982,6 +1988,7 @@ export class ServerRepository {
   readonly tasks: TaskRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
+  readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
   readonly workflowRuns: WorkflowRunRepository;
@@ -1998,6 +2005,9 @@ export class ServerRepository {
     this.tasks = new TaskRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
+    this.projectGithubConversionJobs = new ProjectGithubConversionJobRepository(
+      database,
+    );
     this.workflows = new WorkflowRepository(database);
     this.workflowRuns = new WorkflowRunRepository(database);
     this.workflowTriggers = new WorkflowTriggerRepository(database);
@@ -11169,29 +11179,64 @@ export class ServerRepository {
   }
 
   async hasGithubProject(ownerId: string, repositoryId: string) {
-    const rows = await this.database
-      .select({ id: schema.projects.id })
-      .from(schema.projects)
-      .where(
-        and(
-          eq(schema.projects.ownerId, ownerId),
-          eq(schema.projects.githubRepositoryId, repositoryId),
-        ),
-      )
-      .limit(1);
-    return Boolean(rows[0]);
+    const [projects, conversions] = await Promise.all([
+      this.database
+        .select({ id: schema.projects.id })
+        .from(schema.projects)
+        .where(
+          and(
+            eq(schema.projects.ownerId, ownerId),
+            eq(schema.projects.githubRepositoryId, repositoryId),
+          ),
+        )
+        .limit(1),
+      this.database
+        .select({ id: schema.projectGithubConversionJobs.id })
+        .from(schema.projectGithubConversionJobs)
+        .where(
+          and(
+            eq(schema.projectGithubConversionJobs.ownerId, ownerId),
+            eq(schema.projectGithubConversionJobs.repositoryId, repositoryId),
+            inArray(schema.projectGithubConversionJobs.state, [
+              "queued",
+              "running",
+              "blocked",
+            ]),
+          ),
+        )
+        .limit(1),
+    ]);
+    return Boolean(projects[0] || conversions[0]);
   }
 
   async listGithubRepositoryIds(ownerId: string): Promise<Set<string>> {
-    const rows = await this.database
-      .select({ repositoryId: schema.projects.githubRepositoryId })
-      .from(schema.projects)
-      .where(eq(schema.projects.ownerId, ownerId));
-    return new Set(
-      rows.flatMap(({ repositoryId }) =>
+    const [rows, conversions] = await Promise.all([
+      this.database
+        .select({ repositoryId: schema.projects.githubRepositoryId })
+        .from(schema.projects)
+        .where(eq(schema.projects.ownerId, ownerId)),
+      this.database
+        .select({
+          repositoryId: schema.projectGithubConversionJobs.repositoryId,
+        })
+        .from(schema.projectGithubConversionJobs)
+        .where(
+          and(
+            eq(schema.projectGithubConversionJobs.ownerId, ownerId),
+            inArray(schema.projectGithubConversionJobs.state, [
+              "queued",
+              "running",
+              "blocked",
+            ]),
+          ),
+        ),
+    ]);
+    return new Set([
+      ...rows.flatMap(({ repositoryId }) =>
         repositoryId === null ? [] : [repositoryId],
       ),
-    );
+      ...conversions.map(({ repositoryId }) => repositoryId),
+    ]);
   }
 
   async createGithubProject(
@@ -11440,6 +11485,13 @@ export class ServerRepository {
       .limit(1);
     const project = rows[0];
     if (!project) return null;
+    const convertedManagedFolderSource =
+      project.originKind === "github"
+        ? await this.projectGithubConversionJobs.convertedManagedFolderSource(
+            ownerId,
+            projectId,
+          )
+        : null;
     const replicas = await this.database
       .select({
         cwd: schema.projectSources.absolutePath,
@@ -11469,6 +11521,7 @@ export class ServerRepository {
       .from(schema.remoteSurfaces)
       .where(eq(schema.remoteSurfaces.projectId, projectId));
     return {
+      convertedManagedFolderSource,
       originKind: project.originKind,
       preferredWorkerId: project.preferredWorkerId,
       replicas,

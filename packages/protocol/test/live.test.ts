@@ -26,6 +26,9 @@ describe("application live protocol", () => {
     expect(appLiveResourceSchema.parse("project-folder-setup-job")).toBe(
       "project-folder-setup-job",
     );
+    expect(appLiveResourceSchema.parse("project-github-conversion-job")).toBe(
+      "project-github-conversion-job",
+    );
   });
 
   it("initializes with an optional same-epoch replay cursor", () => {

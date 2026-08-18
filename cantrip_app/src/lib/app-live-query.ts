@@ -74,6 +74,16 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return projectId
         ? [["project-folder-setup", projectId], ["projects"]]
         : [["project-folder-setup"], ["projects"]];
+    case "project-github-conversion-job":
+      return projectId
+        ? [
+            ["project-github-conversion", projectId],
+            ["projects"],
+            ["worktrees", projectId],
+            ["worktree-status", projectId],
+            ["github-repositories"],
+          ]
+        : [["project-github-conversion"], ["projects"]];
     case "project-tab-layout":
       return projectId
         ? [["project-tab-layout", projectId]]

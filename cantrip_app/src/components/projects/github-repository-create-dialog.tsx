@@ -24,12 +24,14 @@ function errorText(error: unknown): string {
 }
 
 export function GithubRepositoryCreateDialog({
+  initialize = "readme",
   login,
   onCreated,
   onOpenChange,
   open,
   workerId,
 }: {
+  initialize?: "empty" | "readme";
   login: string;
   onCreated(repository: GithubRepository): Promise<void> | void;
   onOpenChange(open: boolean): void;
@@ -54,6 +56,7 @@ export function GithubRepositoryCreateDialog({
         name,
         description,
         visibility,
+        initialize,
       });
       await onCreated(repository);
       return repository;
@@ -97,8 +100,9 @@ export function GithubRepositoryCreateDialog({
         <DialogHeader>
           <DialogTitle>Create GitHub repository</DialogTitle>
           <DialogDescription>
-            Create the repository with the worker&apos;s GitHub account, then
-            add it to Cantrip and the selected workspaces.
+            {initialize === "empty"
+              ? "Create an empty repository with the worker's GitHub account, then review the conversion preflight."
+              : "Create the repository with the worker's GitHub account, then add it to Cantrip and the selected workspaces."}
           </DialogDescription>
         </DialogHeader>
 
@@ -219,8 +223,12 @@ export function GithubRepositoryCreateDialog({
                 <Building2 className="size-4" />
               )}
               {createRepository.isPending
-                ? "Creating and adding…"
-                : "Create repository"}
+                ? initialize === "empty"
+                  ? "Creating…"
+                  : "Creating and adding…"
+                : initialize === "empty"
+                  ? "Create empty repository"
+                  : "Create repository"}
             </Button>
           </DialogFooter>
         </form>

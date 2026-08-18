@@ -2246,6 +2246,7 @@ describe("local server foundation", () => {
       owner: "ArcaneArts",
       name: "cantrip-labs",
       description: "A Cantrip project",
+      initialize: "readme",
       visibility: "private",
     });
 

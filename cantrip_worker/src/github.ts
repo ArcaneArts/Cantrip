@@ -1116,13 +1116,8 @@ export class GithubClient {
     const request = githubRepositoryCreateSchema.parse(input);
     const nameWithOwner = `${request.owner}/${request.name}`;
     repositorySegments(nameWithOwner);
-    const args = [
-      "repo",
-      "create",
-      nameWithOwner,
-      `--${request.visibility}`,
-      "--add-readme",
-    ];
+    const args = ["repo", "create", nameWithOwner, `--${request.visibility}`];
+    if (request.initialize === "readme") args.push("--add-readme");
     if (request.description) {
       args.push("--description", request.description);
     }

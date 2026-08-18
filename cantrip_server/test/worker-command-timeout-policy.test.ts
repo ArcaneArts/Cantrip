@@ -18,7 +18,7 @@ function usageContexts(symbol: string): string[] {
 describe("worker command timeout policy", () => {
   it("keeps finite control operations bounded", () => {
     expect(appSource).not.toMatch(/timeoutMs:\s*null/gu);
-    expect(usageContexts("FINITE_WORKER_COMMAND_TIMEOUT_MS")).toHaveLength(15);
+    expect(usageContexts("FINITE_WORKER_COMMAND_TIMEOUT_MS")).toHaveLength(16);
   });
 
   it("reserves the streaming timeout policy for turns and terminal sessions", () => {

@@ -550,6 +550,7 @@ describe("GitHub project files", () => {
         name: "cantrip-labs",
         description: "A Cantrip project",
         visibility: "private",
+        initialize: "readme",
       }),
     ).resolves.toMatchObject({
       id: "123",
@@ -559,6 +560,16 @@ describe("GitHub project files", () => {
     const invocations = await readFile(logPath, "utf8");
     expect(invocations).toContain(
       "repo\0create\0ArcaneArts/cantrip-labs\0--private\0--add-readme\0--description\0A Cantrip project",
+    );
+    await github.createRepository({
+      owner: "ArcaneArts",
+      name: "cantrip-labs",
+      description: "A Cantrip project",
+      visibility: "private",
+      initialize: "empty",
+    });
+    expect((await readFile(logPath, "utf8")).split("\n")).toContain(
+      "repo\0create\0ArcaneArts/cantrip-labs\0--private\0--description\0A Cantrip project",
     );
   });
 
