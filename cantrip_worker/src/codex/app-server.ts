@@ -78,9 +78,11 @@ import {
 import WebSocket, { type RawData } from "ws";
 
 import type { CodexRuntime, CodexRuntimeDiagnostic } from "./runtime.js";
+import { attachmentPromptText } from "./attachment-inputs.js";
 import {
   codexModelProviderName,
   codexProviderConfiguration,
+  isZaiRuntimeProvider,
 } from "./provider-config.js";
 import {
   runtimeModelSupportsImages,
@@ -100,6 +102,7 @@ import {
   skillPathForConfiguration,
 } from "./customization.js";
 import { redactCodexDiagnosticPayload } from "./diagnostic-redaction.js";
+import { readableCodexProviderError } from "./provider-errors.js";
 import {
   chatGptExternalAuthCapabilityError,
   chatGptExternalAuthSession,
@@ -2441,6 +2444,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #activeTurns = new Map<string, ActiveTurn>();
   readonly #collaborationModes = new Map<string, PlanMode>();
   readonly #diagnosticSecrets = new Set<string>();
+  #runtimeIsZai = false;
   readonly #externalImportStatuses = new Map<
     string,
     CodexExternalImportStatus
@@ -3812,6 +3816,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeStartedAtMs = null;
     this.#externalChatGptAuth = null;
     this.#diagnosticSecrets.clear();
+    this.#runtimeIsZai = false;
     this.#starting = null;
     this.#loadedThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
@@ -3832,17 +3837,11 @@ export class CodexAppServer implements CodexRuntime {
     model?: RunAgentTurnOptions["model"],
     provider?: RunAgentTurnOptions["provider"],
   ): Promise<Array<Record<string, unknown>>> {
-    const references = attachments.map(
-      (attachment) =>
-        `- ${attachment.fileName} (${attachment.mimeType}, ${attachment.sizeBytes} bytes): ${attachment.path}`,
-    );
-    const text = references.length
-      ? `${prompt}\n\nAttachments are stored outside the repository on this worker. Read them from these paths as needed:\n${references.join("\n")}`
-      : prompt;
     const imageSupport =
       model && provider && attachments.some(({ kind }) => kind === "image")
         ? await this.modelSupportsImages(model, provider)
         : false;
+    const text = attachmentPromptText(prompt, attachments, imageSupport);
     return [
       { type: "text", text, text_elements: [] },
       ...(imageSupport
@@ -3883,9 +3882,7 @@ export class CodexAppServer implements CodexRuntime {
         );
         if (entry) {
           supported =
-            supported ||
-            entry.inputModalities === undefined ||
-            entry.inputModalities.includes("image");
+            supported || entry.inputModalities?.includes("image") === true;
         }
       } catch {
         // ChatGPT defaults remain backward compatible; unknown custom routes
@@ -4025,6 +4022,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeStartedAtMs = null;
     this.#externalChatGptAuth = null;
     this.#diagnosticSecrets.clear();
+    this.#runtimeIsZai = false;
     this.#loadedThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
@@ -4384,6 +4382,10 @@ export class CodexAppServer implements CodexRuntime {
     const runtimeProvider = this.resolveProvider
       ? await this.resolveProvider(provider)
       : provider;
+    this.#runtimeIsZai = isZaiRuntimeProvider(runtimeProvider);
+    if (runtimeProvider.apiKey) {
+      this.#diagnosticSecrets.add(runtimeProvider.apiKey);
+    }
     const externalChatGptLease =
       await this.resolveExternalChatGptLease(runtimeProvider);
     const providerConfiguration = codexProviderConfiguration(runtimeProvider);
@@ -4464,7 +4466,12 @@ export class CodexAppServer implements CodexRuntime {
         },
       );
       if (!startupComplete) {
-        startupStderr.push(line);
+        startupStderr.push(
+          readableCodexProviderError(line, {
+            secrets: this.#diagnosticSecrets,
+            zai: this.#runtimeIsZai,
+          }),
+        );
         if (startupStderr.length > 20) startupStderr.shift();
       }
     });
@@ -4560,6 +4567,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeStartedAtMs = null;
       this.#externalChatGptAuth = null;
       this.#diagnosticSecrets.clear();
+      this.#runtimeIsZai = false;
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
@@ -4611,6 +4619,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#runtimeStartedAtMs = null;
       this.#externalChatGptAuth = null;
       this.#diagnosticSecrets.clear();
+      this.#runtimeIsZai = false;
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
@@ -4827,12 +4836,10 @@ export class CodexAppServer implements CodexRuntime {
         );
         pending.reject(
           new Error(
-            String(
-              redactCodexDiagnosticPayload(
-                message.error.message,
-                this.#diagnosticSecrets,
-              ),
-            ),
+            readableCodexProviderError(message.error.message, {
+              secrets: this.#diagnosticSecrets,
+              zai: this.#runtimeIsZai,
+            }),
           ),
         );
       } else {
@@ -5341,7 +5348,9 @@ export class CodexAppServer implements CodexRuntime {
         active.onActivity?.(
           normalizeNoticeActivity({
             level: "warning",
-            message: params.message,
+            message: readableCodexProviderError(params.message, {
+              secrets: this.#diagnosticSecrets,
+            }),
             correlation: eventCorrelation(
               message.method,
               diagnosticId,
@@ -5361,10 +5370,17 @@ export class CodexAppServer implements CodexRuntime {
         active.onActivity?.(
           normalizeNoticeActivity({
             level: "warning",
-            message: params.summary,
+            message: readableCodexProviderError(params.summary, {
+              secrets: this.#diagnosticSecrets,
+            }),
             details:
               [params.details, params.path]
                 .filter((value): value is string => Boolean(value))
+                .map((value) =>
+                  readableCodexProviderError(value, {
+                    secrets: this.#diagnosticSecrets,
+                  }),
+                )
                 .join("\n") || null,
             correlation: eventCorrelation(
               message.method,
@@ -5384,8 +5400,15 @@ export class CodexAppServer implements CodexRuntime {
       this.#activeTurns.get(params.turnId)?.onActivity?.(
         normalizeNoticeActivity({
           level: "error",
-          message: params.error.message,
-          details: params.error.additionalDetails,
+          message: readableCodexProviderError(params.error.message, {
+            secrets: this.#diagnosticSecrets,
+            zai: this.#runtimeIsZai,
+          }),
+          details: params.error.additionalDetails
+            ? readableCodexProviderError(params.error.additionalDetails, {
+                secrets: this.#diagnosticSecrets,
+              })
+            : null,
           willRetry: params.willRetry,
           correlation: eventCorrelation(
             message.method,
@@ -5433,8 +5456,16 @@ export class CodexAppServer implements CodexRuntime {
         active.onActivity?.(
           normalizeNoticeActivity({
             level: "error",
-            message: params.turn.error.message,
-            details: params.turn.error.additionalDetails,
+            message: readableCodexProviderError(params.turn.error.message, {
+              secrets: this.#diagnosticSecrets,
+              zai: this.#runtimeIsZai,
+            }),
+            details: params.turn.error.additionalDetails
+              ? readableCodexProviderError(
+                  params.turn.error.additionalDetails,
+                  { secrets: this.#diagnosticSecrets },
+                )
+              : null,
             willRetry: false,
             correlation,
           }),
@@ -5465,8 +5496,12 @@ export class CodexAppServer implements CodexRuntime {
           active,
           params.turn.id,
           new Error(
-            params.turn.error?.message ??
-              `Codex turn ended with ${params.turn.status}.`,
+            params.turn.error?.message
+              ? readableCodexProviderError(params.turn.error.message, {
+                  secrets: this.#diagnosticSecrets,
+                  zai: this.#runtimeIsZai,
+                })
+              : `Codex turn ended with ${params.turn.status}.`,
           ),
         );
         return;

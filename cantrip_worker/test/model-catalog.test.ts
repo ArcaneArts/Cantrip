@@ -130,6 +130,65 @@ describe("managed Codex model catalogs", () => {
     });
   });
 
+  it("advertises Z.ai's documented freeform, parallel, and reasoning capabilities", () => {
+    const zaiModel = {
+      ...model,
+      name: "glm-5.3",
+      catalog: {
+        ...model.catalog!,
+        inputModalities: ["text"],
+        supportsParallelTools: true,
+        supportsVision: false,
+        supportedReasoningEfforts: [
+          { effort: "low", description: "Low" },
+          { effort: "high", description: "High" },
+          { effort: "max", description: "Max" },
+        ],
+        defaultReasoningEffort: "max",
+        metadataSource: "zai" as const,
+      },
+    } satisfies TurnCommand["model"];
+    expect(
+      codexCatalogForRuntimeModel(zaiModel, "openai-compatible")?.models[0],
+    ).toMatchObject({
+      apply_patch_tool_type: "freeform",
+      default_reasoning_level: "max",
+      input_modalities: ["text"],
+      shell_type: "shell_command",
+      supports_parallel_tool_calls: true,
+      supported_reasoning_levels: [
+        { effort: "low", description: "Low" },
+        { effort: "high", description: "High" },
+        { effort: "max", description: "Max" },
+      ],
+    });
+    expect(runtimeModelSupportsImages(zaiModel, "openai-compatible")).toBe(
+      false,
+    );
+  });
+
+  it("preserves glm-5-turbo's documented default without inventing selectable efforts", () => {
+    const zaiTurbo = {
+      ...model,
+      name: "glm-5-turbo",
+      catalog: {
+        ...model.catalog!,
+        inputModalities: ["text"],
+        supportsParallelTools: true,
+        supportsVision: false,
+        supportedReasoningEfforts: [],
+        defaultReasoningEffort: "max",
+        metadataSource: "zai" as const,
+      },
+    } satisfies TurnCommand["model"];
+    expect(
+      codexCatalogForRuntimeModel(zaiTurbo, "openai-compatible")?.models[0],
+    ).toMatchObject({
+      default_reasoning_level: "max",
+      supported_reasoning_levels: [],
+    });
+  });
+
   it("advertises image input for Grok 4 when its native catalog omits modalities", () => {
     const grokModel = {
       ...model,

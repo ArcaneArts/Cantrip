@@ -22,6 +22,32 @@ function provider(
 }
 
 describe("Codex provider configuration", () => {
+  it("configures canonical Z.ai providers through an environment-backed Responses transport", () => {
+    const configuration = codexProviderConfiguration(
+      provider("openai-compatible", {
+        name: "Legacy GLM provider",
+        baseUrl: "https://api.z.ai/api/v1/responses",
+        apiKey: "zai-secret",
+      }),
+    );
+    expect(configuration.arguments).toEqual(
+      expect.arrayContaining([
+        'model_provider="cantrip_runtime"',
+        'model_providers.cantrip_runtime.name="Z.ai Coding Plan"',
+        'model_providers.cantrip_runtime.base_url="https://api.z.ai/api/v1"',
+        'model_providers.cantrip_runtime.env_key="CANTRIP_PROVIDER_API_KEY"',
+        'model_providers.cantrip_runtime.wire_api="responses"',
+      ]),
+    );
+    expect(configuration.arguments.join(" ")).not.toContain(
+      "experimental_bearer_token",
+    );
+    expect(configuration.arguments.join(" ")).not.toContain("zai-secret");
+    expect(configuration.environment).toEqual({
+      CANTRIP_PROVIDER_API_KEY: "zai-secret",
+    });
+  });
+
   it("disables Codex web search for SuperGrok compatibility", () => {
     expect(codexProviderConfiguration(provider("grok")).arguments).toContain(
       'web_search="disabled"',

@@ -49,8 +49,10 @@ export function codexCatalogForRuntimeModel(
   const catalog = model.catalog;
   if (!catalog) return null;
   const supportsTools = catalog.supportsTools;
+  const isZai =
+    providerKind === "openai-compatible" && catalog.metadataSource === "zai";
   const supportsFreeformTools =
-    providerKind !== "openai-compatible" && providerKind !== "grok";
+    isZai || (providerKind !== "openai-compatible" && providerKind !== "grok");
   const supportsReasoning = catalog.supportsReasoning === true;
   const inputModalities = catalog.inputModalities
     .map((modality) => modality.trim().toLowerCase())
@@ -87,9 +89,10 @@ export function codexCatalogForRuntimeModel(
         display_name: catalog.displayName,
         description: catalog.description,
         base_instructions: CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
-        // Cantrip's "Default" means the client did not choose an effort. Do
-        // not turn an advertised provider default into an explicit request.
-        default_reasoning_level: null,
+        // Cantrip's "Default" means the client did not explicitly choose an
+        // effort. Z.ai's bundled Codex catalog nevertheless needs the
+        // documented model default so Codex can preserve provider behavior.
+        default_reasoning_level: isZai ? catalog.defaultReasoningEffort : null,
         supported_reasoning_levels: supportedReasoningLevels,
         shell_type: supportsTools === false ? "disabled" : "shell_command",
         visibility: "list",
