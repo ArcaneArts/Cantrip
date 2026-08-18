@@ -2,7 +2,7 @@ import type { AgentActivity } from "@cantrip/protocol";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { Activity, activityLabel } from "./activity";
+import { Activity, ActivityGroup, activityLabel } from "./activity";
 
 describe("rich Codex activity", () => {
   it("shows the command inside a login-shell wrapper", () => {
@@ -95,5 +95,26 @@ describe("rich Codex activity", () => {
         contextUsedPercent: 12.3,
       }),
     ).toBe("Used 1,234 tokens");
+  });
+
+  it("hides completed turn work behind the elapsed-time disclosure", () => {
+    const completed = renderToStaticMarkup(
+      <ActivityGroup
+        startedAt="2026-08-07T12:00:00.000Z"
+        endedAt="2026-08-07T12:00:37.000Z"
+      >
+        <span>Grouped command</span>
+      </ActivityGroup>,
+    );
+    expect(completed).toContain("Worked for 37s");
+    expect(completed).not.toContain("Grouped command");
+
+    const running = renderToStaticMarkup(
+      <ActivityGroup startedAt="2026-08-07T12:00:00.000Z" endedAt={null}>
+        <span>Running command</span>
+      </ActivityGroup>,
+    );
+    expect(running).toContain("Running command");
+    expect(running).not.toContain("Worked for");
   });
 });

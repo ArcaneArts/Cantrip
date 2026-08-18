@@ -1823,10 +1823,13 @@ function ChatTranscript({
               return (
                 <ActivityGroup
                   key={entry.key}
-                  activities={entry.activities}
                   startedAt={entry.startedAt}
                   endedAt={entry.endedAt}
-                />
+                >
+                  {entry.messages.map((message) => (
+                    <MessageContent key={message.id} message={message} />
+                  ))}
+                </ActivityGroup>
               );
             }
             const message = entry.message;

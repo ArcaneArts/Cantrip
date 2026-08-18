@@ -22,7 +22,7 @@ import {
   ShieldCheck,
   Terminal,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -522,11 +522,11 @@ export function Activity({ activity }: { activity: AgentActivity }) {
 }
 
 export function ActivityGroup({
-  activities,
+  children,
   endedAt,
   startedAt,
 }: {
-  activities: AgentActivity[];
+  children: ReactNode;
   endedAt: string | null;
   startedAt: string;
 }) {
@@ -538,13 +538,7 @@ export function ActivityGroup({
   }, [completed]);
 
   if (!completed) {
-    return (
-      <div className="grid min-w-0 gap-0">
-        {activities.map((activity) => (
-          <Activity key={activity.id} activity={activity} />
-        ))}
-      </div>
-    );
+    return <div className="grid min-w-0 gap-0">{children}</div>;
   }
 
   return (
@@ -560,13 +554,7 @@ export function ActivityGroup({
           className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
         />
       </button>
-      {open ? (
-        <div className="grid min-w-0 gap-0 py-1">
-          {activities.map((activity) => (
-            <Activity key={activity.id} activity={activity} />
-          ))}
-        </div>
-      ) : null}
+      {open ? <div className="grid min-w-0 gap-0 py-1">{children}</div> : null}
     </div>
   );
 }
