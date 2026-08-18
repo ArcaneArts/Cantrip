@@ -526,6 +526,10 @@ import {
 } from "./chats/execution-helpers.js";
 import { canonicalMessagesFromThreadSync } from "./chats/thread-sync.js";
 import {
+  chatTurnOutcomeRecoveryKey,
+  shouldRecoverChatTurnOutcome,
+} from "./chats/turn-outcome-recovery.js";
+import {
   ChatImportJobExecutor,
   type ChatImportLiveChange,
 } from "./chat-imports/executor.js";
@@ -1294,6 +1298,17 @@ export async function buildApp({
     string,
     ReturnType<typeof setTimeout>
   >();
+  const cancelChatTurnOutcomeRecovery = (
+    workerId: string,
+    chatId: string,
+    clientMessageId: string,
+  ): void => {
+    const key = chatTurnOutcomeRecoveryKey(workerId, chatId, clientMessageId);
+    const timer = chatTurnOutcomeRecoveryTimers.get(key);
+    if (!timer) return;
+    clearTimeout(timer);
+    chatTurnOutcomeRecoveryTimers.delete(key);
+  };
   const runningGitOperationRequests = new Set<string>();
   const workerNotificationSubscriptions = new Map<string, () => void>();
   const publishWorktreeStatus = (
@@ -1417,7 +1432,11 @@ export async function buildApp({
         },
         "Received durable agent turn outcome",
       );
-      const key = `${workerId}:${notification.chatId}:${notification.clientMessageId}`;
+      const key = chatTurnOutcomeRecoveryKey(
+        workerId,
+        notification.chatId,
+        notification.clientMessageId,
+      );
       const existing = chatTurnOutcomeRecoveryTimers.get(key);
       if (existing) clearTimeout(existing);
       const timer = setTimeout(() => {
@@ -5847,8 +5866,11 @@ export async function buildApp({
     );
     if (
       !laneContext ||
-      laneContext.lane.workerId !== workerId ||
-      laneContext.lane.worktreeId !== notification.worktreeId
+      !shouldRecoverChatTurnOutcome(
+        laneContext.lane,
+        workerId,
+        notification.worktreeId,
+      )
     ) {
       app.log.warn(
         {
@@ -6689,6 +6711,11 @@ export async function buildApp({
                   }),
               },
             );
+            cancelChatTurnOutcomeRecovery(
+              execution.workerId,
+              execution.chatId,
+              userMessage.id,
+            );
             const result = agentTurnResultSchema.parse(rawResult);
             const completedAt = new Date();
             behaviorTurnId = result.turnId ?? behaviorTurnId;
@@ -6982,6 +7009,11 @@ export async function buildApp({
           execution.chatId,
           executionLaneId,
           interrupted ? "idle" : "failed",
+        );
+        cancelChatTurnOutcomeRecovery(
+          execution.workerId,
+          execution.chatId,
+          userMessage.id,
         );
         publishChatTurnBoundary(execution.chatId, execution.projectId);
         if (
