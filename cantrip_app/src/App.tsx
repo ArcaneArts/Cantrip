@@ -105,6 +105,10 @@ import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
+import {
+  imageInputCapabilityMessage,
+  resolveImageInputCapability,
+} from "@/components/chat/image-input-capability";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
 import {
@@ -174,6 +178,8 @@ import {
   SettingsPage,
   type SettingsSection,
 } from "@/components/settings/settings-page";
+import { providerSupportsCatalog } from "@/components/settings/provider-catalog-display";
+import { providerCatalogQueryOptions } from "@/components/settings/use-provider-catalog";
 import { ServerAdminPage } from "@/components/servers/server-admin-page";
 import { ServerSwitcher } from "@/components/servers/server-switcher";
 import {
@@ -1018,15 +1024,46 @@ function ChatTranscript({
   const selectedModel = settings?.models.find(
     (model) => model.id === selectedModelId,
   );
-  const imageSupportUncertain =
-    draftAttachments.some(({ attachment }) => attachment.kind === "image") &&
-    selectedModel?.routes.some((route) => {
-      if (!route.enabled) return false;
-      return (
-        settings?.providers.find(({ id }) => id === route.providerId)?.kind !==
-        "chatgpt"
-      );
-    });
+  const hasImageAttachment = draftAttachments.some(
+    ({ attachment }) => attachment.kind === "image",
+  );
+  const selectedCatalogProviders = (settings?.providers ?? []).filter(
+    (provider) =>
+      provider.kind !== "chatgpt" &&
+      providerSupportsCatalog(provider) &&
+      selectedModel?.routes.some(
+        (route) => route.enabled && route.providerId === provider.id,
+      ),
+  );
+  const providerCatalogQueries = useQueries({
+    queries: selectedCatalogProviders.map((provider) =>
+      providerCatalogQueryOptions(
+        provider.id,
+        chat.activeWorkerId,
+        hasImageAttachment,
+      ),
+    ),
+  });
+  const imageCapability =
+    hasImageAttachment && selectedModel
+      ? resolveImageInputCapability({
+          catalogs: new Map(
+            selectedCatalogProviders.map((provider, index) => [
+              provider.id,
+              providerCatalogQueries[index]?.data,
+            ]),
+          ),
+          model: selectedModel,
+          providers: settings?.providers ?? [],
+        })
+      : null;
+  const imageCapabilityLoading =
+    hasImageAttachment &&
+    selectedCatalogProviders.some(
+      (_, index) =>
+        providerCatalogQueries[index]?.isPending &&
+        !providerCatalogQueries[index]?.data,
+    );
   const taskState = useQuery({
     enabled: inspectOnly && chat.experience === "task",
     queryFn: () => getTask(chat.id),
@@ -2547,10 +2584,20 @@ function ChatTranscript({
               if (!open) setViewingAttachment(null);
             }}
           />
-          {imageSupportUncertain ? (
-            <p className="mt-2 text-center text-[11px] text-amber-700 dark:text-amber-300">
-              Image support will be detected for this model. If unavailable, the
-              agent will receive the worker-local file path instead.
+          {imageCapabilityLoading && selectedModel ? (
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">
+              Checking whether {selectedModel.name} accepts image input…
+            </p>
+          ) : imageCapability && selectedModel ? (
+            <p
+              className={cn(
+                "mt-2 text-center text-[11px]",
+                imageCapability.state === "supported"
+                  ? "text-emerald-700 dark:text-emerald-300"
+                  : "text-amber-700 dark:text-amber-300",
+              )}
+            >
+              {imageInputCapabilityMessage(selectedModel.name, imageCapability)}
             </p>
           ) : null}
           {attachmentNotice ? (
