@@ -116,6 +116,16 @@ const projectSettingsTabs: readonly SettingsTab<ProjectSettingsSection>[] = [
   { id: "mcp", label: "MCP", icon: Cable },
 ];
 
+export function projectSettingsTabsForProject(
+  project: Pick<ProjectSummary, "capabilities">,
+): readonly SettingsTab<ProjectSettingsSection>[] {
+  return projectSettingsTabs.filter(
+    ({ id }) =>
+      (id !== "replicas" || project.capabilities.replicas) &&
+      (id !== "worktrees" || project.capabilities.worktrees),
+  );
+}
+
 function matchesProjectSettingsSearch(
   query: string,
   ...values: Array<string | null | undefined>
@@ -256,8 +266,15 @@ export function ProjectSettingsPage({
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
-  const [section, setSection] =
-    useState<ProjectSettingsSection>(initialSection);
+  const visibleSettingsTabs = projectSettingsTabsForProject(project);
+  const normalizedInitialSection = visibleSettingsTabs.some(
+    ({ id }) => id === initialSection,
+  )
+    ? initialSection
+    : "general";
+  const [section, setSection] = useState<ProjectSettingsSection>(
+    normalizedInitialSection,
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
@@ -270,8 +287,8 @@ export function ProjectSettingsPage({
   );
 
   useEffect(() => {
-    setSection(initialSection);
-  }, [initialSection]);
+    setSection(normalizedInitialSection);
+  }, [normalizedInitialSection]);
 
   const updatePolicy = useMutation({
     mutationFn: (policy: WorktreePolicy) =>
@@ -415,7 +432,7 @@ export function ProjectSettingsPage({
       <SettingsTabBar<ProjectSettingsSection>
         activeTab={section}
         ariaLabel="Project settings sections"
-        tabs={projectSettingsTabs}
+        tabs={visibleSettingsTabs}
         onTabChange={setSection}
       />
 
@@ -494,7 +511,13 @@ export function ProjectSettingsPage({
               </p>
             </div>
             <dl className="divide-y border-y">
-              <DetailRow label="Repository">
+              <DetailRow
+                label={
+                  project.originKind === "managed-folder"
+                    ? "Folder"
+                    : "Repository"
+                }
+              >
                 {project.github ? (
                   <a
                     className="inline-flex items-center gap-1.5 hover:underline"
@@ -506,7 +529,10 @@ export function ProjectSettingsPage({
                     <ExternalLink className="size-3.5" />
                   </a>
                 ) : (
-                  project.name
+                  <span className="inline-flex items-center gap-2">
+                    {project.name}
+                    <Badge variant="secondary">Folder</Badge>
+                  </span>
                 )}
               </DetailRow>
               <DetailRow label="Source location">

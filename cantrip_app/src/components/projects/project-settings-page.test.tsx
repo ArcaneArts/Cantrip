@@ -19,6 +19,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   ProjectSettingsPage,
+  projectSettingsTabsForProject,
   projectWorktreeBindings,
   projectWorktreeState,
 } from "./project-settings-page";
@@ -57,6 +58,31 @@ const cleanStatus: GitStatus = {
 };
 
 describe("project settings", () => {
+  it("hides worktree and replica settings for managed folders", () => {
+    const tabs = projectSettingsTabsForProject({
+      capabilities: {
+        git: false,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+    });
+
+    expect(tabs.map(({ id }) => id)).not.toContain("worktrees");
+    expect(tabs.map(({ id }) => id)).not.toContain("replicas");
+    expect(tabs.map(({ id }) => id)).toEqual([
+      "general",
+      "archive",
+      "automations",
+      "workflows",
+      "tunnels",
+      "policies",
+      "skills",
+      "mcp",
+    ]);
+  });
+
   it("summarizes clean, dirty, offline, and conflicting worktrees", () => {
     expect(projectWorktreeState(worktree, cleanStatus, true).label).toBe(
       "Clean",

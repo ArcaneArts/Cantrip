@@ -12,6 +12,7 @@ import type {
   CodeTabSummary,
   ExecutionTarget,
   ExplorerSummary,
+  ProjectFolderSetupJobSummary,
   ProjectSummary,
   ProjectReplicaJobSummary,
   ProjectTabLayoutSummary,
@@ -26,6 +27,7 @@ import {
   CirclePause,
   Code2,
   CopyPlus,
+  Folder,
   FolderGit2,
   FolderOpen,
   FolderTree,
@@ -39,6 +41,7 @@ import {
   Settings,
   SquareTerminal,
   Trash2,
+  WifiOff,
 } from "lucide-react";
 import { useState, type CSSProperties, type ReactNode } from "react";
 
@@ -73,6 +76,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { projectRemovalAction } from "@/lib/project-removal";
 import type { ProjectTabGroupVisualKind } from "@/lib/project-tab-group";
 import {
   type WorkspaceDndData,
@@ -168,12 +172,14 @@ function SortableChat({
       onSubmitRename={submitRename}
       openActionsOnContextMenu={false}
       trailing={
-        <WorktreeIndicator
-          leaseOwner={chat.title}
-          status={worktreeStatus}
-          workers={workers}
-          worktree={worktree}
-        />
+        worktreeActions ? (
+          <WorktreeIndicator
+            leaseOwner={chat.title}
+            status={worktreeStatus}
+            workers={workers}
+            worktree={worktree}
+          />
+        ) : undefined
       }
       actions={<ChatDropdownMenu actions={actions} title={chat.title} />}
       renderContextMenu={(row) => (
@@ -330,6 +336,7 @@ function SortableProject({
   onRemove,
   onSelect,
   project,
+  folderSetupJob,
   setupJob,
   projectRevealLabel,
   revealDisabled,
@@ -344,15 +351,19 @@ function SortableProject({
   onSelect(): void;
   placement: ProjectSurfacePlacementContext;
   project: ProjectSummary;
+  folderSetupJob?: ProjectFolderSetupJobSummary;
   setupJob?: ProjectReplicaJobSummary;
   projectRevealLabel?: string;
   revealDisabled: boolean;
 }) {
   const cloning = project.setupStatus === "cloning";
+  const preparing = project.setupStatus === "preparing";
+  const settingUp = cloning || preparing;
   const failed = project.setupStatus === "failed";
+  const folderBlocked = preparing && folderSetupJob?.state === "blocked";
   const sortable = useSortable({
     id: projectId(project.id),
-    disabled: cloning,
+    disabled: settingUp,
   });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
@@ -366,7 +377,7 @@ function SortableProject({
         title={
           failed
             ? (project.setupError ?? undefined)
-            : setupJob?.progress.message
+            : (folderSetupJob?.error?.message ?? setupJob?.progress.message)
         }
         onContextMenu={openSidebarActionsMenu}
         className={cn(
@@ -379,44 +390,54 @@ function SortableProject({
           type="button"
           className={cn(
             "flex min-w-0 flex-1 touch-none flex-col px-3 py-2 text-left text-sm",
-            cloning ? "cursor-default" : "cursor-grab active:cursor-grabbing",
+            settingUp ? "cursor-default" : "cursor-grab active:cursor-grabbing",
           )}
           onClick={onSelect}
           {...sortable.attributes}
           {...sortable.listeners}
         >
           <span className="flex w-full min-w-0 items-center gap-2">
-            {cloning ? (
+            {folderBlocked ? (
+              <WifiOff className="size-4 shrink-0 text-amber-500" />
+            ) : settingUp ? (
               <Loader2 className="size-4 shrink-0 animate-spin" />
             ) : failed ? (
               <CircleAlert className="size-4 shrink-0 text-destructive" />
+            ) : project.originKind === "managed-folder" ? (
+              <Folder className="size-4 shrink-0" />
             ) : (
               <FolderGit2 className="size-4 shrink-0" />
             )}
             <span className="truncate">{project.name}</span>
-            {cloning || failed ? (
+            {settingUp || failed ? (
               <span
                 className={cn(
                   "ml-auto shrink-0 text-[10px] font-normal text-muted-foreground",
                   failed && "text-destructive",
                 )}
               >
-                {cloning
-                  ? setupJob
-                    ? `${setupJob.progress.percent}%`
-                    : "Starting"
-                  : "Failed"}
+                {folderBlocked
+                  ? "Worker offline"
+                  : cloning
+                    ? setupJob
+                      ? `${setupJob.progress.percent}%`
+                      : "Starting"
+                    : preparing
+                      ? "Preparing"
+                      : "Failed"}
               </span>
             ) : null}
           </span>
-          {cloning ? (
+          {settingUp && !folderBlocked ? (
             <span className="mt-1.5 block h-0.5 w-full overflow-hidden rounded-full bg-muted-foreground/20">
               <span
                 className={cn(
                   "block h-full rounded-full bg-primary transition-[width] duration-500",
                   !setupJob && "animate-pulse",
                 )}
-                style={{ width: `${setupJob?.progress.percent ?? 5}%` }}
+                style={{
+                  width: `${cloning ? (setupJob?.progress.percent ?? 5) : 35}%`,
+                }}
               />
             </span>
           ) : null}
@@ -441,7 +462,7 @@ function SortableProject({
             }
           />
         ) : null}
-        {cloning ? null : (
+        {settingUp && !folderBlocked ? null : (
           <DropdownMenuPrimitive.Root>
             <DropdownMenuPrimitive.Trigger asChild>
               <button
@@ -524,6 +545,7 @@ export function ProjectChatList({
   onRenameTerminal,
   onSelectGroup,
   onSelectProject,
+  folderSetupJobs,
   projects,
   projectSetupJobs,
   projectRevealLabel,
@@ -564,7 +586,7 @@ export function ProjectChatList({
   onOpenProjectSettings(projectId: string): void;
   onRevealProject?: (project: ProjectSummary) => Promise<void>;
   onDeleteTerminal(terminalId: string): void;
-  onRemoveProject(projectId: string, deleteLocalFiles: boolean): void;
+  onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
   onRequestChatWorktreeCreate(chat: ChatSummary): void;
   onRenameChat(chatId: string, title: string): void;
   onRenameBrowser(browserId: string, title: string): void;
@@ -575,6 +597,7 @@ export function ProjectChatList({
   onRenameTerminal(terminalId: string, title: string): void;
   onSelectGroup(groupId: string): void;
   onSelectProject(projectId: string): void;
+  folderSetupJobs: ReadonlyMap<string, ProjectFolderSetupJobSummary>;
   projects: ProjectSummary[];
   projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projectRevealLabel?: string;
@@ -614,6 +637,11 @@ export function ProjectChatList({
   const [removeProjectTarget, setRemoveProjectTarget] =
     useState<ProjectSummary | null>(null);
   const [deleteLocalFiles, setDeleteLocalFiles] = useState(false);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [removeProjectPending, setRemoveProjectPending] = useState(false);
+  const [removeProjectError, setRemoveProjectError] = useState<string | null>(
+    null,
+  );
   const [revealingProjectId, setRevealingProjectId] = useState<string | null>(
     null,
   );
@@ -623,6 +651,32 @@ export function ProjectChatList({
   const standaloneTerminals = terminals.filter(
     (terminal) => terminal.linkedChatId === null,
   );
+  const closeRemoveProject = () => {
+    if (removeProjectPending) return;
+    setRemoveProjectTarget(null);
+    setDeleteLocalFiles(false);
+    setDeleteConfirmationOpen(false);
+    setRemoveProjectError(null);
+  };
+  const submitRemoveProject = async (deleteFiles: boolean) => {
+    if (!removeProjectTarget || removeProjectPending) return;
+    setRemoveProjectPending(true);
+    setRemoveProjectError(null);
+    try {
+      await onRemoveProject(removeProjectTarget.id, deleteFiles);
+      setRemoveProjectTarget(null);
+      setDeleteLocalFiles(false);
+      setDeleteConfirmationOpen(false);
+    } catch (error) {
+      setRemoveProjectError(
+        error instanceof Error
+          ? error.message
+          : "Could not remove the project.",
+      );
+    } finally {
+      setRemoveProjectPending(false);
+    }
+  };
   type SidebarTab =
     | { id: string; kind: "chat"; chat: ChatSummary }
     | {
@@ -857,6 +911,7 @@ export function ProjectChatList({
               <SortableProject
                 key={project.id}
                 project={project}
+                folderSetupJob={folderSetupJobs.get(project.id)}
                 setupJob={projectSetupJobs.get(project.id)}
                 active={active}
                 creatingKinds={creatingKinds}
@@ -865,6 +920,7 @@ export function ProjectChatList({
                 }
                 onOpenSettings={() => onOpenProjectSettings(project.id)}
                 placement={{
+                  capabilities: project.capabilities,
                   projectId: project.id,
                   replicas: project.replicas,
                   workers,
@@ -895,6 +951,8 @@ export function ProjectChatList({
                 onSelect={() => onSelectProject(project.id)}
                 onRemove={() => {
                   setDeleteLocalFiles(false);
+                  setDeleteConfirmationOpen(false);
+                  setRemoveProjectError(null);
                   setRemoveProjectTarget(project);
                 }}
               >
@@ -976,31 +1034,37 @@ export function ProjectChatList({
                             worktreeStatus={
                               worktreeStatuses[tab.chat.activeWorktreeId]
                             }
-                            worktreeActions={{
-                              currentWorktreeId: tab.chat.activeWorktreeId,
-                              disabled: tab.chat.status === "running",
-                              mode: tab.chat.worktreeMode,
-                              worktrees,
-                              onCreate: () =>
-                                onRequestChatWorktreeCreate(tab.chat),
-                              onSelect: (worktreeId) =>
-                                onChangeChatWorktree(
-                                  tab.chat.id,
-                                  worktreeId,
-                                  tab.chat.worktreeMode,
-                                ),
-                              onSetMode: (mode) =>
-                                onChangeChatWorktree(
-                                  tab.chat.id,
-                                  tab.chat.activeWorktreeId,
-                                  mode,
-                                ),
-                              onOpenTerminal: () =>
-                                onOpenChatTerminal(tab.chat),
-                              onOpenExplorer: () =>
-                                onOpenChatExplorer(tab.chat),
-                              onOpenHistory: () => onOpenChatHistory(tab.chat),
-                            }}
+                            worktreeActions={
+                              project.capabilities.worktrees
+                                ? {
+                                    currentWorktreeId:
+                                      tab.chat.activeWorktreeId,
+                                    disabled: tab.chat.status === "running",
+                                    mode: tab.chat.worktreeMode,
+                                    worktrees,
+                                    onCreate: () =>
+                                      onRequestChatWorktreeCreate(tab.chat),
+                                    onSelect: (worktreeId) =>
+                                      onChangeChatWorktree(
+                                        tab.chat.id,
+                                        worktreeId,
+                                        tab.chat.worktreeMode,
+                                      ),
+                                    onSetMode: (mode) =>
+                                      onChangeChatWorktree(
+                                        tab.chat.id,
+                                        tab.chat.activeWorktreeId,
+                                        mode,
+                                      ),
+                                    onOpenTerminal: () =>
+                                      onOpenChatTerminal(tab.chat),
+                                    onOpenExplorer: () =>
+                                      onOpenChatExplorer(tab.chat),
+                                    onOpenHistory: () =>
+                                      onOpenChatHistory(tab.chat),
+                                  }
+                                : undefined
+                            }
                           />
                         ) : tab.kind === "terminal" ? (
                           <StandardSidebarSurfaceTab
@@ -1035,15 +1099,17 @@ export function ProjectChatList({
                               setDeleteTerminalTarget(tab.terminal)
                             }
                             trailing={
-                              <WorktreeIndicator
-                                status={
-                                  worktreeStatuses[tab.terminal.worktreeId]
-                                }
-                                workers={workers}
-                                worktree={worktreeById.get(
-                                  tab.terminal.worktreeId,
-                                )}
-                              />
+                              project.capabilities.worktrees ? (
+                                <WorktreeIndicator
+                                  status={
+                                    worktreeStatuses[tab.terminal.worktreeId]
+                                  }
+                                  workers={workers}
+                                  worktree={worktreeById.get(
+                                    tab.terminal.worktreeId,
+                                  )}
+                                />
+                              ) : undefined
                             }
                           />
                         ) : tab.kind === "explorer" ? (
@@ -1066,15 +1132,17 @@ export function ProjectChatList({
                               setDeleteExplorerTarget(tab.explorer)
                             }
                             trailing={
-                              <WorktreeIndicator
-                                status={
-                                  worktreeStatuses[tab.explorer.worktreeId]
-                                }
-                                workers={workers}
-                                worktree={worktreeById.get(
-                                  tab.explorer.worktreeId,
-                                )}
-                              />
+                              project.capabilities.worktrees ? (
+                                <WorktreeIndicator
+                                  status={
+                                    worktreeStatuses[tab.explorer.worktreeId]
+                                  }
+                                  workers={workers}
+                                  worktree={worktreeById.get(
+                                    tab.explorer.worktreeId,
+                                  )}
+                                />
+                              ) : undefined
                             }
                           />
                         ) : tab.kind === "browser" ? (
@@ -1131,15 +1199,17 @@ export function ProjectChatList({
                             onClose={() => closeTabImmediately(tab)}
                             onDelete={() => setDeleteCodeTarget(tab.codeTab)}
                             trailing={
-                              <WorktreeIndicator
-                                status={
-                                  worktreeStatuses[tab.codeTab.worktreeId]
-                                }
-                                workers={workers}
-                                worktree={worktreeById.get(
-                                  tab.codeTab.worktreeId,
-                                )}
-                              />
+                              project.capabilities.worktrees ? (
+                                <WorktreeIndicator
+                                  status={
+                                    worktreeStatuses[tab.codeTab.worktreeId]
+                                  }
+                                  workers={workers}
+                                  worktree={worktreeById.get(
+                                    tab.codeTab.worktreeId,
+                                  )}
+                                />
+                              ) : undefined
                             }
                           />
                         ) : (
@@ -1240,22 +1310,26 @@ export function ProjectChatList({
         </DialogContent>
       </Dialog>
       <Dialog
-        open={Boolean(removeProjectTarget)}
+        open={Boolean(removeProjectTarget) && !deleteConfirmationOpen}
         onOpenChange={(open) => {
-          if (!open) {
-            setRemoveProjectTarget(null);
-            setDeleteLocalFiles(false);
-          }
+          if (!open && !deleteConfirmationOpen) closeRemoveProject();
         }}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Remove project?</DialogTitle>
             <DialogDescription>
-              “{removeProjectTarget?.name}” will be unlinked from Cantrip. Its
-              repository remains on the worker and can be re-linked later.
+              “{removeProjectTarget?.name}” will be unlinked from Cantrip.{" "}
+              {removeProjectTarget?.originKind === "managed-folder"
+                ? "The folder remains on its worker, but V1 cannot attach that preserved folder again. Keep the path below if you need it."
+                : "Its repository remains on the worker and can be re-linked later."}
             </DialogDescription>
           </DialogHeader>
+          {removeProjectTarget?.source ? (
+            <code className="block break-all rounded-md bg-muted px-3 py-2 text-xs">
+              {removeProjectTarget.source.displayPath}
+            </code>
+          ) : null}
           {removeProjectTarget?.source ? (
             <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
               <input
@@ -1267,30 +1341,96 @@ export function ProjectChatList({
               <span>
                 <span className="font-medium">Also delete local files</span>
                 <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                  Permanently removes the checked-out repository from the
-                  worker. This cannot be undone by Cantrip.
+                  Permanently removes the local project files from the worker.
+                  The owning worker must be online.
                 </span>
               </span>
             </label>
           ) : null}
+          {removeProjectError ? (
+            <p className="text-sm text-destructive">{removeProjectError}</p>
+          ) : null}
           <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
+            <Button
+              disabled={removeProjectPending}
+              onClick={closeRemoveProject}
+              variant="outline"
+            >
+              Cancel
+            </Button>
             <Button
               className={cn(
                 deleteLocalFiles &&
                   "bg-destructive text-white hover:bg-destructive/90",
               )}
+              disabled={removeProjectPending}
               onClick={() => {
-                if (removeProjectTarget) {
-                  onRemoveProject(removeProjectTarget.id, deleteLocalFiles);
+                const action = projectRemovalAction(
+                  deleteLocalFiles,
+                  removeProjectTarget?.originKind === "managed-folder",
+                );
+                if (action === "confirm-delete") {
+                  setDeleteConfirmationOpen(true);
+                } else {
+                  void submitRemoveProject(action === "delete");
                 }
-                setRemoveProjectTarget(null);
-                setDeleteLocalFiles(false);
               }}
             >
-              {deleteLocalFiles ? "Delete files and remove" : "Unlink project"}
+              {removeProjectPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
+              {deleteLocalFiles
+                ? removeProjectTarget?.originKind === "managed-folder"
+                  ? "Continue to delete"
+                  : "Delete files and remove"
+                : "Unlink project"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(removeProjectTarget) && deleteConfirmationOpen}
+        onOpenChange={(open) => {
+          if (!open && deleteConfirmationOpen) closeRemoveProject();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete local files permanently?</DialogTitle>
+            <DialogDescription>
+              This deletes “{removeProjectTarget?.name}” at the exact path below
+              and unlinks the project. Cantrip and Git cannot recover these
+              files.
+            </DialogDescription>
+          </DialogHeader>
+          <code className="block break-all rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs">
+            {removeProjectTarget?.source?.displayPath ?? "Source unavailable"}
+          </code>
+          {removeProjectError ? (
+            <p className="text-sm text-destructive">{removeProjectError}</p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              disabled={removeProjectPending}
+              onClick={() => {
+                setRemoveProjectError(null);
+                setDeleteConfirmationOpen(false);
+              }}
+              variant="outline"
+            >
+              Back
+            </Button>
+            <Button
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={removeProjectPending}
+              onClick={() => void submitRemoveProject(true)}
+            >
+              {removeProjectPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              Delete folder permanently
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1390,8 +1530,9 @@ export function ProjectChatList({
           <DialogHeader>
             <DialogTitle>Delete {deleteProjectViewTarget?.title}?</DialogTitle>
             <DialogDescription>
-              This removes the tab only. It does not change repository history
-              or GitHub issues.
+              {deleteProjectViewTarget?.kind === "remote-desktop"
+                ? "This removes the remote desktop tab only. Project files are not changed."
+                : "This removes the tab only. It does not change repository history or GitHub issues."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

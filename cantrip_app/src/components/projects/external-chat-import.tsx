@@ -118,6 +118,7 @@ export function ExternalChatImportSettings({
   const readyWorktrees = worktrees.filter(
     ({ lifecycleState }) => lifecycleState === "ready",
   );
+  const directFolder = project.originKind === "managed-folder";
   const workersById = new Map(
     workers.map(({ name, workerId }) => [workerId, name]),
   );
@@ -178,7 +179,7 @@ export function ExternalChatImportSettings({
   const createImports = useMutation({
     mutationFn: () => {
       const target =
-        destinationWorktreeId === "automatic"
+        directFolder || destinationWorktreeId === "automatic"
           ? undefined
           : {
               kind: "worktree" as const,
@@ -451,7 +452,11 @@ export function ExternalChatImportSettings({
                   <Input
                     aria-label="Search matching Codex chats"
                     className="pl-9"
-                    placeholder="Search chats, workers, paths, or branches"
+                    placeholder={
+                      directFolder
+                        ? "Search chats, workers, or paths"
+                        : "Search chats, workers, paths, or branches"
+                    }
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                   />
@@ -507,12 +512,15 @@ export function ExternalChatImportSettings({
                           selectedKeys.size >= 50)
                       }
                       matchedWorktreeLabel={
-                        worktrees.find(
-                          ({ id }) => id === candidate.thread.match.worktreeId,
-                        )?.name ??
-                        (candidate.thread.match.kind === "git-origin"
-                          ? "Matched by Git origin"
-                          : "Project replica")
+                        directFolder
+                          ? "Matched by folder path"
+                          : (worktrees.find(
+                              ({ id }) =>
+                                id === candidate.thread.match.worktreeId,
+                            )?.name ??
+                            (candidate.thread.match.kind === "git-origin"
+                              ? "Matched by Git origin"
+                              : "Project replica"))
                       }
                       onCheckedChange={(checked) =>
                         setSelectedKeys((current) => {
@@ -540,23 +548,32 @@ export function ExternalChatImportSettings({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1.5 text-xs font-medium">
-                  Destination
-                  <select
-                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
-                    value={destinationWorktreeId}
-                    onChange={(event) =>
-                      setDestinationWorktreeId(event.target.value)
-                    }
-                  >
-                    <option value="automatic">Automatic placement</option>
-                    {readyWorktrees.map((worktree) => (
-                      <option key={worktree.id} value={worktree.id}>
-                        {externalChatWorktreeLabel(worktree, workersById)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {directFolder ? (
+                  <div className="grid gap-1.5 text-xs font-medium">
+                    Destination
+                    <div className="flex h-9 items-center rounded-md border px-3 text-sm font-normal">
+                      Project folder on the owning worker
+                    </div>
+                  </div>
+                ) : (
+                  <label className="grid gap-1.5 text-xs font-medium">
+                    Destination
+                    <select
+                      className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                      value={destinationWorktreeId}
+                      onChange={(event) =>
+                        setDestinationWorktreeId(event.target.value)
+                      }
+                    >
+                      <option value="automatic">Automatic placement</option>
+                      {readyWorktrees.map((worktree) => (
+                        <option key={worktree.id} value={worktree.id}>
+                          {externalChatWorktreeLabel(worktree, workersById)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label className="grid gap-1.5 text-xs font-medium">
                   Model for future messages
                   <select

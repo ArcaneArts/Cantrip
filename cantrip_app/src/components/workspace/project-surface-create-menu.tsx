@@ -1,6 +1,7 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import type {
   ExecutionTarget,
+  ProjectCapabilities,
   ProjectReplicaSummary,
   ProjectWorktreeSummary,
   WorkerSummary,
@@ -33,6 +34,7 @@ export interface ProjectSurfaceCreateDefinition {
 }
 
 export interface ProjectSurfacePlacementContext {
+  capabilities?: ProjectCapabilities;
   projectId: string;
   replicas: readonly ProjectReplicaSummary[];
   workers: readonly WorkerSummary[];
@@ -141,11 +143,17 @@ export function projectSurfaceWorkerPlacements(
 
 export function projectSurfaceCreateOptions(
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind> = noCreatingKinds,
+  capabilities?: ProjectCapabilities,
 ) {
-  return projectSurfaceCreateDefinitions.map((definition) => ({
-    ...definition,
-    disabled: creatingKinds.has(definition.kind),
-  }));
+  return projectSurfaceCreateDefinitions
+    .filter(
+      (definition) =>
+        definition.kind !== "history" || capabilities?.git !== false,
+    )
+    .map((definition) => ({
+      ...definition,
+      disabled: creatingKinds.has(definition.kind),
+    }));
 }
 
 export function ProjectSurfaceCreateMenu({
@@ -163,7 +171,13 @@ export function ProjectSurfaceCreateMenu({
   placement?: ProjectSurfacePlacementContext;
   trigger: ReactNode;
 }) {
-  const placementControls = Boolean(placement && placement.workers.length > 1);
+  const placementControls = Boolean(
+    placement &&
+    placement.capabilities?.replicas !== false &&
+    placement.workers.length > 1,
+  );
+  const capabilityFilteredProjectSurfaceCreateOptions =
+    projectSurfaceCreateOptions(creatingKinds, placement?.capabilities);
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
@@ -173,7 +187,7 @@ export function ProjectSurfaceCreateMenu({
           sideOffset={4}
           className={cn("min-w-40", contentClassName)}
         >
-          {projectSurfaceCreateOptions(creatingKinds).map(
+          {capabilityFilteredProjectSurfaceCreateOptions.map(
             ({ disabled, kind, label }) => {
               if (
                 !placementControls ||

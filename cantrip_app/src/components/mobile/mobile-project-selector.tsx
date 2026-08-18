@@ -1,11 +1,13 @@
 import type {
   ProjectSummary,
+  ProjectFolderSetupJobSummary,
   ProjectReplicaJobSummary,
   ProjectWorkspaceSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
 import {
   CircleAlert,
+  Folder,
   FolderGit2,
   Loader2,
   Search,
@@ -26,12 +28,19 @@ function projectStatus(
   project: ProjectSummary,
   workers: readonly WorkerSummary[],
   setupJob?: ProjectReplicaJobSummary,
+  folderSetupJob?: ProjectFolderSetupJobSummary,
 ): { icon?: "error" | "loading" | "offline"; label: string } {
   if (project.setupStatus === "cloning") {
     return {
       icon: "loading",
       label: setupJob ? `Cloning · ${setupJob.progress.percent}%` : "Starting",
     };
+  }
+  if (project.setupStatus === "preparing") {
+    if (folderSetupJob?.state === "blocked") {
+      return { icon: "offline", label: "Worker offline" };
+    }
+    return { icon: "loading", label: "Preparing folder" };
   }
   if (project.setupStatus === "failed") {
     return { icon: "error", label: "Setup failed" };
@@ -59,6 +68,7 @@ export function MobileProjectSelector({
   onOpenSettings,
   onSelectProject,
   onSelectWorkspace,
+  folderSetupJobs,
   projectSetupJobs,
   projects,
   workers,
@@ -75,6 +85,7 @@ export function MobileProjectSelector({
   onOpenSettings(): void;
   onSelectProject(projectId: string): void;
   onSelectWorkspace(workspaceId: string): void;
+  folderSetupJobs?: ReadonlyMap<string, ProjectFolderSetupJobSummary>;
   projectSetupJobs?: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projects: ProjectSummary[];
   workers: WorkerSummary[];
@@ -156,6 +167,7 @@ export function MobileProjectSelector({
                 project,
                 workers,
                 projectSetupJobs?.get(project.id),
+                folderSetupJobs?.get(project.id),
               );
               return (
                 <button
@@ -165,7 +177,11 @@ export function MobileProjectSelector({
                   type="button"
                 >
                   <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg border bg-card">
-                    <FolderGit2 className="size-4" />
+                    {project.originKind === "managed-folder" ? (
+                      <Folder className="size-4" />
+                    ) : (
+                      <FolderGit2 className="size-4" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

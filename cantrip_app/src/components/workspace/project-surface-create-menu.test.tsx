@@ -152,6 +152,27 @@ describe("project surface creation menu", () => {
     ).toBe(true);
   });
 
+  it("removes Git creation from managed-folder projects", () => {
+    const options = projectSurfaceCreateOptions(new Set(), {
+      git: false,
+      github: false,
+      worktrees: false,
+      replicas: false,
+      relocation: false,
+    });
+
+    expect(options.map(({ kind }) => kind)).not.toContain("history");
+    expect(options.map(({ kind }) => kind)).toEqual([
+      "chat",
+      "task",
+      "terminal",
+      "explorer",
+      "code",
+      "browser",
+      "remote-desktop",
+    ]);
+  });
+
   it("derives compatible worker, replica, and worktree placement choices", () => {
     const placements = projectSurfaceWorkerPlacements("terminal", {
       projectId: "project-one",
