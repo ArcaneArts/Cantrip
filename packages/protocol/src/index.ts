@@ -496,6 +496,15 @@ export const workerUpdateSchema = z.object({
   name: z.string().trim().min(1).max(120),
 });
 
+export const workerRestartAcknowledgementSchema = z.object({
+  restarting: z.literal(true),
+});
+
+export const workerRestartResultSchema = z.object({
+  workerId: z.string().min(1),
+  status: z.literal("restarting"),
+});
+
 export const workerCredentialScopeSchema = z.enum([
   "worker:connect",
   "worker:heartbeat",
@@ -7762,6 +7771,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityRevokeCommandSchema,
   directCapabilityRenewCommandSchema,
   z.object({ type: z.literal("worker.version") }),
+  z.object({ type: z.literal("worker.restart") }),
   z.object({
     type: z.literal("diagnostics.logs.read"),
     afterCursor: z.number().int().nonnegative().default(0),
@@ -9169,6 +9179,7 @@ export type WorkerManagementSummary = z.infer<
   typeof workerManagementSummarySchema
 >;
 export type WorkerUpdate = z.infer<typeof workerUpdateSchema>;
+export type WorkerRestartResult = z.infer<typeof workerRestartResultSchema>;
 export type WorkerCredentialScope = z.infer<typeof workerCredentialScopeSchema>;
 export type WorkerEnrollmentCodeCreate = z.infer<
   typeof workerEnrollmentCodeCreateSchema

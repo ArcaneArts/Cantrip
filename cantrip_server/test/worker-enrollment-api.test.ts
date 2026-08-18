@@ -11,6 +11,7 @@ import {
   workerEnrollmentCodeStatusSchema,
   workerEnrollmentResultSchema,
   workerManagementListSchema,
+  workerRestartResultSchema,
   type WorkerHeartbeat,
 } from "@cantrip/protocol";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -19,7 +20,7 @@ import { buildApp } from "../src/app.js";
 import { hashPassword, hashSecret } from "../src/auth/service.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
-import { WorkerBridge } from "../src/workers/bridge.js";
+import { WorkerBridge, WorkerUnavailableError } from "../src/workers/bridge.js";
 
 const origin = "https://app.cantrip.test";
 const bootstrapToken = "worker-enrollment-bootstrap-token-123456";
@@ -195,7 +196,11 @@ describe("per-worker enrollment credentials", () => {
     const isConnected = vi.spyOn(bridge, "isConnected").mockReturnValue(false);
     const commandRequest = vi
       .spyOn(bridge, "request")
-      .mockResolvedValue({ accepted: true });
+      .mockImplementation(async (_workerId, command) =>
+        command.type === "worker.restart"
+          ? { restarting: true }
+          : { accepted: true },
+      );
     const app = await buildApp({
       config,
       database,
@@ -396,6 +401,48 @@ describe("per-worker enrollment credentials", () => {
           sources: [],
         }),
       ]);
+      commandRequest.mockRejectedValueOnce(
+        new WorkerUnavailableError("Worker worker-one is offline."),
+      );
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/workers/worker-one/restart",
+            headers: authHeaders,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(409);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/workers/not-this-owners-worker/restart",
+            headers: authHeaders,
+            payload: {},
+          })
+        ).statusCode,
+      ).toBe(404);
+      const restarted = await app.inject({
+        method: "POST",
+        url: "/api/workers/worker-one/restart",
+        headers: authHeaders,
+        payload: {},
+      });
+      expect(restarted.statusCode).toBe(202);
+      expect(workerRestartResultSchema.parse(restarted.json())).toEqual({
+        workerId: "worker-one",
+        status: "restarting",
+      });
+      expect(commandRequest).toHaveBeenLastCalledWith(
+        "worker-one",
+        { type: "worker.restart" },
+        expect.objectContaining({
+          ownerId: registered.json().currentUser.id,
+          timeoutMs: 10_000,
+        }),
+      );
       const renamed = await app.inject({
         method: "PATCH",
         url: "/api/workers/worker-one",

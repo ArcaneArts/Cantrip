@@ -16,6 +16,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Rocket,
   ShieldCheck,
   Trash2,
@@ -43,6 +44,7 @@ import {
   getWorkerManagement,
   getSettings,
   revokeWorkerCredential,
+  restartWorker,
   rotateWorkerCredential,
   unlinkWorker,
   updateSettings,
@@ -74,6 +76,13 @@ export function formatWorkerLastSeen(value: string, now = Date.now()): string {
   if (elapsed < 24 * 60 * 60_000)
     return `${Math.floor(elapsed / (60 * 60_000))}h ago`;
   return new Date(value).toLocaleString();
+}
+
+export function canRestartWorker(input: {
+  online: boolean;
+  restarting: boolean;
+}): boolean {
+  return input.online && !input.restarting;
 }
 
 export function workerPairingCommands(
@@ -201,14 +210,18 @@ function CredentialRow({
 function WorkerRow({
   isDefault,
   isThisMachine,
+  restarting,
   worker,
   onManage,
+  onRestart,
   onUnlink,
 }: {
   isDefault: boolean;
   isThisMachine: boolean;
+  restarting: boolean;
   worker: WorkerManagementSummary;
   onManage(): void;
+  onRestart(): void;
   onUnlink(): void;
 }) {
   return (
@@ -271,6 +284,20 @@ function WorkerRow({
         </p>
       </div>
       <div className="col-start-2 row-start-1 flex items-center justify-end lg:col-auto lg:row-auto">
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={!canRestartWorker({ online: worker.online, restarting })}
+          title={worker.online ? `Restart ${worker.name}` : "Worker is offline"}
+          onClick={onRestart}
+        >
+          {restarting ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RotateCcw className="size-3.5" />
+          )}
+          <span className="sr-only">Restart {worker.name}</span>
+        </Button>
         {worker.editable ? (
           <Button size="icon" variant="ghost" onClick={onManage}>
             <Pencil className="size-3.5" />
@@ -340,6 +367,11 @@ export function WorkerSettings() {
   } | null>(null);
   const [unlinkTarget, setUnlinkTarget] =
     useState<WorkerManagementSummary | null>(null);
+  const [restartTarget, setRestartTarget] =
+    useState<WorkerManagementSummary | null>(null);
+  const [restartBaselines, setRestartBaselines] = useState<
+    Record<string, string>
+  >({});
   const [desktopEnrollment, setDesktopEnrollment] =
     useState<WorkerEnrollmentCodeResult | null>(null);
   const [desktopPairingWorkerId, setDesktopPairingWorkerId] = useState<
@@ -495,6 +527,24 @@ export function WorkerSettings() {
       ]);
     },
   });
+  const restartMutation = useMutation({
+    mutationFn: async () => {
+      const target = restartTarget!;
+      const result = await restartWorker(target.workerId);
+      return { result, startedAt: target.startedAt };
+    },
+    onSuccess: async ({ result, startedAt }) => {
+      setRestartBaselines((current) => ({
+        ...current,
+        [result.workerId]: startedAt,
+      }));
+      setRestartTarget(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
+        queryClient.invalidateQueries({ queryKey: ["workers"] }),
+      ]);
+    },
+  });
   const unlink = useMutation({
     mutationFn: async () => {
       const workerId = unlinkTarget!.workerId;
@@ -539,6 +589,22 @@ export function WorkerSettings() {
       ),
     [normalizedSearch, workers.data],
   );
+  useEffect(() => {
+    setRestartBaselines((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const [workerId, startedAt] of Object.entries(current)) {
+        const worker = workers.data?.find(
+          (candidate) => candidate.workerId === workerId,
+        );
+        if (worker?.online && worker.startedAt !== startedAt) {
+          delete next[workerId];
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [workers.data]);
   const desktopWorkerForServer = desktopWorkers.data?.find(
     (worker) => worker.serverUrl === serverUrl,
   );
@@ -850,7 +916,7 @@ export function WorkerSettings() {
             <span className="sr-only">Refresh workers</span>
           </Button>
         </div>
-        <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_72px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
+        <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_108px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
           <span>Worker</span>
           <span>Runtime</span>
           <span>Project sources</span>
@@ -866,12 +932,21 @@ export function WorkerSettings() {
               isThisMachine={
                 desktopWorkerForServer?.workerId === worker.workerId
               }
+              restarting={
+                Boolean(restartBaselines[worker.workerId]) ||
+                (restartMutation.isPending &&
+                  restartTarget?.workerId === worker.workerId)
+              }
               worker={worker}
               onManage={() => {
                 setSelected(worker);
                 setNameDraft(worker.name);
                 setRotation(null);
                 setCopyError(null);
+              }}
+              onRestart={() => {
+                restartMutation.reset();
+                setRestartTarget(worker);
               }}
               onUnlink={() => setUnlinkTarget(worker)}
             />
@@ -894,6 +969,48 @@ export function WorkerSettings() {
           ) : null}
         </div>
       </section>
+
+      <Dialog
+        open={Boolean(restartTarget)}
+        onOpenChange={(open) => {
+          if (!open && !restartMutation.isPending) setRestartTarget(null);
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Restart {restartTarget?.name}?</DialogTitle>
+            <DialogDescription>
+              The worker will gracefully stop its active runtimes, start them
+              again with the same identity, and reconnect automatically. Running
+              agents, terminals, Code sessions, services, and remote surfaces on
+              this worker will be interrupted.
+            </DialogDescription>
+          </DialogHeader>
+          {restartMutation.isError ? (
+            <p className="text-sm text-destructive">
+              {errorMessage(restartMutation.error)}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={restartMutation.isPending}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              disabled={restartMutation.isPending}
+              onClick={() => restartMutation.mutate()}
+            >
+              {restartMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <RotateCcw className="size-4" />
+              )}
+              Restart worker
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={pairOpen} onOpenChange={setPairOpen}>
         <DialogContent className="max-w-2xl">

@@ -248,6 +248,7 @@ import {
   workerEnrollmentCodeStatusSchema,
   workerListSchema,
   workerManagementListSchema,
+  workerRestartResultSchema,
   workerSummarySchema,
   workerUpdateSchema,
 } from "@cantrip/protocol";
@@ -580,6 +581,12 @@ export async function updateWorker(workerId: string, input: WorkerUpdate) {
       method: "PATCH",
       body: JSON.stringify(workerUpdateSchema.parse(input)),
     }),
+  );
+}
+
+export async function restartWorker(workerId: string) {
+  return workerRestartResultSchema.parse(
+    await post(`/api/workers/${encodeURIComponent(workerId)}/restart`, {}),
   );
 }
 

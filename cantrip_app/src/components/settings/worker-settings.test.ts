@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canRestartWorker,
   canAddThisMachine,
   desktopWorkerEnrollmentStopped,
   formatWorkerLastSeen,
@@ -10,6 +11,12 @@ import {
 } from "./worker-settings";
 
 describe("worker settings helpers", () => {
+  it("only offers restart for an online worker without a restart in flight", () => {
+    expect(canRestartWorker({ online: true, restarting: false })).toBe(true);
+    expect(canRestartWorker({ online: false, restarting: false })).toBe(false);
+    expect(canRestartWorker({ online: true, restarting: true })).toBe(false);
+  });
+
   it("formats recent and stale presence concisely", () => {
     const now = Date.parse("2026-08-11T20:00:00.000Z");
     expect(formatWorkerLastSeen("2026-08-11T19:59:50.000Z", now)).toBe(
