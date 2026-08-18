@@ -195,6 +195,7 @@ import {
   type ProviderCredential,
   type RedactedProviderCredential,
 } from "../models/provider-credentials.js";
+import { sampleProviderTelemetryQuotaHistory } from "../models/provider-telemetry.js";
 import {
   mcpServerSecretContext,
   modelProviderAccountSecretContext,
@@ -4968,7 +4969,7 @@ export class ServerRepository {
       currentQuota: [...currentQuotaByBucket.values()].sort((left, right) =>
         right.observedAt.localeCompare(left.observedAt),
       ),
-      quotaHistory,
+      quotaHistory: sampleProviderTelemetryQuotaHistory(quotaHistory),
       resetBoundaries: [...resetBoundaries.values()].sort((left, right) =>
         left.resetsAt.localeCompare(right.resetsAt),
       ),

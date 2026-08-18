@@ -37,6 +37,8 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+import { prepareProviderTelemetryChart } from "./provider-telemetry-chart";
+
 const colors = ["#22d3ee", "#a78bfa", "#34d399", "#fb7185", "#fbbf24"];
 
 function formatPercent(value: number | null, digits = 1) {
@@ -82,21 +84,20 @@ function QuotaChart({
 }: {
   readings: readonly TelemetryQuotaReading[];
 }) {
-  const groups = useMemo(() => {
-    const grouped = new Map<string, TelemetryQuotaReading[]>();
-    for (const reading of readings) {
-      grouped.set(reading.providerAccountId, [
-        ...(grouped.get(reading.providerAccountId) ?? []),
-        reading,
-      ]);
+  const groups = useMemo(
+    () => prepareProviderTelemetryChart(readings),
+    [readings],
+  );
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const group of groups) {
+    for (const point of group.points) {
+      start = Math.min(start, point.observedAtMs);
+      end = Math.max(end, point.observedAtMs);
     }
-    return [...grouped.values()];
-  }, [readings]);
-  const timestamps = readings.map(({ observedAt }) => Date.parse(observedAt));
-  const start = Math.min(...timestamps);
-  const end = Math.max(...timestamps);
+  }
   const duration = Math.max(1, end - start);
-  if (!readings.length) {
+  if (!groups.length || !Number.isFinite(start) || !Number.isFinite(end)) {
     return (
       <p className="py-8 text-center text-xs text-muted-foreground">
         No meter history yet.
@@ -134,18 +135,16 @@ function QuotaChart({
           );
         })}
         {groups.map((group, groupIndex) => {
-          const points = group
-            .map((reading) => {
-              const x =
-                30 +
-                ((Date.parse(reading.observedAt) - start) / duration) * 765;
+          const points = group.points
+            .map(({ observedAtMs, reading }) => {
+              const x = 30 + ((observedAtMs - start) / duration) * 765;
               const y = 138 - reading.usedPercent * 1.24;
               return `${x},${y}`;
             })
             .join(" ");
           return (
             <polyline
-              key={group[0]!.providerAccountId}
+              key={group.accountId}
               points={points}
               fill="none"
               stroke={colors[groupIndex % colors.length]}
@@ -157,15 +156,12 @@ function QuotaChart({
       </svg>
       <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 text-[10px] text-muted-foreground">
         {groups.map((group, index) => (
-          <span
-            key={group[0]!.providerAccountId}
-            className="flex items-center gap-1.5"
-          >
+          <span key={group.accountId} className="flex items-center gap-1.5">
             <span
               className="size-2 rounded-full"
               style={{ background: colors[index % colors.length] }}
             />
-            {group[0]!.providerAccountLabel}
+            {group.accountLabel}
           </span>
         ))}
       </div>
