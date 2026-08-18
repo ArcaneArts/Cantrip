@@ -110,4 +110,35 @@ describe("model reasoning picker", () => {
       "xhigh",
     ]);
   });
+
+  it("offers the documented GLM reasoning choices per message", () => {
+    const glm53 = chatReasoningStateSchema.parse({
+      modelId: "glm-5.3",
+      reasoningEffort: null,
+      options: [
+        { effort: "low", description: "Low reasoning effort" },
+        { effort: "high", description: "High reasoning effort" },
+        { effort: "max", description: "Maximum reasoning effort" },
+      ],
+      reasoningMandatory: false,
+      incompleteMetadata: false,
+    });
+    const glm5Turbo = chatReasoningStateSchema.parse({
+      modelId: "glm-5-turbo",
+      reasoningEffort: null,
+      options: [],
+      reasoningMandatory: false,
+      incompleteMetadata: false,
+    });
+
+    expect(modelReasoningChoices(glm53)).toEqual([
+      { effort: null, label: "Default" },
+      { effort: "low", label: "low" },
+      { effort: "high", label: "high" },
+      { effort: "max", label: "max" },
+    ]);
+    expect(modelReasoningChoices(glm5Turbo)).toEqual([
+      { effort: null, label: "Default" },
+    ]);
+  });
 });

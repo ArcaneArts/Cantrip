@@ -1313,6 +1313,30 @@ export const providerModelCatalogResultSchema = z.object({
   servedStale: z.boolean(),
 });
 
+export const providerConnectionTestStageSchema = z.enum([
+  "worker-placement",
+  "codex-startup",
+  "key-authentication",
+  "endpoint-compatibility",
+  "model-availability",
+  "provider-response",
+  "completed",
+]);
+
+export const providerConnectionTestResultSchema = z.object({
+  ok: z.boolean(),
+  stage: providerConnectionTestStageSchema,
+  message: z.string().trim().min(1).max(20_000),
+  workerId: z.string().min(1).nullable(),
+  modelName: z.string().min(1).nullable(),
+  durationMs: z.number().int().nonnegative(),
+});
+
+export const workerProviderConnectionTestResultSchema = z.object({
+  accepted: z.literal(true),
+  durationMs: z.number().int().nonnegative(),
+});
+
 export const modelProviderAccountWorkerSchema = z.object({
   workerId: z.string().min(1),
   authState: z.enum(["unknown", "signed-out", "signed-in", "failed"]),
@@ -8753,6 +8777,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("surface.desktop.targets"),
   }),
   z.object({
+    type: z.literal("model.provider.test"),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("chat.turn"),
     chatId: z.string().min(1),
     clientMessageId: z.string().min(1),
@@ -9272,6 +9301,15 @@ export type ProviderCatalogSyncStatus = z.infer<
 >;
 export type ProviderModelCatalogResult = z.infer<
   typeof providerModelCatalogResultSchema
+>;
+export type ProviderConnectionTestStage = z.infer<
+  typeof providerConnectionTestStageSchema
+>;
+export type ProviderConnectionTestResult = z.infer<
+  typeof providerConnectionTestResultSchema
+>;
+export type WorkerProviderConnectionTestResult = z.infer<
+  typeof workerProviderConnectionTestResultSchema
 >;
 export type ModelProviderAccountWorker = z.infer<
   typeof modelProviderAccountWorkerSchema

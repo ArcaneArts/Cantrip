@@ -9,6 +9,8 @@ import {
   catalogDisplayStatus,
   catalogScopeLabel,
   formatCatalogAge,
+  providerFamilyLabel,
+  providerRouteLabel,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
 
@@ -114,6 +116,17 @@ describe("provider catalog presentation", () => {
         "a",
       ),
     ).toBe("Built-in catalog");
+  });
+
+  it("presents Z.ai as a provider family instead of a generic transport", () => {
+    const zai = {
+      ...provider,
+      name: "Team GLM",
+      kind: "openai-compatible" as const,
+      baseUrl: "https://api.z.ai/api/v1",
+    };
+    expect(providerFamilyLabel(zai)).toBe("Z.ai Coding Plan");
+    expect(providerRouteLabel(zai)).toBe("Team GLM · Z.ai Coding Plan");
   });
 
   it("summarizes signed-in Grok account scope", () => {

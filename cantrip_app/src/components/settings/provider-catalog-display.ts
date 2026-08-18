@@ -10,6 +10,19 @@ import { isZaiCodingPlanBaseUrl } from "@cantrip/protocol";
 export type CatalogDisplayStatus =
   "current" | "failed" | "manual" | "refreshing" | "stale" | "unknown";
 
+export function providerFamilyLabel(provider: ModelProviderSummary) {
+  if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "Z.ai Coding Plan";
+  if (provider.kind === "openai-compatible") return "OpenAI compatible";
+  if (provider.kind === "chatgpt") return "ChatGPT";
+  if (provider.kind === "grok") return "Grok";
+  return provider.kind === "ollama" ? "Ollama" : provider.kind;
+}
+
+export function providerRouteLabel(provider: ModelProviderSummary) {
+  const family = providerFamilyLabel(provider);
+  return provider.name === family ? family : `${provider.name} · ${family}`;
+}
+
 export function providerSupportsCatalog(provider: ModelProviderSummary) {
   if (
     provider.kind === "ollama" ||

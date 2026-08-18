@@ -82,6 +82,7 @@ import {
   logoutCodex,
   startCodexDeviceLogin,
   refreshProviderModelCatalog,
+  testModelProviderConnection,
   reorderModelProviderAccounts,
   updateModelProviderAccount,
   updateModelProfile,
@@ -114,6 +115,8 @@ import {
   formatCatalogAge,
   formatContextWindow,
   latestCatalogSuccess,
+  providerFamilyLabel,
+  providerRouteLabel,
   providerSupportsCatalog,
 } from "./provider-catalog-display";
 import {
@@ -344,7 +347,7 @@ function ProviderRow({
           {formatTokenCount(provider.tokenUsage.totalTokens)} tokens
         </span>
         <Badge className="sm:hidden" variant="secondary">
-          {provider.kind}
+          {providerFamilyLabel(provider)}
         </Badge>
       </div>
       <div className="col-span-2 min-w-0 pl-6 sm:col-span-1 sm:pl-0">
@@ -389,7 +392,7 @@ function ProviderRow({
           {catalogScopeLabel(provider, catalog.data, workerId)}
         </p>
         <div className="mt-0.5 flex items-center gap-1">
-          <Badge variant="secondary">{provider.kind}</Badge>
+          <Badge variant="secondary">{providerFamilyLabel(provider)}</Badge>
           {provider.hasApiKey ? (
             <KeyRound className="size-3 text-muted-foreground" />
           ) : null}
@@ -605,6 +608,10 @@ export function SettingsPage({
   const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:11434/v1");
   const [apiKey, setApiKey] = useState("");
   const [removeApiKey, setRemoveApiKey] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<{
+    ok: boolean;
+    message: string;
+  } | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
     null,
   );
@@ -736,6 +743,16 @@ export function SettingsPage({
     mutationFn: deleteModelProvider,
     onSuccess: refresh,
   });
+  const testProviderConnection = useMutation({
+    mutationFn: () =>
+      testModelProviderConnection(
+        editingProvider!.id,
+        worker?.workerId ?? null,
+      ),
+    onSuccess: (result) => {
+      setConnectionTestResult({ ok: result.ok, message: result.message });
+    },
+  });
   const saveModel = useMutation({
     mutationFn: async () => {
       const input = {
@@ -854,6 +871,8 @@ export function SettingsPage({
 
   const openProviderDialog = (provider: ModelProviderSummary | null) => {
     saveProvider.reset();
+    testProviderConnection.reset();
+    setConnectionTestResult(null);
     beginCodexLogin.reset();
     signOutCodex.reset();
     setEditingProvider(provider);
@@ -1383,7 +1402,14 @@ export function SettingsPage({
                         <p className="col-span-2 truncate pl-6 text-xs text-muted-foreground sm:col-span-1 sm:pl-0">
                           {model.routes
                             .filter((route) => route.enabled)
-                            .map((route) => route.providerName)
+                            .map((route) => {
+                              const provider = providers.find(
+                                ({ id }) => id === route.providerId,
+                              );
+                              return provider
+                                ? providerRouteLabel(provider)
+                                : route.providerName;
+                            })
                             .join(" → ")}
                           <span className="sm:hidden">
                             {` · ${model.routes.filter((route) => route.enabled).length} enabled`}
@@ -1748,6 +1774,60 @@ export function SettingsPage({
                 />
                 Remove the saved API key
               </label>
+            ) : null}
+            {providerSetup === "zai" ? (
+              <div className="flex flex-col gap-3 border-y py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">Connection test</p>
+                  <p className="text-xs text-muted-foreground">
+                    Runs a tiny request through an online worker and bundled
+                    Codex. This uses a very small amount of Coding Plan quota.
+                  </p>
+                  {connectionTestResult ? (
+                    <p
+                      className={`mt-1 text-xs ${connectionTestResult.ok ? "text-emerald-500" : "text-destructive"}`}
+                    >
+                      {connectionTestResult.message}
+                    </p>
+                  ) : testProviderConnection.isError ? (
+                    <p className="mt-1 text-xs text-destructive">
+                      {errorText(testProviderConnection.error)}
+                    </p>
+                  ) : null}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="shrink-0"
+                  disabled={
+                    !editingProvider ||
+                    !worker ||
+                    Boolean(apiKey.trim()) ||
+                    removeApiKey ||
+                    testProviderConnection.isPending
+                  }
+                  title={
+                    !editingProvider
+                      ? "Add the provider before testing"
+                      : apiKey.trim() || removeApiKey
+                        ? "Save API key changes before testing"
+                        : !worker
+                          ? "Connect a worker before testing"
+                          : "Test through bundled Codex"
+                  }
+                  onClick={() => {
+                    setConnectionTestResult(null);
+                    testProviderConnection.mutate();
+                  }}
+                >
+                  {testProviderConnection.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : connectionTestResult?.ok ? (
+                    <Check className="size-4" />
+                  ) : null}
+                  Test connection
+                </Button>
+              </div>
             ) : null}
             {accountProvider ? (
               <div className="grid gap-3 border-y py-3">
@@ -2148,7 +2228,7 @@ export function SettingsPage({
                         >
                           {(settings.data?.providers ?? []).map((provider) => (
                             <option key={provider.id} value={provider.id}>
-                              {provider.name}
+                              {providerRouteLabel(provider)}
                             </option>
                           ))}
                         </select>

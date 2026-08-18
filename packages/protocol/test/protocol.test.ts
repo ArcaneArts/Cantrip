@@ -3169,6 +3169,31 @@ describe("Cantrip protocol", () => {
     ).toBe("chat.compact");
   });
 
+  it("validates an ephemeral provider connection test without chat state", () => {
+    const command = workerCommandSchema.parse({
+      type: "model.provider.test",
+      model: {
+        id: "glm-5.3",
+        routeId: "route-zai",
+        name: "glm-5.3",
+        reasoningEffort: null,
+      },
+      provider: {
+        id: "provider-zai",
+        name: "Z.ai Coding Plan",
+        kind: "openai-compatible",
+        baseUrl: "https://api.z.ai/api/v1",
+        apiKey: "server-leased-secret",
+      },
+    });
+
+    expect(command).toMatchObject({
+      type: "model.provider.test",
+      model: { name: "glm-5.3" },
+      provider: { name: "Z.ai Coding Plan" },
+    });
+  });
+
   it("carries project worktree and effective policy context into worker-backed turns", () => {
     const turn = workerCommandSchema.parse({
       type: "chat.turn",
