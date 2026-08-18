@@ -10,11 +10,18 @@ import type {
   ServerRepository,
 } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
+import { serverLogger } from "../logger.js";
 import { accountProviderCatalogScope } from "./account-provider.js";
+import {
+  normalizeOpenRouterModel,
+  OpenRouterCatalogCache,
+} from "./openrouter-catalog.js";
 import { persistProviderQuotaSnapshot } from "./provider-quota.js";
 
 const FRESHNESS_WINDOW_MS = 15 * 60_000;
 const DISCOVERY_TIMEOUT_MS = 2 * 60_000;
+const OPENROUTER_PUBLIC_BASE_URL = "https://openrouter.ai/api/v1";
+const OPENROUTER_PUBLIC_CACHE_KEY = "public:https://openrouter.ai";
 
 export function grokAccountScope(accountId: string): string {
   return accountProviderCatalogScope("grok", accountId);
@@ -53,17 +60,87 @@ export function normalizeGrokCatalogModel(
   };
 }
 
+function normalizedIdentity(value: string | null): string | null {
+  const normalized = value?.trim().toLowerCase();
+  return normalized ? normalized : null;
+}
+
+export function enrichGrokCatalogVisionFromOpenRouter(
+  models: ProviderModelCatalogWrite[],
+  candidates: ProviderModelCatalogWrite[],
+): ProviderModelCatalogWrite[] {
+  return models.map((model) => {
+    if (model.supportsVision !== null) return model;
+    const nativeModelId = normalizedIdentity(model.nativeModelId);
+    if (!nativeModelId) return model;
+    const aliases = new Set([nativeModelId, `x-ai/${nativeModelId}`]);
+    const matches = candidates.filter((candidate) =>
+      [candidate.nativeModelId, candidate.canonicalModelId]
+        .map(normalizedIdentity)
+        .filter((identity): identity is string => identity !== null)
+        .some((identity) => aliases.has(identity)),
+    );
+    if (matches.length !== 1 || matches[0]!.supportsVision !== true) {
+      return model;
+    }
+    return {
+      ...model,
+      inputModalities: [
+        ...new Set([...model.inputModalities, ...matches[0]!.inputModalities]),
+      ],
+      supportsVision: true,
+    };
+  });
+}
+
 function isGrokProvider(provider: ModelProviderCatalogRuntime): boolean {
   return provider.kind === "grok";
 }
 
 export class GrokCatalogService {
   readonly #bridge: WorkerCommandBus;
+  readonly #openRouterCache: OpenRouterCatalogCache;
   readonly #repository: ServerRepository;
 
-  constructor(repository: ServerRepository, bridge: WorkerCommandBus) {
+  constructor(
+    repository: ServerRepository,
+    bridge: WorkerCommandBus,
+    options: ConstructorParameters<typeof OpenRouterCatalogCache>[0] = {},
+  ) {
     this.#repository = repository;
     this.#bridge = bridge;
+    this.#openRouterCache = new OpenRouterCatalogCache(options);
+  }
+
+  async #publicOpenRouterModels(
+    force: boolean,
+  ): Promise<ProviderModelCatalogWrite[]> {
+    try {
+      const read = await this.#openRouterCache.read({
+        apiKey: null,
+        baseUrl: OPENROUTER_PUBLIC_BASE_URL,
+        cacheKey: OPENROUTER_PUBLIC_CACHE_KEY,
+        force,
+        userScoped: false,
+      });
+      return read.snapshot.models.map(normalizeOpenRouterModel);
+    } catch (error) {
+      serverLogger.rateLimited(
+        "grok-catalog-openrouter-metadata-unavailable",
+        "warn",
+        "Grok catalog capability enrichment is temporarily unavailable",
+        {
+          event: "provider.grok.catalog_enrichment_unavailable",
+          subsystem: "provider-catalog",
+          operation: "enrich-grok-catalog",
+          status: "degraded",
+          reasonCode: "openrouter_public_catalog_unavailable",
+          error: error instanceof Error ? error.message : String(error),
+        },
+        { summaryEvery: 10, windowMs: 60_000 },
+      );
+      return [];
+    }
   }
 
   async markAccountUnavailable(
@@ -123,6 +200,7 @@ export class GrokCatalogService {
       ownerId,
       providerId,
     );
+    let publicMetadata: Promise<ProviderModelCatalogWrite[]> | null = null;
     let succeeded = 0;
     let lastError: unknown = null;
     for (const account of selectedAccounts) {
@@ -208,7 +286,14 @@ export class GrokCatalogService {
             usedPercent: inventory.weeklyUsage.usedPercent,
           });
         }
-        const models = inventory.models.map(normalizeGrokCatalogModel);
+        let models = inventory.models.map(normalizeGrokCatalogModel);
+        if (models.some((model) => model.supportsVision === null)) {
+          publicMetadata ??= this.#publicOpenRouterModels(force);
+          models = enrichGrokCatalogVisionFromOpenRouter(
+            models,
+            await publicMetadata,
+          );
+        }
         const visible = inventory.models.filter((model) => !model.hidden);
         await this.#repository.reconcileProviderModelCatalog(
           ownerId,

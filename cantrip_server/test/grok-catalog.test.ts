@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import {
+  enrichGrokCatalogVisionFromOpenRouter,
   GrokCatalogService,
   normalizeGrokCatalogModel,
 } from "../src/models/grok-catalog.js";
@@ -51,6 +52,33 @@ describe("Grok catalog", () => {
     });
   });
 
+  it("fills omitted Grok vision metadata from one exact public model", () => {
+    const textOnly = normalizeGrokCatalogModel({
+      ...model("grok-4"),
+      inputModalities: ["text"],
+    });
+    expect(
+      enrichGrokCatalogVisionFromOpenRouter(
+        [textOnly],
+        [
+          {
+            ...textOnly,
+            nativeModelId: "x-ai/grok-4",
+            canonicalModelId: "x-ai/grok-4",
+            inputModalities: ["text", "image"],
+            supportsVision: true,
+            metadataSource: "openrouter",
+          },
+        ],
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        inputModalities: ["text", "image"],
+        supportsVision: true,
+      }),
+    ]);
+  });
+
   it("deduplicates models while retaining per-account availability", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
@@ -64,7 +92,13 @@ describe("Grok catalog", () => {
         commandWorkers.push(workerId);
         commands.push(command);
         return {
-          models: [model("grok-4", true), model("grok-code-fast-1")],
+          models: [
+            {
+              ...model("grok-4", true),
+              inputModalities: ["text"],
+            },
+            model("grok-code-fast-1"),
+          ],
           observedAt: "2026-08-15T12:00:00.000Z",
           weeklyUsage: { usedPercent: 45, resetsAt: 1_787_000_000 },
         };
@@ -73,6 +107,19 @@ describe("Grok catalog", () => {
       subscribeSurfaceFrames: () => () => undefined,
       subscribeWorkerDisconnect: () => () => undefined,
     } satisfies WorkerCommandBus;
+    const fetchImplementation = (async () =>
+      Response.json({
+        data: [
+          {
+            id: "x-ai/grok-4",
+            architecture: {
+              input_modalities: ["text", "image"],
+              output_modalities: ["text"],
+            },
+            supported_parameters: ["tools"],
+          },
+        ],
+      })) as typeof fetch;
     try {
       await migrate(database, { migrationsFolder });
       const repository = new ServerRepository(
@@ -141,7 +188,9 @@ describe("Grok catalog", () => {
         );
       }
 
-      const service = new GrokCatalogService(repository, bridge);
+      const service = new GrokCatalogService(repository, bridge, {
+        fetch: fetchImplementation,
+      });
       const catalog = await service.getProviderCatalog(
         LOCAL_USER_ID,
         provider.id,
@@ -149,6 +198,12 @@ describe("Grok catalog", () => {
         true,
       );
       expect(catalog?.models).toHaveLength(2);
+      expect(
+        catalog?.models.find(({ nativeModelId }) => nativeModelId === "grok-4"),
+      ).toMatchObject({
+        inputModalities: ["text", "image"],
+        supportsVision: true,
+      });
       expect(catalog?.availability).toHaveLength(4);
       expect(
         catalog?.availability.every(({ workerId }) => workerId === null),

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   CANTRIP_MANAGED_MODEL_BASE_INSTRUCTIONS,
   codexCatalogForRuntimeModel,
+  runtimeModelSupportsImages,
   writeManagedCodexModelCatalog,
 } from "../src/codex/model-catalog.js";
 
@@ -127,5 +128,21 @@ describe("managed Codex model catalogs", () => {
       shell_type: "shell_command",
       apply_patch_tool_type: "freeform",
     });
+  });
+
+  it("advertises image input for Grok 4 when its native catalog omits modalities", () => {
+    const grokModel = {
+      ...model,
+      name: "grok-4.6",
+      catalog: {
+        ...model.catalog!,
+        inputModalities: ["text"],
+        supportsVision: null,
+      },
+    } satisfies TurnCommand["model"];
+    expect(runtimeModelSupportsImages(grokModel, "grok")).toBe(true);
+    expect(
+      codexCatalogForRuntimeModel(grokModel, "grok")?.models[0],
+    ).toMatchObject({ input_modalities: ["text", "image"] });
   });
 });

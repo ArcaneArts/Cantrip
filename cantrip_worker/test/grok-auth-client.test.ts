@@ -214,6 +214,20 @@ describe("Grok OAuth accounts", () => {
       outputModalities: ["text"],
       supportsReasoning: false,
     });
+    expect(
+      normalizeGrokModel({
+        id: "grok-4.6",
+        _meta: {
+          architecture: { input_modalities: ["TEXT", "IMAGE"] },
+        },
+      }),
+    ).toMatchObject({ inputModalities: ["text", "image"] });
+    expect(
+      normalizeGrokModel({
+        id: "grok-vision",
+        _meta: { supportsImageInput: true },
+      }),
+    ).toMatchObject({ inputModalities: ["text", "image"] });
     expect(normalizeGrokModel({ description: "missing id" })).toBeNull();
   });
 
