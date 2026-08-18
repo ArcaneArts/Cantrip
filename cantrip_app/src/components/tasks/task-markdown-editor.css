@@ -55,9 +55,7 @@
 
 .cantrip-task-markdown-content {
   min-height: 100%;
-  max-width: 68rem;
-  margin-inline: auto;
-  padding: clamp(1.5rem, 3vw, 3rem) clamp(1.25rem, 5vw, 5rem) 8rem;
+  padding: clamp(1.5rem, 3vw, 3rem) 0 8rem;
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: 0.9375rem;
@@ -166,6 +164,6 @@
 
 @media (max-width: 640px) {
   .cantrip-task-markdown-content {
-    padding: 1.25rem 1rem 7rem;
+    padding-block: 1.25rem 7rem;
   }
 }
