@@ -116,6 +116,7 @@ import {
   gitRevisionCandidateListSchema,
   mentionedSkillNames,
   MIN_SIDEBAR_WIDTH,
+  isZaiCodingPlanBaseUrl,
   normalizeResponsesBaseUrl,
   chatPermissionProfileStateSchema,
   queuedPromptSchema,
@@ -3535,6 +3536,25 @@ describe("Cantrip protocol", () => {
     expect(normalizeResponsesBaseUrl("http://127.0.0.1:11434/v1/")).toBe(
       "http://127.0.0.1:11434/v1",
     );
+    expect(normalizeResponsesBaseUrl("https://api.z.ai/api/v1/responses")).toBe(
+      "https://api.z.ai/api/v1",
+    );
+    expect(
+      new URL(
+        `${normalizeResponsesBaseUrl("https://api.z.ai/api/v1/responses")}/responses`,
+      ).toString(),
+    ).toBe("https://api.z.ai/api/v1/responses");
+  });
+
+  it("recognizes only the canonical Z.ai Coding Plan Responses root", () => {
+    expect(isZaiCodingPlanBaseUrl("https://api.z.ai/api/v1")).toBe(true);
+    expect(isZaiCodingPlanBaseUrl("https://API.Z.AI/api/v1/responses")).toBe(
+      true,
+    );
+    expect(isZaiCodingPlanBaseUrl("https://api.z.ai/api/coding/paas/v4")).toBe(
+      false,
+    );
+    expect(isZaiCodingPlanBaseUrl("https://openrouter.ai/api/v1")).toBe(false);
   });
 
   it("accepts a worker heartbeat", () => {

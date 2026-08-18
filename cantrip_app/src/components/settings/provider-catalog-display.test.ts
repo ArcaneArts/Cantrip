@@ -82,6 +82,13 @@ describe("provider catalog presentation", () => {
       providerSupportsCatalog({
         ...provider,
         kind: "openai-compatible",
+        baseUrl: "https://api.z.ai/api/v1",
+      }),
+    ).toBe(true);
+    expect(
+      providerSupportsCatalog({
+        ...provider,
+        kind: "openai-compatible",
         baseUrl: "https://api.x.ai/v1",
       }),
     ).toBe(false);
@@ -92,6 +99,21 @@ describe("provider catalog presentation", () => {
         baseUrl: "https://cli-chat-proxy.grok.com/v1",
       }),
     ).toBe(true);
+  });
+
+  it("labels Z.ai's bundled provider catalog", () => {
+    expect(
+      catalogScopeLabel(
+        {
+          ...provider,
+          kind: "openai-compatible",
+          baseUrl: "https://api.z.ai/api/v1",
+          hasApiKey: true,
+        },
+        catalog,
+        "a",
+      ),
+    ).toBe("Built-in catalog");
   });
 
   it("summarizes signed-in Grok account scope", () => {

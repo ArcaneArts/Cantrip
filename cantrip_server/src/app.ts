@@ -675,6 +675,10 @@ import { OllamaCatalogService } from "./models/ollama-catalog.js";
 import { ChatGptCatalogService } from "./models/chatgpt-catalog.js";
 import { GrokCatalogService } from "./models/grok-catalog.js";
 import {
+  isZaiCodingPlanProvider,
+  ZaiCatalogService,
+} from "./models/zai-catalog.js";
+import {
   ProviderAccessTokenError,
   ProviderAccessTokenService,
 } from "./models/provider-access-tokens.js";
@@ -1121,6 +1125,7 @@ export async function buildApp({
   const ollamaCatalogService = new OllamaCatalogService(repository, bridge);
   const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
   const grokCatalogService = new GrokCatalogService(repository, bridge);
+  const zaiCatalogService = new ZaiCatalogService(repository);
   const providerAccessTokens =
     providedProviderAccessTokens ??
     new ProviderAccessTokenService(repository, {
@@ -9992,7 +9997,7 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
-      if (provider.kind === "ollama") {
+      if (provider.kind === "ollama" || isZaiCodingPlanProvider(provider)) {
         void loadProviderCatalog(
           applicationOwnerId(),
           provider.id,
@@ -10085,7 +10090,10 @@ export async function buildApp({
           request.params.providerId,
           input.data,
         );
-        if (provider?.kind === "ollama") {
+        if (
+          provider &&
+          (provider.kind === "ollama" || isZaiCodingPlanProvider(provider))
+        ) {
           void loadProviderCatalog(
             applicationOwnerId(),
             provider.id,
@@ -10115,6 +10123,9 @@ export async function buildApp({
       providerId,
     );
     if (!provider) return null;
+    if (isZaiCodingPlanProvider(provider)) {
+      return zaiCatalogService.getProviderCatalog(ownerId, providerId);
+    }
     if (provider.kind !== "ollama" && !isAccountProviderKind(provider.kind)) {
       const catalog = await providerCatalogService.getProviderCatalog(
         ownerId,
@@ -10296,7 +10307,8 @@ export async function buildApp({
       message.includes("not an OpenRouter") ||
       message.includes("not an Ollama") ||
       message.includes("not a ChatGPT") ||
-      message.includes("not a Grok")
+      message.includes("not a Grok") ||
+      message.includes("not a Z.ai")
     ) {
       return 409;
     }

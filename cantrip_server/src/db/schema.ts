@@ -609,7 +609,7 @@ export const providerModels = pgTable(
     index("provider_models_canonical_index").on(table.canonicalModelId),
     check(
       "provider_models_metadata_source_check",
-      sql`${table.metadataSource} IN ('ollama', 'openrouter', 'codex', 'grok', 'compatible-api', 'manual')`,
+      sql`${table.metadataSource} IN ('ollama', 'openrouter', 'codex', 'grok', 'zai', 'compatible-api', 'manual')`,
     ),
     check(
       "provider_models_context_window_check",

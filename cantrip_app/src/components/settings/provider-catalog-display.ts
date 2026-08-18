@@ -5,6 +5,7 @@ import type {
   ProviderModelCatalogEntry,
   ProviderModelCatalogResult,
 } from "@cantrip/protocol";
+import { isZaiCodingPlanBaseUrl } from "@cantrip/protocol";
 
 export type CatalogDisplayStatus =
   "current" | "failed" | "manual" | "refreshing" | "stale" | "unknown";
@@ -18,7 +19,10 @@ export function providerSupportsCatalog(provider: ModelProviderSummary) {
     return true;
   }
   try {
-    return new URL(provider.baseUrl).hostname.toLowerCase() === "openrouter.ai";
+    return (
+      isZaiCodingPlanBaseUrl(provider.baseUrl) ||
+      new URL(provider.baseUrl).hostname.toLowerCase() === "openrouter.ai"
+    );
   } catch {
     return false;
   }
@@ -125,6 +129,7 @@ export function catalogScopeLabel(
     );
     return `${accounts.length} signed-in account${accounts.length === 1 ? "" : "s"}`;
   }
+  if (isZaiCodingPlanBaseUrl(provider.baseUrl)) return "Built-in catalog";
   return provider.hasApiKey ? "Account + global" : "Global";
 }
 

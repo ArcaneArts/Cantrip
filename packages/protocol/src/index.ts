@@ -1079,6 +1079,25 @@ export const modelProviderKindSchema = z.enum([
   "openai-compatible",
 ]);
 
+export const ZAI_CODING_PLAN_BASE_URL = "https://api.z.ai/api/v1";
+
+/**
+ * Z.ai Coding Plan is stored as an OpenAI-compatible transport, so its
+ * provider family is inferred from the normalized Responses API root.
+ */
+export function isZaiCodingPlanBaseUrl(value: string): boolean {
+  try {
+    const url = new URL(normalizeResponsesBaseUrl(value));
+    return (
+      url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "api.z.ai" &&
+      url.pathname.replace(/\/+$/u, "") === "/api/v1"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export const providerWeeklyUsageSchema = z.object({
   usedPercent: z.number().min(0).max(100),
   resetsAt: z.number().int().nullable(),
@@ -1210,6 +1229,7 @@ export const providerModelMetadataSourceSchema = z.enum([
   "openrouter",
   "codex",
   "grok",
+  "zai",
   "compatible-api",
   "manual",
 ]);
