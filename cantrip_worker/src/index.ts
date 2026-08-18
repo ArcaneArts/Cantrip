@@ -123,6 +123,7 @@ import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
 import { ProjectShareManager } from "./project-share-manager.js";
 import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-adapter.js";
+import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
@@ -967,6 +968,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return discoverScriptCommands(command.cwd);
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
+      case "project.folder-stats":
+        return readProjectFolderStats(command.root);
       case "external.chat-history.discover":
         return discoverExternalChatHistory(
           {
@@ -1568,6 +1571,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           policyContext: command.policyContext,
           resultMode: command.resultMode,
           prompt: command.prompt,
+          rootKind: command.rootKind,
           skillNames: command.skillNames,
           threadId: command.threadId,
           worktreeMode: command.worktreeMode,

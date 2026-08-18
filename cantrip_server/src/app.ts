@@ -1070,6 +1070,22 @@ export async function buildApp({
     (_request, body, done) => done(null, body),
   );
   const repository = database.repository;
+  const requireProjectWorktrees = async (projectId: string) => {
+    const project = await repository.getProject(
+      applicationOwnerId(),
+      projectId,
+    );
+    if (project) requireProjectCapability(project, "worktrees");
+    return project;
+  };
+  const requireProjectRelocation = async (projectId: string) => {
+    const project = await repository.getProject(
+      applicationOwnerId(),
+      projectId,
+    );
+    if (project) requireProjectCapability(project, "relocation");
+    return project;
+  };
   const providerCatalogService =
     providedProviderCatalogService ?? new OpenRouterCatalogService(repository);
   const openRouterRuntimeCatalogs = new OpenRouterRuntimeCatalogHydrator(
@@ -3814,6 +3830,7 @@ export async function buildApp({
     chatId: string | null;
     executionLaneId: string | null;
     projectId: string;
+    rootKind: ChatExecutionContext["rootKind"];
     terminalId: string | null;
     workerId: string;
     worktreeId: string;
@@ -3848,6 +3865,22 @@ export async function buildApp({
     context: ExecutionOperationContext,
     call: ExecutionOperation,
   ): Promise<CantripCliCommandResult> => {
+    if (
+      call.operation === "worktrees.list" ||
+      call.operation.startsWith("worktree.")
+    ) {
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        context.projectId,
+      );
+      if (!project?.capabilities.worktrees) {
+        throw new CliCommandRequestError(
+          "unsupported-capability",
+          409,
+          "This worker-managed folder does not support Cantrip worktree commands.",
+        );
+      }
+    }
     const worktrees = () =>
       repository.listProjectWorktrees(applicationOwnerId(), context.projectId);
     const worktreeContext = async (worktreeId: string) => {
@@ -4418,6 +4451,7 @@ export async function buildApp({
         | "context-not-found"
         | "invalid"
         | "not-found"
+        | "unsupported-capability"
         | "unavailable",
       readonly status: number,
       message: string,
@@ -4432,6 +4466,7 @@ export async function buildApp({
     chatId: context.chatId,
     executionLaneId: context.executionLaneId,
     projectId: context.projectId,
+    rootKind: context.rootKind,
     terminalId: null,
     workerId: context.workerId,
     worktreeId: context.worktreeId,
@@ -4523,6 +4558,7 @@ export async function buildApp({
               ? chat.executionLaneId
               : null,
           projectId: terminal.projectId,
+          rootKind: terminal.rootKind,
           terminalId: terminal.terminalId,
           workerId: terminal.workerId,
           worktreeId: terminal.worktreeId,
@@ -4533,7 +4569,7 @@ export async function buildApp({
 
     if (call.context.cwd) {
       const candidates = (
-        await repository.listWorkerWorktreeObservationTargets(
+        await repository.listWorkerExecutionRootContexts(
           applicationOwnerId(),
           call.workerId,
         )
@@ -4560,13 +4596,14 @@ export async function buildApp({
           throw new CliCommandRequestError(
             "ambiguous",
             409,
-            "The current directory belongs to more than one Cantrip worktree.",
+            "The current directory belongs to more than one Cantrip project root.",
           );
         }
         return {
           chatId: null,
           executionLaneId: null,
           projectId: best.projectId,
+          rootKind: best.rootKind,
           terminalId: null,
           workerId: best.workerId,
           worktreeId: best.worktreeId,
@@ -4579,7 +4616,7 @@ export async function buildApp({
     throw new CliCommandRequestError(
       "context-not-found",
       400,
-      "Cantrip could not infer a project. Run this command inside a Cantrip chat, Terminal tab, or project worktree.",
+      "Cantrip could not infer a project. Run this command inside a Cantrip chat, Terminal tab, or project root.",
     );
   };
 
@@ -4853,6 +4890,20 @@ export async function buildApp({
       );
     }
 
+    if (call.command.startsWith("worktree.")) {
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        context.projectId,
+      );
+      if (!project?.capabilities.worktrees) {
+        throw new CliCommandRequestError(
+          "unsupported-capability",
+          409,
+          "This worker-managed folder does not support Cantrip worktree commands.",
+        );
+      }
+    }
+
     const selector = optionalToolString(call.arguments, "target");
     const mutationResult = async (
       operation: Promise<CantripCliCommandResult>,
@@ -5017,7 +5068,11 @@ export async function buildApp({
       case "target.show": {
         const target = await selectTarget(
           context,
-          selector ? null : "worktree",
+          selector
+            ? null
+            : context.rootKind === "folder-root"
+              ? "worker"
+              : "worktree",
           selector,
         );
         return executeExecutionOperation(context, {
@@ -6570,6 +6625,7 @@ export async function buildApp({
                 cwd: execution.cwd,
                 executionLaneId,
                 worktreeId: execution.worktreeId,
+                rootKind: execution.rootKind,
                 threadId,
                 isPrimary: execution.isPrimary,
                 worktreeMode: execution.worktreeMode,
@@ -8658,15 +8714,22 @@ export async function buildApp({
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
-    const tunnel = await repository.createUserTunnel(
-      principalOwnerId(request),
-      input.data,
-    );
-    return tunnel
-      ? reply.code(201).send(tunnelSummarySchema.parse(tunnel))
-      : reply
-          .code(404)
-          .send({ error: "Project or destination worker not found." });
+    try {
+      const tunnel = await repository.createUserTunnel(
+        principalOwnerId(request),
+        input.data,
+      );
+      return tunnel
+        ? reply.code(201).send(tunnelSummarySchema.parse(tunnel))
+        : reply
+            .code(404)
+            .send({ error: "Project or destination worker not found." });
+    } catch (error) {
+      if (error instanceof TunnelManagementError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      throw error;
+    }
   });
 
   app.post<{ Params: { tunnelId: string } }>(
@@ -11119,6 +11182,10 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Chat not found." });
       }
+      const project = await requireProjectRelocation(context.projectId);
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
       try {
         const resolution = await repository.resolveProjectExecutionPlacement(
           ownerId,
@@ -11170,14 +11237,14 @@ export async function buildApp({
     "/api/chats/:chatId/relocations",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      if (
-        !(await repository.getChatExecutionContext(
-          ownerId,
-          request.params.chatId,
-        ))
-      ) {
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!context) {
         return reply.code(404).send({ error: "Chat not found." });
       }
+      await requireProjectRelocation(context.projectId);
       return reply.send(
         chatRelocationJobListSchema.parse(
           await repository.chatRelocationJobs.list(
@@ -11196,6 +11263,7 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.jobId,
       );
+      if (job) await requireProjectRelocation(job.projectId);
       return job
         ? reply.send(chatRelocationJobSummarySchema.parse(job))
         : reply.code(404).send({ error: "Chat relocation not found." });
@@ -11209,6 +11277,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const existing = await repository.chatRelocationJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      if (existing) await requireProjectRelocation(existing.projectId);
       try {
         const job = await repository.chatRelocationJobs.retry(
           applicationOwnerId(),
@@ -11240,6 +11313,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const existing = await repository.chatRelocationJobs.get(
+        applicationOwnerId(),
+        request.params.jobId,
+      );
+      if (existing) await requireProjectRelocation(existing.projectId);
       try {
         const job = await repository.chatRelocationJobs.cancel(
           applicationOwnerId(),
@@ -16077,20 +16155,32 @@ export async function buildApp({
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/repository-stats",
     async (request, reply) => {
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) {
+      const ownerId = applicationOwnerId();
+      const [project, source] = await Promise.all([
+        repository.getProject(ownerId, request.params.projectId),
+        repository.getProjectSource(ownerId, request.params.projectId),
+      ]);
+      if (!project || !source) {
         return reply.code(404).send({ error: "Project source not found." });
       }
       try {
         const stats = await bridge.request(
           source.workerId,
-          { type: "project.repository-stats", cwd: source.cwd },
+          project.originKind === "managed-folder"
+            ? { type: "project.folder-stats", root: source.cwd }
+            : { type: "project.repository-stats", cwd: source.cwd },
           { timeoutMs: 30_000 },
         );
-        return reply.send(projectRepositoryStatsSchema.parse(stats));
+        const parsed = projectRepositoryStatsSchema.parse(stats);
+        if (
+          (project.originKind === "managed-folder") !==
+          (parsed.kind === "folder")
+        ) {
+          throw new Error(
+            "Worker returned statistics for the wrong project kind.",
+          );
+        }
+        return reply.send(parsed);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -17468,6 +17558,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const context = await repository.getTerminalExecutionContext(
+        applicationOwnerId(),
+        request.params.terminalId,
+      );
+      if (context) await requireProjectWorktrees(context.projectId);
       try {
         const terminal = await repository.updateTerminalWorktree(
           applicationOwnerId(),
@@ -17605,6 +17700,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const context = await repository.getCodeTabExecutionContext(
+        applicationOwnerId(),
+        request.params.codeTabId,
+      );
+      if (context) await requireProjectWorktrees(context.codeTab.projectId);
       try {
         const previousSessions =
           (await repository.listCodeSessions(
@@ -18302,15 +18402,20 @@ export async function buildApp({
     "/api/projects/:projectId/browser-services",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      const replicas = await repository.listProjectReplicas(
+      const project = await repository.getProject(
         ownerId,
         request.params.projectId,
       );
-      if (!replicas) {
+      if (!project) {
         return reply.code(404).send({ error: "Project not found." });
       }
       const capableWorkers = (await repository.listWorkers(ownerId))
-        .filter((worker) => worker.remoteSurfaces.browser)
+        .filter(
+          (worker) =>
+            worker.remoteSurfaces.browser &&
+            (project.originKind !== "managed-folder" ||
+              worker.workerId === project.preferredWorkerId),
+        )
         .sort(
           (left, right) =>
             left.name.localeCompare(right.name) ||
@@ -18462,6 +18567,19 @@ export async function buildApp({
         return reply.code(404).send({ error: "Browser not found." });
       }
       const workerId = input.data.workerId ?? context.workerId;
+      const project = await repository.getProject(
+        ownerId,
+        context.surface.projectId,
+      );
+      if (
+        project?.originKind === "managed-folder" &&
+        workerId !== project.preferredWorkerId
+      ) {
+        return reply.code(409).send({
+          code: "target-mismatch",
+          error: "This worker-managed folder is bound to its owning worker.",
+        });
+      }
       const workerOwned = (await repository.listWorkers(ownerId)).some(
         (worker) => worker.workerId === workerId,
       );
@@ -18624,12 +18742,11 @@ export async function buildApp({
     "/api/projects/:projectId/remote-desktop-fleet",
     async (request, reply) => {
       const ownerId = applicationOwnerId();
-      if (
-        !(await repository.listProjectReplicas(
-          ownerId,
-          request.params.projectId,
-        ))
-      ) {
+      const project = await repository.getProject(
+        ownerId,
+        request.params.projectId,
+      );
+      if (!project) {
         return reply.code(404).send({ error: "Project not found." });
       }
       const [workers, desktops] = await Promise.all([
@@ -18637,7 +18754,12 @@ export async function buildApp({
         repository.listRemoteDesktops(ownerId, request.params.projectId),
       ]);
       const capableWorkers = workers
-        .filter((worker) => worker.remoteSurfaces.desktop)
+        .filter(
+          (worker) =>
+            worker.remoteSurfaces.desktop &&
+            (project.originKind !== "managed-folder" ||
+              worker.workerId === project.preferredWorkerId),
+        )
         .sort(
           (left, right) =>
             left.name.localeCompare(right.name) ||
@@ -19276,6 +19398,16 @@ export async function buildApp({
             "Remote Desktop views must be created with endpoint configuration.",
         });
       }
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (project && input.data.kind === "history") {
+        requireProjectCapability(project, "git");
+      }
+      if (project && input.data.kind === "issues") {
+        requireProjectCapability(project, "github");
+      }
       const view = await repository.createProjectView(
         applicationOwnerId(),
         request.params.projectId,
@@ -19312,6 +19444,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const projectId = await repository.getProjectViewProjectId(
+        applicationOwnerId(),
+        request.params.viewId,
+      );
+      if (projectId) await requireProjectWorktrees(projectId);
       try {
         const view = await repository.updateProjectViewWorktree(
           applicationOwnerId(),
@@ -19409,6 +19546,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const context = await repository.getExplorerExecutionContext(
+        applicationOwnerId(),
+        request.params.explorerId,
+      );
+      if (context) await requireProjectWorktrees(context.projectId);
       const explorer = await repository.updateExplorerWorktree(
         applicationOwnerId(),
         request.params.explorerId,
@@ -20030,6 +20172,11 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (context) await requireProjectWorktrees(context.projectId);
       try {
         const chat = await repository.updateChatWorktree(
           applicationOwnerId(),
@@ -22748,6 +22895,7 @@ export async function buildApp({
               resourceType: "cli-command",
               result:
                 cliError.code === "conflict" ||
+                cliError.code === "unsupported-capability" ||
                 cliError.code === "context-not-found"
                   ? "denied"
                   : "failed",

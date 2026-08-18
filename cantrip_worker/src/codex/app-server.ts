@@ -1118,6 +1118,7 @@ export interface RunAgentTurnOptions {
     { type: "chat.turn" }
   >["permissionProfileId"];
   prompt: string;
+  rootKind: Extract<WorkerCommand, { type: "chat.turn" }>["rootKind"];
   skillNames: string[];
   threadId: string | null;
   worktreeMode: Extract<WorkerCommand, { type: "chat.turn" }>["worktreeMode"];
@@ -1272,7 +1273,12 @@ export function cantripChatThreadParams() {
 export function codexWorktreeTurnPolicy(
   options: Pick<
     RunAgentTurnOptions,
-    "cwd" | "isPrimary" | "resultMode" | "worktreeMode" | "worktreePolicy"
+    | "cwd"
+    | "isPrimary"
+    | "resultMode"
+    | "rootKind"
+    | "worktreeMode"
+    | "worktreePolicy"
   > & {
     permissionProfileActive?: boolean;
     policyContext?: RunAgentTurnOptions["policyContext"];
@@ -1281,7 +1287,9 @@ export function codexWorktreeTurnPolicy(
   const cwd = path.resolve(options.cwd);
   const structuredReadOnly = options.resultMode?.kind === "structured";
   const primaryIsReadOnly =
-    options.isPrimary && options.worktreePolicy === "required-for-writes";
+    options.rootKind === "git-worktree" &&
+    options.isPrimary &&
+    options.worktreePolicy === "required-for-writes";
   const modeInstruction =
     options.worktreeMode === "pinned"
       ? "This chat is pinned to the current worktree. Do not acquire or switch worktrees unless the user first returns the chat to Agent managed mode."
@@ -1293,6 +1301,9 @@ export function codexWorktreeTurnPolicy(
       : options.worktreePolicy === "required-for-writes"
         ? "The project policy is Required for writes and this turn is in a secondary worktree, so writes are permitted here."
         : "The project policy is Agent managed. You may work in the current checkout or acquire a secondary worktree when the task benefits from isolation.";
+  const folderInstruction = structuredReadOnly
+    ? "This is a Cantrip Task planning turn in a worker-managed folder. It is unconditionally read-only: inspect the folder and effective policies, but do not modify files or external systems. The folder has no Git protection, writes in implementation turns occur directly in it, Cantrip worktree commands are unavailable, and running git init does not convert the project automatically."
+    : "This project is a worker-managed folder without Git protection. Writes occur directly in this folder. Cantrip worktree commands are unavailable. Running git init does not convert the project automatically; conversion requires the explicit Cantrip GitHub flow.";
   const sandboxPolicy =
     structuredReadOnly || primaryIsReadOnly
       ? { type: "readOnly" as const, networkAccess: false }
@@ -1307,9 +1318,12 @@ export function codexWorktreeTurnPolicy(
     additionalContext: {
       "cantrip.worktree-policy": {
         kind: "application",
-        value: structuredReadOnly
-          ? "This is a Cantrip Task planning turn. It is unconditionally read-only: inspect the repository and effective policies, but do not modify files, Git state, GitHub state, or external systems."
-          : `${policyInstruction} ${modeInstruction}`,
+        value:
+          options.rootKind === "folder-root"
+            ? folderInstruction
+            : structuredReadOnly
+              ? "This is a Cantrip Task planning turn. It is unconditionally read-only: inspect the repository and effective policies, but do not modify files, Git state, GitHub state, or external systems."
+              : `${policyInstruction} ${modeInstruction}`,
       },
       ...(options.policyContext
         ? {

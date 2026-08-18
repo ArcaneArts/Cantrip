@@ -2870,7 +2870,8 @@ export const tunnelSummarySchema = z
 
 export const tunnelListSchema = z.array(tunnelSummarySchema).max(10_000);
 
-export const projectRepositoryStatsSchema = z.object({
+export const projectGitRepositoryStatsSchema = z.object({
+  kind: z.literal("git").default("git"),
   commitCount: z.number().int().nonnegative(),
   trackedFileCount: z.number().int().nonnegative(),
   trackedByteCount: z.number().int().nonnegative(),
@@ -2879,6 +2880,21 @@ export const projectRepositoryStatsSchema = z.object({
   excludedFileCount: z.number().int().nonnegative(),
   truncated: z.boolean(),
 });
+
+export const projectFolderStatsSchema = z.object({
+  kind: z.literal("folder"),
+  fileCount: z.number().int().nonnegative(),
+  byteCount: z.number().int().nonnegative(),
+  textFileCount: z.number().int().nonnegative(),
+  lineCount: z.number().int().nonnegative(),
+  excludedFileCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+
+export const projectRepositoryStatsSchema = z.union([
+  projectGitRepositoryStatsSchema,
+  projectFolderStatsSchema,
+]);
 
 export const projectTokenUsageDaySchema = detailedTokenUsageTotalsSchema.extend(
   {
@@ -8214,6 +8230,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     cwd: z.string().min(1).max(8_192),
   }),
   z.object({
+    type: z.literal("project.folder-stats"),
+    root: z.string().min(1).max(8_192),
+  }),
+  z.object({
     type: z.literal("external.chat-history.discover"),
     includeArchived: z.boolean().default(false),
     targets: z.array(externalChatDiscoveryTargetSchema).min(1).max(64),
@@ -8929,6 +8949,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     clientMessageId: z.string().min(1),
     executionLaneId: z.string().min(1),
     worktreeId: z.string().min(1),
+    rootKind: projectRootKindSchema.default("git-worktree"),
     cwd: z.string().min(1),
     isPrimary: z.boolean(),
     worktreeMode: z.enum(["agent-managed", "pinned"]),
@@ -9545,6 +9566,10 @@ export type ProjectReplicaJobCancel = z.infer<
 export type ProjectRepositoryStats = z.infer<
   typeof projectRepositoryStatsSchema
 >;
+export type ProjectGitRepositoryStats = z.infer<
+  typeof projectGitRepositoryStatsSchema
+>;
+export type ProjectFolderStats = z.infer<typeof projectFolderStatsSchema>;
 export type ProjectTokenUsageDay = z.infer<typeof projectTokenUsageDaySchema>;
 export type ProjectTokenUsageBreakdown = z.infer<
   typeof projectTokenUsageBreakdownSchema

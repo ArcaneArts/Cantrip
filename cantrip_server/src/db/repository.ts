@@ -367,6 +367,7 @@ export interface ChatExecutionContext {
   planMode: PlanMode;
   pendingPlanQuestion: PendingPlanQuestion | null;
   projectId: string;
+  rootKind: ProjectWorktreeSummary["rootKind"];
   threadId: string | null;
   workerId: string;
   worktreeId: string;
@@ -416,6 +417,7 @@ export interface TerminalExecutionContext {
   cwd: string;
   linkedChatId: string | null;
   projectId: string;
+  rootKind: ProjectWorktreeSummary["rootKind"];
   service: TerminalServiceConfiguration;
   status: TerminalSummary["status"];
   terminalId: string;
@@ -455,6 +457,7 @@ export interface ProjectWorktreeExecutionContext {
 
 export interface ProjectWorktreeObservationContext {
   projectId: string;
+  rootKind: ProjectWorktreeSummary["rootKind"];
   sourcePath: string;
   workerId: string;
   worktreeId: string;
@@ -6971,7 +6974,11 @@ export class ServerRepository {
     const [projectRows, workerRows] = await Promise.all([
       projectId
         ? this.database
-            .select({ id: schema.projects.id })
+            .select({
+              id: schema.projects.id,
+              originKind: schema.projects.originKind,
+              preferredWorkerId: schema.projects.preferredWorkerId,
+            })
             .from(schema.projects)
             .where(
               and(
@@ -6980,7 +6987,7 @@ export class ServerRepository {
               ),
             )
             .limit(1)
-        : Promise.resolve([{ id: null }]),
+        : Promise.resolve([]),
       this.database
         .select({ id: schema.workers.id })
         .from(schema.workers)
@@ -6992,7 +6999,17 @@ export class ServerRepository {
           ),
         ),
     ]);
-    return projectRows.length === 1 && workerRows.length === workerIds.length;
+    const project = projectRows[0];
+    if (projectId && !project) return false;
+    if (
+      project?.originKind === "managed-folder" &&
+      workerIds.some((workerId) => workerId !== project.preferredWorkerId)
+    ) {
+      throw new TunnelManagementError(
+        "This worker-managed folder is bound to its owning worker.",
+      );
+    }
+    return workerRows.length === workerIds.length;
   }
 
   private async nextTunnelPosition(ownerId: string): Promise<number> {
@@ -8638,6 +8655,7 @@ export class ServerRepository {
     const projectRows = await this.database
       .select({
         id: schema.projects.id,
+        originKind: schema.projects.originKind,
         preferredWorkerId: schema.projects.preferredWorkerId,
       })
       .from(schema.projects)
@@ -8702,7 +8720,15 @@ export class ServerRepository {
         ),
     ]);
     const workerById = new Map(workers.map((worker) => [worker.id, worker]));
-    const requiresWorktree =
+    const folderProject = project.originKind === "managed-folder";
+    const owningWorkerId = folderProject
+      ? (project.preferredWorkerId ??
+        replicaRows.find(({ source }) => source.sourceKind === "folder")?.source
+          .workerId ??
+        null)
+      : null;
+    const requiresExecutionRoot =
+      folderProject ||
       surfaceKind === "chat" ||
       surfaceKind === "terminal" ||
       surfaceKind === "explorer" ||
@@ -8745,6 +8771,13 @@ export class ServerRepository {
       explicitWorktreeId?: string,
       strict = false,
     ): ExecutionPlacementResolution | null => {
+      if (owningWorkerId !== null && workerId !== owningWorkerId) {
+        if (!strict) return null;
+        throw new ExecutionPlacementUnavailableError(
+          "target-mismatch",
+          "This worker-managed folder is bound to its owning worker.",
+        );
+      }
       const worker = workerById.get(workerId);
       if (!worker) {
         if (!strict) return null;
@@ -8793,7 +8826,7 @@ export class ServerRepository {
           "The selected replica is not active on this worker.",
         );
       }
-      if (!requiresWorktree) {
+      if (!requiresExecutionRoot) {
         return {
           placement: {
             projectId,
@@ -8809,7 +8842,9 @@ export class ServerRepository {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "replica-unavailable",
-          "The selected worker does not have an active project replica.",
+          folderProject
+            ? "The worker-managed folder has not finished preparing its execution root."
+            : "The selected worker does not have an active project replica.",
         );
       }
       const worktrees = readyWorktreesForSource(source.id);
@@ -8820,9 +8855,11 @@ export class ServerRepository {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "worktree-unavailable",
-          explicitWorktreeId
-            ? "The selected worktree is not ready on this project replica."
-            : "The selected project replica has no ready worktree.",
+          folderProject
+            ? "The worker-managed folder execution root is not ready."
+            : explicitWorktreeId
+              ? "The selected worktree is not ready on this project replica."
+              : "The selected project replica has no ready worktree.",
         );
       }
       return {
@@ -8898,16 +8935,23 @@ export class ServerRepository {
     const preferredCandidates: Array<{
       selection: ExecutionPlacementResolution["selection"];
       workerId: string | null;
-    }> = [
-      {
-        workerId: project.preferredWorkerId,
-        selection: "project-preference",
-      },
-      {
-        workerId: settingsRows[0]?.defaultWorkerId ?? null,
-        selection: "default-worker",
-      },
-    ];
+    }> = folderProject
+      ? [
+          {
+            workerId: owningWorkerId,
+            selection: "project-preference",
+          },
+        ]
+      : [
+          {
+            workerId: project.preferredWorkerId,
+            selection: "project-preference",
+          },
+          {
+            workerId: settingsRows[0]?.defaultWorkerId ?? null,
+            selection: "default-worker",
+          },
+        ];
     const visited = new Set<string>();
     for (const candidate of preferredCandidates) {
       if (!candidate.workerId || visited.has(candidate.workerId)) continue;
@@ -8915,10 +8959,13 @@ export class ServerRepository {
       const placement = placementForWorker(
         candidate.workerId,
         candidate.selection,
+        undefined,
+        undefined,
+        folderProject,
       );
       if (placement) return placement;
     }
-    for (const worker of workers) {
+    for (const worker of folderProject ? [] : workers) {
       if (visited.has(worker.id)) continue;
       const placement = placementForWorker(worker.id, "fallback");
       if (placement) return placement;
@@ -8944,6 +8991,13 @@ export class ServerRepository {
     }
     const replicas = await this.listProjectReplicas(ownerId, projectId);
     if (!replicas) {
+      throw new ExecutionPlacementUnavailableError(
+        "project-not-found",
+        "Project not found.",
+      );
+    }
+    const project = await this.getProject(ownerId, projectId);
+    if (!project) {
       throw new ExecutionPlacementUnavailableError(
         "project-not-found",
         "Project not found.",
@@ -9194,6 +9248,17 @@ export class ServerRepository {
       }
     }
 
+    if (
+      project.originKind === "managed-folder" &&
+      placement.workerId !==
+        (project.preferredWorkerId ?? project.source?.workerId)
+    ) {
+      throw new ExecutionPlacementUnavailableError(
+        "target-mismatch",
+        "This worker-managed folder is bound to its owning worker.",
+      );
+    }
+
     const worker = await this.getWorker(ownerId, placement.workerId);
     if (!worker) {
       throw new ExecutionPlacementUnavailableError(
@@ -9249,6 +9314,7 @@ export class ServerRepository {
     isWorkerConnected?: (workerId: string) => boolean,
   ): Promise<ExecutionTargetCatalog | null> {
     const [
+      project,
       replicas,
       workers,
       worktrees,
@@ -9260,6 +9326,7 @@ export class ServerRepository {
       desktops,
       remoteSurfaces,
     ] = await Promise.all([
+      this.getProject(ownerId, projectId),
       this.listProjectReplicas(ownerId, projectId),
       this.listWorkers(ownerId),
       this.listProjectWorktrees(ownerId, projectId),
@@ -9271,8 +9338,11 @@ export class ServerRepository {
       this.listRemoteDesktops(ownerId, projectId),
       this.listRemoteSurfaces(ownerId, projectId),
     ]);
-    if (!replicas) return null;
-    return buildExecutionTargetCatalog({
+    if (!project || !replicas) return null;
+    const folderProject = project.originKind === "managed-folder";
+    const owningWorkerId =
+      project.preferredWorkerId ?? project.source?.workerId ?? null;
+    const catalog = buildExecutionTargetCatalog({
       browsers,
       chats,
       codeTabs,
@@ -9283,9 +9353,20 @@ export class ServerRepository {
       remoteSurfaces,
       replicas,
       terminals,
-      workers,
+      workers: folderProject
+        ? workers.filter(({ workerId }) => workerId === owningWorkerId)
+        : workers,
       worktrees,
     });
+    return folderProject
+      ? {
+          ...catalog,
+          targets: catalog.targets.filter(
+            ({ resourceKind }) =>
+              resourceKind !== "replica" && resourceKind !== "worktree",
+          ),
+        }
+      : catalog;
   }
 
   async listProjectWorktrees(
@@ -9332,6 +9413,7 @@ export class ServerRepository {
     return this.database
       .select({
         projectId: schema.projects.id,
+        rootKind: schema.projectWorktrees.rootKind,
         sourcePath: schema.projectSources.absolutePath,
         workerId: schema.projectWorktrees.workerId,
         worktreeId: schema.projectWorktrees.id,
@@ -9352,6 +9434,45 @@ export class ServerRepository {
       .where(
         and(
           eq(schema.projectWorktrees.workerId, workerId),
+          eq(schema.projectSources.sourceKind, "git"),
+          eq(schema.projectWorktrees.rootKind, "git-worktree"),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .orderBy(asc(schema.projectWorktrees.createdAt))
+      .limit(Math.min(128, Math.max(1, limit)));
+  }
+
+  async listWorkerExecutionRootContexts(
+    ownerId: string,
+    workerId: string,
+    limit = 128,
+  ): Promise<ProjectWorktreeObservationContext[]> {
+    return this.database
+      .select({
+        projectId: schema.projects.id,
+        rootKind: schema.projectWorktrees.rootKind,
+        sourcePath: schema.projectSources.absolutePath,
+        workerId: schema.projectWorktrees.workerId,
+        worktreeId: schema.projectWorktrees.id,
+        worktreePath: schema.projectWorktrees.absolutePath,
+      })
+      .from(schema.projectWorktrees)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.id, schema.projectWorktrees.projectSourceId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projectWorktrees.workerId, workerId),
+          eq(schema.projectWorktrees.lifecycleState, "ready"),
           isNull(schema.projectSources.removedAt),
         ),
       )
@@ -9368,6 +9489,7 @@ export class ServerRepository {
     const rows = await this.database
       .select({
         projectId: schema.projects.id,
+        rootKind: schema.projectWorktrees.rootKind,
         sourcePath: schema.projectSources.absolutePath,
         workerId: schema.projectWorktrees.workerId,
         worktreeId: schema.projectWorktrees.id,
@@ -9388,6 +9510,8 @@ export class ServerRepository {
       .where(
         and(
           eq(schema.projectWorktrees.workerId, workerId),
+          eq(schema.projectSources.sourceKind, "git"),
+          eq(schema.projectWorktrees.rootKind, "git-worktree"),
           eq(schema.projectSources.absolutePath, sourcePath),
           eq(schema.projectWorktrees.absolutePath, worktreePath),
           isNull(schema.projectSources.removedAt),
@@ -9757,6 +9881,11 @@ export class ServerRepository {
       .limit(1);
     const source = ownedRows[0]?.source;
     if (!source) return null;
+    if (source.sourceKind !== "git") {
+      throw new Error(
+        "Git worktree reconciliation is unavailable for folder sources.",
+      );
+    }
     if (source.absolutePath !== inventory.sourcePath) {
       throw new Error("Worker inventory referred to a different replica path.");
     }
@@ -10319,6 +10448,7 @@ export class ServerRepository {
           planMode: row.chat.planMode as PlanMode,
           pendingPlanQuestion: row.chat.pendingPlanQuestion,
           projectId: row.chat.projectId,
+          rootKind: row.worktree.rootKind,
           threadId: runtime.codexThreadId,
           workerId: row.worktree.workerId,
           worktreeId: row.worktree.id,
@@ -12851,6 +12981,25 @@ export class ServerRepository {
     return rows.map(({ view }) => toProjectViewSummary(view));
   }
 
+  async getProjectViewProjectId(
+    ownerId: string,
+    viewId: string,
+  ): Promise<string | null> {
+    const rows = await this.database
+      .select({ projectId: schema.projectViews.projectId })
+      .from(schema.projectViews)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectViews.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.projectViews.id, viewId))
+      .limit(1);
+    return rows[0]?.projectId ?? null;
+  }
+
   async createProjectView(
     ownerId: string,
     projectId: string,
@@ -13073,6 +13222,7 @@ export class ServerRepository {
       ? {
           terminalId: row.terminal.id,
           projectId: row.terminal.projectId,
+          rootKind: row.worktree.rootKind,
           workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
           cwd: terminalWorkingDirectory(
@@ -13997,6 +14147,7 @@ export class ServerRepository {
       planMode: row.chat.planMode as PlanMode,
       pendingPlanQuestion: row.chat.pendingPlanQuestion,
       projectId: row.chat.projectId,
+      rootKind: row.worktree.rootKind,
       status: row.chat.status as ChatSummary["status"],
       threadId: row.runtime?.codexThreadId ?? null,
       workerId: row.worktree.workerId,

@@ -95,6 +95,7 @@ export async function readProjectRepositoryStats(
   );
 
   return projectRepositoryStatsSchema.parse({
+    kind: "git",
     commitCount: Number.parseInt(commitCountText, 10) || 0,
     trackedFileCount: trackedPaths.length,
     trackedByteCount,

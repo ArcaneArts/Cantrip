@@ -216,6 +216,9 @@ export function ProjectOverview({
   const runningCount = orderedSurfaces.filter(
     (surface) => projectSurfaceRuntimeState(surface).running,
   ).length;
+  const folderStats = stats?.kind === "folder" ? stats : null;
+  const gitStats = stats?.kind === "git" ? stats : null;
+  const folderProject = project.originKind === "managed-folder";
   const loadingValue = statsLoading ? (
     <Loader2 className="size-5 animate-spin text-muted-foreground" />
   ) : (
@@ -310,23 +313,45 @@ export function ProjectOverview({
           />
           <MetricCard
             icon={<GitCommitHorizontal className="size-3.5" />}
-            label="Commits"
-            value={stats ? countFormat.format(stats.commitCount) : loadingValue}
-            detail="Reachable repository history"
+            label={folderProject ? "Files" : "Commits"}
+            value={
+              folderStats
+                ? countFormat.format(folderStats.fileCount)
+                : gitStats
+                  ? countFormat.format(gitStats.commitCount)
+                  : loadingValue
+            }
+            detail={
+              folderProject
+                ? "Files in this folder"
+                : "Reachable repository history"
+            }
           />
           <MetricCard
             icon={<Files className="size-3.5" />}
-            label="Lines of code"
+            label={folderProject ? "Lines of text" : "Lines of code"}
             value={stats ? countFormat.format(stats.lineCount) : loadingValue}
-            detail="Lines in tracked text files"
+            detail={
+              folderProject
+                ? "Lines in bounded text files"
+                : "Lines in tracked text files"
+            }
           />
           <MetricCard
             icon={<HardDrive className="size-3.5" />}
-            label="Repository size"
+            label={folderProject ? "Folder size" : "Repository size"}
             value={
-              stats ? formatByteCount(stats.trackedByteCount) : loadingValue
+              folderStats
+                ? formatByteCount(folderStats.byteCount)
+                : gitStats
+                  ? formatByteCount(gitStats.trackedByteCount)
+                  : loadingValue
             }
-            detail="Tracked files on this worker"
+            detail={
+              folderProject
+                ? "Files scanned on this worker"
+                : "Tracked files on this worker"
+            }
           />
           <MetricCard
             icon={<Coins className="size-3.5" />}
@@ -485,12 +510,20 @@ export function ProjectOverview({
 
           <aside className="space-y-5">
             <div className="rounded-2xl border bg-card p-5 shadow-sm">
-              <h2 className="font-semibold">Repository</h2>
+              <h2 className="font-semibold">
+                {folderProject ? "Folder" : "Repository"}
+              </h2>
               <dl className="mt-4 space-y-3 text-sm">
                 <div className="flex items-center justify-between gap-4">
-                  <dt className="text-muted-foreground">Tracked files</dt>
+                  <dt className="text-muted-foreground">
+                    {folderProject ? "Files" : "Tracked files"}
+                  </dt>
                   <dd className="font-medium tabular-nums">
-                    {stats ? countFormat.format(stats.trackedFileCount) : "—"}
+                    {folderStats
+                      ? countFormat.format(folderStats.fileCount)
+                      : gitStats
+                        ? countFormat.format(gitStats.trackedFileCount)
+                        : "—"}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-4">
