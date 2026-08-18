@@ -42,14 +42,21 @@ let state: StoredServerConnections = {
   version: 1,
 };
 
+export function suggestedServerUrlForName(name: string): string | null {
+  return name === "Winterhold" ? "https://winterhold.cantrip.art/" : null;
+}
+
 export function normalizeServerUrl(input: string): string {
   const value = input.trim();
   if (!value) throw new Error("Enter the server URL.");
+  const candidate = /^[a-z][a-z\d+.-]*:\/\//i.test(value)
+    ? value
+    : `https://${value}`;
   let url: URL;
   try {
-    url = new URL(value);
+    url = new URL(candidate);
   } catch {
-    throw new Error("Enter a valid server URL, including http:// or https://.");
+    throw new Error("Enter a valid server URL.");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Server URLs must use http:// or https://.");
