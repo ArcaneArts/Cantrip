@@ -371,6 +371,31 @@
   }
 }
 
+/* iOS zooms the entire webview when a focused text control computes below
+   16px. Keep compact and touch layouts at that threshold so forms, chat
+   composers, and rich editors retain the app's fixed viewport while typing. */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  :where(
+    input:not(
+      [type="button"],
+      [type="checkbox"],
+      [type="color"],
+      [type="file"],
+      [type="hidden"],
+      [type="radio"],
+      [type="range"],
+      [type="reset"],
+      [type="submit"]
+    ),
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable="false"]),
+    [role="textbox"]
+  ) {
+    font-size: 16px;
+  }
+}
+
 @keyframes agent-inspect-recent-command {
   0% {
     opacity: 0;
