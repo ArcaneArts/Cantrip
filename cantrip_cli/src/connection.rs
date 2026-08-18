@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpStream};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -224,9 +224,6 @@ fn broker_request<TRequest: Serialize, TResponse: DeserializeOwned>(
         .and_then(|_| write!(stream, "Connection: close\r\n\r\n"))
         .and_then(|_| stream.write_all(&body))
         .map_err(|error| ConnectionError::Broker(error.to_string()))?;
-    stream
-        .shutdown(Shutdown::Write)
-        .map_err(|error| ConnectionError::Broker(error.to_string()))?;
     let mut response = Vec::new();
     stream
         .take((maximum_response_bytes + 16 * 1024 + 1) as u64)
@@ -275,10 +272,12 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::thread;
+    use std::time::Duration;
 
+    use serde_json::json;
     use tempfile::tempdir;
 
-    use super::{CachedConnection, ConnectionError, handshake, load_connection_from};
+    use super::{CachedConnection, ConnectionError, broker_post, handshake, load_connection_from};
 
     #[test]
     fn loads_a_worker_broker_connection() {
@@ -369,6 +368,92 @@ mod tests {
 
         let result = handshake(&connection).expect("authenticated handshake");
         assert_eq!(result.worker_id, "worker-example");
+        worker.join().expect("broker thread");
+    }
+
+    #[test]
+    fn keeps_the_request_socket_open_until_the_broker_responds() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("loopback listener");
+        let port = listener.local_addr().expect("listener address").port();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("broker connection");
+            let mut request = Vec::new();
+            let header_end = loop {
+                if let Some(position) = request.windows(4).position(|window| window == b"\r\n\r\n")
+                {
+                    break position;
+                }
+                let mut chunk = [0_u8; 1024];
+                let length = stream.read(&mut chunk).expect("command request");
+                assert!(length > 0, "broker request ended before its headers");
+                request.extend_from_slice(&chunk[..length]);
+            };
+            let headers = std::str::from_utf8(&request[..header_end]).expect("request headers");
+            let content_length = headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case("content-length")
+                        .then(|| value.trim().parse::<usize>().expect("content length"))
+                })
+                .expect("content-length header");
+            let expected_length = header_end + 4 + content_length;
+            while request.len() < expected_length {
+                let mut chunk = [0_u8; 1024];
+                let length = stream.read(&mut chunk).expect("command body");
+                assert!(length > 0, "broker request ended before its body");
+                request.extend_from_slice(&chunk[..length]);
+            }
+
+            stream
+                .set_read_timeout(Some(Duration::from_millis(50)))
+                .expect("probe timeout");
+            let mut probe = [0_u8; 1];
+            match stream.read(&mut probe) {
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ) => {}
+                Ok(0) => return,
+                result => panic!("unexpected request data after the HTTP body: {result:?}"),
+            }
+
+            let body = r#"{"code":"not-found","error":"Policy list is not effective for the current project."}"#;
+            write!(
+                stream,
+                "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .expect("broker error response");
+        });
+        let connection = CachedConnection {
+            version: 1,
+            endpoint: format!("http://127.0.0.1:{port}")
+                .parse()
+                .expect("broker URL"),
+            server_url: "https://cantrip.example".parse().expect("server URL"),
+            session_token: "abcdefghijklmnopqrstuvwxyz0123456789_-".to_string(),
+            worker_id: "worker-example".to_string(),
+        }
+        .validate()
+        .expect("connection");
+
+        let error = broker_post::<_, serde_json::Value>(
+            &connection,
+            "/v1/execute",
+            &json!({"command": "policy.read", "arguments": {"key": "list"}}),
+        )
+        .expect_err("broker rejection");
+        assert!(matches!(
+            error,
+            ConnectionError::BrokerStatus {
+                code: Some(code),
+                message,
+                status: 404,
+            } if code == "not-found"
+                && message == "Policy list is not effective for the current project."
+        ));
         worker.join().expect("broker thread");
     }
 }
