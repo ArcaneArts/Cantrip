@@ -103,6 +103,7 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { ModelReasoningPicker } from "@/components/chat/model-reasoning-picker";
 import { PermissionProfileControl } from "@/components/chat/permission-profile-control";
@@ -1848,6 +1849,7 @@ function ChatTranscript({
             return (
               <div
                 key={message.id}
+                data-chat-history-anchor={user ? message.id : undefined}
                 className={cn("flex gap-3", user && "justify-end")}
               >
                 {!user ? (
@@ -1952,6 +1954,12 @@ function ChatTranscript({
           />
         </div>
       </div>
+
+      <ChatHistoryRail
+        messages={messages.data ?? []}
+        viewportRef={transcriptViewportRef}
+        withComposer={!effectiveInspectOnly}
+      />
 
       <div
         aria-hidden="true"
