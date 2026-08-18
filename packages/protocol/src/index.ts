@@ -4357,11 +4357,17 @@ export const projectTabMemberSummarySchema = z.object({
 export const tabGroupSummarySchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
+  title: z.string().min(1).max(120),
   position: z.number().int().nonnegative(),
   anchorTabKey: z.string().min(1),
   members: z.array(projectTabMemberSummarySchema).min(1),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+});
+
+export const tabGroupUpdateSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  title: z.string().trim().min(1).max(120),
 });
 
 export const projectTabLayoutSummarySchema = z.object({
@@ -9917,6 +9923,7 @@ export type ProjectTabMemberSummary = z.infer<
   typeof projectTabMemberSummarySchema
 >;
 export type TabGroupSummary = z.infer<typeof tabGroupSummarySchema>;
+export type TabGroupUpdate = z.infer<typeof tabGroupUpdateSchema>;
 export type ProjectTabLayoutSummary = z.infer<
   typeof projectTabLayoutSummarySchema
 >;

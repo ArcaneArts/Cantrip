@@ -26,6 +26,7 @@ function layout(
     groups: groups.map((group, groupPosition) => ({
       id: group.id,
       projectId,
+      title: group.anchor,
       position: groupPosition,
       anchorTabKey: group.anchor,
       createdAt: timestamp,

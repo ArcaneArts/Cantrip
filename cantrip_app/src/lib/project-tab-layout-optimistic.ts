@@ -116,6 +116,9 @@ export function applyOptimisticTabLayoutCommand(
     return [
       {
         ...group,
+        ...(sourceMembers.length === 1
+          ? { title: sourceMembers[0]!.title }
+          : {}),
         anchorTabKey:
           group.anchorTabKey === command.tabKey
             ? sourceMembers[0]!.tabKey
@@ -132,6 +135,7 @@ export function applyOptimisticTabLayoutCommand(
       {
         id: groupId,
         projectId: layout.projectId,
+        title: movedMember.title,
         position: command.targetGroupPosition ?? groups.length,
         anchorTabKey: command.tabKey,
         members: [{ ...movedMember, groupId, position: 0 }],

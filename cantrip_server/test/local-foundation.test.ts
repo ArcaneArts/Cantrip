@@ -4739,13 +4739,53 @@ describe("local server foundation", () => {
         .find(({ id }) => id === explorerGroup.id)
         ?.members.map(({ tabKey }) => tabKey),
     ).toEqual([`explorer:${explorer.id}`, `view:${groupedIssuesView.id}`]);
+    expect(
+      groupedTabLayout.groups.find(({ id }) => id === explorerGroup.id)?.title,
+    ).toBe("Source browser");
+    const renamedGroupLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/projects/${project.id}/tab-groups/${explorerGroup.id}`,
+          payload: {
+            revision: groupedTabLayout.revision,
+            title: "Research",
+          },
+        })
+      ).json(),
+    );
+    expect(
+      renamedGroupLayout.groups.find(({ id }) => id === explorerGroup.id)
+        ?.title,
+    ).toBe("Research");
+    expect(
+      await firstApp.inject({
+        method: "PATCH",
+        url: `/api/project-views/${groupedIssuesView.id}`,
+        payload: { title: "Tracker" },
+      }),
+    ).toMatchObject({ statusCode: 200 });
+    const independentlyNamedLayout = projectTabLayoutSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "GET",
+          url: `/api/projects/${project.id}/tab-groups`,
+        })
+      ).json(),
+    );
+    expect(
+      independentlyNamedLayout.groups.find(({ id }) => id === explorerGroup.id),
+    ).toMatchObject({
+      title: "Research",
+      members: [{ title: "Source browser" }, { title: "Tracker" }],
+    });
     const reorderedTabLayout = projectTabLayoutSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/projects/${project.id}/tab-groups/${explorerGroup.id}/members/order`,
           payload: {
-            revision: groupedTabLayout.revision,
+            revision: independentlyNamedLayout.revision,
             tabKeys: [
               `view:${groupedIssuesView.id}`,
               `explorer:${explorer.id}`,
@@ -4788,8 +4828,12 @@ describe("local server foundation", () => {
       ).json(),
     );
     expect(splitTabLayout.groups[0]?.members).toMatchObject([
-      { tabKey: `view:${groupedIssuesView.id}` },
+      { tabKey: `view:${groupedIssuesView.id}`, title: "Tracker" },
     ]);
+    expect(splitTabLayout.groups[0]?.title).toBe("Tracker");
+    expect(
+      splitTabLayout.groups.find(({ id }) => id === explorerGroup.id)?.title,
+    ).toBe("Source browser");
     const reorderedGroupsLayout = projectTabLayoutSummarySchema.parse(
       (
         await firstApp.inject({
@@ -4823,6 +4867,7 @@ describe("local server foundation", () => {
       mergedTabLayout.groups.find(({ id }) => id === explorerGroup.id),
     ).toMatchObject({
       anchorTabKey: `explorer:${explorer.id}`,
+      title: "Source browser",
       members: [
         { tabKey: `explorer:${explorer.id}` },
         { tabKey: `view:${groupedIssuesView.id}` },
@@ -6201,6 +6246,7 @@ describe("local server foundation", () => {
       ),
     ).toMatchObject({
       anchorTabKey: `view:${groupedIssuesView.id}`,
+      title: "Tracker",
       members: [{ tabKey: `view:${groupedIssuesView.id}` }],
     });
     expect(

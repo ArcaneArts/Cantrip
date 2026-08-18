@@ -16,6 +16,7 @@ const layout: ProjectTabLayoutSummary = {
     {
       id: "group-a",
       projectId: "project-1",
+      title: "Chat a",
       position: 0,
       anchorTabKey: "chat:a",
       createdAt: timestamp,
@@ -35,6 +36,7 @@ const layout: ProjectTabLayoutSummary = {
     {
       id: "group-b",
       projectId: "project-1",
+      title: "Explorer b",
       position: 1,
       anchorTabKey: "explorer:b",
       createdAt: timestamp,
@@ -66,7 +68,9 @@ describe("optimistic tab layouts", () => {
       targetGroupPosition: 1,
     });
     expect(next.groups[0]?.anchorTabKey).toBe("terminal:a");
+    expect(next.groups[0]?.title).toBe("terminal:a");
     expect(next.groups[1]?.anchorTabKey).toBe("chat:a");
+    expect(next.groups[1]?.title).toBe("chat:a");
     expect(next.groups.map(({ position }) => position)).toEqual([0, 1, 2]);
   });
 
@@ -83,6 +87,7 @@ describe("optimistic tab layouts", () => {
       "explorer:b",
       "terminal:a",
     ]);
+    expect(next.groups[0]?.title).toBe("Chat a");
   });
 
   it("restores the authoritative snapshot after a rejected mutation", () => {

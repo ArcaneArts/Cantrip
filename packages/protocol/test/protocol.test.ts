@@ -148,6 +148,7 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  tabGroupUpdateSchema,
   unprobedCodexRuntimeReport,
   userSettingsSchema,
   userSettingsUpdateSchema,
@@ -4030,6 +4031,7 @@ describe("Cantrip protocol", () => {
           {
             id: "group-1",
             projectId: "project-1",
+            title: "Chat",
             position: 0,
             anchorTabKey: "chat:chat-1",
             members: [
@@ -4080,6 +4082,12 @@ describe("Cantrip protocol", () => {
         targetGroupPosition: 1,
       }),
     ).toMatchObject({ targetGroupId: null, targetGroupPosition: 1 });
+    expect(
+      tabGroupUpdateSchema.parse({ revision: 3, title: "  Agents  " }),
+    ).toEqual({ revision: 3, title: "Agents" });
+    expect(
+      tabGroupUpdateSchema.safeParse({ revision: 3, title: "   " }).success,
+    ).toBe(false);
   });
 
   it("rejects an unhealthy server payload", () => {

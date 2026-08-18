@@ -9,6 +9,7 @@ export const MOBILE_BOTTOM_TAB_LONG_PRESS_MS = 500;
 
 export interface MobileBottomNavigationItem {
   id: string;
+  label?: string;
   surface?: ProjectSurface;
 }
 
@@ -97,7 +98,7 @@ export function MobileBottomNavigation({
                 aria-label={
                   showSwitcher || !item.surface
                     ? "Choose project tab group"
-                    : item.surface.title
+                    : (item.label ?? item.surface.title)
                 }
                 className={cn(
                   "flex touch-manipulation select-none flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] text-muted-foreground outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
@@ -144,7 +145,9 @@ export function MobileBottomNavigation({
                   />
                 )}
                 <span className="max-w-full truncate">
-                  {showSwitcher || !item.surface ? "Tabs" : item.surface.title}
+                  {showSwitcher || !item.surface
+                    ? "Tabs"
+                    : (item.label ?? item.surface.title)}
                 </span>
               </button>
             );

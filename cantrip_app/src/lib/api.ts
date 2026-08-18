@@ -222,6 +222,7 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  tabGroupUpdateSchema,
   taskCreateResultSchema,
   taskContinuationStartSchema,
   taskDetailSchema,
@@ -2455,6 +2456,23 @@ export async function reorderProjectTabGroups(
       {
         method: "PATCH",
         body: JSON.stringify(tabGroupOrderSchema.parse({ revision, groupIds })),
+      },
+    ),
+  );
+}
+
+export async function updateProjectTabGroup(
+  projectId: string,
+  groupId: string,
+  revision: number,
+  title: string,
+) {
+  return projectTabLayoutSummarySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(tabGroupUpdateSchema.parse({ revision, title })),
       },
     ),
   );

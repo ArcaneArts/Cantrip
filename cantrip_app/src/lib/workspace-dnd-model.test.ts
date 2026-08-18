@@ -11,6 +11,7 @@ const layout: ProjectTabLayoutSummary = {
     {
       id: "group-a",
       projectId: "project-1",
+      title: "Chat a",
       position: 0,
       anchorTabKey: "chat:a",
       createdAt: timestamp,
@@ -30,6 +31,7 @@ const layout: ProjectTabLayoutSummary = {
     {
       id: "group-b",
       projectId: "project-1",
+      title: "Explorer b",
       position: 1,
       anchorTabKey: "explorer:b",
       createdAt: timestamp,

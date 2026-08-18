@@ -7,6 +7,7 @@ import type {
   TabGroupMemberMove,
   TabGroupMemberOrder,
   TabGroupOrder,
+  TabGroupUpdate,
 } from "@cantrip/protocol";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -34,6 +35,92 @@ export function projectTabKey(kind: ProjectTabKind, tabId: string): string {
       ? "view"
       : kind;
   return `${prefix}:${tabId}`;
+}
+
+async function tabTitle(
+  database: TabLayoutExecutor,
+  member: { tabId: string; tabKind: string },
+): Promise<string> {
+  let title: string | undefined;
+  if (member.tabKind === "chat") {
+    const rows = await database
+      .select({ title: schema.chats.title })
+      .from(schema.chats)
+      .where(eq(schema.chats.id, member.tabId))
+      .limit(1);
+    title = rows[0]?.title;
+  } else if (member.tabKind === "terminal") {
+    const rows = await database
+      .select({ title: schema.terminals.title })
+      .from(schema.terminals)
+      .where(eq(schema.terminals.id, member.tabId))
+      .limit(1);
+    title = rows[0]?.title;
+  } else if (member.tabKind === "explorer") {
+    const rows = await database
+      .select({ title: schema.explorers.title })
+      .from(schema.explorers)
+      .where(eq(schema.explorers.id, member.tabId))
+      .limit(1);
+    title = rows[0]?.title;
+  } else if (member.tabKind === "browser") {
+    const rows = await database
+      .select({ title: schema.browsers.title })
+      .from(schema.browsers)
+      .where(eq(schema.browsers.id, member.tabId))
+      .limit(1);
+    title = rows[0]?.title;
+  } else if (member.tabKind === "code") {
+    const rows = await database
+      .select({ title: schema.codeTabs.title })
+      .from(schema.codeTabs)
+      .where(eq(schema.codeTabs.id, member.tabId))
+      .limit(1);
+    title = rows[0]?.title;
+  } else {
+    const rows = await database
+      .select({ title: schema.projectViews.title })
+      .from(schema.projectViews)
+      .where(eq(schema.projectViews.id, member.tabId))
+      .limit(1);
+    title = rows[0]?.title;
+  }
+  if (!title) {
+    throw new TabLayoutInvariantError(
+      `Tab layout member ${member.tabKind}:${member.tabId} has no matching surface.`,
+    );
+  }
+  return title;
+}
+
+async function preserveSingletonGroupTitle(
+  database: TabLayoutExecutor,
+  groupId: string,
+): Promise<void> {
+  const groups = await database
+    .select({ title: schema.tabGroups.title })
+    .from(schema.tabGroups)
+    .where(eq(schema.tabGroups.id, groupId))
+    .limit(1);
+  if (!groups[0] || groups[0].title !== null) return;
+
+  const members = await database
+    .select({
+      tabId: schema.tabGroupMembers.tabId,
+      tabKind: schema.tabGroupMembers.tabKind,
+    })
+    .from(schema.tabGroupMembers)
+    .where(eq(schema.tabGroupMembers.groupId, groupId))
+    .limit(2);
+  if (members.length !== 1) return;
+
+  await database
+    .update(schema.tabGroups)
+    .set({
+      title: await tabTitle(database, members[0]!),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.tabGroups.id, groupId));
 }
 
 async function bumpRevision(
@@ -111,6 +198,9 @@ export async function attachProjectTab(
       .where(eq(schema.tabGroupMembers.groupId, groupId))
       .orderBy(asc(schema.tabGroupMembers.position));
     memberPosition = positions.length;
+    if (positions.length === 1) {
+      await preserveSingletonGroupTitle(database, groupId);
+    }
   } else {
     groupId = randomUUID();
     const groups = await database
@@ -183,10 +273,16 @@ export async function detachProjectTab(
       database,
       remainingGroups.map(({ id }) => id),
     );
-  } else if (selected.group.anchorTabKey === tabKey) {
+  } else if (selected.group.anchorTabKey === tabKey || remaining.length === 1) {
     await database
       .update(schema.tabGroups)
-      .set({ anchorTabKey: remaining[0]!.tabKey, updatedAt: new Date() })
+      .set({
+        ...(selected.group.anchorTabKey === tabKey
+          ? { anchorTabKey: remaining[0]!.tabKey }
+          : {}),
+        ...(remaining.length === 1 ? { title: null } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.tabGroups.id, selected.group.id));
   }
   if (remaining.length > 0) {
@@ -360,6 +456,10 @@ export class ProjectTabLayoutRepository {
         return {
           id: group.id,
           projectId: group.projectId,
+          title:
+            group.title ??
+            groupedMembers.find(({ tabKey }) => tabKey === group.anchorTabKey)!
+              .title,
           position: group.position,
           anchorTabKey: group.anchorTabKey,
           members: groupedMembers,
@@ -368,6 +468,48 @@ export class ProjectTabLayoutRepository {
         };
       }),
     };
+  }
+
+  async updateGroup(
+    ownerId: string,
+    projectId: string,
+    groupId: string,
+    input: TabGroupUpdate,
+  ): Promise<ProjectTabLayoutSummary | null> {
+    if (!(await this.get(ownerId, projectId))) return null;
+    await this.database.transaction(async (transaction) => {
+      await claimRevision(transaction, ownerId, projectId, input.revision);
+      const groups = await transaction
+        .select({ id: schema.tabGroups.id })
+        .from(schema.tabGroups)
+        .where(
+          and(
+            eq(schema.tabGroups.id, groupId),
+            eq(schema.tabGroups.projectId, projectId),
+          ),
+        )
+        .limit(1);
+      if (!groups[0]) {
+        throw new TabLayoutInvariantError(
+          "The tab group does not belong to this project.",
+        );
+      }
+      const members = await transaction
+        .select({ tabKey: schema.tabGroupMembers.tabKey })
+        .from(schema.tabGroupMembers)
+        .where(eq(schema.tabGroupMembers.groupId, groupId))
+        .limit(2);
+      if (members.length < 2) {
+        throw new TabLayoutInvariantError(
+          "A single-tab group shares its title with its tab.",
+        );
+      }
+      await transaction
+        .update(schema.tabGroups)
+        .set({ title: input.title, updatedAt: new Date() })
+        .where(eq(schema.tabGroups.id, groupId));
+    });
+    return this.get(ownerId, projectId);
   }
 
   async reorderGroups(
@@ -533,8 +675,14 @@ export class ProjectTabLayoutRepository {
             .update(schema.tabGroups)
             .set({
               anchorTabKey: remainingSource[0]!.tabKey,
+              ...(remainingSource.length === 1 ? { title: null } : {}),
               updatedAt: new Date(),
             })
+            .where(eq(schema.tabGroups.id, selected.group.id));
+        } else if (remainingSource.length === 1) {
+          await transaction
+            .update(schema.tabGroups)
+            .set({ title: null, updatedAt: new Date() })
             .where(eq(schema.tabGroups.id, selected.group.id));
         }
       }
@@ -574,6 +722,9 @@ export class ProjectTabLayoutRepository {
             asc(schema.tabGroupMembers.position),
             asc(schema.tabGroupMembers.tabKey),
           );
+        if (targetMembers.length === 1) {
+          await preserveSingletonGroupTitle(transaction, targetGroupId);
+        }
         await transaction.insert(schema.tabGroupMembers).values({
           ...selected.member,
           groupId: targetGroupId,
