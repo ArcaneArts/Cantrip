@@ -5,6 +5,7 @@ import type {
   ModelProviderSummary,
   ModelRouteInput,
   ProviderModelCatalogEntry,
+  ProviderModelCatalogResult,
   ThemePreference,
   UserSettings,
   TunnelSummary,
@@ -73,7 +74,6 @@ import {
   deleteModelProvider,
   getSettings,
   getCodexAuthStatus,
-  getProviderModelCatalog,
   getWorkers,
   logoutCodex,
   startCodexDeviceLogin,
@@ -117,7 +117,12 @@ import {
   providerWeeklyRemainingPercent,
 } from "./provider-usage-display";
 import { ProviderAccountPriorityChips } from "./provider-account-priority";
+import { cacheProviderModelCatalog } from "./provider-catalog-cache";
 import { ProviderTelemetryDialog } from "./provider-telemetry-dialog";
+import {
+  providerCatalogQueryKey,
+  useProviderCatalog,
+} from "./use-provider-catalog";
 
 export type SettingsSection =
   | "general"
@@ -258,17 +263,12 @@ function ProviderRow({
 }) {
   const queryClient = useQueryClient();
   const supportsCatalog = providerSupportsCatalog(provider);
-  const catalogQueryKey = ["provider-catalog", provider.id, workerId];
-  const catalog = useQuery({
-    enabled: supportsCatalog,
-    queryFn: () => getProviderModelCatalog(provider.id, workerId),
-    queryKey: catalogQueryKey,
-    retry: false,
-    staleTime: 60_000,
-  });
+  const catalogQueryKey = providerCatalogQueryKey(provider.id, workerId);
+  const catalog = useProviderCatalog(provider.id, workerId, supportsCatalog);
   const refreshCatalog = useMutation({
     mutationFn: () => refreshProviderModelCatalog(provider.id, workerId),
     onSuccess: (result) => {
+      cacheProviderModelCatalog(provider.id, workerId, result);
       queryClient.setQueryData(catalogQueryKey, result);
       void queryClient.invalidateQueries({ queryKey: ["settings"] });
     },
@@ -291,20 +291,29 @@ function ProviderRow({
     (account) => account.credentialState === "signed-in",
   );
   const weeklyAvailability = providerWeeklyAvailability(provider.accounts);
+  const showingCachedCatalog = catalog.isPlaceholderData;
+  const catalogSyncing = catalog.isFetching || refreshCatalog.isPending;
   const statusTone =
-    displayStatus === "current"
-      ? "text-emerald-500"
-      : displayStatus === "failed"
-        ? "text-destructive"
-        : displayStatus === "stale"
-          ? "text-amber-500"
-          : "text-muted-foreground";
-  const statusLabel =
-    displayStatus === "manual"
-      ? "Manual"
-      : displayStatus === "unknown" && catalog.isLoading
-        ? "Loading"
-        : displayStatus[0]!.toUpperCase() + displayStatus.slice(1);
+    showingCachedCatalog || (catalog.isFetching && Boolean(catalog.data))
+      ? "text-amber-500"
+      : displayStatus === "current"
+        ? "text-emerald-500"
+        : displayStatus === "failed"
+          ? "text-destructive"
+          : displayStatus === "stale"
+            ? "text-amber-500"
+            : "text-muted-foreground";
+  const statusLabel = refreshCatalog.isPending
+    ? "Refreshing"
+    : showingCachedCatalog
+      ? "Cached"
+      : catalog.isFetching && catalog.data
+        ? "Syncing"
+        : displayStatus === "manual"
+          ? "Manual"
+          : displayStatus === "unknown" && catalog.isLoading
+            ? "Loading"
+            : displayStatus[0]!.toUpperCase() + displayStatus.slice(1);
 
   return (
     <div
@@ -352,7 +361,7 @@ function ProviderRow({
       </div>
       <div className="hidden min-w-0 sm:block">
         <p className={`truncate text-xs font-medium ${statusTone}`}>
-          {refreshCatalog.isPending ? "Refreshing" : statusLabel}
+          {statusLabel}
           {supportsCatalog ? ` · ${availableModelCount} available` : ""}
         </p>
         <p
@@ -394,12 +403,12 @@ function ProviderRow({
             className="size-7"
             size="icon"
             variant="ghost"
-            disabled={refreshCatalog.isPending}
+            disabled={catalogSyncing}
             title="Refresh model catalog"
             onClick={() => refreshCatalog.mutate()}
           >
             <RefreshCw
-              className={`size-3.5 ${refreshCatalog.isPending ? "animate-spin" : ""}`}
+              className={`size-3.5 ${catalogSyncing ? "animate-spin" : ""}`}
             />
             <span className="sr-only">Refresh {provider.name} catalog</span>
           </Button>
@@ -433,13 +442,11 @@ function CatalogModelField({
   onChange(value: string): void;
 }) {
   const supportsCatalog = provider ? providerSupportsCatalog(provider) : false;
-  const catalog = useQuery({
-    enabled: Boolean(provider && supportsCatalog),
-    queryFn: () => getProviderModelCatalog(provider!.id, workerId),
-    queryKey: ["provider-catalog", provider?.id, workerId],
-    retry: false,
-    staleTime: 60_000,
-  });
+  const catalog = useProviderCatalog(
+    provider?.id,
+    workerId,
+    Boolean(provider && supportsCatalog),
+  );
   const visibleModels =
     catalog.data?.models.filter(({ hidden }) => !hidden) ?? [];
   const availableModelIds = catalog.data
@@ -501,7 +508,7 @@ function CatalogModelMetadata({
   workerId,
 }: {
   accountScoped: boolean;
-  catalog: Awaited<ReturnType<typeof getProviderModelCatalog>> | undefined;
+  catalog: ProviderModelCatalogResult | undefined;
   loading: boolean;
   model: ProviderModelCatalogEntry | undefined;
   supportsCatalog: boolean;
@@ -786,8 +793,14 @@ export function SettingsPage({
     if (!providerDialogOpen || !providerId || !workerId) return;
     let cancelled = false;
     void refreshProviderModelCatalog(providerId, workerId)
-      .then(async () => {
-        if (!cancelled) await reloadAccountProvider(providerId);
+      .then(async (catalog) => {
+        if (cancelled) return;
+        cacheProviderModelCatalog(providerId, workerId, catalog);
+        queryClient.setQueryData(
+          providerCatalogQueryKey(providerId, workerId),
+          catalog,
+        );
+        await reloadAccountProvider(providerId);
       })
       .catch(() => undefined);
     return () => {
