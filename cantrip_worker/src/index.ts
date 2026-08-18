@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   providerQuotaSnapshotSchema,
+  workerRestartAcknowledgementSchema,
   type WorkerCommand,
   type WorkerEvent,
 } from "@cantrip/protocol";
@@ -125,6 +126,11 @@ import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
+import {
+  runWorkerRuntimeLoop,
+  scheduleWorkerRuntimeRestart,
+  type WorkerRuntimeOutcome,
+} from "./runtime-loop.js";
 import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorktreeManager } from "./worktrees.js";
@@ -210,7 +216,7 @@ async function workerStartupPhase<T>(
   }
 }
 
-async function start(): Promise<void> {
+async function start(): Promise<WorkerRuntimeOutcome> {
   const startupStartedAtMs = Date.now();
   workerLogger.event("info", "Cantrip Worker startup began", {
     event: "worker.startup.started",
@@ -352,6 +358,7 @@ async function start(): Promise<void> {
   let heartbeatInFlight: Promise<void> | null = null;
   let lastConnectionError: string | null = null;
   let stopping = false;
+  let requestRuntimeRestart: (() => void) | null = null;
   const attachments = new AttachmentStore(config.dataDirectory);
   const externalChatAttachments = new ExternalChatAttachmentStagingStore(
     config.dataDirectory,
@@ -621,6 +628,12 @@ async function start(): Promise<void> {
         };
       case "worker.version":
         return cantripVersion;
+      case "worker.restart":
+        if (!requestRuntimeRestart) {
+          throw new Error("The worker restart controller is unavailable.");
+        }
+        scheduleWorkerRuntimeRestart(requestRuntimeRestart);
+        return workerRestartAcknowledgementSchema.parse({ restarting: true });
       case "diagnostics.logs.read":
         return readWorkerLogs(command);
       case "worker.credential.rotate":
@@ -1943,71 +1956,87 @@ async function start(): Promise<void> {
     return heartbeatInFlight;
   };
 
-  await publish();
-  automationScheduler.start();
-  const heartbeatTimer = setInterval(
-    () => void publish(),
-    HEARTBEAT_INTERVAL_MS,
-  );
-
-  await new Promise<void>((resolve) => {
-    const stop = async (signal: NodeJS.Signals) => {
-      if (stopping) {
-        return;
-      }
-
-      stopping = true;
-      const shutdownStartedAtMs = Date.now();
-      workerLogger.event("info", "Cantrip Worker shutdown began", {
-        event: "worker.shutdown.started",
-        subsystem: "worker-startup",
-        operation: "shutdown",
-        status: "started",
-        workerId: config.workerId,
-        signal,
-      });
-      clearInterval(heartbeatTimer);
-      automationScheduler.close();
-      worktrees.close();
-      commandConnection.close();
-      await directBroker.close();
-      terminalDirectEndpoints.close();
-      codeDirectEndpoints.close();
-      for (const client of codexAuthClients.values()) client.close();
-      for (const client of grokAuthClients.values()) client.close();
-      for (const client of serverManagedGrokClients.values()) client.close();
-      terminals.closeAll();
-      tunnelDestinations.close();
-      await projectShares.closeAll();
-      await code.close();
-      await remoteSurfaces.closeAll();
-      await desktopAdapter.shutdown();
-      await cliBroker.close();
-      for (const runtime of codexRuntimes.values()) {
-        runtime.close();
-      }
-      for (const runtime of codexCatalogRuntimes.values()) {
-        runtime.close();
-      }
-      workerLogger.flushRepeated();
-      workerLogger.event("info", "Cantrip Worker stopped", {
-        event: "worker.shutdown.completed",
-        subsystem: "worker-startup",
-        operation: "shutdown",
-        status: "completed",
-        workerId: config.workerId,
-        signal,
-        durationMs: Date.now() - shutdownStartedAtMs,
-      });
-      resolve();
-    };
-
-    process.once("SIGINT", () => void stop("SIGINT"));
-    process.once("SIGTERM", () => void stop("SIGTERM"));
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let resolveShutdown!: (outcome: WorkerRuntimeOutcome) => void;
+  const shutdownOutcome = new Promise<WorkerRuntimeOutcome>((resolve) => {
+    resolveShutdown = resolve;
   });
+  const stop = async (
+    outcome: WorkerRuntimeOutcome,
+    trigger: NodeJS.Signals | "restart-request",
+  ) => {
+    if (stopping) return;
+
+    stopping = true;
+    requestRuntimeRestart = null;
+    process.off("SIGINT", handleSigint);
+    process.off("SIGTERM", handleSigterm);
+    const shutdownStartedAtMs = Date.now();
+    workerLogger.event("info", "Cantrip Worker shutdown began", {
+      event: "worker.shutdown.started",
+      subsystem: "worker-startup",
+      operation: "shutdown",
+      reasonCode: outcome === "restart" ? "restart-requested" : "signal",
+      status: "started",
+      workerId: config.workerId,
+      trigger,
+    });
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    automationScheduler.close();
+    worktrees.close();
+    commandConnection.close();
+    await directBroker.close();
+    terminalDirectEndpoints.close();
+    codeDirectEndpoints.close();
+    for (const client of codexAuthClients.values()) client.close();
+    for (const client of grokAuthClients.values()) client.close();
+    for (const client of serverManagedGrokClients.values()) client.close();
+    terminals.closeAll();
+    tunnelDestinations.close();
+    await projectShares.closeAll();
+    await code.close();
+    await remoteSurfaces.closeAll();
+    await desktopAdapter.shutdown();
+    await cliBroker.close();
+    for (const runtime of codexRuntimes.values()) {
+      runtime.close();
+    }
+    for (const runtime of codexCatalogRuntimes.values()) {
+      runtime.close();
+    }
+    workerLogger.flushRepeated();
+    workerLogger.event("info", "Cantrip Worker stopped", {
+      event: "worker.shutdown.completed",
+      subsystem: "worker-startup",
+      operation: "shutdown",
+      reasonCode: outcome === "restart" ? "restart-requested" : "signal",
+      status: "completed",
+      workerId: config.workerId,
+      trigger,
+      durationMs: Date.now() - shutdownStartedAtMs,
+    });
+    resolveShutdown(outcome);
+  };
+  function handleSigint() {
+    void stop("stop", "SIGINT");
+  }
+  function handleSigterm() {
+    void stop("stop", "SIGTERM");
+  }
+  requestRuntimeRestart = () => void stop("restart", "restart-request");
+  process.once("SIGINT", handleSigint);
+  process.once("SIGTERM", handleSigterm);
+
+  await publish();
+  if (!stopping) {
+    automationScheduler.start();
+    heartbeatTimer = setInterval(() => void publish(), HEARTBEAT_INTERVAL_MS);
+  }
+
+  return await shutdownOutcome;
 }
 
-start().catch((error: unknown) => {
+runWorkerRuntimeLoop(start).catch((error: unknown) => {
   workerLogger.event("fatal", "Cantrip Worker failed to start", {
     event: "worker.startup.failed",
     subsystem: "worker-startup",

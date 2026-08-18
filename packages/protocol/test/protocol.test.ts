@@ -168,6 +168,12 @@ import {
 } from "../src/index.js";
 
 describe("worker channel JSON codec", () => {
+  it("accepts a worker restart control command", () => {
+    expect(workerCommandSchema.parse({ type: "worker.restart" })).toEqual({
+      type: "worker.restart",
+    });
+  });
+
   it("round-trips request and server envelopes", () => {
     const request = {
       kind: "request" as const,

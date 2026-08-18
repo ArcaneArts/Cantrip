@@ -369,6 +369,8 @@ import {
   workerListSchema,
   workerManagementListSchema,
   workerCliCommandCallSchema,
+  workerRestartAcknowledgementSchema,
+  workerRestartResultSchema,
   workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
@@ -8858,6 +8860,50 @@ export async function buildApp({
             };
           }),
         ),
+      );
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/restart",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const record = (await repository.listWorkerManagement(ownerId)).find(
+        ({ worker }) => worker.workerId === request.params.workerId,
+      );
+      if (!record) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      try {
+        workerRestartAcknowledgementSchema.parse(
+          await bridge.request(
+            request.params.workerId,
+            { type: "worker.restart" },
+            { ownerId, timeoutMs: 10_000 },
+          ),
+        );
+      } catch (error) {
+        if (error instanceof WorkerUnavailableError) {
+          return reply
+            .code(409)
+            .send({ error: "The worker is offline and cannot be restarted." });
+        }
+        throw error;
+      }
+      serverLogger.info("Worker restart requested", {
+        event: "worker.runtime.restart-requested",
+        subsystem: "worker-command",
+        operation: "worker.restart",
+        status: "accepted",
+        requestId: request.id,
+        workerId: request.params.workerId,
+      });
+      return reply.code(202).send(
+        workerRestartResultSchema.parse({
+          workerId: request.params.workerId,
+          status: "restarting",
+        }),
       );
     },
   );
