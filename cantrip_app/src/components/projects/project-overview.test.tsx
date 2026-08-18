@@ -71,6 +71,7 @@ const worktree = {
   updatedAt: now,
 } satisfies ProjectWorktreeSummary;
 const stats = {
+  kind: "git",
   commitCount: 321,
   trackedFileCount: 2_345,
   trackedByteCount: 3.5 * 1024 ** 3,
@@ -205,6 +206,56 @@ describe("project overview", () => {
     expect(formatByteCount(0)).toBe("0 B");
     expect(formatByteCount(1024)).toBe("1 KB");
     expect(formatByteCount(1.5 * 1024 ** 3)).toBe("1.5 GB");
+  });
+
+  it("uses filesystem terminology for managed-folder statistics", () => {
+    const folderProject = {
+      ...project,
+      originKind: "managed-folder" as const,
+      capabilities: {
+        git: false,
+        github: false,
+        worktrees: false,
+        replicas: false,
+        relocation: false,
+      },
+      github: null,
+      source: {
+        ...project.source,
+        sourceKind: "folder" as const,
+        path: "/worker/folders/project-1",
+        displayPath: "folders/project-1",
+      },
+    } satisfies ProjectSummary;
+    const folderStats = {
+      kind: "folder" as const,
+      fileCount: 7,
+      byteCount: 2_048,
+      textFileCount: 5,
+      lineCount: 123,
+      excludedFileCount: 2,
+      truncated: false,
+    } satisfies ProjectRepositoryStats;
+    const markup = renderToStaticMarkup(
+      <ProjectOverview
+        creatingKinds={new Set()}
+        project={folderProject}
+        stats={folderStats}
+        statsLoading={false}
+        usageLoading={false}
+        surfaces={[]}
+        workerOnline
+        worktrees={[]}
+        onCreateSurface={vi.fn()}
+        onOpenSurface={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain("Lines of text");
+    expect(markup).toContain("Folder size");
+    expect(markup).toContain("2 KB");
+    expect(markup).toContain("Files in this folder");
+    expect(markup).not.toContain("Reachable repository history");
   });
 
   it("renders a useful empty state before the first project tab exists", () => {

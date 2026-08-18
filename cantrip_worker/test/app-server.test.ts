@@ -816,6 +816,7 @@ describe("codexWorktreeTurnPolicy", () => {
     expect(
       codexWorktreeTurnPolicy({
         cwd: "/workspace/project",
+        rootKind: "git-worktree",
         isPrimary: true,
         resultMode: { kind: "visible" },
         worktreeMode: "agent-managed",
@@ -835,6 +836,7 @@ describe("codexWorktreeTurnPolicy", () => {
   it("grants checkout-scoped writes outside Primary and explains pinned mode", () => {
     const policy = codexWorktreeTurnPolicy({
       cwd: "/workspace/project/../project/feature",
+      rootKind: "git-worktree",
       isPrimary: false,
       resultMode: { kind: "visible" },
       worktreeMode: "pinned",
@@ -856,6 +858,7 @@ describe("codexWorktreeTurnPolicy", () => {
     expect(
       codexWorktreeTurnPolicy({
         cwd: "/workspace/project",
+        rootKind: "git-worktree",
         isPrimary: true,
         resultMode: { kind: "visible" },
         worktreeMode: "agent-managed",
@@ -875,6 +878,7 @@ describe("codexWorktreeTurnPolicy", () => {
   it("adds current policy summaries as separate application context", () => {
     const policy = codexWorktreeTurnPolicy({
       cwd: "/workspace/project",
+      rootKind: "git-worktree",
       isPrimary: false,
       resultMode: { kind: "visible" },
       policyContext:
@@ -893,6 +897,7 @@ describe("codexWorktreeTurnPolicy", () => {
   it("forces structured Task turns read-only even with implementation access", () => {
     const policy = codexWorktreeTurnPolicy({
       cwd: "/workspace/project",
+      rootKind: "git-worktree",
       isPrimary: false,
       resultMode: { kind: "structured", outputSchema: { type: "object" } },
       worktreeMode: "pinned",
@@ -910,6 +915,31 @@ describe("codexWorktreeTurnPolicy", () => {
     expect(policy.additionalContext["cantrip.policies"]?.value).toBe(
       "Effective policy summaries",
     );
+  });
+
+  it("uses direct non-Git context for worker-managed folders", () => {
+    const policy = codexWorktreeTurnPolicy({
+      cwd: "/workspace/folder",
+      isPrimary: true,
+      resultMode: { kind: "visible" },
+      rootKind: "folder-root",
+      worktreeMode: "agent-managed",
+      worktreePolicy: "required-for-writes",
+    });
+
+    expect(policy.sandboxPolicy).toEqual({
+      type: "workspaceWrite",
+      writableRoots: ["/workspace/folder"],
+      networkAccess: false,
+      excludeTmpdirEnvVar: false,
+      excludeSlashTmp: false,
+    });
+    const context = policy.additionalContext["cantrip.worktree-policy"].value;
+    expect(context).toContain("worker-managed folder without Git protection");
+    expect(context).toContain("Writes occur directly");
+    expect(context).toContain("worktree commands are unavailable");
+    expect(context).toContain("git init does not convert");
+    expect(context).not.toContain("may use `cantrip worktree`");
   });
 });
 

@@ -64,6 +64,24 @@ const bridge: WorkerCommandBus = {
       };
     }
     if (command.type === "project.folder.delete") return { deleted: true };
+    if (command.type === "project.folder-stats") {
+      return {
+        kind: "folder",
+        fileCount: 0,
+        byteCount: 0,
+        textFileCount: 0,
+        lineCount: 0,
+        excludedFileCount: 0,
+        truncated: false,
+      };
+    }
+    if (command.type === "surface.desktop.probe") {
+      return { available: true, message: null };
+    }
+    if (command.type === "surface.desktop.targets") {
+      return { monitors: [], windows: [] };
+    }
+    if (command.type === "browser.services.discover") return [];
     if (command.type === "terminal.close") return { closed: true };
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
@@ -82,9 +100,18 @@ beforeAll(async () => {
     codexVersion: null,
     codexRuntime: unprobedCodexRuntimeReport,
     managedFolders: { create: true, remove: true },
+    code: {
+      available: true,
+      version: "1.109.5",
+      upstreamRevision: "4ffe2270acdf711bbefecc3e8c79f4b3631640e5",
+      patchset: 1,
+      transport: "web-proxy",
+      maxSessions: 4,
+      reason: null,
+    },
     remoteSurfaces: {
-      browser: false,
-      desktop: false,
+      browser: true,
+      desktop: true,
       transports: ["websocket"],
       iceTransportPolicies: ["relay"],
       maxSessions: 1,
@@ -99,8 +126,8 @@ beforeAll(async () => {
     codexVersion: null,
     codexRuntime: unprobedCodexRuntimeReport,
     remoteSurfaces: {
-      browser: false,
-      desktop: false,
+      browser: true,
+      desktop: true,
       transports: ["websocket"],
       iceTransportPolicies: ["relay"],
       maxSessions: 1,
@@ -282,5 +309,249 @@ describe("managed folder project lifecycle", () => {
         payload: { deleteLocalFiles: false },
       }),
     ).toMatchObject({ statusCode: 204 });
+  });
+
+  it("binds every runtime surface and target to the folder owner", async () => {
+    const project = await createFolder("Runtime folder");
+    const ready = await waitUntilReady(project.id);
+    const root = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
+    )[0]!;
+
+    for (const [suffix, payload] of [
+      ["chats", { title: "Folder agent" }],
+      ["tasks", { title: "Folder task" }],
+      ["terminals", { title: "Folder terminal" }],
+      ["explorers", { title: "Folder explorer" }],
+      ["code-tabs", { title: "Folder code" }],
+      ["browsers", { title: "Folder browser" }],
+      ["remote-desktops", {}],
+    ] as const) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/api/projects/${project.id}/${suffix}`,
+        payload,
+      });
+      expect(response.statusCode, `${suffix}: ${response.body}`).toBe(201);
+    }
+
+    const resolved = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/placement/resolve`,
+      payload: { surfaceKind: "browser" },
+    });
+    expect(resolved.statusCode).toBe(200);
+    expect(resolved.json()).toMatchObject({
+      placement: {
+        workerId: "folder-worker",
+        projectReplicaId: ready.source!.id,
+        worktreeId: root.id,
+      },
+    });
+
+    const wrongWorker = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/placement/resolve`,
+      payload: {
+        surfaceKind: "terminal",
+        target: {
+          kind: "worker",
+          projectId: project.id,
+          workerId: "legacy-worker",
+        },
+      },
+    });
+    expect(wrongWorker.statusCode).toBe(409);
+    expect(wrongWorker.json()).toMatchObject({ code: "target-mismatch" });
+
+    const catalog = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.id}/execution-targets`,
+    });
+    expect(catalog.statusCode).toBe(200);
+    const catalogPayload = catalog.json();
+    expect(catalogPayload.targets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ resourceKind: "replica" }),
+      ]),
+    );
+    expect(catalogPayload.targets).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ resourceKind: "worktree" }),
+      ]),
+    );
+    expect(
+      catalogPayload.targets.every(
+        (target: { placement: { workerId: string } }) =>
+          target.placement.workerId === "folder-worker",
+      ),
+    ).toBe(true);
+
+    const chatTarget = catalogPayload.targets.find(
+      (target: { resourceKind: string }) => target.resourceKind === "chat",
+    );
+    expect(chatTarget).toBeDefined();
+    const chatId = chatTarget!.target.surfaceId as string;
+    for (const request of [
+      {
+        method: "PATCH" as const,
+        url: `/api/chats/${chatId}/worktree`,
+        payload: { worktreeId: root.id, mode: "pinned" },
+        capability: "worktrees",
+      },
+      {
+        method: "GET" as const,
+        url: `/api/chats/${chatId}/relocations`,
+        capability: "relocation",
+      },
+      {
+        method: "POST" as const,
+        url: `/api/projects/${project.id}/views`,
+        payload: { title: "History", kind: "history" },
+        capability: "git",
+      },
+    ]) {
+      const response = await app.inject(request);
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        code: "project-capability-unavailable",
+        capability: request.capability,
+      });
+    }
+
+    expect(
+      await database.repository.listWorkerWorktreeObservationTargets(
+        LOCAL_USER_ID,
+        "folder-worker",
+      ),
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ projectId: project.id }),
+      ]),
+    );
+    expect(
+      await database.repository.listWorkerExecutionRootContexts(
+        LOCAL_USER_ID,
+        "folder-worker",
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          projectId: project.id,
+          rootKind: "folder-root",
+          worktreePath: root.path,
+        }),
+      ]),
+    );
+
+    const stats = await app.inject({
+      method: "GET",
+      url: `/api/projects/${project.id}/repository-stats`,
+    });
+    expect(stats.statusCode).toBe(200);
+    expect(stats.json()).toMatchObject({ kind: "folder", fileCount: 0 });
+    expect(commands.at(-1)).toMatchObject({
+      workerId: "folder-worker",
+      command: { type: "project.folder-stats", root: root.path },
+    });
+
+    for (const fleetPath of ["browser-services", "remote-desktop-fleet"]) {
+      const fleet = await app.inject({
+        method: "GET",
+        url: `/api/projects/${project.id}/${fleetPath}`,
+      });
+      expect(fleet.statusCode).toBe(200);
+      expect(fleet.json().workers).toEqual([
+        expect.objectContaining({ workerId: "folder-worker" }),
+      ]);
+    }
+
+    const wrongTunnel = await app.inject({
+      method: "POST",
+      url: "/api/tunnels",
+      payload: {
+        name: "Wrong worker",
+        projectId: project.id,
+        protocolHint: "http",
+        destination: {
+          kind: "worker-tcp",
+          workerId: "legacy-worker",
+          host: "127.0.0.1",
+          port: 4_173,
+        },
+      },
+    });
+    expect(wrongTunnel.statusCode).toBe(409);
+    expect(wrongTunnel.json()).toMatchObject({
+      error: "This worker-managed folder is bound to its owning worker.",
+    });
+
+    const ownerTunnel = await app.inject({
+      method: "POST",
+      url: "/api/tunnels",
+      payload: {
+        name: "Folder preview",
+        projectId: project.id,
+        protocolHint: "http",
+        destination: {
+          kind: "worker-tcp",
+          workerId: "folder-worker",
+          host: "127.0.0.1",
+          port: 4_173,
+        },
+      },
+    });
+    expect(ownerTunnel.statusCode).toBe(201);
+  });
+
+  it("keeps durable state readable offline and rejects folder worktree CLI commands", async () => {
+    const project = await createFolder("Offline runtime");
+    const ready = await waitUntilReady(project.id);
+    const root = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
+    )[0]!;
+
+    const unsupported = await app.inject({
+      method: "POST",
+      url: "/api/internal/cli",
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: {
+        command: "worktree.list",
+        chatContext: null,
+        context: {
+          codexThreadId: null,
+          terminalId: null,
+          cwd: root.path,
+        },
+        arguments: {},
+        requestId: "folder-worktree-list",
+        workerId: "folder-worker",
+      },
+    });
+    expect(unsupported.statusCode).toBe(409);
+    expect(unsupported.json()).toEqual({
+      code: "unsupported-capability",
+      error:
+        "This worker-managed folder does not support Cantrip worktree commands.",
+    });
+
+    connectedWorkers.delete("folder-worker");
+    const projects = await app.inject({ method: "GET", url: "/api/projects" });
+    expect(projects.statusCode).toBe(200);
+    expect(
+      projectListSchema
+        .parse(projects.json())
+        .find(({ id }) => id === project.id),
+    ).toMatchObject({ id: project.id, source: ready.source });
+    const placement = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/placement/resolve`,
+      payload: { surfaceKind: "terminal" },
+    });
+    expect(placement.statusCode).toBe(409);
+    expect(placement.json()).toMatchObject({
+      code: "worker-offline",
+    });
+    connectedWorkers.add("folder-worker");
   });
 });

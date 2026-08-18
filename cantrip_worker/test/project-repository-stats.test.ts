@@ -55,6 +55,7 @@ describe("project repository statistics", () => {
     await execFileAsync("git", ["-C", root, "commit", "-m", "fixture"]);
 
     await expect(readProjectRepositoryStats(root)).resolves.toEqual({
+      kind: "git",
       commitCount: 1,
       trackedFileCount: 4,
       trackedByteCount: 33,
@@ -69,6 +70,7 @@ describe("project repository statistics", () => {
     const root = await repository();
 
     await expect(readProjectRepositoryStats(root)).resolves.toEqual({
+      kind: "git",
       commitCount: 0,
       trackedFileCount: 0,
       trackedByteCount: 0,

@@ -3304,12 +3304,20 @@ describe("Cantrip protocol", () => {
     });
     expect(turn).toMatchObject({
       isPrimary: true,
+      rootKind: "git-worktree",
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
       policyContext: expect.stringContaining("[review]"),
       planMode: "plan",
       automationPaused: true,
     });
+
+    expect(
+      workerCommandSchema.parse({
+        ...turn,
+        rootKind: "folder-root",
+      }),
+    ).toMatchObject({ type: "chat.turn", rootKind: "folder-root" });
   });
 
   it("keeps workflow node execution distinct and attempt-attributed", () => {
