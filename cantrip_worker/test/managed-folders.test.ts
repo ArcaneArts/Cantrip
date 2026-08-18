@@ -12,7 +12,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ManagedFolderManager } from "../src/managed-folders.js";
+import {
+  deriveManagedFolderLocation,
+  ManagedFolderManager,
+} from "../src/managed-folders.js";
 
 const directories: string[] = [];
 const projectId = "019fe8aa-a7a3-7404-8a96-d3be7f0fb338";
@@ -33,6 +36,38 @@ async function manager() {
 }
 
 describe("managed folders", () => {
+  it.each([
+    {
+      dataDirectory: "/srv/cantrip/worker-data",
+      expectedDisplayPath: `folders/${projectId}`,
+      expectedRoot: "/srv/cantrip/worker-data/folders",
+      expectedTarget: `/srv/cantrip/worker-data/folders/${projectId}`,
+      name: "POSIX",
+      pathApi: path.posix,
+    },
+    {
+      dataDirectory: "C:\\Cantrip\\worker-data",
+      expectedDisplayPath: `folders\\${projectId}`,
+      expectedRoot: "C:\\Cantrip\\worker-data\\folders",
+      expectedTarget: `C:\\Cantrip\\worker-data\\folders\\${projectId}`,
+      name: "Windows",
+      pathApi: path.win32,
+    },
+  ])("derives a UUID-only target beneath the $name root", (test) => {
+    const location = deriveManagedFolderLocation(
+      test.dataDirectory,
+      projectId.toUpperCase(),
+      test.pathApi,
+    );
+    expect(location).toEqual({
+      displayPath: test.expectedDisplayPath,
+      root: test.expectedRoot,
+      target: test.expectedTarget,
+    });
+    expect(test.pathApi.dirname(location.target)).toBe(location.root);
+    expect(location.target).not.toBe(location.root);
+  });
+
   it("materializes an owner-only UUID directory idempotently", async () => {
     const test = await manager();
     const first = await test.manager.materialize({
@@ -68,6 +103,9 @@ describe("managed folders", () => {
     await expect(test.manager.delete("../escape")).rejects.toThrow(
       "project UUID",
     );
+    expect(() =>
+      deriveManagedFolderLocation(test.directory, "folders", path.posix),
+    ).toThrow("project UUID");
   });
 
   it("rejects symlink collisions and never deletes their targets", async () => {

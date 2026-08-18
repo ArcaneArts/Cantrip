@@ -1,10 +1,18 @@
 # Cantrip worktrees
 
-Cantrip treats a project as one logical Git repository, a project source as one
-worker-owned installation, and a worktree as one physical checkout belonging to
-that source. The server owns durable identity, policy, leases, and transcript
-attribution. The worker owns files, canonical paths, Git state, PTYs, and Codex
-runtimes.
+For a GitHub-backed project, Cantrip treats the project as one logical Git
+repository, a project source as one worker-owned installation, and a worktree
+as one physical checkout belonging to that source. The server owns durable
+identity, policy, leases, and transcript attribution. The worker owns files,
+canonical paths, Git state, PTYs, and Codex runtimes.
+
+A worker-managed folder project is intentionally outside this worktree model.
+It has one UUID-derived execution root on one owning worker. Agents and
+write-capable workflows may write there directly according to their permission
+and concurrency configuration, while worktrees, Git observation, replicas, and
+relocation stay unavailable. Running `git init` does not opt the project into
+this guide; only explicit conversion to a GitHub repository does. See
+[FOLDERS.md](FOLDERS.md).
 
 ## User model
 
@@ -91,6 +99,10 @@ repository. Missing or invalid files never block project setup; invalid files
 produce a setup warning, and users may still change the server-owned policy
 from the project action menu.
 
+Managed-folder projects persist `direct` and do not show the worktree policy
+control. The selected Agent permission profile still governs writes; `direct`
+means only that Cantrip does not manufacture a Git isolation lane.
+
 Cantrip enforces these boundaries:
 
 - clients and agents provide intent, branch, name, and base revision, never a
@@ -153,6 +165,10 @@ the version token from the corresponding read, terminal service restarts
 require an enabled service, Browser navigation accepts HTTP(S) only, and every
 mutation attempt is audited by the server.
 
+For a managed-folder execution context, `target`, `explorer`, `terminal`, and
+`browser` continue to resolve through the server to the owning worker. The
+`worktree` command group is rejected with an unsupported-capability response.
+
 The server validates the current chat lane, actor, policy, ownership, and
 removal authority before routing an operation. The loopback CLI broker attaches
 the active chat and execution-lane identity to commands originating inside a
@@ -173,6 +189,19 @@ pnpm --filter @cantrip/app test -- worktree-control.test.ts git-history.test.ts 
 pnpm check
 pnpm --filter @cantrip/app build
 ```
+
+Managed-folder changes that touch the compatibility execution-root row or Git
+capability guards also run:
+
+```shell
+pnpm --filter @cantrip/worker test
+pnpm --filter @cantrip/server test
+```
+
+The folder-focused coverage includes OS-specific POSIX/Windows path derivation,
+UUID and symlink containment, PGlite migration, owner-only placement, the Task
+lifecycle, direct parallel workflow writes/retries/repeats, offline state,
+destructive removal, conversion, and rejection of Git/worktree routes.
 
 The migration suite applies the real SQL migration chain to PGlite and verifies
 Primary/tab/transcript backfills plus deterministic project-wide logical branch

@@ -1,11 +1,17 @@
 # Worker-managed folder projects
 
-Status: proposed implementation plan. This document does not change runtime
-behavior.
+Status: implemented. This document is the product contract, architecture
+record, and acceptance matrix for the shipped behavior.
+
+The implementation was delivered through seven sequential Manual Change
+Protocol cycles: domain and migration, worker materialization, routing and
+agent execution, Tasks and workflows, application UX, explicit GitHub
+conversion, and final acceptance/documentation. Each cycle used its own
+worktree and ready pull request; no omnibus branch was used.
 
 ## Objective
 
-Add a first-class Cantrip project type backed by a new empty directory on one
+Provide a first-class Cantrip project type backed by a new empty directory on one
 worker rather than by a Git or GitHub repository. A folder project supports the
 normal Cantrip workspace experience without creating a `.git` directory,
 requiring GitHub authentication, or pretending that Git-backed recovery and
@@ -97,9 +103,9 @@ root, never a worktree.
 - recovery, rollback, diff attribution, or checkpoint revisions supplied by
   Git.
 
-## Current state and gaps
+## Baseline and delivered changes
 
-| Concern             | Current behavior                                                                             | Required change                                                                                         |
+| Concern             | Pre-feature behavior                                                                         | Delivered behavior                                                                                      |
 | ------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | Project creation    | `POST /api/projects/from-github` creates a project and queues Git replica provisioning.      | Add a folder-specific creation contract and durable materialization path independent of GitHub.         |
 | Persistent identity | GitHub identity is nullable, but source kind is implicit.                                    | Persist explicit project and source kinds; do not infer folder capability from nullable GitHub columns. |
@@ -122,10 +128,9 @@ metadata, a checkout lifecycle, and a recoverable checkpoint. The change spans
 the protocol, both databases, server orchestration, the worker command loop,
 workflow and Task state machines, and desktop/mobile application surfaces.
 
-The work should be delivered as six or seven independently mergeable changes,
-matching the milestones below. Calendar estimates are intentionally omitted
-until one vertical slice has established migration, worker-command, and test
-costs in this repository.
+The work was delivered as seven independently mergeable changes matching the
+milestones below. The first vertical slice established the migration,
+worker-command, and test costs used by the later passes.
 
 | Area                          | Complexity  | Main reason                                                                                  |
 | ----------------------------- | ----------- | -------------------------------------------------------------------------------------------- |
@@ -137,7 +142,7 @@ costs in this repository.
 | GitHub conversion             | High        | This is a transactional origin transition with local and remote history safety constraints.  |
 | Regression coverage           | High        | The feature must add non-Git paths without weakening existing Git and multi-worker behavior. |
 
-The critical path is:
+The completed critical path was:
 
 1. introduce persisted kinds and authoritative capabilities;
 2. materialize one safe worker-owned folder and expose it as an execution root;
@@ -529,7 +534,7 @@ summary so origin kind and capabilities cannot remain stale after setup.
 - Logs may include project, worker, request, workflow, and surface IDs but must
   follow existing path-redaction policy for physical worker paths.
 
-## Implementation milestones
+## Implementation milestones (complete)
 
 Each milestone is independently reviewable and follows the Manual Change
 Protocol with its own worktree, branch, ready pull request, squash auto-merge,

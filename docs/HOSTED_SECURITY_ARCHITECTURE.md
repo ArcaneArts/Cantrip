@@ -11,9 +11,10 @@
 ## 1. Security objective
 
 A hosted Cantrip server is a remote-code-execution control plane. An
-application principal can route prompts, shell input, Git operations, editor
-traffic, browser input, and desktop input to an enrolled worker. Authentication
-and ownership are therefore execution boundaries, not presentation concerns.
+application principal can route prompts, shell input, project-file and Git
+operations, editor traffic, browser input, and desktop input to an enrolled
+worker. Authentication and ownership are therefore execution boundaries, not
+presentation concerns.
 
 The server is the only rendezvous point:
 
@@ -24,7 +25,7 @@ flowchart LR
     DB["PostgreSQL"]
     BUS["Shared coordination layer"]
     WORKER["Account-owned worker"]
-    FILES["Files, PTYs, Git, Codex, Code"]
+    FILES["Managed folders, repositories, PTYs, Codex, Code"]
 
     APP <-->|"authenticated HTTPS and WSS"| API
     API --> DB
@@ -135,10 +136,10 @@ without refreshing the inventory.
 
 At this revision the inventory contains:
 
-- 343 HTTP and 5 WebSocket routes;
-- 187 worker command variants;
-- 31 application live resource variants;
-- 317 database repository entry points; and
+- 384 HTTP and 5 WebSocket routes;
+- 197 worker command variants;
+- 35 application live resource variants;
+- 332 database repository entry points; and
 - the five non-route data planes listed below.
 
 The inventory's `ownerEvidence` field is not an authorization guarantee. It is
@@ -215,6 +216,25 @@ Code and project-share capabilities live on the isolated surface origin. The
 surface origin receives neither application cookies nor arbitrary proxy
 destinations. Tokens are short-lived bearer capabilities and must never be
 logged, persisted in browser storage, or accepted for a different binding.
+
+### Managed-folder authority
+
+Managed-folder creation, setup retry, removal, and GitHub conversion are normal
+application-principal routes in the generated inventory. The server derives the
+owner from the authenticated request, verifies workspace membership and the
+selected worker's owner/capability, and sends only the project UUID and bounded
+intent through the authenticated worker channel. Clients never provide a
+physical path.
+
+The worker derives `<worker-data>/folders/<project-UUID>`, rejects malformed
+identifiers, symlinks, and paths outside the canonical root, and deletes only
+that exact UUID directory. The source remains pinned to that worker for all
+filesystem-backed surfaces; stale or malicious cross-worker targets fail before
+dispatch. Git, GitHub, worktree, replica, relocation, and Git-event routes also
+enforce the persisted project capability, so a local `git init` cannot expand
+authority. Conversion enables those capabilities only after the worker binds
+and pushes the selected new/empty GitHub repository and the server atomically
+commits the reconciled source identity.
 
 ## 7. Database ownership
 

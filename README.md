@@ -8,7 +8,14 @@ The project is inspired by the Codex desktop experience, but its architecture is
 
 ## What Cantrip does
 
-Cantrip organizes work into GitHub-backed projects. Import an existing repository or create a public or private repository in a personal account or organization directly from the project picker. Empty repositories remain usable while they wait for their first commit. Each project has one source folder owned by a worker and can contain an ordered mix of:
+Cantrip organizes work into projects backed either by a GitHub repository or by
+a new Cantrip-managed folder. From the project picker, create an empty folder on
+one worker without GitHub authentication, import an existing repository, or
+create a public or private repository in a personal account or organization.
+Managed folders are intentionally worker-bound and have no Git, GitHub,
+worktree, replica, or relocation features until an explicit conversion to a new
+or empty GitHub repository. Every project has a source folder owned by a worker
+and can contain an ordered mix of:
 
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
 - Task-backed chats for large jobs. A Task starts as a full Markdown brief with
@@ -18,20 +25,39 @@ Cantrip organizes work into GitHub-backed projects. Import an existing repositor
   Codex thread. Its dashboard keeps the immutable plan, Goal usage and controls,
   live Agent activity, worker/worktree state, associated pull requests, and
   nonblocking policy-cycle warnings together. Tasks survive tab changes,
-  desktop pop-outs, worker outages, relocation, archive/restore, and server
-  restarts. See [the Tasks contract](docs/TASKS.md).
+  desktop pop-outs, worker outages, archive/restore, server restarts, and—on
+  GitHub-backed projects—relocation. See [the Tasks contract](docs/TASKS.md).
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
 - Real PTY terminal tabs that run in the project folder on the worker. A terminal can also become a durable service: the worker starts its saved command at boot, restarts it after an unexpected exit, retains its live PTY for later attachment, and exposes stop, disable, and restart controls.
-- Finder-style Explorer tabs with a lazy expandable directory tree, file sizes, local Git state, and asynchronously hydrated last-commit metadata. Files open in preview or structured visual mode and can switch to a persistent Monaco editor with conflict-safe saves; the selected file, draft, cursor, scroll position, and undo history survive ordinary tab changes.
+- Finder-style Explorer tabs with a lazy expandable directory tree and file
+  sizes. Git-backed projects also show local Git state and asynchronously
+  hydrated last-commit metadata. Files open in preview or structured visual
+  mode and can switch to a persistent Monaco editor with conflict-safe saves;
+  the selected file, draft, cursor, scroll position, and undo history survive
+  ordinary tab changes.
 - Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
 - Worker-streamed Browser tabs for project-related web pages.
 - Saved and feature-managed tunnels that expose explicit worker-local services
   on Tauri desktop loopback without opening inbound worker ports. See
   [the tunnels guide](docs/TUNNELS.md).
 - One-click Remote Desktop tabs for the project worker's screen.
-- A unified Git tab with History, Issues, and Pull Requests. History includes a branch graph, refs and tags, every known worktree HEAD, per-worktree WIP state, clickable commit inspection and revision patches, staged and unstaged changes, commits, branches, stashes, conflict resolution, and pull/push operations. Issues and pull requests have open/closed views and GitHub-backed management. See [the Git client guide](docs/GIT_CLIENT.md).
+- On GitHub-backed projects, a unified Git tab with History, Issues, and Pull
+  Requests. History includes a branch graph, refs and tags, every known
+  worktree HEAD, per-worktree WIP state, clickable commit inspection and
+  revision patches, staged and unstaged changes, commits, branches, stashes,
+  conflict resolution, and pull/push operations. Issues and pull requests have
+  open/closed views and GitHub-backed management. See
+  [the Git client guide](docs/GIT_CLIENT.md).
+
+Managed folders use a UUID-derived directory beneath the selected worker's
+private `folders` root, so display names may repeat safely. They support Agents,
+Tasks, terminals, Explorer, Code, Browser, Remote Desktop, tunnels, shares,
+scripts, policies, skills, MCP, automations, and direct write-capable workflows.
+Unlinking preserves the directory; permanent deletion requires a separate
+checkbox and warning confirmation. Running `git init` does not change the
+project type. See [the managed-folder guide](docs/FOLDERS.md).
 
 Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
@@ -114,7 +140,16 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns project source folders and their physical Git worktrees, clones repositories, runs Git and GitHub CLI operations, provides filesystem access, hosts PTY processes and supervised terminal services, supervises worktree-specific Codex runtimes, keeps the embedded Code server warm, runs Browser-tab Chromium sessions, and captures and controls its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab addresses are resolved from the worker machine, which is important once the server and worker live on different hosts. Server-managed ChatGPT and Grok access leases remain in memory; normal operation does not create worker-local `auth.json` or `grok-auth.json` credentials.
+The worker is the machine that actually performs work. It owns managed folder
+directories, repository clones, and physical Git worktrees; runs Git and GitHub
+CLI operations where applicable; provides filesystem access; hosts PTY
+processes and supervised terminal services; supervises Codex runtimes; keeps
+the embedded Code server warm; runs Browser-tab Chromium sessions; and captures
+and controls its own desktop for Remote Desktop tabs. Provider URLs and
+Browser-tab addresses are resolved from the worker machine, which is important
+once the server and worker live on different hosts. Server-managed ChatGPT and
+Grok access leases remain in memory; normal operation does not create
+worker-local `auth.json` or `grok-auth.json` credentials.
 
 Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
 
@@ -149,7 +184,12 @@ The [hosted relay acceptance ledger](docs/HOSTED_RELAY_ACCEPTANCE.md) maps the
 security and multi-instance guarantees to their automated checks and records
 the practical smoke-test boundary for each release candidate.
 
-Conversation history and configuration live on the server, so they remain readable when a worker is unavailable. Project files and live runtime state remain on the worker. Moving a conversation to another worker will therefore require a compatible checkout and an explicit handoff rather than pretending that uncommitted files moved automatically.
+Conversation history and configuration live on the server, so they remain
+readable when a worker is unavailable. Project files and live runtime state
+remain on the worker. GitHub-backed conversations can move only through an
+explicit compatible-checkout handoff. Managed-folder conversations cannot
+relocate; their filesystem-backed actions remain unavailable until the owning
+worker reconnects.
 
 The app keeps one versioned application-control WebSocket per selected server
 profile for committed state notifications and cache synchronization. HTTP
@@ -175,10 +215,12 @@ Codex-native records without executing imported scripts.
 Above that runtime, Cantrip provides a durable, data-only workflow control
 plane. Immutable revisions can compose agent, verification, reduction,
 condition, approval-gate, map, pipeline, and repeat-until nodes with explicit
-budgets, bounded concurrency, pause/cancel/retry controls, and isolated
-worktrees for mutation. Workflows can be authored directly, generated with
-Codex assistance, saved from completed runs, or imported/exported as reviewed
-repository data.
+budgets, bounded concurrency, and pause/cancel/retry controls. GitHub-backed
+write nodes use isolated worktrees; managed-folder write nodes run directly in
+the owning folder, including configured parallel nodes, with no simulated Git
+lease or checkpoint. Workflows can be authored directly, generated with Codex
+assistance, saved from completed runs, or imported/exported as reviewed project
+data.
 
 Schedule, scoped API, credentialed webhook, normalized Git/GitHub, and saved
 command triggers all create the same durable run records. Unattended execution
@@ -269,6 +311,13 @@ metadata remains visible while a worker is offline. See
 [docs/WORKTREES.md](docs/WORKTREES.md) for user behavior, safety rules, API
 boundaries, and the development test matrix.
 
+Managed-folder projects do not expose this worktree model. Their Agent, Task,
+Terminal, Explorer, Code, automation, and workflow operations all resolve to
+the one worker-owned execution root. Agent writes follow the selected
+permission profile, and workflow writes follow the graph's configured
+concurrency. The server rejects worktree, replica, relocation, and Git
+operations even if a stale client invokes them.
+
 ## Repository layout
 
 ```text
@@ -293,7 +342,9 @@ For browser development:
 - Node.js 22 or newer.
 - pnpm 11 (the exact version is declared in `package.json`).
 - Git.
-- GitHub CLI (`gh`) authenticated with `gh auth login`, or a worker-local `GH_TOKEN`, to list and clone accessible repositories.
+- GitHub CLI (`gh`) authenticated with `gh auth login`, or a worker-local
+  `GH_TOKEN`, when testing GitHub import, creation, and conversion. Managed
+  folder creation does not require GitHub authentication.
 - Rustup. Cantrip builds its pinned Codex CLI source with the exact toolchain
   declared by `cantrip_codex/upstream/codex-rs/rust-toolchain.toml`.
 - A Chromium-family browser for worker-streamed Browser tabs. Cantrip discovers
@@ -369,7 +420,8 @@ This starts the shared protocol watcher, Cantrip server, local worker, and Vite 
 
 Vite hot module replacement updates the app as frontend files change. The Node server and worker also restart automatically when their source changes. Press `Ctrl+C` once in the root terminal to stop every process started by the command.
 
-Local database files and worker-owned repository clones are stored under `.cantrip/dev/` and are ignored by Git.
+Local database files, worker-owned repository clones, and managed project
+folders are stored under `.cantrip/dev/` and are ignored by Git.
 
 To test multiple accounts without replacing the anonymous local server, run
 `pnpm dev:server` in another terminal. It starts an isolated, disposable

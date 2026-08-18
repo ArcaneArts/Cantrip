@@ -302,6 +302,30 @@ describe("managed folder project lifecycle", () => {
     });
   });
 
+  it("rejects unknown workers and workspace memberships before setup", async () => {
+    const unknownWorker = await app.inject({
+      method: "POST",
+      url: "/api/projects/from-folder",
+      payload: { name: "Unknown worker", workerId: "missing-worker" },
+    });
+    expect(unknownWorker.statusCode).toBe(404);
+    expect(unknownWorker.json()).toEqual({ error: "Worker not found." });
+
+    const unknownWorkspace = await app.inject({
+      method: "POST",
+      url: "/api/projects/from-folder",
+      payload: {
+        name: "Unknown workspace",
+        workerId: "folder-worker",
+        workspaceIds: ["019fe8aa-a7a3-7404-8a96-d3be7f0fb999"],
+      },
+    });
+    expect(unknownWorkspace.statusCode).toBe(400);
+    expect(unknownWorkspace.json()).toMatchObject({
+      error: expect.stringContaining("workspace"),
+    });
+  });
+
   it("converts only after explicit preflight, push reconciliation, and atomic kind transition", async () => {
     const project = await createFolder("Convert me");
     const ready = await waitUntilReady(project.id);

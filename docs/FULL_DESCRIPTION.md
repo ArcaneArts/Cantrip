@@ -12,11 +12,12 @@ are authoritative.
 Cantrip is a local-first, self-hostable workspace for software development with
 coding agents. It turns the open-source Codex CLI runtime into a persistent,
 multi-surface application rather than treating an agent as a disposable terminal
-process. A project can have agent chats, real terminals, a lazy file explorer and
-editor, an embedded VS Code-derived workbench, Git/GitHub tooling, browser and
-remote-desktop sessions, tunnels, automations, and durable graph workflows. The
-same project state is available from the Tauri desktop app, browser, and mobile
-clients.
+process. A project can have agent chats, real terminals, a lazy file explorer
+and editor, an embedded VS Code-derived workbench, browser and remote-desktop
+sessions, tunnels, automations, and durable graph workflows. GitHub-backed
+projects additionally provide Git/GitHub tooling, worktrees, replicas, and
+relocation. The same project state is available from the Tauri desktop app,
+browser, and mobile clients.
 
 The product is split into three main runtime roles:
 
@@ -26,15 +27,17 @@ The product is split into three main runtime roles:
 - **Server:** authoritative control plane. It owns users, workspaces, projects,
   tabs, chat transcripts, model/provider configuration, encrypted credentials,
   scheduling, workflow state, worker enrollment, routing, and audit/telemetry.
-- **Worker:** execution/data plane running near repositories. It owns local
-  checkouts, worktrees, Git processes, PTYs, Codex processes, Cantrip Code,
-  browser automation, desktop capture/input, and local tool access.
+- **Worker:** execution/data plane running near project files. It owns managed
+  folders, repository checkouts, worktrees, Git processes, PTYs, Codex
+  processes, Cantrip Code, browser automation, desktop capture/input, and local
+  tool access.
 
 In local desktop development these roles can run together on one machine, but
 the architecture does not assume that. A hosted server can coordinate many
-outbound-connected workers, and a logical project can have replicas on multiple
-workers. Server state remains inspectable while a worker is offline; runtime
-surfaces and source operations clearly report that their worker is unavailable.
+outbound-connected workers, and a logical GitHub project can have replicas on
+multiple workers. A managed folder remains bound to one. Server state remains
+inspectable while a worker is offline; runtime surfaces and source operations
+clearly report that their worker is unavailable.
 
 Cantrip's main design goals are:
 
@@ -59,19 +62,20 @@ The main user-visible and runtime objects are:
 3. **Workspace** — a visual project filter/tag. Every account begins with a
    default workspace. A project may appear in multiple workspaces; this does not
    duplicate the repository.
-4. **Project** — a logical GitHub-backed repository plus its server-owned
-   configuration and runtime surfaces.
-5. **Project replica** — one worker-local installation/checkout of a project.
-   A logical project can have replicas on multiple workers.
-6. **Worktree** — a concrete Git worktree inside a replica. Every replica has a
-   non-removable Primary worktree and may have managed or externally discovered
-   worktrees.
-7. **Surface/tab** — Agent, Terminal, Explorer, Code, Git, Browser, or Remote
-   Desktop. A surface is bound to a project and, when required, a worker,
-   replica, and worktree.
+4. **Project** — a logical GitHub repository or worker-managed folder plus its
+   server-owned configuration and runtime surfaces.
+5. **Project source** — one worker-local installation of a project. A managed
+   folder has exactly one bound source; a GitHub project may have replicas on
+   multiple workers.
+6. **Execution root** — the concrete source directory. For GitHub projects this
+   is a Git worktree inside a replica; for a managed folder it is the one
+   UUID-derived folder root.
+7. **Surface/tab** — Agent, Task, Terminal, Explorer, Code, Git, Browser, or
+   Remote Desktop. A surface is bound to a project and, when required, its
+   worker and execution root. Git is available only for GitHub projects.
 8. **Agent chat/thread** — durable server transcript plus a Codex runtime lane
-   on a worker. A thread may survive process restarts and, at safe boundaries,
-   relocate between compatible workers.
+   on a worker. A thread may survive process restarts and, for GitHub projects
+   at safe boundaries, relocate between compatible workers.
 9. **Execution attempt** — one concrete provider route/account/worker/model
    attempt for a turn. Logical turns may fail over before side effects begin.
 
@@ -80,8 +84,10 @@ repository state and live runtime state. A placement record connects the two.
 
 ### Project creation and import
 
-The project picker lists repositories available through the authenticated GitHub
-CLI/account. Users can:
+The project picker offers two explicit origins. Users can:
+
+- create a new empty Cantrip-managed folder on a selected capable worker,
+  without GitHub authentication;
 
 - import an existing repository;
 - create a new GitHub repository from Cantrip;
@@ -91,9 +97,19 @@ CLI/account. Users can:
 - import an empty repository;
 - assign the project to the current and additional workspaces.
 
-After creation/import, Cantrip provisions the repository on a suitable worker,
-switches to the project, creates an Agent tab, and opens it when ready. Projects
-can later be archived/restored without treating archival as repository deletion.
+For a managed folder, Cantrip creates
+`<worker-data>/folders/<project-UUID>` and binds every filesystem-backed surface
+to that worker. Names may repeat because they never determine the path. The
+project has no Git, GitHub, worktree, replica, or relocation capabilities;
+running `git init` does not change that. Project Settings can explicitly convert
+it to a new or empty GitHub repository after a worker preflight and confirmed
+initial commit when required.
+
+For a GitHub origin, Cantrip provisions the repository on a suitable worker.
+Both paths switch to the project, create an Agent tab, and open it when ready.
+Projects can later be archived/restored without treating archival as source
+deletion. Removing a managed folder defaults to unlinking; deleting its files
+requires a checkbox and a second destructive confirmation.
 
 ### Workspaces
 
@@ -157,7 +173,8 @@ PGlite for local operation or PostgreSQL for hosted operation. It owns:
 - authentication and tenant boundaries;
 - projects, workspaces, tabs, tab groups, and view state;
 - workers, enrollment, capabilities, heartbeats, and placement;
-- project replicas, worktree metadata, branch leases, and relocation state;
+- project origin/source/root kinds, setup and conversion jobs, replicas,
+  worktree metadata, branch leases, and relocation state;
 - chat transcripts, normalized Codex events, pending interactions, queues,
   goals, plans, and lifecycle state;
 - providers, logical models, route/account priority, encrypted OAuth credentials,
@@ -180,6 +197,7 @@ connect outbound, so users do not need to expose worker control ports to the
 internet. A worker advertises health/capabilities and executes authorized,
 project-scoped commands including:
 
+- materialize and exactly remove UUID-derived managed folders;
 - clone/provision/synchronize/remove project replicas;
 - discover/create/switch/release/remove Git worktrees;
 - list/read/write files and calculate directory commit metadata;
@@ -324,11 +342,13 @@ token-by-token filesystem interception.
 
 #### Lifecycle, forks, and consoles
 
-Chats can be renamed, duplicated, forked from a message, and bound to a different
-worktree according to safety rules. The structured chat view can switch to its
-linked live Codex terminal/console. If the user opens the console before sending
-the first message, Cantrip initializes the CLI with the model currently selected
-in the composer. Switching views does not create a different conversation.
+Chats can be renamed, duplicated, and forked from a message. GitHub-backed
+chats can also bind to a different worktree according to safety rules; managed
+folder chats stay on their fixed execution root. The structured chat view can
+switch to its linked live Codex terminal/console. If the user opens the console
+before sending the first message, Cantrip initializes the CLI with the model
+currently selected in the composer. Switching views does not create a different
+conversation.
 
 On macOS and Windows, Cantrip can discover local Codex/ChatGPT CLI histories and
 import them as resumable forks. Import preserves source attribution without
@@ -338,10 +358,11 @@ claiming ownership of the original history.
 
 A Task is a specialized durable Chat experience for planning and completing a
 large job without inventing a second agent runtime. It uses the same project,
-worker/worktree placement, Codex thread, transcript, attachments, Inspector,
-console, permission profile, tab grouping, pop-out, relocation, and archive
-lifecycle as an Agent Chat. Only Task-backed Chats show the compact Task/Chat
-view toggle; the Chat side exposes the underlying transcript.
+execution-root/worker placement, Codex thread, transcript, attachments,
+Inspector, console, permission profile, tab grouping, pop-out, and archive
+lifecycle as an Agent Chat. Relocation is inherited only when the project
+supports it. Only Task-backed Chats show the compact Task/Chat view toggle; the
+Chat side exposes the underlying transcript.
 
 The Task side moves through durable draft, planning, review, finalizing,
 implementing, paused, blocked, complete, and recoverable failure states:
@@ -350,9 +371,9 @@ implementing, paused, blocked, complete, and recoverable failure states:
   drag/drop/paste, model/reasoning controls, Implementation access selection,
   autosave, and optimistic conflict handling.
 - Planning and finalization always use a server-selected read-only execution
-  profile, regardless of Implementation access. Codex can inspect repository,
-  Git, attachments, and effective Policies, but cannot mutate files, Git,
-  GitHub, or side-effecting external tools.
+  profile, regardless of Implementation access. Codex can inspect project
+  files, available Git state, attachments, and effective Policies, but cannot
+  mutate files, Git, GitHub, or side-effecting external tools.
 - A structured planner result replaces one server-owned Markdown plan and up to
   twelve bounded questions with options, recommendations, required/freeform
   behavior, saved answers, and optional overall direction.
@@ -364,15 +385,17 @@ implementing, paused, blocked, complete, and recoverable failure states:
   same Chat. Effective Policy summaries and CLI policy-read instructions shape
   the objective without copying Policy bodies into Task state.
 - The implementation dashboard shows Goal status, elapsed time and token use,
-  cooperative pause/resume/stop controls, active worker/worktree/branch and
-  dirty state, live Inspector activity, immutable plan, generated objective,
-  Task-associated GitHub pull requests, and advisory workflow warnings.
+  cooperative pause/resume/stop controls, active execution-root/worker state,
+  available Git branch/dirty state, live Inspector activity, immutable plan,
+  generated objective, available Task-associated GitHub pull requests, and
+  advisory workflow warnings.
 
 Task state is server-authoritative and tenant-scoped. Row versions prevent
 cross-window draft/plan overwrites; operation and Goal-start keys prevent
 duplicate planning rounds or Goals after retries/restarts. Draft attachments are
-included in cross-worker relocation snapshots even before a transcript message
-references them. A worker outage leaves every artifact readable and retryable.
+included in cross-worker relocation snapshots when relocation is supported,
+even before a transcript message references them. A worker outage leaves every
+artifact readable and retryable.
 Archiving preserves the Task and restores the Task view; permanent deletion
 cascades Task-only rows. Forking its transcript creates a normal Agent Chat.
 See [TASKS.md](TASKS.md) for the complete contract and acceptance criteria.
@@ -701,6 +724,11 @@ tools without making the server the repository owner.
 
 ## Worktrees, replicas, and multi-worker placement
 
+This section applies to GitHub-backed projects. Managed-folder projects expose
+one direct execution root on their owning worker and deliberately disable
+worktrees, replicas, placement changes, and chat relocation until explicit
+GitHub conversion.
+
 ### Worktree model
 
 Every project replica has a Primary worktree. Additional worktrees may be:
@@ -761,6 +789,12 @@ resources remain visible rather than silently moving.
 - active processes and uncommitted repository state are never implicitly moved;
 - failed relocation recovers to a clear previous/pending/error state rather than
   producing two active writers.
+
+Managed-folder Agents write directly when their permission profile allows it.
+Write-capable workflow nodes also share the folder directly and honor the
+workflow's configured parallelism; they do not acquire Git leases or advertise
+checkpoints. This is an explicit no-Git operating mode, not an emulated
+worktree.
 
 ## Models, providers, authentication, and routing
 
@@ -892,13 +926,14 @@ Definitions support:
   and optional cost;
 - pause/resume/cancel/retry;
 - pause that stops new scheduling but allows active turns to reach a safe finish;
-- isolated worktree execution and reviewed outcomes/checkpoints;
+- isolated worktree execution and reviewed outcomes/checkpoints on GitHub
+  projects, or direct execution with configured concurrency on managed folders;
 - per-run history, diagnostics, input/output inspection, and gate resolution.
 
-Triggers include schedules, API calls, webhooks, Git/GitHub events, and saved
-commands. Unattended triggers are disabled until an immutable workflow revision
-and its permission manifest are explicitly reviewed/trusted. Trust never
-implicitly transfers to a changed revision.
+Triggers include schedules, API calls, webhooks, saved commands, and—when the
+project has Git capability—Git/GitHub events. Unattended triggers are disabled
+until an immutable workflow revision and its permission manifest are explicitly
+reviewed/trusted. Trust never implicitly transfers to a changed revision.
 
 ## Settings and operations
 
@@ -1019,15 +1054,17 @@ origin, and a pairing code—not the user's password or a reusable session.
 - workspaces, projects, settings, tabs/groups, and selected durable view state;
 - chat transcripts, normalized events, queues, goals/plans, interactions;
 - providers/models/routes/account priorities;
-- worker enrollment, replica/worktree metadata, placement, leases;
+- worker enrollment, project source/root kinds, replica/worktree metadata,
+  placement, leases;
 - automations, workflow definitions/runs/triggers/gates;
 - policies, bootstrap state, and workspace/project policy assignments;
 - telemetry, audit, and update metadata.
 
 ### Worker-owned state
 
-- repository clones and all Git object/worktree content;
-- uncommitted files;
+- managed project folders, repository clones, and all Git object/worktree
+  content;
+- uncommitted and non-Git project files;
 - live Codex processes and worker-local runtime caches;
 - PTYs and service processes;
 - Cantrip Code runtime/profile data;
@@ -1049,7 +1086,7 @@ does not fabricate filesystem or live-process state.
 
 ## Safety and correctness invariants
 
-- The app does not directly execute repository commands.
+- The app does not directly execute project filesystem or repository commands.
 - Workers execute only server-authorized, scoped operations.
 - Secrets must never enter normal logs, transcripts, or analytics.
 - Git commands use argument arrays and bounded output; user text is not spliced
@@ -1066,8 +1103,12 @@ does not fabricate filesystem or live-process state.
 - Pending approvals recover fail-closed.
 - Unattended workflows require explicit revision/permission trust.
 - Offline workers/resources remain visible and explain why they cannot run.
+- Managed folders never relocate or replicate, and Git-only operations remain
+  capability-guarded even if the user runs `git init` inside one.
+- Managed-folder deletion derives only the UUID path below the worker's folder
+  root and requires a separate destructive confirmation in the app.
 - Long-running live output, frames, logs, fanout, and attachments are bounded.
-- User-authored repository data remains ordinary Git/filesystem data.
+- User-authored project data remains ordinary Git/filesystem data.
 
 ## Repository and implementation map
 
@@ -1163,7 +1204,7 @@ from the current working directory. Representative operations include:
 
 - status/context inspection;
 - effective Policy list/read;
-- worktree list/create/status/switch/release/remove;
+- worktree list/create/status/switch/release/remove for GitHub projects;
 - execution target list/show;
 - Explorer list/read/write;
 - Terminal read/send/restart;
@@ -1181,10 +1222,13 @@ inspection can still use standard shell tools.
   calls it a thread while Cantrip APIs use Chat.
 - **Task:** a specialized Chat experience with durable planning artifacts and
   an automatic same-thread Goal handoff.
-- **Lane:** a concrete worker/replica/worktree runtime segment of a chat.
-- **Primary:** mandatory default worktree inside each replica.
-- **Replica:** one worker-local copy/installation of a logical project.
-- **Placement:** durable resolution of a surface/job to worker/replica/worktree.
+- **Lane:** a concrete worker/execution-root runtime segment of a chat.
+- **Primary:** mandatory default Git worktree inside each GitHub replica.
+- **Replica:** one worker-local Git installation of a logical GitHub project.
+- **Managed folder:** the single worker-bound, UUID-derived non-Git execution
+  root of a folder project.
+- **Placement:** durable resolution of a surface/job to its worker and execution
+  root, optionally through a Git replica/worktree.
 - **Provider:** credentialed backend/account family.
 - **Logical model:** user-facing model profile with ordered concrete routes.
 - **Attempt:** one concrete provider route execution for a turn.

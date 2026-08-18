@@ -20,6 +20,13 @@ dashboard loads. Associations and warnings do not mutate GitHub or block Goal
 progress. A separate durable dismissal table remains an optional future
 extension.
 
+Tasks also run as first-class managed-folder workloads. Planning and
+finalization remain read-only; Goal implementation runs directly in the one
+worker-bound folder under the selected permission profile. The dashboard uses
+folder/worker/path context, performs no GitHub pull-request lookup, and does not
+offer worktree or relocation controls. Durable Task state remains readable
+while the owning worker is offline and execution resumes after it reconnects.
+
 Tasks automate the user's existing large-job workflow:
 
 1. write a broad idea/brief;
@@ -52,9 +59,9 @@ Internally, project tab layout continues to use:
     chat:<chat-id>
 
 This deliberately avoids adding a second project-tab member kind. Task-backed
-Chats already inherit:
+Chats already inherit, subject to the project's capabilities:
 
-- project/worktree/worker placement;
+- project execution-root/worker placement;
 - model and reasoning selection;
 - implementation permission profile;
 - attachments;
@@ -64,7 +71,7 @@ Chats already inherit:
 - linked Codex console;
 - prompt pause/resume/stop;
 - Goal mode;
-- relocation and attachment replication;
+- relocation and attachment replication for GitHub-backed projects;
 - tab groups, reordering, popout, archive, and deletion.
 
 The UI renders a Task icon/title and Task surface when the backing Chat has
@@ -164,7 +171,8 @@ Compact controls appear in the Task header/footer:
 - model;
 - reasoning effort;
 - **Implementation access** permission profile;
-- worktree/worker placement where applicable.
+- execution-root/worker placement where applicable. Managed folders show their
+  fixed owning worker rather than a worktree or relocation selector.
 
 Model and reasoning apply immediately to planning. Implementation access is
 stored on the backing Chat but is not granted to planning turns.
@@ -176,7 +184,8 @@ Reuse normal Chat attachments:
 - maximum counts/sizes and preview behavior remain unchanged;
 - bytes stay in the worker's private Cantrip data directory;
 - metadata remains server-owned;
-- relocation uses existing attachment replicas/transfer;
+- relocation uses existing attachment replicas/transfer when the project
+  supports relocation;
 - Task deletion uses Chat attachment cleanup.
 
 The Task record stores the ordered attachment IDs selected for its draft. Plan
@@ -215,12 +224,13 @@ selected Implementation access:
 - preauthorization is unavailable;
 - shell network is unavailable unless exposed through a dedicated read-only
   capability;
-- repository reads, Git inspection, policy reads, attachment reads, and
-  read-only research tools remain available.
+- project-file reads, policy reads, attachment reads, and read-only research
+  tools remain available; Git inspection is included only when the project has
+  Git capability.
 
-Planning may inspect Primary without acquiring a worktree because it cannot
-write. The implementation permission profile is activated only when Goal mode
-begins.
+Planning may inspect the selected execution root without acquiring a new
+worktree because it cannot write. The implementation permission profile is
+activated only when Goal mode begins.
 
 ### Policy awareness
 
@@ -652,9 +662,10 @@ Suggested routes:
     GET /api/tasks/:chatId/dashboard
 
 The dashboard snapshot combines the durable Task, live Goal state, current
-placement/dirty observation, bounded Task-associated PR discovery, and
-nonblocking warnings. Separate PR dismissal routes are deferred with the
-optional durable-association table.
+placement/dirty observation where available, bounded Task-associated PR
+discovery for GitHub projects, and nonblocking warnings. Managed folders report
+folder placement and an empty PR list without contacting GitHub. Separate PR
+dismissal routes are deferred with the optional durable-association table.
 
 Mutations carry rowVersion and idempotency keys. Operation endpoints return
 accepted/current state rather than holding the HTTP request open for the whole
@@ -676,8 +687,9 @@ can invoke them without internal HTTP calls.
 - a recovered successful finalization cannot create a second Goal;
 - worker offline preserves every server-owned artifact and shows Retry when
   placement returns;
-- attachment transfer follows existing Chat relocation;
-- Task relocation is disallowed during an active turn, like ordinary Chat;
+- attachment transfer follows existing Chat relocation when supported;
+- Task relocation is capability-gated and disallowed during an active turn,
+  like ordinary Chat;
 - pause prevents automatic Goal continuation but does not erase planning state;
 - deleting/archiving the backing Chat applies existing cleanup/retention and
   cascades Task-only rows.
@@ -857,6 +869,8 @@ transcript intentionally creates an ordinary Agent Chat.
 - retries/restarts cannot duplicate planning rounds or Goals.
 - ordinary Chats never show Task-only controls.
 - server/worker/app boundaries and tenant ownership remain intact.
+- the full lifecycle runs in a managed folder without Git, pull-request, or
+  worktree dashboard failures, and offline state preserves durable progress.
 
 ## Explicit non-goals
 

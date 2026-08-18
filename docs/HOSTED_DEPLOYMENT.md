@@ -5,9 +5,9 @@ For the release-candidate validation matrix, see
 
 Cantrip's hosted server is the authenticated rendezvous point for applications
 and worker-initiated outbound connections. PostgreSQL owns durable account,
-conversation, configuration, and routing state. Workers own repositories,
-terminals, Codex runtimes, Code profiles, browser processes, and desktop state.
-The server never becomes a shared filesystem.
+conversation, configuration, and routing state. Workers own managed project
+folders, repositories, terminals, Codex runtimes, Code profiles, browser
+processes, and desktop state. The server never becomes a shared filesystem.
 
 This guide describes the supported container boundary and equivalent native
 service operation. It assumes two public HTTPS names:
@@ -113,10 +113,10 @@ addresses and see the account count. Disable
 `CANTRIP_LICENSE_WHITELIST_ENABLED` only when the operator intentionally wants
 open account registration.
 
-The optional worker image is Linux-only and intended for headless repositories,
-Codex, terminals, and Code. It cannot expose the Docker host's desktop or normal
-GUI browser sessions. Generate a one-time worker link code in Settings, place it
-in `CANTRIP_WORKER_ENROLLMENT_CODE`, and run:
+The optional worker image is Linux-only and intended for headless managed
+folders, repositories, Codex, terminals, and Code. It cannot expose the Docker
+host's desktop or normal GUI browser sessions. Generate a one-time worker link
+code in Settings, place it in `CANTRIP_WORKER_ENROLLMENT_CODE`, and run:
 
 ```bash
 export CANTRIP_VERSION_PATCH="$(git rev-list --count HEAD)"
@@ -126,7 +126,8 @@ docker compose --env-file deploy/hosted.env \
 
 Remove the link code and recreate the worker after enrollment. The `worker-data`
 volume retains its unique credential, identity, repositories, Code profile, and
-extensions. Never clone this volume to create a second worker.
+extensions. It also retains worker-managed project folders beneath `folders/`.
+Never clone this volume to create a second worker.
 
 ## Native server and worker packages
 
@@ -204,9 +205,26 @@ target release's migration command, and verify account sign-in, worker presence,
 project history, and a secret-backed provider before changing production DNS.
 
 Worker volumes require their own filesystem backup policy if repository clones,
-dirty worktrees, Code profiles, or local artifacts must survive loss. Git remotes
-are the supported cross-worker source boundary; a server backup cannot recreate
-unpushed worker-local state.
+dirty worktrees, Code profiles, or local artifacts must survive loss. For a
+worker-managed folder project, `<worker-data>/folders/<project-UUID>` is the
+authoritative source and has no Git remote fallback: back up the entire
+`folders/` tree whenever those projects matter. A server backup records project
+identity and history but cannot recreate folder contents.
+
+Stop or quiesce the worker before taking a filesystem snapshot so Agents,
+workflows, terminals, Code, and shares cannot write through it. Keep the worker
+backup paired with the PostgreSQL backup and release identifier from the same
+recovery point. Restore it only as that worker's data directory, preserving its
+credential/identity and exact UUID directory names; do not mount one restored
+volume into two workers. After restoration, verify the worker reconnects with
+the expected identity and exercise Explorer plus a file read/write in one
+managed folder before resuming unattended work.
+
+Git remotes remain the supported cross-worker source boundary for
+GitHub-backed projects, but they cannot recreate unpushed worker-local state.
+An explicitly converted folder keeps its physical UUID-derived directory, so
+continue backing that path up until the project is deliberately deleted or its
+source is otherwise retired.
 
 ## Reverse proxy and transport requirements
 
