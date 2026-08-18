@@ -14,7 +14,7 @@ export type ChatTimelineEntry =
   | {
       type: "activityGroup";
       key: string;
-      activities: AgentActivity[];
+      messages: ChatMessage[];
       startedAt: string;
       endedAt: string | null;
     };
@@ -49,6 +49,18 @@ function terminalMessage(message: ChatMessage | undefined): boolean {
   if (message.role !== "assistant") return false;
   return message.content.some(
     (item) => item.type === "text" && item.phase !== "commentary",
+  );
+}
+
+function workMessage(message: ChatMessage | undefined): boolean {
+  return Boolean(
+    message && message.role === "assistant" && !terminalMessage(message),
+  );
+}
+
+function messageActivities(message: ChatMessage): AgentActivity[] {
+  return message.content.flatMap((item) =>
+    item.type === "activity" ? [item.activity] : [],
   );
 }
 
@@ -93,10 +105,13 @@ function mergeTurnMetadata(
   };
 }
 
-function visibleActivities(activities: AgentActivity[]): AgentActivity[] {
-  return activities.filter(
-    (activity) => activity.type !== "usage" && activity.type !== "turnSummary",
+function visibleWorkMessage(message: ChatMessage): ChatMessage | null {
+  const content = message.content.filter(
+    (item) =>
+      item.type !== "activity" ||
+      (item.activity.type !== "usage" && item.activity.type !== "turnSummary"),
   );
+  return content.length > 0 ? { ...message, content } : null;
 }
 
 export function buildChatTimeline(
@@ -107,8 +122,7 @@ export function buildChatTimeline(
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (!message) continue;
-    const firstActivities = activities(message);
-    if (!firstActivities) {
+    if (!workMessage(message)) {
       entries.push({
         type: "message",
         message,
@@ -118,19 +132,19 @@ export function buildChatTimeline(
       continue;
     }
 
-    const grouped = [...firstActivities];
+    const groupedMessages = [message];
     let endIndex = index;
-    while (endIndex + 1 < messages.length) {
-      const nextMessage = messages[endIndex + 1];
-      if (!nextMessage) break;
-      const nextActivities = activities(nextMessage);
-      if (!nextActivities) break;
-      grouped.push(...nextActivities);
+    while (workMessage(messages[endIndex + 1])) {
+      groupedMessages.push(messages[endIndex + 1]!);
       endIndex += 1;
     }
+    const grouped = groupedMessages.flatMap(messageActivities);
     const followingMessage = messages[endIndex + 1];
     const metadata = activityTurnMetadata(grouped);
-    const displayedActivities = visibleActivities(grouped);
+    const displayedMessages = groupedMessages.flatMap((groupedMessage) => {
+      const visible = visibleWorkMessage(groupedMessage);
+      return visible ? [visible] : [];
+    });
     const turnSummary = [...grouped]
       .reverse()
       .find(
@@ -146,7 +160,12 @@ export function buildChatTimeline(
     const previousMessageEntry = entries.at(-1);
     const previousActivityEntry = entries.at(-2);
     if (
-      trailingTurnMetadata(grouped) &&
+      groupedMessages.every((groupedMessage) => {
+        const groupedActivities = activities(groupedMessage);
+        return (
+          groupedActivities !== null && trailingTurnMetadata(groupedActivities)
+        );
+      }) &&
       previousMessageEntry?.type === "message" &&
       terminalMessage(previousMessageEntry.message)
     ) {
@@ -155,15 +174,15 @@ export function buildChatTimeline(
         metadata,
       );
       if (
-        displayedActivities.length > 0 &&
+        displayedMessages.length > 0 &&
         previousActivityEntry?.type === "activityGroup"
       ) {
-        previousActivityEntry.activities.push(...displayedActivities);
-      } else if (displayedActivities.length > 0) {
+        previousActivityEntry.messages.push(...displayedMessages);
+      } else if (displayedMessages.length > 0) {
         entries.splice(entries.length - 1, 0, {
           type: "activityGroup",
           key: `activities:${message.id}`,
-          activities: displayedActivities,
+          messages: displayedMessages,
           startedAt: precedingTurnStart(messages, index),
           endedAt: previousMessageEntry.message.createdAt,
         });
@@ -181,11 +200,11 @@ export function buildChatTimeline(
         )!,
       );
     }
-    if (displayedActivities.length > 0) {
+    if (displayedMessages.length > 0) {
       entries.push({
         type: "activityGroup",
         key: `activities:${message.id}`,
-        activities: displayedActivities,
+        messages: displayedMessages,
         startedAt: precedingTurnStart(messages, index),
         endedAt,
       });

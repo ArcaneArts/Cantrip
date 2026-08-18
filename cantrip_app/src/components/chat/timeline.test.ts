@@ -74,7 +74,10 @@ describe("chat activity timeline", () => {
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
-      activities: [{ id: "command-1" }, { id: "files-1" }],
+      messages: [
+        { content: [{ activity: { id: "command-1" } }] },
+        { content: [{ activity: { id: "files-1" } }] },
+      ],
       startedAt: "2026-08-07T12:00:00.000Z",
       endedAt: "2026-08-07T12:01:44.000Z",
     });
@@ -110,7 +113,7 @@ describe("chat activity timeline", () => {
     });
   });
 
-  it("preserves commentary phase and closes a recovered group from turn timing", () => {
+  it("preserves commentary inside a recovered work group", () => {
     const timeline = buildChatTimeline([
       message("commentary", "assistant", "2026-08-07T12:00:01.000Z", [
         {
@@ -145,13 +148,84 @@ describe("chat activity timeline", () => {
       ]),
     ]);
 
+    expect(timeline).toHaveLength(1);
     expect(timeline[0]).toMatchObject({
-      type: "message",
-      message: { content: [{ phase: "commentary" }] },
+      type: "activityGroup",
+      messages: [
+        { id: "commentary", content: [{ phase: "commentary" }] },
+        { id: "reasoning", content: [{ activity: { id: "reasoning-1" } }] },
+      ],
+      endedAt: "2026-08-07T12:00:03.000Z",
     });
+  });
+
+  it("keeps commentary-separated commands in one completed work group", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect this project" },
+      ]),
+      message("commentary-1", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "text",
+          text: "I’ll inspect the project structure first.",
+          phase: "commentary",
+        },
+      ]),
+      message("command-1", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-1",
+            command: "ls -la",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: null,
+          },
+        },
+      ]),
+      message("commentary-2", "assistant", "2026-08-07T12:00:03.000Z", [
+        {
+          type: "text",
+          text: "The checkout is empty, so I’ll inspect Git next.",
+          phase: "commentary",
+        },
+      ]),
+      message("command-2", "assistant", "2026-08-07T12:00:04.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-2",
+            command: "git status",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: null,
+          },
+        },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:37.000Z", [
+        { type: "text", text: "The project is empty.", phase: "final_answer" },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
-      endedAt: "2026-08-07T12:00:03.000Z",
+      messages: [
+        { id: "commentary-1" },
+        { id: "command-1" },
+        { id: "commentary-2" },
+        { id: "command-2" },
+      ],
+      startedAt: "2026-08-07T12:00:00.000Z",
+      endedAt: "2026-08-07T12:00:37.000Z",
+    });
+    expect(timeline[2]).toMatchObject({
+      type: "message",
+      message: { id: "answer" },
     });
   });
 
@@ -227,7 +301,7 @@ describe("chat activity timeline", () => {
     expect(timeline).toHaveLength(3);
     expect(timeline[1]).toMatchObject({
       type: "activityGroup",
-      activities: [{ type: "command" }],
+      messages: [{ content: [{ activity: { type: "command" } }] }],
     });
     expect(timeline[2]).toMatchObject({
       type: "message",
