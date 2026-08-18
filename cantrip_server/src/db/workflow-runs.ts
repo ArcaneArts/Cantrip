@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { WorkerEvent } from "@cantrip/protocol";
+import type { ProjectRootKind, WorkerEvent } from "@cantrip/protocol";
 import {
   workflowApprovalGateSchema,
   workflowAgentNodeConfigurationSchema,
   workflowConditionNodeConfigurationSchema,
   workflowGateNodeConfigurationSchema,
+  workflowFolderProducedChangesSchema,
   workflowJsonObjectSchema,
   workflowJsonValueSchema,
   workflowMapNodeConfigurationSchema,
@@ -246,6 +247,7 @@ export interface WorkflowAttemptAssignment {
   cwd: string;
   modelRouteId: string;
   permissionProfileId: string | null;
+  rootKind: ProjectRootKind;
   workerId: string;
   worktreeId: string;
 }
@@ -293,11 +295,17 @@ export interface WorkflowAttemptLease {
   worktreeLeaseId: string | null;
 }
 
-export interface WorkflowWorktreeCheckpoint {
-  endingRevision: string;
-  producedChanges: WorkflowJsonObject;
-  worktreeDirty: boolean;
-}
+export type WorkflowChangeCheckpoint =
+  | {
+      kind: "git";
+      endingRevision: string;
+      producedChanges: WorkflowJsonObject;
+      worktreeDirty: boolean;
+    }
+  | {
+      kind: "folder";
+      producedChanges: WorkflowJsonObject;
+    };
 
 export interface WorkflowInteractionExecutionContext {
   attemptId: string;
@@ -564,16 +572,63 @@ function workerEventPayload(event: WorkerEvent): Record<string, unknown> {
   }
 }
 
-async function checkpointWorkflowWorktreeLease(
+async function recordWorkflowChanges(
   transaction: WorkflowRunTransaction,
   lease: WorkflowAttemptLease,
-  checkpoint: WorkflowWorktreeCheckpoint | null,
+  checkpoint: WorkflowChangeCheckpoint | null,
   now: Date,
 ): Promise<boolean> {
   if (!checkpoint) return false;
-  if (!lease.candidate.node.writeCapable || !lease.worktreeLeaseId) {
+  if (!lease.candidate.node.writeCapable) {
     throw new Error(
-      "A workflow worktree checkpoint requires an attributed write lease.",
+      "Workflow change metadata requires a write-capable attempt.",
+    );
+  }
+  if (checkpoint.kind === "folder") {
+    if (lease.assignment.rootKind !== "folder-root" || lease.worktreeLeaseId) {
+      throw new Error(
+        "Direct folder workflow changes cannot be attributed to a Git worktree lease.",
+      );
+    }
+    const producedChanges = workflowFolderProducedChangesSchema.parse(
+      checkpoint.producedChanges,
+    );
+    const updated = await transaction
+      .update(schema.workflowNodeAttempts)
+      .set({
+        startingRevision: null,
+        endingRevision: null,
+        worktreeDirty: null,
+        producedChanges,
+        updatedAt: now,
+      })
+      .where(eq(schema.workflowNodeAttempts.id, lease.attemptId))
+      .returning({ id: schema.workflowNodeAttempts.id });
+    if (!updated[0]) {
+      throw new Error(
+        "The active workflow attempt changed before recording folder writes.",
+      );
+    }
+    await insertWorkflowRunEvent(transaction, {
+      runId: lease.candidate.run.id,
+      runNodeId: lease.candidate.node.id,
+      attemptId: lease.attemptId,
+      eventKey: `folder-changes-recorded:${lease.attemptId}`,
+      type: "folder.changes.recorded",
+      payload: {
+        rootId: lease.assignment.worktreeId,
+        checkpointAvailable: false,
+        executionMode: "direct-folder",
+        producedChanges,
+      },
+      actorType: "server",
+      actorId: null,
+    });
+    return true;
+  }
+  if (lease.assignment.rootKind !== "git-worktree" || !lease.worktreeLeaseId) {
+    throw new Error(
+      "A workflow worktree checkpoint requires an attributed Git write lease.",
     );
   }
   const endingRevision = checkpoint.endingRevision.trim();
@@ -2753,7 +2808,10 @@ export class WorkflowRunRepository {
           )
           .limit(1);
         if (!runs[0]) return false;
-        if (candidate.node.writeCapable) {
+        if (
+          candidate.node.writeCapable &&
+          assignment.rootKind === "git-worktree"
+        ) {
           const worktreeLeases = await transaction
             .select({ id: schema.workflowWorktreeLeases.id })
             .from(schema.workflowWorktreeLeases)
@@ -2968,6 +3026,7 @@ export class WorkflowRunRepository {
         timeoutAt: timeoutAt.toISOString(),
         workerId: assignment.workerId,
         worktreeId: assignment.worktreeId,
+        rootKind: assignment.rootKind,
         modelRouteId: assignment.modelRouteId,
         mapItemId: candidate.item?.id ?? null,
         mapItemKey: candidate.item?.itemKey ?? null,
@@ -3232,11 +3291,16 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
-    checkpoint: WorkflowWorktreeCheckpoint | null = null,
+    checkpoint: WorkflowChangeCheckpoint | null = null,
   ): Promise<boolean> {
-    if (lease.candidate.node.writeCapable !== Boolean(checkpoint)) {
+    if (
+      lease.candidate.node.writeCapable !== Boolean(checkpoint) ||
+      (checkpoint !== null &&
+        (checkpoint.kind === "folder") !==
+          (lease.assignment.rootKind === "folder-root"))
+    ) {
       throw new Error(
-        "Workflow completion worktree attribution does not match its mutation mode.",
+        "Workflow completion change attribution does not match its mutation mode or execution root.",
       );
     }
     if (lease.candidate.pipeline) {
@@ -3310,12 +3374,7 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodes.id, lease.candidate.node.id));
-      await checkpointWorkflowWorktreeLease(
-        transaction,
-        lease,
-        checkpoint,
-        now,
-      );
+      await recordWorkflowChanges(transaction, lease, checkpoint, now);
 
       const lockedRun = await lockWorkflowRun(
         transaction,
@@ -3378,7 +3437,7 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
-    checkpoint: WorkflowWorktreeCheckpoint | null,
+    checkpoint: WorkflowChangeCheckpoint | null,
   ): Promise<boolean> {
     const repeatUntil = lease.candidate.repeatUntil!;
     const iteration = repeatUntil.state.currentIteration;
@@ -3513,12 +3572,7 @@ export class WorkflowRunRepository {
             updatedAt: now,
           })
           .where(eq(schema.workflowRuns.id, lockedRun.id));
-        await checkpointWorkflowWorktreeLease(
-          transaction,
-          lease,
-          checkpoint,
-          now,
-        );
+        await recordWorkflowChanges(transaction, lease, checkpoint, now);
         return {
           completed: true,
           failed: null,
@@ -3646,12 +3700,7 @@ export class WorkflowRunRepository {
         })
         .where(eq(schema.workflowRunNodes.id, lockedNode.id));
       if (failed || success) {
-        await checkpointWorkflowWorktreeLease(
-          transaction,
-          lease,
-          checkpoint,
-          now,
-        );
+        await recordWorkflowChanges(transaction, lease, checkpoint, now);
       }
 
       let readyNodeIds: string[] = [];
@@ -3789,7 +3838,7 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
-    checkpoint: WorkflowWorktreeCheckpoint | null,
+    checkpoint: WorkflowChangeCheckpoint | null,
   ): Promise<boolean> {
     const item = lease.candidate.item!;
     const pipeline = lease.candidate.pipeline!;
@@ -3937,12 +3986,7 @@ export class WorkflowRunRepository {
               eq(schema.workflowRuns.ownerId, ownerId),
             ),
           );
-        await checkpointWorkflowWorktreeLease(
-          transaction,
-          lease,
-          checkpoint,
-          now,
-        );
+        await recordWorkflowChanges(transaction, lease, checkpoint, now);
         return {
           completed: true,
           readyNodeIds: [] as string[],
@@ -3973,12 +4017,7 @@ export class WorkflowRunRepository {
         })
         .where(eq(schema.workflowRunNodeItems.id, item.id));
       if (!nextStep) {
-        await checkpointWorkflowWorktreeLease(
-          transaction,
-          lease,
-          checkpoint,
-          now,
-        );
+        await recordWorkflowChanges(transaction, lease, checkpoint, now);
       }
       const collectionItems = await transaction
         .select()
@@ -4104,7 +4143,7 @@ export class WorkflowRunRepository {
       threadId: string;
       turnId: string;
     },
-    checkpoint: WorkflowWorktreeCheckpoint | null,
+    checkpoint: WorkflowChangeCheckpoint | null,
   ): Promise<boolean> {
     const item = lease.candidate.item!;
     const now = new Date();
@@ -4165,12 +4204,7 @@ export class WorkflowRunRepository {
           updatedAt: now,
         })
         .where(eq(schema.workflowRunNodeItems.id, item.id));
-      await checkpointWorkflowWorktreeLease(
-        transaction,
-        lease,
-        checkpoint,
-        now,
-      );
+      await recordWorkflowChanges(transaction, lease, checkpoint, now);
       const nodeRows = await transaction
         .select()
         .from(schema.workflowRunNodes)
@@ -5332,6 +5366,7 @@ export class WorkflowRunRepository {
       .select({
         attempt: schema.workflowNodeAttempts,
         node: schema.workflowRunNodes,
+        rootKind: schema.projectWorktrees.rootKind,
         run: schema.workflowRuns,
       })
       .from(schema.workflowNodeAttempts)
@@ -5342,6 +5377,10 @@ export class WorkflowRunRepository {
       .innerJoin(
         schema.workflowRuns,
         eq(schema.workflowRuns.id, schema.workflowRunNodes.runId),
+      )
+      .leftJoin(
+        schema.projectWorktrees,
+        eq(schema.projectWorktrees.id, schema.workflowNodeAttempts.worktreeId),
       )
       .where(
         and(
@@ -5453,6 +5492,8 @@ export class WorkflowRunRepository {
             cwd: "",
             modelRouteId: row.attempt.modelRouteId ?? "unavailable",
             permissionProfileId: row.attempt.permissionProfileId,
+            rootKind:
+              row.rootKind === "folder-root" ? "folder-root" : "git-worktree",
             workerId: row.attempt.workerId ?? "unavailable",
             worktreeId: row.attempt.worktreeId ?? "unavailable",
           },

@@ -126,6 +126,10 @@ export function workflowRunActions(status: WorkflowRunStatus) {
   };
 }
 
+export function workflowExecutionModeLabel(directFolder: boolean) {
+  return directFolder ? "Direct folder" : "Git worktree";
+}
+
 function identifier(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
@@ -238,11 +242,13 @@ type ControlAction =
 
 export function WorkflowCenter({
   chats,
+  directFolder,
   initialWorkflowId,
   onOpenHistory,
   projectId,
 }: {
   chats: ChatSummary[];
+  directFolder: boolean;
   initialWorkflowId?: string | null;
   onOpenHistory(worktreeId: string): void;
   projectId: string;
@@ -799,7 +805,9 @@ export function WorkflowCenter({
                   {!automations.isPending && !selectedAutomations.length ? (
                     <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
                       No triggers for this workflow. Add one to configure a
-                      schedule, API, webhook, Git event, or saved command.
+                      {directFolder
+                        ? " schedule, API, webhook, or saved command."
+                        : " schedule, API, webhook, Git event, or saved command."}
                     </p>
                   ) : null}
                 </div>
@@ -862,6 +870,7 @@ export function WorkflowCenter({
           ) : run.data ? (
             <RunDetail
               detail={run.data}
+              directFolder={directFolder}
               pending={control.isPending || saveRun.isPending}
               revisionNodes={workflow.data?.revision?.nodes ?? []}
               onControl={(action) => control.mutate(action)}
@@ -1162,6 +1171,7 @@ export function WorkflowCenter({
       />
       {workflow.data ? (
         <WorkflowAutomationDialog
+          gitAvailable={!directFolder}
           open={automationOpen}
           projectId={projectId}
           workflow={workflow.data}
@@ -1183,6 +1193,7 @@ export function WorkflowCenter({
 
 function RunDetail({
   detail,
+  directFolder,
   onControl,
   onOpenHistory,
   onSaveRevision,
@@ -1190,6 +1201,7 @@ function RunDetail({
   revisionNodes,
 }: {
   detail: WorkflowRunDetail;
+  directFolder: boolean;
   onControl(action: ControlAction): void;
   onOpenHistory(worktreeId: string): void;
   onSaveRevision(): void;
@@ -1212,6 +1224,12 @@ function RunDetail({
             <h3 className="font-semibold">Run {run.id.slice(0, 8)}</h3>
             <StatusBadge status={run.status} />
             <StatusBadge status={run.recoveryState} />
+            {directFolder ? (
+              <Badge variant="outline" className="gap-1">
+                <FolderSync className="size-3.5" />
+                {workflowExecutionModeLabel(directFolder)}
+              </Badge>
+            ) : null}
           </span>
           <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
@@ -1339,6 +1357,7 @@ function RunDetail({
               attempts={detail.attempts.filter(
                 ({ runNodeId }) => runNodeId === node.id,
               )}
+              directFolder={directFolder}
               key={node.id}
               node={node}
               pending={pending}
@@ -1427,6 +1446,7 @@ function RunDetail({
 
 function RunNode({
   attempts,
+  directFolder,
   node,
   onOpenHistory,
   onRetry,
@@ -1435,6 +1455,7 @@ function RunNode({
   runId,
 }: {
   attempts: WorkflowNodeAttempt[];
+  directFolder: boolean;
   node: WorkflowRunNode;
   onOpenHistory(worktreeId: string): void;
   onRetry(): void;
@@ -1497,9 +1518,11 @@ function RunNode({
             </strong>
           </span>
           <span>
-            Worktree{" "}
+            {directFolder ? "Execution root" : "Worktree"}{" "}
             <strong className="block truncate font-mono font-medium text-foreground">
-              {node.worktreeId ?? "Read-only/shared"}
+              {directFolder
+                ? workflowExecutionModeLabel(directFolder)
+                : (node.worktreeId ?? "Read-only/shared")}
             </strong>
           </span>
           <span>
@@ -1537,6 +1560,11 @@ function RunNode({
                 {latestAttempt.errorMessage}
               </span>
             ) : null}
+            {directFolder && node.writeCapable ? (
+              <span className="text-muted-foreground">
+                Direct writes · no Git checkpoint
+              </span>
+            ) : null}
           </div>
         ) : null}
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1560,7 +1588,7 @@ function RunNode({
           </details>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {node.worktreeId ? (
+          {node.worktreeId && !directFolder ? (
             <Button
               size="sm"
               variant="outline"

@@ -3356,6 +3356,13 @@ describe("Cantrip protocol", () => {
     expect(command).toMatchObject({
       type: "workflow.node.execute",
       attemptId: "attempt-1",
+      rootKind: "git-worktree",
+    });
+    expect(
+      workerCommandSchema.parse({ ...command, rootKind: "folder-root" }),
+    ).toMatchObject({
+      type: "workflow.node.execute",
+      rootKind: "folder-root",
     });
 
     expect(

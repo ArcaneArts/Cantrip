@@ -9,6 +9,14 @@ import {
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
+import {
+  projectAutomationDispatchResultSchema,
+  projectAutomationSchema,
+} from "@cantrip/protocol/automations";
+import {
+  workflowAutomationTriggerSchema,
+  workflowDefinitionDetailSchema,
+} from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
@@ -64,6 +72,9 @@ const bridge: WorkerCommandBus = {
       };
     }
     if (command.type === "project.folder.delete") return { deleted: true };
+    if (command.type === "automation.condition.evaluate") {
+      return { allowed: true, detail: "Condition passed." };
+    }
     if (command.type === "project.folder-stats") {
       return {
         kind: "folder",
@@ -92,6 +103,11 @@ let database: DatabaseConnection;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
+  await database.repository.ensureDefaultModelConfiguration(
+    LOCAL_USER_ID,
+    config.agentModel,
+    config.ollamaBaseUrl,
+  );
   await database.repository.recordWorker(LOCAL_USER_ID, {
     workerId: "folder-worker",
     name: "Folder Worker",
@@ -502,6 +518,189 @@ describe("managed folder project lifecycle", () => {
       },
     });
     expect(ownerTunnel.statusCode).toBe(201);
+  });
+
+  it("keeps scheduled prompts and non-Git workflow triggers available", async () => {
+    const project = await createFolder("Automated folder");
+    await waitUntilReady(project.id);
+    const root = (
+      await database.repository.listProjectWorktrees(LOCAL_USER_ID, project.id)
+    )[0]!;
+    const chatResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/chats`,
+      payload: { title: "Scheduled folder work" },
+    });
+    expect(chatResponse.statusCode).toBe(201);
+    const chatId = (chatResponse.json() as { id: string }).id;
+    await database.repository.setChatAutomationPaused(
+      LOCAL_USER_ID,
+      chatId,
+      true,
+    );
+    const startsAt = new Date(Date.now() + 10_000).toISOString();
+    const createAutomationResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/automations`,
+      payload: {
+        name: "Folder review",
+        chatId,
+        prompt: "Review the current folder contents.",
+        schedule: {
+          kind: "interval",
+          every: 5,
+          unit: "minute",
+          startsAt,
+        },
+        condition: { type: "script", script: "test -f README.md" },
+        enabled: true,
+      },
+    });
+    expect(createAutomationResponse.statusCode).toBe(201);
+    const automation = projectAutomationSchema.parse(
+      createAutomationResponse.json(),
+    );
+    const dispatch = await app.inject({
+      method: "POST",
+      url: `/api/internal/workers/automations/${automation.id}/dispatch?workerId=folder-worker`,
+      headers: { authorization: `Bearer ${config.workerToken}` },
+      payload: {
+        revision: automation.revision,
+        scheduledFor: automation.nextRunAt,
+      },
+    });
+    expect(dispatch.statusCode).toBe(202);
+    expect(
+      projectAutomationDispatchResultSchema.parse(dispatch.json()),
+    ).toMatchObject({ accepted: true, status: "queued" });
+    expect(commands.at(-1)).toEqual({
+      workerId: "folder-worker",
+      command: {
+        type: "automation.condition.evaluate",
+        condition: { type: "script", script: "test -f README.md" },
+        cwd: root.path,
+        repository: null,
+      },
+    });
+
+    const openIssues = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/automations`,
+      payload: {
+        name: "Issue review",
+        chatId,
+        prompt: "Review open issues.",
+        schedule: {
+          kind: "interval",
+          every: 5,
+          unit: "minute",
+          startsAt,
+        },
+        condition: { type: "open-issues", minimum: 1 },
+        enabled: true,
+      },
+    });
+    expect(openIssues.statusCode).toBe(409);
+    expect(openIssues.json()).toMatchObject({
+      code: "project-capability-unavailable",
+      capability: "github",
+    });
+    const updateToOpenIssues = await app.inject({
+      method: "PATCH",
+      url: `/api/automations/${automation.id}`,
+      payload: { condition: { type: "open-issues", minimum: 1 } },
+    });
+    expect(updateToOpenIssues.statusCode).toBe(409);
+    expect(updateToOpenIssues.json()).toMatchObject({
+      code: "project-capability-unavailable",
+      capability: "github",
+    });
+
+    const preauthorized = {
+      filesystem: "read-only",
+      network: "none",
+      approvalMode: "preauthorized",
+      skills: [],
+      mcpServers: [],
+      nativeSubagents: false,
+    } as const;
+    const workflowResponse = await app.inject({
+      method: "POST",
+      url: "/api/workflows",
+      payload: {
+        scope: "project",
+        projectId: project.id,
+        slug: "scheduled-folder-review",
+        name: "Scheduled folder review",
+        trustState: "trusted",
+        revision: {
+          graph: {
+            version: 1,
+            nodes: [
+              {
+                key: "gate",
+                type: "gate",
+                name: "Folder gate",
+                configuration: { prompt: "Approve completion." },
+                permissionRequirements: preauthorized,
+              },
+            ],
+            edges: [],
+          },
+          permissionRequirements: preauthorized,
+          trustState: "trusted",
+        },
+      },
+    });
+    expect(workflowResponse.statusCode).toBe(201);
+    const revisionId = workflowDefinitionDetailSchema.parse(
+      workflowResponse.json(),
+    ).revision!.id;
+    const triggerBase = {
+      workflowRevisionId: revisionId,
+      projectId: project.id,
+      name: "Folder automation",
+      enabled: true,
+      structuredInput: {},
+      permissionManifest: preauthorized,
+    };
+    const scheduleTrigger = await app.inject({
+      method: "POST",
+      url: "/api/workflow-triggers",
+      payload: {
+        ...triggerBase,
+        type: "schedule",
+        configuration: {
+          intervalSeconds: 60,
+          startAt: startsAt,
+          catchUpPolicy: "once",
+          offlinePolicy: "pause",
+        },
+      },
+    });
+    expect(scheduleTrigger.statusCode).toBe(201);
+    expect(
+      workflowAutomationTriggerSchema.parse(scheduleTrigger.json()),
+    ).toMatchObject({ type: "schedule", projectId: project.id });
+
+    const gitTrigger = await app.inject({
+      method: "POST",
+      url: "/api/workflow-triggers",
+      payload: {
+        ...triggerBase,
+        type: "git",
+        configuration: {
+          event: "push",
+          branchPattern: "*",
+          minimumIntervalSeconds: 1,
+        },
+      },
+    });
+    expect(gitTrigger.statusCode).toBe(409);
+    expect(gitTrigger.json()).toMatchObject({
+      code: "project-capability-unavailable",
+      capability: "git",
+    });
   });
 
   it("keeps durable state readable offline and rejects folder worktree CLI commands", async () => {

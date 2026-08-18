@@ -11361,6 +11361,16 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      if (input.data.condition?.type === "open-issues") {
+        const project = await repository.getProject(
+          applicationOwnerId(),
+          request.params.projectId,
+        );
+        if (!project) {
+          return reply.code(404).send({ error: "Project not found." });
+        }
+        requireProjectCapability(project, "github");
+      }
       try {
         const automation = await repository.projectAutomations.create(
           applicationOwnerId(),
@@ -11387,6 +11397,23 @@ export async function buildApp({
       const input = projectAutomationUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      if (input.data.condition?.type === "open-issues") {
+        const existing = await repository.projectAutomations.get(
+          applicationOwnerId(),
+          request.params.automationId,
+        );
+        if (!existing) {
+          return reply.code(404).send({ error: "Automation not found." });
+        }
+        const project = await repository.getProject(
+          applicationOwnerId(),
+          existing.projectId,
+        );
+        if (!project) {
+          return reply.code(404).send({ error: "Project not found." });
+        }
+        requireProjectCapability(project, "github");
       }
       try {
         const automation = await repository.projectAutomations.update(
@@ -11617,6 +11644,16 @@ export async function buildApp({
         error: "Trigger input cannot contain secret-bearing fields.",
       });
     }
+    if (input.data.type === "git") {
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        input.data.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      requireProjectCapability(project, "git");
+    }
     try {
       const trigger = await repository.workflowTriggers.create(
         applicationOwnerId(),
@@ -11789,6 +11826,14 @@ export async function buildApp({
           .code(409)
           .send({ error: "Git event does not match this workflow trigger." });
       }
+      const project = await repository.getProject(
+        applicationOwnerId(),
+        context.trigger.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      requireProjectCapability(project, "git");
       try {
         const result = await deliverWorkflowTrigger({
           actorId: null,
@@ -16912,11 +16957,23 @@ export async function buildApp({
           .send({ error: "Task implementation has not started." });
       }
 
+      const project = await repository.getProject(ownerId, context.projectId);
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const directFolder = context.rootKind === "folder-root";
       const [lanes, messages, worktrees, githubContext] = await Promise.all([
         repository.listChatExecutionLanes(ownerId, context.chatId),
         repository.listMessages(ownerId, context.chatId),
-        repository.listProjectWorktrees(ownerId, context.projectId),
-        repository.getGithubProjectExecutionContext(ownerId, context.projectId),
+        directFolder
+          ? Promise.resolve([])
+          : repository.listProjectWorktrees(ownerId, context.projectId),
+        directFolder
+          ? Promise.resolve(null)
+          : repository.getGithubProjectExecutionContext(
+              ownerId,
+              context.projectId,
+            ),
       ]);
       const observations: TaskWorktreeObservation[] = await Promise.all(
         worktrees.map(async (worktree) => {
@@ -16932,10 +16989,12 @@ export async function buildApp({
           };
         }),
       );
-      const activeObservation = observations.find(
-        ({ worktree }) => worktree.id === context.worktreeId,
-      );
-      if (!activeObservation) {
+      const activeObservation = directFolder
+        ? null
+        : observations.find(
+            ({ worktree }) => worktree.id === context.worktreeId,
+          );
+      if (!directFolder && !activeObservation) {
         return reply.code(409).send({ error: "Task worktree was not found." });
       }
 
@@ -16982,7 +17041,9 @@ export async function buildApp({
 
       let pullRequestsUnavailableReason: string | null = null;
       let pullRequests: TaskAssociatedPullRequest[] = [];
-      if (!githubContext) {
+      if (directFolder) {
+        pullRequestsUnavailableReason = null;
+      } else if (!githubContext) {
         pullRequestsUnavailableReason =
           "This project is not linked to a GitHub repository.";
       } else if (!bridge.isConnected(githubContext.workerId)) {
@@ -17017,27 +17078,37 @@ export async function buildApp({
           pullRequestsUnavailableReason = errorMessage(error).slice(0, 2_000);
         }
       }
-      const warnings = taskAdvisoryWarnings({
-        activeWorktreeId: context.worktreeId,
-        lanes,
-        pullRequests,
-        state: task.state,
-        worktrees: observations,
-      });
+      const warnings = directFolder
+        ? []
+        : taskAdvisoryWarnings({
+            activeWorktreeId: context.worktreeId,
+            lanes,
+            pullRequests,
+            state: task.state,
+            worktrees: observations,
+          });
       return reply.send(
         taskImplementationDashboardSchema.parse({
           task,
           goal,
           goalUnavailableReason,
-          placement: {
-            workerId: context.workerId,
-            worktreeId: activeObservation.worktree.id,
-            worktreeName: activeObservation.worktree.name,
-            branch: activeObservation.worktree.branch,
-            isPrimary: activeObservation.worktree.isPrimary,
-            dirty: activeObservation.dirty,
-            dirtyFileCount: activeObservation.dirtyFileCount,
-          },
+          placement: directFolder
+            ? {
+                kind: "folder",
+                workerId: context.workerId,
+                rootId: context.worktreeId,
+                displayPath: project.source?.displayPath ?? context.cwd,
+              }
+            : {
+                kind: "git",
+                workerId: context.workerId,
+                worktreeId: activeObservation!.worktree.id,
+                worktreeName: activeObservation!.worktree.name,
+                branch: activeObservation!.worktree.branch,
+                isPrimary: activeObservation!.worktree.isPrimary,
+                dirty: activeObservation!.dirty,
+                dirtyFileCount: activeObservation!.dirtyFileCount,
+              },
           pullRequests,
           pullRequestsUnavailableReason,
           warnings,
@@ -22653,6 +22724,14 @@ export async function buildApp({
             );
           }
           if (automation.condition) {
+            if (automation.condition.type === "open-issues") {
+              const project = await repository.getProject(
+                workerAuth.ownerId,
+                automation.projectId,
+              );
+              if (!project) throw new Error("Automation project not found.");
+              requireProjectCapability(project, "github");
+            }
             const githubContext =
               automation.condition.type === "open-issues"
                 ? await repository.getGithubProjectExecutionContext(

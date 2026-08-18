@@ -90,6 +90,20 @@ type ScheduleMode = ProjectAutomationSchedule["kind"];
 type ConditionMode = "none" | ProjectAutomationCondition["type"];
 type AutomationDialogTab = "details" | "schedule" | "condition";
 
+const conditionModeLabels: Record<ConditionMode, string> = {
+  none: "No condition",
+  script: "Script exit code",
+  "open-issues": "Minimum open issues",
+};
+
+export function availableProjectAutomationConditionModes(
+  githubAvailable: boolean,
+): ConditionMode[] {
+  return ["none", "script", "open-issues"].filter(
+    (mode) => githubAvailable || mode !== "open-issues",
+  ) as ConditionMode[];
+}
+
 const automationDialogTabs = [
   { id: "details", label: "Details", icon: FileText },
   { id: "schedule", label: "Schedule", icon: CalendarClock },
@@ -99,12 +113,14 @@ const automationDialogTabs = [
 function AutomationDialog({
   automation,
   chats,
+  githubAvailable,
   onOpenChange,
   open,
   projectId,
 }: {
   automation: ProjectAutomation | null;
   chats: ChatSummary[];
+  githubAvailable: boolean;
   onOpenChange(open: boolean): void;
   open: boolean;
   projectId: string;
@@ -436,9 +452,13 @@ function AutomationDialog({
                     setConditionMode(event.target.value as ConditionMode)
                   }
                 >
-                  <option value="none">No condition</option>
-                  <option value="script">Script exit code</option>
-                  <option value="open-issues">Minimum open issues</option>
+                  {availableProjectAutomationConditionModes(
+                    githubAvailable,
+                  ).map((mode) => (
+                    <option key={mode} value={mode}>
+                      {conditionModeLabels[mode]}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -453,7 +473,7 @@ function AutomationDialog({
                     spellCheck={false}
                   />
                   <span className="text-xs text-muted-foreground">
-                    Runs in the target agent&apos;s active worktree. Exit code 0
+                    Runs in the target agent&apos;s execution root. Exit code 0
                     allows the automation; every other exit code skips it.
                   </span>
                 </label>
@@ -510,9 +530,11 @@ function AutomationDialog({
 
 export function ProjectAutomationsSettings({
   chats,
+  githubAvailable,
   projectId,
 }: {
   chats: ChatSummary[];
+  githubAvailable: boolean;
   projectId: string;
 }) {
   const queryClient = useQueryClient();
@@ -713,6 +735,7 @@ export function ProjectAutomationsSettings({
       <AutomationDialog
         automation={editing}
         chats={chats}
+        githubAvailable={githubAvailable}
         onOpenChange={setEditorOpen}
         open={editorOpen}
         projectId={projectId}

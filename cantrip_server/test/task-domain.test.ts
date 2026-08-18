@@ -11,6 +11,7 @@ import {
   chatSummarySchema,
   taskCreateResultSchema,
   taskImplementationDashboardSchema,
+  projectSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -72,6 +73,7 @@ let codePreparationCount = 0;
 let goalCreateCount = 0;
 let goalTurnCount = 0;
 let structuredTurnCount = 0;
+let githubPullRequestListCount = 0;
 let failNextGoalCreate = false;
 let nextTaskStructuredResult: unknown = plannerResult;
 let activeGoal: {
@@ -106,6 +108,16 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(_workerId, command, options) {
+    if (command.type === "project.folder.materialize") {
+      return {
+        status: "ready",
+        jobId: command.jobId,
+        attempt: command.attempt,
+        path: path.join(dataDirectory, "managed-folders", command.projectId),
+        displayPath: `managed-folders/${command.projectId}`,
+        reused: false,
+      };
+    }
     if (command.type === "code.prepareAgentTurn") {
       codePreparationCount += 1;
       return { prepared: true, sessions: [] };
@@ -176,6 +188,7 @@ const workerBridge: WorkerCommandBus = {
       return { goal: activeGoal };
     }
     if (command.type === "github.pull-requests.list") {
+      githubPullRequestListCount += 1;
       return {
         state: command.state,
         total: command.state === "open" ? 1 : 0,
@@ -228,6 +241,7 @@ beforeAll(async () => {
     architecture: "arm64",
     codexVersion: "0.147.0",
     codexRuntime: unprobedCodexRuntimeReport,
+    managedFolders: { create: true, remove: true },
     remoteSurfaces: {
       browser: false,
       transports: ["websocket"],
@@ -1037,6 +1051,110 @@ describe.sequential("Task domain foundation", () => {
         }),
       ]),
     );
+  });
+
+  it("runs the full Task lifecycle directly in a managed folder", async () => {
+    const githubProjectId = projectId;
+    try {
+      const folderResponse = await app.inject({
+        method: "POST",
+        url: "/api/projects/from-folder",
+        payload: { name: "Task scratch", workerId: "task-worker" },
+      });
+      expect(folderResponse.statusCode).toBe(202);
+      const folderProject = projectSummarySchema.parse(folderResponse.json());
+      projectId = folderProject.id;
+      let source = await database.repository.getProjectSource(
+        LOCAL_USER_ID,
+        folderProject.id,
+      );
+      for (let attempt = 0; !source && attempt < 100; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        source = await database.repository.getProjectSource(
+          LOCAL_USER_ID,
+          folderProject.id,
+        );
+      }
+      if (!source) throw new Error("Managed folder setup did not complete.");
+
+      const createResponse = await app.inject({
+        method: "POST",
+        url: `/api/projects/${folderProject.id}/tasks`,
+        payload: { title: "Implement without Git" },
+      });
+      expect(createResponse.statusCode).toBe(201);
+      const created = taskCreateResultSchema.parse(createResponse.json());
+      const draftResponse = await app.inject({
+        method: "PATCH",
+        url: `/api/tasks/${created.chat.id}/draft`,
+        payload: {
+          rowVersion: created.task.rowVersion,
+          briefMarkdown: "Plan and implement directly in this folder.",
+        },
+      });
+      expect(draftResponse.statusCode).toBe(200);
+      const drafted = taskDetailSchema.parse(draftResponse.json());
+      nextTaskStructuredResult = plannerResult;
+      const planResponse = await app.inject({
+        method: "POST",
+        url: `/api/tasks/${created.chat.id}/plan`,
+        payload: {
+          operationId: randomUUID(),
+          rowVersion: drafted.rowVersion,
+        },
+      });
+      expect(planResponse.statusCode).toBe(202);
+      const review = await waitForTaskState(created.chat.id, "review");
+      nextTaskStructuredResult = finalizerResult;
+      const implementationResponse = await app.inject({
+        method: "POST",
+        url: `/api/tasks/${created.chat.id}/begin-implementation`,
+        payload: {
+          operationId: randomUUID(),
+          rowVersion: review.rowVersion,
+          answers: [
+            {
+              questionId: "delivery",
+              optionId: "sequential",
+              freeform: null,
+            },
+          ],
+          additionalDirection: "Write directly in the selected folder.",
+        },
+      });
+      expect(implementationResponse.statusCode).toBe(202);
+      await waitForTaskState(created.chat.id, "implementing");
+      expect(taskTurnCommand).toMatchObject({
+        rootKind: "folder-root",
+        cwd: source.cwd,
+        worktreeId: source.worktreeId,
+      });
+
+      const githubRequestsBefore = githubPullRequestListCount;
+      const dashboardResponse = await app.inject({
+        method: "GET",
+        url: `/api/tasks/${created.chat.id}/dashboard`,
+      });
+      expect(dashboardResponse.statusCode).toBe(200);
+      expect(
+        taskImplementationDashboardSchema.parse(dashboardResponse.json()),
+      ).toMatchObject({
+        task: { state: "implementing" },
+        goal: { status: "active" },
+        placement: {
+          kind: "folder",
+          workerId: "task-worker",
+          rootId: source.worktreeId,
+          displayPath: `managed-folders/${folderProject.id}`,
+        },
+        pullRequests: [],
+        pullRequestsUnavailableReason: null,
+        warnings: [],
+      });
+      expect(githubPullRequestListCount).toBe(githubRequestsBefore);
+    } finally {
+      projectId = githubProjectId;
+    }
   });
 
   it("retries a prepared Goal launch without rerunning finalization", async () => {

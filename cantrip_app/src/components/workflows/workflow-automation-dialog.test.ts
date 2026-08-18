@@ -2,6 +2,7 @@ import type { WorkflowDefinitionDetail } from "@cantrip/protocol/workflows";
 import { describe, expect, it } from "vitest";
 
 import {
+  availableWorkflowAutomationTypes,
   canWorkflowUseUnattendedTriggers,
   sha256Hex,
 } from "./workflow-automation-dialog";
@@ -18,6 +19,16 @@ function workflow(): WorkflowDefinitionDetail {
 }
 
 describe("workflow automation authoring", () => {
+  it("does not offer Git events for direct folder workflows", () => {
+    expect(availableWorkflowAutomationTypes(false)).toEqual([
+      "schedule",
+      "api",
+      "webhook",
+      "saved-command",
+    ]);
+    expect(availableWorkflowAutomationTypes(true)).toContain("git");
+  });
+
   it("requires trusted, fully preauthorized workflow state", () => {
     const allowed = workflow();
     expect(canWorkflowUseUnattendedTriggers(allowed)).toBe(true);

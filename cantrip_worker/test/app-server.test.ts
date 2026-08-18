@@ -46,6 +46,7 @@ import {
   flushStagedAgentMessage,
   stageAgentMessage,
   workflowMeasuredUsage,
+  workflowDeveloperInstructions,
 } from "../src/codex/app-server.js";
 
 describe("active chat turn selection", () => {
@@ -972,6 +973,27 @@ describe("Codex permission profile params", () => {
 });
 
 describe("Codex workflow node policy", () => {
+  it("makes direct folder write semantics explicit to the agent", () => {
+    expect(
+      workflowDeveloperInstructions({
+        developerInstructions: "Return the requested JSON.",
+        rootKind: "folder-root",
+      }),
+    ).toContain("Writes modify the shared folder immediately");
+    expect(
+      workflowDeveloperInstructions({
+        developerInstructions: "Return the requested JSON.",
+        rootKind: "folder-root",
+      }),
+    ).toContain("no Git checkpoint will be created");
+    expect(
+      workflowDeveloperInstructions({
+        developerInstructions: "Return the requested JSON.",
+        rootKind: "git-worktree",
+      }),
+    ).toBe("Return the requested JSON.");
+  });
+
   it("maps node mutation and network requirements into scoped sandboxes", () => {
     expect(
       codexWorkflowTurnPolicy(

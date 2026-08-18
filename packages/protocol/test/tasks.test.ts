@@ -159,39 +159,57 @@ describe("Task protocol", () => {
       }).success,
     ).toBe(false);
 
+    const gitDashboard = taskImplementationDashboardSchema.parse({
+      task: {
+        ...base,
+        state: "implementing",
+        finalPlanMarkdown: "# Final plan",
+        goalPrompt: "Implement everything.",
+        implementationStartedAt: "2026-08-17T00:00:00.000Z",
+      },
+      goal: {
+        threadId: "thread",
+        objective: "Implement everything.",
+        status: "active",
+        tokenBudget: 10_000,
+        tokensUsed: 50,
+        timeUsedSeconds: 10,
+        createdAt: 1,
+        updatedAt: 2,
+      },
+      goalUnavailableReason: null,
+      placement: {
+        workerId: "worker",
+        worktreeId: "worktree",
+        worktreeName: "Cycle 1",
+        branch: "agent/manual/cycle-1",
+        isPrimary: false,
+        dirty: false,
+        dirtyFileCount: 0,
+      },
+      pullRequests: [],
+      pullRequestsUnavailableReason: null,
+      warnings: [],
+    });
+    expect(gitDashboard).toMatchObject({
+      task: { state: "implementing" },
+      placement: { kind: "git" },
+    });
     expect(
       taskImplementationDashboardSchema.parse({
-        task: {
-          ...base,
-          state: "implementing",
-          finalPlanMarkdown: "# Final plan",
-          goalPrompt: "Implement everything.",
-          implementationStartedAt: "2026-08-17T00:00:00.000Z",
-        },
-        goal: {
-          threadId: "thread",
-          objective: "Implement everything.",
-          status: "active",
-          tokenBudget: 10_000,
-          tokensUsed: 50,
-          timeUsedSeconds: 10,
-          createdAt: 1,
-          updatedAt: 2,
-        },
-        goalUnavailableReason: null,
+        ...gitDashboard,
         placement: {
+          kind: "folder",
           workerId: "worker",
-          worktreeId: "worktree",
-          worktreeName: "Cycle 1",
-          branch: "agent/manual/cycle-1",
-          isPrimary: false,
-          dirty: false,
-          dirtyFileCount: 0,
+          rootId: "folder-root",
+          displayPath: "folders/folder-root",
         },
-        pullRequests: [],
-        pullRequestsUnavailableReason: null,
-        warnings: [],
       }),
-    ).toMatchObject({ task: { state: "implementing" } });
+    ).toMatchObject({
+      placement: {
+        kind: "folder",
+        displayPath: "folders/folder-root",
+      },
+    });
   });
 });

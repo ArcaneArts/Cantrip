@@ -1607,6 +1607,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           attemptId: command.attemptId,
           idempotencyKey: command.idempotencyKey,
           worktreeId: command.worktreeId,
+          rootKind: command.rootKind,
           cwd: command.cwd,
           threadId: command.threadId,
           prompt: command.prompt,
