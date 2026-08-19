@@ -6,6 +6,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Check,
+  Braces,
   Copy,
   Cpu,
   GitCompareArrows,
@@ -38,6 +39,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  checkCodeGraphUpdate,
   createWorkerEnrollmentCode,
   getAccountSessions,
   getWorkerCredentials,
@@ -217,18 +219,22 @@ function CredentialRow({
 function WorkerRow({
   isDefault,
   isThisMachine,
+  checkingCodeGraphUpdate,
   restarting,
   worker,
   onManage,
   onRestart,
+  onCheckCodeGraphUpdate,
   onUnlink,
 }: {
   isDefault: boolean;
   isThisMachine: boolean;
+  checkingCodeGraphUpdate: boolean;
   restarting: boolean;
   worker: WorkerManagementSummary;
   onManage(): void;
   onRestart(): void;
+  onCheckCodeGraphUpdate(): void;
   onUnlink(): void;
 }) {
   return (
@@ -271,6 +277,23 @@ function WorkerRow({
           {worker.codexVersion ? ` · ${worker.codexVersion}` : ""}
         </p>
         <WorkerCapabilities worker={worker} />
+        <p
+          className="mt-0.5 truncate text-xs text-muted-foreground"
+          title={worker.codegraph.statusMessage ?? undefined}
+        >
+          CodeGraph: {worker.codegraph.runtimeState}
+          {worker.codegraph.installedVersion
+            ? ` · v${worker.codegraph.installedVersion}`
+            : ""}
+          {worker.codegraph.latestVersion &&
+          worker.codegraph.latestVersion !== worker.codegraph.installedVersion
+            ? ` · v${worker.codegraph.latestVersion} available`
+            : ""}
+          {worker.codegraph.available
+            ? ` · ${worker.codegraph.projectCounts.ready} ready, ${worker.codegraph.projectCounts.indexing} active`
+            : ""}
+          {worker.codegraph.telemetryDisabled ? " · telemetry off" : ""}
+        </p>
       </div>
       <div className="col-span-2 min-w-0 pl-10 lg:col-span-1 lg:pl-0">
         <p className="truncate text-xs">
@@ -291,6 +314,24 @@ function WorkerRow({
         </p>
       </div>
       <div className="col-start-2 row-start-1 flex items-center justify-end lg:col-auto lg:row-auto">
+        <Button
+          size="icon"
+          variant="ghost"
+          disabled={
+            checkingCodeGraphUpdate ||
+            !worker.online ||
+            !worker.codegraph.supported
+          }
+          title="Check for a CodeGraph update"
+          onClick={onCheckCodeGraphUpdate}
+        >
+          {checkingCodeGraphUpdate ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Braces className="size-3.5" />
+          )}
+          <span className="sr-only">Check CodeGraph on {worker.name}</span>
+        </Button>
         <Button
           size="icon"
           variant="ghost"
@@ -562,6 +603,15 @@ export function WorkerSettings() {
       ]);
     },
   });
+  const codeGraphUpdate = useMutation({
+    mutationFn: (workerId: string) => checkCodeGraphUpdate(workerId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["worker-management"] }),
+        queryClient.invalidateQueries({ queryKey: ["workers"] }),
+      ]);
+    },
+  });
   const unlink = useMutation({
     mutationFn: async () => {
       const workerId = unlinkTarget!.workerId;
@@ -596,6 +646,11 @@ export function WorkerSettings() {
           worker.platform,
           worker.architecture,
           worker.codexVersion ?? "",
+          worker.codegraph.runtimeState,
+          worker.codegraph.installedVersion ?? "",
+          worker.codegraph.latestVersion ?? "",
+          worker.codegraph.statusMessage ?? "",
+          worker.codegraph.telemetryDisabled ? "telemetry off" : "",
           worker.online ? "online" : "offline",
           worker.internal ? "internal embedded local" : "remote",
           ...worker.sources.flatMap((source) => [
@@ -978,6 +1033,10 @@ export function WorkerSettings() {
               isDefault={
                 settings.data?.preferences.defaultWorkerId === worker.workerId
               }
+              checkingCodeGraphUpdate={
+                codeGraphUpdate.isPending &&
+                codeGraphUpdate.variables === worker.workerId
+              }
               isThisMachine={
                 desktopWorkerForServer?.workerId === worker.workerId
               }
@@ -997,6 +1056,9 @@ export function WorkerSettings() {
                 restartMutation.reset();
                 setRestartTarget(worker);
               }}
+              onCheckCodeGraphUpdate={() =>
+                codeGraphUpdate.mutate(worker.workerId)
+              }
               onUnlink={() => setUnlinkTarget(worker)}
             />
           ))}

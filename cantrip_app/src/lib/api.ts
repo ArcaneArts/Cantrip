@@ -57,6 +57,8 @@ import {
   chatReasoningUpdateSchema,
   codeAttachmentSchema,
   codeRuntimeStatusSchema,
+  codeGraphActionAcknowledgementSchema,
+  codeGraphProjectStatusSchema,
   codeSaveAllResultSchema,
   codeTabListSchema,
   codeTabSummarySchema,
@@ -475,6 +477,38 @@ export async function logoutAll() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function checkCodeGraphUpdate(workerId: string) {
+  return codeGraphActionAcknowledgementSchema.parse(
+    await post(
+      `/api/workers/${encodeURIComponent(workerId)}/codegraph/update-check`,
+      {},
+    ),
+  );
+}
+
+function codeGraphWorktreePath(projectId: string, worktreeId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/codegraph`;
+}
+
+export async function getCodeGraphWorktreeStatus(
+  projectId: string,
+  worktreeId: string,
+) {
+  return codeGraphProjectStatusSchema.parse(
+    await request(codeGraphWorktreePath(projectId, worktreeId)),
+  );
+}
+
+export async function requestCodeGraphWorktreeAction(
+  projectId: string,
+  worktreeId: string,
+  action: "sync" | "rebuild",
+) {
+  return codeGraphActionAcknowledgementSchema.parse(
+    await post(`${codeGraphWorktreePath(projectId, worktreeId)}/${action}`, {}),
+  );
 }
 
 export async function getWorkerServiceLogs(
