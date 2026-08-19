@@ -35,6 +35,7 @@ import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
+import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { readWorkerConfig } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -263,6 +264,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     throw new Error(
       `Bundled Codex reports ${codexRuntime.version?.semantic ?? "no version"}; manifest expects ${bundledCodex.version}.`,
     );
+  }
+  let codegraphRuntime: CodeGraphRuntimeManager | null = null;
+  let codegraphStatus: ReturnType<CodeGraphRuntimeManager["status"]> | null =
+    null;
+  try {
+    codegraphRuntime = new CodeGraphRuntimeManager({
+      dataDirectory: config.dataDirectory,
+    });
+    codegraphStatus = await codegraphRuntime.prepare();
+    codegraphRuntime.publishEnvironment();
+  } catch (error) {
+    workerLogger.event("warn", "CodeGraph runtime preparation was skipped", {
+      event: "codegraph.runtime.prepare-failed",
+      subsystem: "codegraph",
+      operation: "prepare-runtime",
+      reasonCode: "prepare-failed",
+      status: "degraded",
+      error: workerLogError(error),
+    });
   }
   const browserAdapter = new BrowserRemoteSurfaceAdapter({
     dataDirectory: config.dataDirectory,
@@ -1929,6 +1949,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     serverOrigin,
     runtime: {
       cliAvailable: Boolean(cliConnection.endpoint),
+      codegraphAvailable: codegraphStatus?.cliAvailable ?? false,
+      codegraphState: codegraphStatus?.state ?? "unavailable",
+      codegraphVersion: codegraphStatus?.installedVersion ?? null,
       codeAvailable: codeDiscovery.capabilities.available,
       codeVersion: codeDiscovery.capabilities.version ?? null,
       codeSource: codeDiscovery.installation?.source ?? null,

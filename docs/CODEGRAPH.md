@@ -459,20 +459,20 @@ normal worker observations.
 
 ## 13. Failure and recovery behavior
 
-| Failure | Required behavior |
-| --- | --- |
-| GitHub unavailable | Use the last verified runtime and report a stale update check. |
-| No runtime and offline | Disable only CodeGraph; keep the worker online. |
-| Hash, digest, or version mismatch | Delete staging data, retain current runtime, surface a security error. |
-| Extraction failure | Retain current runtime and remove the partial directory. |
-| Telemetry suppression failure | Do not promote the new version; mark the current integration degraded. |
-| New runtime fails health/MCP handshake | Roll back atomically to the prior verified version. |
-| Initial index fails | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back. |
-| Watcher/daemon exits | Restart with bounded exponential backoff and run catch-up sync. |
-| SQLite lock/corruption | Stop the daemon, quarantine the derived index, and rebuild after confirmation or safe automatic policy. |
-| Worktree disappears | Stop supervision and remove its in-memory registration without touching another checkout. |
-| Active turn during update | Let it finish on the old process; rematerialize at the next safe resume. |
-| Old server/app during rollout | Worker omits unsupported status fields and continues normal agents without UI management. |
+| Failure                                | Required behavior                                                                                       |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| GitHub unavailable                     | Use the last verified runtime and report a stale update check.                                          |
+| No runtime and offline                 | Disable only CodeGraph; keep the worker online.                                                         |
+| Hash, digest, or version mismatch      | Delete staging data, retain current runtime, surface a security error.                                  |
+| Extraction failure                     | Retain current runtime and remove the partial directory.                                                |
+| Telemetry suppression failure          | Do not promote the new version; mark the current integration degraded.                                  |
+| New runtime fails health/MCP handshake | Roll back atomically to the prior verified version.                                                     |
+| Initial index fails                    | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back.                    |
+| Watcher/daemon exits                   | Restart with bounded exponential backoff and run catch-up sync.                                         |
+| SQLite lock/corruption                 | Stop the daemon, quarantine the derived index, and rebuild after confirmation or safe automatic policy. |
+| Worktree disappears                    | Stop supervision and remove its in-memory registration without touching another checkout.               |
+| Active turn during update              | Let it finish on the old process; rematerialize at the next safe resume.                                |
+| Old server/app during rollout          | Worker omits unsupported status fields and continues normal agents without UI management.               |
 
 All errors should use the existing worker service logging conventions. Include
 worker, project, worktree, phase, CodeGraph version, duration, and outcome; do
