@@ -180,7 +180,7 @@ server.on("connection", (socket) => {
             startedAt: 1,
             completedAt: 2,
             durationMs: 10,
-            items: [firstAnswer]
+            items: [{ ...firstAnswer, id: "history-goal-answer-1" }]
           });
           socket.send(JSON.stringify({
             method: "turn/started",
@@ -210,7 +210,10 @@ server.on("connection", (socket) => {
               startedAt: 2,
               completedAt: 3,
               durationMs: 10,
-              items: [command, finalAnswer]
+              items: [
+                { ...command, id: "history-goal-command-2" },
+                { ...finalAnswer, id: "history-goal-answer-2" }
+              ]
             });
             socket.send(JSON.stringify({
               method: "item/completed",
@@ -278,7 +281,10 @@ server.on("connection", (socket) => {
           startedAt: 1,
           completedAt: 2,
           durationMs: 10,
-          items: [command, answer]
+          items: [
+            { ...command, id: "history-goal-command" },
+            { ...answer, id: "history-goal-answer" }
+          ]
         });
       }, 10);
       return;
@@ -392,7 +398,7 @@ describe("Codex goal streaming", () => {
         threadId: "goal-thread",
         turnId: "runtime-goal-turn",
       });
-      expect(messages).toContain("Goal work is visible.");
+      expect(messages).toEqual(["Goal work is visible."]);
       expect(commands).toContain("pwd");
     } finally {
       runtime.close();
@@ -430,9 +436,7 @@ describe("Codex goal streaming", () => {
         turnId: "goal-turn-2",
       });
       expect(checkpoints).toEqual(["First checkpoint."]);
-      expect(messages).toEqual(
-        expect.arrayContaining(["First checkpoint.", "Goal complete."]),
-      );
+      expect(messages).toEqual(["First checkpoint.", "Goal complete."]);
     } finally {
       runtime.close();
     }
