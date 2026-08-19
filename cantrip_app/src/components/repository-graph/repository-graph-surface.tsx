@@ -38,6 +38,7 @@ import {
 
 export type RepositoryGraphSurfaceProps = {
   ariaLabel?: string;
+  autoFit?: boolean;
   camera?: RepositoryGraphCamera;
   className?: string;
   collapsedNodeIds?: ReadonlySet<string>;
@@ -81,6 +82,7 @@ function firstSelectableIndex(
 
 export function RepositoryGraphSurface({
   ariaLabel = "Repository graph",
+  autoFit = true,
   camera: controlledCamera,
   className,
   collapsedNodeIds,
@@ -200,22 +202,41 @@ export function RepositoryGraphSurface({
     if (!scene.rootNodeId || viewport.width <= 1 || viewport.height <= 1)
       return;
     if (framedRootRef.current === scene.rootNodeId) return;
+    if (framedRootRef.current === undefined && !autoFit) {
+      framedRootRef.current = scene.rootNodeId;
+      return;
+    }
     framedRootRef.current = scene.rootNodeId;
     setCamera(
       fitRepositoryGraphCamera(scene.bounds, viewport, { padding: 48 }),
     );
-  }, [scene.bounds, scene.rootNodeId, setCamera, viewport]);
+  }, [autoFit, scene.bounds, scene.rootNodeId, setCamera, viewport]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const computed = getComputedStyle(canvas);
+    const resolvedTheme = {
+      ...canvasTheme,
+      edge: computed.getPropertyValue("--border").trim() || canvasTheme.edge,
+      foreground:
+        computed.getPropertyValue("--foreground").trim() ||
+        canvasTheme.foreground,
+      muted:
+        computed.getPropertyValue("--muted-foreground").trim() ||
+        canvasTheme.muted,
+      selection:
+        computed.getPropertyValue("--ring").trim() || canvasTheme.selection,
+    };
     adapterRef.current.render(canvas, scene, camera, viewport, {
       devicePixelRatio:
         typeof window === "undefined" ? 1 : window.devicePixelRatio,
-      highContrast,
+      highContrast:
+        highContrast ||
+        document.documentElement.classList.contains("high-contrast"),
       hoveredNodeId,
       selectedNodeId,
-      theme: canvasTheme,
+      theme: resolvedTheme,
     });
   }, [
     camera,

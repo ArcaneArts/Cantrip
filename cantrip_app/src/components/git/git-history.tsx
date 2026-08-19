@@ -105,6 +105,10 @@ import { HistoryWorktreeMarker } from "./history-worktree-marker";
 import { GithubIssuesView } from "./github-issues";
 import { GitWorkbenchToolbar } from "./git-workbench-toolbar";
 import { GitHistoryMobileDrawer } from "./git-history-mobile-drawer";
+import {
+  GitRepositoryGraphView,
+  type GitRepositoryGraphStatus,
+} from "./git-graph";
 
 const laneColors = [
   "#22d3ee",
@@ -401,6 +405,7 @@ export interface GitHistoryHeaderState {
   branch: string;
   canPush: boolean;
   commitsLoaded: number;
+  graphNodes: number;
   head: string | null;
   isFetching: boolean;
   issueCount: number | null;
@@ -412,7 +417,7 @@ export interface GitHistoryHeaderState {
   refresh(): void;
 }
 
-export type GitViewSection = "history" | "issues" | "prs";
+export type GitViewSection = "history" | "issues" | "prs" | "graph";
 
 export function GitHistoryView({
   chats,
@@ -483,6 +488,9 @@ export function GitHistoryView({
   const [compareRight, setCompareRight] = useState<string | null>(null);
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
+  const [graphRefreshEpoch, setGraphRefreshEpoch] = useState(0);
+  const [graphStatus, setGraphStatus] =
+    useState<GitRepositoryGraphStatus | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [pruneOpen, setPruneOpen] = useState(false);
   const [allowExternalPrune, setAllowExternalPrune] = useState(false);
@@ -539,7 +547,8 @@ export function GitHistoryView({
   const issueKind: GithubIssueKind =
     section === "prs" ? "pull-request" : "issue";
   const issues = useInfiniteQuery({
-    enabled: section !== "history" && Boolean(project.github),
+    enabled:
+      (section === "issues" || section === "prs") && Boolean(project.github),
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
       getGithubIssues(project.id, issueKind, issueState, pageParam),
@@ -694,11 +703,17 @@ export function GitHistoryView({
             status.branches.some((branch) => branch.kind === "remote"))),
       ),
       commitsLoaded: commits.length,
-      head: firstPage?.head ?? selectedWorktree?.head ?? null,
+      graphNodes: graphStatus?.nodeCount ?? 0,
+      head:
+        section === "graph"
+          ? (graphStatus?.head ?? selectedWorktree?.head ?? null)
+          : (firstPage?.head ?? selectedWorktree?.head ?? null),
       isFetching:
         section === "history"
           ? history.isFetching || reconcile.isPending
-          : issuesRefreshing,
+          : section === "graph"
+            ? (graphStatus?.isFetching ?? false)
+            : issuesRefreshing,
       issueCount: loadedIssues?.total ?? null,
       issueState,
       isGitActionPending: gitAction.isPending,
@@ -711,6 +726,8 @@ export function GitHistoryView({
           void queryClient.invalidateQueries({
             queryKey: ["worktree-status", project.id],
           });
+        } else if (section === "graph") {
+          setGraphRefreshEpoch((epoch) => epoch + 1);
         } else {
           refreshIssues();
         }
@@ -723,6 +740,9 @@ export function GitHistoryView({
     history.refetch,
     gitAction.isPending,
     gitAction.mutate,
+    graphStatus?.head,
+    graphStatus?.isFetching,
+    graphStatus?.nodeCount,
     issueState,
     issuesRefreshing,
     loadedIssues?.total,
@@ -749,6 +769,7 @@ export function GitHistoryView({
 
   useEffect(() => {
     setActiveDrawer(null);
+    setGraphStatus(null);
     setForcePushOpen(false);
     setOperationPreset(null);
     setCommitActionRequest(null);
@@ -965,12 +986,15 @@ export function GitHistoryView({
     <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
       <div className="relative flex h-8 shrink-0 items-center gap-2 px-3">
         <div className="flex rounded-md bg-muted/50 p-px">
-          {(["history", "issues", "prs"] as const).map((candidate) => (
+          {(["history", "issues", "prs", "graph"] as const).map((candidate) => (
             <button
               key={candidate}
               type="button"
               aria-pressed={candidate === section}
-              disabled={candidate !== "history" && !project.github}
+              disabled={
+                (candidate === "issues" || candidate === "prs") &&
+                !project.github
+              }
               onClick={() => setSection(candidate)}
               className={cn(
                 "h-6 rounded px-2.5 py-0 text-[11px] leading-none text-muted-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40",
@@ -1081,7 +1105,7 @@ export function GitHistoryView({
               }}
             />
           ) : null}
-          {section !== "history" ? (
+          {section === "issues" || section === "prs" ? (
             <div className="mr-0.5 flex rounded-md bg-muted/50 p-px">
               {(["open", "closed"] as const).map((candidate) => (
                 <button
@@ -1108,19 +1132,27 @@ export function GitHistoryView({
               disabled={
                 section === "history"
                   ? history.isFetching || reconcile.isPending
-                  : issuesRefreshing
+                  : section === "graph"
+                    ? (graphStatus?.isFetching ?? false)
+                    : issuesRefreshing
               }
               onClick={() =>
-                section === "history" ? reconcile.mutate() : refreshIssues()
+                section === "history"
+                  ? reconcile.mutate()
+                  : section === "graph"
+                    ? setGraphRefreshEpoch((epoch) => epoch + 1)
+                    : refreshIssues()
               }
-              title={`Refresh ${section === "history" ? "Git history" : section === "prs" ? "pull requests" : "issues"}`}
+              title={`Refresh ${section === "history" ? "Git history" : section === "graph" ? "repository graph" : section === "prs" ? "pull requests" : "issues"}`}
             >
               <RefreshCw
                 className={cn(
                   "size-3",
                   (section === "history"
                     ? history.isFetching || reconcile.isPending
-                    : issuesRefreshing) && "animate-spin",
+                    : section === "graph"
+                      ? graphStatus?.isFetching
+                      : issuesRefreshing) && "animate-spin",
                 )}
               />
               <span className="sr-only">Refresh</span>
@@ -1150,7 +1182,15 @@ export function GitHistoryView({
         </p>
       ) : null}
 
-      {section !== "history" ? (
+      {section === "graph" ? (
+        <GitRepositoryGraphView
+          key={`${project.id}:${worktreeId}`}
+          projectId={project.id}
+          refreshEpoch={graphRefreshEpoch}
+          worktreeId={worktreeId}
+          onStatusChange={setGraphStatus}
+        />
+      ) : section !== "history" ? (
         <GithubIssuesView
           key={issueKind}
           error={issues.error}

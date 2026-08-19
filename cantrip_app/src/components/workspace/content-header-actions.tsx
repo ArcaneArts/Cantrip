@@ -352,12 +352,20 @@ export function ContentHeaderActions({
             variant="ghost"
             disabled={git.isFetching}
             onClick={git.refresh}
-            title="Refresh Git history"
+            title={
+              git.section === "graph"
+                ? "Refresh repository graph"
+                : "Refresh Git history"
+            }
           >
             <RefreshCw
               className={cn("size-4", git.isFetching && "animate-spin")}
             />
-            <span className="sr-only">Refresh Git history</span>
+            <span className="sr-only">
+              {git.section === "graph"
+                ? "Refresh repository graph"
+                : "Refresh Git history"}
+            </span>
           </Button>
         </>
       ) : null}

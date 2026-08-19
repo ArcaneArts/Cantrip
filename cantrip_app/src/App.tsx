@@ -5465,7 +5465,9 @@ export function App() {
   };
   const contentHeaderActions = {
     git:
-      gitHistoryProject && gitHistoryHeader?.section === "history"
+      gitHistoryProject &&
+      (gitHistoryHeader?.section === "history" ||
+        gitHistoryHeader?.section === "graph")
         ? gitHistoryHeader
         : null,
     explorer: selectedExplorer ? explorerHeader : null,
@@ -6076,7 +6078,8 @@ export function App() {
                 activeWorktreeId &&
                 selectedProject?.capabilities.worktrees &&
                 (!gitHistoryProject ||
-                  gitHistoryHeader?.section === "history") ? (
+                  gitHistoryHeader?.section === "history" ||
+                  gitHistoryHeader?.section === "graph") ? (
                   <WorktreeControl
                     currentWorktreeId={activeWorktreeId}
                     worktrees={worktrees.data ?? []}
@@ -6121,7 +6124,8 @@ export function App() {
                   />
                 ) : null}
                 {gitHistoryProject &&
-                gitHistoryHeader?.section === "history" ? (
+                (gitHistoryHeader?.section === "history" ||
+                  gitHistoryHeader?.section === "graph") ? (
                   <>
                     <Badge
                       variant="secondary"
@@ -6164,7 +6168,9 @@ export function App() {
                     {gitHistoryProject.github?.nameWithOwner ??
                       gitHistoryProject.name}
                     {gitHistoryHeader ? (
-                      gitHistoryHeader.section !== "history" ? (
+                      gitHistoryHeader.section === "graph" ? (
+                        ` · ${gitHistoryHeader.graphNodes.toLocaleString()} repository nodes`
+                      ) : gitHistoryHeader.section !== "history" ? (
                         ` · ${gitHistoryHeader.issueCount ?? "…"} ${gitHistoryHeader.issueState} ${gitHistoryHeader.section === "prs" ? "PRs" : "issues"}`
                       ) : (
                         <>
