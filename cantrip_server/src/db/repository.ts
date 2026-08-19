@@ -2507,6 +2507,25 @@ export class ServerRepository {
     return { passwordHash: user.passwordHash, user: toUserSummary(user) };
   }
 
+  async findAccountCredentialById(
+    ownerId: string,
+  ): Promise<AccountCredentialRecord | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.users)
+      .where(
+        and(
+          eq(schema.users.id, ownerId),
+          eq(schema.users.kind, "account"),
+          eq(schema.users.status, "active"),
+        ),
+      )
+      .limit(1);
+    const user = rows[0];
+    if (!user?.passwordHash) return null;
+    return { passwordHash: user.passwordHash, user: toUserSummary(user) };
+  }
+
   async createUserSession(input: {
     authMethod: ActiveUserSession["authMethod"];
     csrfTokenHash: string;

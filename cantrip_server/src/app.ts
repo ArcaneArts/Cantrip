@@ -21,6 +21,8 @@ import {
   appLiveEventPayloadSchema,
   authLoginSchema,
   authLogoutAllResultSchema,
+  authReauthenticationResultSchema,
+  authReauthenticationSchema,
   authSessionSchema,
   authSessionStateSchema,
   mobileSignInGrantCreateResultSchema,
@@ -395,6 +397,7 @@ import {
   worktreeStatusResultSchema,
 } from "@cantrip/protocol";
 import {
+  accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
   accountEncryptionProfileInitializeSchema,
   accountEncryptionProfileSchema,
@@ -8249,6 +8252,55 @@ export async function buildApp({
       );
   });
 
+  app.post("/api/auth/reauthenticate", async (request, reply) => {
+    if (config.authMode === "none") {
+      return reply
+        .code(404)
+        .send({ error: "Reauthentication is unavailable." });
+    }
+    const input = authReauthenticationSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const principal = authenticatedPrincipal(request);
+    const limited = consumeAuthAttempt(
+      request,
+      "reauthenticate",
+      principal.user.id,
+      reply,
+    );
+    if (limited) return limited;
+    const credential =
+      config.authMode === "accounts"
+        ? await repository.findAccountCredentialById(principal.user.id)
+        : null;
+    const passwordHash =
+      config.authMode === "accounts"
+        ? (credential?.passwordHash ?? DUMMY_PASSWORD_HASH)
+        : (config.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!(await verifyPassword(passwordHash, input.data.password))) {
+      await appendAudit(request, {
+        action: "auth.reauthentication-failed",
+        ownerId: principal.user.id,
+        resourceId: principal.user.id,
+        resourceType: "account",
+        result: "denied",
+      });
+      return reply.code(403).send({ error: "Password is incorrect." });
+    }
+    await appendAudit(request, {
+      action: "auth.reauthentication-succeeded",
+      actorUserId: principal.user.id,
+      ownerId: principal.user.id,
+      resourceId: principal.user.id,
+      resourceType: "account",
+      result: "succeeded",
+    });
+    return reply
+      .header("cache-control", "no-store")
+      .send(authReauthenticationResultSchema.parse({ verified: true }));
+  });
+
   app.post("/api/auth/mobile-sign-in/grants", async (request, reply) => {
     if (config.authMode === "none") {
       return reply.code(404).send({ error: "Mobile sign-in is unavailable." });
@@ -8475,6 +8527,69 @@ export async function buildApp({
       : reply.code(409).send({
           error: "Encryption profile revision changed or was not found.",
         });
+  });
+
+  app.post("/api/account/password", async (request, reply) => {
+    if (config.authMode !== "accounts") {
+      return reply
+        .code(404)
+        .send({ error: "Account passwords are unavailable." });
+    }
+    const input = accountPasswordEncryptionChangeSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const principal = authenticatedPrincipal(request);
+    const ownerId = principalOwnerId(request);
+    const limited = consumeAuthAttempt(
+      request,
+      "password-change",
+      ownerId,
+      reply,
+    );
+    if (limited) return limited;
+    const credential = await repository.findAccountCredentialById(ownerId);
+    if (
+      !credential ||
+      !(await verifyPassword(
+        credential.passwordHash,
+        input.data.currentPassword,
+      ))
+    ) {
+      await appendAudit(request, {
+        action: "auth.password-change-failed",
+        ownerId,
+        resourceId: ownerId,
+        resourceType: "account",
+        result: "denied",
+      });
+      return reply.code(403).send({ error: "Current password is incorrect." });
+    }
+    const profile = await repository.encryptionRegistry.changeAccountPassword(
+      ownerId,
+      {
+        expectedProfileRevision: input.data.expectedProfileRevision,
+        passwordKdf: input.data.passwordKdf,
+        passwordWrappedMasterKey: input.data.passwordWrappedMasterKey,
+      },
+      await hashPassword(input.data.newPassword),
+    );
+    if (!profile) {
+      return reply.code(409).send({
+        error: "Encryption profile revision changed or was not found.",
+      });
+    }
+    await appendAudit(request, {
+      action: "auth.password-changed",
+      actorUserId: principal.user.id,
+      ownerId,
+      resourceId: ownerId,
+      resourceType: "account",
+      result: "succeeded",
+    });
+    return reply
+      .header("cache-control", "no-store")
+      .send(accountEncryptionProfileSchema.parse(profile));
   });
 
   app.get("/api/encryption/principals", async (request, reply) =>

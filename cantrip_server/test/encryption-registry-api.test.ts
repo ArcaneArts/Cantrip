@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   accountEncryptionProfileInitializeResultSchema,
+  accountEncryptionProfileSchema,
   accountEncryptionProfileStateSchema,
   encryptionKeyGrantListSchema,
   encryptionKeyGrantSchema,
@@ -265,6 +266,111 @@ describe("opaque encryption registry", () => {
         status: "initialized",
         profile: initialized.profile,
       });
+
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/auth/reauthenticate",
+            headers: ownerHeaders,
+            payload: { password: "incorrect password" },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/auth/reauthenticate",
+            headers: ownerHeaders,
+            payload: { password },
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      const replacementKdf = {
+        ...initialization.profile.passwordKdf!,
+        salt: Buffer.alloc(32, 7).toString("base64url"),
+      };
+      const replacementWrapper = {
+        ...initialization.profile.passwordWrappedMasterKey!,
+        kdf: replacementKdf,
+        envelope: {
+          ...initialization.profile.passwordWrappedMasterKey!.envelope,
+          nonce: Buffer.alloc(12, 7).toString("base64url"),
+          ciphertext: Buffer.alloc(48, 7).toString("base64url"),
+        },
+      };
+      const changedPassword = "a different correct password";
+      const passwordChange = {
+        currentPassword: password,
+        newPassword: changedPassword,
+        expectedProfileRevision: initialized.profile.revision,
+        passwordKdf: replacementKdf,
+        passwordWrappedMasterKey: replacementWrapper,
+      };
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/account/password",
+            headers: ownerHeaders,
+            payload: {
+              ...passwordChange,
+              currentPassword: "incorrect password",
+            },
+          })
+        ).statusCode,
+      ).toBe(403);
+      expect(
+        accountEncryptionProfileStateSchema.parse(
+          (
+            await app.inject({
+              method: "GET",
+              url: "/api/encryption/profile",
+              headers: ownerHeaders,
+            })
+          ).json(),
+        ),
+      ).toEqual(storedProfile);
+
+      const passwordChangeResponse = await app.inject({
+        method: "POST",
+        url: "/api/account/password",
+        headers: ownerHeaders,
+        payload: passwordChange,
+      });
+      expect(passwordChangeResponse.statusCode).toBe(200);
+      const changedProfile = accountEncryptionProfileSchema.parse(
+        passwordChangeResponse.json(),
+      );
+      expect(changedProfile.passwordWrappedMasterKey).toEqual(
+        replacementWrapper,
+      );
+      expect(changedProfile.activeMasterKeyRevision).toBe(
+        initialized.profile.activeMasterKeyRevision,
+      );
+      expect(changedProfile.revision).toBe(initialized.profile.revision + 1);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/auth/login",
+            headers: { origin },
+            payload: { email: "owner@example.com", password },
+          })
+        ).statusCode,
+      ).toBe(401);
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/auth/login",
+            headers: { origin },
+            payload: { email: "owner@example.com", password: changedPassword },
+          })
+        ).statusCode,
+      ).toBe(200);
       expect(
         encryptionKeyGrantListSchema.parse(
           (
@@ -281,7 +387,10 @@ describe("opaque encryption registry", () => {
         method: "PATCH",
         url: "/api/encryption/profile/migration",
         headers: ownerHeaders,
-        payload: { expectedRevision: 1, payloadMigrationStatus: "in-progress" },
+        payload: {
+          expectedRevision: changedProfile.revision,
+          payloadMigrationStatus: "in-progress",
+        },
       });
       expect(staleMigration.statusCode).toBe(200);
       expect(
@@ -291,7 +400,7 @@ describe("opaque encryption registry", () => {
             url: "/api/encryption/profile/migration",
             headers: ownerHeaders,
             payload: {
-              expectedRevision: 1,
+              expectedRevision: changedProfile.revision,
               payloadMigrationStatus: "complete",
             },
           })
