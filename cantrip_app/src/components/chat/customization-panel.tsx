@@ -9,6 +9,7 @@ import type {
   CodexSkillRootsResult,
   CustomizationCapability,
 } from "@cantrip/protocol";
+import { isManagedCodeGraphMcpName } from "@cantrip/protocol";
 import {
   useMutation,
   useQuery,
@@ -618,6 +619,12 @@ function McpInventory({
                     {server.serverInfo?.title ?? server.name}
                   </strong>
                   <Badge variant="outline">{server.authStatus}</Badge>
+                  {isManagedCodeGraphMcpName(server.name) ? (
+                    <>
+                      <Badge variant="secondary">Managed by Cantrip</Badge>
+                      <Badge variant="outline">Read only</Badge>
+                    </>
+                  ) : null}
                   <span className="text-xs text-muted-foreground">
                     {server.tools.length} tools · {server.resources.length}{" "}
                     resources · {server.resourceTemplates.length} templates

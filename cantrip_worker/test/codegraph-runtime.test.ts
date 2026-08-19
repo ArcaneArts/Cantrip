@@ -38,7 +38,10 @@ interface FakeRelease {
   release: Record<string, unknown>;
 }
 
-async function fakeRelease(version: string): Promise<FakeRelease> {
+async function fakeRelease(
+  version: string,
+  options: { mcpHealthy?: boolean; reportedVersion?: string } = {},
+): Promise<FakeRelease> {
   const target = codeGraphTargetFor(process.platform, process.arch);
   if (target.archiveKind !== "tar.gz") {
     throw new Error(
@@ -53,7 +56,7 @@ async function fakeRelease(version: string): Promise<FakeRelease> {
   const executable = path.join(bin, "codegraph");
   await writeFile(
     executable,
-    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then exit 0; fi\necho "fake codegraph $*"\n`,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  ${options.mcpHealthy === false ? "exit 9" : 'read request; echo \'{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"codegraph","version":"test"}}}\''}\n  exit 0\nfi\necho "fake codegraph $*"\n`,
   );
   await chmod(executable, 0o755);
   const archivePath = path.join(root, target.assetName);
@@ -189,6 +192,10 @@ describe.skipIf(process.platform === "win32")(
       });
 
       await expect(manager.prepare()).resolves.toMatchObject({
+        state: "installing",
+        cliAvailable: false,
+      });
+      await expect(manager.waitForUpdate()).resolves.toMatchObject({
         state: "ready",
         cliAvailable: true,
         installedVersion: "1.2.3",
@@ -229,6 +236,7 @@ describe.skipIf(process.platform === "win32")(
         fetch: releaseFetch(() => release),
       });
       await first.prepare();
+      await first.waitForUpdate();
 
       release = await fakeRelease("1.1.0");
       const second = new CodeGraphRuntimeManager({
@@ -259,6 +267,7 @@ describe.skipIf(process.platform === "win32")(
         fetch: releaseFetch(() => release),
       });
       await first.prepare();
+      await first.waitForUpdate();
 
       const offline = new CodeGraphRuntimeManager({
         dataDirectory,
@@ -290,6 +299,7 @@ describe.skipIf(process.platform === "win32")(
         fetch: releaseFetch(() => release),
       });
       await first.prepare();
+      await first.waitForUpdate();
 
       const invalid = await fakeRelease("3.1.0");
       invalid.checksums = Buffer.from(
@@ -319,6 +329,171 @@ describe.skipIf(process.platform === "win32")(
         await readFile(path.join(second.root, "bin", "current.json"), "utf8"),
       ) as { version: string };
       expect(pointer.version).toBe("3.0.0");
+    });
+
+    it("keeps the previous runtime when the candidate MCP handshake fails", async () => {
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-mcp-rollback-"),
+      );
+      directories.push(dataDirectory);
+      let release = await fakeRelease("4.0.0");
+      const first = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+      await first.prepare();
+      await first.waitForUpdate();
+
+      release = await fakeRelease("4.1.0", { mcpHealthy: false });
+      const second = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+      await second.prepare();
+      await expect(second.waitForUpdate()).resolves.toMatchObject({
+        state: "degraded",
+        cliAvailable: true,
+        installedVersion: "4.0.0",
+        error: expect.stringContaining(
+          "CodeGraph MCP exited before initialize completed",
+        ),
+      });
+      const pointer = JSON.parse(
+        await readFile(path.join(second.root, "bin", "current.json"), "utf8"),
+      ) as { version: string };
+      expect(pointer.version).toBe("4.0.0");
+    });
+
+    it("keeps the previous runtime when a candidate reports the wrong version", async () => {
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-version-rollback-"),
+      );
+      directories.push(dataDirectory);
+      let release = await fakeRelease("4.2.0");
+      const first = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+      await first.prepare();
+      await first.waitForUpdate();
+
+      release = await fakeRelease("4.3.0", { reportedVersion: "9.9.9" });
+      const second = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+      await second.prepare();
+      await expect(second.waitForUpdate()).resolves.toMatchObject({
+        state: "degraded",
+        cliAvailable: true,
+        installedVersion: "4.2.0",
+        error: expect.stringContaining("reported 9.9.9; expected 4.3.0"),
+      });
+      const pointer = JSON.parse(
+        await readFile(path.join(second.root, "bin", "current.json"), "utf8"),
+      ) as { version: string };
+      expect(pointer.version).toBe("4.2.0");
+    });
+
+    it("does not block a fresh worker while an unavailable first install settles", async () => {
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-first-offline-"),
+      );
+      directories.push(dataDirectory);
+      let releaseAttemptFinished = false;
+      const manager = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 75));
+          releaseAttemptFinished = true;
+          throw new Error("first start offline");
+        }) as typeof fetch,
+      });
+
+      await expect(manager.prepare()).resolves.toMatchObject({
+        state: "installing",
+        cliAvailable: false,
+      });
+      expect(releaseAttemptFinished).toBe(false);
+      await expect(manager.waitForUpdate()).resolves.toMatchObject({
+        state: "unavailable",
+        cliAvailable: false,
+        error: "first start offline",
+      });
+    });
+
+    it("serializes concurrent first-start installation through the worker lock", async () => {
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-lock-"),
+      );
+      directories.push(dataDirectory);
+      const release = await fakeRelease("5.0.0");
+      let archiveDownloads = 0;
+      const baseFetch = releaseFetch(() => release);
+      const countedFetch = (async (
+        input: string | URL | Request,
+        init?: RequestInit,
+      ) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.endsWith(`/${release.assetName}`)) archiveDownloads += 1;
+        return baseFetch(input, init);
+      }) as typeof fetch;
+      const first = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: countedFetch,
+      });
+      const second = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: countedFetch,
+      });
+
+      await Promise.all([first.prepare(), second.prepare()]);
+      await expect(
+        Promise.all([first.waitForUpdate(), second.waitForUpdate()]),
+      ).resolves.toEqual([
+        expect.objectContaining({ state: "ready", installedVersion: "5.0.0" }),
+        expect.objectContaining({ state: "ready", installedVersion: "5.0.0" }),
+      ]);
+      expect(archiveDownloads).toBe(1);
+      await expect(
+        readdir(path.join(first.root, "versions")),
+      ).resolves.toHaveLength(1);
+    });
+
+    it("uses a conditional release request when a verified cache exists", async () => {
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-etag-"),
+      );
+      directories.push(dataDirectory);
+      const release = await fakeRelease("6.0.0");
+      const first = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+      await first.prepare();
+      await first.waitForUpdate();
+
+      let conditionalRequestObserved = false;
+      const second = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = String(input instanceof Request ? input.url : input);
+          if (url.includes("/repos/colbymchenry/codegraph/releases/latest")) {
+            conditionalRequestObserved =
+              new Headers(init?.headers).get("if-none-match") ===
+              '"fake-release"';
+            return new Response(null, { status: 304 });
+          }
+          return new Response("unexpected", { status: 500 });
+        }) as typeof fetch,
+      });
+      await second.prepare();
+      await expect(second.waitForUpdate()).resolves.toMatchObject({
+        state: "ready",
+        installedVersion: "6.0.0",
+        latestVersion: "6.0.0",
+      });
+      expect(conditionalRequestObserved).toBe(true);
     });
   },
 );

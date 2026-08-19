@@ -4,6 +4,7 @@ import { createReadStream } from "node:fs";
 import {
   access,
   chmod,
+  mkdtemp,
   mkdir,
   open,
   readFile,
@@ -14,6 +15,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { workerLogError, workerLogger } from "../logger.js";
 import {
@@ -29,6 +31,7 @@ const MAX_ARCHIVE_BYTES = 256_000_000;
 const MAX_CHECKSUM_BYTES = 1_000_000;
 const DOWNLOAD_TIMEOUT_MS = 180_000;
 const PROCESS_TIMEOUT_MS = 30_000;
+const MCP_HANDSHAKE_TIMEOUT_MS = 10_000;
 const LOCK_WAIT_MS = 30_000;
 const LOCK_STALE_MS = 10 * 60_000;
 const CODEGRAPH_ENVIRONMENT = {
@@ -293,6 +296,102 @@ async function runProcess(
   });
 }
 
+async function verifyMcpHandshake(
+  executable: string,
+  projectRoot: string,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(executable, ["serve", "--mcp", "--path", projectRoot], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ...CODEGRAPH_ENVIRONMENT,
+        CODEGRAPH_DIR: ".codegraph-cantrip",
+        CODEGRAPH_NO_DAEMON: "1",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 1_000).unref();
+      if (error) reject(error);
+      else resolve();
+    };
+    const timeout = setTimeout(
+      () =>
+        finish(
+          new Error(
+            `CodeGraph MCP initialize timed out after ${MCP_HANDSHAKE_TIMEOUT_MS}ms.`,
+          ),
+        ),
+      MCP_HANDSHAKE_TIMEOUT_MS,
+    );
+    timeout.unref();
+    child.stderr.on("data", (chunk) => {
+      stderr = `${stderr}${String(chunk)}`.slice(-8_000);
+    });
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+      let newline = stdout.indexOf("\n");
+      while (newline >= 0) {
+        const line = stdout.slice(0, newline).trim();
+        stdout = stdout.slice(newline + 1);
+        newline = stdout.indexOf("\n");
+        if (!line) continue;
+        try {
+          const response = JSON.parse(line) as {
+            id?: unknown;
+            result?: {
+              capabilities?: { tools?: unknown };
+              serverInfo?: { name?: unknown };
+            };
+          };
+          if (
+            response.id === 0 &&
+            response.result?.serverInfo?.name === "codegraph" &&
+            response.result.capabilities?.tools !== undefined
+          ) {
+            finish();
+            return;
+          }
+        } catch {
+          // Ignore non-JSON diagnostic lines while waiting for the response.
+        }
+      }
+    });
+    child.once("error", (error) => finish(error));
+    child.once("exit", (code) => {
+      if (!settled) {
+        finish(
+          new Error(
+            `CodeGraph MCP exited before initialize completed (${code ?? "signal"}): ${stderr.trim() || "no diagnostic"}`,
+          ),
+        );
+      }
+    });
+    child.stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        id: 0,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-11-25",
+          capabilities: {},
+          clientInfo: { name: "cantrip-runtime-check", version: "1.0.0" },
+          rootUri: pathToFileURL(projectRoot).href,
+        },
+      })}\n`,
+    );
+  });
+}
+
 async function readJsonFile<T>(file: string): Promise<T | null> {
   try {
     return JSON.parse(await readFile(file, "utf8")) as T;
@@ -547,7 +646,18 @@ export class CodeGraphRuntimeManager {
       void this.updateNow();
       return this.status();
     }
-    return this.updateNow();
+    this.#status = {
+      ...this.#status,
+      state: "installing",
+      error: null,
+    };
+    // A first installation can include a release lookup, two downloads,
+    // extraction, and an indexer privacy check. None of that is allowed to
+    // hold up the worker's unrelated terminal, Git, file, or Codex services.
+    // Consumers that need CodeGraph can await waitForUpdate(), while worker
+    // startup advertises the bounded installing state immediately.
+    void this.updateNow();
+    return this.status();
   }
 
   async updateNow(): Promise<CodeGraphRuntimeStatus> {
@@ -586,7 +696,11 @@ export class CodeGraphRuntimeManager {
   }
 
   async #performUpdate(): Promise<CodeGraphRuntimeStatus> {
-    this.#status = { ...this.#status, state: "checking", error: null };
+    this.#status = {
+      ...this.#status,
+      state: this.#current ? "checking" : "installing",
+      error: null,
+    };
     workerLogger.event("info", "Checking for a CodeGraph runtime update", {
       event: "codegraph.runtime.check-started",
       subsystem: "codegraph",
@@ -723,6 +837,7 @@ export class CodeGraphRuntimeManager {
       `${identifier}.SHA256SUMS`,
     );
     const staging = path.join(this.#root, "staging", identifier);
+    let promotedDirectory: string | null = null;
     try {
       const [archiveSha256] = await Promise.all([
         this.#download(release.asset, archivePath, MAX_ARCHIVE_BYTES),
@@ -745,6 +860,8 @@ export class CodeGraphRuntimeManager {
       if (this.#platform !== "win32") await chmod(stagedExecutable, 0o700);
       await this.#verifyVersion(stagedExecutable, release.version);
       await this.#disableTelemetry(stagedExecutable);
+      const stagedHealthRoot = await mkdtemp(path.join(staging, "mcp-health-"));
+      await verifyMcpHandshake(stagedExecutable, stagedHealthRoot);
       const packageBase = `${release.version}-${archiveSha256.slice(0, 12)}`;
       let packageDirectory = packageBase;
       try {
@@ -755,6 +872,7 @@ export class CodeGraphRuntimeManager {
       }
       const destination = path.join(this.#root, "versions", packageDirectory);
       await rename(extracted, destination);
+      promotedDirectory = destination;
       const relativeWithinPayload = path.relative(extracted, stagedExecutable);
       const executable = path.join(
         "versions",
@@ -764,6 +882,10 @@ export class CodeGraphRuntimeManager {
       const promotedExecutable = path.join(this.#root, executable);
       await this.#verifyVersion(promotedExecutable, release.version);
       await this.#disableTelemetry(promotedExecutable);
+      const promotedHealthRoot = await mkdtemp(
+        path.join(staging, "promoted-mcp-health-"),
+      );
+      await verifyMcpHandshake(promotedExecutable, promotedHealthRoot);
       return {
         schemaVersion: 1,
         archiveSha256,
@@ -773,6 +895,13 @@ export class CodeGraphRuntimeManager {
         verifiedAt: this.#now().toISOString(),
         version: release.version,
       };
+    } catch (error) {
+      if (promotedDirectory) {
+        await rm(promotedDirectory, { force: true, recursive: true }).catch(
+          () => undefined,
+        );
+      }
+      throw error;
     } finally {
       await Promise.all([
         rm(archivePath, { force: true }),

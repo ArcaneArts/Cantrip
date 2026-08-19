@@ -314,6 +314,27 @@ export function McpServerSettings({
       ),
     [projectId, projects.data],
   );
+  const readyCodeGraphWorkers = useMemo(
+    () =>
+      (workers.data ?? []).filter(
+        ({ codegraph }) => codegraph.mcpInjectionAvailable,
+      ),
+    [workers.data],
+  );
+  const codeGraphWorkerDetail = useMemo(() => {
+    if (readyCodeGraphWorkers.length === 0) {
+      return "No worker currently has managed MCP injection available";
+    }
+    const visible = readyCodeGraphWorkers
+      .slice(0, 3)
+      .map(
+        ({ codegraph, name }) =>
+          `${name}${codegraph.installedVersion ? ` · v${codegraph.installedVersion}` : ""}`,
+      )
+      .join("; ");
+    const remaining = readyCodeGraphWorkers.length - 3;
+    return remaining > 0 ? `${visible}; +${remaining} more` : visible;
+  }, [readyCodeGraphWorkers]);
 
   const openEditor = (server: McpServerSummary | null) => {
     setEditing(server);
@@ -394,30 +415,14 @@ export function McpServerSettings({
               <Badge variant="outline">Read only</Badge>
             </div>
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              Automatically injected for authorized worker-backed worktrees ·{" "}
-              {
-                (workers.data ?? []).filter(
-                  ({ codegraph }) => codegraph.mcpInjectionAvailable,
-                ).length
-              }
-              /{workers.data?.length ?? 0} workers ready
+              {codeGraphWorkerDetail}
             </p>
           </div>
         </div>
         <Badge
-          variant={
-            (workers.data ?? []).some(
-              ({ codegraph }) => codegraph.mcpInjectionAvailable,
-            )
-              ? "secondary"
-              : "outline"
-          }
+          variant={readyCodeGraphWorkers.length > 0 ? "secondary" : "outline"}
         >
-          {(workers.data ?? []).some(
-            ({ codegraph }) => codegraph.mcpInjectionAvailable,
-          )
-            ? "Available"
-            : "Unavailable"}
+          {readyCodeGraphWorkers.length > 0 ? "Available" : "Unavailable"}
         </Badge>
       </div>
 
