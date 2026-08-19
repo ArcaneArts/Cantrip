@@ -366,6 +366,7 @@ type WorkspaceSnapshot = Map<string, WorkspaceFileState>;
 const execFileAsync = promisify(execFile);
 const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
 const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
+const COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS = 5_000;
 const CODEX_DIAGNOSTIC_LIMIT = 100;
 const CUSTOMIZATION_STATUS_LIMIT = 100;
 
@@ -2466,6 +2467,17 @@ export function normalizeCodexThreadReadResponse(
     status,
     turns,
   });
+}
+
+export function completedCodexThreadTurnFromRead(
+  response: CodexThreadReadResponse,
+  cwd: string,
+  turnId: string,
+): AgentThreadSync["turns"][number] | null {
+  const turn = response.thread.turns.find(
+    (candidate) => candidate.id === turnId && candidate.status !== "inProgress",
+  );
+  return turn ? normalizeCodexThreadTurn(turn, cwd, response.thread.id) : null;
 }
 
 export class CodexAppServer implements CodexRuntime {
@@ -4736,7 +4748,11 @@ export class CodexAppServer implements CodexRuntime {
     return lease;
   }
 
-  private request(method: string, params: unknown): Promise<unknown> {
+  private request(
+    method: string,
+    params: unknown,
+    timeoutMs = CODEX_RPC_TIMEOUT_MS,
+  ): Promise<unknown> {
     if (this.compatibility.methods[method] === "unavailable") {
       return Promise.reject(
         new Error(
@@ -4764,7 +4780,7 @@ export class CodexAppServer implements CodexRuntime {
           },
         );
         reject(new Error(`Codex request ${method} timed out.`));
-      }, CODEX_RPC_TIMEOUT_MS);
+      }, timeoutMs);
       this.#pending.set(id, {
         method,
         reject,
@@ -5577,6 +5593,9 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
       const text = active.finalText ?? active.delta;
+      if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
+        await this.replayCompletedTurn(active, turnId);
+      }
       clearTurnInspectionTelemetry(active);
       if (active.executionKind === "chat" && this.#goals.has(active.threadId)) {
         const response = await this.refreshGoal(active.threadId);
@@ -5700,6 +5719,63 @@ export class CodexAppServer implements CodexRuntime {
         error: workerLogError(error),
       });
       active.reject(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  private async replayCompletedTurn(
+    active: ActiveTurn,
+    turnId: string,
+  ): Promise<void> {
+    if (!active.onActivity && !active.onMessage) return;
+    try {
+      const response = (await this.request(
+        "thread/read",
+        {
+          threadId: active.threadId,
+          includeTurns: true,
+        },
+        COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS,
+      )) as CodexThreadReadResponse;
+      const turn = completedCodexThreadTurnFromRead(
+        response,
+        active.cwd,
+        turnId,
+      );
+      if (!turn) {
+        workerLogger.event(
+          "warn",
+          "Completed Codex turn was absent from history",
+          {
+            event: "codex.turn.reconciliation",
+            subsystem: "codex",
+            operation: "replay-completed-turn",
+            status: "skipped",
+            chatId: active.chatId ?? undefined,
+            threadId: active.threadId,
+            turnId,
+          },
+        );
+        return;
+      }
+      for (const item of turn.items) {
+        if (item.type === "agentMessage") {
+          const { type: _type, ...message } = item;
+          active.onMessage?.(message);
+        } else if (item.type === "activity") {
+          active.onActivity?.(item.activity);
+        }
+      }
+    } catch (error) {
+      workerLogger.event("warn", "Could not reconcile completed Codex turn", {
+        event: "codex.turn.reconciliation",
+        subsystem: "codex",
+        operation: "replay-completed-turn",
+        status: "failed",
+        chatId: active.chatId ?? undefined,
+        threadId: active.threadId,
+        turnId,
+        error: workerLogError(error),
+      });
     }
   }
 
