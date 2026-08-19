@@ -151,6 +151,7 @@ import {
 } from "./runtime-loop.js";
 import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
+import { WorkerEncryptionService } from "./worker-encryption.js";
 import { WorktreeManager } from "./worktrees.js";
 import {
   scanWorkflowRepository,
@@ -371,6 +372,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   await workerStartupPhase("start-direct-broker", () => directBroker.start(), {
     workerId: config.workerId,
   });
+  const workerEncryption = await workerStartupPhase(
+    "initialize-worker-encryption",
+    () =>
+      WorkerEncryptionService.open({
+        dataDirectory: config.dataDirectory,
+        serverUrl: config.serverUrl,
+        workerId: config.workerId,
+      }),
+    { workerId: config.workerId },
+  );
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -385,6 +396,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codeDiscovery.capabilities,
     directBroker.advertisement,
     codeGraphWorkerStatus(codegraphRuntime, null, codegraphPreparationError),
+    workerEncryption.status(),
   );
   await workerStartupPhase(
     "establish-worker-credential",
@@ -393,6 +405,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     { workerId: config.workerId },
   );
+  await workerEncryption
+    .refresh({ credential: config.token })
+    .catch(() => undefined);
   let connected = false;
   let commandChannelStarted = false;
   let heartbeatInFlight: Promise<void> | null = null;
@@ -2183,6 +2198,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const publishHeartbeat = async () => {
     const attemptStartedAtMs = Date.now();
     try {
+      await workerEncryption
+        .refresh({ credential: config.token })
+        .catch(() => undefined);
       await sendHeartbeat(
         config,
         createHeartbeat(
@@ -2197,6 +2215,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             codegraphProjects,
             codegraphPreparationError,
           ),
+          workerEncryption.status(),
         ),
       );
       if (!connected) {
@@ -2287,6 +2306,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       trigger,
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);
+    workerEncryption.lock();
     automationScheduler.close();
     codegraphProjects?.close();
     worktrees.close();

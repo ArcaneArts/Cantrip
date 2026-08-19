@@ -24,6 +24,12 @@ export const encryptionComponentScopeSchema = z.enum([
 
 export const encryptionComponentScopes = encryptionComponentScopeSchema.options;
 
+export const workerEncryptionComponentScopeSchema =
+  encryptionComponentScopeSchema.exclude([
+    "account-master-key",
+    "workspace-display-name",
+  ]);
+
 const base64UrlAlphabet =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
@@ -160,7 +166,7 @@ export const workerComponentKeyGrantSchema = z
     version: encryptionEnvelopeVersionSchema,
     purpose: z.literal("worker-component-key"),
     workerId: z.string().min(1).max(255),
-    component: encryptionComponentScopeSchema.exclude(["account-master-key"]),
+    component: workerEncryptionComponentScopeSchema,
     keyRevision: encryptionKeyRevisionSchema,
     envelope: hpkeWrappedKeyEnvelopeSchema,
   })
@@ -348,6 +354,52 @@ export const encryptionKeyGrantSchema = z
     }
   });
 
+export const workerEncryptionStatusSchema = z
+  .object({
+    supported: z.boolean(),
+    state: z.enum(["unavailable", "pending-approval", "ready", "error"]),
+    principalId: encryptionPrincipalIdSchema.nullable(),
+    grants: z
+      .array(
+        z
+          .object({
+            component: workerEncryptionComponentScopeSchema,
+            keyRevision: encryptionKeyRevisionSchema,
+          })
+          .strict(),
+      )
+      .max(workerEncryptionComponentScopeSchema.options.length),
+    lastSyncedAt: encryptionTimestampSchema.nullable(),
+    error: z.string().min(1).max(500).nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.supported && value.state !== "unavailable") {
+      context.addIssue({
+        code: "custom",
+        message: "Unsupported worker encryption must be unavailable.",
+        path: ["state"],
+      });
+    }
+    if (value.state === "ready" && value.principalId === null) {
+      context.addIssue({
+        code: "custom",
+        message: "Ready worker encryption requires a principal.",
+        path: ["principalId"],
+      });
+    }
+  });
+
+export const unavailableWorkerEncryptionStatus =
+  workerEncryptionStatusSchema.parse({
+    supported: false,
+    state: "unavailable",
+    principalId: null,
+    grants: [],
+    lastSyncedAt: null,
+    error: null,
+  });
+
 export const accountEncryptionProfileStateSchema = z.discriminatedUnion(
   "status",
   [
@@ -519,11 +571,56 @@ export const encryptionKeyGrantCreateSchema = z
 export const encryptionPrincipalListSchema = z.array(encryptionPrincipalSchema);
 export const encryptionKeyGrantListSchema = z.array(encryptionKeyGrantSchema);
 
+export const workerEncryptionBootstrapRequestSchema = z
+  .object({
+    principalId: encryptionPrincipalIdSchema,
+    publicKey: encryptionPublicKeySchema,
+  })
+  .strict();
+
+export const workerEncryptionBootstrapResultSchema = z
+  .object({
+    ownerId: z.string().min(1).max(255),
+    principal: encryptionPrincipalSchema,
+    grants: encryptionKeyGrantListSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.principal.ownerId !== value.ownerId ||
+      value.principal.kind !== "worker"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Worker bootstrap identity does not match its owner.",
+        path: ["principal"],
+      });
+    }
+    if (
+      value.grants.some(
+        (grant) =>
+          grant.ownerId !== value.ownerId ||
+          grant.principalId !== value.principal.id ||
+          grant.state !== "active" ||
+          grant.wrappedKey.purpose !== "worker-component-key",
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Worker bootstrap contains an invalid grant.",
+        path: ["grants"],
+      });
+    }
+  });
+
 export type EncryptionAssociatedData = z.infer<
   typeof encryptionAssociatedDataSchema
 >;
 export type EncryptionComponentScope = z.infer<
   typeof encryptionComponentScopeSchema
+>;
+export type WorkerEncryptionComponentScope = z.infer<
+  typeof workerEncryptionComponentScopeSchema
 >;
 export type EncryptedPayloadEnvelope = z.infer<
   typeof encryptedPayloadEnvelopeSchema
@@ -542,6 +639,9 @@ export type ClientMasterKeyWrapper = z.infer<
 >;
 export type WorkerComponentKeyGrant = z.infer<
   typeof workerComponentKeyGrantSchema
+>;
+export type WorkerEncryptionStatus = z.infer<
+  typeof workerEncryptionStatusSchema
 >;
 export type EncryptionPayloadMigrationStatus = z.infer<
   typeof encryptionPayloadMigrationStatusSchema
@@ -582,4 +682,10 @@ export type EncryptionRevocation = z.infer<typeof encryptionRevocationSchema>;
 export type EncryptionKeyGrant = z.infer<typeof encryptionKeyGrantSchema>;
 export type EncryptionKeyGrantCreate = z.infer<
   typeof encryptionKeyGrantCreateSchema
+>;
+export type WorkerEncryptionBootstrapRequest = z.infer<
+  typeof workerEncryptionBootstrapRequestSchema
+>;
+export type WorkerEncryptionBootstrapResult = z.infer<
+  typeof workerEncryptionBootstrapResultSchema
 >;

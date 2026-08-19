@@ -68,6 +68,7 @@ import type {
   PasswordKdfParameters,
   PasswordWrappedMasterKey,
   WorkerComponentKeyGrant,
+  WorkerEncryptionStatus,
 } from "@cantrip/protocol/encryption";
 import { sql } from "drizzle-orm";
 import {
@@ -122,6 +123,15 @@ const unavailableCodeGraphWorkerStatus = {
   cliAvailable: false,
   mcpInjectionAvailable: false,
 } satisfies CodeGraphWorkerStatus;
+
+const unavailableWorkerEncryptionStatus = {
+  supported: false,
+  state: "unavailable",
+  principalId: null,
+  grants: [],
+  lastSyncedAt: null,
+  error: null,
+} satisfies WorkerEncryptionStatus;
 
 const unavailableProjectReplicaCapabilities = {
   provision: false,
@@ -1038,6 +1048,10 @@ export const workers = pgTable("workers", {
     .$type<CodeGraphWorkerStatus>()
     .notNull()
     .default(unavailableCodeGraphWorkerStatus),
+  encryptionStatus: jsonb("encryption_status")
+    .$type<WorkerEncryptionStatus>()
+    .notNull()
+    .default(unavailableWorkerEncryptionStatus),
   projectReplicaCapabilities: jsonb("project_replica_capabilities")
     .$type<ProjectReplicaCapabilities>()
     .notNull()

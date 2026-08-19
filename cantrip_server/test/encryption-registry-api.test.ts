@@ -10,6 +10,7 @@ import {
   encryptionKeyGrantSchema,
   encryptionPrincipalListSchema,
   encryptionPrincipalSchema,
+  workerEncryptionBootstrapResultSchema,
   type AccountEncryptionProfileInitialize,
   type EncryptionPublicKey,
   type WorkerComponentKeyGrant,
@@ -22,7 +23,7 @@ import {
 import { afterAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../src/app.js";
-import { hashPassword } from "../src/auth/service.js";
+import { hashPassword, hashSecret } from "../src/auth/service.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
@@ -422,6 +423,7 @@ describe("opaque encryption registry", () => {
       });
       const otherHeaders = authHeaders(otherLogin);
       const workerId = "encryption-worker-1";
+      const workerCredential = `ctwk_${"a".repeat(43)}`;
       const enrollmentCodeHash = "encryption-worker-code-hash";
       await database.repository.createWorkerEnrollmentCode({
         codeHash: enrollmentCodeHash,
@@ -432,7 +434,7 @@ describe("opaque encryption registry", () => {
       });
       await database.repository.exchangeWorkerEnrollmentCode({
         codeHash: enrollmentCodeHash,
-        credentialHash: "encryption-worker-credential-hash",
+        credentialHash: hashSecret(workerCredential),
         credentialId: "44444444-4444-4444-8444-444444444444",
         heartbeat: workerHeartbeat(workerId),
         replacement: null,
@@ -457,21 +459,36 @@ describe("opaque encryption registry", () => {
         ).statusCode,
       ).toBe(409);
 
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/internal/workers/encryption/bootstrap",
+            headers: {
+              authorization: "Bearer invalid-worker-credential",
+              "x-cantrip-worker-id": workerId,
+            },
+            payload: { principalId: workerPrincipalId, publicKey },
+          })
+        ).statusCode,
+      ).toBe(401);
+
       const principalResponse = await app.inject({
         method: "POST",
-        url: "/api/encryption/principals",
-        headers: ownerHeaders,
-        payload: {
-          id: workerPrincipalId,
-          kind: "worker",
-          workerId,
-          label: "Owned worker",
-          publicKey,
+        url: "/api/internal/workers/encryption/bootstrap",
+        headers: {
+          authorization: `Bearer ${workerCredential}`,
+          "x-cantrip-worker-id": workerId,
         },
+        payload: { principalId: workerPrincipalId, publicKey },
       });
-      expect(principalResponse.statusCode).toBe(201);
-      const pending = encryptionPrincipalSchema.parse(principalResponse.json());
+      expect(principalResponse.statusCode).toBe(200);
+      const pendingBootstrap = workerEncryptionBootstrapResultSchema.parse(
+        principalResponse.json(),
+      );
+      const pending = pendingBootstrap.principal;
       expect(pending.state).toBe("pending");
+      expect(pendingBootstrap.grants).toEqual([]);
       expect(
         encryptionPrincipalListSchema.parse(
           (
@@ -516,6 +533,22 @@ describe("opaque encryption registry", () => {
       expect(
         encryptionKeyGrantSchema.parse(grantResponse.json()).wrappedKey,
       ).toEqual(opaqueGrant);
+      const workerBootstrap = workerEncryptionBootstrapResultSchema.parse(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/internal/workers/encryption/bootstrap",
+            headers: {
+              authorization: `Bearer ${workerCredential}`,
+              "x-cantrip-worker-id": workerId,
+            },
+            payload: { principalId: workerPrincipalId, publicKey },
+          })
+        ).json(),
+      );
+      expect(workerBootstrap.ownerId).toBe(owner.id);
+      expect(workerBootstrap.grants).toHaveLength(1);
+      expect(workerBootstrap.grants[0]?.wrappedKey).toEqual(opaqueGrant);
 
       const revokedResponse = await app.inject({
         method: "POST",
@@ -529,6 +562,22 @@ describe("opaque encryption registry", () => {
       expect(
         encryptionPrincipalSchema.parse(revokedResponse.json()).state,
       ).toBe("revoked");
+      const revokedWorkerBootstrap =
+        workerEncryptionBootstrapResultSchema.parse(
+          (
+            await app.inject({
+              method: "POST",
+              url: "/api/internal/workers/encryption/bootstrap",
+              headers: {
+                authorization: `Bearer ${workerCredential}`,
+                "x-cantrip-worker-id": workerId,
+              },
+              payload: { principalId: workerPrincipalId, publicKey },
+            })
+          ).json(),
+        );
+      expect(revokedWorkerBootstrap.principal.state).toBe("revoked");
+      expect(revokedWorkerBootstrap.grants).toEqual([]);
       expect(
         (
           await app.inject({

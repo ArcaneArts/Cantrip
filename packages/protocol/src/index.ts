@@ -32,6 +32,10 @@ export * from "./encryption.js";
 
 import { agentPolicyContextSchema } from "./policies.js";
 import { taskDetailSchema } from "./tasks.js";
+import {
+  unavailableWorkerEncryptionStatus,
+  workerEncryptionStatusSchema,
+} from "./encryption.js";
 
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
@@ -577,6 +581,9 @@ export const workerHeartbeatSchema = z.object({
   externalCodexHistory: z.boolean().default(false),
   codegraph: codeGraphWorkerStatusSchema.default(
     unavailableCodeGraphWorkerStatus,
+  ),
+  encryption: workerEncryptionStatusSchema.default(
+    unavailableWorkerEncryptionStatus,
   ),
   startedAt: z.string().datetime(),
 });
