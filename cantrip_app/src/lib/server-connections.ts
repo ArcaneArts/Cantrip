@@ -5,6 +5,7 @@ import {
   readServerConnectionPayloads,
   writeServerConnectionPayload,
 } from "@/lib/server-connection-storage";
+import { clearClientEncryptionMemory } from "@/lib/client-encryption";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 
 export type ServerConnection = {
@@ -312,6 +313,10 @@ export async function selectServerConnection(id: string): Promise<void> {
   const selected = state.connections.find(
     (connection) => connection.id === id,
   )!;
+  const previousActiveId = getActiveServerConnection()?.id;
+  if (previousActiveId && previousActiveId !== id) {
+    clearClientEncryptionMemory();
+  }
   state = { ...state, activeId: id, updatedAt: nextUpdatedAt() };
   try {
     await persist();

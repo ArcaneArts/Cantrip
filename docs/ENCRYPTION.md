@@ -162,8 +162,41 @@ imports `@cantrip/crypto` nor derives, unwraps, or decrypts keys. The focused
 [registry API test](../cantrip_server/test/encryption-registry-api.test.ts)
 covers initialization compare-and-set behavior, owner isolation, worker
 binding, revocation, byte-preserving opaque storage, migration application,
-and the server dependency boundary. Endpoint key custody, profile
-initialization UX, and worker self-registration remain later rollout steps.
+and the server dependency boundary. Profile initialization UX, worker endpoint
+custody, and worker self-registration remain later rollout steps.
+
+### Client key custody
+
+The browser client custody boundary is implemented by
+[client-encryption.ts](../cantrip_app/src/lib/client-encryption.ts). Each
+browser installation generates its own nonextractable WebCrypto P-256 private
+key and stores it as a structured-cloned `CryptoKey` in IndexedDB. Its
+versioned local record and storage key bind the device to one server ID and one
+owner ID. The storage interface is deliberately replaceable so native clients
+can later use an operating-system key store without changing the encryption
+service contract.
+
+The service can create and open password and client Account Master Key
+wrappers, derive component keys, and expose stable locked, unavailable,
+revoked, corrupt, and unsupported-version states. Plaintext Account Master
+Keys and derived component keys exist only in memory; service-owned copies are
+cleared on lockout, sign-out, account replacement, and server switching.
+Passwords, password-derived keys, raw Account Master Keys, component keys, and
+extractable private keys are never written to IndexedDB or local storage.
+
+The focused [client custody test](../cantrip_app/src/lib/client-encryption.test.ts)
+proves nonextractability, device-wrapper unlock after a simulated restart,
+password-wrapper unlock, server/account isolation, sign-out clearing, and
+fail-closed handling for corrupt, revoked, and unsupported state. The
+[server connection test](../cantrip_app/src/lib/server-connections.test.ts)
+also verifies that switching servers locks in-memory encryption keys.
+
+Nonextractable browser keys are still usable by JavaScript running in the same
+origin, so they do not protect against a malicious server that changes the
+served application. Clearing site data also deletes the device key and
+requires another recovery or authorization path. This cycle supplies custody
+and lifecycle primitives only; account initialization UI is still pending and
+no product payload is yet encrypted.
 
 ### What each system stores
 
@@ -241,6 +274,7 @@ database-compromise guarantee is described.
 | -------------------------------------------------------------------------------- | ----------------------------------------------- | ---------------------------- | -------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
 | Shared encryption formats and cryptographic primitives                           | Versioned endpoint-only primitives              | Foundation complete          | Required             | Medium      | No server decryption capability is introduced                                                  |
 | Account profiles, client wrappers, and scoped worker grants                      | Opaque versioned registry; no server key access | Registry foundation complete | Required             | High        | Password-based server recovery and direct inspection of key material                           |
+| Client device-key custody and in-memory key handling                             | Nonextractable IndexedDB key; memory-only AMK   | Client custody complete      | Required             | Medium      | No server decryption capability is introduced                                                  |
 | Workspace display names                                                          | Plaintext                                       | Recommended first payload    | Very good            | Low-Medium  | Name-based server search and validation                                                        |
 | Chat message bodies, reasoning, command output, diffs, file paths                | Plaintext                                       | Planned                      | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, answers, goals, queued prompts                               | Plaintext                                       | Planned                      | Excellent            | Medium-High | Server cannot inspect or transform task content                                                |
@@ -342,23 +376,26 @@ counts, worker presence, model-route choices, and traffic patterns.
 2. **Opaque server key registry — complete:** public keys, independent password
    KDF metadata, wrapped keys, approval and revocation state, grant revisions,
    and migration state are persisted without server-side decryption.
-3. **Client initialization and recovery:** generate the Account Master Key,
+3. **Client key custody — complete:** generate a nonextractable device key,
+   persist it behind a replaceable local-store adapter, keep unwrapped key
+   material in memory, and lock it on identity or server lifecycle changes.
+4. **Client initialization and recovery:** generate the Account Master Key,
    create the independent password wrapper, authorize client devices, and
    define password-change, reset, and recovery behavior.
-4. **Persistent worker grants:** generate worker keypairs, authorize scoped
+5. **Persistent worker grants:** generate worker keypairs, authorize scoped
    component keys once, and prove workers can restart and decrypt their granted
    components without a client or password.
-5. **First narrow payload:** encrypt workspace display names, migrate legacy
+6. **First narrow payload:** encrypt workspace display names, migrate legacy
    plaintext on an unlocked client, and update the rollout ledger with evidence.
-6. **Chats and tasks:** encrypt message content, task prose, queued prompts,
+7. **Chats and tasks:** encrypt message content, task prose, queued prompts,
    interaction payloads, and relocation snapshots.
-7. **Attachments and relayed streams:** encrypt metadata and add
+8. **Attachments and relayed streams:** encrypt metadata and add
    application-layer encryption when bytes traverse relays.
-8. **Secrets:** replace server-decryptable provider and MCP vault envelopes
+9. **Secrets:** replace server-decryptable provider and MCP vault envelopes
    with client and worker decryptable envelopes.
-9. **Private metadata:** encrypt tab titles, browser URLs, project names,
-   paths, Git output, and policy bodies.
-10. **Workflows and optional private analytics:** split scheduling metadata
+10. **Private metadata:** encrypt tab titles, browser URLs, project names,
+    paths, Git output, and policy bodies.
+11. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.
 
