@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTaskGoalObjective,
   normalizedTaskFinalizationMessage,
+  parseTaskFinalizerResult,
   parseTaskPlannerResult,
 } from "../src/tasks/planner.js";
 
@@ -42,6 +43,32 @@ describe("Task planner results", () => {
 });
 
 describe("Task finalization", () => {
+  it("preserves a non-empty structured finalization result", () => {
+    expect(parseTaskFinalizerResult(result, "# Reviewed plan")).toEqual(result);
+  });
+
+  it("uses the reviewed plan and a safe Goal direction when finalization text is empty", () => {
+    expect(
+      parseTaskFinalizerResult(
+        { finalPlanMarkdown: "\n", goalPrompt: "  " },
+        "# Reviewed plan\n\nImplement the saved Task.",
+      ),
+    ).toEqual({
+      finalPlanMarkdown: "# Reviewed plan\n\nImplement the saved Task.",
+      goalPrompt:
+        "Implement the complete final plan, validate the finished result, and continue until every acceptance criterion is satisfied.",
+    });
+  });
+
+  it("still rejects malformed structured finalization output", () => {
+    expect(() =>
+      parseTaskFinalizerResult(
+        { finalPlanMarkdown: "", goalPrompt: null },
+        "# Reviewed plan",
+      ),
+    ).toThrow();
+  });
+
   it("builds a policy-aware whole-plan Goal objective without hardcoded policy bodies", () => {
     const objective = buildTaskGoalObjective(result);
     expect(objective).toContain("# Cantrip Task implementation objective");

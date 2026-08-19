@@ -22,6 +22,9 @@ Keep the final plan and Goal prompt concise enough that Cantrip can combine them
 
 Effective Cantrip Policy summaries are supplied as application context. Run \`cantrip policy list\` and \`cantrip policy read <policy-key>\` for every summary that requires its full current body. Policies may constrain the implementation, but do not copy policy bodies or revision identifiers into the result.`;
 
+const FALLBACK_TASK_GOAL_PROMPT =
+  "Implement the complete final plan, validate the finished result, and continue until every acceptance criterion is satisfied.";
+
 function answersMarkdown(task: TaskDetail): string {
   if (!task.currentAnswers.length) return "No answers were supplied.";
   const questions = new Map(
@@ -133,7 +136,31 @@ export function parseTaskPlannerResult(
   return taskPlannerResultSchema.parse(value);
 }
 
-export function parseTaskFinalizerResult(value: unknown): TaskFinalizerResult {
+export function parseTaskFinalizerResult(
+  value: unknown,
+  fallbackFinalPlanMarkdown?: string,
+): TaskFinalizerResult {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const candidate = value as Record<string, unknown>;
+    const finalPlanMarkdown =
+      typeof candidate.finalPlanMarkdown === "string" &&
+      !candidate.finalPlanMarkdown.trim() &&
+      fallbackFinalPlanMarkdown?.trim()
+        ? fallbackFinalPlanMarkdown
+        : candidate.finalPlanMarkdown;
+    const goalPrompt =
+      typeof candidate.goalPrompt === "string" &&
+      !candidate.goalPrompt.trim() &&
+      typeof finalPlanMarkdown === "string" &&
+      finalPlanMarkdown.trim()
+        ? FALLBACK_TASK_GOAL_PROMPT
+        : candidate.goalPrompt;
+    return taskFinalizerResultSchema.parse({
+      ...candidate,
+      finalPlanMarkdown,
+      goalPrompt,
+    });
+  }
   return taskFinalizerResultSchema.parse(value);
 }
 

@@ -6168,6 +6168,9 @@ export async function buildApp({
           if (taskOperation.round.kind === "finalize") {
             const finalizerResult = parseTaskFinalizerResult(
               notification.outcome.result.structuredResult,
+              taskOperation.round.inputPlanMarkdown?.trim()
+                ? taskOperation.round.inputPlanMarkdown
+                : taskOperation.round.inputBriefMarkdown,
             );
             await repository.tasks.stageFinalizationResult(
               ownerId,
@@ -6200,6 +6203,9 @@ export async function buildApp({
               ? normalizedTaskFinalizationMessage(
                   parseTaskFinalizerResult(
                     notification.outcome.result.structuredResult,
+                    taskOperation.round.inputPlanMarkdown?.trim()
+                      ? taskOperation.round.inputPlanMarkdown
+                      : taskOperation.round.inputBriefMarkdown,
                   ),
                 )
               : normalizedTaskPlanMessage(
@@ -7620,6 +7626,9 @@ export async function buildApp({
             async onCompleted({ attribution, result }) {
               const finalizerResult = parseTaskFinalizerResult(
                 result.structuredResult,
+                started.round.inputPlanMarkdown?.trim()
+                  ? started.round.inputPlanMarkdown
+                  : started.round.inputBriefMarkdown,
               );
               const storedResult = {
                 finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
