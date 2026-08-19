@@ -41,6 +41,11 @@ import { prepareProviderTelemetryChart } from "./provider-telemetry-chart";
 
 const colors = ["#22d3ee", "#a78bfa", "#34d399", "#fb7185", "#fbbf24"];
 
+export const PROVIDER_TELEMETRY_DIALOG_CLASS_NAME =
+  "flex max-h-[92vh] max-w-6xl flex-col gap-0 overflow-hidden p-0";
+export const PROVIDER_TELEMETRY_SCROLL_CLASS_NAME =
+  "min-h-0 flex-1 overflow-y-auto px-5 py-4";
+
 function formatPercent(value: number | null, digits = 1) {
   return value === null ? "—" : `${(value * 100).toFixed(digits)}%`;
 }
@@ -568,8 +573,8 @@ export function ProviderTelemetryDialog({
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-6xl gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-5 py-4">
+      <DialogContent className={PROVIDER_TELEMETRY_DIALOG_CLASS_NAME}>
+        <DialogHeader className="shrink-0 border-b px-5 py-4">
           <div className="flex items-start justify-between gap-4 pr-8">
             <div>
               <DialogTitle className="flex items-center gap-2">
@@ -673,7 +678,7 @@ export function ProviderTelemetryDialog({
             <p className="mt-2 text-xs text-destructive">{actionError}</p>
           ) : null}
         </DialogHeader>
-        <div className="min-h-80 overflow-y-auto px-5 py-4">
+        <div className={PROVIDER_TELEMETRY_SCROLL_CLASS_NAME}>
           {query.isLoading ? (
             <div className="grid min-h-72 place-items-center">
               <Loader2 className="size-5 animate-spin text-muted-foreground" />
