@@ -35,6 +35,9 @@ importers:
 
   cantrip_app:
     dependencies:
+      "@cantrip/crypto":
+        specifier: workspace:*
+        version: link:../packages/crypto
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
@@ -260,6 +263,9 @@ importers:
 
   cantrip_worker:
     dependencies:
+      "@cantrip/crypto":
+        specifier: workspace:*
+        version: link:../packages/crypto
       "@cantrip/logging":
         specifier: workspace:*
         version: link:../packages/logging
@@ -303,6 +309,18 @@ importers:
       "@types/yauzl":
         specifier: ^2.10.3
         version: 2.10.3
+
+  packages/crypto:
+    dependencies:
+      "@cantrip/protocol":
+        specifier: workspace:*
+        version: link:../protocol
+      "@hpke/core":
+        specifier: ^1.9.0
+        version: 1.9.0
+      "@noble/hashes":
+        specifier: ^2.3.0
+        version: 2.3.0
 
   packages/logging: {}
 
@@ -1633,6 +1651,20 @@ packages:
     peerDependencies:
       hono: ^4
 
+  "@hpke/common@1.10.1":
+    resolution:
+      {
+        integrity: sha512-moJwhmtLtuxiUzzNp1jpfBfx8yefKoO9D/RCR9dmwrnc7qjJqId1rEtQz+lSlU5cabX8daToMSx/7HayXOiaFw==,
+      }
+    engines: { node: ">=16.0.0" }
+
+  "@hpke/core@1.9.0":
+    resolution:
+      {
+        integrity: sha512-pFxWl1nNJeQCSUFs7+GAblHvXBCjn9EPN65vdKlYQil2aURaRxfGMO6vBKGqm1YHTKwiAxJQNEI70PbSowMP9Q==,
+      }
+    engines: { node: ">=16.0.0" }
+
   "@img/colour@1.1.0":
     resolution:
       {
@@ -2392,6 +2424,13 @@ packages:
         integrity: sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A==,
       }
     engines: { node: ^14.21.3 || >=16 }
+
+  "@noble/hashes@2.3.0":
+    resolution:
+      {
+        integrity: sha512-oN+QwyX7VSHotibwubG3kpzbwKrfnyR6OOO+3Nk/53ADL7FmgHHz4TgrbaYKvvOw09u6QTx0oiH1cNCIOuN0CQ==,
+      }
+    engines: { node: ">= 20.19.0" }
 
   "@node-rs/argon2-android-arm-eabi@2.0.2":
     resolution:
@@ -9602,6 +9641,12 @@ snapshots:
     dependencies:
       hono: 4.13.0
 
+  "@hpke/common@1.10.1": {}
+
+  "@hpke/core@1.9.0":
+    dependencies:
+      "@hpke/common": 1.10.1
+
   "@img/colour@1.1.0": {}
 
   "@img/sharp-darwin-arm64@0.34.4":
@@ -10258,6 +10303,8 @@ snapshots:
       "@noble/hashes": 1.8.0
 
   "@noble/hashes@1.8.0": {}
+
+  "@noble/hashes@2.3.0": {}
 
   "@node-rs/argon2-android-arm-eabi@2.0.2":
     optional: true
