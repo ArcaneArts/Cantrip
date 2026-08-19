@@ -459,6 +459,92 @@ export const unavailableManagedFolderCapabilities =
     remove: false,
   });
 
+export const codeGraphRuntimeStateSchema = z.enum([
+  "checking",
+  "degraded",
+  "installing",
+  "ready",
+  "unavailable",
+]);
+
+export const codeGraphProjectStateSchema = z.enum([
+  "degraded",
+  "indexing",
+  "queued",
+  "ready",
+  "syncing",
+  "unavailable",
+]);
+
+export const codeGraphProjectCountsSchema = z.object({
+  ready: z.number().int().nonnegative().max(128),
+  indexing: z.number().int().nonnegative().max(128),
+  queued: z.number().int().nonnegative().max(128),
+  degraded: z.number().int().nonnegative().max(128),
+});
+
+export const codeGraphWorkerStatusSchema = z.object({
+  supported: z.boolean(),
+  available: z.boolean(),
+  runtimeState: codeGraphRuntimeStateSchema,
+  installedVersion: z.string().trim().min(1).max(100).nullable(),
+  latestVersion: z.string().trim().min(1).max(100).nullable(),
+  previousVersion: z.string().trim().min(1).max(100).nullable(),
+  lastCheckedAt: z.iso.datetime().nullable(),
+  telemetryDisabled: z.boolean(),
+  healthy: z.boolean(),
+  statusMessage: z.string().max(1_000).nullable(),
+  projectCounts: codeGraphProjectCountsSchema,
+  cliAvailable: z.boolean(),
+  mcpInjectionAvailable: z.boolean(),
+});
+
+export const unavailableCodeGraphWorkerStatus =
+  codeGraphWorkerStatusSchema.parse({
+    supported: false,
+    available: false,
+    runtimeState: "unavailable",
+    installedVersion: null,
+    latestVersion: null,
+    previousVersion: null,
+    lastCheckedAt: null,
+    telemetryDisabled: false,
+    healthy: false,
+    statusMessage: "This worker has not reported CodeGraph capabilities.",
+    projectCounts: { ready: 0, indexing: 0, queued: 0, degraded: 0 },
+    cliAvailable: false,
+    mcpInjectionAvailable: false,
+  });
+
+export const codeGraphJobSchema = z.object({
+  id: z.string().uuid(),
+  action: z.enum(["sync", "rebuild"]),
+  state: z.enum(["queued", "running", "completed", "failed"]),
+  requestedAt: z.iso.datetime(),
+  completedAt: z.iso.datetime().nullable(),
+});
+
+export const codeGraphProjectStatusSchema = z.object({
+  projectId: z.string().uuid(),
+  worktreeId: z.string().min(1).max(200),
+  state: codeGraphProjectStateSchema,
+  lastIndexedAt: z.iso.datetime().nullable(),
+  lastSuccessfulSyncAt: z.iso.datetime().nullable(),
+  fileCount: z.number().int().nonnegative().nullable(),
+  nodeCount: z.number().int().nonnegative().nullable(),
+  edgeCount: z.number().int().nonnegative().nullable(),
+  pendingChanges: z.number().int().nonnegative().nullable(),
+  statusMessage: z.string().max(1_000).nullable(),
+  job: codeGraphJobSchema.nullable(),
+});
+
+export const codeGraphActionAcknowledgementSchema = z.object({
+  jobId: z.string().uuid(),
+  action: z.enum(["sync", "rebuild", "update-check"]),
+  acceptedAt: z.iso.datetime(),
+  status: z.literal("queued"),
+});
+
 export const workerHeartbeatSchema = z.object({
   workerId: z.string().min(1),
   name: z.string().min(1),
@@ -481,6 +567,9 @@ export const workerHeartbeatSchema = z.object({
   ),
   chatRelocation: z.boolean().default(false),
   externalCodexHistory: z.boolean().default(false),
+  codegraph: codeGraphWorkerStatusSchema.default(
+    unavailableCodeGraphWorkerStatus,
+  ),
   startedAt: z.string().datetime(),
 });
 
@@ -7513,6 +7602,8 @@ export const worktreeStatusResultSchema = z.object({
 });
 
 export const worktreeObservationTargetSchema = z.object({
+  projectId: z.string().uuid().optional(),
+  worktreeId: z.string().min(1).max(200).optional(),
   sourcePath: z.string().min(1).max(8_192),
   worktreePath: z.string().min(1).max(8_192),
 });
@@ -8870,6 +8961,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     targets: worktreeObservationTargetsSchema,
   }),
   z.object({
+    type: z.literal("codegraph.status"),
+    projectId: z.string().uuid(),
+    worktreeId: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("codegraph.sync"),
+    projectId: z.string().uuid(),
+    worktreeId: z.string().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("codegraph.rebuild"),
+    projectId: z.string().uuid(),
+    worktreeId: z.string().min(1).max(200),
+  }),
+  z.object({ type: z.literal("codegraph.update.check") }),
+  z.object({
     type: z.literal("explorer.directory.list"),
     root: z.string().min(1),
     path: z.string(),
@@ -9565,6 +9672,10 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
     sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
     worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
     result: worktreeStatusResultSchema,
+  }),
+  z.object({
+    type: z.literal("codegraph.status.observed"),
+    status: codeGraphProjectStatusSchema,
   }),
 ]);
 
@@ -10764,6 +10875,13 @@ export type ProjectShareAdapterResponseHead = z.infer<
   typeof projectShareAdapterResponseHeadSchema
 >;
 export type WorkerCommand = z.infer<typeof workerCommandSchema>;
+export type CodeGraphWorkerStatus = z.infer<typeof codeGraphWorkerStatusSchema>;
+export type CodeGraphProjectStatus = z.infer<
+  typeof codeGraphProjectStatusSchema
+>;
+export type CodeGraphActionAcknowledgement = z.infer<
+  typeof codeGraphActionAcknowledgementSchema
+>;
 export type WorkerEvent = z.infer<typeof workerEventSchema>;
 export type WorkerRequestEnvelope = z.infer<typeof workerRequestEnvelopeSchema>;
 export type WorkerResponseEnvelope = z.infer<

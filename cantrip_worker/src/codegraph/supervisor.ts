@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { watch, type FSWatcher } from "node:fs";
 import {
   lstat,
@@ -11,7 +12,13 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import type { WorktreeObservationTarget } from "@cantrip/protocol";
+import {
+  codeGraphActionAcknowledgementSchema,
+  codeGraphProjectStatusSchema,
+  type CodeGraphActionAcknowledgement,
+  type CodeGraphProjectStatus as PublicCodeGraphProjectStatus,
+  type WorktreeObservationTarget,
+} from "@cantrip/protocol";
 
 import { workerLogError, workerLogger } from "../logger.js";
 
@@ -80,6 +87,9 @@ interface ManagedProject extends CodeGraphProjectStatus {
   queued: boolean;
   retryTimer: ReturnType<typeof setTimeout> | null;
   running: boolean;
+  projectId: string | null;
+  worktreeId: string | null;
+  job: PublicCodeGraphProjectStatus["job"];
   sourcePath: string;
   watcher: FSWatcher | null;
   watcherRetryTimer: ReturnType<typeof setTimeout> | null;
@@ -104,6 +114,7 @@ export interface CodeGraphProjectSupervisorOptions {
     },
   ) => Promise<ProcessOutcome>;
   now?: () => Date;
+  onStatus?: (status: PublicCodeGraphProjectStatus) => void;
   watch?: (
     root: string,
     listener: (event: string, fileName: string | Buffer | null) => void,
@@ -182,6 +193,14 @@ function parseCount(value: unknown): number | null {
     : null;
 }
 
+function parseTimestamp(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds)
+    ? new Date(milliseconds).toISOString()
+    : null;
+}
+
 function parseStatus(
   stdout: string,
   expectedRoot: string,
@@ -219,8 +238,7 @@ function parseStatus(
     fileCount: parseCount(payload.fileCount),
     nodeCount: parseCount(payload.nodeCount),
     edgeCount: parseCount(payload.edgeCount),
-    lastIndexedAt:
-      typeof payload.lastIndexed === "string" ? payload.lastIndexed : null,
+    lastIndexedAt: parseTimestamp(payload.lastIndexed),
     pendingChanges:
       counts.length === 3 && counts.every((count) => count !== null)
         ? counts.reduce<number>((total, count) => total + (count ?? 0), 0)
@@ -282,6 +300,9 @@ export class CodeGraphProjectSupervisor {
   readonly #environment: NodeJS.ProcessEnv;
   readonly #execute: NonNullable<CodeGraphProjectSupervisorOptions["execute"]>;
   readonly #now: () => Date;
+  readonly #onStatus: NonNullable<
+    CodeGraphProjectSupervisorOptions["onStatus"]
+  >;
   readonly #projects = new Map<string, ManagedProject>();
   readonly #excludeQueues = new Map<string, Promise<void>>();
   readonly #watch: NonNullable<CodeGraphProjectSupervisorOptions["watch"]>;
@@ -305,6 +326,7 @@ export class CodeGraphProjectSupervisor {
     };
     this.#execute = options.execute ?? processOutcome;
     this.#now = options.now ?? (() => new Date());
+    this.#onStatus = options.onStatus ?? (() => undefined);
     this.#watch =
       options.watch ??
       ((root, listener) => watch(root, { recursive: true }, listener));
@@ -374,6 +396,8 @@ export class CodeGraphProjectSupervisor {
         const existing = this.#projects.get(root);
         if (existing) {
           existing.sourcePath = target.sourcePath;
+          existing.projectId = target.projectId ?? existing.projectId;
+          existing.worktreeId = target.worktreeId ?? existing.worktreeId;
           continue;
         }
         const project: ManagedProject = {
@@ -390,6 +414,9 @@ export class CodeGraphProjectSupervisor {
           nodeCount: null,
           pendingAction: null,
           pendingChanges: null,
+          projectId: target.projectId ?? null,
+          worktreeId: target.worktreeId ?? null,
+          job: null,
           queued: false,
           retryTimer: null,
           root,
@@ -447,6 +474,49 @@ export class CodeGraphProjectSupervisor {
       root: project.root,
       state: project.state,
     }));
+  }
+
+  publicStatus(
+    projectId: string,
+    worktreeId: string,
+  ): PublicCodeGraphProjectStatus | null {
+    const project = [...this.#projects.values()].find(
+      (candidate) =>
+        candidate.projectId === projectId &&
+        candidate.worktreeId === worktreeId,
+    );
+    return project ? this.#publicStatus(project) : null;
+  }
+
+  requestAction(
+    projectId: string,
+    worktreeId: string,
+    action: "sync" | "rebuild",
+  ): CodeGraphActionAcknowledgement {
+    const project = [...this.#projects.values()].find(
+      (candidate) =>
+        candidate.projectId === projectId &&
+        candidate.worktreeId === worktreeId,
+    );
+    if (!project) {
+      throw new Error("CodeGraph worktree is not managed by this worker.");
+    }
+    const acceptedAt = this.#now().toISOString();
+    project.job = {
+      id: randomUUID(),
+      action,
+      state: "queued",
+      requestedAt: acceptedAt,
+      completedAt: null,
+    };
+    this.#schedule(project, action);
+    this.#emit(project);
+    return codeGraphActionAcknowledgementSchema.parse({
+      jobId: project.job.id,
+      action,
+      acceptedAt,
+      status: "queued",
+    });
   }
 
   /**
@@ -675,7 +745,11 @@ export class CodeGraphProjectSupervisor {
       if (!action) continue;
       this.#activeOperations += 1;
       project.running = true;
+      if (project.job && project.job.action === action) {
+        project.job = { ...project.job, state: "running" };
+      }
       project.abortController = new AbortController();
+      this.#emit(project);
       void this.#run(project, action).finally(() => {
         project.abortController = null;
         project.running = false;
@@ -724,6 +798,14 @@ export class CodeGraphProjectSupervisor {
       project.failureCount = 0;
       project.lastSuccessfulSyncAt = this.#now().toISOString();
       project.state = "ready";
+      if (project.job && project.job.action === action) {
+        project.job = {
+          ...project.job,
+          state: "completed",
+          completedAt: this.#now().toISOString(),
+        };
+      }
+      this.#emit(project);
       workerLogger.event(
         command === "sync" && before.pendingChanges === 0 ? "debug" : "info",
         "CodeGraph worktree synchronized",
@@ -743,6 +825,14 @@ export class CodeGraphProjectSupervisor {
       project.failureCount += 1;
       project.error = workerLogError(error).message;
       project.state = "degraded";
+      if (project.job && project.job.action === action) {
+        project.job = {
+          ...project.job,
+          state: "failed",
+          completedAt: this.#now().toISOString(),
+        };
+      }
+      this.#emit(project);
       workerLogger.event("warn", "CodeGraph worktree synchronization failed", {
         event: "codegraph.project.sync-failed",
         subsystem: "codegraph",
@@ -815,5 +905,41 @@ export class CodeGraphProjectSupervisor {
     if (project.watcherRetryTimer) clearTimeout(project.watcherRetryTimer);
     project.abortController?.abort();
     this.#projects.delete(project.root);
+  }
+
+  #publicStatus(project: ManagedProject): PublicCodeGraphProjectStatus {
+    if (!project.projectId || !project.worktreeId) {
+      throw new Error("CodeGraph project identity is unavailable.");
+    }
+    return codeGraphProjectStatusSchema.parse({
+      projectId: project.projectId,
+      worktreeId: project.worktreeId,
+      state: project.state,
+      lastIndexedAt: project.lastIndexedAt,
+      lastSuccessfulSyncAt: project.lastSuccessfulSyncAt,
+      fileCount: project.fileCount,
+      nodeCount: project.nodeCount,
+      edgeCount: project.edgeCount,
+      pendingChanges: project.pendingChanges,
+      statusMessage: project.error?.slice(0, 1_000) ?? null,
+      job: project.job,
+    });
+  }
+
+  #emit(project: ManagedProject): void {
+    if (!project.projectId || !project.worktreeId) return;
+    try {
+      this.#onStatus(this.#publicStatus(project));
+    } catch (error) {
+      workerLogger.event("warn", "CodeGraph status observation failed", {
+        event: "codegraph.project.observation-failed",
+        subsystem: "codegraph",
+        operation: "publish-status",
+        reasonCode: "observer-failed",
+        status: "degraded",
+        worktreePath: project.root,
+        error: workerLogError(error),
+      });
+    }
   }
 }

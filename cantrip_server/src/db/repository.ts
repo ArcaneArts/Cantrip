@@ -8,6 +8,7 @@ import {
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
   unavailableCodeCapabilities,
+  unavailableCodeGraphWorkerStatus,
   unavailableManagedFolderCapabilities,
   unavailableProjectReplicaCapabilities,
 } from "@cantrip/protocol";
@@ -1551,6 +1552,7 @@ function toWorkerSummary(
     remoteSurfaces: worker.remoteSurfaceCapabilities,
     directBroker: worker.directBrokerAdvertisement,
     code: worker.codeCapabilities,
+    codegraph: worker.codegraphStatus,
     projectReplicas: worker.projectReplicaCapabilities,
     managedFolders: worker.managedFolderCapabilities,
     chatRelocation: worker.chatRelocationCapability,
@@ -6534,6 +6536,8 @@ export class ServerRepository {
         remoteSurfaceCapabilities: input.heartbeat.remoteSurfaces,
         directBrokerAdvertisement: input.heartbeat.directBroker,
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
+        codegraphStatus:
+          input.heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
         projectReplicaCapabilities:
           input.heartbeat.projectReplicas ??
           unavailableProjectReplicaCapabilities,
@@ -6757,6 +6761,7 @@ export class ServerRepository {
       remoteSurfaceCapabilities: heartbeat.remoteSurfaces,
       directBrokerAdvertisement: heartbeat.directBroker,
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
+      codegraphStatus: heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
       managedFolderCapabilities:

@@ -42,6 +42,8 @@ import {
   codeAgentTurnPreparationResultSchema,
   codeProbeResultSchema,
   codeRuntimeStatusSchema,
+  codeGraphActionAcknowledgementSchema,
+  codeGraphProjectStatusSchema,
   codeSaveAllResultSchema,
   codeSessionListSchema,
   codeTabCreateSchema,
@@ -1445,10 +1447,14 @@ export async function buildApp({
     );
     await bridge.request(workerId, {
       type: "worktree.observation.configure",
-      targets: targets.map(({ sourcePath, worktreePath }) => ({
-        sourcePath,
-        worktreePath,
-      })),
+      targets: targets.map(
+        ({ projectId, sourcePath, worktreeId, worktreePath }) => ({
+          projectId,
+          worktreeId,
+          sourcePath,
+          worktreePath,
+        }),
+      ),
     });
   };
   const scheduleWorkerWorktreeObservation = (workerId: string): void => {
@@ -1549,6 +1555,18 @@ export async function buildApp({
       if (!worktrees) return;
       publishLiveInvalidation("worktree", { projectId: context.projectId });
       scheduleWorkerWorktreeObservation(workerId);
+      return;
+    }
+    if (notification.type === "codegraph.status.observed") {
+      const context = await repository.getProjectWorktreeContext(
+        ownerId,
+        notification.status.projectId,
+        notification.status.worktreeId,
+      );
+      if (!context || context.workerId !== workerId) return;
+      publishLiveInvalidation("worktree", {
+        projectId: notification.status.projectId,
+      });
       return;
     }
     const context = await repository.getProjectWorktreeObservationContext(
@@ -8679,6 +8697,104 @@ export async function buildApp({
     const workers = await repository.listWorkers(principalOwnerId(request));
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/codegraph/update-check",
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      try {
+        return reply
+          .code(202)
+          .send(
+            codeGraphActionAcknowledgementSchema.parse(
+              await bridge.request(
+                request.params.workerId,
+                { type: "codegraph.update.check" },
+                { ownerId, timeoutMs: 5_000 },
+              ),
+            ),
+          );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  const codeGraphWorktreeContext = async (
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ) => repository.getProjectWorktreeContext(ownerId, projectId, worktreeId);
+
+  app.get<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/codegraph",
+    async (request, reply) => {
+      const ownerId = principalOwnerId(request);
+      const context = await codeGraphWorktreeContext(
+        ownerId,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context)
+        return reply.code(404).send({ error: "Worktree not found." });
+      try {
+        return reply.send(
+          codeGraphProjectStatusSchema.parse(
+            await bridge.request(
+              context.workerId,
+              {
+                type: "codegraph.status",
+                projectId: request.params.projectId,
+                worktreeId: request.params.worktreeId,
+              },
+              { ownerId, timeoutMs: 5_000 },
+            ),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  for (const action of ["sync", "rebuild"] as const) {
+    app.post<{ Params: { projectId: string; worktreeId: string } }>(
+      `/api/projects/:projectId/worktrees/:worktreeId/codegraph/${action}`,
+      async (request, reply) => {
+        const ownerId = principalOwnerId(request);
+        const context = await codeGraphWorktreeContext(
+          ownerId,
+          request.params.projectId,
+          request.params.worktreeId,
+        );
+        if (!context)
+          return reply.code(404).send({ error: "Worktree not found." });
+        try {
+          return reply.code(202).send(
+            codeGraphActionAcknowledgementSchema.parse(
+              await bridge.request(
+                context.workerId,
+                {
+                  type:
+                    action === "sync" ? "codegraph.sync" : "codegraph.rebuild",
+                  projectId: request.params.projectId,
+                  worktreeId: request.params.worktreeId,
+                },
+                { ownerId, timeoutMs: 5_000 },
+              ),
+            ),
+          );
+        } catch (error) {
+          return sendWorkerRequestFailure(reply, error);
+        }
+      },
+    );
+  }
 
   app.get<{ Params: { workerId: string } }>(
     "/api/workers/:workerId/version",

@@ -159,6 +159,63 @@ describe("CodeGraph project supervisor", () => {
     supervisor.close();
   });
 
+  it("addresses nonblocking jobs by server-owned project identity", async () => {
+    const project = await gitProject("cantrip-codegraph-identity-");
+    const fake = fakeCodeGraph();
+    const observations: Array<{ state: string; jobState: string | null }> = [];
+    const projectId = "00000000-0000-4000-8000-000000000001";
+    const worktreeId = "primary:test";
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      command: "/managed/codegraph",
+      execute: fake.execute,
+      onStatus: (status) =>
+        observations.push({
+          state: status.state,
+          jobState: status.job?.state ?? null,
+        }),
+    });
+
+    await supervisor.configure([
+      {
+        projectId,
+        worktreeId,
+        sourcePath: project.root,
+        worktreePath: project.root,
+      },
+    ]);
+    await supervisor.waitForIdle();
+
+    const acknowledgement = supervisor.requestAction(
+      projectId,
+      worktreeId,
+      "sync",
+    );
+    expect(acknowledgement).toEqual(
+      expect.objectContaining({ action: "sync", status: "queued" }),
+    );
+    await supervisor.waitForIdle();
+    expect(supervisor.publicStatus(projectId, worktreeId)).toEqual(
+      expect.objectContaining({
+        projectId,
+        worktreeId,
+        state: "ready",
+        job: expect.objectContaining({
+          id: acknowledgement.jobId,
+          state: "completed",
+        }),
+      }),
+    );
+    expect(observations.some(({ jobState }) => jobState === "running")).toBe(
+      true,
+    );
+    expect(observations.at(-1)?.jobState).toBe("completed");
+    expect(() =>
+      supervisor.requestAction(projectId, "unmanaged", "rebuild"),
+    ).toThrow("not managed");
+    supervisor.close();
+  });
+
   it("limits initial indexing concurrency across many worktrees", async () => {
     const projects = await Promise.all(
       Array.from({ length: 5 }, (_, index) =>
