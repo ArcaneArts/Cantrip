@@ -22,6 +22,7 @@
     "cap:open:ios": "pnpm cap:sync ios && cap open ios"
   },
   "dependencies": {
+    "@cantrip/crypto": "workspace:*",
     "@cantrip/logging": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@capacitor/android": "^8.5.0",

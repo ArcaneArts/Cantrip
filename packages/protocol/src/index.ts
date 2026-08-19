@@ -28,6 +28,8 @@ export * from "./policies.js";
 
 export * from "./tasks.js";
 
+export * from "./encryption.js";
+
 import { agentPolicyContextSchema } from "./policies.js";
 import { taskDetailSchema } from "./tasks.js";
 

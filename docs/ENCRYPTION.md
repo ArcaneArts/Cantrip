@@ -96,6 +96,42 @@ encryption construction. Relevant baselines include
 [HPKE](https://www.rfc-editor.org/rfc/rfc9180.html), and an authenticated
 encryption mode such as AES-GCM.
 
+### Foundation format version 1
+
+The shared endpoint implementation lives in `@cantrip/crypto`; its bounded
+wire and persistence schemas live in `@cantrip/protocol`. Format version 1 is
+fixed to:
+
+- Argon2id version 1.3 (`v=19`) for the password key-encryption key, with a
+  32-byte independent random salt, 32-byte output, 64 MiB memory, three
+  iterations, one lane, and the `cantrip:e2ee:password-kek:v1`
+  personalization context. Stored parameters are versioned and bounded so a
+  future profile can deliberately adopt stronger settings.
+- HKDF-SHA-256 for 32-byte component, field, and blind-lookup key derivation.
+  Component, field, and lookup keys use separate Cantrip domains. Blind
+  lookup tags use HMAC-SHA-256 with the separately derived lookup key.
+- AES-256-GCM for authenticated payload and password-wrapper envelopes, with a
+  fresh random 12-byte nonce and a 128-bit authentication tag for every
+  encryption.
+- RFC 9180 base-mode HPKE with DHKEM(P-256, HKDF-SHA-256) (`0x0010`),
+  HKDF-SHA-256 (`0x0001`), and AES-256-GCM (`0x0002`) for device and worker key
+  wrapping. P-256 public keys use the 65-byte uncompressed SEC1 format.
+- Canonical unpadded base64url for byte fields and canonical JSON associated
+  data binding owner ID, component, table, row ID, field, format version, and
+  key revision.
+
+The implementation uses `@noble/hashes` 2.3.0 for Argon2id and HKDF/HMAC and
+`@hpke/core` 1.9.0 for WebCrypto-backed HPKE. It rejects unknown versions,
+noncanonical encodings, wrong keys or recipients, changed associated data, and
+authentication failures. Sensitive byte buffers are cleared on a best-effort
+basis after use; JavaScript strings and runtime-managed copies cannot be
+reliably erased.
+
+This foundation defines and tests formats and primitives only. It does not yet
+persist account profiles or endpoint grants, unlock a client or worker, or
+encrypt a product payload. Those rows remain planned until their normal and
+legacy write paths are complete.
+
 ### What each system stores
 
 The server stores:
@@ -170,7 +206,8 @@ database-compromise guarantee is described.
 
 | Data class                                                                       | Current protection                            | Rollout status             | E2EE feasibility     | Complexity  | What the server loses                                                                          |
 | -------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------- | -------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
-| Encryption key hierarchy and device grants                                       | No E2EE hierarchy                             | Planned foundation         | Required             | High        | Password-based server recovery and direct inspection of key material                           |
+| Shared encryption formats and cryptographic primitives                           | Versioned endpoint-only primitives            | Foundation complete        | Required             | Medium      | No server decryption capability is introduced                                                  |
+| Account profiles, client wrappers, and scoped worker grants                      | No persisted E2EE hierarchy                   | Planned foundation         | Required             | High        | Password-based server recovery and direct inspection of key material                           |
 | Workspace display names                                                          | Plaintext                                     | Recommended first payload  | Very good            | Low-Medium  | Name-based server search and validation                                                        |
 | Chat message bodies, reasoning, command output, diffs, file paths                | Plaintext                                     | Planned                    | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, answers, goals, queued prompts                               | Plaintext                                     | Planned                    | Excellent            | Medium-High | Server cannot inspect or transform task content                                                |
@@ -265,8 +302,10 @@ counts, worker presence, model-route choices, and traffic patterns.
 
 ## Recommended rollout
 
-1. **Envelope and key formats:** define versioned authenticated payload,
-   password-wrapper, device-wrapper, worker-grant, and recovery formats.
+1. **Envelope and key formats — complete:** versioned authenticated payload,
+   password-wrapper, device-wrapper, and worker-grant formats plus shared
+   endpoint primitives are implemented. Recovery registration remains part of
+   client initialization.
 2. **Opaque server key registry:** persist public keys, password KDF metadata,
    wrapped keys, grant revisions, and revocations without adding server-side
    decryption.
