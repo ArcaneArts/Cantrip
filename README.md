@@ -76,12 +76,6 @@ Settings are stored by the server for the current Cantrip identity rather than i
   credentials, subscription model discovery, and multi-account fallback routing
   through a worker-local xAI subscription proxy.
 
-Cantrip has explicit permission to integrate Claude Code login and
-subscription-backed authentication. That runtime is not implemented yet. The
-authorized scope, account enrollment flow, credential boundary, Agent SDK
-adapter, capability model, and acceptance criteria are documented in the
-[Claude Code login integration README](docs/claude-code/README.md).
-
 Models are logical profiles with one or more ordered provider routes. Provider
 settings aggregate weekly usage across portable accounts while retaining each
 account's individual limits and reset time. A profile
@@ -171,8 +165,6 @@ documented in
 Portable provider authentication, migration, lifecycle, threat boundaries, and
 manual cross-platform validation are documented in
 [`docs/PROVIDER_AUTHENTICATION.md`](docs/PROVIDER_AUTHENTICATION.md).
-The authorized Claude Code login and separate agent-runtime design is documented
-in [`docs/claude-code/README.md`](docs/claude-code/README.md).
 
 ## Current deployment model
 
@@ -213,17 +205,12 @@ claiming that feature is available today.
 
 ## Codex-native customization and workflows
 
-Cantrip currently extends one Codex agent runtime. Codex App Server remains
-responsible for threads, turns, tools, approvals, skills, hooks, MCP, plans,
-goals, and subagents. The app inventories and capability-gates those native
-surfaces, exposes commands and skills in one palette, and can translate
-recognized external Claude/Cursor data into inert Codex-native records without
-executing imported scripts.
-
-The authorized Claude Code integration adds a separate Agent SDK runtime behind
-a generic, capability-based boundary; it does not route Claude through Codex or
-pretend Codex-only features exist. See the
-[Claude Code integration design](docs/claude-code/README.md).
+Cantrip extends one agent runtime instead of maintaining Claude CLI and Codex
+backends. Codex App Server remains responsible for threads, turns, tools,
+approvals, skills, hooks, MCP, plans, goals, and subagents. The app inventories
+and capability-gates those native surfaces, exposes commands and skills in one
+palette, and can translate recognized external Claude/Cursor data into inert
+Codex-native records without executing imported scripts.
 
 Above that runtime, Cantrip provides a durable, data-only workflow control
 plane. Immutable revisions can compose agent, verification, reduction,
