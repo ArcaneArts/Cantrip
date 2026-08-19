@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   encryptedPayloadEnvelopeSchema,
   encryptionBytesSchema,
+  encryptionKeyBytesSchema,
   encryptionKeyRevisionSchema,
 } from "./encryption.js";
 import type { WorkflowJsonObject } from "./workflows.js";
@@ -694,6 +695,77 @@ export const taskGoalObjectiveProtectedContentSchema = z
   })
   .strict();
 
+export const taskOperationRelayRequestSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    operationId: z.string().uuid(),
+    fingerprint: encryptionKeyBytesSchema,
+    classification: taskPlanningRoundProtectedClassificationSchema,
+    protectedInput: encryptedTaskPlanningRoundProtectedContentSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.classification.status !== "running" ||
+      value.classification.hasOutputPlan ||
+      value.classification.hasOutputQuestions ||
+      value.classification.hasOutputGoalPrompt ||
+      value.classification.error !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Encrypted Task relay input must describe a running operation.",
+        path: ["classification"],
+      });
+    }
+  });
+
+export const taskOperationRelayGoalSchema = z
+  .object({
+    classification: taskGoalObjectiveProtectedClassificationSchema,
+    protectedObjective: encryptedTaskGoalObjectiveSchema,
+  })
+  .strict();
+
+export const taskOperationRelayResultSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    operationId: z.string().uuid(),
+    fingerprint: encryptionKeyBytesSchema,
+    classification: taskPlanningRoundProtectedClassificationSchema,
+    protectedResult: encryptedTaskPlanningRoundProtectedContentSchema,
+    goal: taskOperationRelayGoalSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const finalizing = value.classification.kind === "finalize";
+    if (
+      value.classification.status !== "completed" ||
+      !value.classification.hasOutputPlan ||
+      value.classification.error !== null ||
+      value.classification.hasOutputGoalPrompt !== finalizing ||
+      (value.goal !== null) !== finalizing
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task relay result classification is inconsistent.",
+        path: ["classification"],
+      });
+    }
+    if (
+      value.goal &&
+      (value.goal.classification.chatId !== value.chatId ||
+        value.goal.classification.status !== "active")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task Goal metadata does not match its operation.",
+        path: ["goal", "classification"],
+      });
+    }
+  });
+
 export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
   .extend({
     chatId: z.string().min(1).max(200),
@@ -829,6 +901,15 @@ export type TaskGoalObjectiveProtectedClassification = z.infer<
 >;
 export type TaskGoalObjectiveProtectedContent = z.infer<
   typeof taskGoalObjectiveProtectedContentSchema
+>;
+export type TaskOperationRelayRequest = z.infer<
+  typeof taskOperationRelayRequestSchema
+>;
+export type TaskOperationRelayGoal = z.infer<
+  typeof taskOperationRelayGoalSchema
+>;
+export type TaskOperationRelayResult = z.infer<
+  typeof taskOperationRelayResultSchema
 >;
 export type TaskOpaqueSummary = z.infer<typeof taskOpaqueSummarySchema>;
 export type TaskPlanningRoundOpaqueSummary = z.infer<

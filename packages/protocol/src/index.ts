@@ -31,7 +31,11 @@ export * from "./tasks.js";
 export * from "./encryption.js";
 
 import { agentPolicyContextSchema } from "./policies.js";
-import { taskDetailSchema } from "./tasks.js";
+import {
+  taskDetailSchema,
+  taskOperationRelayGoalSchema,
+  taskOperationRelayRequestSchema,
+} from "./tasks.js";
 import {
   encryptedPayloadEnvelopeSchema,
   encryptionKeyBytesSchema,
@@ -7898,6 +7902,10 @@ export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
     kind: z.literal("structured"),
     outputSchema: workflowJsonObjectSchema,
   }),
+  z.object({
+    kind: z.literal("task-encrypted"),
+    operation: taskOperationRelayRequestSchema,
+  }),
 ]);
 
 export const normalizedAgentMessageSchema = z.object({
@@ -9647,7 +9655,10 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     chatId: z.string().min(1),
     cwd: z.string().min(1),
     threadId: z.string().min(1).nullable(),
-    objective: chatGoalCreateSchema.shape.objective,
+    objective: z.union([
+      chatGoalCreateSchema.shape.objective,
+      taskOperationRelayGoalSchema,
+    ]),
     tokenBudget: chatGoalCreateSchema.shape.tokenBudget,
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,

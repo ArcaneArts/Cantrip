@@ -321,6 +321,16 @@ export class WorkerEncryptionService {
     return structuredClone(this.#status);
   }
 
+  ownerId(): string {
+    if (!this.#ownerId) {
+      throw new WorkerEncryptionError(
+        "principal-unavailable",
+        "Worker encryption has not been bound to an account.",
+      );
+    }
+    return this.#ownerId;
+  }
+
   componentKey(component: WorkerEncryptionComponentScope): {
     key: Uint8Array;
     keyRevision: number;
