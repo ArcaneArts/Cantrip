@@ -7,6 +7,7 @@ import {
   providerQuotaSnapshotSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
+  type McpServerConfiguration,
   type WorkerCommand,
   type WorkerEvent,
 } from "@cantrip/protocol";
@@ -37,6 +38,10 @@ import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
+import {
+  managedCodeGraphMcpServer,
+  mergeManagedCodeGraphMcpServer,
+} from "./codegraph/mcp.js";
 import { readWorkerConfig } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -440,6 +445,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           environment: codegraphRuntime.childEnvironment(),
         })
       : null;
+  const agentMcpServers = async (
+    cwd: string,
+    configured: McpServerConfiguration[],
+  ): Promise<McpServerConfiguration[]> => {
+    let managed: McpServerConfiguration | null = null;
+    if (codegraphProjects && codegraphInvocation) {
+      try {
+        const canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
+        if (canonicalRoot) {
+          managed = managedCodeGraphMcpServer(
+            codegraphInvocation.command,
+            codegraphInvocation.arguments,
+            canonicalRoot,
+          );
+        }
+      } catch (error) {
+        workerLogger.event("warn", "CodeGraph agent MCP preparation failed", {
+          event: "codegraph.mcp.prepare-failed",
+          subsystem: "codegraph",
+          operation: "prepare-agent-mcp",
+          reasonCode: "prepare-failed",
+          status: "degraded",
+          error: workerLogError(error),
+        });
+      }
+    }
+    return mergeManagedCodeGraphMcpServer(configured, managed);
+  };
   const automationScheduler = new ProjectAutomationScheduler({
     serverUrl: config.serverUrl,
     token: config.token,
@@ -1273,7 +1306,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           timeoutMs: command.timeoutMs,
           model: command.model,
           provider: command.provider,
-          mcpServers: command.mcpServers,
+          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
         });
       }
       case "worktree.list":
@@ -1502,9 +1535,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             command.launch.threadId &&
             !terminals.hasLiveSession(command.terminalId)
           ) {
+            const mcpServers = command.launch.mcpServers
+              ? await agentMcpServers(command.cwd, command.launch.mcpServers)
+              : undefined;
             await runtime.prepareExternalSync({
               cwd: command.cwd,
+              mcpServers,
               model: command.launch.model,
+              permissionProfileId:
+                command.launch.permissionProfileId ?? ":workspace",
               provider: command.launch.provider,
               threadId: command.launch.threadId,
             });
@@ -1641,7 +1680,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           clientMessageId: command.clientMessageId,
           cwd: command.cwd,
           isPrimary: command.isPrimary,
-          mcpServers: command.mcpServers,
+          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: command.provider,
@@ -1699,7 +1738,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           timeoutMs: command.timeoutMs,
           model: command.model,
           provider: command.provider,
-          mcpServers: command.mcpServers,
+          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
           onActivity: (activity) =>
             emit({
               type: "workflow.node.activity",
@@ -1759,7 +1798,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           timeoutMs: command.timeoutMs,
           model: command.model,
           provider: command.provider,
-          mcpServers: command.mcpServers,
+          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
         });
       case "workflow.repository.scan":
         return scanWorkflowRepository(command.cwd);
@@ -1834,7 +1873,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "chat.thread.ensure":
         return runtimeFor(command).ensureThread({
           cwd: command.cwd,
-          mcpServers: command.mcpServers,
+          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           planMode: command.planMode,
@@ -1862,7 +1901,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         const hydrated = await runtime.hydrateChatRelocation({
           cwd: upload.command.cwd,
-          mcpServers: upload.command.mcpServers,
+          mcpServers: await agentMcpServers(
+            upload.command.cwd,
+            upload.command.mcpServers,
+          ),
           model: upload.command.model,
           payload: upload.payload,
           permissionProfileId: upload.command.permissionProfileId,

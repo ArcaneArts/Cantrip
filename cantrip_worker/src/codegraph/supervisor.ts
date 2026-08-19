@@ -28,6 +28,8 @@ const STATUS_TIMEOUT_MS = 30_000;
 const SYNC_TIMEOUT_MS = 5 * 60_000;
 const INDEX_TIMEOUT_MS = 30 * 60_000;
 const MAX_RETRY_MS = 5 * 60_000;
+const AGENT_CATCH_UP_INTERVAL_MS = 30_000;
+const AGENT_CATCH_UP_WAIT_MS = 1_000;
 
 type CodeGraphPendingAction = "ensure" | "rebuild" | "sync";
 
@@ -445,6 +447,55 @@ export class CodeGraphProjectSupervisor {
       root: project.root,
       state: project.state,
     }));
+  }
+
+  /**
+   * Resolve an agent cwd only against the already authorized worktree
+   * inventory. A bounded catch-up is requested before the turn, but a large or
+   * degraded graph never blocks unrelated agent execution indefinitely.
+   */
+  async prepareForAgent(
+    candidateRoot: string,
+    timeoutMs = AGENT_CATCH_UP_WAIT_MS,
+  ): Promise<string | null> {
+    let root: string;
+    try {
+      root = await realpath(candidateRoot);
+    } catch {
+      return null;
+    }
+    const project = this.#projects.get(root);
+    if (!project || project.closed) return null;
+
+    const lastSuccessfulSyncAt = project.lastSuccessfulSyncAt
+      ? Date.parse(project.lastSuccessfulSyncAt)
+      : Number.NaN;
+    const stale =
+      !Number.isFinite(lastSuccessfulSyncAt) ||
+      this.#now().getTime() - lastSuccessfulSyncAt >=
+        AGENT_CATCH_UP_INTERVAL_MS;
+    if (
+      stale ||
+      project.pendingChanges !== 0 ||
+      project.state === "degraded" ||
+      project.state === "unavailable"
+    ) {
+      this.#schedule(project, "sync");
+    }
+
+    if (project.running || project.queued) {
+      const deadline = Date.now() + Math.max(0, timeoutMs);
+      while (
+        !project.closed &&
+        (project.running || project.queued) &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+    return !project.closed && this.#projects.get(root) === project
+      ? root
+      : null;
   }
 
   resync(root: string): void {

@@ -1513,6 +1513,17 @@ const mcpKeyValueSchema = z
  */
 export const MCP_SECRET_MASK = "••••••••";
 
+/**
+ * Reserved for the worker-synthesized CodeGraph MCP. This is intentionally a
+ * protocol-level invariant so old clients cannot create a user server that
+ * shadows the managed runtime through a server API.
+ */
+export const MANAGED_CODEGRAPH_MCP_NAME = "codegraph" as const;
+
+export function isManagedCodeGraphMcpName(name: string): boolean {
+  return name.trim().toLowerCase() === MANAGED_CODEGRAPH_MCP_NAME;
+}
+
 export const mcpServerNameSchema = z
   .string()
   .trim()
@@ -9104,6 +9115,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
         threadId: z.string().min(1).nullable(),
         model: workerRuntimeModelSchema,
         provider: workerRuntimeProviderSchema,
+        permissionProfileId: permissionProfileIdSchema.optional(),
+        mcpServers: z.array(mcpServerConfigurationSchema).max(200).optional(),
       }),
     ]),
   }),

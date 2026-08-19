@@ -413,6 +413,7 @@ import type {
   ProviderQuotaSnapshot,
   ReasoningEffort,
   WorkerNotification,
+  WorkerCommand,
   WorkerSummary,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
@@ -10282,14 +10283,19 @@ export async function buildApp({
 
   app.delete<{ Params: { serverId: string } }>(
     "/api/settings/mcp-servers/:serverId",
-    async (request, reply) =>
-      (await repository.deleteMcpServer(
-        applicationOwnerId(),
-        null,
-        request.params.serverId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "MCP server not found." }),
+    async (request, reply) => {
+      try {
+        return (await repository.deleteMcpServer(
+          applicationOwnerId(),
+          null,
+          request.params.serverId,
+        ))
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "MCP server not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
   );
 
   app.patch("/api/settings", async (request, reply) => {
@@ -11654,14 +11660,19 @@ export async function buildApp({
 
   app.delete<{ Params: { projectId: string; serverId: string } }>(
     "/api/projects/:projectId/mcp-servers/:serverId",
-    async (request, reply) =>
-      (await repository.deleteMcpServer(
-        applicationOwnerId(),
-        request.params.projectId,
-        request.params.serverId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "MCP server not found." }),
+    async (request, reply) => {
+      try {
+        return (await repository.deleteMcpServer(
+          applicationOwnerId(),
+          request.params.projectId,
+          request.params.serverId,
+        ))
+          ? reply.code(204).send()
+          : reply.code(404).send({ error: "MCP server not found." });
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+    },
   );
 
   app.post<{ Params: { projectId: string } }>(
@@ -20341,14 +20352,10 @@ export async function buildApp({
       }
       const bootstrapAttachmentId = `direct-bootstrap:${randomUUID()}`;
       try {
-        let launch:
-          | { type: "shell" }
-          | {
-              type: "codex";
-              threadId: string | null;
-              model: ModelRuntime["model"];
-              provider: ModelRuntime["provider"];
-            } = { type: "shell" };
+        let launch: Extract<
+          WorkerCommand,
+          { type: "terminal.open" }
+        >["launch"] = { type: "shell" };
         if (context.linkedChatId) {
           const chat = await repository.getChatExecutionContext(
             principal.user.id,
@@ -20366,6 +20373,11 @@ export async function buildApp({
             threadId: chat.threadId,
             model: runtime.model,
             provider: runtime.provider,
+            permissionProfileId: effectivePermissionProfile(chat).effectiveId,
+            mcpServers: await repository.listEffectiveMcpServers(
+              principal.user.id,
+              chat.projectId,
+            ),
           };
         }
         let markReady: (() => void) | null = null;
@@ -20563,14 +20575,10 @@ export async function buildApp({
           return;
         }
         try {
-          let launch:
-            | { type: "shell" }
-            | {
-                type: "codex";
-                threadId: string | null;
-                model: ModelRuntime["model"];
-                provider: ModelRuntime["provider"];
-              } = { type: "shell" };
+          let launch: Extract<
+            WorkerCommand,
+            { type: "terminal.open" }
+          >["launch"] = { type: "shell" };
           if (context.linkedChatId) {
             const chat = await repository.getChatExecutionContext(
               applicationOwnerId(),
@@ -20587,6 +20595,11 @@ export async function buildApp({
               threadId: chat.threadId,
               model: runtime.model,
               provider: runtime.provider,
+              permissionProfileId: effectivePermissionProfile(chat).effectiveId,
+              mcpServers: await repository.listEffectiveMcpServers(
+                applicationOwnerId(),
+                chat.projectId,
+              ),
             };
           }
           const result = terminalOpenResultSchema.parse(

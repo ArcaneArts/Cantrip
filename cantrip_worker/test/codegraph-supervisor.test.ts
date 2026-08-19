@@ -112,6 +112,10 @@ describe("CodeGraph project supervisor", () => {
         edgeCount: 18,
       }),
     ]);
+    await expect(supervisor.prepareForAgent(project.root)).resolves.toBe(
+      project.root,
+    );
+    await supervisor.waitForIdle();
     await expect(
       readFile(path.join(project.gitCommonDir, "info", "exclude"), "utf8"),
     ).resolves.toContain("/.codegraph-cantrip/");
@@ -209,6 +213,7 @@ describe("CodeGraph project supervisor", () => {
 
     expect(fake.calls).toEqual([]);
     expect(supervisor.statuses()).toEqual([]);
+    await expect(supervisor.prepareForAgent(unrelated)).resolves.toBeNull();
     supervisor.close();
   });
 });
