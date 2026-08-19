@@ -71,6 +71,21 @@ pub struct DesktopWorkers {
     profiles_path: PathBuf,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum DesktopWorkerProjectStorage {
+    Folders,
+    Repositories,
+}
+
+impl DesktopWorkerProjectStorage {
+    fn directory_name(self) -> &'static str {
+        match self {
+            Self::Folders => "folders",
+            Self::Repositories => "repositories",
+        }
+    }
+}
+
 fn replacement_profile(
     existing: Option<&DesktopWorkerProfile>,
     name: &str,
@@ -133,7 +148,7 @@ fn mirror_child_output<R: Read + Send + 'static>(mut reader: R, mut log: File, u
     });
 }
 
-fn normalize_server_url(value: &str) -> Result<String, String> {
+pub(crate) fn normalize_server_url(value: &str) -> Result<String, String> {
     let mut parsed = Url::parse(value).map_err(|_| "The server URL is invalid.".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https")
         || !parsed.username().is_empty()
@@ -269,6 +284,31 @@ impl DesktopWorkers {
         self.profile_directory(worker_id)
             .join("worker-credential.json")
             .is_file()
+    }
+
+    pub(crate) fn resolve_project_directory(
+        &self,
+        server_url: &str,
+        worker_id: &str,
+        storage: DesktopWorkerProjectStorage,
+        requested_path: &Path,
+    ) -> Result<Option<PathBuf>, String> {
+        let server_url = normalize_server_url(server_url)?;
+        let local_worker = self
+            .profiles
+            .lock()
+            .map_err(|_| "The desktop worker registry is unavailable.".to_string())?
+            .iter()
+            .any(|profile| profile.worker_id == worker_id && profile.server_url == server_url);
+        if !local_worker {
+            return Ok(None);
+        }
+
+        Ok(resolve_project_directory_under_root(
+            &self.profile_directory(worker_id),
+            storage,
+            requested_path,
+        ))
     }
 
     fn persist_profile(&self, profile: &DesktopWorkerProfile) -> Result<(), String> {
@@ -496,6 +536,26 @@ impl DesktopWorkers {
             .logs_directory
             .join(format!("{worker_id}.service.jsonl")))
     }
+}
+
+pub(crate) fn resolve_project_directory_under_root(
+    worker_data_directory: &Path,
+    storage: DesktopWorkerProjectStorage,
+    requested_path: &Path,
+) -> Option<PathBuf> {
+    let profile_root = fs::canonicalize(worker_data_directory).ok()?;
+    let storage_root = fs::canonicalize(profile_root.join(storage.directory_name())).ok()?;
+    if storage_root == profile_root || !storage_root.starts_with(&profile_root) {
+        return None;
+    }
+    let project_directory = fs::canonicalize(requested_path).ok()?;
+    if project_directory == storage_root
+        || !project_directory.starts_with(&storage_root)
+        || !project_directory.is_dir()
+    {
+        return None;
+    }
+    Some(project_directory)
 }
 
 pub fn build(app: &App) -> Result<DesktopWorkers, String> {
@@ -782,7 +842,7 @@ mod tests {
     use super::{
         normalize_server_url, read_retained_profiles, recover_profiles, replacement_profile,
         repository_count, sort_worker_candidates, DesktopWorkerCandidate, DesktopWorkerProfile,
-        DesktopWorkers, WorkerLaunch,
+        DesktopWorkerProjectStorage, DesktopWorkers, WorkerLaunch,
     };
 
     fn test_manager(root: &Path) -> DesktopWorkers {
@@ -797,6 +857,16 @@ mod tests {
             profiles: Mutex::new(Vec::new()),
             profiles_path: root.join("desktop-workers.json"),
         }
+    }
+
+    fn local_project_manager(root: &Path, worker_id: &str) -> DesktopWorkers {
+        let manager = test_manager(root);
+        manager.profiles.lock().unwrap().push(DesktopWorkerProfile {
+            name: "This machine".into(),
+            server_url: "https://cantrip.example".into(),
+            worker_id: worker_id.into(),
+        });
+        manager
     }
 
     #[test]
@@ -908,6 +978,95 @@ mod tests {
         assert!(!manager.has_stored_credential(worker_id));
         fs::write(profile_directory.join("worker-credential.json"), "{}").unwrap();
         assert!(manager.has_stored_credential(worker_id));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn resolves_only_projects_owned_by_the_active_local_worker() {
+        let root = std::env::temp_dir().join(format!(
+            "cantrip-worker-project-reveal-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let worker_id = "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+        let manager = local_project_manager(&root, worker_id);
+        let repository = manager
+            .profile_directory(worker_id)
+            .join("repositories/ArcaneArts/Cantrip");
+        let folder = manager
+            .profile_directory(worker_id)
+            .join("folders/019fdc2c-e848-7552-b2ea-6fc7ef09e9f3");
+        let outside = root.join("outside");
+        fs::create_dir_all(&repository).unwrap();
+        fs::create_dir_all(&folder).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example/",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Repositories,
+                    &repository,
+                )
+                .unwrap(),
+            Some(fs::canonicalize(&repository).unwrap())
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Folders,
+                    &folder,
+                )
+                .unwrap(),
+            Some(fs::canonicalize(&folder).unwrap())
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://other.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Repositories,
+                    &repository,
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example",
+                    "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f4",
+                    DesktopWorkerProjectStorage::Repositories,
+                    &repository,
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Repositories,
+                    &outside,
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://cantrip.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::Folders,
+                    &repository,
+                )
+                .unwrap(),
+            None
+        );
 
         fs::remove_dir_all(root).unwrap();
     }

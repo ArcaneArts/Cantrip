@@ -11,6 +11,7 @@ import {
   desktopTunnelClientId,
   startDirectDesktopTunnel,
 } from "@/lib/desktop-tunnel";
+import { getActiveServerUrl } from "@/lib/server-connections";
 
 export type DesktopProjectRevealLabel =
   "Reveal in File Explorer" | "Reveal in Finder";
@@ -52,6 +53,20 @@ export function nativeProjectShareRequest(
   };
 }
 
+export function nativeLocalProjectFolderRequest(
+  project: ProjectSummary,
+  serverUrl: string,
+) {
+  const source = project.source;
+  if (!source) return null;
+  return {
+    path: source.path,
+    serverUrl,
+    sourceKind: source.sourceKind,
+    workerId: source.workerId,
+  };
+}
+
 export function directProjectShareUrl(
   attachment: ProjectShareAttachment,
   localPort: number,
@@ -80,7 +95,18 @@ export async function coordinateDesktopProjectReveal(
 
 export async function revealProjectInNativeFileManager(
   project: ProjectSummary,
+  localFolder = false,
 ): Promise<void> {
+  if (localFolder) {
+    const request = nativeLocalProjectFolderRequest(
+      project,
+      getActiveServerUrl(),
+    );
+    if (!request) return;
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<boolean>("reveal_local_project_folder", { request });
+    return;
+  }
   return coordinateDesktopProjectReveal(project, {
     createAttachment: createProjectNetworkShare,
     invokeNative: async (attachment, target) => {

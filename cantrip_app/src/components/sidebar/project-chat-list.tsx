@@ -43,7 +43,7 @@ import {
   Trash2,
   WifiOff,
 } from "lucide-react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   ChatContextMenu,
@@ -346,7 +346,7 @@ function SortableProject({
   creatingKinds: ReadonlySet<ProjectSurfaceCreateKind>;
   onCreate(kind: ProjectSurfaceCreateKind, target?: ExecutionTarget): void;
   onOpenSettings(): void;
-  onReveal?: () => void;
+  onReveal?: (localFolder: boolean) => void;
   onRemove(): void;
   onSelect(): void;
   placement: ProjectSurfacePlacementContext;
@@ -365,6 +365,7 @@ function SortableProject({
     id: projectId(project.id),
     disabled: settingUp,
   });
+  const revealLocalFolder = useRef(false);
   const style: CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
@@ -490,7 +491,14 @@ function SortableProject({
                 {onReveal ? (
                   <StyledDropdownMenuItem
                     disabled={revealDisabled}
-                    onSelect={onReveal}
+                    onClick={(event) => {
+                      revealLocalFolder.current = event.shiftKey;
+                    }}
+                    onSelect={() => {
+                      const localFolder = revealLocalFolder.current;
+                      revealLocalFolder.current = false;
+                      onReveal(localFolder);
+                    }}
                   >
                     <FolderOpen className="size-4" /> {projectRevealLabel}
                   </StyledDropdownMenuItem>
@@ -584,7 +592,10 @@ export function ProjectChatList({
   onOpenChatHistory(chat: ChatSummary): void;
   onOpenChatTerminal(chat: ChatSummary): void;
   onOpenProjectSettings(projectId: string): void;
-  onRevealProject?: (project: ProjectSummary) => Promise<void>;
+  onRevealProject?: (
+    project: ProjectSummary,
+    localFolder: boolean,
+  ) => Promise<void>;
   onDeleteTerminal(terminalId: string): void;
   onRemoveProject(projectId: string, deleteLocalFiles: boolean): Promise<void>;
   onRequestChatWorktreeCreate(chat: ChatSummary): void;
@@ -930,11 +941,11 @@ export function ProjectChatList({
                 }}
                 onReveal={
                   project.source && projectRevealLabel && onRevealProject
-                    ? () => {
+                    ? (localFolder) => {
                         if (revealingProjectId) return;
                         setProjectRevealError(null);
                         setRevealingProjectId(project.id);
-                        void onRevealProject(project)
+                        void onRevealProject(project, localFolder)
                           .catch((error: unknown) => {
                             setProjectRevealError(
                               error instanceof Error
