@@ -219,6 +219,7 @@ import {
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
 import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
+import { EncryptionRegistryRepository } from "./encryption-registry.js";
 import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
 import { TaskRepository, toTaskDetail } from "./tasks.js";
@@ -286,7 +287,7 @@ export interface ProviderModelCatalogWrite {
   rawMetadata: Record<string, unknown>;
 }
 
-type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
+export type RepositoryDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type ProjectRow = typeof schema.projects.$inferSelect;
 type ProjectSourceRow = typeof schema.projectSources.$inferSelect;
 type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
@@ -1997,6 +1998,7 @@ function toQueuedPrompt(
 export class ServerRepository {
   readonly chatImportJobs: ChatImportJobRepository;
   readonly chatRelocationJobs: ChatRelocationJobRepository;
+  readonly encryptionRegistry: EncryptionRegistryRepository;
   readonly projectAutomations: ProjectAutomationRepository;
   readonly policies: PolicyRepository;
   readonly tasks: TaskRepository;
@@ -2014,6 +2016,7 @@ export class ServerRepository {
   ) {
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
+    this.encryptionRegistry = new EncryptionRegistryRepository(database);
     this.projectAutomations = new ProjectAutomationRepository(database);
     this.policies = new PolicyRepository(database);
     this.tasks = new TaskRepository(database);

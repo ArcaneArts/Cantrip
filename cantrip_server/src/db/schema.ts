@@ -61,6 +61,14 @@ import type {
   ProjectAutomationCondition,
   ProjectAutomationSchedule,
 } from "@cantrip/protocol/automations";
+import type {
+  ClientMasterKeyWrapper,
+  EncryptionComponentScope,
+  EncryptionPublicKey,
+  PasswordKdfParameters,
+  PasswordWrappedMasterKey,
+  WorkerComponentKeyGrant,
+} from "@cantrip/protocol/encryption";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -1089,6 +1097,159 @@ export const workerCredentials = pgTable(
     index("worker_credentials_worker_active_index").on(
       table.workerId,
       table.revokedAt,
+    ),
+  ],
+);
+
+export const accountEncryptionProfiles = pgTable(
+  "account_encryption_profiles",
+  {
+    ownerId: text("owner_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    formatVersion: integer("format_version").notNull(),
+    activeMasterKeyRevision: integer("active_master_key_revision").notNull(),
+    passwordKdf: jsonb("password_kdf").$type<PasswordKdfParameters>(),
+    passwordWrappedMasterKey: jsonb(
+      "password_wrapped_master_key",
+    ).$type<PasswordWrappedMasterKey>(),
+    initializationStatus: text("initialization_status")
+      .notNull()
+      .default("initialized"),
+    payloadMigrationStatus: text("payload_migration_status")
+      .notNull()
+      .default("pending"),
+    revision: integer("revision").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "account_encryption_profiles_format_version_check",
+      sql`${table.formatVersion} = 1`,
+    ),
+    check(
+      "account_encryption_profiles_key_revision_check",
+      sql`${table.activeMasterKeyRevision} >= 1 AND ${table.revision} >= 1`,
+    ),
+    check(
+      "account_encryption_profiles_password_wrapper_pair_check",
+      sql`(${table.passwordKdf} IS NULL) = (${table.passwordWrappedMasterKey} IS NULL)`,
+    ),
+    check(
+      "account_encryption_profiles_initialization_status_check",
+      sql`${table.initializationStatus} = 'initialized'`,
+    ),
+    check(
+      "account_encryption_profiles_migration_status_check",
+      sql`${table.payloadMigrationStatus} IN ('pending', 'in-progress', 'complete')`,
+    ),
+  ],
+);
+
+export const encryptionPrincipals = pgTable(
+  "encryption_principals",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "cascade",
+    }),
+    label: text("label"),
+    publicKey: jsonb("public_key").$type<EncryptionPublicKey>().notNull(),
+    state: text("state").notNull().default("pending"),
+    revision: integer("revision").notNull().default(1),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: text("revoked_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("encryption_principals_worker_unique")
+      .on(table.ownerId, table.workerId)
+      .where(
+        sql`${table.workerId} IS NOT NULL AND ${table.state} <> 'revoked'`,
+      ),
+    index("encryption_principals_owner_state_index").on(
+      table.ownerId,
+      table.state,
+    ),
+    check(
+      "encryption_principals_kind_worker_check",
+      sql`(${table.kind} = 'client' AND ${table.workerId} IS NULL) OR (${table.kind} = 'worker' AND ${table.workerId} IS NOT NULL)`,
+    ),
+    check(
+      "encryption_principals_state_check",
+      sql`${table.state} IN ('pending', 'approved', 'revoked')`,
+    ),
+    check("encryption_principals_revision_check", sql`${table.revision} >= 1`),
+    check(
+      "encryption_principals_state_timestamps_check",
+      sql`(${table.state} = 'pending' AND ${table.approvedAt} IS NULL AND ${table.revokedAt} IS NULL) OR (${table.state} = 'approved' AND ${table.approvedAt} IS NOT NULL AND ${table.revokedAt} IS NULL) OR (${table.state} = 'revoked' AND ${table.revokedAt} IS NOT NULL)`,
+    ),
+  ],
+);
+
+export const encryptionKeyGrants = pgTable(
+  "encryption_key_grants",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    principalId: text("principal_id")
+      .notNull()
+      .references(() => encryptionPrincipals.id, { onDelete: "cascade" }),
+    component: text("component").$type<EncryptionComponentScope>().notNull(),
+    keyRevision: integer("key_revision").notNull(),
+    wrappedKey: jsonb("wrapped_key")
+      .$type<ClientMasterKeyWrapper | WorkerComponentKeyGrant>()
+      .notNull(),
+    state: text("state").notNull().default("active"),
+    revision: integer("revision").notNull().default(1),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    revokedReason: text("revoked_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("encryption_key_grants_principal_component_revision_unique").on(
+      table.principalId,
+      table.component,
+      table.keyRevision,
+    ),
+    index("encryption_key_grants_owner_principal_state_index").on(
+      table.ownerId,
+      table.principalId,
+      table.state,
+    ),
+    check(
+      "encryption_key_grants_revision_check",
+      sql`${table.keyRevision} >= 1 AND ${table.revision} >= 1`,
+    ),
+    check(
+      "encryption_key_grants_state_check",
+      sql`${table.state} IN ('active', 'revoked')`,
+    ),
+    check(
+      "encryption_key_grants_state_timestamp_check",
+      sql`(${table.state} = 'active' AND ${table.revokedAt} IS NULL) OR (${table.state} = 'revoked' AND ${table.revokedAt} IS NOT NULL)`,
     ),
   ],
 );
