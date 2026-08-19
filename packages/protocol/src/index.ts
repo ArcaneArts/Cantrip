@@ -255,6 +255,7 @@ export const accountSessionSummarySchema = z.object({
   authMethod: z.enum(["password", "account-password", "mobile-qr"]),
   label: z.string().max(200).nullable(),
   current: z.boolean(),
+  connected: z.boolean().default(false),
   createdAt: z.iso.datetime(),
   lastSeenAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),

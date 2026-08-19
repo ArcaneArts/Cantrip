@@ -3,6 +3,7 @@ import {
   accountLicenseWhitelistCreateSchema,
   accountLicenseWhitelistEntrySchema,
   accountRegistrationSchema,
+  accountSessionListSchema,
   authLoginSchema,
   mobileSignInGrantCreateResultSchema,
   mobileSignInGrantExchangeSchema,
@@ -396,6 +397,10 @@ export async function getAuthSession() {
       signal: AbortSignal.timeout(10_000),
     }),
   );
+}
+
+export async function getAccountSessions() {
+  return accountSessionListSchema.parse(await request("/api/account/sessions"));
 }
 
 export async function login(input: AuthLogin) {

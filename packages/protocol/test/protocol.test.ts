@@ -4871,7 +4871,12 @@ describe("Cantrip protocol", () => {
           expiresAt: "2026-08-12T12:00:00.000Z",
         },
       ]),
-    ).toHaveLength(1);
+    ).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        connected: false,
+      }),
+    ]);
 
     expect(auditEventQuerySchema.parse({})).toEqual({ limit: 50 });
     expect(auditEventQuerySchema.parse({ before: "42", limit: "10" })).toEqual({

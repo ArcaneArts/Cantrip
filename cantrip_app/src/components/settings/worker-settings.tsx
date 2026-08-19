@@ -39,9 +39,11 @@ import {
 } from "@/components/ui/dialog";
 import {
   createWorkerEnrollmentCode,
+  getAccountSessions,
   getWorkerCredentials,
   getWorkerEnrollmentCodeStatus,
   getWorkerManagement,
+  getServerBootstrap,
   getSettings,
   revokeWorkerCredential,
   restartWorker,
@@ -51,6 +53,7 @@ import {
   updateWorker,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { useAppLiveStatus } from "@/lib/app-live-react";
 import {
   forgetDesktopWorker,
   getDesktopAutostart,
@@ -65,6 +68,10 @@ import {
   getActiveServerUrl,
 } from "@/lib/server-connections";
 import { SettingsSearchField } from "./settings-controls";
+import {
+  currentClientDeviceLabel,
+  WorkerNetworkGraph,
+} from "./worker-network-graph";
 
 const inputClass =
   "h-10 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2";
@@ -322,8 +329,18 @@ function WorkerRow({
 export function WorkerSettings() {
   const queryClient = useQueryClient();
   const desktopApp = supportsDesktopWorkers();
+  const liveStatus = useAppLiveStatus();
   const activeConnection = getActiveServerConnection()!;
   const serverUrl = getActiveServerUrl() || window.location.origin;
+  const bootstrap = useQuery({
+    queryFn: getServerBootstrap,
+    queryKey: ["server-bootstrap"],
+  });
+  const accountSessions = useQuery({
+    queryFn: getAccountSessions,
+    queryKey: ["account-sessions"],
+    refetchInterval: 10_000,
+  });
   const workers = useQuery({
     queryFn: getWorkerManagement,
     queryKey: ["worker-management"],
@@ -607,6 +624,13 @@ export function WorkerSettings() {
   }, [workers.data]);
   const desktopWorkerForServer = desktopWorkers.data?.find(
     (worker) => worker.serverUrl === serverUrl,
+  );
+  const localWorkerIds = useMemo(
+    () =>
+      (desktopWorkers.data ?? [])
+        .filter((worker) => worker.serverUrl === serverUrl)
+        .map((worker) => worker.workerId),
+    [desktopWorkers.data, serverUrl],
   );
   const recoverableWorkerId = recoverableDesktopWorkerId({
     candidates: desktopWorkerCandidates.data ?? [],
@@ -908,7 +932,10 @@ export function WorkerSettings() {
             size="icon"
             variant="ghost"
             disabled={workers.isFetching}
-            onClick={() => workers.refetch()}
+            onClick={() => {
+              void workers.refetch();
+              void accountSessions.refetch();
+            }}
           >
             <RefreshCw
               className={`size-3.5 ${workers.isFetching ? "animate-spin" : ""}`}
@@ -916,6 +943,28 @@ export function WorkerSettings() {
             <span className="sr-only">Refresh workers</span>
           </Button>
         </div>
+        <WorkerNetworkGraph
+          currentClient={{
+            connected: liveStatus === "live",
+            deviceLabel: currentClientDeviceLabel(
+              desktopApp,
+              navigator.userAgent,
+            ),
+            email: bootstrap.data?.auth.currentUser?.email,
+            userName: bootstrap.data?.auth.currentUser?.displayName,
+          }}
+          localWorkerIds={localWorkerIds}
+          server={{
+            deploymentMode: bootstrap.data?.server.deploymentMode,
+            id: bootstrap.data?.server.id,
+            kind: activeConnection.kind,
+            name: activeConnection.name,
+            url: serverUrl,
+            version: bootstrap.data?.server.version.version,
+          }}
+          sessions={accountSessions.data ?? []}
+          workers={workers.data ?? []}
+        />
         <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_108px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
           <span>Worker</span>
           <span>Runtime</span>
