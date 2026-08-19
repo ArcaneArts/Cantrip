@@ -13,6 +13,14 @@ use tauri::{AppHandle, State};
 use url::Url;
 use zeroize::{Zeroize, Zeroizing};
 
+use crate::{
+    desktop_worker::{
+        normalize_server_url, resolve_project_directory_under_root, DesktopWorkerProjectStorage,
+        DesktopWorkers,
+    },
+    ManagedRuntime,
+};
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevealProjectShareRequest {
@@ -25,6 +33,22 @@ pub struct RevealProjectShareRequest {
     project_name: String,
     url: String,
     username: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevealLocalProjectFolderRequest {
+    path: String,
+    server_url: String,
+    source_kind: LocalProjectSourceKind,
+    worker_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum LocalProjectSourceKind {
+    Folder,
+    Git,
 }
 
 struct MountedProjectShare {
@@ -82,6 +106,43 @@ pub async fn reveal_project_share(
     })
     .await
     .map_err(|error| format!("Could not join the native project reveal task: {error}"))?
+}
+
+#[tauri::command]
+pub async fn reveal_local_project_folder(
+    runtime: State<'_, ManagedRuntime>,
+    workers: State<'_, DesktopWorkers>,
+    request: RevealLocalProjectFolderRequest,
+) -> Result<bool, String> {
+    let Ok(server_url) = normalize_server_url(&request.server_url) else {
+        return Ok(false);
+    };
+    let storage = match request.source_kind {
+        LocalProjectSourceKind::Folder => DesktopWorkerProjectStorage::Folders,
+        LocalProjectSourceKind::Git => DesktopWorkerProjectStorage::Repositories,
+    };
+    let requested_path = std::path::Path::new(&request.path);
+    let bundled_project = runtime
+        .local_worker_data_directory(&server_url, &request.worker_id)
+        .and_then(|data_directory| {
+            resolve_project_directory_under_root(data_directory, storage, requested_path)
+        });
+    let project_directory = match bundled_project {
+        Some(project_directory) => Some(project_directory),
+        None => workers.resolve_project_directory(
+            &server_url,
+            &request.worker_id,
+            storage,
+            requested_path,
+        )?,
+    };
+    let Some(project_directory) = project_directory else {
+        return Ok(false);
+    };
+    tauri::async_runtime::spawn_blocking(move || open_local_project_folder(&project_directory))
+        .await
+        .map_err(|error| format!("Could not join the local project reveal task: {error}"))??;
+    Ok(true)
 }
 
 #[tauri::command]
@@ -765,6 +826,46 @@ fn native_mount_is_active(_location: &NativeMount) -> bool {
 
 #[cfg(not(any(target_os = "macos", windows)))]
 fn open_native_mount(_location: &NativeMount) -> Result<(), String> {
+    Err("Project reveal is available only in Cantrip for macOS and Windows.".into())
+}
+
+#[cfg(target_os = "macos")]
+fn open_local_project_folder(path: &std::path::Path) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+
+    let output = Command::new("/usr/bin/open")
+        .arg(path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("Could not start Finder: {error}"))?;
+    output
+        .status
+        .success()
+        .then_some(())
+        .ok_or_else(|| process_failure("Finder could not open the local project folder", &output))
+}
+
+#[cfg(windows)]
+fn open_local_project_folder(path: &std::path::Path) -> Result<(), String> {
+    use std::process::{Command, Stdio};
+
+    let output = Command::new("explorer.exe")
+        .arg(path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| format!("Could not start File Explorer: {error}"))?;
+    output.status.success().then_some(()).ok_or_else(|| {
+        process_failure(
+            "File Explorer could not open the local project folder",
+            &output,
+        )
+    })
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+fn open_local_project_folder(_path: &std::path::Path) -> Result<(), String> {
     Err("Project reveal is available only in Cantrip for macOS and Windows.".into())
 }
 

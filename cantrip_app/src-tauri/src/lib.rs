@@ -1,7 +1,7 @@
 use std::{
     fs::{self, File, OpenOptions},
     net::{TcpListener, TcpStream},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -36,9 +36,37 @@ use process_environment::configure_desktop_child;
 use project_share::ProjectShareMounts;
 use tunnel_forward::TunnelForwards;
 
-struct ManagedRuntime {
+pub(crate) struct ManagedRuntime {
     children: Mutex<Vec<ManagedChild>>,
+    local_worker: Option<LocalWorkerRuntime>,
     server_url: String,
+}
+
+struct LocalWorkerRuntime {
+    data_directory: PathBuf,
+    worker_id: Option<String>,
+}
+
+impl ManagedRuntime {
+    pub(crate) fn local_worker_data_directory(
+        &self,
+        server_url: &str,
+        worker_id: &str,
+    ) -> Option<&Path> {
+        let local_worker = self.local_worker.as_ref()?;
+        if desktop_worker::normalize_server_url(&self.server_url)
+            .ok()?
+            .as_str()
+            != server_url
+            || local_worker
+                .worker_id
+                .as_deref()
+                .is_some_and(|local_worker_id| local_worker_id != worker_id)
+        {
+            return None;
+        }
+        Some(&local_worker.data_directory)
+    }
 }
 
 struct ManagedChild {
@@ -527,6 +555,7 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
         );
         return Ok(ManagedRuntime {
             children: Mutex::new(Vec::new()),
+            local_worker: None,
             server_url: std::env::var("CANTRIP_SERVER_URL").unwrap_or_default(),
         });
     }
@@ -541,8 +570,26 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                 "subsystem": "desktop-runtime"
             })),
         );
+        let data_directory = std::env::var_os("CANTRIP_WORKER_DATA_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .and_then(Path::parent)
+                    .expect("the Tauri crate must be nested in the Cantrip repository")
+                    .join(".cantrip/dev/worker")
+            });
         return Ok(ManagedRuntime {
             children: Mutex::new(Vec::new()),
+            local_worker: Some(LocalWorkerRuntime {
+                data_directory,
+                worker_id: std::env::var("CANTRIP_WORKER_ID")
+                    .ok()
+                    .and_then(|worker_id| {
+                        let worker_id = worker_id.trim();
+                        (!worker_id.is_empty()).then(|| worker_id.to_string())
+                    }),
+            }),
             server_url: std::env::var("CANTRIP_SERVER_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:4310".into()),
         });
@@ -714,6 +761,10 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                 service: "worker",
             },
         ]),
+        local_worker: Some(LocalWorkerRuntime {
+            data_directory: data.join("worker"),
+            worker_id: Some("desktop-local".into()),
+        }),
         server_url,
     })
 }
@@ -800,6 +851,7 @@ pub fn run() {
             set_macos_pro_mode,
             project_share::fallback_project_share,
             project_share::list_direct_project_share_tunnels,
+            project_share::reveal_local_project_folder,
             project_share::reveal_project_share,
             tunnel_forward::start_tunnel_forward,
             tunnel_forward::refresh_tunnel_forward_relay,
@@ -964,7 +1016,10 @@ mod tests {
         },
     };
 
-    use super::{exit_request_needs_confirmation, node_service_command, run_shutdown_once};
+    use super::{
+        exit_request_needs_confirmation, node_service_command, run_shutdown_once,
+        LocalWorkerRuntime, ManagedRuntime,
+    };
 
     #[test]
     fn packaged_node_services_use_a_working_directory_relative_entrypoint() {
@@ -994,6 +1049,30 @@ mod tests {
             false,
             Some(tauri::RESTART_EXIT_CODE)
         ));
+    }
+
+    #[test]
+    fn local_worker_runtime_matches_only_its_server_and_worker() {
+        let data_directory = std::env::temp_dir().join("cantrip-local-worker");
+        let runtime = ManagedRuntime {
+            children: Mutex::new(Vec::new()),
+            local_worker: Some(LocalWorkerRuntime {
+                data_directory: data_directory.clone(),
+                worker_id: Some("desktop-local".into()),
+            }),
+            server_url: "http://127.0.0.1:4310/".into(),
+        };
+
+        assert_eq!(
+            runtime.local_worker_data_directory("http://127.0.0.1:4310", "desktop-local"),
+            Some(data_directory.as_path())
+        );
+        assert!(runtime
+            .local_worker_data_directory("https://cantrip.example", "desktop-local")
+            .is_none());
+        assert!(runtime
+            .local_worker_data_directory("http://127.0.0.1:4310", "remote-worker")
+            .is_none());
     }
 
     #[test]

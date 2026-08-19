@@ -4,12 +4,20 @@ import {
   coordinateDesktopProjectReveal,
   directProjectShareUrl,
   desktopProjectRevealLabel,
+  nativeLocalProjectFolderRequest,
   nativeProjectShareRequest,
 } from "./desktop-project-share";
 
 const project = {
   id: "project-1",
   name: "Cantrip",
+  source: {
+    displayPath: "ArcaneArts/Cantrip",
+    id: "source-1",
+    path: "/worker/repositories/ArcaneArts/Cantrip",
+    sourceKind: "git",
+    workerId: "desktop-worker-1",
+  },
 } as Parameters<typeof coordinateDesktopProjectReveal>[0];
 
 const attachment = {
@@ -57,6 +65,17 @@ describe("desktop project reveal", () => {
       mountLeaseMs: 43_200_000,
       projectId: project.id,
       projectName: project.name,
+    });
+  });
+
+  it("binds a local-folder reveal to the active server and source owner", () => {
+    expect(
+      nativeLocalProjectFolderRequest(project, "https://cantrip.example"),
+    ).toEqual({
+      path: "/worker/repositories/ArcaneArts/Cantrip",
+      serverUrl: "https://cantrip.example",
+      sourceKind: "git",
+      workerId: "desktop-worker-1",
     });
   });
 
