@@ -1317,6 +1317,7 @@ function projectWorktreeGraphUrl(
 ): string {
   const parsed = gitGraphRequestSchema.parse(input);
   const search = new URLSearchParams({
+    includeBlame: String(parsed.includeBlame),
     maxNodes: String(parsed.maxNodes),
     revision: parsed.revision,
   });

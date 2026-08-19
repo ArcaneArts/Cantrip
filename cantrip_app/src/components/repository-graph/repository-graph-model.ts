@@ -102,14 +102,32 @@ function collectDescendantCounts(
   childrenByParent: ReadonlyMap<string, readonly RepositoryGraphInputNode[]>,
 ): Map<string, number> {
   const counts = new Map<string, number>();
-  const visit = (nodeId: string): number => {
-    const children = childrenByParent.get(nodeId) ?? [];
-    let descendants = 0;
-    for (const child of children) descendants += 1 + visit(child.id);
-    counts.set(nodeId, descendants);
-    return descendants;
-  };
-  visit(rootId);
+  const discovered = new Set([rootId]);
+  const stack: Array<{ expanded: boolean; nodeId: string }> = [
+    { expanded: false, nodeId: rootId },
+  ];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    if (current.expanded) {
+      const descendants = (childrenByParent.get(current.nodeId) ?? []).reduce(
+        (total, child) =>
+          discovered.has(child.id)
+            ? total + 1 + (counts.get(child.id) ?? 0)
+            : total,
+        0,
+      );
+      counts.set(current.nodeId, descendants);
+      continue;
+    }
+    stack.push({ expanded: true, nodeId: current.nodeId });
+    const children = childrenByParent.get(current.nodeId) ?? [];
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      const child = children[index]!;
+      if (discovered.has(child.id)) continue;
+      discovered.add(child.id);
+      stack.push({ expanded: false, nodeId: child.id });
+    }
+  }
   return counts;
 }
 
@@ -151,27 +169,51 @@ function layoutVisibleNodes(
   for (const siblings of children.values()) siblings.sort(compareNodes);
 
   const positions = new Map<string, RepositoryGraphPoint & { depth: number }>();
-  let nextLeaf = 0;
-  const visit = (nodeId: string, depth: number): number => {
+  const depthById = new Map<string, number>([[rootId, 0]]);
+  const traversal: string[] = [];
+  const discovered = new Set([rootId]);
+  const stack = [rootId];
+  while (stack.length > 0) {
+    const nodeId = stack.pop()!;
+    traversal.push(nodeId);
     const descendants = children.get(nodeId) ?? [];
-    let slot: number;
-    if (descendants.length === 0) {
-      slot = nextLeaf;
-      nextLeaf += 1;
-    } else {
-      const childSlots = descendants.map((child) => visit(child.id, depth + 1));
-      slot =
-        childSlots.reduce((total, childSlot) => total + childSlot, 0) /
-        childSlots.length;
+    for (let index = descendants.length - 1; index >= 0; index -= 1) {
+      const child = descendants[index]!;
+      if (discovered.has(child.id)) continue;
+      discovered.add(child.id);
+      depthById.set(child.id, (depthById.get(nodeId) ?? 0) + 1);
+      stack.push(child.id);
     }
+  }
+  let nextLeaf = 0;
+  for (const nodeId of traversal) {
+    const descendants = (children.get(nodeId) ?? []).filter((child) =>
+      discovered.has(child.id),
+    );
+    if (descendants.length > 0) continue;
     positions.set(nodeId, {
-      depth,
-      x: depth * horizontalGap,
-      y: slot * verticalGap,
+      depth: depthById.get(nodeId) ?? 0,
+      x: (depthById.get(nodeId) ?? 0) * horizontalGap,
+      y: nextLeaf * verticalGap,
     });
-    return slot;
-  };
-  visit(rootId, 0);
+    nextLeaf += 1;
+  }
+  for (let index = traversal.length - 1; index >= 0; index -= 1) {
+    const nodeId = traversal[index]!;
+    if (positions.has(nodeId)) continue;
+    const childPositions = (children.get(nodeId) ?? [])
+      .map((child) => positions.get(child.id))
+      .filter(
+        (position): position is RepositoryGraphPoint & { depth: number } =>
+          position !== undefined,
+      );
+    const slot = childPositions.length
+      ? childPositions.reduce((total, child) => total + child.y, 0) /
+        childPositions.length
+      : nextLeaf++ * verticalGap;
+    const depth = depthById.get(nodeId) ?? 0;
+    positions.set(nodeId, { depth, x: depth * horizontalGap, y: slot });
+  }
 
   const rootPosition = positions.get(rootId);
   if (rootPosition) {
@@ -239,17 +281,15 @@ export function buildRepositoryGraphScene(
     maxVisibleNodes,
   );
   const visibleIds = new Set(visible.map((node) => node.id));
-  const visibleDescendants = new Map<string, number>();
-  for (const node of visible) {
-    let parentId = node.parentId;
-    while (parentId && visibleIds.has(parentId)) {
-      visibleDescendants.set(
-        parentId,
-        (visibleDescendants.get(parentId) ?? 0) + 1,
-      );
-      parentId = inputById.get(parentId)?.parentId ?? null;
-    }
+  const visibleChildren = new Map<string, RepositoryGraphInputNode[]>();
+  for (const [parentId, children] of childrenByParent) {
+    if (!visibleIds.has(parentId)) continue;
+    visibleChildren.set(
+      parentId,
+      children.filter((node) => visibleIds.has(node.id)),
+    );
   }
+  const visibleDescendants = collectDescendantCounts(root.id, visibleChildren);
 
   const positions = layoutVisibleNodes(
     visible,

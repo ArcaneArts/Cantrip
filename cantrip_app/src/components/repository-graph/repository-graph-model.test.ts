@@ -75,6 +75,23 @@ describe("repository graph model", () => {
     );
   });
 
+  it("bounds deeply nested repositories without recursive stack growth", () => {
+    const nodes: RepositoryGraphInputNode[] = [node("root", null, "directory")];
+    let parentId = "root";
+    for (let depth = 1; depth <= 8_000; depth += 1) {
+      const id = `depth-${depth}`;
+      nodes.push(node(id, parentId, "directory"));
+      parentId = id;
+    }
+
+    const scene = buildRepositoryGraphScene(nodes, { maxVisibleNodes: 4_000 });
+    expect(scene.nodes).toHaveLength(4_000);
+    expect(scene.totalNodeCount).toBe(8_001);
+    expect(scene.hiddenNodeCount).toBe(4_001);
+    expect(scene.nodes.at(-1)?.aggregated).toBe(true);
+    expect(scene.nodes.at(-1)?.hiddenDescendantCount).toBe(4_001);
+  });
+
   it("honors explicit directory collapse and scoped roots", () => {
     const nodes = [
       node("root", null, "directory"),

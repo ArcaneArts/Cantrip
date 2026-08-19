@@ -35,6 +35,7 @@ export type RepositoryGraphRenderPlan = {
 };
 
 export interface RepositoryGraphRenderingAdapter {
+  isSupported?(canvas: HTMLCanvasElement): boolean;
   render(
     canvas: HTMLCanvasElement,
     scene: RepositoryGraphScene,
@@ -108,6 +109,10 @@ function setCanvasResolution(
 }
 
 export class Canvas2DRepositoryGraphAdapter implements RepositoryGraphRenderingAdapter {
+  isSupported(canvas: HTMLCanvasElement): boolean {
+    return canvas.getContext("2d") !== null;
+  }
+
   render(
     canvas: HTMLCanvasElement,
     scene: RepositoryGraphScene,

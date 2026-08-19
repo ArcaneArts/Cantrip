@@ -204,6 +204,14 @@ function description(
       ? `last changed ${new Date(metric.lastChangedAt).toLocaleDateString()}`
       : null,
     metric?.dominantAuthorName ? `owned by ${metric.dominantAuthorName}` : null,
+    metric?.dominantAuthorShare === null ||
+    metric?.dominantAuthorShare === undefined
+      ? null
+      : `${formatNumber(metric.dominantAuthorShare * 100)}% current lines`,
+    metric?.averageBlameAgeDays === null ||
+    metric?.averageBlameAgeDays === undefined
+      ? null
+      : `${formatNumber(metric.averageBlameAgeDays)} days average line age`,
   ].filter(Boolean);
   return values.join(" · ");
 }

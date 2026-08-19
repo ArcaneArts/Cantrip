@@ -140,6 +140,7 @@ describe("Git graph protocol", () => {
       revision: "HEAD",
       rootPath: null,
       maxNodes: 100_000,
+      includeBlame: false,
     });
     expect(
       workerCommandSchema.parse({
@@ -152,6 +153,7 @@ describe("Git graph protocol", () => {
       revision: "HEAD",
       rootPath: null,
       maxNodes: 100_000,
+      includeBlame: false,
     });
     expect(
       workerCommandSchema.safeParse({

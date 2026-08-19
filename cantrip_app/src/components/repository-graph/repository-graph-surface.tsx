@@ -109,6 +109,7 @@ export function RepositoryGraphSurface({
     string | null
   >(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [rendererUnavailable, setRendererUnavailable] = useState(false);
   const camera = controlledCamera ?? internalCamera;
   const selectedNodeId = controlledSelectedNodeId ?? internalSelectedNodeId;
   const cameraRef = useRef(camera);
@@ -215,6 +216,12 @@ export function RepositoryGraphSurface({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const adapter = adapterRef.current;
+    if (adapter.isSupported && !adapter.isSupported(canvas)) {
+      setRendererUnavailable(true);
+      return;
+    }
+    setRendererUnavailable(false);
     const computed = getComputedStyle(canvas);
     const resolvedTheme = {
       ...canvasTheme,
@@ -228,7 +235,7 @@ export function RepositoryGraphSurface({
       selection:
         computed.getPropertyValue("--ring").trim() || canvasTheme.selection,
     };
-    adapterRef.current.render(canvas, scene, camera, viewport, {
+    adapter.render(canvas, scene, camera, viewport, {
       devicePixelRatio:
         typeof window === "undefined" ? 1 : window.devicePixelRatio,
       highContrast:
@@ -243,6 +250,7 @@ export function RepositoryGraphSurface({
     canvasTheme,
     highContrast,
     hoveredNodeId,
+    renderer,
     scene,
     selectedNodeId,
     viewport,
@@ -307,6 +315,11 @@ export function RepositoryGraphSurface({
     const node = hitTest(point, event.pointerType === "touch");
     selectNode(node);
     if (!node || performance.now() - start.time > 600) return;
+    if (node.kind === "file" || node.kind === "ghost") {
+      onActivateNode?.(node);
+      lastTapRef.current = null;
+      return;
+    }
     const previousTap = lastTapRef.current;
     if (
       previousTap?.nodeId === node.id &&
@@ -394,6 +407,9 @@ export function RepositoryGraphSurface({
   const selectedNode = selectedNodeId
     ? scene.nodesById.get(selectedNodeId)
     : undefined;
+  const detailNode =
+    selectedNode ??
+    (hoveredNodeId ? scene.nodesById.get(hoveredNodeId) : undefined);
 
   return (
     <section
@@ -419,6 +435,16 @@ export function RepositoryGraphSurface({
         style={{ touchAction: "none" }}
         tabIndex={0}
       />
+
+      {rendererUnavailable ? (
+        <div
+          className="absolute inset-0 grid place-items-center bg-background/88 p-6 text-center text-sm text-muted-foreground backdrop-blur-sm"
+          role="status"
+        >
+          Repository graph rendering is unavailable in this browser. File
+          navigation remains available in Explorer.
+        </div>
+      ) : null}
 
       <div className="absolute right-3 top-3 flex gap-1.5">
         <Button
@@ -450,11 +476,11 @@ export function RepositoryGraphSurface({
       </div>
 
       <div className="pointer-events-none absolute bottom-3 left-3 max-w-[min(28rem,calc(100%-1.5rem))] rounded-md border bg-background/88 px-3 py-2 text-xs shadow-sm backdrop-blur">
-        {selectedNode ? (
+        {detailNode ? (
           <>
-            <p className="truncate font-medium">{selectedNode.label}</p>
+            <p className="truncate font-medium">{detailNode.label}</p>
             <p className="truncate text-muted-foreground">
-              {selectedNode.accessibleDescription ?? selectedNode.path}
+              {detailNode.accessibleDescription ?? detailNode.path}
             </p>
           </>
         ) : (

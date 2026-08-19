@@ -439,6 +439,109 @@ describe("worker Git worktrees", () => {
       // worker suite is exercising several process and watcher integrations.
       { timeout: 10_000 },
     );
+
+    await execFileAsync("git", ["-C", repository, "add", "observed.txt"]);
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "commit",
+      "-m",
+      "Observe file",
+    ]);
+    await vi.waitFor(
+      () => {
+        const latest = notifications.findLast(
+          (notification) => notification.type === "worktree.status.observed",
+        );
+        expect(latest?.type).toBe("worktree.status.observed");
+        if (latest?.type === "worktree.status.observed") {
+          expect(latest.result.status.files).toEqual([]);
+        }
+      },
+      { timeout: 10_000 },
+    );
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Metadata-only head change",
+    ]);
+    const emptyCommit = (
+      await execFileAsync("git", ["-C", repository, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    await vi.waitFor(
+      () => {
+        const latest = notifications.findLast(
+          (notification) => notification.type === "worktree.status.observed",
+        );
+        expect(latest?.type).toBe("worktree.status.observed");
+        if (latest?.type === "worktree.status.observed") {
+          expect(latest.result.status.head).toBe(emptyCommit);
+        }
+      },
+      { timeout: 10_000 },
+    );
+    manager.close();
+  });
+
+  it("observes metadata-only commits in linked worktrees", async () => {
+    const { manager, repository } = await createRepository();
+    const created = await manager.create(
+      repository,
+      "observed-linked",
+      "Observed linked worktree",
+      {
+        type: "newBranch",
+        branch: "agent/observed-linked",
+        startPoint: null,
+      },
+    );
+    const notifications: WorkerNotification[] = [];
+    manager.setObservationEmitter((notification) => {
+      notifications.push(notification);
+      return true;
+    });
+    manager.configureObservation([
+      { sourcePath: repository, worktreePath: created.worktree.path },
+    ]);
+    await vi.waitFor(() =>
+      expect(
+        notifications.some(
+          (notification) => notification.type === "worktree.status.observed",
+        ),
+      ).toBe(true),
+    );
+
+    await execFileAsync("git", [
+      "-C",
+      created.worktree.path,
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Linked metadata-only head change",
+    ]);
+    const revision = (
+      await execFileAsync("git", [
+        "-C",
+        created.worktree.path,
+        "rev-parse",
+        "HEAD",
+      ])
+    ).stdout.trim();
+    await vi.waitFor(
+      () => {
+        const latest = notifications.findLast(
+          (notification) => notification.type === "worktree.status.observed",
+        );
+        expect(latest?.type).toBe("worktree.status.observed");
+        if (latest?.type === "worktree.status.observed") {
+          expect(latest.result.status.head).toBe(revision);
+        }
+      },
+      { timeout: 10_000 },
+    );
     manager.close();
   });
 });

@@ -15004,6 +15004,7 @@ export async function buildApp({
   );
 
   const parseGitGraphRequest = (query: {
+    includeBlame?: string;
     maxNodes?: string;
     revision?: string;
     rootPath?: string;
@@ -15011,6 +15012,7 @@ export async function buildApp({
     gitGraphRequestSchema.safeParse({
       maxNodes:
         query.maxNodes === undefined ? undefined : Number(query.maxNodes),
+      includeBlame: query.includeBlame === "true",
       revision: query.revision,
       rootPath: query.rootPath ?? null,
     });
@@ -15018,6 +15020,7 @@ export async function buildApp({
   app.get<{
     Params: { projectId: string; worktreeId: string };
     Querystring: {
+      includeBlame?: string;
       maxNodes?: string;
       revision?: string;
       rootPath?: string;
@@ -15056,6 +15059,7 @@ export async function buildApp({
   app.get<{
     Params: { projectId: string; worktreeId: string };
     Querystring: {
+      includeBlame?: string;
       maxNodes?: string;
       revision?: string;
       rootPath?: string;

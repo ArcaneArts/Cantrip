@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { defaultRepositoryGraphCamera } from "./repository-graph-camera";
-import { createRepositoryGraphRenderPlan } from "./repository-graph-canvas";
+import {
+  Canvas2DRepositoryGraphAdapter,
+  createRepositoryGraphRenderPlan,
+} from "./repository-graph-canvas";
 import {
   buildRepositoryGraphScene,
   type RepositoryGraphInputNode,
@@ -20,6 +23,15 @@ function node(id: string, parentId: string | null): RepositoryGraphInputNode {
 }
 
 describe("repository graph canvas render planning", () => {
+  it("reports a graceful unsupported state when Canvas2D is unavailable", () => {
+    const canvas = {
+      getContext: () => null,
+    } as unknown as HTMLCanvasElement;
+    expect(new Canvas2DRepositoryGraphAdapter().isSupported(canvas)).toBe(
+      false,
+    );
+  });
+
   it("culls offscreen nodes and caps labels independently of the scene size", () => {
     const nodes = [node("root", null)];
     for (let index = 0; index < 500; index += 1)

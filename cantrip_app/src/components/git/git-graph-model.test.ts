@@ -142,6 +142,48 @@ describe("Git graph display model", () => {
     expect(model.colorLegend.unavailable).toBe(true);
   });
 
+  it("renders lazy blame ownership and surviving-line age as real dimensions", () => {
+    const blameMetrics = gitGraphMetricsSchema.parse({
+      ...metrics,
+      blameCoverage: { analyzedFiles: 2, totalFiles: 2, truncated: false },
+      analysis: { ...metrics.analysis, blame: "ready" },
+      nodes: metrics.nodes.map((entry, index) => ({
+        ...entry,
+        dominantAuthorEmail:
+          index === 2 ? "docs@example.com" : "app@example.com",
+        dominantAuthorName: index === 2 ? "Docs" : "Application",
+        dominantAuthorShare: index === 2 ? 0.75 : 0.9,
+        averageBlameAgeDays: index === 2 ? 12 : 3,
+      })),
+    });
+    const owners = buildGitGraphDisplayModel(
+      snapshot,
+      blameMetrics,
+      "equal",
+      "blame-owner",
+    );
+    const ages = buildGitGraphDisplayModel(
+      snapshot,
+      blameMetrics,
+      "equal",
+      "blame-age",
+    );
+
+    expect(owners.colorLegend.unavailable).toBe(false);
+    expect(owners.nodes[1]?.color).not.toBe(owners.nodes[2]?.color);
+    expect(owners.nodes[1]?.accessibleDescription).toContain(
+      "90% current lines",
+    );
+    expect(ages.colorLegend).toMatchObject({
+      minimum: "3 days",
+      maximum: "12 days",
+      unavailable: false,
+    });
+    expect(ages.nodes[2]?.accessibleDescription).toContain(
+      "12 days average line age",
+    );
+  });
+
   it("overlays commit weight and status while preserving deleted files as ghosts", () => {
     const nestedSnapshot = gitGraphSnapshotSchema.parse({
       ...snapshot,

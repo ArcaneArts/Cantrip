@@ -6560,6 +6560,14 @@ export const gitGraphMetricsSchema = z.object({
   rootPath: gitRelativePathSchema.nullable(),
   historyScope: z.enum(["current-branch", "none"]),
   renameAware: z.boolean(),
+  blameCoverage: z
+    .object({
+      analyzedFiles: z.number().int().nonnegative(),
+      totalFiles: z.number().int().nonnegative(),
+      truncated: z.boolean(),
+    })
+    .nullable()
+    .default(null),
   nodes: z.array(gitGraphNodeMetricsSchema).min(1).max(100_000),
   analyzedAt: z.iso.datetime(),
   analysis: gitGraphAnalysisStateSchema,
@@ -6569,6 +6577,7 @@ export const gitGraphRequestSchema = z.object({
   revision: gitAgentRevisionSchema.default("HEAD"),
   rootPath: gitRelativePathSchema.nullable().default(null),
   maxNodes: z.number().int().min(1).max(100_000).default(100_000),
+  includeBlame: z.boolean().default(false),
 });
 
 export const gitGraphCommitOverlayRequestSchema = z.object({
