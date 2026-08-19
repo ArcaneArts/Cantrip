@@ -1208,6 +1208,32 @@ describe("codexMcpConfigOverride", () => {
       },
     });
   });
+
+  it("makes managed CodeGraph a required model-facing tool", () => {
+    expect(
+      codexMcpConfigOverride([
+        {
+          name: "codegraph",
+          transport: "stdio",
+          command: "/worker/tools/codegraph/bin/codegraph",
+          args: ["serve", "--mcp", "--path", "/workspace/project"],
+          environment: { CODEGRAPH_DIR: ".codegraph-cantrip" },
+          enabled: true,
+        },
+      ]),
+    ).toEqual({
+      mcp_servers: {
+        codegraph: {
+          command: "/worker/tools/codegraph/bin/codegraph",
+          args: ["serve", "--mcp", "--path", "/workspace/project"],
+          env: { CODEGRAPH_DIR: ".codegraph-cantrip" },
+          enabled: true,
+          required: true,
+          enabled_tools: ["codegraph_explore"],
+        },
+      },
+    });
+  });
 });
 
 describe("codexModelProviderName", () => {

@@ -9239,6 +9239,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("customization.inventory.read"),
     cwd: z.string().min(1),
+    threadId: z.string().min(1).nullable(),
     forceReload: z.boolean().default(false),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,

@@ -2921,9 +2921,10 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "customization.inventory.read",
+        threadId: "thread-1",
         ...runtime,
       }),
-    ).toMatchObject({ forceReload: false });
+    ).toMatchObject({ forceReload: false, threadId: "thread-1" });
     expect(
       workerCommandSchema.parse({
         type: "customization.external.preview",
