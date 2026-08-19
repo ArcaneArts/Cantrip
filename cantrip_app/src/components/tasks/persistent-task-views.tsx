@@ -1,4 +1,8 @@
-import type { ChatSummary, SettingsBundle } from "@cantrip/protocol";
+import type {
+  ChatSummary,
+  SettingsBundle,
+  WorkerSummary,
+} from "@cantrip/protocol";
 import { useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -9,8 +13,7 @@ export const MAX_RETAINED_TASK_VIEWS = 8;
 
 export interface ActiveTaskView {
   chat: ChatSummary;
-  workerName?: string;
-  workerOnline: boolean;
+  worker?: WorkerSummary;
 }
 
 export function retainTaskSurfaceTabs(
@@ -59,8 +62,7 @@ export function PersistentTaskViews({
         <TaskSurface
           chat={retained.chat}
           settings={settings}
-          workerName={retained.workerName}
-          workerOnline={retained.workerOnline}
+          worker={retained.worker}
           onRename={(title) => onRename(retained.chat.id, title)}
         />
       </div>

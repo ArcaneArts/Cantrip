@@ -4520,7 +4520,8 @@ export function App() {
   const selectedWorkerId =
     selectedProjectView?.kind === "remote-desktop"
       ? remoteDesktop.data?.workerId
-      : (selectedCodeTab?.activeWorkerId ??
+      : (activeChat?.activeWorkerId ??
+        selectedCodeTab?.activeWorkerId ??
         selectedBrowser?.workerId ??
         activeWorktree?.workerId ??
         selectedProject?.source?.workerId);
@@ -6440,10 +6441,7 @@ export function App() {
               taskSurfaceVisible && selectedChat
                 ? {
                     chat: selectedChat,
-                    workerName: selectedWorker?.name,
-                    workerOnline:
-                      selectedWorker?.online ??
-                      selectedChat.status !== "offline",
+                    worker: selectedWorker,
                   }
                 : null
             }

@@ -263,6 +263,8 @@ import {
   workerEnrollmentCodeStatusSchema,
   workerListSchema,
   workerManagementListSchema,
+  workerEncryptionRefreshRequestSchema,
+  workerEncryptionRefreshResultSchema,
   workerRestartResultSchema,
   workerSummarySchema,
   workerUpdateSchema,
@@ -369,6 +371,7 @@ import type {
   ExplorerFileWrite,
   WorktreePolicy,
   WorkerCredentialRotate,
+  WorkerEncryptionRefreshRequest,
   WorkerEnrollmentCodeCreate,
   WorkerUpdate,
   ServiceLogLevel,
@@ -481,6 +484,18 @@ export async function logoutAll() {
 
 export async function getWorkers() {
   return workerListSchema.parse(await request("/api/workers"));
+}
+
+export async function refreshWorkerEncryption(
+  workerId: string,
+  input: WorkerEncryptionRefreshRequest,
+) {
+  return workerEncryptionRefreshResultSchema.parse(
+    await post(
+      `/api/workers/${encodeURIComponent(workerId)}/encryption/refresh`,
+      workerEncryptionRefreshRequestSchema.parse(input),
+    ),
+  );
 }
 
 export async function checkCodeGraphUpdate(workerId: string) {

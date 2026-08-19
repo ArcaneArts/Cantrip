@@ -416,6 +416,8 @@ import {
   encryptionRevocationSchema,
   workerEncryptionBootstrapRequestSchema,
   workerEncryptionBootstrapResultSchema,
+  workerEncryptionRefreshRequestSchema,
+  workerEncryptionRefreshResultSchema,
 } from "@cantrip/protocol/encryption";
 import Fastify from "fastify";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -9060,6 +9062,43 @@ export async function buildApp({
     const workers = await repository.listWorkers(principalOwnerId(request));
     return reply.send(workerListSchema.parse(workers));
   });
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/encryption/refresh",
+    async (request, reply) => {
+      const input = workerEncryptionRefreshRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = principalOwnerId(request);
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      if (!bridge.isConnected(request.params.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        return reply.send(
+          workerEncryptionRefreshResultSchema.parse(
+            await bridge.request(
+              request.params.workerId,
+              {
+                type: "worker.encryption.refresh",
+                ...input.data,
+              },
+              { ownerId, timeoutMs: 20_000 },
+            ),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
 
   app.post<{ Params: { workerId: string } }>(
     "/api/workers/:workerId/codegraph/update-check",

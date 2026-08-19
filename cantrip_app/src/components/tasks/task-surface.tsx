@@ -4,6 +4,7 @@ import type {
   ReasoningEffort,
   SettingsBundle,
   TaskDetail,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,6 +25,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ClipboardEvent,
   type DragEvent,
 } from "react";
@@ -61,6 +63,13 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { requestResponse } from "@/lib/api-client";
+import { clientEncryption } from "@/lib/client-encryption";
+import {
+  ensureTaskWorkerEncryption,
+  taskWorkerEncryptionCanAttempt,
+  taskWorkerEncryptionMessage,
+  taskWorkerEncryptionReadiness,
+} from "@/lib/task-worker-encryption";
 import { cn } from "@/lib/utils";
 
 import { TaskPlanReview } from "./task-plan-review";
@@ -139,16 +148,28 @@ export function TaskSurface({
   chat,
   onRename,
   settings,
-  workerName,
-  workerOnline,
+  worker,
 }: {
   chat: ChatSummary;
   onRename(title: string): void;
   settings: SettingsBundle | undefined;
-  workerName?: string;
-  workerOnline: boolean;
+  worker?: WorkerSummary;
 }) {
   const queryClient = useQueryClient();
+  const encryptionSnapshot = useSyncExternalStore(
+    clientEncryption.subscribe,
+    clientEncryption.getSnapshot,
+    clientEncryption.getSnapshot,
+  );
+  const workerName = worker?.name;
+  const workerEncryptionReadiness = taskWorkerEncryptionReadiness(
+    worker,
+    encryptionSnapshot,
+  );
+  const workerEncryptionMessage = taskWorkerEncryptionMessage(
+    workerEncryptionReadiness,
+    workerName,
+  );
   const [brief, setBrief] = useState("");
   const [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [attachmentRecords, setAttachmentRecords] = useState(
@@ -368,6 +389,14 @@ export function TaskSurface({
   const planning = useMutation({
     mutationFn: async () => {
       const saved = await saveCurrentDraft();
+      const encryption = await ensureTaskWorkerEncryption({ worker });
+      queryClient.setQueryData<WorkerSummary[]>(["workers"], (current) =>
+        current?.map((candidate) =>
+          candidate.workerId === worker?.workerId
+            ? { ...candidate, encryption }
+            : candidate,
+        ),
+      );
       return startTaskPlanning(chat.id, {
         operationId: crypto.randomUUID(),
         rowVersion: saved.rowVersion,
@@ -571,8 +600,7 @@ export function TaskSurface({
       <TaskPlanReview
         chat={chat}
         task={task.data}
-        workerName={workerName}
-        workerOnline={workerOnline}
+        worker={worker}
         onReload={async () => (await task.refetch()).data ?? null}
       />
     );
@@ -605,7 +633,7 @@ export function TaskSurface({
     !conflict &&
     !saveDraft.isPending &&
     !planning.isPending &&
-    workerOnline &&
+    taskWorkerEncryptionCanAttempt(workerEncryptionReadiness) &&
     chat.status !== "running";
 
   return (
@@ -664,13 +692,14 @@ export function TaskSurface({
         </div>
       ) : null}
 
-      {!workerOnline ? (
+      {workerEncryptionMessage ? (
         <div className="flex shrink-0 items-center gap-3 border-b bg-muted/35 px-5 py-3 text-sm">
-          <WifiOff className="size-4 text-muted-foreground" />
-          <span>
-            {workerName ?? "The selected worker"} is offline. Your Task draft is
-            saved and planning can begin when it reconnects.
-          </span>
+          {workerEncryptionReadiness === "offline" ? (
+            <WifiOff className="size-4 text-muted-foreground" />
+          ) : (
+            <CircleAlert className="size-4 text-muted-foreground" />
+          )}
+          <span>{workerEncryptionMessage}</span>
         </div>
       ) : null}
 

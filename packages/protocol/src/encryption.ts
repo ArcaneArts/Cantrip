@@ -390,6 +390,21 @@ export const workerEncryptionStatusSchema = z
     }
   });
 
+export const workerEncryptionRefreshRequestSchema = z
+  .object({
+    component: workerEncryptionComponentScopeSchema,
+    keyRevision: encryptionKeyRevisionSchema,
+  })
+  .strict();
+
+export const workerEncryptionRefreshResultSchema = z
+  .object({
+    component: workerEncryptionComponentScopeSchema,
+    keyRevision: encryptionKeyRevisionSchema,
+    status: workerEncryptionStatusSchema,
+  })
+  .strict();
+
 export const unavailableWorkerEncryptionStatus =
   workerEncryptionStatusSchema.parse({
     supported: false,
@@ -642,6 +657,12 @@ export type WorkerComponentKeyGrant = z.infer<
 >;
 export type WorkerEncryptionStatus = z.infer<
   typeof workerEncryptionStatusSchema
+>;
+export type WorkerEncryptionRefreshRequest = z.infer<
+  typeof workerEncryptionRefreshRequestSchema
+>;
+export type WorkerEncryptionRefreshResult = z.infer<
+  typeof workerEncryptionRefreshResultSchema
 >;
 export type EncryptionPayloadMigrationStatus = z.infer<
   typeof encryptionPayloadMigrationStatusSchema

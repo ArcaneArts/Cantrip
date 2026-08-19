@@ -134,17 +134,17 @@ describe("persistent worker encryption", () => {
     });
     const workerPrincipal = principal(service, workerId);
     const accountMasterKey = generateAccountMasterKey();
-    const chatKeyV1 = deriveComponentKey({
+    const taskKeyV1 = deriveComponentKey({
       accountMasterKey,
       ownerId,
-      component: "chat-content",
+      component: "task-content",
       keyRevision: 1,
     });
     const wrappedV1 = await wrapComponentKeyForWorker({
       ownerId,
       workerId,
-      component: "chat-content",
-      componentKey: chatKeyV1,
+      component: "task-content",
+      componentKey: taskKeyV1,
       keyRevision: 1,
       workerPublicKey: workerPrincipal.publicKey,
     });
@@ -158,11 +158,11 @@ describe("persistent worker encryption", () => {
       principal: workerPrincipal,
       grants: [grantV1],
     });
-    const openedV1 = service.componentKey("chat-content");
+    const openedV1 = service.componentKey("task-content");
     expect(openedV1.keyRevision).toBe(1);
-    expect(bytesEqual(openedV1.key, chatKeyV1)).toBe(true);
-    expect(() => service.componentKey("task-content")).toThrowError(
-      /does not have an active task-content/u,
+    expect(bytesEqual(openedV1.key, taskKeyV1)).toBe(true);
+    expect(() => service.componentKey("chat-content")).toThrowError(
+      /does not have an active chat-content/u,
     );
 
     service.lock();
@@ -177,13 +177,13 @@ describe("persistent worker encryption", () => {
       grants: [grantV1],
     });
     expect(
-      bytesEqual(restarted.componentKey("chat-content").key, chatKeyV1),
+      bytesEqual(restarted.componentKey("task-content").key, taskKeyV1),
     ).toBe(true);
 
-    const chatKeyV2 = deriveComponentKey({
+    const taskKeyV2 = deriveComponentKey({
       accountMasterKey,
       ownerId,
-      component: "chat-content",
+      component: "task-content",
       keyRevision: 2,
     });
     const grantV2 = grant(
@@ -191,8 +191,8 @@ describe("persistent worker encryption", () => {
       await wrapComponentKeyForWorker({
         ownerId,
         workerId,
-        component: "chat-content",
-        componentKey: chatKeyV2,
+        component: "task-content",
+        componentKey: taskKeyV2,
         keyRevision: 2,
         workerPublicKey: workerPrincipal.publicKey,
       }),
@@ -203,9 +203,9 @@ describe("persistent worker encryption", () => {
       principal: workerPrincipal,
       grants: [grantV1, grantV2],
     });
-    expect(restarted.componentKey("chat-content").keyRevision).toBe(2);
+    expect(restarted.componentKey("task-content").keyRevision).toBe(2);
     expect(
-      bytesEqual(restarted.componentKey("chat-content").key, chatKeyV2),
+      bytesEqual(restarted.componentKey("task-content").key, taskKeyV2),
     ).toBe(true);
     await expect(
       restarted.acceptBootstrap({
@@ -214,7 +214,7 @@ describe("persistent worker encryption", () => {
         grants: [grantV1],
       }),
     ).rejects.toThrowError(/rolled back/u);
-    expect(() => restarted.componentKey("chat-content")).toThrowError(
+    expect(() => restarted.componentKey("task-content")).toThrowError(
       /does not have an active/u,
     );
 
@@ -224,7 +224,7 @@ describe("persistent worker encryption", () => {
       grants: [],
     });
     expect(restarted.status().state).toBe("unavailable");
-    expect(() => restarted.componentKey("chat-content")).toThrowError(
+    expect(() => restarted.componentKey("task-content")).toThrowError(
       /does not have an active/u,
     );
   });
