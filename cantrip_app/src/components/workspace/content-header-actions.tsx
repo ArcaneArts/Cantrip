@@ -295,17 +295,17 @@ export function ExplorerFileCloseButton({
   compact?: boolean;
   header: ExplorerHeaderState | null;
 }) {
-  if (!header?.selectedPath) return null;
+  if (!header || (!header.selectedPath && !header.canGoBack)) return null;
   return (
     <Button
       className={compact ? "size-6 shrink-0" : "size-8 shrink-0"}
       onClick={header.back}
       size="icon"
-      title="Close file"
+      title={header.backLabel ?? "Close file"}
       variant="ghost"
     >
       <X className={compact ? "size-3" : "size-4"} />
-      <span className="sr-only">Close file</span>
+      <span className="sr-only">{header.backLabel ?? "Close file"}</span>
     </Button>
   );
 }

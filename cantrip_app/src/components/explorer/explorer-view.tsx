@@ -27,12 +27,17 @@ import {
 import { Markdown } from "@/components/chat/markdown";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
+import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
 import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
   monacoModelPath,
   structuredFileFormatForPath,
 } from "@/components/explorer/explorer-file-language";
+import {
+  GitRepositoryGraphView,
+  type GitRepositoryGraphStatus,
+} from "@/components/git/git-graph";
 import { Button } from "@/components/ui/button";
 import {
   explorerMediaContentUrl,
@@ -207,7 +212,9 @@ function ExplorerMediaView({
 }
 
 export interface ExplorerHeaderState {
+  backLabel?: string;
   canEdit: boolean;
+  canGoBack?: boolean;
   canVisual: boolean;
   directoryPath: string;
   dirty: boolean;
@@ -267,6 +274,13 @@ export function ExplorerView({
       transientPath: transientFile?.path,
     }),
   );
+  const [graphRootPath, setGraphRootPath] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [graphRefreshEpoch, setGraphRefreshEpoch] = useState(0);
+  const [graphStatus, setGraphStatus] =
+    useState<GitRepositoryGraphStatus | null>(null);
+  const [revealedPath, setRevealedPath] = useState<string | null>(null);
   const [fileMode, setFileModeState] = useState<ExplorerFileMode>(() =>
     transientFile
       ? defaultExplorerFileMode(transientFile.path)
@@ -330,6 +344,7 @@ export function ExplorerView({
   const mediaType = selectedPath
     ? explorerMediaTypeForPath(selectedPath)
     : null;
+  const graphVisible = graphRootPath !== undefined;
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
   draftRef.current = draft;
@@ -359,6 +374,12 @@ export function ExplorerView({
       });
     };
   }, [explorer.id, explorer.projectId, explorer.worktreeId]);
+
+  useEffect(() => {
+    setGraphRootPath(undefined);
+    setGraphStatus(null);
+    setRevealedPath(null);
+  }, [explorer.id, explorer.worktreeId]);
 
   useEffect(() => {
     if (
@@ -621,6 +642,11 @@ export function ExplorerView({
   ]);
 
   const back = useCallback(() => {
+    if (graphRootPath !== undefined) {
+      setGraphRootPath(undefined);
+      setGraphStatus(null);
+      return;
+    }
     if (
       dirtyRef.current &&
       !window.confirm("Close this file and discard its unsaved changes?")
@@ -636,7 +662,7 @@ export function ExplorerView({
     setDraftVersion(null);
     resetSaveFile();
     void persistViewState({ selectedPath: null, fileMode: "preview" });
-  }, [persistViewState, resetSaveFile, transientFile]);
+  }, [graphRootPath, persistViewState, resetSaveFile, transientFile]);
 
   const changeFileMode = useCallback(
     (mode: ExplorerFileMode) => {
@@ -656,20 +682,27 @@ export function ExplorerView({
   useEffect(() => {
     if (!active) return;
     onHeaderChange?.({
+      backLabel: graphVisible ? "Close graph" : undefined,
       back,
-      canEdit: editableLanguage !== null,
-      canVisual: structuredFormat !== null,
-      directoryPath: selectedPath ?? "",
+      canEdit: !graphVisible && editableLanguage !== null,
+      canGoBack: graphVisible || Boolean(selectedPath),
+      canVisual: !graphVisible && structuredFormat !== null,
+      directoryPath: graphVisible
+        ? (graphRootPath ?? "")
+        : (selectedPath ?? ""),
       dirty,
-      fileMode,
-      isFetching:
-        directoryFetches + commitFetches > 0 ||
-        file.isFetching ||
-        viewStatePending > 0,
+      fileMode: graphVisible ? "preview" : fileMode,
+      isFetching: graphVisible
+        ? (graphStatus?.isFetching ?? false)
+        : directoryFetches + commitFetches > 0 ||
+          file.isFetching ||
+          viewStatePending > 0,
       isSaving: saveFilePending,
-      refresh: refreshExplorer,
+      refresh: graphVisible
+        ? () => setGraphRefreshEpoch((epoch) => epoch + 1)
+        : refreshExplorer,
       save: saveDraft,
-      selectedPath,
+      selectedPath: graphVisible ? null : selectedPath,
       setFileMode: changeFileMode,
     });
   }, [
@@ -682,6 +715,9 @@ export function ExplorerView({
     editableLanguage,
     file.isFetching,
     fileMode,
+    graphRootPath,
+    graphStatus?.isFetching,
+    graphVisible,
     onHeaderChange,
     refreshExplorer,
     saveDraft,
@@ -751,6 +787,17 @@ export function ExplorerView({
     });
   };
 
+  const openGraph = (rootPath: string | null) => {
+    setGraphStatus(null);
+    setRevealedPath(null);
+    setGraphRootPath(rootPath);
+  };
+
+  const openGraphFile = (path: string) => {
+    if (!onOpenFile) setGraphRootPath(undefined);
+    openEntry(explorerFileEntryForGraphPath(path));
+  };
+
   return (
     <div
       aria-hidden={!active}
@@ -760,7 +807,22 @@ export function ExplorerView({
       )}
       data-slot="explorer-view"
     >
-      {selectedPath ? (
+      {graphVisible ? (
+        <GitRepositoryGraphView
+          projectId={explorer.projectId}
+          refreshEpoch={graphRefreshEpoch}
+          rootPath={graphRootPath}
+          worktreeId={explorer.worktreeId}
+          onActivateFile={openGraphFile}
+          onBack={back}
+          onRevealNode={(node) => {
+            setRevealedPath(node.path || null);
+            setGraphRootPath(undefined);
+            setGraphStatus(null);
+          }}
+          onStatusChange={setGraphStatus}
+        />
+      ) : selectedPath ? (
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {saveFileError || viewStateError ? (
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-destructive/30 bg-destructive/5 px-4 py-2 text-xs text-destructive">
@@ -859,7 +921,9 @@ export function ExplorerView({
             explorer={explorer}
             gitStatus={gitStatus}
             onOpenFile={openEntry}
+            onShowInGraph={openGraph}
             onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
+            revealedPath={revealedPath}
           />
         </div>
       )}

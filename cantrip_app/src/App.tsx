@@ -152,6 +152,7 @@ import {
   type GitHistoryHeaderState,
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
+import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
 import type {
   ExplorerHeaderState,
   ExplorerLifecycleActions,
@@ -317,6 +318,7 @@ import {
   updateBrowser,
   updateCodeTab,
   updateCodeTabWorktree,
+  updateExplorerViewState,
   updateExplorerWorktree,
   updateProjectViewWorktree,
   updateProjectTabGroup,
@@ -3595,6 +3597,58 @@ export function App() {
       });
     },
   });
+  const openRepositoryGraphFile = (
+    projectId: string,
+    worktreeId: string,
+    path: string,
+  ) => {
+    void (async () => {
+      let explorer = (explorers.data ?? []).find(
+        (candidate) =>
+          candidate.worktreeId === worktreeId &&
+          (desktopRuntime ||
+            !explorerLifecycleRef.current.get(candidate.id)?.dirty),
+      );
+      if (!explorer) {
+        const created = await createExplorer(projectId, "Explorer", worktreeId);
+        explorer = created;
+        queryClient.setQueryData<ExplorerSummary[]>(
+          ["explorers", created.projectId],
+          (current = []) =>
+            [
+              ...current.filter((candidate) => candidate.id !== created.id),
+              created,
+            ].sort((left, right) => left.position - right.position),
+        );
+        void queryClient.invalidateQueries({
+          queryKey: ["explorers", created.projectId],
+        });
+      }
+      if (desktopRuntime) {
+        await openDesktopExplorerFile(
+          {
+            explorerId: explorer.id,
+            path,
+            projectId: explorer.projectId,
+          },
+          path.split("/").at(-1) ?? path,
+        );
+        return;
+      }
+      const updated = await updateExplorerViewState(explorer.id, {
+        fileMode: defaultExplorerFileMode(path),
+        selectedPath: path,
+      });
+      queryClient.setQueryData<ExplorerSummary[]>(
+        ["explorers", updated.projectId],
+        (current = []) =>
+          current.map((candidate) =>
+            candidate.id === updated.id ? updated : candidate,
+          ),
+      );
+      openCreatedTab(updated.projectId, "explorer", updated.id);
+    })().catch((error: unknown) => setPopoutError(errorText(error)));
+  };
   const newBrowser = useMutation({
     mutationFn: ({
       projectId,
@@ -6657,6 +6711,9 @@ export function App() {
             }
             onOpenChat={(chatId) =>
               openCreatedTab(gitHistoryProject.id, "chat", chatId)
+            }
+            onOpenGraphFile={(worktreeId, path) =>
+              openRepositoryGraphFile(gitHistoryProject.id, worktreeId, path)
             }
             onHeaderChange={setGitHistoryHeader}
           />

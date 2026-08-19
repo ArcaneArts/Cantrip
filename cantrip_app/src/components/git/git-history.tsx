@@ -428,6 +428,7 @@ export function GitHistoryView({
   onCreateTerminal,
   onHeaderChange,
   onOpenChat,
+  onOpenGraphFile,
   onSelectWorktree,
   project,
   standalone = false,
@@ -445,6 +446,7 @@ export function GitHistoryView({
   onCreateTerminal(worktreeId: string): void;
   onHeaderChange(state: GitHistoryHeaderState | null): void;
   onOpenChat(chatId: string): void;
+  onOpenGraphFile(worktreeId: string, path: string): void;
   onSelectWorktree(worktreeId: string): void;
   project: ProjectSummary;
   standalone?: boolean;
@@ -1188,6 +1190,7 @@ export function GitHistoryView({
           projectId={project.id}
           refreshEpoch={graphRefreshEpoch}
           worktreeId={worktreeId}
+          onActivateFile={(path) => onOpenGraphFile(worktreeId, path)}
           onStatusChange={setGraphStatus}
         />
       ) : section !== "history" ? (

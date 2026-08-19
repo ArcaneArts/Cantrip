@@ -1,9 +1,19 @@
 import type { GitGraphMetricState, GitGraphSnapshot } from "@cantrip/protocol";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Loader2, Network, RotateCcw } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  Loader2,
+  LocateFixed,
+  Network,
+  RotateCcw,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { RepositoryGraphSurface } from "@/components/repository-graph";
+import {
+  RepositoryGraphSurface,
+  type RepositoryGraphInputNode,
+} from "@/components/repository-graph";
 import { Button } from "@/components/ui/button";
 import {
   getProjectWorktreeGraphMetrics,
@@ -118,8 +128,14 @@ export function GitRepositoryGraphView({
   refreshEpoch,
   rootPath = null,
   worktreeId,
+  onActivateFile,
+  onBack,
+  onRevealNode,
   onStatusChange,
 }: {
+  onActivateFile?(path: string): void;
+  onBack?(): void;
+  onRevealNode?(node: RepositoryGraphInputNode): void;
   onStatusChange?(status: GitRepositoryGraphStatus): void;
   projectId: string;
   refreshEpoch: number;
@@ -199,6 +215,8 @@ export function GitRepositoryGraphView({
     snapshot.data?.nodes.some((node) => node.id === state.focusedNodeId)
       ? state.focusedNodeId
       : snapshot.data?.rootId;
+  const selectedGraphNode =
+    display?.nodes.find((node) => node.id === state.selectedNodeId) ?? null;
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -269,6 +287,10 @@ export function GitRepositoryGraphView({
         rootNodeId={rootNodeId}
         selectedNodeId={state.selectedNodeId}
         onActivateNode={(node) => {
+          if (node.kind === "file") {
+            onActivateFile?.(node.path);
+            return;
+          }
           if (node.kind !== "directory") return;
           setState((current) => ({
             ...current,
@@ -386,6 +408,57 @@ export function GitRepositoryGraphView({
             </span>
           ))}
         </nav>
+        {onBack ||
+        state.focusedNodeId ||
+        (onRevealNode && selectedGraphNode) ? (
+          <div className="flex w-fit items-center gap-1 rounded-md bg-background/88 shadow-sm backdrop-blur">
+            {onBack ? (
+              <Button
+                className="h-8 gap-1.5 px-2.5"
+                onClick={onBack}
+                size="sm"
+                title="Back to Explorer"
+                type="button"
+                variant="outline"
+              >
+                <ArrowLeft className="size-3.5" />
+                Files
+              </Button>
+            ) : null}
+            {onRevealNode && selectedGraphNode ? (
+              <Button
+                className="h-8 gap-1.5 px-2.5"
+                onClick={() => onRevealNode(selectedGraphNode)}
+                size="sm"
+                title={`Reveal ${selectedGraphNode.path || selectedGraphNode.label} in Explorer`}
+                type="button"
+                variant="outline"
+              >
+                <LocateFixed className="size-3.5" />
+                Reveal
+              </Button>
+            ) : null}
+            {state.focusedNodeId ? (
+              <Button
+                className="size-8"
+                onClick={() =>
+                  setState((current) => ({
+                    ...current,
+                    camera: DEFAULT_GIT_GRAPH_STATE.camera,
+                    focusedNodeId: null,
+                  }))
+                }
+                size="icon"
+                title="Show the repository root"
+                type="button"
+                variant="outline"
+              >
+                <RotateCcw className="size-4" />
+                <span className="sr-only">Show repository root</span>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="absolute bottom-3 right-3 hidden min-w-52 grid-cols-2 gap-3 rounded-lg border bg-background/88 p-3 shadow-sm backdrop-blur sm:grid">
@@ -406,26 +479,6 @@ export function GitRepositoryGraphView({
         {metricStatusLabel(analysis.lines)} · history{" "}
         {metricStatusLabel(analysis.history)}
       </div>
-
-      {state.focusedNodeId ? (
-        <Button
-          className="absolute bottom-3 left-3 size-8"
-          onClick={() =>
-            setState((current) => ({
-              ...current,
-              camera: DEFAULT_GIT_GRAPH_STATE.camera,
-              focusedNodeId: null,
-            }))
-          }
-          size="icon"
-          title="Show the repository root"
-          type="button"
-          variant="outline"
-        >
-          <RotateCcw className="size-4" />
-          <span className="sr-only">Show repository root</span>
-        </Button>
-      ) : null}
     </div>
   );
 }

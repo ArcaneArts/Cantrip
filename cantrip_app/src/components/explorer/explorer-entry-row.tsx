@@ -8,8 +8,10 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Network,
   SquareTerminal,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 import {
   explorerCommitMetadata,
@@ -49,7 +51,9 @@ export function ExplorerEntryRow({
   entry,
   expanded = false,
   onOpen,
+  onShowInGraph,
   onOpenTerminal,
+  revealed = false,
 }: {
   change: ExplorerChangeSummary | null;
   commit: ExplorerLastCommit | null;
@@ -57,8 +61,11 @@ export function ExplorerEntryRow({
   entry: ExplorerEntry;
   expanded?: boolean;
   onOpen(): void;
+  onShowInGraph?(): void;
   onOpenTerminal?(): void;
+  revealed?: boolean;
 }) {
+  const rowRef = useRef<HTMLButtonElement>(null);
   const Icon = entryIcon(entry, expanded);
   const metadata = commit ? explorerCommitMetadata(commit) : null;
   const openable = entry.kind === "directory" || entry.viewable;
@@ -70,8 +77,13 @@ export function ExplorerEntryRow({
   ]
     .filter(Boolean)
     .join("\n");
+  useEffect(() => {
+    if (!revealed) return;
+    rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [revealed]);
   const row = (
     <button
+      ref={rowRef}
       type="button"
       aria-disabled={!openable}
       aria-expanded={entry.kind === "directory" ? expanded : undefined}
@@ -80,6 +92,8 @@ export function ExplorerEntryRow({
         "group flex min-h-10 w-full items-center gap-2 px-3 py-1 text-left text-sm text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50 md:min-h-9 md:py-0",
         !openable &&
           "cursor-default opacity-45 hover:bg-transparent hover:text-muted-foreground",
+        revealed &&
+          "bg-primary/10 text-foreground ring-1 ring-inset ring-primary/40",
       )}
       data-high-contrast-row
       onClick={() => {
@@ -139,16 +153,27 @@ export function ExplorerEntryRow({
       </span>
     </button>
   );
-  if (entry.kind !== "directory" || !onOpenTerminal) return row;
+  if (!onShowInGraph && (entry.kind !== "directory" || !onOpenTerminal))
+    return row;
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{row}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <StyledContextMenuContent className="min-w-44">
-          <StyledContextMenuItem onSelect={onOpenTerminal}>
-            <SquareTerminal className="size-4" />
-            Open in Terminal
-          </StyledContextMenuItem>
+          {onShowInGraph ? (
+            <StyledContextMenuItem onSelect={onShowInGraph}>
+              <Network className="size-4" />
+              {entry.kind === "directory"
+                ? "Show in Graph"
+                : "Show containing folder in Graph"}
+            </StyledContextMenuItem>
+          ) : null}
+          {entry.kind === "directory" && onOpenTerminal ? (
+            <StyledContextMenuItem onSelect={onOpenTerminal}>
+              <SquareTerminal className="size-4" />
+              Open in Terminal
+            </StyledContextMenuItem>
+          ) : null}
         </StyledContextMenuContent>
       </ContextMenu.Portal>
     </ContextMenu.Root>

@@ -3,24 +3,37 @@ import type {
   ExplorerSummary,
   GitStatus,
 } from "@cantrip/protocol";
-import { Loader2 } from "lucide-react";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import { Loader2, Network } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ExplorerDirectoryNode } from "@/components/explorer/explorer-directory-node";
 import { ExplorerEntryRow } from "@/components/explorer/explorer-entry-row";
 import { buildExplorerChangeIndex } from "@/components/explorer/explorer-entry-metadata";
+import {
+  explorerExpandedPathsForReveal,
+  explorerGraphRootForEntry,
+} from "@/components/explorer/explorer-graph-routing";
 import { useExplorerDirectory } from "@/components/explorer/use-explorer-directory";
+import {
+  StyledContextMenuContent,
+  StyledContextMenuItem,
+} from "@/components/ui/styled-menu";
 
 export function ExplorerFileBrowser({
   explorer,
   gitStatus,
   onOpenFile,
+  onShowInGraph,
   onOpenTerminal,
+  revealedPath,
 }: {
   explorer: ExplorerSummary;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
+  onShowInGraph(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
+  revealedPath?: string | null;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -40,6 +53,17 @@ export function ExplorerFileBrowser({
     setExpandedPaths(new Set());
   }, [explorer.id, explorer.worktreeId]);
 
+  useEffect(() => {
+    if (!revealedPath) return;
+    setExpandedPaths((current) => {
+      const next = new Set(current);
+      for (const path of explorerExpandedPathsForReveal(revealedPath)) {
+        next.add(path);
+      }
+      return next;
+    });
+  }, [revealedPath]);
+
   const toggle = (path: string) => {
     setExpandedPaths((current) => {
       const next = new Set(current);
@@ -51,11 +75,26 @@ export function ExplorerFileBrowser({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto p-2 sm:p-3">
-      <div className="sticky top-0 z-10 flex h-7 items-center border-b bg-background px-3 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70">
-        <span className="min-w-0 flex-1">Name</span>
-        <span className="hidden w-[40%] min-w-0 md:block">Last change</span>
-        <span className="w-16 shrink-0 text-right">Size</span>
-      </div>
+      <ContextMenu.Root>
+        <ContextMenu.Trigger asChild>
+          <div
+            className="sticky top-0 z-10 flex h-7 items-center border-b bg-background px-3 text-[9px] font-medium uppercase tracking-wide text-muted-foreground/70"
+            title="Right-click for repository actions"
+          >
+            <span className="min-w-0 flex-1">Name</span>
+            <span className="hidden w-[40%] min-w-0 md:block">Last change</span>
+            <span className="w-16 shrink-0 text-right">Size</span>
+          </div>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <StyledContextMenuContent className="min-w-48">
+            <StyledContextMenuItem onSelect={() => onShowInGraph(null)}>
+              <Network className="size-4" />
+              Show repository in Graph
+            </StyledContextMenuItem>
+          </StyledContextMenuContent>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
       {directory.isLoading ? (
         <div className="grid h-32 place-items-center text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
@@ -82,8 +121,10 @@ export function ExplorerFileBrowser({
                 gitStatus={gitStatus}
                 key={entry.path}
                 onOpenFile={onOpenFile}
+                onShowInGraph={onShowInGraph}
                 onOpenTerminal={onOpenTerminal}
                 onToggle={toggle}
+                revealedPath={revealedPath}
               />
             ) : (
               <ExplorerEntryRow
@@ -93,6 +134,10 @@ export function ExplorerFileBrowser({
                 entry={entry}
                 key={entry.path}
                 onOpen={() => onOpenFile(entry)}
+                onShowInGraph={() =>
+                  onShowInGraph(explorerGraphRootForEntry(entry))
+                }
+                revealed={entry.path === revealedPath}
               />
             ),
           )}
