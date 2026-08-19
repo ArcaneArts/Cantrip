@@ -13,7 +13,7 @@ import type {
   WorkerSummary,
   WorktreePolicy,
 } from "@cantrip/protocol";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarClock,
   Archive,
@@ -67,9 +67,11 @@ import {
 } from "@/components/worktrees/worktree-control";
 import {
   createProjectWorktree,
+  getCodeGraphWorktreeStatus,
   lockProjectWorktree,
   pruneProjectWorktrees,
   reconcileProjectWorktrees,
+  requestCodeGraphWorktreeAction,
   removeProjectWorktree,
   unlockProjectWorktree,
   updateProjectWorktreePolicy,
@@ -217,6 +219,104 @@ function DetailRow({
     <div className="grid gap-1 px-4 py-3 text-sm sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-4">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-foreground">{children}</dd>
+    </div>
+  );
+}
+
+function CodeGraphWorktreeControls({
+  available,
+  enabled,
+  projectId,
+  worktreeId,
+}: {
+  available: boolean;
+  enabled: boolean;
+  projectId: string;
+  worktreeId: string;
+}) {
+  const queryClient = useQueryClient();
+  const queryKey = ["codegraph", projectId, worktreeId] as const;
+  const status = useQuery({
+    enabled: enabled && available,
+    queryKey,
+    queryFn: () => getCodeGraphWorktreeStatus(projectId, worktreeId),
+    refetchInterval: (query) => {
+      const current = query.state.data;
+      return current?.job?.state === "queued" ||
+        current?.job?.state === "running" ||
+        current?.state === "indexing" ||
+        current?.state === "syncing"
+        ? 1_500
+        : 15_000;
+    },
+    retry: false,
+  });
+  const action = useMutation({
+    mutationFn: (kind: "sync" | "rebuild") =>
+      requestCodeGraphWorktreeAction(projectId, worktreeId, kind),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+  });
+
+  if (!enabled) return null;
+  if (!available) {
+    return (
+      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+        CodeGraph unavailable
+      </p>
+    );
+  }
+  if (status.isLoading) {
+    return (
+      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+        CodeGraph · checking…
+      </p>
+    );
+  }
+  if (!status.data) {
+    return (
+      <p className="mt-1 truncate text-[10px] text-muted-foreground">
+        CodeGraph unavailable
+      </p>
+    );
+  }
+  const active =
+    status.data.state === "indexing" ||
+    status.data.state === "syncing" ||
+    status.data.state === "queued";
+  return (
+    <div className="mt-1 flex min-w-0 items-center gap-1 text-[10px] text-muted-foreground">
+      <span className="truncate" title={status.data.statusMessage ?? undefined}>
+        CodeGraph · {status.data.state}
+        {status.data.fileCount !== null
+          ? ` · ${status.data.fileCount.toLocaleString()} files`
+          : ""}
+        {status.data.lastSuccessfulSyncAt
+          ? ` · synced ${new Date(status.data.lastSuccessfulSyncAt).toLocaleString()}`
+          : ""}
+        {status.data.statusMessage && status.data.state === "degraded"
+          ? ` · ${status.data.statusMessage}`
+          : ""}
+      </span>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-5 shrink-0"
+        disabled={active || action.isPending}
+        title="Resync CodeGraph"
+        onClick={() => action.mutate("sync")}
+      >
+        <RefreshCw className={cn("size-3", active && "animate-spin")} />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="size-5 shrink-0"
+        disabled={active || action.isPending}
+        title="Rebuild CodeGraph index"
+        onClick={() => action.mutate("rebuild")}
+      >
+        <Database className="size-3" />
+      </Button>
     </div>
   );
 }
@@ -761,6 +861,15 @@ export function ProjectSettingsPage({
                           {status?.ahead ? ` · ${status.ahead} ahead` : ""}
                           {status?.behind ? ` · ${status.behind} behind` : ""}
                         </p>
+                        <CodeGraphWorktreeControls
+                          available={Boolean(worker?.codegraph.available)}
+                          enabled={
+                            worktree.lifecycleState === "ready" &&
+                            Boolean(worker?.online)
+                          }
+                          projectId={project.id}
+                          worktreeId={worktree.id}
+                        />
                       </div>
                       <div className="min-w-0 text-xs">
                         <p className="truncate">

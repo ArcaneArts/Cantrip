@@ -6,6 +6,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Cable,
+  Braces,
   Copy,
   Loader2,
   Pencil,
@@ -35,6 +36,7 @@ import {
   getGlobalMcpServers,
   getProjectMcpServers,
   getProjects,
+  getWorkers,
   updateGlobalMcpServer,
   updateProjectMcpServer,
 } from "@/lib/api";
@@ -243,6 +245,7 @@ export function McpServerSettings({
     queryFn: () =>
       projectId ? getProjectMcpServers(projectId) : getGlobalMcpServers(),
   });
+  const workers = useQuery({ queryKey: ["workers"], queryFn: getWorkers });
   const inherited = useQuery({
     enabled: Boolean(projectId),
     queryKey: ["mcp-servers", "global"],
@@ -380,6 +383,43 @@ export function McpServerSettings({
           ))}
         </div>
       ) : null}
+
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <Braces className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-medium">CodeGraph</p>
+              <Badge variant="secondary">Managed</Badge>
+              <Badge variant="outline">Read only</Badge>
+            </div>
+            <p className="mt-1 truncate text-xs text-muted-foreground">
+              Automatically injected for authorized worker-backed worktrees ·{" "}
+              {
+                (workers.data ?? []).filter(
+                  ({ codegraph }) => codegraph.mcpInjectionAvailable,
+                ).length
+              }
+              /{workers.data?.length ?? 0} workers ready
+            </p>
+          </div>
+        </div>
+        <Badge
+          variant={
+            (workers.data ?? []).some(
+              ({ codegraph }) => codegraph.mcpInjectionAvailable,
+            )
+              ? "secondary"
+              : "outline"
+          }
+        >
+          {(workers.data ?? []).some(
+            ({ codegraph }) => codegraph.mcpInjectionAvailable,
+          )
+            ? "Available"
+            : "Unavailable"}
+        </Badge>
+      </div>
 
       {servers.isLoading ? (
         <div className="flex items-center gap-2 px-3 py-5 text-sm text-muted-foreground">
