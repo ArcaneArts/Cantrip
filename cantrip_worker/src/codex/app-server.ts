@@ -25,6 +25,7 @@ import {
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
+  isManagedCodeGraphMcpName,
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
   YOLO_PERMISSION_PROFILE_ID,
@@ -2510,6 +2511,7 @@ export class CodexAppServer implements CodexRuntime {
   readonly #loadedThreads = new Set<string>();
   readonly #mcpOauthStatuses = new Map<string, CodexMcpOauthStatus>();
   readonly #mcpConfigFingerprintsByThread = new Map<string, string>();
+  readonly #readyMcpConfigFingerprintsByThread = new Map<string, string>();
   readonly #permissionProfilesByThread = new Map<string, string>();
   readonly #pending = new Map<number, PendingRpcRequest>();
   readonly #pendingAgentInteractions = new Map<
@@ -3921,6 +3923,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#starting = null;
     this.#loadedThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
+    this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#threadKinds.clear();
     this.#workflowThreadOwners.clear();
@@ -4126,6 +4129,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#runtimeIsZai = false;
     this.#loadedThreads.clear();
     this.#mcpConfigFingerprintsByThread.clear();
+    this.#readyMcpConfigFingerprintsByThread.clear();
     this.#permissionProfilesByThread.clear();
     this.#threadKinds.clear();
     this.#workflowThreadOwners.clear();
@@ -4136,6 +4140,86 @@ export class CodexAppServer implements CodexRuntime {
     this.#skillRoots = [];
     socket?.close();
     child?.kill("SIGINT");
+  }
+
+  private async ensureManagedMcpReady(
+    threadId: string,
+    servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
+    fingerprint: string,
+  ): Promise<void> {
+    const managed = servers.find(
+      (server) => server.enabled && isManagedCodeGraphMcpName(server.name),
+    );
+    if (!managed) return;
+    if (
+      this.#readyMcpConfigFingerprintsByThread.get(threadId) === fingerprint
+    ) {
+      return;
+    }
+    if (!this.methodAvailable("mcpServerStatus/list")) {
+      throw new Error(
+        "The installed Codex runtime cannot verify the managed CodeGraph MCP server.",
+      );
+    }
+
+    const startedAtMs = Date.now();
+    const deadline = startedAtMs + 10_000;
+    let lastError: unknown = null;
+    do {
+      try {
+        let cursor: string | null = null;
+        const seenCursors = new Set<string>();
+        do {
+          const page = parseMcpServerPage(
+            await this.request("mcpServerStatus/list", {
+              cursor,
+              detail: "toolsAndAuthOnly",
+              limit: 100,
+              threadId,
+            }),
+          );
+          const status = page.servers.find((server) =>
+            isManagedCodeGraphMcpName(server.name),
+          );
+          if (status?.tools.some(({ name }) => name === "codegraph_explore")) {
+            this.#readyMcpConfigFingerprintsByThread.set(threadId, fingerprint);
+            workerLogger.event("info", "Managed CodeGraph MCP is ready", {
+              event: "codex.mcp.ready",
+              subsystem: "codex",
+              operation: "prepare-managed-mcp",
+              status: "ready",
+              threadId,
+              durationMs: Date.now() - startedAtMs,
+              counts: { tools: status.tools.length },
+            });
+            return;
+          }
+          cursor = page.nextCursor;
+          if (cursor && seenCursors.has(cursor)) break;
+          if (cursor) seenCursors.add(cursor);
+        } while (cursor);
+      } catch (error) {
+        lastError = error;
+      }
+      if (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    } while (Date.now() < deadline);
+
+    workerLogger.event("error", "Managed CodeGraph MCP did not become ready", {
+      event: "codex.mcp.ready",
+      subsystem: "codex",
+      operation: "prepare-managed-mcp",
+      reasonCode: "managed-mcp-unavailable",
+      status: "failed",
+      threadId,
+      durationMs: Date.now() - startedAtMs,
+      error: lastError ? workerLogError(lastError) : undefined,
+    });
+    throw new Error(
+      "The managed CodeGraph MCP server did not expose codegraph_explore for this agent task.",
+      lastError ? { cause: lastError } : undefined,
+    );
   }
 
   private async loadThread(
@@ -4275,6 +4359,13 @@ export class CodexAppServer implements CodexRuntime {
         ...codexProviderLogContext(options.provider),
       });
     }
+    if (threadId && mcpConfigFingerprint !== null && options.mcpServers) {
+      await this.ensureManagedMcpReady(
+        threadId,
+        options.mcpServers,
+        mcpConfigFingerprint,
+      );
+    }
     return threadId;
   }
 
@@ -4389,6 +4480,11 @@ export class CodexAppServer implements CodexRuntime {
     this.#mcpConfigFingerprintsByThread.set(threadId, mcpConfigFingerprint);
     this.#threadKinds.set(threadId, "workflow");
     this.#workflowThreadOwners.set(threadId, ownerKey);
+    await this.ensureManagedMcpReady(
+      threadId,
+      options.mcpServers,
+      mcpConfigFingerprint,
+    );
     return threadId;
   }
 
@@ -4428,6 +4524,7 @@ export class CodexAppServer implements CodexRuntime {
   private forgetThread(threadId: string): void {
     this.#loadedThreads.delete(threadId);
     this.#mcpConfigFingerprintsByThread.delete(threadId);
+    this.#readyMcpConfigFingerprintsByThread.delete(threadId);
     this.#permissionProfilesByThread.delete(threadId);
     this.#threadKinds.delete(threadId);
     this.#collaborationModes.delete(threadId);
@@ -4699,6 +4796,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
+      this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#threadKinds.clear();
       this.#workflowThreadOwners.clear();
@@ -4751,6 +4849,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#starting = null;
       this.#loadedThreads.clear();
       this.#mcpConfigFingerprintsByThread.clear();
+      this.#readyMcpConfigFingerprintsByThread.clear();
       this.#permissionProfilesByThread.clear();
       this.#threadKinds.clear();
       this.#workflowThreadOwners.clear();

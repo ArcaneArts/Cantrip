@@ -236,9 +236,11 @@ if (!executable.startsWith(versionsRoot + path.sep)) {
   console.error("CodeGraph managed runtime pointer is invalid.");
   process.exit(1);
 }
-const result = spawnSync(executable, process.argv.slice(2), {
+const arguments_ = process.argv.length > 2 ? process.argv.slice(2) : ["status"];
+const result = spawnSync(executable, arguments_, {
   env: {
     ...process.env,
+    CODEGRAPH_DIR: ".codegraph-cantrip",
     CODEGRAPH_NO_UPDATE_CHECK: "1",
     CODEGRAPH_TELEMETRY: "0",
     DO_NOT_TRACK: "1",

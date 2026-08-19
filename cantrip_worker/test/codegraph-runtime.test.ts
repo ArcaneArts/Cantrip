@@ -56,7 +56,7 @@ async function fakeRelease(
   const executable = path.join(bin, "codegraph");
   await writeFile(
     executable,
-    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  ${options.mcpHealthy === false ? "exit 9" : 'read request; echo \'{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"codegraph","version":"test"}}}\''}\n  exit 0\nfi\necho "fake codegraph $*"\n`,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  ${options.mcpHealthy === false ? "exit 9" : 'read request; echo \'{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"codegraph","version":"test"}}}\''}\n  exit 0\nfi\necho "fake codegraph $* dir=$CODEGRAPH_DIR"\n`,
   );
   await chmod(executable, 0o755);
   const archivePath = path.join(root, target.assetName);
@@ -214,6 +214,10 @@ describe.skipIf(process.platform === "win32")(
       await expect(
         run(invocation.command, [...invocation.arguments, "--version"]),
       ).resolves.toMatchObject({ code: 0, output: "1.2.3\n" });
+      await expect(run(launcher, [])).resolves.toMatchObject({
+        code: 0,
+        output: "fake codegraph status dir=.codegraph-cantrip\n",
+      });
       await expect(run(launcher, ["upgrade"])).resolves.toMatchObject({
         code: 2,
         output: expect.stringContaining("managed by Cantrip"),
