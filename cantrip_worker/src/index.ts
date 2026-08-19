@@ -10,6 +10,7 @@ import {
   type McpServerConfiguration,
   type WorkerCommand,
   type WorkerEvent,
+  type WorkerNotification,
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
@@ -38,6 +39,7 @@ import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
+import { codeGraphWorkerStatus } from "./codegraph/status.js";
 import {
   managedCodeGraphMcpServer,
   mergeManagedCodeGraphMcpServer,
@@ -274,6 +276,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     );
   }
   let codegraphRuntime: CodeGraphRuntimeManager | null = null;
+  let codegraphPreparationError: string | null = null;
   let codegraphStatus: ReturnType<CodeGraphRuntimeManager["status"]> | null =
     null;
   try {
@@ -283,6 +286,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codegraphStatus = await codegraphRuntime.prepare();
     codegraphRuntime.publishEnvironment();
   } catch (error) {
+    codegraphPreparationError = workerLogError(error).message;
     workerLogger.event("warn", "CodeGraph runtime preparation was skipped", {
       event: "codegraph.runtime.prepare-failed",
       subsystem: "codegraph",
@@ -379,6 +383,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     },
     codeDiscovery.capabilities,
     directBroker.advertisement,
+    codeGraphWorkerStatus(codegraphRuntime, null, codegraphPreparationError),
   );
   await workerStartupPhase(
     "establish-worker-credential",
@@ -426,6 +431,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     desktop: desktopAdapter,
   });
   const worktrees = new WorktreeManager(config.dataDirectory);
+  let codegraphNotificationEmitter:
+    ((notification: WorkerNotification) => boolean) | null = null;
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
   const codegraphProjects =
     codegraphRuntime?.status().cliAvailable === true && codegraphInvocation
@@ -443,6 +450,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command: codegraphInvocation.command,
           commandArguments: codegraphInvocation.arguments,
           environment: codegraphRuntime.childEnvironment(),
+          onStatus: (status) =>
+            codegraphNotificationEmitter?.({
+              type: "codegraph.status.observed",
+              status,
+            }),
         })
       : null;
   const agentMcpServers = async (
@@ -1361,6 +1373,51 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
         });
         return { accepted: true };
+      case "codegraph.status": {
+        const status = codegraphProjects?.publicStatus(
+          command.projectId,
+          command.worktreeId,
+        );
+        if (!status) {
+          throw new Error("CodeGraph is unavailable for this worktree.");
+        }
+        return status;
+      }
+      case "codegraph.sync":
+        if (!codegraphProjects) throw new Error("CodeGraph is unavailable.");
+        return codegraphProjects.requestAction(
+          command.projectId,
+          command.worktreeId,
+          "sync",
+        );
+      case "codegraph.rebuild":
+        if (!codegraphProjects) throw new Error("CodeGraph is unavailable.");
+        return codegraphProjects.requestAction(
+          command.projectId,
+          command.worktreeId,
+          "rebuild",
+        );
+      case "codegraph.update.check": {
+        if (!codegraphRuntime) throw new Error("CodeGraph is unavailable.");
+        const acceptedAt = new Date().toISOString();
+        const jobId = randomUUID();
+        void codegraphRuntime.updateNow().catch((error) => {
+          workerLogger.event("warn", "CodeGraph update check failed", {
+            event: "codegraph.runtime.update-check-failed",
+            subsystem: "codegraph",
+            operation: "update-check",
+            reasonCode: "update-check-failed",
+            status: "degraded",
+            error: workerLogError(error),
+          });
+        });
+        return {
+          jobId,
+          action: "update-check" as const,
+          acceptedAt,
+          status: "queued" as const,
+        };
+      }
       case "explorer.directory.list":
         return listExplorerDirectory(command.root, command.path);
       case "explorer.directory.commits":
@@ -2013,6 +2070,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
   );
+  codegraphNotificationEmitter = (notification) =>
+    commandConnection.sendNotification(notification);
   remoteSurfaces.setFrameEmitter((header, payload) =>
     commandConnection.sendSurfaceFrame(header, payload),
   );
@@ -2069,7 +2128,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const publishHeartbeat = async () => {
     const attemptStartedAtMs = Date.now();
     try {
-      await sendHeartbeat(config, heartbeat);
+      await sendHeartbeat(
+        config,
+        createHeartbeat(
+          config,
+          codexRuntime,
+          heartbeat.startedAt,
+          heartbeat.remoteSurfaces,
+          heartbeat.code,
+          directBroker.advertisement,
+          codeGraphWorkerStatus(
+            codegraphRuntime,
+            codegraphProjects,
+            codegraphPreparationError,
+          ),
+        ),
+      );
       if (!connected) {
         workerLogger.event("info", "Worker heartbeat connected to server", {
           event: heartbeatFailureStartedAtMs

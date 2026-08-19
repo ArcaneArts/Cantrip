@@ -2,11 +2,13 @@ import os from "node:os";
 
 import {
   type CodeCapabilities,
+  type CodeGraphWorkerStatus,
   type CodexRuntimeReport,
   type DirectBrokerAdvertisement,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   unavailableCodeCapabilities,
+  unavailableCodeGraphWorkerStatus,
   workerHeartbeatSchema,
 } from "@cantrip/protocol";
 
@@ -27,6 +29,7 @@ export function createHeartbeat(
   },
   code: CodeCapabilities = unavailableCodeCapabilities,
   directBroker: DirectBrokerAdvertisement = { available: false },
+  codegraph: CodeGraphWorkerStatus = unavailableCodeGraphWorkerStatus,
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -53,6 +56,7 @@ export function createHeartbeat(
     chatRelocation: true,
     externalCodexHistory:
       process.platform === "darwin" || process.platform === "win32",
+    codegraph,
     startedAt,
   });
 }

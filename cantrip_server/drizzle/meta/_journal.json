@@ -694,6 +694,13 @@
       "when": 1787153624240,
       "tag": "0098_strange_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1787173987151,
+      "tag": "0099_fancy_gateway",
+      "breakpoints": true
     }
   ]
 }

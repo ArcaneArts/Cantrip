@@ -14,6 +14,7 @@ import type {
   ChatRelocationState,
   ChatTurnMode,
   CodeCapabilities,
+  CodeGraphWorkerStatus,
   CodexRuntimeReport,
   DirectBrokerAdvertisement,
   GitManagedOperationState,
@@ -97,6 +98,22 @@ const unavailableCodeCapabilities = {
   maxSessions: 1,
   reason: "This worker has not reported Cantrip Code capability.",
 } satisfies CodeCapabilities;
+
+const unavailableCodeGraphWorkerStatus = {
+  supported: false,
+  available: false,
+  runtimeState: "unavailable",
+  installedVersion: null,
+  latestVersion: null,
+  previousVersion: null,
+  lastCheckedAt: null,
+  telemetryDisabled: false,
+  healthy: false,
+  statusMessage: "This worker has not reported CodeGraph capabilities.",
+  projectCounts: { ready: 0, indexing: 0, queued: 0, degraded: 0 },
+  cliAvailable: false,
+  mcpInjectionAvailable: false,
+} satisfies CodeGraphWorkerStatus;
 
 const unavailableProjectReplicaCapabilities = {
   provision: false,
@@ -1009,6 +1026,10 @@ export const workers = pgTable("workers", {
     .$type<CodeCapabilities>()
     .notNull()
     .default(unavailableCodeCapabilities),
+  codegraphStatus: jsonb("codegraph_status")
+    .$type<CodeGraphWorkerStatus>()
+    .notNull()
+    .default(unavailableCodeGraphWorkerStatus),
   projectReplicaCapabilities: jsonb("project_replica_capabilities")
     .$type<ProjectReplicaCapabilities>()
     .notNull()

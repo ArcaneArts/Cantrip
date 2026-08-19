@@ -886,6 +886,13 @@ describe("Cantrip protocol", () => {
       remove: false,
     });
     expect(heartbeat.chatRelocation).toBe(false);
+    expect(heartbeat.codegraph).toEqual(
+      expect.objectContaining({
+        available: false,
+        runtimeState: "unavailable",
+        mcpInjectionAvailable: false,
+      }),
+    );
     expect(
       workerEnrollmentCodeResultSchema.safeParse({
         code: "short",
