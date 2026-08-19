@@ -29,7 +29,6 @@ import {
   completedCodexThreadTurnFromRead,
   failClosedAgentInteractionReply,
   findActiveChatTurn,
-  GOAL_CONTINUATION_PROMPT,
   goalShouldContinue,
   isKnownCodexNotificationMethod,
   normalizeAgentMessage,
@@ -1384,12 +1383,11 @@ describe("Codex goals", () => {
     updatedAt: 2,
   };
 
-  it("continues only active goals with an explicit follow-up prompt", () => {
+  it("continues only active, unpaused goals", () => {
     expect(goalShouldContinue(goal)).toBe(true);
     expect(goalShouldContinue(goal, true)).toBe(false);
     expect(goalShouldContinue({ ...goal, status: "paused" })).toBe(false);
     expect(goalShouldContinue({ ...goal, status: "complete" })).toBe(false);
-    expect(GOAL_CONTINUATION_PROMPT).toContain("active goal");
   });
 });
 
