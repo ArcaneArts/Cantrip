@@ -6,6 +6,7 @@ import {
   insertComposerText,
   LARGE_PASTE_THRESHOLD,
   largePasteFileName,
+  pastedTextAttachmentLabel,
   shouldAttachPastedText,
 } from "./attachment-utils";
 
@@ -20,14 +21,26 @@ describe("attachment composer utilities", () => {
   });
 
   it("converts only large text pastes and gives them stable readable names", () => {
-    expect(shouldAttachPastedText("x".repeat(LARGE_PASTE_THRESHOLD - 1))).toBe(
+    expect(shouldAttachPastedText("x".repeat(LARGE_PASTE_THRESHOLD))).toBe(
       false,
     );
-    expect(shouldAttachPastedText("x".repeat(LARGE_PASTE_THRESHOLD))).toBe(
+    expect(shouldAttachPastedText("x".repeat(LARGE_PASTE_THRESHOLD + 1))).toBe(
       true,
     );
     expect(largePasteFileName(new Date("2026-08-08T14:30:15.123Z"))).toBe(
       "pasted-text-2026-08-08-14-30-15-123.txt",
+    );
+  });
+
+  it("labels pasted text from its first non-empty content line", () => {
+    expect(
+      pastedTextAttachmentLabel(
+        "\n  # Goal: Map every biome  \nMore detail",
+        "pasted-text.txt",
+      ),
+    ).toBe("# Goal: Map every biome");
+    expect(pastedTextAttachmentLabel("\n \n", "pasted-text.txt")).toBe(
+      "pasted-text.txt",
     );
   });
 

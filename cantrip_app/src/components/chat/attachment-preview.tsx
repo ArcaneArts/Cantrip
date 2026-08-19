@@ -1,4 +1,5 @@
 import {
+  ChevronRight,
   FileAudio,
   FileImage,
   FileText,
@@ -8,7 +9,10 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { formatAttachmentBytes } from "@/components/chat/attachment-utils";
+import {
+  formatAttachmentBytes,
+  pastedTextAttachmentLabel,
+} from "@/components/chat/attachment-utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +52,7 @@ export function AttachmentPreview({
   error,
   onOpen,
   onRemove,
+  onRestoreText,
   uploading = false,
 }: {
   attachment: AttachmentPresentation;
@@ -55,8 +60,85 @@ export function AttachmentPreview({
   error?: string | null;
   onOpen?(): void;
   onRemove?(): void;
+  onRestoreText?(): Promise<void> | void;
   uploading?: boolean;
 }) {
+  const [restoring, setRestoring] = useState(false);
+
+  if (attachment.source === "paste" && onRestoreText) {
+    const label = pastedTextAttachmentLabel(
+      attachment.previewText,
+      attachment.fileName,
+    );
+    return (
+      <div
+        className={cn(
+          "group/attachment relative w-64 min-w-0 rounded-xl border bg-muted/30 px-2.5 py-2",
+          error && "border-destructive/40",
+        )}
+      >
+        <button
+          type="button"
+          className="flex w-full min-w-0 items-center gap-2 pr-7 text-left"
+          disabled={uploading || !onOpen}
+          onClick={onOpen}
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg border bg-background/60 text-muted-foreground">
+            {uploading ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <FileText className="size-3.5" />
+            )}
+          </span>
+          <span
+            className="min-w-0 flex-1 truncate text-xs font-medium"
+            title={label}
+          >
+            {label}
+          </span>
+        </button>
+        <button
+          type="button"
+          className={cn(
+            "ml-10 mt-0.5 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:pointer-events-none disabled:opacity-60",
+            error && "text-destructive",
+          )}
+          disabled={uploading || restoring}
+          title={error ?? undefined}
+          onClick={() => {
+            setRestoring(true);
+            void Promise.resolve()
+              .then(onRestoreText)
+              .catch(() => undefined)
+              .finally(() => setRestoring(false));
+          }}
+        >
+          {restoring
+            ? "Restoring…"
+            : uploading
+              ? "Uploading…"
+              : "Show in text field"}
+          {!restoring && !uploading ? (
+            <ChevronRight className="size-3" />
+          ) : null}
+        </button>
+        {onRemove ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="absolute right-1.5 top-1.5 size-6 rounded-full opacity-0 transition-opacity group-hover/attachment:opacity-100 focus-visible:opacity-100"
+            title={`Remove ${attachment.fileName}`}
+            onClick={onRemove}
+          >
+            <X className="size-3" />
+            <span className="sr-only">Remove attachment</span>
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
