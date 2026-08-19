@@ -110,6 +110,7 @@ import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
+import { requestResponse } from "@/lib/api-client";
 import {
   imageInputCapabilityMessage,
   resolveImageInputCapability,
@@ -1339,6 +1340,37 @@ function ChatTranscript({
       );
     }
   };
+  const restoreDraftAttachmentText = async (item: ComposerAttachmentState) => {
+    setAttachmentNotice(null);
+    try {
+      const response = item.localPreview
+        ? await fetch(item.contentUrl)
+        : await requestResponse(item.contentUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const pastedText = await response.text();
+      const textarea = composerRef.current;
+      const currentDraft = textarea?.value ?? draft;
+      const selectionStart = textarea?.selectionStart ?? currentDraft.length;
+      const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+      const inserted = insertComposerText(
+        currentDraft,
+        pastedText,
+        selectionStart,
+        selectionEnd,
+      );
+      setDraft(inserted.text);
+      setComposerCaret(inserted.caret);
+      setSlashMenuDismissed(false);
+      setSkillMenuDismissed(false);
+      removeDraftAttachment(item);
+      window.requestAnimationFrame(() => {
+        composerRef.current?.focus();
+        composerRef.current?.setSelectionRange(inserted.caret, inserted.caret);
+      });
+    } catch (error) {
+      setAttachmentNotice(`Could not restore pasted text: ${errorText(error)}`);
+    }
+  };
   const send = useMutation({
     mutationFn: ({
       attachmentIds,
@@ -2311,6 +2343,11 @@ function ChatTranscript({
                         }
                       }}
                       onRemove={() => removeDraftAttachment(item)}
+                      onRestoreText={
+                        item.attachment.source === "paste"
+                          ? () => restoreDraftAttachmentText(item)
+                          : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -2374,25 +2411,22 @@ function ChatTranscript({
                     const pastedText =
                       event.clipboardData.getData("text/plain");
                     if (!shouldAttachPastedText(pastedText)) return;
-                    event.preventDefault();
                     const fileName = largePasteFileName();
                     const file = new File([pastedText], fileName, {
                       type: "text/plain",
                     });
-                    const inserted = insertComposerText(
-                      draft,
-                      `Read attachment ${fileName}`,
-                      event.currentTarget.selectionStart,
-                      event.currentTarget.selectionEnd,
-                    );
-                    setDraft(inserted.text);
-                    setComposerCaret(inserted.caret);
-                    window.requestAnimationFrame(() => {
-                      composerRef.current?.setSelectionRange(
-                        inserted.caret,
-                        inserted.caret,
+                    if (
+                      draftAttachments.length >= MAX_COMPOSER_ATTACHMENTS ||
+                      file.size > MAX_ATTACHMENT_BYTES
+                    ) {
+                      setAttachmentNotice(
+                        draftAttachments.length >= MAX_COMPOSER_ATTACHMENTS
+                          ? `A prompt can include up to ${MAX_COMPOSER_ATTACHMENTS} attachments. The pasted text was kept in the message.`
+                          : "The paste is too large to attach, so it was kept in the message.",
                       );
-                    });
+                      return;
+                    }
+                    event.preventDefault();
                     void attachFiles([file], "paste");
                   }}
                   onChange={(event) => {

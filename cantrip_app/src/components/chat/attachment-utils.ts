@@ -1,4 +1,4 @@
-export const LARGE_PASTE_THRESHOLD = 10_000;
+export const LARGE_PASTE_THRESHOLD = 4_000;
 export const MAX_COMPOSER_ATTACHMENTS = 20;
 export const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
 
@@ -63,7 +63,18 @@ export function largePasteFileName(now = new Date()): string {
 }
 
 export function shouldAttachPastedText(text: string): boolean {
-  return text.length >= LARGE_PASTE_THRESHOLD;
+  return text.length > LARGE_PASTE_THRESHOLD;
+}
+
+export function pastedTextAttachmentLabel(
+  previewText: string | null,
+  fallback: string,
+): string {
+  const firstContentLine = previewText
+    ?.split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return firstContentLine?.slice(0, 200) || fallback;
 }
 
 export function insertComposerText(

@@ -34,6 +34,7 @@ import {
 } from "@/components/chat/attachment-preview";
 import {
   attachmentKind,
+  insertComposerText,
   largePasteFileName,
   MAX_ATTACHMENT_BYTES,
   MAX_COMPOSER_ATTACHMENTS,
@@ -59,6 +60,7 @@ import {
   uploadChatAttachment,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { requestResponse } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 import { TaskPlanReview } from "./task-plan-review";
@@ -436,6 +438,38 @@ export function TaskSurface({
     );
   };
 
+  const removeTaskAttachment = (attachmentId: string) => {
+    setAttachmentIds((current) => current.filter((id) => id !== attachmentId));
+    setAttachmentRecords((current) => {
+      const next = new Map(current);
+      next.delete(attachmentId);
+      return next;
+    });
+    pendingDeletionIdsRef.current.add(attachmentId);
+  };
+
+  const restoreTaskAttachmentText = async (
+    attachment: ChatAttachmentSummary,
+  ) => {
+    setAttachmentNotice(null);
+    try {
+      const response = await requestResponse(
+        chatAttachmentContentUrl(attachment.id),
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const pastedText = await response.text();
+      setBrief(
+        (current) =>
+          insertComposerText(current, pastedText, current.length).text,
+      );
+      removeTaskAttachment(attachment.id);
+    } catch (error) {
+      setAttachmentNotice(
+        `Could not restore pasted text: ${errorMessage(error)}`,
+      );
+    }
+  };
+
   const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
     const files = Array.from(event.clipboardData.files);
     if (files.length > 0) {
@@ -445,11 +479,24 @@ export function TaskSurface({
     }
     const text = event.clipboardData.getData("text/plain");
     if (shouldAttachPastedText(text)) {
+      const file = new File([text], largePasteFileName(), {
+        type: "text/plain",
+      });
+      const attachmentCount =
+        attachmentIdsRef.current.length + pendingAttachments.length;
+      if (
+        attachmentCount >= MAX_COMPOSER_ATTACHMENTS ||
+        file.size > MAX_ATTACHMENT_BYTES
+      ) {
+        setAttachmentNotice(
+          attachmentCount >= MAX_COMPOSER_ATTACHMENTS
+            ? `A Task can include up to ${MAX_COMPOSER_ATTACHMENTS} attachments. The pasted text was kept in the brief.`
+            : "The paste is too large to attach, so it was kept in the brief.",
+        );
+        return;
+      }
       event.preventDefault();
-      void attachFiles(
-        [new File([text], largePasteFileName(), { type: "text/plain" })],
-        "paste",
-      );
+      void attachFiles([file], "paste");
     }
   };
 
@@ -678,17 +725,12 @@ export function TaskSurface({
                 attachment={attachment}
                 contentUrl={chatAttachmentContentUrl(attachment.id)}
                 onOpen={() => setViewingAttachment(attachment)}
-                onRemove={() => {
-                  setAttachmentIds((current) =>
-                    current.filter((id) => id !== attachment.id),
-                  );
-                  setAttachmentRecords((current) => {
-                    const next = new Map(current);
-                    next.delete(attachment.id);
-                    return next;
-                  });
-                  pendingDeletionIdsRef.current.add(attachment.id);
-                }}
+                onRemove={() => removeTaskAttachment(attachment.id)}
+                onRestoreText={
+                  attachment.source === "paste"
+                    ? () => restoreTaskAttachmentText(attachment)
+                    : undefined
+                }
               />
             ))}
             {pendingAttachments.map((pending) => {
@@ -708,6 +750,25 @@ export function TaskSurface({
                   contentUrl={pending.contentUrl}
                   error={pending.error}
                   uploading={!pending.error}
+                  onRestoreText={
+                    pending.source === "paste"
+                      ? async () => {
+                          const pastedText = await pending.file.text();
+                          setBrief(
+                            (current) =>
+                              insertComposerText(
+                                current,
+                                pastedText,
+                                current.length,
+                              ).text,
+                          );
+                          URL.revokeObjectURL(pending.contentUrl);
+                          setPendingAttachments((current) =>
+                            current.filter(({ id }) => id !== pending.id),
+                          );
+                        }
+                      : undefined
+                  }
                   onRemove={
                     pending.error
                       ? () => {
