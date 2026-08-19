@@ -1,12 +1,15 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import type {
+  GitManagedBranch,
   GitStatus,
   ProjectWorktreeCreate,
   ProjectWorktreeSummary,
   WorkerSummary,
 } from "@cantrip/protocol";
+import { useQuery } from "@tanstack/react-query";
 import {
   Check,
+  ChevronsUpDown,
   CircleAlert,
   Cpu,
   FolderTree,
@@ -24,6 +27,14 @@ import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
 } from "@/components/ui/styled-menu";
@@ -35,6 +46,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { getProjectWorktreeBranches } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export type WorktreeStatusMap = Record<string, GitStatus | undefined>;
@@ -264,6 +281,104 @@ export interface WorktreeControlActions {
   onSetChatMode?(mode: "agent-managed" | "pinned"): void;
 }
 
+export function worktreeExistingBranchOptions(
+  branches: readonly GitManagedBranch[],
+): GitManagedBranch[] {
+  return branches
+    .filter(({ kind }) => kind === "local")
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function ExistingBranchCombobox({
+  branches,
+  error,
+  loading,
+  onChange,
+  value,
+}: {
+  branches: GitManagedBranch[];
+  error: boolean;
+  loading: boolean;
+  onChange(value: string): void;
+  value: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = branches.find(({ name }) => name === value);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between px-3 font-mono text-xs font-normal"
+        >
+          <span className="truncate">
+            {selected?.name ?? "Select an existing branch"}
+          </span>
+          <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[var(--radix-popover-trigger-width)] p-0"
+      >
+        <Command>
+          <CommandInput placeholder="Search branches…" />
+          <CommandList>
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" /> Loading branches…
+              </div>
+            ) : null}
+            {error ? (
+              <div className="py-6 text-center text-sm text-destructive">
+                Could not load branches.
+              </div>
+            ) : null}
+            {!loading && !error ? (
+              <>
+                <CommandEmpty>No branches found.</CommandEmpty>
+                <CommandGroup>
+                  {branches.map((candidate) => (
+                    <CommandItem
+                      key={candidate.fullRef}
+                      value={candidate.name}
+                      disabled={Boolean(candidate.worktree)}
+                      onSelect={() => {
+                        onChange(candidate.name);
+                        setOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          "size-3.5 shrink-0",
+                          candidate.name === value
+                            ? "opacity-100"
+                            : "opacity-0",
+                        )}
+                      />
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                        {candidate.name}
+                      </span>
+                      {candidate.worktree ? (
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          In {candidate.worktree.label}
+                        </span>
+                      ) : null}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            ) : null}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function WorktreeControl({
   actions,
   currentWorktreeId,
@@ -400,11 +515,15 @@ export function WorktreeControl({
 export function WorktreeCreateDialog({
   open,
   pending,
+  projectId,
+  sourceWorktreeId,
   onOpenChange,
   onSubmit,
 }: {
   open: boolean;
   pending: boolean;
+  projectId: string | null;
+  sourceWorktreeId: string | null;
   onOpenChange(open: boolean): void;
   onSubmit(input: ProjectWorktreeCreate): Promise<void>;
 }) {
@@ -415,6 +534,19 @@ export function WorktreeCreateDialog({
     "newBranch" | "existingBranch" | "detached"
   >("newBranch");
   const [error, setError] = useState<string | null>(null);
+  const branchInventory = useQuery({
+    enabled:
+      open &&
+      intent === "existingBranch" &&
+      Boolean(projectId && sourceWorktreeId),
+    queryFn: () => getProjectWorktreeBranches(projectId!, sourceWorktreeId!),
+    queryKey: ["worktree-branches", projectId, sourceWorktreeId],
+    retry: false,
+    staleTime: 15_000,
+  });
+  const existingBranches = worktreeExistingBranchOptions(
+    branchInventory.data?.branches ?? [],
+  );
   useEffect(() => {
     if (!open) {
       setName("");
@@ -473,12 +605,13 @@ export function WorktreeCreateDialog({
             <span>Checkout</span>
             <select
               value={intent}
-              onChange={(event) =>
+              onChange={(event) => {
+                setBranch("");
                 setIntent(
                   event.target.value as
                     "newBranch" | "existingBranch" | "detached",
-                )
-              }
+                );
+              }}
               className="h-9 w-full rounded-md border bg-background px-3 outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="newBranch">New branch</option>
@@ -486,7 +619,18 @@ export function WorktreeCreateDialog({
               <option value="detached">Detached revision</option>
             </select>
           </label>
-          {intent === "detached" ? null : (
+          {intent === "existingBranch" ? (
+            <label className="block space-y-1.5 text-sm">
+              <span>Branch</span>
+              <ExistingBranchCombobox
+                branches={existingBranches}
+                error={branchInventory.isError}
+                loading={branchInventory.isLoading}
+                value={branch}
+                onChange={setBranch}
+              />
+            </label>
+          ) : intent === "detached" ? null : (
             <label className="block space-y-1.5 text-sm">
               <span>Branch</span>
               <input
