@@ -7018,6 +7018,10 @@ export function App() {
         pending={
           createWorktreeMutation.isPending || bindWorktreeMutation.isPending
         }
+        projectId={worktreeCreateTarget?.projectId ?? null}
+        sourceWorktreeId={
+          worktrees.data?.find(({ isPrimary }) => isPrimary)?.id ?? null
+        }
         onOpenChange={(open) => {
           if (!open) setWorktreeCreateTarget(null);
         }}

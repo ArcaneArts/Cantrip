@@ -1,7 +1,15 @@
-import type { GitStatus, ProjectWorktreeSummary } from "@cantrip/protocol";
+import type {
+  GitManagedBranch,
+  GitStatus,
+  ProjectWorktreeSummary,
+} from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
-import { worktreeHasConflicts, worktreeTooltip } from "./worktree-control";
+import {
+  worktreeExistingBranchOptions,
+  worktreeHasConflicts,
+  worktreeTooltip,
+} from "./worktree-control";
 
 const worktree: ProjectWorktreeSummary = {
   id: "worktree-2",
@@ -35,6 +43,35 @@ const cleanStatus: GitStatus = {
   files: [],
   branches: [],
 };
+
+function branch(
+  name: string,
+  kind: GitManagedBranch["kind"],
+): GitManagedBranch {
+  return {
+    name,
+    fullRef: `refs/${kind === "local" ? "heads" : "remotes/origin"}/${name}`,
+    kind,
+    current: false,
+    hash: "a".repeat(40),
+    upstream: null,
+    upstreamGone: false,
+    ahead: 0,
+    behind: 0,
+    mergedIntoHead: null,
+    remoteName: kind === "remote" ? "origin" : null,
+    remoteAvailable: kind === "remote",
+    trackingLocalBranches: [],
+    worktree: null,
+    lastCommit: {
+      hash: "a".repeat(40),
+      shortHash: "aaaaaaa",
+      subject: "Test",
+      authorName: "Cantrip",
+      authoredAt: "2026-08-19T00:00:00.000Z",
+    },
+  };
+}
 
 describe("worktree presentation", () => {
   it("describes the checkout, worker, state, path, and lease", () => {
@@ -74,5 +111,17 @@ describe("worktree presentation", () => {
         status,
       }),
     ).toContain("Conflicts");
+  });
+});
+
+describe("worktree existing branch options", () => {
+  it("offers sorted local branches without duplicating remote refs", () => {
+    expect(
+      worktreeExistingBranchOptions([
+        branch("topic/zeta", "local"),
+        branch("main", "remote"),
+        branch("main", "local"),
+      ]).map(({ name }) => name),
+    ).toEqual(["main", "topic/zeta"]);
   });
 });

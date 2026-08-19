@@ -922,6 +922,10 @@ export function ProjectSettingsPage({
       <WorktreeCreateDialog
         open={createOpen}
         pending={createWorktree.isPending}
+        projectId={project.id}
+        sourceWorktreeId={
+          worktrees.find(({ isPrimary }) => isPrimary)?.id ?? null
+        }
         onOpenChange={setCreateOpen}
         onSubmit={(input) =>
           createWorktree.mutateAsync(input).then(() => undefined)
