@@ -276,6 +276,40 @@ describe("worker Git worktrees", () => {
     ).rejects.toThrow("not a worktree of this project source");
   });
 
+  it("authorizes a batch of physical worktrees from one source inventory", async () => {
+    const { manager, repository, root } = await createRepository(
+      "cantrip-worktrees-authorize-batch-",
+    );
+    const secondary = path.join(root, "secondary-worktree");
+    await execFileAsync("git", [
+      "-C",
+      repository,
+      "worktree",
+      "add",
+      "-b",
+      "codegraph-secondary",
+      secondary,
+    ]);
+
+    const authorized = await manager.authorizeTargets(repository, [
+      repository,
+      secondary,
+    ]);
+    expect(authorized.map(({ worktree }) => worktree.path)).toEqual([
+      repository,
+      secondary,
+    ]);
+    expect(
+      new Set(authorized.map(({ inventory }) => inventory.gitCommonDir)).size,
+    ).toBe(1);
+    await expect(
+      manager.authorizeTargets(repository, [
+        repository,
+        path.join(root, "arbitrary"),
+      ]),
+    ).rejects.toThrow("not a worktree of this project source");
+  });
+
   it("serializes colliding creates and surfaces branches checked out elsewhere", async () => {
     const { manager, repository } = await createRepository();
     await expect(
