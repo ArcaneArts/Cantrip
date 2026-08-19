@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import { hashPassword } from "../src/auth/service.js";
@@ -312,6 +312,9 @@ describe("server account authentication", () => {
         email: "Owner@Example.com",
       });
       const mobileCookie = sessionCookie(mobileSession);
+      const mobileLiveSocket = await app.injectWS("/api/live", {
+        headers: { cookie: mobileCookie, origin },
+      });
       const mobileSessions = await app.inject({
         method: "GET",
         url: "/api/account/sessions",
@@ -320,9 +323,44 @@ describe("server account authentication", () => {
       expect(mobileSessions.statusCode).toBe(200);
       expect(mobileSessions.json()).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({ authMethod: "mobile-qr", current: true }),
+          expect.objectContaining({
+            authMethod: "mobile-qr",
+            connected: true,
+            current: true,
+          }),
         ]),
       );
+      const ownerSessions = await app.inject({
+        method: "GET",
+        url: "/api/account/sessions",
+        headers: { cookie, origin },
+      });
+      expect(ownerSessions.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            authMethod: "mobile-qr",
+            connected: true,
+            current: false,
+          }),
+        ]),
+      );
+      mobileLiveSocket.terminate();
+      await vi.waitFor(async () => {
+        const disconnectedSessions = await app.inject({
+          method: "GET",
+          url: "/api/account/sessions",
+          headers: { cookie, origin },
+        });
+        expect(disconnectedSessions.json()).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              authMethod: "mobile-qr",
+              connected: false,
+              current: false,
+            }),
+          ]),
+        );
+      });
 
       const reusedMobileGrant = await app.inject({
         method: "POST",

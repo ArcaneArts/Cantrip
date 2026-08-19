@@ -3155,6 +3155,7 @@ export async function buildApp({
     }
     const principal = authenticatedPrincipal(request);
     if (!registerAccountSocket(socket, principal.user.id)) return;
+    registerSessionSocket(socket, request);
     liveHub.attach(socket, {
       ownerId: principal.user.id,
       sessionId: principal.sessionId,
@@ -8378,7 +8379,14 @@ export async function buildApp({
       principal.user.id,
       principal.sessionId,
     );
-    return reply.send(accountSessionListSchema.parse(sessions));
+    return reply.send(
+      accountSessionListSchema.parse(
+        sessions.map((session) => ({
+          ...session,
+          connected: session.current || sessionSockets.has(session.id),
+        })),
+      ),
+    );
   });
 
   app.get("/api/account/audit-events", async (request, reply) => {

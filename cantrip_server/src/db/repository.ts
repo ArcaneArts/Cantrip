@@ -2710,6 +2710,7 @@ export class ServerRepository {
       authMethod: session.authMethod as AccountSessionSummary["authMethod"],
       label: session.label,
       current: session.id === currentSessionId,
+      connected: false,
       createdAt: toISOString(session.createdAt),
       lastSeenAt: toISOString(session.lastSeenAt),
       expiresAt: toISOString(session.expiresAt),
