@@ -198,10 +198,15 @@ describe.skipIf(process.platform === "win32")(
         manager.status().launcherDirectory,
         "codegraph",
       );
+      expect(manager.launcherPath()).toBe(launcher);
       await expect(run(launcher, ["--version"])).resolves.toMatchObject({
         code: 0,
         output: "1.2.3\n",
       });
+      const invocation = manager.launcherInvocation();
+      await expect(
+        run(invocation.command, [...invocation.arguments, "--version"]),
+      ).resolves.toMatchObject({ code: 0, output: "1.2.3\n" });
       await expect(run(launcher, ["upgrade"])).resolves.toMatchObject({
         code: 2,
         output: expect.stringContaining("managed by Cantrip"),

@@ -36,6 +36,7 @@ import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
 import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
+import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
 import { readWorkerConfig } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -420,6 +421,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     desktop: desktopAdapter,
   });
   const worktrees = new WorktreeManager(config.dataDirectory);
+  const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
+  const codegraphProjects =
+    codegraphRuntime?.status().cliAvailable === true && codegraphInvocation
+      ? new CodeGraphProjectSupervisor({
+          authorize: async (sourcePath, worktreePaths) => {
+            const authorized = await worktrees.authorizeTargets(
+              sourcePath,
+              worktreePaths,
+            );
+            return authorized.map(({ inventory, worktree }) => ({
+              gitCommonDir: inventory.gitCommonDir,
+              root: worktree.path,
+            }));
+          },
+          command: codegraphInvocation.command,
+          commandArguments: codegraphInvocation.arguments,
+          environment: codegraphRuntime.childEnvironment(),
+        })
+      : null;
   const automationScheduler = new ProjectAutomationScheduler({
     serverUrl: config.serverUrl,
     token: config.token,
@@ -1267,11 +1287,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.name,
           command.mode,
         );
-      case "worktree.remove":
-        return worktrees.remove(command.sourcePath, command.worktreePath, {
-          allowExternal: command.allowExternal,
-          force: command.force,
-        });
+      case "worktree.remove": {
+        const result = await worktrees.remove(
+          command.sourcePath,
+          command.worktreePath,
+          {
+            allowExternal: command.allowExternal,
+            force: command.force,
+          },
+        );
+        codegraphProjects?.detach(command.worktreePath);
+        return result;
+      }
       case "worktree.lock":
         return worktrees.lock(
           command.sourcePath,
@@ -1286,6 +1313,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return worktrees.status(command.sourcePath, command.worktreePath);
       case "worktree.observation.configure":
         worktrees.configureObservation(command.targets);
+        void codegraphProjects?.configure(command.targets).catch((error) => {
+          workerLogger.event(
+            "warn",
+            "CodeGraph worktree reconciliation failed",
+            {
+              event: "codegraph.project.configure-failed",
+              subsystem: "codegraph",
+              operation: "configure-worktrees",
+              reasonCode: "configuration-failed",
+              status: "degraded",
+              error: workerLogError(error),
+            },
+          );
+        });
         return { accepted: true };
       case "explorer.directory.list":
         return listExplorerDirectory(command.root, command.path);
@@ -2076,6 +2117,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     });
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     automationScheduler.close();
+    codegraphProjects?.close();
     worktrees.close();
     commandConnection.close();
     await directBroker.close();

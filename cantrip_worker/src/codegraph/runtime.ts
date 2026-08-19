@@ -468,6 +468,20 @@ export class CodeGraphRuntimeManager {
     return { ...this.#status };
   }
 
+  launcherPath(): string {
+    return path.join(
+      this.#status.launcherDirectory,
+      this.#platform === "win32" ? "codegraph.cmd" : "codegraph",
+    );
+  }
+
+  launcherInvocation(): { arguments: string[]; command: string } {
+    return {
+      command: this.#processExecPath,
+      arguments: [path.join(this.#status.launcherDirectory, "launcher.mjs")],
+    };
+  }
+
   childEnvironment(
     environment: NodeJS.ProcessEnv = process.env,
   ): Record<string, string> {

@@ -543,6 +543,39 @@ export class WorktreeManager {
     return { inventory, worktree };
   }
 
+  async authorizeTargets(
+    sourcePath: string,
+    worktreePaths: string[],
+  ): Promise<
+    Array<{
+      inventory: WorktreeInventory;
+      worktree: WorkerWorktreeSummary;
+    }>
+  > {
+    const inventory = await this.list(sourcePath);
+    const requested = await Promise.all(
+      worktreePaths.map(async (worktreePath) =>
+        (await exists(worktreePath))
+          ? realpath(worktreePath)
+          : path.resolve(worktreePath),
+      ),
+    );
+    return requested.map((canonicalPath) => {
+      const worktree = inventory.worktrees.find(
+        ({ path: candidate }) => candidate === canonicalPath,
+      );
+      if (!worktree) {
+        throw new Error(
+          "The requested path is not a worktree of this project source.",
+        );
+      }
+      if (worktree.missing) {
+        throw new Error("Cannot authorize a missing worktree.");
+      }
+      return { inventory, worktree };
+    });
+  }
+
   private async managedTarget(
     inventory: WorktreeInventory,
     worktreeId: string,
