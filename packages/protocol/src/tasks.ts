@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  encryptedPayloadEnvelopeSchema,
+  encryptionBytesSchema,
+  encryptionKeyRevisionSchema,
+} from "./encryption.js";
 import type { WorkflowJsonObject } from "./workflows.js";
 
 export const TASK_MARKDOWN_LIMIT = 100_000;
@@ -13,6 +18,11 @@ export const TASK_ANSWER_FREEFORM_LIMIT = 10_000;
 export const TASK_ADDITIONAL_DIRECTION_LIMIT = 10_000;
 export const TASK_GOAL_PROMPT_LIMIT = 100_000;
 export const TASK_ERROR_MESSAGE_LIMIT = 4_000;
+export const TASK_PROTECTED_CONTENT_BYTES_LIMIT = 4 * 1_024 * 1_024;
+export const TASK_PLANNING_ROUND_PROTECTED_CONTENT_BYTES_LIMIT =
+  6 * 1_024 * 1_024;
+export const TASK_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT = 2 * 1_024 * 1_024;
+export const TASK_GOAL_OBJECTIVE_PROTECTED_CONTENT_BYTES_LIMIT = 512 * 1_024;
 
 export const chatExperienceSchema = z.enum(["agent", "task"]);
 
@@ -449,6 +459,306 @@ export const taskPlanningRoundListSchema = z
   .array(taskPlanningRoundSchema)
   .max(1_000);
 
+function boundedTaskEnvelopeSchema(maximumPlaintextBytes: number) {
+  const maximumCiphertextCharacters = Math.ceil(
+    ((maximumPlaintextBytes + 16) * 4) / 3,
+  );
+  return z
+    .object({
+      formatVersion: z.literal(1),
+      keyRevision: encryptionKeyRevisionSchema,
+      envelope: encryptedPayloadEnvelopeSchema.extend({
+        ciphertext: encryptionBytesSchema
+          .min(22)
+          .max(maximumCiphertextCharacters),
+      }),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (
+        value.envelope.version !== value.formatVersion ||
+        value.envelope.keyRevision !== value.keyRevision
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Protected Task envelope metadata must match its outer metadata.",
+          path: ["envelope"],
+        });
+      }
+    });
+}
+
+export const encryptedTaskProtectedContentSchema = boundedTaskEnvelopeSchema(
+  TASK_PROTECTED_CONTENT_BYTES_LIMIT,
+);
+export const encryptedTaskPlanningRoundProtectedContentSchema =
+  boundedTaskEnvelopeSchema(TASK_PLANNING_ROUND_PROTECTED_CONTENT_BYTES_LIMIT);
+export const encryptedTaskMessageProtectedContentSchema =
+  boundedTaskEnvelopeSchema(TASK_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT);
+export const encryptedTaskGoalObjectiveSchema = boundedTaskEnvelopeSchema(
+  TASK_GOAL_OBJECTIVE_PROTECTED_CONTENT_BYTES_LIMIT,
+);
+
+export const taskProtectedLastErrorMetadataSchema = taskLastErrorSchema
+  .omit({ message: true })
+  .strict();
+
+export const taskProtectedClassificationSchema = z
+  .object({
+    state: taskStateSchema,
+    stableStateBeforeFailure: taskStableStateSchema.nullable(),
+    activeOperationKind: taskOperationKindSchema.nullable(),
+    planAuthorship: taskPlanAuthorshipSchema,
+    planningRound: z.number().int().nonnegative(),
+    hasPlan: z.boolean(),
+    hasQuestions: z.boolean(),
+    hasFinalPlan: z.boolean(),
+    hasGoalPrompt: z.boolean(),
+    lastError: taskProtectedLastErrorMetadataSchema.nullable(),
+  })
+  .strict();
+
+function sameLastErrorMetadata(
+  metadata: z.infer<typeof taskProtectedLastErrorMetadataSchema> | null,
+  error: z.infer<typeof taskLastErrorSchema> | null,
+): boolean {
+  return (
+    metadata?.code === error?.code &&
+    metadata?.operationKind === error?.operationKind &&
+    metadata?.occurredAt === error?.occurredAt
+  );
+}
+
+export const taskProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    classification: taskProtectedClassificationSchema,
+    briefMarkdown: z.string().max(TASK_MARKDOWN_LIMIT),
+    planMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT).nullable(),
+    currentQuestions: taskQuestionListSchema,
+    currentAnswers: taskQuestionAnswerListSchema,
+    additionalDirection: z.string().max(TASK_ADDITIONAL_DIRECTION_LIMIT),
+    finalPlanMarkdown: z.string().min(1).max(TASK_MARKDOWN_LIMIT).nullable(),
+    goalPrompt: z.string().min(1).max(TASK_GOAL_PROMPT_LIMIT).nullable(),
+    lastError: taskLastErrorSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const expected = {
+      hasPlan: value.planMarkdown !== null,
+      hasQuestions: value.currentQuestions.length > 0,
+      hasFinalPlan: value.finalPlanMarkdown !== null,
+      hasGoalPrompt: value.goalPrompt !== null,
+    };
+    for (const [field, present] of Object.entries(expected)) {
+      if (value.classification[field as keyof typeof expected] !== present) {
+        context.addIssue({
+          code: "custom",
+          message: `Protected Task ${field} classification does not match its content.`,
+          path: ["classification", field],
+        });
+      }
+    }
+    if (
+      !sameLastErrorMetadata(value.classification.lastError, value.lastError)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Protected Task error classification does not match its content.",
+        path: ["classification", "lastError"],
+      });
+    }
+  });
+
+export const taskPlanningRoundProtectedClassificationSchema = z
+  .object({
+    ordinal: z.number().int().nonnegative(),
+    kind: taskOperationKindSchema,
+    status: taskPlanningRoundStatusSchema,
+    hasOutputPlan: z.boolean(),
+    hasOutputQuestions: z.boolean(),
+    hasOutputGoalPrompt: z.boolean(),
+    error: taskProtectedLastErrorMetadataSchema.nullable(),
+  })
+  .strict();
+
+export const taskPlanningRoundProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    classification: taskPlanningRoundProtectedClassificationSchema,
+    inputBriefMarkdown: z.string().max(TASK_MARKDOWN_LIMIT),
+    inputPlanMarkdown: z.string().max(TASK_MARKDOWN_LIMIT).nullable(),
+    inputQuestions: taskQuestionListSchema,
+    inputAnswers: taskQuestionAnswerListSchema,
+    additionalDirection: z.string().max(TASK_ADDITIONAL_DIRECTION_LIMIT),
+    outputPlanMarkdown: z.string().max(TASK_MARKDOWN_LIMIT).nullable(),
+    outputQuestions: taskQuestionListSchema,
+    outputGoalPrompt: z.string().max(TASK_GOAL_PROMPT_LIMIT).nullable(),
+    error: taskLastErrorSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const expected = {
+      hasOutputPlan: value.outputPlanMarkdown !== null,
+      hasOutputQuestions: value.outputQuestions.length > 0,
+      hasOutputGoalPrompt: value.outputGoalPrompt !== null,
+    };
+    for (const [field, present] of Object.entries(expected)) {
+      if (value.classification[field as keyof typeof expected] !== present) {
+        context.addIssue({
+          code: "custom",
+          message: `Protected planning-round ${field} classification does not match its content.`,
+          path: ["classification", field],
+        });
+      }
+    }
+    if (!sameLastErrorMetadata(value.classification.error, value.error)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Protected planning-round error classification does not match its content.",
+        path: ["classification", "error"],
+      });
+    }
+  });
+
+const taskMessageRoleSchema = z.enum(["user", "assistant", "system"]);
+const taskMessageModeSchema = z.enum(["default", "plan", "goal"]);
+
+export const taskMessageProtectedClassificationSchema = z
+  .object({
+    role: taskMessageRoleSchema,
+    mode: taskMessageModeSchema,
+    attachmentIds: z
+      .array(z.string().min(1).max(200))
+      .max(20)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "Task message attachment IDs must be unique.",
+      }),
+  })
+  .strict();
+
+function protectedMessageAttachmentIds(content: readonly unknown[]): string[] {
+  return content.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const candidate = item as Record<string, unknown>;
+    if (
+      candidate.type !== "attachment" ||
+      !candidate.attachment ||
+      typeof candidate.attachment !== "object" ||
+      Array.isArray(candidate.attachment)
+    ) {
+      return [];
+    }
+    const id = (candidate.attachment as Record<string, unknown>).id;
+    return typeof id === "string" ? [id] : [];
+  });
+}
+
+export const taskMessageProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    classification: taskMessageProtectedClassificationSchema,
+    content: z.array(z.json()).min(1).max(1_000),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      JSON.stringify(value.classification.attachmentIds) !==
+      JSON.stringify(protectedMessageAttachmentIds(value.content))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Protected Task message attachment classification does not match its content.",
+        path: ["classification", "attachmentIds"],
+      });
+    }
+  });
+
+export const taskGoalObjectiveProtectedClassificationSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    threadId: z.string().min(1).max(200),
+    status: taskGoalStatusSchema,
+  })
+  .strict();
+
+export const taskGoalObjectiveProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    classification: taskGoalObjectiveProtectedClassificationSchema,
+    objective: z.string().min(1).max(TASK_GOAL_PROMPT_LIMIT),
+  })
+  .strict();
+
+export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
+  .extend({
+    chatId: z.string().min(1).max(200),
+    activeOperationId: z.string().min(1).max(200).nullable(),
+    draftAttachmentIds: z
+      .array(z.string().min(1).max(200))
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "Task attachment IDs must be unique.",
+      }),
+    protectedContent: encryptedTaskProtectedContentSchema,
+    implementationStartedAt: z.iso.datetime().nullable(),
+    rowVersion: z.number().int().positive(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const taskPlanningRoundOpaqueSummarySchema =
+  taskPlanningRoundProtectedClassificationSchema
+    .extend({
+      id: z.string().min(1).max(200),
+      chatId: z.string().min(1).max(200),
+      protectedContent: encryptedTaskPlanningRoundProtectedContentSchema,
+      userMessageId: z.string().min(1).max(200).nullable(),
+      assistantMessageId: z.string().min(1).max(200).nullable(),
+      executionLaneId: z.string().min(1).max(200).nullable(),
+      turnId: z.string().min(1).max(200).nullable(),
+      startedAt: z.iso.datetime(),
+      completedAt: z.iso.datetime().nullable(),
+    })
+    .strict();
+
+export const taskMessageOpaqueSummarySchema =
+  taskMessageProtectedClassificationSchema
+    .extend({
+      id: z.string().min(1).max(200),
+      chatId: z.string().min(1).max(200),
+      worktreeId: z.string().min(1).max(200),
+      executionLaneId: z.string().min(1).max(200).nullable(),
+      sequence: z.number().int().positive(),
+      protectedContent: encryptedTaskMessageProtectedContentSchema,
+      modelId: z.string().min(1).max(200).nullable(),
+      modelRouteId: z.string().min(1).max(200).nullable(),
+      providerId: z.string().min(1).max(200).nullable(),
+      reasoningEffort: z.string().min(1).max(100).nullable(),
+      appliedReasoningEffort: z.string().min(1).max(100).nullable(),
+      reasoningAdjusted: z.boolean(),
+      idempotencyKey: z.string().min(1).max(200).nullable(),
+      createdAt: z.iso.datetime(),
+    })
+    .strict();
+
+export const taskGoalObjectiveOpaqueSnapshotSchema =
+  taskGoalObjectiveProtectedClassificationSchema
+    .extend({
+      protectedObjective: encryptedTaskGoalObjectiveSchema,
+      tokenBudget: z.number().int().positive().nullable(),
+      tokensUsed: z.number().int().nonnegative(),
+      timeUsedSeconds: z.number().int().nonnegative(),
+      createdAt: z.number().int().nonnegative(),
+      updatedAt: z.number().int().nonnegative(),
+    })
+    .strict();
+
 export type ChatExperience = z.infer<typeof chatExperienceSchema>;
 export type TaskState = z.infer<typeof taskStateSchema>;
 export type TaskStableState = z.infer<typeof taskStableStateSchema>;
@@ -483,3 +793,50 @@ export type TaskFinalizerResult = z.infer<typeof taskFinalizerResultSchema>;
 export type TaskOperationStart = z.infer<typeof taskOperationStartSchema>;
 export type TaskContinuationStart = z.infer<typeof taskContinuationStartSchema>;
 export type TaskPlanningRound = z.infer<typeof taskPlanningRoundSchema>;
+export type EncryptedTaskProtectedContent = z.infer<
+  typeof encryptedTaskProtectedContentSchema
+>;
+export type EncryptedTaskPlanningRoundProtectedContent = z.infer<
+  typeof encryptedTaskPlanningRoundProtectedContentSchema
+>;
+export type EncryptedTaskMessageProtectedContent = z.infer<
+  typeof encryptedTaskMessageProtectedContentSchema
+>;
+export type EncryptedTaskGoalObjective = z.infer<
+  typeof encryptedTaskGoalObjectiveSchema
+>;
+export type TaskProtectedLastErrorMetadata = z.infer<
+  typeof taskProtectedLastErrorMetadataSchema
+>;
+export type TaskProtectedClassification = z.infer<
+  typeof taskProtectedClassificationSchema
+>;
+export type TaskProtectedContent = z.infer<typeof taskProtectedContentSchema>;
+export type TaskPlanningRoundProtectedClassification = z.infer<
+  typeof taskPlanningRoundProtectedClassificationSchema
+>;
+export type TaskPlanningRoundProtectedContent = z.infer<
+  typeof taskPlanningRoundProtectedContentSchema
+>;
+export type TaskMessageProtectedClassification = z.infer<
+  typeof taskMessageProtectedClassificationSchema
+>;
+export type TaskMessageProtectedContent = z.infer<
+  typeof taskMessageProtectedContentSchema
+>;
+export type TaskGoalObjectiveProtectedClassification = z.infer<
+  typeof taskGoalObjectiveProtectedClassificationSchema
+>;
+export type TaskGoalObjectiveProtectedContent = z.infer<
+  typeof taskGoalObjectiveProtectedContentSchema
+>;
+export type TaskOpaqueSummary = z.infer<typeof taskOpaqueSummarySchema>;
+export type TaskPlanningRoundOpaqueSummary = z.infer<
+  typeof taskPlanningRoundOpaqueSummarySchema
+>;
+export type TaskMessageOpaqueSummary = z.infer<
+  typeof taskMessageOpaqueSummarySchema
+>;
+export type TaskGoalObjectiveOpaqueSnapshot = z.infer<
+  typeof taskGoalObjectiveOpaqueSnapshotSchema
+>;
