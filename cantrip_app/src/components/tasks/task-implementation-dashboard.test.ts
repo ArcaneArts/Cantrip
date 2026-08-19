@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   taskImplementationPlacementLabel,
+  taskImplementationShowsLiveActivity,
   taskImplementationStatusLabel,
 } from "./task-implementation-dashboard";
 
@@ -42,5 +43,19 @@ describe("Task implementation dashboard presentation", () => {
     expect(
       taskImplementationStatusLabel({ ...task, state: "complete" }, goal),
     ).toBe("Complete");
+  });
+
+  it("shows live activity only while the Task Goal is running", () => {
+    expect(taskImplementationShowsLiveActivity(task, goal)).toBe(true);
+    expect(
+      taskImplementationShowsLiveActivity({ ...task, state: "complete" }, goal),
+    ).toBe(false);
+    expect(
+      taskImplementationShowsLiveActivity(task, {
+        ...goal,
+        status: "paused",
+      }),
+    ).toBe(false);
+    expect(taskImplementationShowsLiveActivity(task, null)).toBe(false);
   });
 });
