@@ -36,6 +36,7 @@ import {
   encryptedPayloadEnvelopeSchema,
   encryptionKeyBytesSchema,
   unavailableWorkerEncryptionStatus,
+  workerEncryptionRefreshRequestSchema,
   workerEncryptionStatusSchema,
 } from "./encryption.js";
 
@@ -8500,6 +8501,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityRenewCommandSchema,
   z.object({ type: z.literal("worker.version") }),
   z.object({ type: z.literal("worker.restart") }),
+  workerEncryptionRefreshRequestSchema.extend({
+    type: z.literal("worker.encryption.refresh"),
+  }),
   z.object({
     type: z.literal("diagnostics.logs.read"),
     afterCursor: z.number().int().nonnegative().default(0),

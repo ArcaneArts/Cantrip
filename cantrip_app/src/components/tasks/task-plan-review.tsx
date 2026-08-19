@@ -3,6 +3,7 @@ import {
   type ChatSummary,
   type TaskDetail,
   type TaskQuestionAnswer,
+  type WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -17,7 +18,14 @@ import {
   Undo2,
   WifiOff,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import { Button } from "@/components/ui/button";
@@ -28,7 +36,14 @@ import {
   updateTaskPlan,
 } from "@/lib/api";
 import { CantripApiError } from "@/lib/api-client";
+import { clientEncryption } from "@/lib/client-encryption";
 import { errorMessage } from "@/lib/error-message";
+import {
+  ensureTaskWorkerEncryption,
+  taskWorkerEncryptionCanAttempt,
+  taskWorkerEncryptionMessage,
+  taskWorkerEncryptionReadiness,
+} from "@/lib/task-worker-encryption";
 import { cn } from "@/lib/utils";
 
 import { TaskQuestionList } from "./task-question-list";
@@ -89,16 +104,27 @@ export function TaskPlanReview({
   chat,
   onReload,
   task,
-  workerName,
-  workerOnline,
+  worker,
 }: {
   chat: ChatSummary;
   onReload(): Promise<TaskDetail | null>;
   task: TaskDetail;
-  workerName?: string;
-  workerOnline: boolean;
+  worker?: WorkerSummary;
 }) {
   const queryClient = useQueryClient();
+  const encryptionSnapshot = useSyncExternalStore(
+    clientEncryption.subscribe,
+    clientEncryption.getSnapshot,
+    clientEncryption.getSnapshot,
+  );
+  const workerEncryptionReadiness = taskWorkerEncryptionReadiness(
+    worker,
+    encryptionSnapshot,
+  );
+  const workerEncryptionMessage = taskWorkerEncryptionMessage(
+    workerEncryptionReadiness,
+    worker?.name,
+  );
   const initial = initialReviewSession(task);
   const [planDraft, setPlanDraft] = useState(initial.planDraft);
   const [editing, setEditing] = useState(initial.editing);
@@ -261,14 +287,27 @@ export function TaskPlanReview({
     saveReview.isPending,
   ]);
 
+  const prepareWorkerEncryption = async () => {
+    const encryption = await ensureTaskWorkerEncryption({ worker });
+    queryClient.setQueryData<WorkerSummary[]>(["workers"], (current) =>
+      current?.map((candidate) =>
+        candidate.workerId === worker?.workerId
+          ? { ...candidate, encryption }
+          : candidate,
+      ),
+    );
+  };
+
   const continuePlanning = useMutation({
-    mutationFn: (operationId: string) =>
-      continueTaskPlanning(chat.id, {
+    mutationFn: async (operationId: string) => {
+      await prepareWorkerEncryption();
+      return continueTaskPlanning(chat.id, {
         operationId,
         rowVersion: rowVersionRef.current,
         answers: answersRef.current,
         additionalDirection: directionRef.current,
-      }),
+      });
+    },
     onMutate: () => setOperationNotice(null),
     onSuccess: (updated) => {
       continueOperationIdRef.current = null;
@@ -284,11 +323,13 @@ export function TaskPlanReview({
     },
   });
   const retryPlanning = useMutation({
-    mutationFn: (operationId: string) =>
-      retryTaskPlanning(chat.id, {
+    mutationFn: async (operationId: string) => {
+      await prepareWorkerEncryption();
+      return retryTaskPlanning(chat.id, {
         operationId,
         rowVersion: rowVersionRef.current,
-      }),
+      });
+    },
     onMutate: () => setOperationNotice(null),
     onSuccess: (updated) => {
       retryOperationIdRef.current = null;
@@ -304,13 +345,15 @@ export function TaskPlanReview({
     },
   });
   const beginImplementation = useMutation({
-    mutationFn: (operationId: string) =>
-      beginTaskImplementation(chat.id, {
+    mutationFn: async (operationId: string) => {
+      await prepareWorkerEncryption();
+      return beginTaskImplementation(chat.id, {
         operationId,
         rowVersion: rowVersionRef.current,
         answers: answersRef.current,
         additionalDirection: directionRef.current,
-      }),
+      });
+    },
     onMutate: () => setOperationNotice(null),
     onSuccess: (updated) => {
       implementationOperationIdRef.current = null;
@@ -365,7 +408,7 @@ export function TaskPlanReview({
     retryPlanning.isPending ||
     chat.status === "running" ||
     immutableFinalizationPending ||
-    !workerOnline;
+    !taskWorkerEncryptionCanAttempt(workerEncryptionReadiness);
   const reviewFieldsDisabled =
     conflict ||
     saveReview.isPending ||
@@ -390,7 +433,7 @@ export function TaskPlanReview({
           <span className="min-w-0 flex-1">{task.lastError.message}</span>
           <Button
             disabled={
-              !workerOnline ||
+              !taskWorkerEncryptionCanAttempt(workerEncryptionReadiness) ||
               retryPlanning.isPending ||
               saveReview.isPending ||
               planDirty ||
@@ -421,13 +464,14 @@ export function TaskPlanReview({
           ) : null}
         </div>
       ) : null}
-      {!workerOnline ? (
+      {workerEncryptionMessage ? (
         <div className="flex shrink-0 items-center gap-3 border-b bg-muted/35 px-5 py-3 text-sm">
-          <WifiOff className="size-4 text-muted-foreground" />
-          <span>
-            {workerName ?? "The selected worker"} is offline. Your plan and
-            answers are safe; planning can resume when it reconnects.
-          </span>
+          {workerEncryptionReadiness === "offline" ? (
+            <WifiOff className="size-4 text-muted-foreground" />
+          ) : (
+            <CircleAlert className="size-4 text-muted-foreground" />
+          )}
+          <span>{workerEncryptionMessage}</span>
         </div>
       ) : null}
       {conflict ? (

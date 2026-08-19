@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   providerQuotaSnapshotSchema,
+  workerEncryptionRefreshResultSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type McpServerConfiguration,
@@ -793,6 +794,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         scheduleWorkerRuntimeRestart(requestRuntimeRestart);
         return workerRestartAcknowledgementSchema.parse({ restarting: true });
+      case "worker.encryption.refresh":
+        return workerEncryptionRefreshResultSchema.parse({
+          component: command.component,
+          keyRevision: command.keyRevision,
+          status: await workerEncryption.refresh({
+            credential: config.token,
+          }),
+        });
       case "diagnostics.logs.read":
         return readWorkerLogs(command);
       case "worker.credential.rotate":
