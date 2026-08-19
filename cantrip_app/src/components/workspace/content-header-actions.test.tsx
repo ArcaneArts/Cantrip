@@ -158,6 +158,22 @@ describe("ContentHeaderActions", () => {
     ).toBe("");
   });
 
+  it("renders Explorer graph back-navigation without pretending a file is open", () => {
+    const markup = renderToStaticMarkup(
+      <ExplorerFileCloseButton
+        header={{
+          ...explorerHeader(),
+          backLabel: "Close graph",
+          canGoBack: true,
+          selectedPath: null,
+        }}
+      />,
+    );
+
+    expect(markup).toContain('title="Close graph"');
+    expect(markup).toContain(">Close graph</span>");
+  });
+
   it("labels the structured Explorer mode as Visual", () => {
     const markup = renderToStaticMarkup(
       <ContentHeaderActions

@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 
 import { ExplorerEntryRow } from "@/components/explorer/explorer-entry-row";
 import type { ExplorerChangeSummary } from "@/components/explorer/explorer-entry-metadata";
+import { explorerGraphRootForEntry } from "@/components/explorer/explorer-graph-routing";
 import { useExplorerDirectory } from "@/components/explorer/use-explorer-directory";
 
 export function ExplorerDirectoryNode({
@@ -18,8 +19,10 @@ export function ExplorerDirectoryNode({
   explorerId,
   gitStatus,
   onOpenFile,
+  onShowInGraph,
   onOpenTerminal,
   onToggle,
+  revealedPath,
 }: {
   changeByPath: ReadonlyMap<string, ExplorerChangeSummary>;
   commit: ExplorerLastCommit | null;
@@ -29,8 +32,10 @@ export function ExplorerDirectoryNode({
   explorerId: string;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
+  onShowInGraph(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
   onToggle(path: string): void;
+  revealedPath?: string | null;
 }) {
   const expanded = expandedPaths.has(entry.path);
   const { commitByPath, directory, entries } = useExplorerDirectory({
@@ -48,7 +53,9 @@ export function ExplorerDirectoryNode({
         entry={entry}
         expanded={expanded}
         onOpen={() => onToggle(entry.path)}
+        onShowInGraph={() => onShowInGraph(explorerGraphRootForEntry(entry))}
         onOpenTerminal={() => onOpenTerminal(entry)}
+        revealed={entry.path === revealedPath}
       />
       {expanded ? (
         <div role="group">
@@ -88,8 +95,10 @@ export function ExplorerDirectoryNode({
                     gitStatus={gitStatus}
                     key={child.path}
                     onOpenFile={onOpenFile}
+                    onShowInGraph={onShowInGraph}
                     onOpenTerminal={onOpenTerminal}
                     onToggle={onToggle}
+                    revealedPath={revealedPath}
                   />
                 ) : (
                   <ExplorerEntryRow
@@ -99,6 +108,10 @@ export function ExplorerDirectoryNode({
                     entry={child}
                     key={child.path}
                     onOpen={() => onOpenFile(child)}
+                    onShowInGraph={() =>
+                      onShowInGraph(explorerGraphRootForEntry(child))
+                    }
+                    revealed={child.path === revealedPath}
                   />
                 ),
               )}
