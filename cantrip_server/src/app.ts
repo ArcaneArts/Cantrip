@@ -6183,6 +6183,9 @@ export async function buildApp({
           } else {
             const plannerResult = parseTaskPlannerResult(
               notification.outcome.result.structuredResult,
+              taskOperation.round.inputPlanMarkdown?.trim()
+                ? taskOperation.round.inputPlanMarkdown
+                : taskOperation.round.inputBriefMarkdown,
             );
             await repository.tasks.completePlanningOperation(
               ownerId,
@@ -6202,6 +6205,9 @@ export async function buildApp({
               : normalizedTaskPlanMessage(
                   parseTaskPlannerResult(
                     notification.outcome.result.structuredResult,
+                    taskOperation.round.inputPlanMarkdown?.trim()
+                      ? taskOperation.round.inputPlanMarkdown
+                      : taskOperation.round.inputBriefMarkdown,
                   ),
                 );
           const assistantMessage = await appendLiveChatMessage(
@@ -7383,6 +7389,9 @@ export async function buildApp({
             async onCompleted({ attribution, result }) {
               const plannerResult = parseTaskPlannerResult(
                 result.structuredResult,
+                started.round.inputPlanMarkdown?.trim()
+                  ? started.round.inputPlanMarkdown
+                  : started.round.inputBriefMarkdown,
               );
               const completed =
                 await repository.tasks.completePlanningOperation(

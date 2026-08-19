@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildTaskGoalObjective,
   normalizedTaskFinalizationMessage,
+  parseTaskPlannerResult,
 } from "../src/tasks/planner.js";
 
 const result = {
@@ -10,6 +11,35 @@ const result = {
     "# Final plan\n\n- Deliver every acceptance criterion.\n- Validate the finished result.",
   goalPrompt: "Implement all milestones and finish the complete plan.",
 };
+
+describe("Task planner results", () => {
+  it("preserves a non-empty structured plan", () => {
+    expect(
+      parseTaskPlannerResult(
+        { planMarkdown: "# Planned result", questions: [] },
+        "# User brief",
+      ),
+    ).toEqual({ planMarkdown: "# Planned result", questions: [] });
+  });
+
+  it("uses the saved planning input when structured plan text is empty", () => {
+    expect(
+      parseTaskPlannerResult(
+        { planMarkdown: "  \n", questions: [] },
+        "# User brief\n\nPreserve this task direction.",
+      ),
+    ).toEqual({
+      planMarkdown: "# User brief\n\nPreserve this task direction.",
+      questions: [],
+    });
+  });
+
+  it("still rejects malformed structured planner output", () => {
+    expect(() =>
+      parseTaskPlannerResult({ questions: [] }, "# User brief"),
+    ).toThrow();
+  });
+});
 
 describe("Task finalization", () => {
   it("builds a policy-aware whole-plan Goal objective without hardcoded policy bodies", () => {
