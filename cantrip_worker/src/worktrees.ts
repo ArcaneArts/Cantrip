@@ -29,6 +29,7 @@ import { readGitStatus } from "./git.js";
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
 const OBSERVATION_DEBOUNCE_MS = 500;
+const OBSERVATION_HEAD_RECONCILE_MS = 2_000;
 const OBSERVATION_RECONCILE_MS = 30_000;
 const OBSERVATION_SCAN_CONCURRENCY = 4;
 
@@ -203,15 +204,18 @@ export function parseGitWorktreePorcelain(
 export class WorktreeManager {
   private readonly mutationQueues = new Map<string, Promise<void>>();
   private readonly observationFingerprints = new Map<string, string>();
+  private readonly observationHeads = new Map<string, string | null>();
   private readonly observationInventoryFingerprints = new Map<string, string>();
   private readonly observationTargets = new Map<string, ObservedWorktree>();
   private readonly observationTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
   >();
-  private readonly observationWatchers = new Map<string, FSWatcher>();
+  private readonly observationWatchers = new Map<string, FSWatcher[]>();
   private observationEmitter: (notification: WorkerNotification) => boolean =
     () => false;
+  private observationHeadSweep: ReturnType<typeof setInterval> | null = null;
+  private observationHeadSweepRunning = false;
   private observationSweep: ReturnType<typeof setInterval> | null = null;
   private observationSweepRunning = false;
 
@@ -237,9 +241,9 @@ export class WorktreeManager {
       void this.refreshObservedSources(false);
       return;
     }
-    for (const [key, watcher] of this.observationWatchers) {
+    for (const [key, watchers] of this.observationWatchers) {
       if (next.has(key)) continue;
-      watcher.close();
+      for (const watcher of watchers) watcher.close();
       this.observationWatchers.delete(key);
     }
     for (const [key, timer] of this.observationTimers) {
@@ -250,6 +254,7 @@ export class WorktreeManager {
     for (const key of this.observationTargets.keys()) {
       if (next.has(key)) continue;
       this.observationFingerprints.delete(key);
+      this.observationHeads.delete(key);
     }
     this.observationTargets.clear();
     for (const [key, target] of next) {
@@ -265,34 +270,82 @@ export class WorktreeManager {
       clearInterval(this.observationSweep);
       this.observationSweep = null;
     }
+    if (this.observationTargets.size > 0 && !this.observationHeadSweep) {
+      this.observationHeadSweep = setInterval(
+        () => void this.refreshObservedHeads(),
+        OBSERVATION_HEAD_RECONCILE_MS,
+      );
+      this.observationHeadSweep.unref();
+    } else if (
+      this.observationTargets.size === 0 &&
+      this.observationHeadSweep
+    ) {
+      clearInterval(this.observationHeadSweep);
+      this.observationHeadSweep = null;
+    }
     void this.refreshObservedSources(true);
   }
 
   close(): void {
     if (this.observationSweep) clearInterval(this.observationSweep);
     this.observationSweep = null;
+    if (this.observationHeadSweep) clearInterval(this.observationHeadSweep);
+    this.observationHeadSweep = null;
     for (const timer of this.observationTimers.values()) clearTimeout(timer);
     this.observationTimers.clear();
-    for (const watcher of this.observationWatchers.values()) watcher.close();
+    for (const watchers of this.observationWatchers.values()) {
+      for (const watcher of watchers) watcher.close();
+    }
     this.observationWatchers.clear();
     this.observationTargets.clear();
+    this.observationHeads.clear();
   }
 
-  private watchTarget(key: string, target: ObservedWorktree): void {
-    try {
-      const watcher = watch(target.worktreePath, { recursive: true }, () =>
+  private async watchTarget(
+    key: string,
+    target: ObservedWorktree,
+  ): Promise<void> {
+    const watchers: FSWatcher[] = [];
+    const install = (watchedPath: string): void => {
+      if (this.observationWatchers.get(key) !== watchers) return;
+      const watcher = watch(watchedPath, { recursive: true }, () =>
         this.scheduleObservedTarget(key),
       );
       watcher.on("error", () => {
-        if (this.observationWatchers.get(key) === watcher) {
-          this.observationWatchers.delete(key);
-        }
+        const current = this.observationWatchers.get(key);
+        if (current !== watchers) return;
+        const index = watchers.indexOf(watcher);
+        if (index >= 0) watchers.splice(index, 1);
+        if (watchers.length === 0) this.observationWatchers.delete(key);
         watcher.close();
       });
-      this.observationWatchers.set(key, watcher);
+      watchers.push(watcher);
+    };
+    this.observationWatchers.set(key, watchers);
+    try {
+      install(target.worktreePath);
     } catch {
-      // The bounded reconciliation sweep remains authoritative when watching
-      // is unavailable for this platform, path, or filesystem.
+      // Git metadata watching below may still be available.
+    }
+    try {
+      const gitDirectories = await Promise.all(
+        ["--git-dir", "--git-common-dir"].map((argument) =>
+          gitOutput(target.worktreePath, [
+            "rev-parse",
+            "--path-format=absolute",
+            argument,
+          ]),
+        ),
+      );
+      for (const gitDirectory of new Set(
+        gitDirectories.map((gitDirectory) => path.resolve(gitDirectory)),
+      )) {
+        if (gitDirectory !== path.resolve(target.worktreePath)) {
+          install(gitDirectory);
+        }
+      }
+    } catch {
+      if (watchers.length === 0) this.observationWatchers.delete(key);
     }
   }
 
@@ -340,6 +393,32 @@ export class WorktreeManager {
     }
   }
 
+  private async refreshObservedHeads(): Promise<void> {
+    if (this.observationHeadSweepRunning) return;
+    this.observationHeadSweepRunning = true;
+    try {
+      await forEachConcurrent(
+        [...this.observationTargets.entries()],
+        OBSERVATION_SCAN_CONCURRENCY,
+        async ([key, target]) => {
+          if (!target.worktree || target.worktree.missing) return;
+          const head = await gitOutput(target.worktreePath, [
+            "rev-parse",
+            "--verify",
+            "HEAD",
+          ]).catch(() => null);
+          const previous = this.observationHeads.get(key);
+          this.observationHeads.set(key, head);
+          if (previous !== undefined && previous !== head) {
+            this.scheduleObservedTarget(key);
+          }
+        },
+      );
+    } finally {
+      this.observationHeadSweepRunning = false;
+    }
+  }
+
   private async refreshObservedSource(
     sourcePath: string,
     force: boolean,
@@ -376,7 +455,7 @@ export class WorktreeManager {
           !target.worktree.missing &&
           !this.observationWatchers.has(key)
         ) {
-          this.watchTarget(key, target);
+          await this.watchTarget(key, target);
         }
       }
       await forEachConcurrent(
@@ -403,6 +482,7 @@ export class WorktreeManager {
       worktree: target.worktree,
       status: await readGitStatus(target.worktree.path),
     });
+    this.observationHeads.set(key, result.status.head);
     const fingerprint = JSON.stringify(result);
     if (
       (force || fingerprint !== this.observationFingerprints.get(key)) &&

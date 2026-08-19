@@ -1,5 +1,9 @@
 import { chatMessageSchema } from "@cantrip/protocol";
-import type { AppLiveServerMessage, ChatMessage } from "@cantrip/protocol";
+import type {
+  AppLiveServerMessage,
+  ChatMessage,
+  GitStatus,
+} from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 
@@ -34,7 +38,13 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([["worktree-status", "project-one"]]);
+    ).toEqual([
+      ["worktree-status", "project-one"],
+      ["worktree-history", "project-one"],
+      ["git-graph-snapshot", "project-one"],
+      ["git-graph-metrics", "project-one"],
+      ["git-graph-commit-overlay", "project-one"],
+    ]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -51,7 +61,13 @@ describe("application live query bridge", () => {
           scope: { kind: "project", projectId: "project-one" },
         }),
       ),
-    ).toEqual([["worktree-status", "project-one", "worktree-one"]]);
+    ).toEqual([
+      ["worktree-status", "project-one", "worktree-one"],
+      ["worktree-history", "project-one", "worktree-one"],
+      ["git-graph-snapshot", "project-one", "worktree-one"],
+      ["git-graph-metrics", "project-one", "worktree-one"],
+      ["git-graph-commit-overlay", "project-one", "worktree-one"],
+    ]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -117,6 +133,12 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["worktrees", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["git-graph-snapshot", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["git-graph-metrics", "project-one"]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -321,7 +343,7 @@ describe("application live query bridge", () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
-  it("upserts a worker-observed Git status without a follow-up GET", () => {
+  it("upserts Git status while invalidating revision-derived graph data", async () => {
     const queryClient = new QueryClient();
     const invalidate = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -353,6 +375,64 @@ describe("application live query bridge", () => {
         "worktree-one",
       ]),
     ).toEqual(status);
+    await vi.waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["git-graph-snapshot", "project-one", "worktree-one"],
+      }),
+    );
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["worktree-status", "project-one", "worktree-one"],
+    });
+  });
+
+  it("does not recompute committed graph data for working-tree-only changes", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const queryKey = [
+      "worktree-status",
+      "project-one",
+      "worktree-one",
+    ] as const;
+    const status = {
+      branch: "main",
+      head: "a".repeat(40),
+      upstream: "origin/main",
+      ahead: 0,
+      behind: 0,
+      files: [],
+      branches: [],
+    };
+    queryClient.setQueryData(queryKey, status);
+    const bridge = new AppLiveQueryBridge(queryClient);
+
+    bridge.handleEvent({
+      ...event({
+        entityId: "worktree-one",
+        resource: "worktree-status",
+        scope: { kind: "project", projectId: "project-one" },
+      }),
+      payload: {
+        ...status,
+        files: [
+          {
+            indexStatus: "?",
+            originalPath: null,
+            path: "draft.txt",
+            staged: false,
+            unstaged: true,
+            worktreeStatus: "?",
+          },
+        ],
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(queryClient.getQueryData<GitStatus>(queryKey)?.files).toHaveLength(
+      1,
+    );
     expect(invalidate).not.toHaveBeenCalled();
   });
 

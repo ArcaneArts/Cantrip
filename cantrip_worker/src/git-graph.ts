@@ -20,6 +20,9 @@ const execFileAsync = promisify(execFile);
 const GRAPH_ANALYZER_VERSION = 1;
 const GRAPH_GIT_BUFFER = 128 * 1024 * 1024;
 const GRAPH_CACHE_LIMIT = 16;
+const GRAPH_BLAME_FILE_LIMIT = 80;
+const GRAPH_BLAME_LINE_LIMIT = 75_000;
+const MILLISECONDS_PER_DAY = 86_400_000;
 
 interface GraphContext {
   branch: string | null;
@@ -45,8 +48,27 @@ interface MutableMetrics {
   lineCount: number | null;
 }
 
+interface MutableBlame {
+  authors: Map<string, { email: string; lines: number; name: string }>;
+  lineCount: number;
+  totalAgeDays: number;
+}
+
+interface BlameAnalysis {
+  byNodeId: Map<string, MutableBlame>;
+  coverage: {
+    analyzedFiles: number;
+    totalFiles: number;
+    truncated: boolean;
+  };
+}
+
 const snapshotCache = new Map<string, CacheEntry<GitGraphSnapshot>>();
 const metricsCache = new Map<string, CacheEntry<GitGraphMetrics>>();
+const latestMetricsCache = new Map<
+  string,
+  { lastUsed: number; metrics: GitGraphMetrics }
+>();
 
 async function gitRaw(cwd: string, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
@@ -99,6 +121,7 @@ function cacheValue<T>(
 export function clearGitGraphAnalysisCache(): void {
   snapshotCache.clear();
   metricsCache.clear();
+  latestMetricsCache.clear();
 }
 
 function normalizeRootPath(rootPath: string | null): string | null {
@@ -471,15 +494,173 @@ async function readLineCounts(
   return parseLineCounts(await gitRawAllowNoMatches(cwd, args), revision);
 }
 
-function initialMetrics(node: GitGraphNode): MutableMetrics {
+async function isGitAncestor(
+  cwd: string,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  if (ancestor === descendant) return true;
+  try {
+    await gitRaw(cwd, ["merge-base", "--is-ancestor", ancestor, descendant]);
+    return true;
+  } catch (error) {
+    if ((error as { code?: number }).code === 1) return false;
+    throw error;
+  }
+}
+
+async function mapConcurrent<T, R>(
+  items: readonly T[],
+  limit: number,
+  visit: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let index = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (index < items.length) {
+        const current = index;
+        index += 1;
+        results[current] = await visit(items[current]!);
+      }
+    }),
+  );
+  return results;
+}
+
+function emptyBlame(): MutableBlame {
+  return { authors: new Map(), lineCount: 0, totalAgeDays: 0 };
+}
+
+function mergeBlame(target: MutableBlame, source: MutableBlame): void {
+  target.lineCount += source.lineCount;
+  target.totalAgeDays += source.totalAgeDays;
+  for (const [key, author] of source.authors) {
+    const current = target.authors.get(key);
+    target.authors.set(key, {
+      ...author,
+      lines: (current?.lines ?? 0) + author.lines,
+    });
+  }
+}
+
+function parseBlameSummary(output: string, now: number): MutableBlame {
+  const summary = emptyBlame();
+  let authorName = "Unknown";
+  let authorEmail = "";
+  let authoredAt = 0;
+  for (const line of output.split("\n")) {
+    if (/^[0-9a-f^]{40,64}\s/u.test(line)) {
+      authorName = "Unknown";
+      authorEmail = "";
+      authoredAt = 0;
+    } else if (line.startsWith("author ")) {
+      authorName = line.slice(7) || "Unknown";
+    } else if (line.startsWith("author-mail ")) {
+      authorEmail = line.slice(12).replace(/^<|>$/gu, "");
+    } else if (line.startsWith("author-time ")) {
+      const seconds = Number.parseInt(line.slice(12), 10);
+      authoredAt = Number.isFinite(seconds) ? seconds * 1_000 : 0;
+    } else if (line.startsWith("\t")) {
+      const key = `${authorEmail}\0${authorName}`;
+      const current = summary.authors.get(key);
+      summary.authors.set(key, {
+        email: authorEmail,
+        lines: (current?.lines ?? 0) + 1,
+        name: authorName,
+      });
+      summary.lineCount += 1;
+      summary.totalAgeDays += authoredAt
+        ? Math.max(0, (now - authoredAt) / MILLISECONDS_PER_DAY)
+        : 0;
+    }
+  }
+  return summary;
+}
+
+async function analyzeBlame(
+  cwd: string,
+  snapshot: GitGraphSnapshot,
+  metricsById: Map<string, MutableMetrics>,
+): Promise<BlameAnalysis> {
+  const eligible = snapshot.nodes.filter((node) => {
+    const metrics = metricsById.get(node.id);
+    return (
+      node.kind === "file" &&
+      node.path !== null &&
+      metrics?.binary === false &&
+      (metrics.lineCount ?? 0) > 0
+    );
+  });
+  const selected: GitGraphNode[] = [];
+  let selectedLines = 0;
+  for (const node of eligible) {
+    const lines = metricsById.get(node.id)?.lineCount ?? 0;
+    if (
+      selected.length >= GRAPH_BLAME_FILE_LIMIT ||
+      selectedLines + lines > GRAPH_BLAME_LINE_LIMIT
+    ) {
+      continue;
+    }
+    selected.push(node);
+    selectedLines += lines;
+  }
+
+  const now = Date.now();
+  const results = await mapConcurrent(selected, 3, async (node) => {
+    try {
+      return {
+        node,
+        summary: parseBlameSummary(
+          await gitRaw(cwd, [
+            "blame",
+            "--line-porcelain",
+            snapshot.revision!,
+            "--",
+            node.path!,
+          ]),
+          now,
+        ),
+      };
+    } catch {
+      return { node, summary: null };
+    }
+  });
+  const byNodeId = new Map<string, MutableBlame>();
+  let analyzedFiles = 0;
+  for (const { node, summary } of results) {
+    if (!summary) continue;
+    analyzedFiles += 1;
+    byNodeId.set(node.id, summary);
+    for (const ancestorId of ancestorNodeIds(node.path!, snapshot.rootPath)) {
+      const aggregate = byNodeId.get(ancestorId) ?? emptyBlame();
+      mergeBlame(aggregate, summary);
+      byNodeId.set(ancestorId, aggregate);
+    }
+  }
   return {
-    additions: 0,
-    binaryCommitTouches: 0,
+    byNodeId,
+    coverage: {
+      analyzedFiles,
+      totalFiles: eligible.length,
+      truncated:
+        selected.length < eligible.length || analyzedFiles < selected.length,
+    },
+  };
+}
+
+function initialMetrics(
+  node: GitGraphNode,
+  previous?: GitGraphNodeMetrics,
+): MutableMetrics {
+  return {
+    additions: previous?.additions ?? 0,
+    binaryCommitTouches: previous?.binaryCommitTouches ?? 0,
     binary: node.kind === "file" ? false : null,
-    commitTouches: 0,
-    deletions: 0,
-    firstChangedAt: null,
-    lastChangedAt: null,
+    commitTouches: previous?.commitTouches ?? 0,
+    deletions: previous?.deletions ?? 0,
+    firstChangedAt: previous?.firstChangedAt ?? null,
+    lastChangedAt: previous?.lastChangedAt ?? null,
     lineCount: node.kind === "directory" ? 0 : null,
   };
 }
@@ -598,9 +779,17 @@ function aggregateDirectoryLines(
 async function createMetrics(
   cwd: string,
   snapshot: GitGraphSnapshot,
+  includeBlame: boolean,
+  previous: GitGraphMetrics | null,
 ): Promise<GitGraphMetrics> {
+  const previousByPath = new Map(
+    previous?.nodes.map((node) => [node.path, node]) ?? [],
+  );
   const metricsById = new Map(
-    snapshot.nodes.map((node) => [node.id, initialMetrics(node)]),
+    snapshot.nodes.map((node) => [
+      node.id,
+      initialMetrics(node, previousByPath.get(node.path)),
+    ]),
   );
   if (!snapshot.revision) {
     return gitGraphMetricsSchema.parse({
@@ -609,6 +798,7 @@ async function createMetrics(
       rootPath: snapshot.rootPath,
       historyScope: "none",
       renameAware: false,
+      blameCoverage: null,
       nodes: snapshot.nodes.map((node) => ({
         nodeId: node.id,
         path: node.path,
@@ -629,6 +819,9 @@ async function createMetrics(
     });
   }
 
+  const historyRevision = previous?.revision
+    ? `${previous.revision}..${snapshot.revision}`
+    : snapshot.revision;
   const [lineCounts, history] = await Promise.all([
     readLineCounts(cwd, snapshot.revision, snapshot.rootPath),
     gitRawAllowNoMatches(cwd, [
@@ -638,7 +831,7 @@ async function createMetrics(
       "--numstat",
       "-z",
       "--no-renames",
-      snapshot.revision,
+      historyRevision,
       ...(snapshot.rootPath ? ["--", snapshot.rootPath] : []),
     ]),
   ]);
@@ -661,9 +854,18 @@ async function createMetrics(
   }
   aggregateDirectoryLines(snapshot, metricsById);
   applyHistory(history, snapshot.rootPath, metricsById, nodeIdByPath);
+  const blame = includeBlame
+    ? await analyzeBlame(cwd, snapshot, metricsById)
+    : null;
 
   const nodes: GitGraphNodeMetrics[] = snapshot.nodes.map((node) => {
     const metrics = metricsById.get(node.id)!;
+    const blameMetrics = blame?.byNodeId.get(node.id);
+    const dominantAuthor = blameMetrics
+      ? [...blameMetrics.authors.values()].sort(
+          (left, right) => right.lines - left.lines,
+        )[0]
+      : undefined;
     return {
       nodeId: node.id,
       path: node.path,
@@ -676,10 +878,15 @@ async function createMetrics(
       binaryCommitTouches: metrics.binaryCommitTouches,
       firstChangedAt: metrics.firstChangedAt,
       lastChangedAt: metrics.lastChangedAt,
-      dominantAuthorName: null,
-      dominantAuthorEmail: null,
-      dominantAuthorShare: null,
-      averageBlameAgeDays: null,
+      dominantAuthorName: dominantAuthor?.name ?? null,
+      dominantAuthorEmail: dominantAuthor?.email ?? null,
+      dominantAuthorShare:
+        dominantAuthor && blameMetrics?.lineCount
+          ? dominantAuthor.lines / blameMetrics.lineCount
+          : null,
+      averageBlameAgeDays: blameMetrics?.lineCount
+        ? blameMetrics.totalAgeDays / blameMetrics.lineCount
+        : null,
     };
   });
   return gitGraphMetricsSchema.parse({
@@ -688,13 +895,19 @@ async function createMetrics(
     rootPath: snapshot.rootPath,
     historyScope: "current-branch",
     renameAware: false,
+    blameCoverage: blame?.coverage ?? null,
     nodes,
     analyzedAt: new Date().toISOString(),
     analysis: {
       structure: "ready",
       lines: "ready",
       history: "ready",
-      blame: "deferred",
+      blame:
+        !includeBlame || !blame
+          ? "deferred"
+          : blame.coverage.totalFiles > 0
+            ? "ready"
+            : "unavailable",
     },
   });
 }
@@ -704,6 +917,7 @@ export async function readGitGraphMetrics(
   revision = "HEAD",
   rootPath: string | null = null,
   maxNodes = 100_000,
+  includeBlame = false,
 ): Promise<GitGraphMetrics> {
   const nodeLimit = normalizeMaxNodes(maxNodes);
   const snapshot = await readGitGraphSnapshot(
@@ -716,18 +930,41 @@ export async function readGitGraphMetrics(
     "rev-parse",
     "--git-common-dir",
   ]);
-  const key = JSON.stringify([
+  const scopeKey = JSON.stringify([
     GRAPH_ANALYZER_VERSION,
     await realpath(
       path.isAbsolute(commonDirectory)
         ? commonDirectory
         : path.resolve(cwd, commonDirectory),
     ),
-    snapshot.revision,
     snapshot.rootPath,
     nodeLimit,
   ]);
-  return cacheValue(metricsCache, key, () => createMetrics(cwd, snapshot));
+  const key = JSON.stringify([scopeKey, snapshot.revision, includeBlame]);
+  return cacheValue(metricsCache, key, async () => {
+    const latest = latestMetricsCache.get(scopeKey)?.metrics ?? null;
+    const currentPaths = new Set(snapshot.nodes.map((node) => node.path));
+    const sameTree =
+      latest?.revision !== null &&
+      latest?.nodes.length === snapshot.nodes.length &&
+      latest.nodes.every((node) => currentPaths.has(node.path));
+    const previous =
+      latest?.revision &&
+      snapshot.revision &&
+      sameTree &&
+      (await isGitAncestor(cwd, latest.revision, snapshot.revision))
+        ? latest
+        : null;
+    const metrics = await createMetrics(cwd, snapshot, includeBlame, previous);
+    latestMetricsCache.set(scopeKey, { lastUsed: Date.now(), metrics });
+    if (latestMetricsCache.size > GRAPH_CACHE_LIMIT) {
+      const oldest = [...latestMetricsCache.entries()]
+        .filter(([candidate]) => candidate !== scopeKey)
+        .sort((left, right) => left[1].lastUsed - right[1].lastUsed)[0];
+      if (oldest) latestMetricsCache.delete(oldest[0]);
+    }
+    return metrics;
+  });
 }
 
 export function createGitGraphCommitOverlay(

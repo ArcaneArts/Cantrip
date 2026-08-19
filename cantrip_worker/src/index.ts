@@ -1205,6 +1205,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.revision,
           command.rootPath,
           command.maxNodes,
+          command.includeBlame,
         );
       case "git.graph.commit-overlay":
         return createGitGraphCommitOverlay(

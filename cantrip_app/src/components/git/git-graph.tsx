@@ -9,7 +9,7 @@ import {
   RotateCcw,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   RepositoryGraphSurface,
@@ -157,6 +157,11 @@ export function GitRepositoryGraphView({
   const [state, setState] = useState(() =>
     readGitGraphState(projectId, worktreeId),
   );
+  const observedHeadRef = useRef<string | null | undefined>(undefined);
+  const [liveTransition, setLiveTransition] = useState<{
+    previousRevision: string;
+    revision: string;
+  } | null>(null);
   const snapshot = useQuery({
     enabled: Boolean(projectId && worktreeId),
     queryKey: [
@@ -175,23 +180,27 @@ export function GitRepositoryGraphView({
       }),
     staleTime: 30_000,
   });
+  const overlayRevision = commitRevision ?? liveTransition?.revision ?? null;
   const commitOverlay = useQuery({
-    enabled: Boolean(commitRevision && snapshot.data),
+    enabled: Boolean(overlayRevision && snapshot.data),
     queryKey: [
       "git-graph-commit-overlay",
       projectId,
       worktreeId,
-      commitRevision,
+      overlayRevision,
       rootPath,
       refreshEpoch,
     ],
     queryFn: () =>
       getProjectWorktreeGraphCommitOverlay(projectId, worktreeId, {
-        revision: commitRevision!,
+        revision: overlayRevision!,
         rootPath,
       }),
     staleTime: 30_000,
   });
+  const wantsBlame =
+    state.colorDimension === "blame-owner" ||
+    state.colorDimension === "blame-age";
   const metrics = useQuery({
     enabled: Boolean(snapshot.data),
     queryKey: [
@@ -199,17 +208,30 @@ export function GitRepositoryGraphView({
       projectId,
       worktreeId,
       snapshot.data?.revision ?? "HEAD",
+      wantsBlame,
       rootPath,
       refreshEpoch,
     ],
     queryFn: () =>
       getProjectWorktreeGraphMetrics(projectId, worktreeId, {
         maxNodes: 100_000,
+        includeBlame: wantsBlame,
         revision: snapshot.data?.revision ?? "HEAD",
         rootPath,
       }),
     staleTime: 30_000,
   });
+  const liveOverlayReady = Boolean(
+    !commitRevision &&
+    liveTransition &&
+    commitOverlay.data?.revision === liveTransition.revision &&
+    commitOverlay.data.baseRevision === liveTransition.previousRevision,
+  );
+  const activeOverlay = commitRevision
+    ? (commitOverlay.data ?? null)
+    : liveOverlayReady
+      ? (commitOverlay.data ?? null)
+      : null;
   const metricsReady = Boolean(metrics.data);
   const sizeDimension = dimensionDisabled(state.sizeDimension, metricsReady)
     ? metrics.isError
@@ -229,12 +251,12 @@ export function GitRepositoryGraphView({
       sizeDimension,
       colorDimension,
     );
-    return commitOverlay.data
-      ? applyGitGraphCommitOverlay(base, snapshot.data, commitOverlay.data)
+    return activeOverlay
+      ? applyGitGraphCommitOverlay(base, snapshot.data, activeOverlay)
       : base;
   }, [
     colorDimension,
-    commitOverlay.data,
+    activeOverlay,
     metrics.data,
     sizeDimension,
     snapshot.data,
@@ -259,6 +281,47 @@ export function GitRepositoryGraphView({
     );
     return () => window.clearTimeout(timer);
   }, [projectId, state, worktreeId]);
+
+  useEffect(() => {
+    observedHeadRef.current = undefined;
+    setLiveTransition(null);
+  }, [projectId, rootPath, worktreeId]);
+
+  useEffect(() => {
+    if (commitRevision || snapshot.data === undefined) return;
+    const revision = snapshot.data.revision;
+    const previous = observedHeadRef.current;
+    observedHeadRef.current = revision;
+    if (
+      previous !== undefined &&
+      previous !== null &&
+      revision !== null &&
+      previous !== revision
+    ) {
+      setLiveTransition({ previousRevision: previous, revision });
+    }
+  }, [commitRevision, snapshot.data]);
+
+  useEffect(() => {
+    if (commitRevision || !liveTransition) return;
+    if (commitOverlay.isError) {
+      setLiveTransition(null);
+      return;
+    }
+    if (!commitOverlay.data) return;
+    if (!liveOverlayReady) {
+      setLiveTransition(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setLiveTransition(null), 4_500);
+    return () => window.clearTimeout(timer);
+  }, [
+    commitOverlay.data,
+    commitOverlay.isError,
+    commitRevision,
+    liveOverlayReady,
+    liveTransition,
+  ]);
 
   useEffect(() => {
     if (!snapshot.data) return;
@@ -355,10 +418,11 @@ export function GitRepositoryGraphView({
       />
 
       <div className="absolute left-3 top-3 flex max-w-[calc(100%-5.5rem)] flex-col gap-2">
-        {commitRevision ? (
+        {commitRevision || liveOverlayReady ? (
           <div className="flex w-fit max-w-full items-center gap-2 rounded-lg border border-violet-500/40 bg-background/92 px-3 py-2 text-xs shadow-sm backdrop-blur">
             <span className="shrink-0 font-medium text-violet-400">
-              Commit {commitRevision.slice(0, 8)}
+              {commitRevision ? "Commit" : "New commit"}{" "}
+              {(commitRevision ?? liveTransition?.revision ?? "").slice(0, 8)}
             </span>
             {commitOverlay.data ? (
               <span className="truncate text-muted-foreground">
@@ -372,18 +436,22 @@ export function GitRepositoryGraphView({
             ) : null}
             <Button
               className="ml-auto size-6 shrink-0"
-              onClick={onClearCommit}
+              onClick={() =>
+                commitRevision ? onClearCommit?.() : setLiveTransition(null)
+              }
               size="icon"
-              title="Back to HEAD"
+              title={commitRevision ? "Back to HEAD" : "Dismiss update"}
               type="button"
               variant="ghost"
             >
               <X className="size-3.5" />
-              <span className="sr-only">Back to HEAD</span>
+              <span className="sr-only">
+                {commitRevision ? "Back to HEAD" : "Dismiss update"}
+              </span>
             </Button>
           </div>
         ) : null}
-        {commitOverlay.isError ? (
+        {commitRevision && commitOverlay.isError ? (
           <div className="w-fit max-w-full rounded-lg border border-destructive/30 bg-background/92 px-3 py-2 text-xs text-destructive shadow-sm backdrop-blur">
             {commitOverlay.error instanceof Error
               ? commitOverlay.error.message
@@ -442,7 +510,7 @@ export function GitRepositoryGraphView({
                 {COLOR_DIMENSIONS.map((dimension) => {
                   const unavailableBlame =
                     ["blame-owner", "blame-age"].includes(dimension.value) &&
-                    analysis.blame !== "ready";
+                    analysis.blame === "unavailable";
                   const disabled =
                     unavailableBlame ||
                     dimensionDisabled(dimension.value, metricsReady);
@@ -558,13 +626,18 @@ export function GitRepositoryGraphView({
           className={cn(
             "size-1.5 rounded-full",
             metrics.isFetching
-              ? "animate-pulse bg-amber-500"
+              ? "animate-pulse bg-amber-500 motion-reduce:animate-none"
               : "bg-emerald-500",
           )}
         />
         {snapshot.data.totalNodes.toLocaleString()} nodes · lines{" "}
         {metricStatusLabel(analysis.lines)} · history{" "}
-        {metricStatusLabel(analysis.history)}
+        {metricStatusLabel(analysis.history)} · blame{" "}
+        {metricStatusLabel(analysis.blame)}
+        {metrics.data?.blameCoverage?.truncated
+          ? ` (${metrics.data.blameCoverage.analyzedFiles.toLocaleString()}/${metrics.data.blameCoverage.totalFiles.toLocaleString()} files)`
+          : ""}
+        {snapshot.data.truncated ? " · analysis capped" : ""}
       </div>
     </div>
   );

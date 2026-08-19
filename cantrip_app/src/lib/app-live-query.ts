@@ -102,6 +102,18 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             event.entityId
               ? ["worktree-status", projectId, event.entityId]
               : ["worktree-status", projectId],
+            event.entityId
+              ? ["worktree-history", projectId, event.entityId]
+              : ["worktree-history", projectId],
+            event.entityId
+              ? ["git-graph-snapshot", projectId, event.entityId]
+              : ["git-graph-snapshot", projectId],
+            event.entityId
+              ? ["git-graph-metrics", projectId, event.entityId]
+              : ["git-graph-metrics", projectId],
+            event.entityId
+              ? ["git-graph-commit-overlay", projectId, event.entityId]
+              : ["git-graph-commit-overlay", projectId],
           ]
         : event.scope.kind === "current-user"
           ? [["worktree-status"]]
@@ -272,6 +284,10 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-tab-layout", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],
+        ["worktree-history", scope.projectId],
+        ["git-graph-snapshot", scope.projectId],
+        ["git-graph-metrics", scope.projectId],
+        ["git-graph-commit-overlay", scope.projectId],
         ["git-operation", scope.projectId],
         ["git-conflicts", scope.projectId],
         ["chats", scope.projectId],
@@ -330,15 +346,29 @@ export class AppLiveQueryBridge {
   handleEvent(event: AppLiveEvent): void {
     this.#receivedEventCount += 1;
     if (!this.#acceptWorkflowEvent(event)) return;
-    if (
+    const worktreeStatus = this.#applyWorktreeStatusEvent(event);
+    const directlyApplied =
       this.#applyChatMessageEvent(event) ||
-      this.#applyWorktreeStatusEvent(event) ||
-      this.#applyCustomizationStatusEvent(event)
-    ) {
+      worktreeStatus.applied ||
+      this.#applyCustomizationStatusEvent(event);
+    if (directlyApplied) {
       this.#directlyAppliedEventCount += 1;
-      return;
+      if (event.resource !== "worktree-status") return;
     }
     for (const key of appLiveEventQueryKeys(event)) {
+      if (directlyApplied && key[0] === "worktree-status") continue;
+      if (
+        worktreeStatus.applied &&
+        !worktreeStatus.revisionChanged &&
+        [
+          "worktree-history",
+          "git-graph-snapshot",
+          "git-graph-metrics",
+          "git-graph-commit-overlay",
+        ].includes(String(key[0]))
+      ) {
+        continue;
+      }
       const serialized = JSON.stringify(key);
       if (this.#pendingKeys.has(serialized)) {
         this.#coalescedInvalidationCount += 1;
@@ -445,22 +475,32 @@ export class AppLiveQueryBridge {
     return true;
   }
 
-  #applyWorktreeStatusEvent(event: AppLiveEvent): boolean {
+  #applyWorktreeStatusEvent(event: AppLiveEvent): {
+    applied: boolean;
+    revisionChanged: boolean;
+  } {
     if (
       event.resource !== "worktree-status" ||
       event.action !== "updated" ||
       event.scope.kind !== "project" ||
       !event.entityId
     ) {
-      return false;
+      return { applied: false, revisionChanged: false };
     }
     const parsed = gitStatusSchema.safeParse(event.payload);
-    if (!parsed.success) return false;
-    this.#queryClient.setQueryData<GitStatus>(
-      ["worktree-status", event.scope.projectId, event.entityId],
-      parsed.data,
-    );
-    return true;
+    if (!parsed.success) return { applied: false, revisionChanged: false };
+    const queryKey = [
+      "worktree-status",
+      event.scope.projectId,
+      event.entityId,
+    ] as const;
+    const previous = this.#queryClient.getQueryData<GitStatus>(queryKey);
+    this.#queryClient.setQueryData<GitStatus>(queryKey, parsed.data);
+    return {
+      applied: true,
+      revisionChanged:
+        previous === undefined || previous.head !== parsed.data.head,
+    };
   }
 
   #applyCustomizationStatusEvent(event: AppLiveEvent): boolean {

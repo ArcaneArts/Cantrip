@@ -164,6 +164,49 @@ describe("Git repository graph analysis", () => {
       commitTouches: 2,
     });
 
+    const blameMetrics = await readGitGraphMetrics(
+      directory,
+      "HEAD",
+      null,
+      100_000,
+      true,
+    );
+    const blameByPath = new Map(
+      blameMetrics.nodes.map((node) => [node.path, node]),
+    );
+    expect(blameMetrics).toMatchObject({
+      blameCoverage: {
+        analyzedFiles: 2,
+        totalFiles: 2,
+        truncated: false,
+      },
+      analysis: { blame: "ready" },
+    });
+    expect(blameByPath.get("src/index.ts")).toMatchObject({
+      dominantAuthorName: "Cantrip Graph",
+      dominantAuthorEmail: "graph@cantrip.test",
+      dominantAuthorShare: 1,
+    });
+    expect(
+      blameByPath.get("src/index.ts")?.averageBlameAgeDays,
+    ).toBeGreaterThanOrEqual(0);
+    expect(blameByPath.get("src")).toMatchObject({
+      dominantAuthorName: "Cantrip Graph",
+      dominantAuthorShare: 1,
+    });
+
+    await writeFile(
+      path.join(directory, "src", "index.ts"),
+      "export const incrementallyUpdated = true;\n",
+    );
+    await commitAll(directory, "Update without changing the tree");
+    const incremental = await readGitGraphMetrics(directory);
+    expect(
+      incremental.nodes.find(
+        ({ path: nodePath }) => nodePath === "src/index.ts",
+      ),
+    ).toMatchObject({ commitTouches: 3, lineCount: 1 });
+
     const scoped = await readGitGraphSnapshot(directory, "HEAD", "src");
     expect(scoped.rootPath).toBe("src");
     expect(scoped.nodes[0]).toMatchObject({

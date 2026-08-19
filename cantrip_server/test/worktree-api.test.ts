@@ -2462,7 +2462,7 @@ describe.sequential("server worktree control plane", () => {
     });
     const graphMetricsResponse = await app.inject({
       method: "GET",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/metrics?revision=${"1".repeat(40)}`,
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/metrics?revision=${"1".repeat(40)}&includeBlame=true`,
     });
     expect(graphMetricsResponse.statusCode).toBe(200);
     expect(
@@ -2474,6 +2474,7 @@ describe.sequential("server worktree control plane", () => {
       revision: "1".repeat(40),
       rootPath: null,
       maxNodes: 100_000,
+      includeBlame: true,
     });
     const graphOverlayResponse = await app.inject({
       method: "GET",
