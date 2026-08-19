@@ -9,13 +9,14 @@ The project is inspired by the Codex desktop experience, but its architecture is
 ## What Cantrip does
 
 Cantrip organizes work into projects backed either by a GitHub repository or by
-a new Cantrip-managed folder. From the project picker, create an empty folder on
-one worker without GitHub authentication, import an existing repository, or
-create a public or private repository in a personal account or organization.
-Managed folders are intentionally worker-bound and have no Git, GitHub,
-worktree, replica, or relocation features until an explicit conversion to a new
-or empty GitHub repository. Every project has a source folder owned by a worker
-and can contain an ordered mix of:
+a worker-bound folder. From the project picker, create an empty Cantrip-owned
+folder, attach a directory that already exists on a selected worker, import an
+existing repository, or create a public or private repository in a personal
+account or organization. Folder projects do not expose Cantrip's Git, GitHub,
+worktree, replica, or relocation features. A Cantrip-managed folder can later
+use the explicit conversion flow to become a new or empty GitHub repository;
+an attached user-owned folder stays in folder mode. Every project resolves to a
+source folder on a worker and can contain an ordered mix of:
 
 - Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
 - Task-backed chats for large jobs. A Task starts as a full Markdown brief with
@@ -51,13 +52,34 @@ and can contain an ordered mix of:
   open/closed views and GitHub-backed management. See
   [the Git client guide](docs/GIT_CLIENT.md).
 
-Managed folders use a UUID-derived directory beneath the selected worker's
-private `folders` root, so display names may repeat safely. They support Agents,
+Folder projects have two ownership modes:
+
+- **Managed folder:** Cantrip creates an empty UUID-derived directory beneath
+  the selected worker's private `folders` root. Unlinking preserves it so it
+  can be added again by path. Permanent deletion is available only through a
+  separate checkbox and an additional warning confirmation.
+- **Attached folder:** Cantrip resolves an existing directory on the selected
+  worker and leaves it user-owned. The desktop add dialog can browse when that
+  worker is linked to the same desktop installation; otherwise enter an
+  absolute path on the selected worker. Cantrip can unlink and later reattach
+  the folder, but it never offers to delete an attached folder's files.
+
+Project display names may repeat in either mode. Both modes support Agents,
 Tasks, terminals, Explorer, Code, Browser, Remote Desktop, tunnels, shares,
 scripts, policies, skills, MCP, automations, and direct write-capable workflows.
-Unlinking preserves the directory; permanent deletion requires a separate
-checkbox and warning confirmation. Running `git init` does not change the
-project type. See [the managed-folder guide](docs/FOLDERS.md).
+Only a ready Cantrip-managed folder offers GitHub conversion. Running `git init`
+inside either kind of folder does not change the Cantrip project type. See
+[the folder-project design](docs/FOLDERS.md).
+
+On macOS and Windows desktop builds, each project's actions menu includes
+**Reveal in Finder** or **Reveal in File Explorer**. Selecting it normally
+mounts a writable, authorized network share, using a local-direct transport
+when possible and the server relay for a remote worker. Hold **Shift** while
+selecting the action to bypass the network share and open the physical project
+directory, but only when the desktop can prove that it owns the matching local
+worker and path. For a remote worker, the Shift shortcut is intentionally a
+silent no-op. Browser and mobile clients do not show the native reveal action.
+See [the project network-share guide](docs/PROJECT_NETWORK_SHARES.md).
 
 Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
@@ -140,16 +162,17 @@ Local development uses embedded PGlite under `.cantrip/dev/`. A PostgreSQL `DATA
 
 ### `cantrip_worker`
 
-The worker is the machine that actually performs work. It owns managed folder
-directories, repository clones, and physical Git worktrees; runs Git and GitHub
-CLI operations where applicable; provides filesystem access; hosts PTY
-processes and supervised terminal services; supervises Codex runtimes; keeps
-the embedded Code server warm; runs Browser-tab Chromium sessions; and captures
-and controls its own desktop for Remote Desktop tabs. Provider URLs and
-Browser-tab addresses are resolved from the worker machine, which is important
-once the server and worker live on different hosts. Server-managed ChatGPT and
-Grok access leases remain in memory; normal operation does not create
-worker-local `auth.json` or `grok-auth.json` credentials.
+The worker is the machine that actually performs work. It owns Cantrip-managed
+folder directories, repository clones, and physical Git worktrees; validates
+and operates attached user-owned folder roots; runs Git and GitHub CLI
+operations where applicable; provides filesystem access; hosts PTY processes
+and supervised terminal services; supervises Codex runtimes; keeps the embedded
+Code server warm; runs Browser-tab Chromium sessions; and captures and controls
+its own desktop for Remote Desktop tabs. Provider URLs and Browser-tab
+addresses are resolved from the worker machine, which is important once the
+server and worker live on different hosts. Server-managed ChatGPT and Grok
+access leases remain in memory; normal operation does not create worker-local
+`auth.json` or `grok-auth.json` credentials.
 
 Chat attachments are staged beneath the worker's private Cantrip data directory, outside project sources and Git worktrees. Workers communicate through the server. There is intentionally no app-to-worker connection mode. See [ADR 0003](docs/adr/0003-worker-owned-chat-attachments.md) for the attachment transport, model-capability fallback, limits, and storage boundary.
 
