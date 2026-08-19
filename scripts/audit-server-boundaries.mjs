@@ -10,6 +10,7 @@ const liveProtocolPath = resolve(
   "packages/protocol/src/live.ts",
 );
 const repositoryFiles = [
+  "encryption-registry.ts",
   "project-automations.ts",
   "repository.ts",
   "tab-layouts.ts",

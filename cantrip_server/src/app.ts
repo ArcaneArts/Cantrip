@@ -394,6 +394,21 @@ import {
   worktreeSelectionSchema,
   worktreeStatusResultSchema,
 } from "@cantrip/protocol";
+import {
+  accountEncryptionProfileInitializeResultSchema,
+  accountEncryptionProfileInitializeSchema,
+  accountEncryptionProfileSchema,
+  accountEncryptionProfileStateSchema,
+  encryptionKeyGrantCreateSchema,
+  encryptionKeyGrantListSchema,
+  encryptionKeyGrantSchema,
+  encryptionPrincipalApprovalSchema,
+  encryptionPrincipalCreateSchema,
+  encryptionPrincipalListSchema,
+  encryptionPrincipalSchema,
+  encryptionProfileMigrationUpdateSchema,
+  encryptionRevocationSchema,
+} from "@cantrip/protocol/encryption";
 import Fastify from "fastify";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type {
@@ -831,6 +846,12 @@ function mutationAuditDescriptor(
   method: string,
   route: string,
 ): { action: string; resourceType: string } | null {
+  if (route.startsWith("/api/encryption") && method !== "GET") {
+    return {
+      action: "encryption.registry-changed",
+      resourceType: "encryption-registry",
+    };
+  }
   if (route.startsWith("/api/admin/license-whitelist") && method !== "GET") {
     return {
       action: "account-license.configuration-changed",
@@ -872,6 +893,8 @@ function auditResourceId(request: FastifyRequest): string | null {
   if (!request.params || typeof request.params !== "object") return null;
   const params = request.params as Record<string, unknown>;
   for (const key of [
+    "grantId",
+    "principalId",
     "credentialId",
     "workerId",
     "providerId",
@@ -8391,6 +8414,226 @@ export async function buildApp({
     });
     return reply.send(authLogoutAllResultSchema.parse({ revokedSessions }));
   });
+
+  app.get("/api/encryption/profile", async (request, reply) => {
+    const profile = await repository.encryptionRegistry.getProfile(
+      principalOwnerId(request),
+    );
+    return reply
+      .header("cache-control", "no-store")
+      .send(
+        accountEncryptionProfileStateSchema.parse(
+          profile
+            ? { status: "initialized", profile }
+            : { status: "uninitialized", profile: null },
+        ),
+      );
+  });
+
+  app.post("/api/encryption/profile/initialize", async (request, reply) => {
+    const input = accountEncryptionProfileInitializeSchema.safeParse(
+      request.body,
+    );
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    if (
+      config.authMode !== "none" &&
+      input.data.profile.passwordWrappedMasterKey === null
+    ) {
+      return reply.code(400).send({
+        error: "Password-authenticated profiles require a password wrapper.",
+      });
+    }
+    const result = accountEncryptionProfileInitializeResultSchema.parse(
+      await repository.encryptionRegistry.initializeProfile(
+        principalOwnerId(request),
+        input.data,
+      ),
+    );
+    return reply
+      .header("cache-control", "no-store")
+      .code(result.created ? 201 : 409)
+      .send(result);
+  });
+
+  app.patch("/api/encryption/profile/migration", async (request, reply) => {
+    const input = encryptionProfileMigrationUpdateSchema.safeParse(
+      request.body,
+    );
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const profile = await repository.encryptionRegistry.updateMigrationStatus(
+      principalOwnerId(request),
+      input.data,
+    );
+    return profile
+      ? reply
+          .header("cache-control", "no-store")
+          .send(accountEncryptionProfileSchema.parse(profile))
+      : reply.code(409).send({
+          error: "Encryption profile revision changed or was not found.",
+        });
+  });
+
+  app.get("/api/encryption/principals", async (request, reply) =>
+    reply
+      .header("cache-control", "no-store")
+      .send(
+        encryptionPrincipalListSchema.parse(
+          await repository.encryptionRegistry.listPrincipals(
+            principalOwnerId(request),
+          ),
+        ),
+      ),
+  );
+
+  app.post("/api/encryption/principals", async (request, reply) => {
+    const input = encryptionPrincipalCreateSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    const principal = await repository.encryptionRegistry.createPrincipal(
+      principalOwnerId(request),
+      input.data,
+    );
+    return principal
+      ? reply
+          .header("cache-control", "no-store")
+          .code(201)
+          .send(encryptionPrincipalSchema.parse(principal))
+      : reply.code(409).send({
+          error:
+            "Encryption principal already exists or its worker is unavailable.",
+        });
+  });
+
+  app.post<{ Params: { principalId: string } }>(
+    "/api/encryption/principals/:principalId/approve",
+    async (request, reply) => {
+      const input = encryptionPrincipalApprovalSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = await repository.encryptionRegistry.approvePrincipal(
+        principalOwnerId(request),
+        request.params.principalId,
+        input.data.expectedRevision,
+      );
+      return principal
+        ? reply
+            .header("cache-control", "no-store")
+            .send(encryptionPrincipalSchema.parse(principal))
+        : reply.code(409).send({
+            error: "Encryption principal revision or state changed.",
+          });
+    },
+  );
+
+  app.post<{ Params: { principalId: string } }>(
+    "/api/encryption/principals/:principalId/revoke",
+    async (request, reply) => {
+      const input = encryptionRevocationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const principal = await repository.encryptionRegistry.revokePrincipal(
+        principalOwnerId(request),
+        request.params.principalId,
+        input.data,
+      );
+      return principal
+        ? reply
+            .header("cache-control", "no-store")
+            .send(encryptionPrincipalSchema.parse(principal))
+        : reply.code(409).send({
+            error: "Encryption principal revision or state changed.",
+          });
+    },
+  );
+
+  app.get<{ Params: { principalId: string } }>(
+    "/api/encryption/principals/:principalId/grants",
+    async (request, reply) => {
+      const result = await repository.encryptionRegistry.listActiveGrants(
+        principalOwnerId(request),
+        request.params.principalId,
+      );
+      if (result.status === "missing") {
+        return reply
+          .code(404)
+          .send({ error: "Encryption principal not found." });
+      }
+      if (result.status === "unavailable") {
+        return reply.code(409).send({
+          error: "Encryption principal is not approved or was revoked.",
+        });
+      }
+      return reply
+        .header("cache-control", "no-store")
+        .send(encryptionKeyGrantListSchema.parse(result.grants));
+    },
+  );
+
+  app.post<{ Params: { principalId: string } }>(
+    "/api/encryption/principals/:principalId/grants",
+    async (request, reply) => {
+      const input = encryptionKeyGrantCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const result = await repository.encryptionRegistry.createGrant(
+        principalOwnerId(request),
+        request.params.principalId,
+        input.data,
+      );
+      if (result.status === "created") {
+        return reply
+          .header("cache-control", "no-store")
+          .code(201)
+          .send(encryptionKeyGrantSchema.parse(result.grant));
+      }
+      if (result.status === "missing") {
+        return reply
+          .code(404)
+          .send({ error: "Encryption principal not found." });
+      }
+      if (result.status === "wrapper-mismatch") {
+        return reply
+          .code(400)
+          .send({ error: "Wrapped key does not match the target principal." });
+      }
+      return reply.code(409).send({
+        error:
+          result.status === "unavailable"
+            ? "Encryption principal is not approved or was revoked."
+            : "A grant for this component revision already exists.",
+      });
+    },
+  );
+
+  app.post<{ Params: { grantId: string } }>(
+    "/api/encryption/grants/:grantId/revoke",
+    async (request, reply) => {
+      const input = encryptionRevocationSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const grant = await repository.encryptionRegistry.revokeGrant(
+        principalOwnerId(request),
+        request.params.grantId,
+        input.data,
+      );
+      return grant
+        ? reply
+            .header("cache-control", "no-store")
+            .send(encryptionKeyGrantSchema.parse(grant))
+        : reply.code(409).send({
+            error: "Encryption grant revision or state changed.",
+          });
+    },
+  );
 
   app.get("/api/account/sessions", async (request, reply) => {
     const principal = authenticatedPrincipal(request);

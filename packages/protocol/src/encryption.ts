@@ -166,6 +166,338 @@ export const workerComponentKeyGrantSchema = z
   })
   .strict();
 
+export const encryptionPayloadMigrationStatusSchema = z.enum([
+  "pending",
+  "in-progress",
+  "complete",
+]);
+
+export const encryptionPrincipalKindSchema = z.enum(["client", "worker"]);
+export const encryptionPrincipalStateSchema = z.enum([
+  "pending",
+  "approved",
+  "revoked",
+]);
+export const encryptionGrantStateSchema = z.enum(["active", "revoked"]);
+
+const encryptionTimestampSchema = z.string().datetime({ offset: true });
+const encryptionPrincipalIdSchema = z.string().uuid();
+
+function samePasswordKdf(
+  left: PasswordKdfParameters,
+  right: PasswordKdfParameters,
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function validatePasswordWrapperPair(
+  value: {
+    activeMasterKeyRevision: number;
+    passwordKdf: PasswordKdfParameters | null;
+    passwordWrappedMasterKey: PasswordWrappedMasterKey | null;
+  },
+  context: z.RefinementCtx,
+): void {
+  if (
+    (value.passwordKdf === null) !==
+    (value.passwordWrappedMasterKey === null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Password KDF parameters and wrapper must both be present or absent.",
+      path: ["passwordWrappedMasterKey"],
+    });
+    return;
+  }
+  if (!value.passwordKdf || !value.passwordWrappedMasterKey) return;
+  if (!samePasswordKdf(value.passwordKdf, value.passwordWrappedMasterKey.kdf)) {
+    context.addIssue({
+      code: "custom",
+      message: "Password KDF parameters must match the wrapped key envelope.",
+      path: ["passwordKdf"],
+    });
+  }
+  if (
+    value.passwordWrappedMasterKey.masterKeyRevision !==
+    value.activeMasterKeyRevision
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Password wrapper must target the active Account Master Key revision.",
+      path: ["passwordWrappedMasterKey", "masterKeyRevision"],
+    });
+  }
+}
+
+export const accountEncryptionProfileSchema = z
+  .object({
+    ownerId: z.string().min(1).max(255),
+    formatVersion: encryptionEnvelopeVersionSchema,
+    activeMasterKeyRevision: encryptionKeyRevisionSchema,
+    passwordKdf: passwordKdfParametersSchema.nullable(),
+    passwordWrappedMasterKey: passwordWrappedMasterKeySchema.nullable(),
+    initializationStatus: z.literal("initialized"),
+    payloadMigrationStatus: encryptionPayloadMigrationStatusSchema,
+    revision: encryptionKeyRevisionSchema,
+    createdAt: encryptionTimestampSchema,
+    updatedAt: encryptionTimestampSchema,
+  })
+  .strict()
+  .superRefine(validatePasswordWrapperPair);
+
+export const encryptionPrincipalSchema = z
+  .object({
+    id: encryptionPrincipalIdSchema,
+    ownerId: z.string().min(1).max(255),
+    kind: encryptionPrincipalKindSchema,
+    workerId: z.string().min(1).max(255).nullable(),
+    label: z.string().trim().min(1).max(120).nullable(),
+    publicKey: encryptionPublicKeySchema,
+    state: encryptionPrincipalStateSchema,
+    revision: encryptionKeyRevisionSchema,
+    approvedAt: encryptionTimestampSchema.nullable(),
+    revokedAt: encryptionTimestampSchema.nullable(),
+    revokedReason: z.string().min(1).max(500).nullable(),
+    createdAt: encryptionTimestampSchema,
+    updatedAt: encryptionTimestampSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.kind === "worker") !== (value.workerId !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Only worker principals may bind a worker identity.",
+        path: ["workerId"],
+      });
+    }
+    if (value.state === "pending" && (value.approvedAt || value.revokedAt)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Pending principals cannot have approval or revocation timestamps.",
+        path: ["state"],
+      });
+    }
+    if (value.state === "approved" && (!value.approvedAt || value.revokedAt)) {
+      context.addIssue({
+        code: "custom",
+        message: "Approved principals require an approval timestamp only.",
+        path: ["state"],
+      });
+    }
+    if (value.state === "revoked" && !value.revokedAt) {
+      context.addIssue({
+        code: "custom",
+        message: "Revoked principals require a revocation timestamp.",
+        path: ["state"],
+      });
+    }
+  });
+
+export const encryptionKeyGrantSchema = z
+  .object({
+    id: z.string().uuid(),
+    ownerId: z.string().min(1).max(255),
+    principalId: encryptionPrincipalIdSchema,
+    component: encryptionComponentScopeSchema,
+    keyRevision: encryptionKeyRevisionSchema,
+    wrappedKey: z.union([
+      clientMasterKeyWrapperSchema,
+      workerComponentKeyGrantSchema,
+    ]),
+    state: encryptionGrantStateSchema,
+    revision: encryptionKeyRevisionSchema,
+    revokedAt: encryptionTimestampSchema.nullable(),
+    revokedReason: z.string().min(1).max(500).nullable(),
+    createdAt: encryptionTimestampSchema,
+    updatedAt: encryptionTimestampSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const wrapped = value.wrappedKey;
+    if (wrapped.purpose === "client-account-master-key") {
+      if (
+        value.component !== "account-master-key" ||
+        wrapped.clientId !== value.principalId ||
+        wrapped.masterKeyRevision !== value.keyRevision
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Client grant metadata does not match its wrapped key.",
+          path: ["wrappedKey"],
+        });
+      }
+    } else if (
+      value.component !== wrapped.component ||
+      value.keyRevision !== wrapped.keyRevision
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Worker grant metadata does not match its wrapped key.",
+        path: ["wrappedKey"],
+      });
+    }
+    if ((value.state === "revoked") !== (value.revokedAt !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Grant state and revocation timestamp must agree.",
+        path: ["state"],
+      });
+    }
+  });
+
+export const accountEncryptionProfileStateSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({ status: z.literal("uninitialized"), profile: z.null() })
+      .strict(),
+    z
+      .object({
+        status: z.literal("initialized"),
+        profile: accountEncryptionProfileSchema,
+      })
+      .strict(),
+  ],
+);
+
+const accountEncryptionProfileInitializeProfileSchema = z
+  .object({
+    formatVersion: encryptionEnvelopeVersionSchema,
+    activeMasterKeyRevision: encryptionKeyRevisionSchema,
+    passwordKdf: passwordKdfParametersSchema.nullable(),
+    passwordWrappedMasterKey: passwordWrappedMasterKeySchema.nullable(),
+    payloadMigrationStatus:
+      encryptionPayloadMigrationStatusSchema.default("pending"),
+  })
+  .strict()
+  .superRefine(validatePasswordWrapperPair);
+
+export const accountEncryptionProfileInitializeSchema = z
+  .object({
+    profile: accountEncryptionProfileInitializeProfileSchema,
+    initialClient: z
+      .object({
+        id: encryptionPrincipalIdSchema,
+        label: z.string().trim().min(1).max(120).nullable().default(null),
+        publicKey: encryptionPublicKeySchema,
+        wrappedMasterKey: clientMasterKeyWrapperSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.initialClient.wrappedMasterKey.clientId !==
+        value.initialClient.id ||
+      value.initialClient.wrappedMasterKey.masterKeyRevision !==
+        value.profile.activeMasterKeyRevision
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Initial client wrapper does not match the profile or principal.",
+        path: ["initialClient", "wrappedMasterKey"],
+      });
+    }
+  });
+
+export const accountEncryptionProfileInitializeResultSchema =
+  z.discriminatedUnion("created", [
+    z
+      .object({
+        created: z.literal(true),
+        profile: accountEncryptionProfileSchema,
+        principal: encryptionPrincipalSchema,
+        grant: encryptionKeyGrantSchema,
+      })
+      .strict(),
+    z
+      .object({
+        created: z.literal(false),
+        profile: accountEncryptionProfileSchema,
+      })
+      .strict(),
+  ]);
+
+export const encryptionProfileMigrationUpdateSchema = z
+  .object({
+    expectedRevision: encryptionKeyRevisionSchema,
+    payloadMigrationStatus: encryptionPayloadMigrationStatusSchema,
+  })
+  .strict();
+
+export const encryptionPrincipalCreateSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      id: encryptionPrincipalIdSchema,
+      kind: z.literal("client"),
+      label: z.string().trim().min(1).max(120).nullable().default(null),
+      publicKey: encryptionPublicKeySchema,
+    })
+    .strict(),
+  z
+    .object({
+      id: encryptionPrincipalIdSchema,
+      kind: z.literal("worker"),
+      workerId: z.string().min(1).max(255),
+      label: z.string().trim().min(1).max(120).nullable().default(null),
+      publicKey: encryptionPublicKeySchema,
+    })
+    .strict(),
+]);
+
+export const encryptionPrincipalApprovalSchema = z
+  .object({ expectedRevision: encryptionKeyRevisionSchema })
+  .strict();
+
+export const encryptionRevocationSchema = z
+  .object({
+    expectedRevision: encryptionKeyRevisionSchema,
+    reason: z.string().trim().min(1).max(500),
+  })
+  .strict();
+
+export const encryptionKeyGrantCreateSchema = z
+  .object({
+    component: encryptionComponentScopeSchema,
+    keyRevision: encryptionKeyRevisionSchema,
+    wrappedKey: z.union([
+      clientMasterKeyWrapperSchema,
+      workerComponentKeyGrantSchema,
+    ]),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.wrappedKey.purpose === "client-account-master-key" &&
+      (value.component !== "account-master-key" ||
+        value.wrappedKey.masterKeyRevision !== value.keyRevision)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Client grant metadata does not match its wrapped key.",
+        path: ["wrappedKey"],
+      });
+    }
+    if (
+      value.wrappedKey.purpose === "worker-component-key" &&
+      (value.component !== value.wrappedKey.component ||
+        value.keyRevision !== value.wrappedKey.keyRevision)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Worker grant metadata does not match its wrapped key.",
+        path: ["wrappedKey"],
+      });
+    }
+  });
+
+export const encryptionPrincipalListSchema = z.array(encryptionPrincipalSchema);
+export const encryptionKeyGrantListSchema = z.array(encryptionKeyGrantSchema);
+
 export type EncryptionAssociatedData = z.infer<
   typeof encryptionAssociatedDataSchema
 >;
@@ -189,4 +521,41 @@ export type ClientMasterKeyWrapper = z.infer<
 >;
 export type WorkerComponentKeyGrant = z.infer<
   typeof workerComponentKeyGrantSchema
+>;
+export type EncryptionPayloadMigrationStatus = z.infer<
+  typeof encryptionPayloadMigrationStatusSchema
+>;
+export type EncryptionPrincipalKind = z.infer<
+  typeof encryptionPrincipalKindSchema
+>;
+export type EncryptionPrincipalState = z.infer<
+  typeof encryptionPrincipalStateSchema
+>;
+export type EncryptionGrantState = z.infer<typeof encryptionGrantStateSchema>;
+export type AccountEncryptionProfile = z.infer<
+  typeof accountEncryptionProfileSchema
+>;
+export type AccountEncryptionProfileState = z.infer<
+  typeof accountEncryptionProfileStateSchema
+>;
+export type AccountEncryptionProfileInitialize = z.infer<
+  typeof accountEncryptionProfileInitializeSchema
+>;
+export type AccountEncryptionProfileInitializeResult = z.infer<
+  typeof accountEncryptionProfileInitializeResultSchema
+>;
+export type EncryptionProfileMigrationUpdate = z.infer<
+  typeof encryptionProfileMigrationUpdateSchema
+>;
+export type EncryptionPrincipal = z.infer<typeof encryptionPrincipalSchema>;
+export type EncryptionPrincipalCreate = z.infer<
+  typeof encryptionPrincipalCreateSchema
+>;
+export type EncryptionPrincipalApproval = z.infer<
+  typeof encryptionPrincipalApprovalSchema
+>;
+export type EncryptionRevocation = z.infer<typeof encryptionRevocationSchema>;
+export type EncryptionKeyGrant = z.infer<typeof encryptionKeyGrantSchema>;
+export type EncryptionKeyGrantCreate = z.infer<
+  typeof encryptionKeyGrantCreateSchema
 >;
