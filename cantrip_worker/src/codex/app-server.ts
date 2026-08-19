@@ -1548,24 +1548,35 @@ export function codexMcpConfigOverride(
 ): Record<string, unknown> {
   return {
     mcp_servers: Object.fromEntries(
-      servers.map((server) => [
-        server.name,
-        server.transport === "stdio"
+      servers.map((server) => {
+        const isManagedCodeGraph = isManagedCodeGraphMcpName(server.name);
+        const managedOverrides = isManagedCodeGraph
           ? {
-              command: server.command,
-              args: server.args,
-              env: server.environment,
-              enabled: server.enabled,
+              required: true,
+              enabled_tools: ["codegraph_explore"],
             }
-          : {
-              url: server.url,
-              bearer_token_env_var:
-                server.bearerTokenEnvironmentVariable ?? undefined,
-              http_headers: server.headers,
-              env_http_headers: server.environmentHeaders,
-              enabled: server.enabled,
-            },
-      ]),
+          : {};
+        return [
+          server.name,
+          server.transport === "stdio"
+            ? {
+                command: server.command,
+                args: server.args,
+                env: server.environment,
+                enabled: server.enabled,
+                ...managedOverrides,
+              }
+            : {
+                url: server.url,
+                bearer_token_env_var:
+                  server.bearerTokenEnvironmentVariable ?? undefined,
+                http_headers: server.headers,
+                env_http_headers: server.environmentHeaders,
+                enabled: server.enabled,
+                ...managedOverrides,
+              },
+        ];
+      }),
     ),
   };
 }
@@ -3139,7 +3150,9 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async readCustomizationInventory(
-    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      threadId: string | null;
+    },
     forceReload = false,
   ): Promise<CodexCustomizationInventory> {
     await this.ensureStarted(options.model, options.provider);
@@ -3164,7 +3177,7 @@ export class CodexAppServer implements CodexRuntime {
             cursor,
             limit: 100,
             detail: "full",
-            threadId: null,
+            threadId: options.threadId,
           }),
         );
         mcpServers.push(...page.servers);

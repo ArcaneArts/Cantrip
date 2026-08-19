@@ -131,6 +131,7 @@ const turnProviderAccountIds: Array<string | null> = [];
 const turnCredentialHomeKeys: Array<string | null> = [];
 const turnRouteIds: string[] = [];
 const turnThreadIds: Array<string | null> = [];
+const customizationInventoryThreadIds: Array<string | null> = [];
 const turnPermissionProfileIds: string[] = [];
 const turnPrompts: string[] = [];
 const turnSkillNames: string[][] = [];
@@ -1007,6 +1008,7 @@ const workerBridge = {
           },
         ];
       case "customization.inventory.read": {
+        customizationInventoryThreadIds.push(command.threadId);
         const available = {
           available: true,
           reason: null,
@@ -3971,6 +3973,7 @@ describe("local server foundation", () => {
       skills: { items: [{ name: "skill-creator", enabled: true }] },
       mcpServers: [{ name: "docs", resources: [{ uri: "docs://readme" }] }],
     });
+    expect(customizationInventoryThreadIds.at(-1)).toBeNull();
     const externalPreview = codexExternalImportPreviewSchema.parse(
       (
         await firstApp.inject({

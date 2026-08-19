@@ -1571,6 +1571,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return runtimeFor(command).readCustomizationInventory(
           {
             cwd: command.cwd,
+            threadId: command.threadId,
             model: command.model,
             provider: command.provider,
           },

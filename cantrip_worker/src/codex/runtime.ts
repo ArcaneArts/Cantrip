@@ -57,7 +57,9 @@ export interface CodexRuntime {
     forceReload?: boolean,
   ): Promise<CodexSkill[]>;
   readCustomizationInventory(
-    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider">,
+    options: Pick<RunAgentTurnOptions, "cwd" | "model" | "provider"> & {
+      threadId: string | null;
+    },
     forceReload?: boolean,
   ): Promise<CodexCustomizationInventory>;
   previewExternalAgentConfig(

@@ -22265,6 +22265,7 @@ export async function buildApp({
       const inventory = await bridge.request(context.workerId, {
         type: "customization.inventory.read",
         cwd: context.cwd,
+        threadId: context.threadId,
         forceReload: request.query.refresh === "true",
         model: runtime.model,
         provider: runtime.provider,
