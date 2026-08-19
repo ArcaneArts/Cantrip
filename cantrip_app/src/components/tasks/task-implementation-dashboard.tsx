@@ -67,6 +67,13 @@ export function taskImplementationPlacementLabel(
   return placement.kind === "folder" ? "Direct folder" : "Git worktree";
 }
 
+export function taskImplementationShowsLiveActivity(
+  task: TaskDetail,
+  goal: TaskGoalSnapshot | null,
+): boolean {
+  return task.state === "implementing" && goal?.status === "active";
+}
+
 function PullRequestRow({
   pullRequest,
 }: {
@@ -197,7 +204,8 @@ export function TaskImplementationDashboard({
     task.state === "paused" ||
     goal?.status === "paused" ||
     goal?.status === "blocked";
-  const showPause = task.state === "implementing" && goal?.status === "active";
+  const showLiveActivity = taskImplementationShowsLiveActivity(task, goal);
+  const showPause = showLiveActivity;
   const latestMessages = useMemo(() => messages.data ?? [], [messages.data]);
   const placement = dashboard.data?.placement;
   const directFolder = placement?.kind === "folder";
@@ -402,24 +410,26 @@ export function TaskImplementationDashboard({
           </section>
         ) : null}
 
-        <section
-          className="border-b py-5"
-          aria-labelledby="task-activity-heading"
-        >
-          <h3
-            id="task-activity-heading"
-            className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        {showLiveActivity ? (
+          <section
+            className="border-b py-5"
+            aria-labelledby="task-activity-heading"
           >
-            Latest activity
-          </h3>
-          <div className="min-h-48 overflow-hidden">
-            <AgentInspectContent
-              active={active}
-              messages={latestMessages}
-              visible
-            />
-          </div>
-        </section>
+            <h3
+              id="task-activity-heading"
+              className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              Latest activity
+            </h3>
+            <div className="min-h-48 overflow-hidden">
+              <AgentInspectContent
+                active={active}
+                messages={latestMessages}
+                visible
+              />
+            </div>
+          </section>
+        ) : null}
 
         {placement && !directFolder ? (
           <section className="border-b py-5" aria-labelledby="task-pr-heading">
