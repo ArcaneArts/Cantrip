@@ -784,6 +784,14 @@ interface TurnStartResponse {
   turn: { id: string };
 }
 
+interface TurnStartedParams {
+  threadId: string;
+  turn: {
+    id: string;
+    startedAt?: number | null;
+  };
+}
+
 interface TurnCompletedParams {
   threadId: string;
   turn: {
@@ -1249,9 +1257,6 @@ function relocationItemBatches(
   if (current.length) batches.push(current);
   return batches;
 }
-
-export const GOAL_CONTINUATION_PROMPT =
-  "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
 
 export function goalShouldContinue(
   goal: ThreadGoal | null,
@@ -2482,6 +2487,7 @@ export function completedCodexThreadTurnFromRead(
 
 export class CodexAppServer implements CodexRuntime {
   readonly #activeTurns = new Map<string, ActiveTurn>();
+  readonly #activeTurnsByThread = new Map<string, ActiveTurn>();
   readonly #collaborationModes = new Map<string, PlanMode>();
   readonly #diagnosticSecrets = new Set<string>();
   #runtimeIsZai = false;
@@ -2869,39 +2875,46 @@ export class CodexAppServer implements CodexRuntime {
         skill.path ? ([[skill.name, skill]] as const) : [],
       ),
     );
-    const response = (await this.request("turn/start", {
-      threadId,
-      ...codexWorkspaceContext(options.cwd),
-      ...codexWorktreeTurnPolicy({
-        ...options,
-        permissionProfileActive: this.permissionProfilesSupported(),
-      }),
-      clientUserMessageId: `cantrip:${options.clientMessageId}`,
-      input: [
-        ...(await this.turnAttachmentInputs(
-          options.prompt,
-          options.attachments ?? [],
-          options.model,
-          options.provider,
-        )),
-        ...options.skillNames.flatMap((name) => {
-          const skill = selectedSkills.get(name);
-          return skill?.path
-            ? [{ type: "skill", name: skill.name, path: skill.path }]
-            : [];
-        }),
-      ],
-      model: options.model.name,
-      ...codexReasoningEffortParams(options.model),
-      ...(collaborationMode ? { collaborationMode } : {}),
-      ...(resultMode.kind === "structured"
-        ? { outputSchema: resultMode.outputSchema }
-        : {}),
-    })) as TurnStartResponse;
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex turn.");
     }
-    this.#activeTurns.set(response.turn.id, activeTurn);
+    this.#activeTurnsByThread.set(threadId, activeTurn);
+    let response: TurnStartResponse;
+    try {
+      response = (await this.request("turn/start", {
+        threadId,
+        ...codexWorkspaceContext(options.cwd),
+        ...codexWorktreeTurnPolicy({
+          ...options,
+          permissionProfileActive: this.permissionProfilesSupported(),
+        }),
+        clientUserMessageId: `cantrip:${options.clientMessageId}`,
+        input: [
+          ...(await this.turnAttachmentInputs(
+            options.prompt,
+            options.attachments ?? [],
+            options.model,
+            options.provider,
+          )),
+          ...options.skillNames.flatMap((name) => {
+            const skill = selectedSkills.get(name);
+            return skill?.path
+              ? [{ type: "skill", name: skill.name, path: skill.path }]
+              : [];
+          }),
+        ],
+        model: options.model.name,
+        ...codexReasoningEffortParams(options.model),
+        ...(collaborationMode ? { collaborationMode } : {}),
+        ...(resultMode.kind === "structured"
+          ? { outputSchema: resultMode.outputSchema }
+          : {}),
+      })) as TurnStartResponse;
+    } catch (error) {
+      this.releaseActiveTurn(activeTurn);
+      throw error;
+    }
+    this.bindTurnStartResponse(response.turn.id, activeTurn);
     workerLogger.event("info", "Codex chat turn started", {
       event: "codex.turn.lifecycle",
       subsystem: "codex",
@@ -2998,32 +3011,39 @@ export class CodexAppServer implements CodexRuntime {
       };
     });
 
-    const response = (await this.request("turn/start", {
-      threadId,
-      ...codexWorkspaceContext(options.cwd),
-      ...turnPolicy,
-      approvalPolicy:
-        options.approvalMode === "preauthorized" ? "never" : "on-request",
-      clientUserMessageId: `cantrip:workflow:${options.idempotencyKey}`,
-      input: [
-        { type: "text", text: options.prompt, text_elements: [] },
-        ...options.skillNames.map((name) => {
-          const skill = selectedSkills.get(name)!;
-          return { type: "skill", name: skill.name, path: skill.path };
-        }),
-      ],
-      model: options.model.name,
-      ...(options.model.reasoningEffort
-        ? { effort: options.model.reasoningEffort }
-        : {}),
-      ...(Object.keys(options.outputSchema).length
-        ? { outputSchema: options.outputSchema }
-        : {}),
-    })) as TurnStartResponse;
     if (!activeTurn) {
       throw new Error("Could not initialize the Codex workflow turn.");
     }
-    this.#activeTurns.set(response.turn.id, activeTurn);
+    this.#activeTurnsByThread.set(threadId, activeTurn);
+    let response: TurnStartResponse;
+    try {
+      response = (await this.request("turn/start", {
+        threadId,
+        ...codexWorkspaceContext(options.cwd),
+        ...turnPolicy,
+        approvalPolicy:
+          options.approvalMode === "preauthorized" ? "never" : "on-request",
+        clientUserMessageId: `cantrip:workflow:${options.idempotencyKey}`,
+        input: [
+          { type: "text", text: options.prompt, text_elements: [] },
+          ...options.skillNames.map((name) => {
+            const skill = selectedSkills.get(name)!;
+            return { type: "skill", name: skill.name, path: skill.path };
+          }),
+        ],
+        model: options.model.name,
+        ...(options.model.reasoningEffort
+          ? { effort: options.model.reasoningEffort }
+          : {}),
+        ...(Object.keys(options.outputSchema).length
+          ? { outputSchema: options.outputSchema }
+          : {}),
+      })) as TurnStartResponse;
+    } catch (error) {
+      this.releaseActiveTurn(activeTurn);
+      throw error;
+    }
+    this.bindTurnStartResponse(response.turn.id, activeTurn);
     workerLogger.event("info", "Codex workflow turn started", {
       event: "codex.turn.lifecycle",
       subsystem: "codex",
@@ -3058,16 +3078,20 @@ export class CodexAppServer implements CodexRuntime {
       ),
     );
     activeTurn.timeout = setTimeout(() => {
-      const current = this.#activeTurns.get(response.turn.id);
-      if (current !== activeTurn) return;
-      this.#activeTurns.delete(response.turn.id);
+      const current = [...this.#activeTurns.entries()].find(
+        ([, candidate]) => candidate === activeTurn,
+      );
+      if (!current || this.#activeTurnsByThread.get(threadId) !== activeTurn) {
+        return;
+      }
+      this.releaseActiveTurn(activeTurn!);
       void this.request("turn/interrupt", {
         threadId,
-        turnId: response.turn.id,
+        turnId: current[0],
       }).catch(() => undefined);
       void this.failTurn(
         activeTurn!,
-        response.turn.id,
+        current[0],
         new Error(
           `Workflow node execution timed out after ${options.timeoutMs}ms.`,
         ),
@@ -3081,7 +3105,7 @@ export class CodexAppServer implements CodexRuntime {
         nodeId: options.runNodeId,
         attemptId: options.attemptId,
         threadId,
-        turnId: response.turn.id,
+        turnId: current[0],
         durationMs: options.timeoutMs,
       });
     }, options.timeoutMs);
@@ -3500,6 +3524,16 @@ export class CodexAppServer implements CodexRuntime {
     const threadId = await this.loadThread(options);
     if (!threadId) {
       throw new Error("Could not start a Codex thread for the goal.");
+    }
+    const existing = await this.refreshGoal(threadId);
+    if (existing.goal?.status === "complete") {
+      const cleared = chatGoalClearSchema.parse(
+        await this.request("thread/goal/clear", { threadId }),
+      );
+      if (!cleared.cleared) {
+        throw new Error("Could not replace the completed Codex goal.");
+      }
+      this.#goals.delete(threadId);
     }
     const response = chatGoalResponseSchema.parse(
       await this.request("thread/goal/set", {
@@ -4332,9 +4366,36 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private hasActiveThread(threadId: string): boolean {
-    return [...this.#activeTurns.values()].some(
-      (active) => active.threadId === threadId,
-    );
+    return this.#activeTurnsByThread.has(threadId);
+  }
+
+  private activeTurnForNotification(
+    threadId: string,
+    turnId: string,
+  ): ActiveTurn | undefined {
+    const exact = this.#activeTurns.get(turnId);
+    if (exact) return exact;
+    const active = this.#activeTurnsByThread.get(threadId);
+    if (!active) return undefined;
+    for (const [knownTurnId, candidate] of this.#activeTurns) {
+      if (candidate === active) this.#activeTurns.delete(knownTurnId);
+    }
+    this.#activeTurns.set(turnId, active);
+    return active;
+  }
+
+  private bindTurnStartResponse(turnId: string, active: ActiveTurn): void {
+    if ([...this.#activeTurns.values()].includes(active)) return;
+    this.#activeTurns.set(turnId, active);
+  }
+
+  private releaseActiveTurn(active: ActiveTurn): void {
+    if (this.#activeTurnsByThread.get(active.threadId) === active) {
+      this.#activeTurnsByThread.delete(active.threadId);
+    }
+    for (const [turnId, candidate] of this.#activeTurns) {
+      if (candidate === active) this.#activeTurns.delete(turnId);
+    }
   }
 
   private forgetThread(threadId: string): void {
@@ -4942,9 +5003,41 @@ export class CodexAppServer implements CodexRuntime {
       return;
     }
 
+    if (message.method === "turn/started") {
+      const params = message.params as TurnStartedParams;
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turn.id,
+      );
+      if (active) {
+        active.onActivity?.(
+          turnSummaryActivity(
+            {
+              id: params.turn.id,
+              status: "inProgress",
+              startedAt: params.turn.startedAt ?? null,
+              completedAt: null,
+              durationMs: null,
+            },
+            eventCorrelation(
+              message.method,
+              diagnosticId,
+              params.threadId,
+              params.turn.id,
+              null,
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     if (message.method === "turn/plan/updated") {
       const params = message.params as TurnPlanUpdatedParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active) {
         active.onPlan?.({
           explanation: params.explanation,
@@ -5009,7 +5102,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/agentMessage/delta") {
       const params = message.params as AgentMessageDeltaParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active) {
         active.delta += params.delta;
       }
@@ -5018,7 +5114,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/reasoning/summaryPartAdded") {
       const params = message.params as ReasoningSummaryPartAddedParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active && params.summaryIndex >= 0 && params.summaryIndex < 100) {
         const summary = active.reasoningSummaries.get(params.itemId) ?? [];
         while (summary.length <= params.summaryIndex) summary.push("");
@@ -5029,7 +5128,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/reasoning/summaryTextDelta") {
       const params = message.params as ReasoningSummaryTextDeltaParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active && params.summaryIndex >= 0 && params.summaryIndex < 100) {
         const observedAtMs = Date.now();
         const summary = active.reasoningSummaries.get(params.itemId) ?? [];
@@ -5062,7 +5164,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/commandExecution/outputDelta") {
       const params = message.params as CommandExecutionOutputDeltaParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (!active || active.completedCommandIds.has(params.itemId)) return;
       const observedAtMs = Date.now();
       const correlation = eventCorrelation(
@@ -5096,7 +5201,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/fileChange/patchUpdated") {
       const params = message.params as FileChangePatchUpdatedParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (!active) return;
       const observedAtMs = Date.now();
       const startedAtMs =
@@ -5147,7 +5255,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/started") {
       const params = message.params as ItemLifecycleParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active && params.item.type !== "agentMessage") {
         flushActiveAgentMessage(active, false);
         const observedAtMs = Date.now();
@@ -5213,7 +5324,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "item/completed") {
       const params = message.params as ItemLifecycleParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       const observedAtMs = params.completedAtMs ?? Date.now();
       if (
         active &&
@@ -5325,7 +5439,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/diff/updated") {
       const params = message.params as TurnDiffUpdatedParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active) {
         active.diffChanges = changedFiles(params.diff, Date.now());
         emitFileActivity(
@@ -5346,7 +5463,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "thread/tokenUsage/updated") {
       const params = message.params as ThreadTokenUsageUpdatedParams;
-      const active = this.#activeTurns.get(params.turnId);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      );
       if (active) {
         active.latestUsage = params.tokenUsage.last;
         active.onActivity?.(
@@ -5441,7 +5561,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "error") {
       const params = message.params as ErrorNotificationParams;
-      this.#activeTurns.get(params.turnId)?.onActivity?.(
+      this.activeTurnForNotification(
+        params.threadId,
+        params.turnId,
+      )?.onActivity?.(
         normalizeNoticeActivity({
           level: "error",
           message: readableCodexProviderError(params.error.message, {
@@ -5468,7 +5591,10 @@ export class CodexAppServer implements CodexRuntime {
 
     if (message.method === "turn/completed") {
       const params = message.params as TurnCompletedParams;
-      const active = this.#activeTurns.get(params.turn.id);
+      const active = this.activeTurnForNotification(
+        params.threadId,
+        params.turn.id,
+      );
       if (!active) {
         return;
       }
@@ -5616,31 +5742,13 @@ export class CodexAppServer implements CodexRuntime {
           active.finalText = null;
           active.reasoningSummaries.clear();
           active.startedAtMs = Date.now();
-          const continued = (await this.request("turn/start", {
-            threadId: active.threadId,
-            ...codexWorkspaceContext(active.cwd),
-            clientUserMessageId: `cantrip:goal:${turnId}`,
-            input: [
-              {
-                type: "text",
-                text: GOAL_CONTINUATION_PROMPT,
-                text_elements: [],
-              },
-            ],
-            model: active.model.name,
-            ...(active.collaborationMode
-              ? { collaborationMode: active.collaborationMode }
-              : {}),
-          })) as TurnStartResponse;
-          this.#activeTurns.set(continued.turn.id, active);
-          workerLogger.event("info", "Codex goal turn continued", {
+          workerLogger.event("info", "Codex goal remains active", {
             event: "codex.turn.continuation",
             subsystem: "codex",
             operation: "goal-continuation",
-            status: "started",
+            status: "runtime-managed",
             chatId: active.chatId ?? undefined,
             threadId: active.threadId,
-            turnId: continued.turn.id,
             previousTurnId: turnId,
             providerId: active.providerId,
             providerKind: active.providerKind,
@@ -5648,6 +5756,7 @@ export class CodexAppServer implements CodexRuntime {
           return;
         }
       }
+      this.releaseActiveTurn(active);
       workerLogger.event("info", "Codex turn completed", {
         event: "codex.turn.lifecycle",
         subsystem: "codex",
@@ -5701,6 +5810,7 @@ export class CodexAppServer implements CodexRuntime {
             }),
       );
     } catch (error) {
+      this.releaseActiveTurn(active);
       clearTurnInspectionTelemetry(active);
       workerLogger.event("error", "Codex turn completion failed", {
         event: "codex.turn.lifecycle",
@@ -5822,6 +5932,7 @@ export class CodexAppServer implements CodexRuntime {
         ),
       );
     } finally {
+      this.releaseActiveTurn(active);
       clearTurnInspectionTelemetry(active);
       workerLogger.event("error", "Codex turn failed", {
         event: "codex.turn.lifecycle",
@@ -5881,10 +5992,8 @@ export class CodexAppServer implements CodexRuntime {
     );
     if (request) {
       const active = request.turnId
-        ? this.#activeTurns.get(request.turnId)
-        : [...this.#activeTurns.values()].find(
-            (candidate) => candidate.threadId === request.threadId,
-          );
+        ? this.activeTurnForNotification(request.threadId, request.turnId)
+        : this.#activeTurnsByThread.get(request.threadId);
       if (!active?.onInteractionRequest) {
         this.send({
           id: message.id,
@@ -6068,12 +6177,13 @@ export class CodexAppServer implements CodexRuntime {
     }
     this.#pendingAgentInteractions.clear();
     this.#pendingPlanQuestions.clear();
-    for (const active of this.#activeTurns.values()) {
+    for (const active of this.#activeTurnsByThread.values()) {
       if (active.timeout) clearTimeout(active.timeout);
       clearTurnInspectionTelemetry(active);
       active.reject(error);
     }
     this.#activeTurns.clear();
+    this.#activeTurnsByThread.clear();
     this.#collaborationModes.clear();
   }
 }
