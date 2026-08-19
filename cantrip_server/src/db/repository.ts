@@ -4,6 +4,7 @@ import {
   DEFAULT_PERMISSION_PROFILE_ID,
   MCP_SECRET_MASK,
   agentInteractionRequestSchema,
+  isManagedCodeGraphMcpName,
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
   unavailableCodeCapabilities,
@@ -403,6 +404,15 @@ export class CodeCapabilityUnavailableError extends Error {}
 export class ProjectWorkspaceInvariantError extends Error {}
 export class WorkerEnrollmentError extends Error {}
 export class TunnelManagementError extends Error {}
+export class ManagedMcpServerInvariantError extends Error {}
+
+function assertUserManagedMcpServerName(name: string): void {
+  if (isManagedCodeGraphMcpName(name)) {
+    throw new ManagedMcpServerInvariantError(
+      "CodeGraph is managed by Cantrip and cannot be configured or removed.",
+    );
+  }
+}
 
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
@@ -8113,7 +8123,9 @@ export class ServerRepository {
         ),
       )
       .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
-    return rows.map((row) => toMcpServerSummary(row, this.secretVault));
+    return rows
+      .filter((row) => !isManagedCodeGraphMcpName(row.name))
+      .map((row) => toMcpServerSummary(row, this.secretVault));
   }
 
   async listEffectiveMcpServers(
@@ -8135,6 +8147,7 @@ export class ServerRepository {
       .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
     const effective = new Map<string, McpServerRow>();
     for (const row of rows) {
+      if (isManagedCodeGraphMcpName(row.name)) continue;
       const current = effective.get(row.name);
       if (!current || (projectId && row.projectId === projectId)) {
         effective.set(row.name, row);
@@ -8150,6 +8163,7 @@ export class ServerRepository {
     projectId: string | null,
     input: McpServerConfiguration,
   ): Promise<McpServerSummary | null> {
+    assertUserManagedMcpServerName(input.name);
     if (projectId) {
       const project = await this.database
         .select({ id: schema.projects.id })
@@ -8185,6 +8199,7 @@ export class ServerRepository {
     serverId: string,
     input: McpServerConfiguration,
   ): Promise<McpServerSummary | null> {
+    assertUserManagedMcpServerName(input.name);
     const existingRows = await this.database
       .select()
       .from(schema.mcpServers)
@@ -8200,6 +8215,7 @@ export class ServerRepository {
       .limit(1);
     const existing = existingRows[0];
     if (!existing) return null;
+    assertUserManagedMcpServerName(existing.name);
     const rows = await this.database
       .update(schema.mcpServers)
       .set({
@@ -8230,6 +8246,22 @@ export class ServerRepository {
     projectId: string | null,
     serverId: string,
   ): Promise<boolean> {
+    const existingRows = await this.database
+      .select({ name: schema.mcpServers.name })
+      .from(schema.mcpServers)
+      .where(
+        and(
+          eq(schema.mcpServers.id, serverId),
+          eq(schema.mcpServers.ownerId, ownerId),
+          projectId
+            ? eq(schema.mcpServers.projectId, projectId)
+            : isNull(schema.mcpServers.projectId),
+        ),
+      )
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) return false;
+    assertUserManagedMcpServerName(existing.name);
     const rows = await this.database
       .delete(schema.mcpServers)
       .where(
@@ -8280,6 +8312,7 @@ export class ServerRepository {
         .limit(1),
     ]);
     if (!target[0] || !source[0]) return null;
+    assertUserManagedMcpServerName(source[0].server.name);
     const configuration = toMcpServerRuntimeConfiguration(
       source[0].server,
       this.secretVault,

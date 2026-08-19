@@ -111,7 +111,12 @@ export interface CodexRuntime {
   prepareExternalSync(
     options: Pick<
       RunAgentTurnOptions,
-      "cwd" | "model" | "provider" | "threadId"
+      | "cwd"
+      | "mcpServers"
+      | "model"
+      | "permissionProfileId"
+      | "provider"
+      | "threadId"
     > & { threadId: string },
   ): Promise<void>;
   compactThread(

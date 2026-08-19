@@ -3461,23 +3461,39 @@ export class CodexAppServer implements CodexRuntime {
   async prepareExternalSync(
     options: Pick<
       RunAgentTurnOptions,
-      "cwd" | "model" | "provider" | "threadId"
+      | "cwd"
+      | "mcpServers"
+      | "model"
+      | "permissionProfileId"
+      | "provider"
+      | "threadId"
     > & { threadId: string },
   ): Promise<void> {
     await this.ensureStarted(options.model, options.provider);
+    // Older servers do not send console MCP materialization fields. Preserve
+    // their prior attach behavior rather than resuming with an incomplete
+    // configuration during a rolling deployment.
+    const threadId = options.mcpServers
+      ? await this.loadThread(options, false)
+      : options.threadId;
+    if (!threadId) {
+      throw new Error(
+        "The Codex console thread is no longer available on this worker.",
+      );
+    }
     let response: CodexThreadReadResponse;
     try {
       response = (await this.request("thread/read", {
-        threadId: options.threadId,
+        threadId,
         includeTurns: true,
       })) as CodexThreadReadResponse;
     } catch (error) {
       if (!/not materialized yet/i.test(String(error))) throw error;
-      this.#externalTurnBaselines.set(options.threadId, new Set());
+      this.#externalTurnBaselines.set(threadId, new Set());
       return;
     }
     this.#externalTurnBaselines.set(
-      options.threadId,
+      threadId,
       new Set(response.thread.turns.map((turn) => turn.id)),
     );
   }

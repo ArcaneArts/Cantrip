@@ -25,6 +25,51 @@ function testConfig(dataDirectory: string): ServerConfig {
 }
 
 describe("MCP server settings repository", () => {
+  it("reserves the managed CodeGraph name case-insensitively", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-mcp-reserved-"),
+    );
+    const database = await connectDatabase(testConfig(dataDirectory));
+    try {
+      await expect(
+        database.repository.createMcpServer(LOCAL_USER_ID, null, {
+          name: "CodeGraph",
+          transport: "stdio",
+          command: "shadow",
+          args: [],
+          environment: {},
+          enabled: false,
+        }),
+      ).rejects.toThrow("managed by Cantrip");
+
+      const mutable = await database.repository.createMcpServer(
+        LOCAL_USER_ID,
+        null,
+        {
+          name: "mutable",
+          transport: "stdio",
+          command: "example",
+          args: [],
+          environment: {},
+          enabled: true,
+        },
+      );
+      await expect(
+        database.repository.updateMcpServer(LOCAL_USER_ID, null, mutable!.id, {
+          name: "CODEGRAPH",
+          transport: "stdio",
+          command: "shadow",
+          args: [],
+          environment: {},
+          enabled: true,
+        }),
+      ).rejects.toThrow("managed by Cantrip");
+    } finally {
+      await database.close();
+      await rm(dataDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("inherits globals, overrides by project, and copies independent configurations", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-mcp-settings-"),
