@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clientEncryption } from "./client-encryption";
 import { serverConnectionStorageKey } from "./server-connection-storage";
 
 const tauriApi = vi.hoisted(() => ({
@@ -102,6 +103,28 @@ describe("server connections", () => {
     await removeServerConnection(remote.id);
     expect(getServerConnections()).toEqual([]);
     expect(getActiveServerConnection()).toBeNull();
+  });
+
+  it("locks in-memory encryption keys when switching servers", async () => {
+    await initializeServerConnections();
+    const first = await saveServerConnection({
+      name: "First server",
+      url: "https://first.example/",
+    });
+    const second = await saveServerConnection({
+      name: "Second server",
+      url: "https://second.example/",
+    });
+    await selectServerConnection(first.id);
+    clientEncryption.setAccountMasterKey({
+      accountMasterKey: new Uint8Array(32).fill(17),
+      identity: { ownerId: "owner-a", serverId: first.id },
+      masterKeyRevision: 1,
+    });
+
+    await selectServerConnection(second.id);
+
+    expect(clientEncryption.getSnapshot().status).toBe("locked");
   });
 
   it("keeps the embedded local profile in the Tauri desktop app", async () => {

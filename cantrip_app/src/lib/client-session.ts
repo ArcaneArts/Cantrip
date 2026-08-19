@@ -1,5 +1,6 @@
 import type { AuthMode, UserSummary } from "@cantrip/protocol";
 
+import { clearClientEncryptionMemory } from "@/lib/client-encryption";
 import { getActiveServerConnection } from "@/lib/server-connections";
 
 export interface ClientSessionContext {
@@ -53,11 +54,18 @@ function synchronizeSession(next: ClientSessionContext): void {
 }
 
 export function setClientSession(next: ClientSessionContext): void {
+  if (
+    session &&
+    (session.serverId !== next.serverId || session.user.id !== next.user.id)
+  ) {
+    clearClientEncryptionMemory();
+  }
   session = next;
   synchronizeSession(next);
 }
 
 export function clearClientSession(): void {
+  clearClientEncryptionMemory();
   session = null;
   sessionChannel?.close();
   sessionChannel = null;
