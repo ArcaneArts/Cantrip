@@ -275,6 +275,9 @@ importers:
       sharp:
         specifier: 0.34.4
         version: 0.34.4
+      tar:
+        specifier: ^7.5.11
+        version: 7.5.22
       webdav-server:
         specifier: 2.6.3
         version: 2.6.3(patch_hash=6d9ab239e94069970537406374780261e3dc976865163fad26cafb6643d2da2f)
@@ -284,10 +287,16 @@ importers:
       ws:
         specifier: ^8.21.2
         version: 8.21.2
+      yauzl:
+        specifier: ^3.2.0
+        version: 3.4.0
     devDependencies:
       "@types/ws":
         specifier: ^8.18.1
         version: 8.18.1
+      "@types/yauzl":
+        specifier: ^2.10.3
+        version: 2.10.3
 
   packages/logging: {}
 
@@ -3837,6 +3846,12 @@ packages:
     resolution:
       {
         integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==,
+      }
+
+  "@types/yauzl@2.10.3":
+    resolution:
+      {
+        integrity: sha512-oJoftv0LSuaDZE3Le4DbKX+KS9G36NzOeSap90UIK0yMA/NhKJhqlSGtNDORNRaIbQfzjXDrQa0ytJ6mNRGz/Q==,
       }
 
   "@typescript/typescript-aix-ppc64@7.0.2":
@@ -8658,6 +8673,13 @@ packages:
         integrity: sha512-p4a9I6X6nu6IhoGmBqAcbJy1mlC4j27vEPZX9F4L4/vZT3Lyq1VkFHw/V/PUcB9Buo+DG3iHkT0x3Qya58zc3g==,
       }
 
+  yauzl@3.4.0:
+    resolution:
+      {
+        integrity: sha512-jIH9yLR9wqr0wOS0TpBvo/g/2UgZH5qePVbjgRliiF0BYvOZyaBknKsF+x9Iht0O6sqgnB93rCICdOZFecJuDw==,
+      }
+    engines: { node: ">=12" }
+
   yjs@13.6.32:
     resolution:
       {
@@ -11126,6 +11148,10 @@ snapshots:
   "@types/validate-npm-package-name@4.0.2": {}
 
   "@types/ws@8.18.1":
+    dependencies:
+      "@types/node": 26.1.2
+
+  "@types/yauzl@2.10.3":
     dependencies:
       "@types/node": 26.1.2
 
@@ -14069,6 +14095,10 @@ snapshots:
     dependencies:
       buffer-crc32: 0.2.13
       fd-slicer: 1.1.0
+
+  yauzl@3.4.0:
+    dependencies:
+      pend: 1.2.0
 
   yjs@13.6.32:
     dependencies:
