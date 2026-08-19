@@ -1099,6 +1099,68 @@ describe.sequential("Task domain foundation", () => {
     );
   });
 
+  it("starts implementation from the reviewed plan when finalization text is empty", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Empty finalization text", worktreeMode: "agent-managed" },
+    );
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown: "Plan and implement every saved Task requirement.",
+      },
+    );
+    nextTaskStructuredResult = plannerResult;
+    await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: { operationId: randomUUID(), rowVersion: drafted!.rowVersion },
+    });
+    const review = await waitForTaskState(created!.chat.id, "review");
+    nextTaskStructuredResult = {
+      finalPlanMarkdown: "",
+      goalPrompt: "",
+    };
+
+    const goalsBefore = goalCreateCount;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/begin-implementation`,
+      payload: {
+        operationId: randomUUID(),
+        rowVersion: review.rowVersion,
+        answers: [
+          {
+            questionId: "delivery",
+            optionId: "sequential",
+            freeform: null,
+          },
+        ],
+        additionalDirection: "Implement the reviewed plan.",
+      },
+    });
+    expect(response.statusCode).toBe(202);
+
+    const implementing = await waitForTaskState(
+      created!.chat.id,
+      "implementing",
+    );
+    expect(implementing).toMatchObject({
+      finalPlanMarkdown: review.planMarkdown,
+      implementationStartedAt: expect.any(String),
+      activeOperationId: null,
+      lastError: null,
+    });
+    expect(implementing.goalPrompt).toContain(review.planMarkdown);
+    expect(implementing.goalPrompt).toContain(
+      "Implement the complete final plan, validate the finished result",
+    );
+    expect(goalCreateCount - goalsBefore).toBe(1);
+  });
+
   it("runs the full Task lifecycle directly in a managed folder", async () => {
     const githubProjectId = projectId;
     try {
