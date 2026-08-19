@@ -1,7 +1,14 @@
 import { execFile } from "node:child_process";
 import { EventEmitter } from "node:events";
 import type { FSWatcher } from "node:fs";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -115,6 +122,11 @@ describe("CodeGraph project supervisor", () => {
       }),
     ]);
     await expect(supervisor.prepareForAgent(project.root)).resolves.toBe(
+      project.root,
+    );
+    const nested = path.join(project.root, "packages", "agent");
+    await mkdir(nested, { recursive: true });
+    await expect(supervisor.prepareForAgent(nested)).resolves.toBe(
       project.root,
     );
     await supervisor.waitForIdle();

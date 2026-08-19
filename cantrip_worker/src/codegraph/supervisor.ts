@@ -537,13 +537,20 @@ export class CodeGraphProjectSupervisor {
     candidateRoot: string,
     timeoutMs = AGENT_CATCH_UP_WAIT_MS,
   ): Promise<string | null> {
-    let root: string;
+    let candidate: string;
     try {
-      root = await realpath(candidateRoot);
+      candidate = await realpath(candidateRoot);
     } catch {
       return null;
     }
-    const project = this.#projects.get(root);
+    let root = candidate;
+    let project = this.#projects.get(root);
+    while (!project) {
+      const parent = path.dirname(root);
+      if (parent === root) return null;
+      root = parent;
+      project = this.#projects.get(root);
+    }
     if (!project || project.closed) return null;
 
     const lastSuccessfulSyncAt = project.lastSuccessfulSyncAt

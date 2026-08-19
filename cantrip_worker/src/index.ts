@@ -502,6 +502,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             codegraphInvocation.arguments,
             canonicalRoot,
           );
+          workerLogger.event("debug", "CodeGraph agent MCP injected", {
+            event: "codegraph.mcp.injected",
+            subsystem: "codegraph",
+            operation: "prepare-agent-mcp",
+            status: "completed",
+            worktreePath: canonicalRoot,
+            cwd,
+          });
+        } else {
+          workerLogger.event("warn", "CodeGraph agent MCP was not injected", {
+            event: "codegraph.mcp.unavailable",
+            subsystem: "codegraph",
+            operation: "prepare-agent-mcp",
+            reasonCode: "unmanaged-working-directory",
+            status: "degraded",
+            cwd,
+          });
         }
       } catch (error) {
         workerLogger.event("warn", "CodeGraph agent MCP preparation failed", {
