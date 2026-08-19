@@ -109,7 +109,27 @@ ${result.finalPlanMarkdown}`;
   return objective;
 }
 
-export function parseTaskPlannerResult(value: unknown): TaskPlannerResult {
+export function parseTaskPlannerResult(
+  value: unknown,
+  fallbackPlanMarkdown?: string,
+): TaskPlannerResult {
+  if (
+    fallbackPlanMarkdown?.trim() &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
+    const candidate = value as Record<string, unknown>;
+    if (
+      typeof candidate.planMarkdown === "string" &&
+      !candidate.planMarkdown.trim()
+    ) {
+      return taskPlannerResultSchema.parse({
+        ...candidate,
+        planMarkdown: fallbackPlanMarkdown,
+      });
+    }
+  }
   return taskPlannerResultSchema.parse(value);
 }
 

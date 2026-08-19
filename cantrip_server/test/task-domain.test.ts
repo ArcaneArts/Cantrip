@@ -867,6 +867,52 @@ describe.sequential("Task domain foundation", () => {
     });
   });
 
+  it("uses the saved Task brief when structured planner text is empty", async () => {
+    const created = await database.repository.createTask(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Empty planner text", worktreeMode: "agent-managed" },
+    );
+    const briefMarkdown =
+      "# User-authored Task\n\nWait ten seconds per cycle and report each completed cycle.";
+    const drafted = await database.repository.tasks.updateDraft(
+      LOCAL_USER_ID,
+      created!.chat.id,
+      {
+        rowVersion: created!.task.rowVersion,
+        briefMarkdown,
+      },
+    );
+    nextTaskStructuredResult = { planMarkdown: "", questions: [] };
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/tasks/${created!.chat.id}/plan`,
+      payload: { operationId: randomUUID(), rowVersion: drafted!.rowVersion },
+    });
+    expect(response.statusCode).toBe(202);
+
+    const completed = await waitForTaskState(created!.chat.id, "review");
+    expect(completed).toMatchObject({
+      planMarkdown: briefMarkdown,
+      currentQuestions: [],
+      activeOperationId: null,
+      lastError: null,
+    });
+    expect(
+      await database.repository.tasks.listRounds(
+        LOCAL_USER_ID,
+        created!.chat.id,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        status: "completed",
+        inputBriefMarkdown: briefMarkdown,
+        outputPlanMarkdown: briefMarkdown,
+      }),
+    ]);
+  });
+
   it("finalizes one immutable plan and starts one same-Chat Goal idempotently", async () => {
     const created = await database.repository.createTask(
       LOCAL_USER_ID,
