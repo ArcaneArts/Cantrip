@@ -3211,6 +3211,14 @@ export async function getExplorerFile(explorerId: string, path: string) {
   );
 }
 
+export function explorerMediaContentUrl(
+  explorerId: string,
+  path: string,
+  revision = 0,
+): string {
+  return `${getActiveServerUrl()}/api/explorers/${encodeURIComponent(explorerId)}/media?path=${encodeURIComponent(path)}&revision=${revision}`;
+}
+
 export async function saveExplorerFile(
   explorerId: string,
   input: ExplorerFileWrite,

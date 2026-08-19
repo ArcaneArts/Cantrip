@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
+import { Readable } from "node:stream";
 
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -119,6 +120,8 @@ import {
   explorerDirectorySchema,
   explorerFileSchema,
   explorerFileWriteSchema,
+  explorerMediaFileChunkSchema,
+  explorerMediaFileSchema,
   explorerListSchema,
   explorerSummarySchema,
   explorerUpdateSchema,
@@ -503,6 +506,7 @@ import {
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
+import { parseHttpByteRange } from "./http-byte-range.js";
 import { buildAgentPolicyContext } from "./policies/agent-context.js";
 import {
   associateTaskPullRequests,
@@ -793,6 +797,7 @@ const DEFAULT_API_BODY_LIMIT_BYTES = 1_024 * 1_024;
 const DEFAULT_UPLOAD_LIMIT_BYTES = 25 * 1_024 * 1_024;
 const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 8 * 1_024 * 1_024;
 const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
+const EXPLORER_MEDIA_CHUNK_BYTES = 256 * 1_024;
 const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
@@ -20157,6 +20162,120 @@ export async function buildApp({
         path: request.query.path,
       });
       return reply.send(explorerFileSchema.parse(file));
+    } catch (error) {
+      return sendWorkerRequestFailure(reply, error);
+    }
+  });
+
+  app.get<{
+    Params: { explorerId: string };
+    Querystring: { path?: string; revision?: string };
+  }>("/api/explorers/:explorerId/media", async (request, reply) => {
+    if (!request.query.path) {
+      return reply.code(400).send({ error: "A media path is required." });
+    }
+    const mediaPath = request.query.path;
+    const context = await repository.getExplorerExecutionContext(
+      applicationOwnerId(),
+      request.params.explorerId,
+    );
+    if (!context) return reply.code(404).send({ error: "Explorer not found." });
+    try {
+      const media = explorerMediaFileSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "explorer.media.stat",
+          root: context.root,
+          path: mediaPath,
+        }),
+      );
+      if (media.path !== mediaPath) {
+        throw new Error("Explorer returned stale media metadata.");
+      }
+      const requestedRange = parseHttpByteRange(
+        request.headers.range,
+        media.size,
+      );
+      if (requestedRange.kind === "invalid") {
+        return reply
+          .code(416)
+          .header("accept-ranges", "bytes")
+          .header("content-range", `bytes */${media.size}`)
+          .send({ error: "The requested media range is not satisfiable." });
+      }
+      const partial = requestedRange.kind === "range";
+      const start = partial ? requestedRange.start : 0;
+      const end = partial ? requestedRange.end : media.size - 1;
+      const responseSize = media.size === 0 ? 0 : end - start + 1;
+      const readChunk = async (offset: number, limit: number) => {
+        const chunk = explorerMediaFileChunkSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "explorer.media.read",
+            root: context.root,
+            path: mediaPath,
+            offset,
+            limit,
+          }),
+        );
+        if (
+          chunk.path !== media.path ||
+          chunk.kind !== media.kind ||
+          chunk.mimeType !== media.mimeType ||
+          chunk.size !== media.size ||
+          chunk.modifiedAt !== media.modifiedAt ||
+          chunk.offset !== offset
+        ) {
+          throw new Error("Explorer media changed while it was streaming.");
+        }
+        const bytes = Buffer.from(chunk.data, "base64");
+        const expectedBytes = Math.min(limit, media.size - offset);
+        if (
+          bytes.byteLength !== expectedBytes ||
+          chunk.eof !== offset + bytes.byteLength >= media.size
+        ) {
+          throw new Error("Explorer worker returned an invalid media chunk.");
+        }
+        return bytes;
+      };
+      const firstChunk =
+        responseSize === 0
+          ? Buffer.alloc(0)
+          : await readChunk(
+              start,
+              Math.min(EXPLORER_MEDIA_CHUNK_BYTES, responseSize),
+            );
+      const body =
+        responseSize === 0
+          ? firstChunk
+          : Readable.from(
+              (async function* () {
+                let offset = start;
+                let bytes = firstChunk;
+                for (;;) {
+                  yield bytes;
+                  offset += bytes.byteLength;
+                  if (offset > end) return;
+                  bytes = await readChunk(
+                    offset,
+                    Math.min(EXPLORER_MEDIA_CHUNK_BYTES, end - offset + 1),
+                  );
+                }
+              })(),
+            );
+      const filename = media.path.split("/").at(-1) ?? "media";
+      reply
+        .code(partial ? 206 : 200)
+        .header("accept-ranges", "bytes")
+        .header("cache-control", "private, no-store")
+        .header("content-length", String(responseSize))
+        .header(
+          "content-disposition",
+          `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        )
+        .type(media.mimeType);
+      if (partial) {
+        reply.header("content-range", `bytes ${start}-${end}/${media.size}`);
+      }
+      return reply.send(body);
     } catch (error) {
       return sendWorkerRequestFailure(reply, error);
     }

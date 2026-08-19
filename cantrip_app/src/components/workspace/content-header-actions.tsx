@@ -169,7 +169,7 @@ function ExplorerHeaderActions({
 }) {
   const mode =
     header.fileMode === "preview"
-      ? { icon: Eye, label: "Preview" }
+      ? { icon: Eye, label: "View" }
       : header.fileMode === "visual"
         ? { icon: TableProperties, label: "Visual" }
         : { icon: Pencil, label: "Edit" };
@@ -178,61 +178,71 @@ function ExplorerHeaderActions({
     <div className="flex items-center gap-1">
       {header.selectedPath ? (
         <>
-          <DropdownMenuPrimitive.Root>
-            <DropdownMenuPrimitive.Trigger asChild>
-              <Button
-                aria-label={`${mode.label} mode`}
-                className="size-8"
-                size="icon"
-                title={`${mode.label} mode`}
-                variant="ghost"
-              >
-                <ModeIcon className="size-4" />
-              </Button>
-            </DropdownMenuPrimitive.Trigger>
-            <DropdownMenuPrimitive.Portal>
-              <StyledDropdownMenuContent align="end" className="min-w-36">
-                <StyledDropdownMenuItem
-                  className="justify-between"
-                  onSelect={() => header.setFileMode("preview")}
+          {header.canEdit || header.canVisual ? (
+            <DropdownMenuPrimitive.Root>
+              <DropdownMenuPrimitive.Trigger asChild>
+                <Button
+                  aria-label={`${mode.label} mode`}
+                  className="size-8"
+                  size="icon"
+                  title={`${mode.label} mode`}
+                  variant="ghost"
                 >
-                  <span className="flex items-center gap-2">
-                    <Eye className="size-3.5" />
-                    Preview
-                  </span>
-                  {header.fileMode === "preview" ? (
-                    <Check className="size-3.5" />
-                  ) : null}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem
-                  className="justify-between"
-                  disabled={!header.canVisual}
-                  onSelect={() => header.setFileMode("visual")}
-                >
-                  <span className="flex items-center gap-2">
-                    <TableProperties className="size-3.5" />
-                    Visual
-                  </span>
-                  {header.fileMode === "visual" ? (
-                    <Check className="size-3.5" />
-                  ) : null}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem
-                  className="justify-between"
-                  disabled={!header.canEdit}
-                  onSelect={() => header.setFileMode("edit")}
-                >
-                  <span className="flex items-center gap-2">
-                    <Pencil className="size-3.5" />
-                    Edit
-                  </span>
-                  {header.fileMode === "edit" ? (
-                    <Check className="size-3.5" />
-                  ) : null}
-                </StyledDropdownMenuItem>
-              </StyledDropdownMenuContent>
-            </DropdownMenuPrimitive.Portal>
-          </DropdownMenuPrimitive.Root>
+                  <ModeIcon className="size-4" />
+                </Button>
+              </DropdownMenuPrimitive.Trigger>
+              <DropdownMenuPrimitive.Portal>
+                <StyledDropdownMenuContent align="end" className="min-w-36">
+                  <StyledDropdownMenuItem
+                    className="justify-between"
+                    onSelect={() => header.setFileMode("preview")}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Eye className="size-3.5" />
+                      View
+                    </span>
+                    {header.fileMode === "preview" ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                  </StyledDropdownMenuItem>
+                  <StyledDropdownMenuItem
+                    className="justify-between"
+                    disabled={!header.canVisual}
+                    onSelect={() => header.setFileMode("visual")}
+                  >
+                    <span className="flex items-center gap-2">
+                      <TableProperties className="size-3.5" />
+                      Visual
+                    </span>
+                    {header.fileMode === "visual" ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                  </StyledDropdownMenuItem>
+                  <StyledDropdownMenuItem
+                    className="justify-between"
+                    disabled={!header.canEdit}
+                    onSelect={() => header.setFileMode("edit")}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Pencil className="size-3.5" />
+                      Edit
+                    </span>
+                    {header.fileMode === "edit" ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                  </StyledDropdownMenuItem>
+                </StyledDropdownMenuContent>
+              </DropdownMenuPrimitive.Portal>
+            </DropdownMenuPrimitive.Root>
+          ) : (
+            <span
+              aria-label="View mode"
+              className="grid size-8 place-items-center text-muted-foreground"
+              title="View mode"
+            >
+              <Eye className="size-4" />
+            </span>
+          )}
           {!compact && header.dirty ? (
             <span className="px-1 text-[10px] font-medium text-amber-500">
               Unsaved

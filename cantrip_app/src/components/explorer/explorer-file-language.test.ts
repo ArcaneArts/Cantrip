@@ -13,6 +13,7 @@ describe("explorer file editing", () => {
     expect(monacoLanguageForPath("Dockerfile")).toBe("dockerfile");
     expect(monacoLanguageForPath("contracts/Token.sol")).toBe("sol");
     expect(monacoLanguageForPath("assets/photo.png")).toBeNull();
+    expect(monacoLanguageForPath("assets/logo.svg")).toBeNull();
   });
 
   it("opens structured files visually and other files in preview mode", () => {
@@ -24,6 +25,8 @@ describe("explorer file editing", () => {
     expect(defaultExplorerFileMode("gradle.properties")).toBe("visual");
     expect(defaultExplorerFileMode(".env")).toBe("visual");
     expect(defaultExplorerFileMode("README.md")).toBe("preview");
+    expect(defaultExplorerFileMode("assets/photo.png")).toBe("preview");
+    expect(defaultExplorerFileMode("recording.mp4")).toBe("preview");
   });
 
   it("identifies supported structured file formats", () => {

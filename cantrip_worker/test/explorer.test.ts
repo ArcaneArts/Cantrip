@@ -17,6 +17,8 @@ import {
   listExplorerDirectoryCommits,
   listExplorerDirectory,
   readExplorerFile,
+  readExplorerMediaFile,
+  statExplorerMediaFile,
   writeExplorerFile,
 } from "../src/explorer.js";
 
@@ -42,12 +44,16 @@ describe("project explorer", () => {
     await mkdir(path.join(root, "src"));
     await writeFile(path.join(root, "README.md"), "# Explorer\n");
     await writeFile(path.join(root, "image.png"), Buffer.from([0, 1, 2]));
+    await writeFile(path.join(root, "sound.mp3"), Buffer.from([3, 4]));
+    await writeFile(path.join(root, "video.mp4"), Buffer.from([5, 6, 7]));
 
     const directory = await listExplorerDirectory(root, "");
     expect(directory.entries.map(({ name }) => name)).toEqual([
       "src",
       "image.png",
       "README.md",
+      "sound.mp3",
+      "video.mp4",
     ]);
     expect(
       directory.entries.find(({ name }) => name === "README.md"),
@@ -58,9 +64,15 @@ describe("project explorer", () => {
     expect(
       directory.entries.find(({ name }) => name === "image.png"),
     ).toMatchObject({
-      viewable: false,
+      viewable: true,
       markdown: false,
     });
+    expect(
+      directory.entries.find(({ name }) => name === "sound.mp3"),
+    ).toMatchObject({ viewable: true });
+    expect(
+      directory.entries.find(({ name }) => name === "video.mp4"),
+    ).toMatchObject({ viewable: true });
     const original = await readExplorerFile(root, "README.md");
     expect(original).toMatchObject({
       content: "# Explorer\n",
@@ -84,6 +96,20 @@ describe("project explorer", () => {
     await expect(readExplorerFile(root, "image.png")).rejects.toThrow(
       "not available for preview",
     );
+    await expect(
+      statExplorerMediaFile(root, "image.png"),
+    ).resolves.toMatchObject({
+      path: "image.png",
+      kind: "image",
+      mimeType: "image/png",
+      size: 3,
+    });
+    const firstChunk = await readExplorerMediaFile(root, "image.png", 0, 2);
+    expect(Buffer.from(firstChunk.data, "base64")).toEqual(Buffer.from([0, 1]));
+    expect(firstChunk).toMatchObject({ offset: 0, eof: false, size: 3 });
+    const finalChunk = await readExplorerMediaFile(root, "image.png", 2, 2);
+    expect(Buffer.from(finalChunk.data, "base64")).toEqual(Buffer.from([2]));
+    expect(finalChunk).toMatchObject({ offset: 2, eof: true, size: 3 });
   });
 
   it("rejects traversal and symbolic-link escapes", async () => {
@@ -101,6 +127,9 @@ describe("project explorer", () => {
     await expect(readExplorerFile(root, "linked.txt")).rejects.toThrow(
       "does not follow symbolic links",
     );
+    await expect(
+      readExplorerMediaFile(root, "../outside.png", 0, 1),
+    ).rejects.toThrow("traversal");
     await expect(
       writeExplorerFile(root, "../outside.txt", "overwrite\n", "a".repeat(64)),
     ).rejects.toThrow("traversal");

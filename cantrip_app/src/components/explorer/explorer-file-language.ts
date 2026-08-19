@@ -39,7 +39,6 @@ const languageByExtension: Record<string, string> = {
   sh: "shell",
   sol: "sol",
   sql: "sql",
-  svg: "xml",
   swift: "swift",
   toml: "ini",
   ts: "typescript",

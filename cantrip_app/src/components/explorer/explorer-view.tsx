@@ -1,8 +1,10 @@
-import type {
-  ExplorerEntry,
-  ExplorerFileMode,
-  ExplorerSummary,
-  GitStatus,
+import {
+  explorerMediaTypeForPath,
+  type ExplorerMediaKind,
+  type ExplorerEntry,
+  type ExplorerFileMode,
+  type ExplorerSummary,
+  type GitStatus,
 } from "@cantrip/protocol";
 import {
   useIsFetching,
@@ -33,6 +35,7 @@ import {
 } from "@/components/explorer/explorer-file-language";
 import { Button } from "@/components/ui/button";
 import {
+  explorerMediaContentUrl,
   getExplorerFile,
   saveExplorerFile,
   updateExplorerViewState,
@@ -137,6 +140,72 @@ function SourceView({ code, path }: { code: string; path: string }) {
   );
 }
 
+function ExplorerMediaView({
+  explorerId,
+  kind,
+  mimeType,
+  path,
+  revision,
+}: {
+  explorerId: string;
+  kind: ExplorerMediaKind;
+  mimeType: string;
+  path: string;
+  revision: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  const source = explorerMediaContentUrl(explorerId, path, revision);
+  if (failed) {
+    return (
+      <div className="grid h-full place-items-center p-6">
+        <p className="border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          This media file could not be loaded.
+        </p>
+      </div>
+    );
+  }
+  if (kind === "image") {
+    return (
+      <div className="grid h-full place-items-center overflow-auto p-4">
+        <img
+          alt={path.split("/").at(-1) ?? path}
+          className="max-h-full max-w-full object-contain"
+          onError={() => setFailed(true)}
+          src={source}
+        />
+      </div>
+    );
+  }
+  if (kind === "audio") {
+    return (
+      <div className="grid h-full place-items-center p-6">
+        <audio
+          aria-label={path.split("/").at(-1) ?? path}
+          className="w-full max-w-2xl"
+          controls
+          onError={() => setFailed(true)}
+          preload="metadata"
+          src={source}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="grid h-full place-items-center overflow-auto p-4">
+      <video
+        aria-label={path.split("/").at(-1) ?? path}
+        className="max-h-full max-w-full"
+        controls
+        onError={() => setFailed(true)}
+        playsInline
+        preload="metadata"
+      >
+        <source src={source} type={mimeType} />
+      </video>
+    </div>
+  );
+}
+
 export interface ExplorerHeaderState {
   canEdit: boolean;
   canVisual: boolean;
@@ -200,14 +269,13 @@ export function ExplorerView({
   );
   const [fileMode, setFileModeState] = useState<ExplorerFileMode>(() =>
     transientFile
-      ? monacoLanguageForPath(transientFile.path)
-        ? "edit"
-        : "preview"
+      ? defaultExplorerFileMode(transientFile.path)
       : explorer.fileMode,
   );
   const [draft, setDraft] = useState("");
   const [baselineContent, setBaselineContent] = useState("");
   const [draftVersion, setDraftVersion] = useState<string | null>(null);
+  const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
   const queryClient = useQueryClient();
@@ -226,7 +294,9 @@ export function ExplorerView({
     queryKey: ["explorer-directory-commits", explorer.id],
   });
   const file = useQuery({
-    enabled: Boolean(selectedPath),
+    enabled: Boolean(
+      selectedPath && explorerMediaTypeForPath(selectedPath) === null,
+    ),
     queryFn: () => getExplorerFile(explorer.id, selectedPath!),
     queryKey: ["explorer-file", explorer.id, selectedPath],
   });
@@ -248,10 +318,17 @@ export function ExplorerView({
   const mutateSaveFile = saveFile.mutateAsync;
   const resetSaveFile = saveFile.reset;
   const editableLanguage = selectedPath
-    ? monacoLanguageForPath(selectedPath)
+    ? explorerMediaTypeForPath(selectedPath) === null
+      ? monacoLanguageForPath(selectedPath)
+      : null
     : null;
   const structuredFormat = selectedPath
-    ? structuredFileFormatForPath(selectedPath)
+    ? explorerMediaTypeForPath(selectedPath) === null
+      ? structuredFileFormatForPath(selectedPath)
+      : null
+    : null;
+  const mediaType = selectedPath
+    ? explorerMediaTypeForPath(selectedPath)
     : null;
   const dirty = draftVersion !== null && draft !== baselineContent;
   dirtyRef.current = dirty;
@@ -298,10 +375,14 @@ export function ExplorerView({
 
   const applyViewState = useCallback(
     (next: { selectedPath: string | null; fileMode: ExplorerFileMode }) => {
+      const nextFileMode =
+        next.selectedPath && explorerMediaTypeForPath(next.selectedPath)
+          ? "preview"
+          : next.fileMode;
       selectedPathRef.current = next.selectedPath;
-      fileModeRef.current = next.fileMode;
+      fileModeRef.current = nextFileMode;
       setSelectedPath(next.selectedPath);
-      setFileModeState(next.fileMode);
+      setFileModeState(nextFileMode);
     },
     [],
   );
@@ -353,6 +434,10 @@ export function ExplorerView({
       setBaselineContent("");
       setDraftVersion(null);
       resetSaveFile();
+      if (explorerMediaTypeForPath(path)) {
+        setMediaRevision((revision) => revision + 1);
+        return;
+      }
       await queryClient.invalidateQueries({
         exact: true,
         queryKey: ["explorer-file", explorer.id, path],
@@ -657,6 +742,9 @@ export function ExplorerView({
     setBaselineContent("");
     setDraftVersion(null);
     resetSaveFile();
+    if (explorerMediaTypeForPath(entry.path)) {
+      setMediaRevision((revision) => revision + 1);
+    }
     void persistViewState({
       selectedPath: entry.path,
       fileMode: defaultExplorerFileMode(entry.path),
@@ -693,7 +781,16 @@ export function ExplorerView({
             </div>
           ) : null}
           <div className="min-h-0 flex-1 overflow-hidden">
-            {file.isLoading ? (
+            {mediaType ? (
+              <ExplorerMediaView
+                explorerId={explorer.id}
+                key={`${selectedPath}:${mediaRevision}`}
+                kind={mediaType.kind}
+                mimeType={mediaType.mimeType}
+                path={selectedPath}
+                revision={mediaRevision}
+              />
+            ) : file.isLoading ? (
               <div className="grid h-full place-items-center text-muted-foreground">
                 <Loader2 className="size-5 animate-spin" />
               </div>

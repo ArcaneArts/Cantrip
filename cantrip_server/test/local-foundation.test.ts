@@ -163,6 +163,8 @@ const explorerWrites: Array<{
   path: string;
   version: string;
 }> = [];
+const explorerMediaBytes = Buffer.alloc(256 * 1_024 + 14, 0x5a);
+const explorerMediaModifiedAt = "2026-08-07T12:00:00.000Z";
 const terminalServiceReconciliations: Array<
   Extract<WorkerCommand, { type: "terminal.services.reconcile" }>
 > = [];
@@ -919,6 +921,15 @@ const workerBridge = {
               viewable: true,
               markdown: true,
             },
+            {
+              name: "preview.png",
+              path: "preview.png",
+              kind: "file",
+              size: explorerMediaBytes.byteLength,
+              modifiedAt: explorerMediaModifiedAt,
+              viewable: true,
+              markdown: false,
+            },
           ],
           truncated: false,
         };
@@ -949,6 +960,31 @@ const workerBridge = {
           markdown: true,
           version: "a".repeat(64),
         };
+      case "explorer.media.stat":
+        return {
+          path: command.path,
+          kind: "image",
+          mimeType: "image/png",
+          size: explorerMediaBytes.byteLength,
+          modifiedAt: explorerMediaModifiedAt,
+        };
+      case "explorer.media.read": {
+        const bytes = explorerMediaBytes.subarray(
+          command.offset,
+          command.offset + command.limit,
+        );
+        return {
+          path: command.path,
+          kind: "image",
+          mimeType: "image/png",
+          size: explorerMediaBytes.byteLength,
+          modifiedAt: explorerMediaModifiedAt,
+          offset: command.offset,
+          data: bytes.toString("base64"),
+          eof:
+            command.offset + bytes.byteLength >= explorerMediaBytes.byteLength,
+        };
+      }
       case "explorer.file.write":
         explorerWrites.push({
           content: command.content,
@@ -4508,6 +4544,40 @@ describe("local server foundation", () => {
         ).json(),
       ).content,
     ).toContain("Cantrip explorer");
+    const mediaResponse = await firstApp.inject({
+      method: "GET",
+      url: `/api/explorers/${explorer.id}/media?path=preview.png`,
+    });
+    expect(mediaResponse.statusCode).toBe(200);
+    expect(mediaResponse.headers).toMatchObject({
+      "accept-ranges": "bytes",
+      "cache-control": "private, no-store",
+      "content-length": String(explorerMediaBytes.byteLength),
+      "content-type": "image/png",
+    });
+    expect(mediaResponse.rawPayload).toEqual(explorerMediaBytes);
+    const rangedMediaResponse = await firstApp.inject({
+      method: "GET",
+      url: `/api/explorers/${explorer.id}/media?path=preview.png`,
+      headers: { range: "bytes=2-7" },
+    });
+    expect(rangedMediaResponse.statusCode).toBe(206);
+    expect(rangedMediaResponse.headers).toMatchObject({
+      "content-length": "6",
+      "content-range": `bytes 2-7/${explorerMediaBytes.byteLength}`,
+    });
+    expect(rangedMediaResponse.rawPayload).toEqual(
+      explorerMediaBytes.subarray(2, 8),
+    );
+    const invalidMediaRangeResponse = await firstApp.inject({
+      method: "GET",
+      url: `/api/explorers/${explorer.id}/media?path=preview.png`,
+      headers: { range: "bytes=999999-" },
+    });
+    expect(invalidMediaRangeResponse.statusCode).toBe(416);
+    expect(invalidMediaRangeResponse.headers["content-range"]).toBe(
+      `bytes */${explorerMediaBytes.byteLength}`,
+    );
     const explorerWriteVersion = "a".repeat(64);
     expect(
       explorerFileSchema.parse(

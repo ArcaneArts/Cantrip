@@ -26,12 +26,53 @@ globalThis.MonacoEnvironment = {
 
 loader.config({ monaco });
 
-function currentTheme(): "light" | "vs-dark" | "hc-light" | "hc-black" {
+const transparentSurfaceColors = {
+  "editor.background": "#00000000",
+  "editorGutter.background": "#00000000",
+  "editorOverviewRuler.background": "#00000000",
+  "minimap.background": "#00000000",
+};
+
+const cantripThemes = {
+  light: "cantrip-light",
+  dark: "cantrip-dark",
+  highContrastLight: "cantrip-high-contrast-light",
+  highContrastDark: "cantrip-high-contrast-dark",
+} as const;
+
+monaco.editor.defineTheme(cantripThemes.light, {
+  base: "vs",
+  inherit: true,
+  rules: [],
+  colors: transparentSurfaceColors,
+});
+monaco.editor.defineTheme(cantripThemes.dark, {
+  base: "vs-dark",
+  inherit: true,
+  rules: [],
+  colors: transparentSurfaceColors,
+});
+monaco.editor.defineTheme(cantripThemes.highContrastLight, {
+  base: "hc-light",
+  inherit: true,
+  rules: [],
+  colors: transparentSurfaceColors,
+});
+monaco.editor.defineTheme(cantripThemes.highContrastDark, {
+  base: "hc-black",
+  inherit: true,
+  rules: [],
+  colors: transparentSurfaceColors,
+});
+
+function currentTheme(): (typeof cantripThemes)[keyof typeof cantripThemes] {
   const classes = document.documentElement.classList;
   if (classes.contains("high-contrast")) {
-    return classes.contains("dark") ? "hc-black" : "hc-light";
+    return classes.contains("dark")
+      ? cantripThemes.highContrastDark
+      : cantripThemes.highContrastLight;
   }
-  return classes.contains("dark") ? "vs-dark" : "light";
+  return classes.contains("dark") ? cantripThemes.dark : cantripThemes.light;
 }
 
 export function MonacoFileEditor({
@@ -68,7 +109,7 @@ export function MonacoFileEditor({
   };
 
   return (
-    <div className="h-full" data-selectable-text="true">
+    <div className="h-full bg-background" data-selectable-text="true">
       <Editor
         height="100%"
         language={language}

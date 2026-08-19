@@ -9,10 +9,15 @@ import {
   explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
   explorerFileSchema,
+  explorerMediaFileChunkSchema,
+  explorerMediaFileSchema,
+  explorerMediaTypeForPath,
   type ExplorerDirectoryCommits,
   type ExplorerDirectory,
   type ExplorerFile,
   type ExplorerLastCommit,
+  type ExplorerMediaFile,
+  type ExplorerMediaFileChunk,
 } from "@cantrip/protocol";
 
 const DIRECTORY_LIMIT = 1_000;
@@ -58,7 +63,6 @@ const TEXT_EXTENSIONS = new Set([
   ".sh",
   ".sol",
   ".sql",
-  ".svg",
   ".swift",
   ".toml",
   ".ts",
@@ -87,9 +91,13 @@ function markdownFile(name: string): boolean {
   return MARKDOWN_EXTENSIONS.has(path.extname(name).toLowerCase());
 }
 
-function viewableFile(name: string): boolean {
+function textFile(name: string): boolean {
   const lower = name.toLowerCase();
   return TEXT_FILENAMES.has(lower) || TEXT_EXTENSIONS.has(path.extname(lower));
+}
+
+function viewableFile(name: string): boolean {
+  return textFile(name) || explorerMediaTypeForPath(name) !== null;
 }
 
 function fileVersion(bytes: Uint8Array): string {
@@ -428,7 +436,7 @@ export async function readExplorerFile(
   relativePath: string,
 ): Promise<ExplorerFile> {
   const { metadata, targetPath } = await resolveEntry(root, relativePath);
-  if (!metadata.isFile() || !viewableFile(path.basename(targetPath))) {
+  if (!metadata.isFile() || !textFile(path.basename(targetPath))) {
     throw new Error("This file type is not available for preview.");
   }
   if (metadata.size > FILE_SIZE_LIMIT) {
@@ -451,6 +459,86 @@ export async function readExplorerFile(
   });
 }
 
+export async function statExplorerMediaFile(
+  root: string,
+  relativePath: string,
+): Promise<ExplorerMediaFile> {
+  const { metadata, targetPath } = await resolveEntry(root, relativePath);
+  const mediaType = explorerMediaTypeForPath(targetPath);
+  if (!metadata.isFile() || !mediaType) {
+    throw new Error("This file type is not available as media.");
+  }
+  return explorerMediaFileSchema.parse({
+    path: relativePath,
+    ...mediaType,
+    size: metadata.size,
+    modifiedAt: metadata.mtime.toISOString(),
+  });
+}
+
+export async function readExplorerMediaFile(
+  root: string,
+  relativePath: string,
+  offset: number,
+  limit: number,
+): Promise<ExplorerMediaFileChunk> {
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new Error("The media read offset is invalid.");
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256 * 1_024) {
+    throw new Error("The media read limit is invalid.");
+  }
+  const { targetPath } = await resolveEntry(root, relativePath);
+  const mediaType = explorerMediaTypeForPath(targetPath);
+  if (!mediaType) throw new Error("This file type is not available as media.");
+  const handle = await open(
+    targetPath,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
+  try {
+    const metadata = await handle.stat();
+    if (!metadata.isFile()) {
+      throw new Error("This file type is not available as media.");
+    }
+    if (offset > metadata.size) {
+      throw new Error("The media read offset is outside the file.");
+    }
+    const requestedBytes = Math.min(limit, metadata.size - offset);
+    const bytes = Buffer.alloc(requestedBytes);
+    let bytesRead = 0;
+    while (bytesRead < requestedBytes) {
+      const result = await handle.read(
+        bytes,
+        bytesRead,
+        requestedBytes - bytesRead,
+        offset + bytesRead,
+      );
+      if (result.bytesRead === 0) {
+        throw new Error("The media file changed while it was being read.");
+      }
+      bytesRead += result.bytesRead;
+    }
+    const verifiedMetadata = await handle.stat();
+    if (
+      verifiedMetadata.size !== metadata.size ||
+      verifiedMetadata.mtimeMs !== metadata.mtimeMs
+    ) {
+      throw new Error("The media file changed while it was being read.");
+    }
+    return explorerMediaFileChunkSchema.parse({
+      path: relativePath,
+      ...mediaType,
+      size: metadata.size,
+      modifiedAt: metadata.mtime.toISOString(),
+      offset,
+      data: bytes.toString("base64"),
+      eof: offset + bytesRead >= metadata.size,
+    });
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function writeExplorerFile(
   root: string,
   relativePath: string,
@@ -468,7 +556,7 @@ export async function writeExplorerFile(
   );
   try {
     const metadata = await handle.stat();
-    if (!metadata.isFile() || !viewableFile(path.basename(targetPath))) {
+    if (!metadata.isFile() || !textFile(path.basename(targetPath))) {
       throw new Error("This file type is not available for editing.");
     }
     if (metadata.size > FILE_SIZE_LIMIT) {
