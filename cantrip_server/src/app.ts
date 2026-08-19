@@ -539,7 +539,9 @@ import {
 } from "./chats/execution-helpers.js";
 import { canonicalMessagesFromThreadSync } from "./chats/thread-sync.js";
 import {
+  ChatTurnOutcomeRecoveryScheduler,
   chatTurnOutcomeRecoveryKey,
+  outcomeBelongsToLatestLaneTurn,
   shouldRecoverChatTurnOutcome,
 } from "./chats/turn-outcome-recovery.js";
 import {
@@ -1353,20 +1355,15 @@ export async function buildApp({
     string,
     ReturnType<typeof setTimeout>
   >();
-  const chatTurnOutcomeRecoveryTimers = new Map<
-    string,
-    ReturnType<typeof setTimeout>
-  >();
+  const chatTurnOutcomeRecoveryScheduler =
+    new ChatTurnOutcomeRecoveryScheduler();
   const cancelChatTurnOutcomeRecovery = (
     workerId: string,
     chatId: string,
     clientMessageId: string,
   ): void => {
     const key = chatTurnOutcomeRecoveryKey(workerId, chatId, clientMessageId);
-    const timer = chatTurnOutcomeRecoveryTimers.get(key);
-    if (!timer) return;
-    clearTimeout(timer);
-    chatTurnOutcomeRecoveryTimers.delete(key);
+    chatTurnOutcomeRecoveryScheduler.settle(key);
   };
   const runningGitOperationRequests = new Set<string>();
   const workerNotificationSubscriptions = new Map<string, () => void>();
@@ -1496,10 +1493,7 @@ export async function buildApp({
         notification.chatId,
         notification.clientMessageId,
       );
-      const existing = chatTurnOutcomeRecoveryTimers.get(key);
-      if (existing) clearTimeout(existing);
-      const timer = setTimeout(() => {
-        chatTurnOutcomeRecoveryTimers.delete(key);
+      const scheduled = chatTurnOutcomeRecoveryScheduler.schedule(key, () => {
         void runAsOwner(ownerId, () =>
           recoverChatTurnOutcome(ownerId, workerId, notification),
         ).catch((error) => {
@@ -1513,9 +1507,17 @@ export async function buildApp({
             "Could not recover a completed agent turn",
           );
         });
-      }, 1_000);
-      timer.unref();
-      chatTurnOutcomeRecoveryTimers.set(key, timer);
+      });
+      if (!scheduled) {
+        app.log.debug(
+          {
+            chatId: notification.chatId,
+            clientMessageId: notification.clientMessageId,
+            workerId,
+          },
+          "Ignored a durable outcome for a turn already settled normally",
+        );
+      }
       return;
     }
     if (notification.type === "worktree.inventory.observed") {
@@ -6144,6 +6146,29 @@ export async function buildApp({
           workerId,
         },
         "Ignored an agent turn outcome outside its execution lane",
+      );
+      return;
+    }
+
+    const messages = await repository.listMessages(
+      ownerId,
+      notification.chatId,
+    );
+    if (
+      !outcomeBelongsToLatestLaneTurn(
+        messages,
+        notification.executionLaneId,
+        notification.clientMessageId,
+      )
+    ) {
+      app.log.warn(
+        {
+          chatId: notification.chatId,
+          clientMessageId: notification.clientMessageId,
+          executionLaneId: notification.executionLaneId,
+          workerId,
+        },
+        "Ignored a stale agent turn outcome after the execution lane advanced",
       );
       return;
     }
@@ -24097,9 +24122,7 @@ export async function buildApp({
     customizationStatusObservers.clear();
     for (const timer of worktreeObservationTimers.values()) clearTimeout(timer);
     worktreeObservationTimers.clear();
-    for (const timer of chatTurnOutcomeRecoveryTimers.values())
-      clearTimeout(timer);
-    chatTurnOutcomeRecoveryTimers.clear();
+    chatTurnOutcomeRecoveryScheduler.clear();
     for (const unsubscribe of workerNotificationSubscriptions.values()) {
       unsubscribe();
     }

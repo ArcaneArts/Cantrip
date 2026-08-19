@@ -26,6 +26,7 @@ import {
   commandTelemetryFromCompletion,
   commandTelemetryFromDelta,
   commandTelemetryFromStart,
+  completedCodexThreadTurnFromRead,
   failClosedAgentInteractionReply,
   findActiveChatTurn,
   GOAL_CONTINUATION_PROMPT,
@@ -86,6 +87,64 @@ const correlation = {
 };
 
 describe("Codex rich event normalization", () => {
+  it("recovers final messages and commands from an authoritative completed turn", () => {
+    const turn = completedCodexThreadTurnFromRead(
+      {
+        thread: {
+          id: "thread-1",
+          turns: [
+            {
+              id: "turn-1",
+              status: "completed",
+              error: null,
+              startedAt: 1_000,
+              completedAt: 2_000,
+              durationMs: 1_000,
+              items: [
+                {
+                  type: "commandExecution",
+                  id: "command-1",
+                  command: "pwd",
+                  cwd: "/workspace",
+                  status: "completed",
+                  aggregatedOutput: "/workspace\n",
+                  exitCode: 0,
+                  durationMs: 25,
+                },
+                {
+                  type: "agentMessage",
+                  id: "message-1",
+                  text: "1",
+                  phase: "final_answer",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      "/workspace",
+      "turn-1",
+    );
+
+    expect(turn?.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "activity",
+          activity: expect.objectContaining({
+            type: "command",
+            id: "command-1",
+            output: "/workspace\n",
+          }),
+        }),
+        expect.objectContaining({
+          type: "agentMessage",
+          id: "message-1",
+          text: "1",
+        }),
+      ]),
+    );
+  });
+
   it("retains a strict rolling 256 KiB UTF-8 command tail", () => {
     const exact = boundedCommandOutput("🙂".repeat(65_536));
     expect(Buffer.byteLength(exact.output!, "utf8")).toBe(256 * 1_024);

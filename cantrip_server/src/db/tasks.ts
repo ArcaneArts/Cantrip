@@ -51,6 +51,39 @@ export interface TaskOperationContext {
   round: TaskPlanningRound;
 }
 
+export interface TaskOperationLookup {
+  operationId?: string;
+  executionLaneId?: string;
+  userMessageId?: string;
+}
+
+export function findTaskOperationRound(
+  rounds: readonly TaskPlanningRound[],
+  lookup: TaskOperationLookup,
+): TaskPlanningRound | null {
+  if (lookup.operationId) {
+    return (
+      rounds.find((candidate) => candidate.id === lookup.operationId) ?? null
+    );
+  }
+  if (lookup.userMessageId) {
+    return (
+      rounds.find(
+        (candidate) => candidate.userMessageId === lookup.userMessageId,
+      ) ?? null
+    );
+  }
+  if (lookup.executionLaneId) {
+    for (let index = rounds.length - 1; index >= 0; index -= 1) {
+      const candidate = rounds[index];
+      if (candidate?.executionLaneId === lookup.executionLaneId) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
 export class TaskConflictError extends Error {
   constructor(
     message: string,
@@ -456,23 +489,12 @@ export class TaskRepository {
   async getOperationContext(
     ownerId: string,
     chatId: string,
-    lookup: {
-      operationId?: string;
-      executionLaneId?: string;
-      userMessageId?: string;
-    },
+    lookup: TaskOperationLookup,
   ): Promise<TaskOperationContext | null> {
     const task = await this.get(ownerId, chatId);
     if (!task) return null;
     const rounds = await this.listRounds(ownerId, chatId);
-    const round = rounds.find(
-      (candidate) =>
-        (lookup.operationId && candidate.id === lookup.operationId) ||
-        (lookup.executionLaneId &&
-          candidate.executionLaneId === lookup.executionLaneId) ||
-        (lookup.userMessageId &&
-          candidate.userMessageId === lookup.userMessageId),
-    );
+    const round = findTaskOperationRound(rounds, lookup);
     return round ? { task, round } : null;
   }
 

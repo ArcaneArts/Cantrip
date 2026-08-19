@@ -1,9 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ChatTurnOutcomeRecoveryScheduler,
   chatTurnOutcomeRecoveryKey,
+  outcomeBelongsToLatestLaneTurn,
   shouldRecoverChatTurnOutcome,
 } from "../src/chats/turn-outcome-recovery.js";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const activeLane = {
   state: "active",
@@ -38,5 +44,43 @@ describe("chat turn outcome recovery", () => {
     expect(shouldRecoverChatTurnOutcome(null, "worker-1", "worktree-1")).toBe(
       false,
     );
+  });
+
+  it("does not schedule a durable recovery after normal completion settles the turn", () => {
+    vi.useFakeTimers();
+    const recover = vi.fn();
+    const scheduler = new ChatTurnOutcomeRecoveryScheduler(1_000, 60_000);
+    scheduler.settle("turn-1");
+
+    expect(scheduler.schedule("turn-1", recover)).toBe(false);
+    vi.advanceTimersByTime(1_000);
+    expect(recover).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("cancels a scheduled durable recovery when the normal request completes", () => {
+    vi.useFakeTimers();
+    const recover = vi.fn();
+    const scheduler = new ChatTurnOutcomeRecoveryScheduler(1_000, 60_000);
+    expect(scheduler.schedule("turn-1", recover)).toBe(true);
+    scheduler.settle("turn-1");
+
+    vi.advanceTimersByTime(1_000);
+    expect(recover).not.toHaveBeenCalled();
+    scheduler.clear();
+  });
+
+  it("rejects an old outcome after a reused lane has a newer user turn", () => {
+    const messages = [
+      { id: "message-1", role: "user", executionLaneId: "lane-1" },
+      { id: "assistant-1", role: "assistant", executionLaneId: "lane-1" },
+      { id: "message-2", role: "user", executionLaneId: "lane-1" },
+    ];
+    expect(
+      outcomeBelongsToLatestLaneTurn(messages, "lane-1", "message-1"),
+    ).toBe(false);
+    expect(
+      outcomeBelongsToLatestLaneTurn(messages, "lane-1", "message-2"),
+    ).toBe(true);
   });
 });
