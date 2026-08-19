@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import { agentTurnResultModeSchema } from "../src/index.js";
+
 import {
   encryptedTaskProtectedContentSchema,
   taskGoalObjectiveOpaqueSnapshotSchema,
   taskMessageProtectedContentSchema,
   taskOpaqueSummarySchema,
+  taskOperationRelayRequestSchema,
+  taskOperationRelayResultSchema,
   taskPlanningRoundProtectedContentSchema,
   taskProtectedContentSchema,
 } from "../src/tasks.js";
@@ -159,5 +163,50 @@ describe("Task encryption contracts", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps encrypted Task operation relay contracts opaque and classified", () => {
+    const request = taskOperationRelayRequestSchema.parse({
+      chatId: "chat-1",
+      operationId: "11111111-1111-4111-8111-111111111111",
+      fingerprint: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      classification: {
+        ordinal: 2,
+        kind: "continue-plan",
+        status: "running",
+        hasOutputPlan: false,
+        hasOutputQuestions: false,
+        hasOutputGoalPrompt: false,
+        error: null,
+      },
+      protectedInput: encrypted,
+    });
+    expect(request).not.toHaveProperty("prompt");
+    expect(
+      agentTurnResultModeSchema.parse({
+        kind: "task-encrypted",
+        operation: request,
+      }).kind,
+    ).toBe("task-encrypted");
+    expect(
+      taskOperationRelayRequestSchema.safeParse({
+        ...request,
+        plaintextPrompt: "must not cross the server",
+      }).success,
+    ).toBe(false);
+    expect(
+      taskOperationRelayResultSchema.parse({
+        chatId: request.chatId,
+        operationId: request.operationId,
+        fingerprint: request.fingerprint,
+        classification: {
+          ...request.classification,
+          status: "completed",
+          hasOutputPlan: true,
+        },
+        protectedResult: encrypted,
+        goal: null,
+      }).classification.status,
+    ).toBe("completed");
   });
 });

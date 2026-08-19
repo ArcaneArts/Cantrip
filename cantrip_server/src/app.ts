@@ -532,6 +532,7 @@ import {
   taskImplementationDashboardSchema,
   type TaskAssociatedPullRequest,
   type TaskDetail,
+  type TaskOperationRelayRequest,
 } from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
@@ -621,6 +622,7 @@ import {
   parseTaskFinalizerResult,
   parseTaskPlannerResult,
 } from "./tasks/planner.js";
+import { taskOperationRelayTurnFields } from "./tasks/encrypted-relay.js";
 import {
   TabLayoutConflictError,
   TabLayoutInvariantError,
@@ -6516,7 +6518,8 @@ export async function buildApp({
       purpose?: string;
       runtimes?: ModelRuntime[];
       structuredResult?: {
-        outputSchema: WorkflowJsonObject;
+        outputSchema?: WorkflowJsonObject;
+        taskOperation?: TaskOperationRelayRequest;
         afterCompleted?(input: {
           attribution: { executionLaneId: string; worktreeId: string };
           execution: ChatExecutionContext;
@@ -6540,6 +6543,16 @@ export async function buildApp({
   ): Promise<ChatMessage> {
     const turnStartedAtMs = Date.now();
     const ownerId = applicationOwnerId();
+    if (
+      options.structuredResult &&
+      Boolean(options.structuredResult.outputSchema) ===
+        Boolean(options.structuredResult.taskOperation)
+    ) {
+      throw new Error("Structured turns require exactly one result contract.");
+    }
+    const encryptedTaskRelay = options.structuredResult?.taskOperation
+      ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
+      : null;
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
     }
@@ -6694,12 +6707,15 @@ export async function buildApp({
           const threadId = canResume ? execution.threadId : null;
           const finals = createStreamedFinalTracker();
           const requestedPrompt =
+            encryptedTaskRelay?.prompt ??
             options.workerPrompt ??
             (input.text ||
               "Review the attached files and respond to the user.");
-          const workerPrompt = threadId
-            ? requestedPrompt
-            : continuationPrompt(priorMessages, requestedPrompt);
+          const workerPrompt = encryptedTaskRelay
+            ? encryptedTaskRelay.prompt
+            : threadId
+              ? requestedPrompt
+              : continuationPrompt(priorMessages, requestedPrompt);
           if (index > 0) {
             await setLiveChatMessageModelRoute(
               ownerId,
@@ -6841,10 +6857,10 @@ export async function buildApp({
                 mcpServers,
                 automationPaused: execution.automationPaused,
                 resultMode: options.structuredResult
-                  ? {
-                      kind: "structured",
-                      outputSchema: options.structuredResult.outputSchema,
-                    }
+                  ? (encryptedTaskRelay?.resultMode ?? {
+                      kind: "structured" as const,
+                      outputSchema: options.structuredResult.outputSchema!,
+                    })
                   : { kind: "visible" },
               },
               {

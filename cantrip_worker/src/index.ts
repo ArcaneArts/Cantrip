@@ -8,6 +8,7 @@ import {
   workerEncryptionRefreshResultSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
+  type AgentTurnResultMode,
   type McpServerConfiguration,
   type WorktreeObservationTarget,
   type WorkerCommand,
@@ -69,6 +70,10 @@ import {
   purgeLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
 import { readWorkerLogs, workerLogError, workerLogger } from "./logger.js";
+import {
+  executeEncryptedTaskOperation,
+  openEncryptedTaskGoalObjective,
+} from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
   ProviderAccessTokenClient,
@@ -1827,56 +1832,87 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (command.automationPaused) pausedChats.add(command.chatId);
         const runtime = runtimeFor(command);
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
-        return runtime.runTurn({
-          automationPaused: pausedChats.has(command.chatId),
-          attachments: command.attachments.map((attachment) => ({
-            ...attachment,
-            path: attachments.resolve(
-              command.chatId,
-              attachment.id,
-              attachment.fileName,
-            ),
-          })),
-          chatId: command.chatId,
-          clientMessageId: command.clientMessageId,
-          cwd: command.cwd,
-          isPrimary: command.isPrimary,
-          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
-          model: command.model,
-          permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
-          planMode: command.planMode,
-          policyContext: command.policyContext,
-          resultMode: command.resultMode,
-          prompt: command.prompt,
-          rootKind: command.rootKind,
-          skillNames: command.skillNames,
-          threadId: command.threadId,
-          worktreeMode: command.worktreeMode,
-          worktreePolicy: command.worktreePolicy,
-          onActivity: (activity) => emit({ type: "agent.activity", activity }),
-          onMessage: (message) => emit({ type: "agent.message", message }),
-          onInteractionRequest: (request) =>
-            emit({ type: "agent.interaction.requested", request }),
-          onInteractionCleared: (requestKey) =>
-            emit({ type: "agent.interaction.cleared", requestKey }),
-          onInteractionExpired: (requestKey) =>
-            emit({ type: "agent.interaction.expired", requestKey }),
-          onCheckpoint: ({ text, turnId }) =>
-            emit({ type: "agent.checkpoint", text, turnId }),
-          onPlan: ({ explanation, steps, turnId }) =>
-            emit({ type: "agent.plan.updated", explanation, steps, turnId }),
-          onPlanQuestion: (question) =>
-            emit({ type: "agent.plan.question", question }),
-          onPlanQuestionResolved: (questionId) =>
-            emit({ type: "agent.plan.question-resolved", questionId }),
-          onThreadLoaded: (threadId) => {
-            cliBroker.bindCodexThread(threadId, {
-              chatId: command.chatId,
-              executionLaneId: command.executionLaneId,
-            });
-          },
-        });
+        const encryptedTask = command.resultMode.kind === "task-encrypted";
+        const resolvedMcpServers = await agentMcpServers(
+          command.cwd,
+          command.mcpServers,
+        );
+        const runTurn = (prompt: string, resultMode: AgentTurnResultMode) =>
+          runtime.runTurn({
+            automationPaused: pausedChats.has(command.chatId),
+            attachments: command.attachments.map((attachment) => ({
+              ...attachment,
+              path: attachments.resolve(
+                command.chatId,
+                attachment.id,
+                attachment.fileName,
+              ),
+            })),
+            chatId: command.chatId,
+            clientMessageId: command.clientMessageId,
+            cwd: command.cwd,
+            isPrimary: command.isPrimary,
+            mcpServers: resolvedMcpServers,
+            model: command.model,
+            permissionProfileId: command.permissionProfileId,
+            provider: command.provider,
+            planMode: command.planMode,
+            policyContext: command.policyContext,
+            resultMode,
+            prompt,
+            rootKind: command.rootKind,
+            skillNames: encryptedTask ? [] : command.skillNames,
+            threadId: command.threadId,
+            worktreeMode: command.worktreeMode,
+            worktreePolicy: command.worktreePolicy,
+            ...(encryptedTask
+              ? {}
+              : {
+                  onActivity: (activity) =>
+                    emit({ type: "agent.activity", activity }),
+                  onMessage: (message) =>
+                    emit({ type: "agent.message", message }),
+                  onInteractionRequest: (request) =>
+                    emit({ type: "agent.interaction.requested", request }),
+                  onInteractionCleared: (requestKey) =>
+                    emit({ type: "agent.interaction.cleared", requestKey }),
+                  onInteractionExpired: (requestKey) =>
+                    emit({ type: "agent.interaction.expired", requestKey }),
+                  onCheckpoint: ({ text, turnId }) =>
+                    emit({ type: "agent.checkpoint", text, turnId }),
+                  onPlan: ({ explanation, steps, turnId }) =>
+                    emit({
+                      type: "agent.plan.updated",
+                      explanation,
+                      steps,
+                      turnId,
+                    }),
+                  onPlanQuestion: (question) =>
+                    emit({ type: "agent.plan.question", question }),
+                  onPlanQuestionResolved: (questionId) =>
+                    emit({
+                      type: "agent.plan.question-resolved",
+                      questionId,
+                    }),
+                }),
+            onThreadLoaded: (threadId) => {
+              cliBroker.bindCodexThread(threadId, {
+                chatId: command.chatId,
+                executionLaneId: command.executionLaneId,
+              });
+            },
+          });
+        if (command.resultMode.kind === "task-encrypted") {
+          return executeEncryptedTaskOperation({
+            getComponentKey: () =>
+              workerEncryption.componentKey("task-content"),
+            ownerId: workerEncryption.ownerId(),
+            request: command.resultMode.operation,
+            run: ({ outputSchema, prompt }) =>
+              runTurn(prompt, { kind: "structured", outputSchema }),
+          });
+        }
+        return runTurn(command.prompt, command.resultMode);
       }
       case "workflow.node.execute":
         return runtimeFor(command).runWorkflowNode({
@@ -2008,7 +2044,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return runtimeFor(command).createGoal({
           cwd: command.cwd,
           model: command.model,
-          objective: command.objective,
+          objective:
+            typeof command.objective === "string"
+              ? command.objective
+              : await openEncryptedTaskGoalObjective({
+                  chatId: command.chatId,
+                  getComponentKey: () =>
+                    workerEncryption.componentKey("task-content"),
+                  goal: command.objective,
+                  ownerId: workerEncryption.ownerId(),
+                  threadId: command.threadId,
+                }),
           permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
