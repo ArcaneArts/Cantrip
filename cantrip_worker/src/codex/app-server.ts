@@ -164,6 +164,7 @@ interface ActiveTurn {
   finalText: string | null;
   interactionMode: "interactive" | "preauthorized";
   latestUsage: TokenUsageBreakdown | null;
+  liveAgentMessageFingerprints: Set<string>;
   model: RunAgentTurnOptions["model"];
   providerId: string;
   providerKind: string;
@@ -2233,9 +2234,17 @@ function publishStagedAgentMessages(
   active.pendingAgentMessage = staged.pending;
   for (const message of staged.emitted) {
     if (!active.structuredChat || message.phase === "commentary") {
+      active.liveAgentMessageFingerprints.add(agentMessageFingerprint(message));
       active.onMessage?.(message);
     }
   }
+}
+
+function agentMessageFingerprint(message: NormalizedAgentMessage): string {
+  return JSON.stringify([
+    message.phase === "commentary" ? "commentary" : "final",
+    message.text,
+  ]);
 }
 
 function flushActiveAgentMessage(active: ActiveTurn, completed: boolean): void {
@@ -2840,6 +2849,7 @@ export class CodexAppServer implements CodexRuntime {
         finalText: null,
         interactionMode: "interactive",
         latestUsage: null,
+        liveAgentMessageFingerprints: new Set(),
         model: options.model,
         providerId: options.provider.id,
         providerKind: options.provider.kind,
@@ -2988,6 +2998,7 @@ export class CodexAppServer implements CodexRuntime {
         finalText: null,
         interactionMode: options.approvalMode,
         latestUsage: null,
+        liveAgentMessageFingerprints: new Set(),
         model: options.model,
         providerId: options.provider.id,
         providerKind: options.provider.kind,
@@ -5740,6 +5751,7 @@ export class CodexAppServer implements CodexRuntime {
           active.delta = "";
           active.diffChanges = [];
           active.finalText = null;
+          active.liveAgentMessageFingerprints.clear();
           active.reasoningSummaries.clear();
           active.startedAtMs = Date.now();
           workerLogger.event("info", "Codex goal remains active", {
@@ -5867,9 +5879,15 @@ export class CodexAppServer implements CodexRuntime {
         );
         return;
       }
+      const liveMessageFingerprints = new Set(
+        active.liveAgentMessageFingerprints,
+      );
       for (const item of turn.items) {
         if (item.type === "agentMessage") {
           const { type: _type, ...message } = item;
+          if (liveMessageFingerprints.has(agentMessageFingerprint(message))) {
+            continue;
+          }
           active.onMessage?.(message);
         } else if (item.type === "activity") {
           active.onActivity?.(item.activity);
