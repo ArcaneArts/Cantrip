@@ -4,13 +4,15 @@ import { Loader2, Pause, Play, Target, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-const STATUS_LABELS: Record<ThreadGoal["status"], string> = {
+const STATUS_LABELS: Record<
+  Exclude<ThreadGoal["status"], "complete">,
+  string
+> = {
   active: "Running",
   paused: "Paused",
   blocked: "Blocked",
   usageLimited: "Usage limited",
   budgetLimited: "Budget reached",
-  complete: "Complete",
 };
 
 export function formatGoalElapsed(seconds: number): string {
@@ -35,7 +37,7 @@ export function GoalPanel({
   onUpdate(status: "active" | "paused"): void;
   pending: boolean;
 }) {
-  if (!goal) return null;
+  if (!goal || goal.status === "complete") return null;
   const progress =
     goal.tokenBudget && goal.tokenBudget > 0
       ? Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100)
