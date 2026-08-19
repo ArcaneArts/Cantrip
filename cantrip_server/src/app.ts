@@ -16663,6 +16663,16 @@ export async function buildApp({
       );
       try {
         if (input.data.deleteLocalFiles) {
+          if (
+            context.originKind === "managed-folder" &&
+            context.folderManagement === "external"
+          ) {
+            return reply.code(409).send({
+              code: "external-folder-delete-forbidden",
+              error:
+                "Cantrip does not own this attached folder. Remove the project without deleting local files.",
+            });
+          }
           if (context.originKind === "managed-folder") {
             const workerId =
               context.replicas[0]?.workerId ?? context.preferredWorkerId;
@@ -16813,6 +16823,12 @@ export async function buildApp({
         error: "This worker does not support managed folder creation.",
       });
     }
+    if (input.data.existingPath && !worker.managedFolders.attachExisting) {
+      return reply.code(409).send({
+        code: "managed-folder-capability-unavailable",
+        error: "This worker does not support attaching existing folders.",
+      });
+    }
     try {
       const created = await repository.createManagedFolderProject(
         applicationOwnerId(),
@@ -16915,11 +16931,13 @@ export async function buildApp({
       }
       if (
         project.originKind !== "managed-folder" ||
-        project.setupStatus !== "ready"
+        project.setupStatus !== "ready" ||
+        project.folderManagement !== "managed"
       ) {
         return reply.code(409).send({
           code: "project-not-ready",
-          error: "Only a ready managed folder project can be converted.",
+          error:
+            "Only a ready folder managed by Cantrip can be converted. Attached folders remain user-owned.",
         });
       }
       if (
@@ -16998,6 +17016,17 @@ export async function buildApp({
       );
       if (!project) {
         return reply.code(404).send({ error: "Project not found." });
+      }
+      if (
+        project.originKind !== "managed-folder" ||
+        project.setupStatus !== "ready" ||
+        project.folderManagement !== "managed"
+      ) {
+        return reply.code(409).send({
+          code: "project-not-ready",
+          error:
+            "Only a ready folder managed by Cantrip can be converted. Attached folders remain user-owned.",
+        });
       }
       const workerId = project.preferredWorkerId;
       if (!workerId) {

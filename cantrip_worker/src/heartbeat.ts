@@ -46,6 +46,7 @@ export function createHeartbeat(
     },
     managedFolders: {
       create: true,
+      attachExisting: true,
       convertToGithub: true,
       remove: true,
     },

@@ -92,9 +92,26 @@ export class ManagedFolderManager {
 
   async materialize(input: {
     attempt: number;
+    existingPath?: string;
     jobId: string;
     projectId: string;
   }): Promise<ManagedFolderMaterializeReady> {
+    if (input.existingPath) {
+      const requestedPath = path.resolve(input.existingPath);
+      const canonicalTarget = await realpath(requestedPath);
+      const targetEntry = await lstat(canonicalTarget);
+      if (!targetEntry.isDirectory()) {
+        throw new Error("The existing folder path is not a directory.");
+      }
+      return managedFolderMaterializeReadySchema.parse({
+        status: "ready",
+        jobId: input.jobId,
+        attempt: input.attempt,
+        path: canonicalTarget,
+        displayPath: input.existingPath,
+        reused: true,
+      });
+    }
     const { canonicalRoot, displayPath, target } = await this.verifiedTarget(
       input.projectId,
     );

@@ -23,6 +23,7 @@ export class ProjectFolderSetupJobStaleAttemptError extends Error {}
 
 export interface ClaimedProjectFolderSetupJob {
   commandId: string;
+  existingPath: string | null;
   job: ProjectFolderSetupJobSummary;
   ownerId: string;
   projectName: string;
@@ -135,6 +136,7 @@ export class ProjectFolderSetupJobRepository {
       return {
         ownerId: rows[0].ownerId,
         commandId,
+        existingPath: rows[0].requestedPath,
         job: toJob(rows[0]),
         projectName: candidate.projectName,
       };
@@ -290,7 +292,7 @@ export class ProjectFolderSetupJobRepository {
         displayPath: result.displayPath,
         isPrimary: true,
         isDefault: true,
-        origin: "cantrip",
+        origin: job.requestedPath ? "external" : "cantrip",
         lifecycleState: "ready",
       });
       await transaction

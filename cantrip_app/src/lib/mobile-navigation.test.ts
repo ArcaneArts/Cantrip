@@ -44,7 +44,7 @@ describe("mobile project selection", () => {
     ).toEqual({ projectId: null, showImporter: false });
   });
 
-  it("keeps desktop automatic selection and empty-project importing", () => {
+  it("keeps desktop automatic selection and shows the empty-project chooser", () => {
     expect(
       projectSelectionAction({
         compact: false,
@@ -60,7 +60,7 @@ describe("mobile project selection", () => {
         selectedProjectId: null,
         visibleProjects: [],
       }),
-    ).toEqual({ projectId: null, showImporter: true });
+    ).toEqual({ projectId: null, showImporter: false });
   });
 
   it("preserves a managed root screen while workspace data refreshes", () => {

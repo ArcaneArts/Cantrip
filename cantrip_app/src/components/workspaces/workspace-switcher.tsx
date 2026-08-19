@@ -12,6 +12,10 @@ import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
+  ProjectCreateMenu,
+  type ProjectCreateSource,
+} from "@/components/projects/project-create-menu";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,7 +37,7 @@ export function WorkspaceSwitcher({
   workspaces,
 }: {
   activeWorkspaceId: string | null;
-  onAddProject(): void;
+  onAddProject(source: ProjectCreateSource): void;
   onCreate(name: string): Promise<void>;
   onManage(): void;
   onSelect(workspaceId: string): void;
@@ -129,19 +133,20 @@ export function WorkspaceSwitcher({
             </DropdownMenuPrimitive.Content>
           </DropdownMenuPrimitive.Portal>
         </DropdownMenuPrimitive.Root>
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="size-7 shrink-0"
-          title={`Add project to ${active?.name ?? "current workspace"}`}
-          onClick={onAddProject}
-        >
-          <Plus className="size-4" />
-          <span className="sr-only">
-            Add project to {active?.name ?? "current workspace"}
-          </span>
-        </Button>
+        <ProjectCreateMenu onSelect={onAddProject}>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-7 shrink-0"
+            title={`Add project to ${active?.name ?? "current workspace"}`}
+          >
+            <Plus className="size-4" />
+            <span className="sr-only">
+              Add project to {active?.name ?? "current workspace"}
+            </span>
+          </Button>
+        </ProjectCreateMenu>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -532,7 +532,11 @@ export function ProjectSettingsPage({
                 ) : (
                   <span className="inline-flex items-center gap-2">
                     {project.name}
-                    <Badge variant="secondary">Folder</Badge>
+                    <Badge variant="secondary">
+                      {project.folderManagement === "external"
+                        ? "Attached folder"
+                        : "Managed folder"}
+                    </Badge>
                   </span>
                 )}
               </DetailRow>
@@ -563,7 +567,8 @@ export function ProjectSettingsPage({
         ) : null}
 
         {section === "general" ? (
-          project.originKind === "managed-folder" ? (
+          project.originKind === "managed-folder" &&
+          project.folderManagement !== "external" ? (
             <ProjectGithubConversion project={project} workers={workers} />
           ) : null
         ) : null}

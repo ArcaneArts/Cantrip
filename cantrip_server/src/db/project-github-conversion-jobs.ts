@@ -566,6 +566,7 @@ export class ProjectGithubConversionJobRepository {
         .update(schema.projects)
         .set({
           originKind: "github",
+          folderManagement: null,
           githubRepositoryId: result.repository.repositoryId,
           githubRepositoryFullName: result.repository.nameWithOwner,
           githubRepositoryUrl: result.repository.url,

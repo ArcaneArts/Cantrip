@@ -65,13 +65,16 @@ const bridge: WorkerCommandBus = {
   async request(workerId, command) {
     commands.push({ workerId, command });
     if (command.type === "project.folder.materialize") {
+      const target =
+        command.existingPath ??
+        path.join(dataDirectory, "folders", command.projectId);
       return {
         status: "ready",
         jobId: command.jobId,
         attempt: command.attempt,
-        path: path.join(dataDirectory, "folders", command.projectId),
-        displayPath: `folders/${command.projectId}`,
-        reused: false,
+        path: target,
+        displayPath: command.existingPath ?? `folders/${command.projectId}`,
+        reused: Boolean(command.existingPath),
       };
     }
     if (command.type === "project.folder.delete") return { deleted: true };
@@ -152,7 +155,12 @@ beforeAll(async () => {
     architecture: "x64",
     codexVersion: null,
     codexRuntime: unprobedCodexRuntimeReport,
-    managedFolders: { create: true, convertToGithub: true, remove: true },
+    managedFolders: {
+      create: true,
+      attachExisting: true,
+      convertToGithub: true,
+      remove: true,
+    },
     code: {
       available: true,
       version: "1.109.5",
@@ -225,6 +233,80 @@ async function waitUntilReady(projectId: string) {
 }
 
 describe("managed folder project lifecycle", () => {
+  it("attaches an existing worker folder without taking deletion ownership", async () => {
+    const existingPath = path.join(dataDirectory, "outside-managed-root");
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/projects/from-folder",
+      payload: {
+        existingPath,
+        name: "Existing project",
+        workerId: "folder-worker",
+      },
+    });
+    expect(response.statusCode).toBe(202);
+    const created = projectSummarySchema.parse(response.json());
+    expect(created.folderManagement).toBe("external");
+    const ready = await waitUntilReady(created.id);
+    expect(ready).toMatchObject({
+      folderManagement: "external",
+      source: { path: existingPath },
+    });
+    expect(
+      commands.find(
+        ({ command }) =>
+          command.type === "project.folder.materialize" &&
+          command.projectId === created.id,
+      )?.command,
+    ).toMatchObject({ existingPath });
+    expect(
+      (
+        await database.repository.listProjectWorktrees(
+          LOCAL_USER_ID,
+          created.id,
+        )
+      )[0],
+    ).toMatchObject({ origin: "external", path: existingPath });
+
+    const conversion = await app.inject({
+      method: "POST",
+      url: `/api/projects/${created.id}/github-conversion/preflight`,
+      payload: {
+        repository: {
+          repositoryId: "external-folder-conversion",
+          nameWithOwner: "ArcaneArts/ExternalFolder",
+          url: "https://github.com/ArcaneArts/ExternalFolder",
+        },
+      },
+    });
+    expect(conversion.statusCode).toBe(409);
+
+    const deleteFiles = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${created.id}`,
+      payload: { deleteLocalFiles: true },
+    });
+    expect(deleteFiles.statusCode).toBe(409);
+    expect(deleteFiles.json()).toMatchObject({
+      code: "external-folder-delete-forbidden",
+    });
+    expect(
+      commands.some(
+        ({ command }) =>
+          command.type === "project.folder.delete" &&
+          command.projectId === created.id,
+      ),
+    ).toBe(false);
+
+    expect(
+      await app.inject({
+        method: "DELETE",
+        url: `/api/projects/${created.id}`,
+        payload: { deleteLocalFiles: false },
+      }),
+    ).toMatchObject({ statusCode: 204 });
+  });
+
   it("creates duplicate display names with distinct folder roots", async () => {
     const first = await createFolder();
     const second = await createFolder();

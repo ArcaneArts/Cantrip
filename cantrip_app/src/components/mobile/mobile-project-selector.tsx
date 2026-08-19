@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { WorkspaceSwitcher } from "@/components/workspaces/workspace-switcher";
+import type { ProjectCreateSource } from "@/components/projects/project-create-menu";
 import { searchProjects } from "@/lib/project-workspaces";
 
 function projectStatus(
@@ -80,7 +81,7 @@ export function MobileProjectSelector({
   loading: boolean;
   onCreateWorkspace(name: string): Promise<void>;
   onManageWorkspaces(): void;
-  onNewProject(): void;
+  onNewProject(source: ProjectCreateSource): void;
   onOpenAdmin(): void;
   onOpenSettings(): void;
   onSelectProject(projectId: string): void;
