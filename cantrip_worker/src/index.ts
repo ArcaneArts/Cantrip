@@ -131,6 +131,7 @@ import {
   runGitAction,
   startGitManagedOperation,
 } from "./git.js";
+import { readGitGraphMetrics, readGitGraphSnapshot } from "./git-graph.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
@@ -1172,6 +1173,20 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.limit,
           command.cursor,
           command.revisions,
+        );
+      case "git.graph.snapshot":
+        return readGitGraphSnapshot(
+          command.cwd,
+          command.revision,
+          command.rootPath,
+          command.maxNodes,
+        );
+      case "git.graph.metrics":
+        return readGitGraphMetrics(
+          command.cwd,
+          command.revision,
+          command.rootPath,
+          command.maxNodes,
         );
       case "git.file.history":
         return readGitFileHistory(

@@ -6380,6 +6380,117 @@ export const gitBlameSchema = z.object({
   nextCursor: z.number().int().nonnegative().nullable(),
 });
 
+export const gitGraphNodeKindSchema = z.enum([
+  "directory",
+  "file",
+  "symlink",
+  "submodule",
+]);
+
+export const gitGraphMetricStateSchema = z.enum([
+  "pending",
+  "ready",
+  "deferred",
+  "unavailable",
+]);
+
+export const gitGraphAnalysisStateSchema = z.object({
+  structure: z.literal("ready"),
+  lines: gitGraphMetricStateSchema,
+  history: gitGraphMetricStateSchema,
+  blame: gitGraphMetricStateSchema,
+});
+
+const gitGraphNodeIdSchema = z.string().min(1).max(4_200);
+
+export const gitGraphNodeSchema = z.object({
+  id: gitGraphNodeIdSchema,
+  path: gitRelativePathSchema.nullable(),
+  parentId: gitGraphNodeIdSchema.nullable(),
+  name: z.string().min(1).max(4_096),
+  kind: gitGraphNodeKindSchema,
+  objectId: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  byteSize: z.number().int().nonnegative().nullable(),
+  extension: z.string().max(200).nullable(),
+  language: z.string().max(200).nullable(),
+});
+
+export const gitGraphSnapshotSchema = z.object({
+  analyzerVersion: z.number().int().positive(),
+  revision: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  branch: z.string().nullable(),
+  rootPath: gitRelativePathSchema.nullable(),
+  rootId: gitGraphNodeIdSchema,
+  nodes: z.array(gitGraphNodeSchema).min(1).max(100_000),
+  totalNodes: z.number().int().positive(),
+  truncated: z.boolean(),
+  analyzedAt: z.iso.datetime(),
+  analysis: gitGraphAnalysisStateSchema,
+});
+
+export const gitGraphNodeMetricsSchema = z.object({
+  nodeId: gitGraphNodeIdSchema,
+  path: gitRelativePathSchema.nullable(),
+  lineCount: z.number().int().nonnegative().nullable(),
+  binary: z.boolean().nullable(),
+  commitTouches: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  churn: z.number().int().nonnegative(),
+  binaryCommitTouches: z.number().int().nonnegative(),
+  firstChangedAt: z.string().datetime({ offset: true }).nullable(),
+  lastChangedAt: z.string().datetime({ offset: true }).nullable(),
+  dominantAuthorName: z.string().max(500).nullable(),
+  dominantAuthorEmail: z.string().max(1_000).nullable(),
+  dominantAuthorShare: z.number().min(0).max(1).nullable(),
+  averageBlameAgeDays: z.number().nonnegative().nullable(),
+});
+
+export const gitGraphMetricsSchema = z.object({
+  analyzerVersion: z.number().int().positive(),
+  revision: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  rootPath: gitRelativePathSchema.nullable(),
+  historyScope: z.enum(["current-branch", "none"]),
+  renameAware: z.boolean(),
+  nodes: z.array(gitGraphNodeMetricsSchema).min(1).max(100_000),
+  analyzedAt: z.iso.datetime(),
+  analysis: gitGraphAnalysisStateSchema,
+});
+
+export const gitGraphCommitOverlayNodeSchema = z.object({
+  path: gitRelativePathSchema,
+  originalPath: gitRelativePathSchema.nullable(),
+  status: gitCommitFileSchema.shape.status,
+  additions: z.number().int().nonnegative().nullable(),
+  deletions: z.number().int().nonnegative().nullable(),
+  weight: z.number().int().nonnegative(),
+  binary: z.boolean(),
+  ghost: z.boolean(),
+});
+
+export const gitGraphCommitOverlaySchema = z.object({
+  revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  baseRevision: z
+    .string()
+    .regex(/^[0-9a-f]{40,64}$/u)
+    .nullable(),
+  rootPath: gitRelativePathSchema.nullable(),
+  nodes: z.array(gitGraphCommitOverlayNodeSchema).max(100_000),
+  filesChanged: z.number().int().nonnegative(),
+  additions: z.number().int().nonnegative(),
+  deletions: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+
 const gitSearchDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/u);
 export const gitCommitSearchQuerySchema = z
   .object({
@@ -8629,6 +8740,20 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .default([]),
   }),
   z.object({
+    type: z.literal("git.graph.snapshot"),
+    cwd: z.string().min(1).max(8_192),
+    revision: gitAgentRevisionSchema.default("HEAD"),
+    rootPath: gitRelativePathSchema.nullable().default(null),
+    maxNodes: z.number().int().min(1).max(100_000).default(100_000),
+  }),
+  z.object({
+    type: z.literal("git.graph.metrics"),
+    cwd: z.string().min(1).max(8_192),
+    revision: gitAgentRevisionSchema.default("HEAD"),
+    rootPath: gitRelativePathSchema.nullable().default(null),
+    maxNodes: z.number().int().min(1).max(100_000).default(100_000),
+  }),
+  z.object({
     type: z.literal("git.file.history"),
     cwd: z.string().min(1).max(8_192),
     path: gitRelativePathSchema,
@@ -10200,6 +10325,17 @@ export type GitFileHistoryEntry = z.infer<typeof gitFileHistoryEntrySchema>;
 export type GitFileHistory = z.infer<typeof gitFileHistorySchema>;
 export type GitBlameRange = z.infer<typeof gitBlameRangeSchema>;
 export type GitBlame = z.infer<typeof gitBlameSchema>;
+export type GitGraphNodeKind = z.infer<typeof gitGraphNodeKindSchema>;
+export type GitGraphMetricState = z.infer<typeof gitGraphMetricStateSchema>;
+export type GitGraphAnalysisState = z.infer<typeof gitGraphAnalysisStateSchema>;
+export type GitGraphNode = z.infer<typeof gitGraphNodeSchema>;
+export type GitGraphSnapshot = z.infer<typeof gitGraphSnapshotSchema>;
+export type GitGraphNodeMetrics = z.infer<typeof gitGraphNodeMetricsSchema>;
+export type GitGraphMetrics = z.infer<typeof gitGraphMetricsSchema>;
+export type GitGraphCommitOverlayNode = z.infer<
+  typeof gitGraphCommitOverlayNodeSchema
+>;
+export type GitGraphCommitOverlay = z.infer<typeof gitGraphCommitOverlaySchema>;
 export type GitCommitSearchQuery = z.infer<typeof gitCommitSearchQuerySchema>;
 export type GitCommitSearchResult = z.infer<typeof gitCommitSearchResultSchema>;
 export type GitRecoveryCandidate = z.infer<typeof gitRecoveryCandidateSchema>;
