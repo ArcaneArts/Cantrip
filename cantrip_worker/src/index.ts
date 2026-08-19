@@ -132,7 +132,11 @@ import {
   runGitAction,
   startGitManagedOperation,
 } from "./git.js";
-import { readGitGraphMetrics, readGitGraphSnapshot } from "./git-graph.js";
+import {
+  createGitGraphCommitOverlay,
+  readGitGraphMetrics,
+  readGitGraphSnapshot,
+} from "./git-graph.js";
 import { createHeartbeat, sendHeartbeat } from "./heartbeat.js";
 import { DirectBroker } from "./direct-broker.js";
 import { enrollWorker } from "./enrollment.js";
@@ -1196,6 +1200,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.revision,
           command.rootPath,
           command.maxNodes,
+        );
+      case "git.graph.commit-overlay":
+        return createGitGraphCommitOverlay(
+          await readGitCommitDetail(command.cwd, command.revision),
+          command.rootPath,
         );
       case "git.file.history":
         return readGitFileHistory(

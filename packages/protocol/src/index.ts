@@ -6567,6 +6567,11 @@ export const gitGraphRequestSchema = z.object({
   maxNodes: z.number().int().min(1).max(100_000).default(100_000),
 });
 
+export const gitGraphCommitOverlayRequestSchema = z.object({
+  revision: z.string().regex(/^[0-9a-f]{40,64}$/u),
+  rootPath: gitRelativePathSchema.nullable().default(null),
+});
+
 export const gitGraphCommitOverlayNodeSchema = z.object({
   path: gitRelativePathSchema,
   originalPath: gitRelativePathSchema.nullable(),
@@ -8855,6 +8860,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitGraphRequestSchema.shape),
+  z
+    .object({
+      type: z.literal("git.graph.commit-overlay"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitGraphCommitOverlayRequestSchema.shape),
   z.object({
     type: z.literal("git.file.history"),
     cwd: z.string().min(1).max(8_192),
@@ -10451,6 +10462,9 @@ export type GitGraphSnapshot = z.infer<typeof gitGraphSnapshotSchema>;
 export type GitGraphNodeMetrics = z.infer<typeof gitGraphNodeMetricsSchema>;
 export type GitGraphMetrics = z.infer<typeof gitGraphMetricsSchema>;
 export type GitGraphRequest = z.infer<typeof gitGraphRequestSchema>;
+export type GitGraphCommitOverlayRequest = z.infer<
+  typeof gitGraphCommitOverlayRequestSchema
+>;
 export type GitGraphCommitOverlayNode = z.infer<
   typeof gitGraphCommitOverlayNodeSchema
 >;

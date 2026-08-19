@@ -370,6 +370,7 @@ export function GitCommitInspector({
   onAction,
   onClose,
   onNavigate,
+  onViewInGraph,
   projectId,
   revision,
   worktreeId,
@@ -378,6 +379,7 @@ export function GitCommitInspector({
   onAction(request: CommitActionRequest): void;
   onClose(): void;
   onNavigate(revision: string): void;
+  onViewInGraph?(revision: string): void;
   projectId: string;
   revision: string;
   worktreeId: string;
@@ -461,6 +463,7 @@ export function GitCommitInspector({
                 isHead: detail.data.hash === currentHead,
               }}
               onAction={onAction}
+              onViewInGraph={onViewInGraph}
             />
           ) : null}
           <Button

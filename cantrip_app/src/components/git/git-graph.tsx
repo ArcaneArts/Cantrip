@@ -7,6 +7,7 @@ import {
   LocateFixed,
   Network,
   RotateCcw,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -16,12 +17,14 @@ import {
 } from "@/components/repository-graph";
 import { Button } from "@/components/ui/button";
 import {
+  getProjectWorktreeGraphCommitOverlay,
   getProjectWorktreeGraphMetrics,
   getProjectWorktreeGraphSnapshot,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 import {
+  applyGitGraphCommitOverlay,
   buildGitGraphDisplayModel,
   gitGraphDimensionNeedsMetrics,
   type GitGraphColorDimension,
@@ -124,6 +127,9 @@ function graphBreadcrumbs(
 }
 
 export function GitRepositoryGraphView({
+  commitRevision = null,
+  onClearCommit,
+  onOpenCommit,
   projectId,
   refreshEpoch,
   rootPath = null,
@@ -133,6 +139,9 @@ export function GitRepositoryGraphView({
   onRevealNode,
   onStatusChange,
 }: {
+  commitRevision?: string | null;
+  onClearCommit?(): void;
+  onOpenCommit?(revision: string): void;
   onActivateFile?(path: string): void;
   onBack?(): void;
   onRevealNode?(node: RepositoryGraphInputNode): void;
@@ -155,11 +164,30 @@ export function GitRepositoryGraphView({
       projectId,
       worktreeId,
       rootPath,
+      commitRevision ?? "HEAD",
       refreshEpoch,
     ],
     queryFn: () =>
       getProjectWorktreeGraphSnapshot(projectId, worktreeId, {
         maxNodes: 100_000,
+        revision: commitRevision ?? "HEAD",
+        rootPath,
+      }),
+    staleTime: 30_000,
+  });
+  const commitOverlay = useQuery({
+    enabled: Boolean(commitRevision && snapshot.data),
+    queryKey: [
+      "git-graph-commit-overlay",
+      projectId,
+      worktreeId,
+      commitRevision,
+      rootPath,
+      refreshEpoch,
+    ],
+    queryFn: () =>
+      getProjectWorktreeGraphCommitOverlay(projectId, worktreeId, {
+        revision: commitRevision!,
         rootPath,
       }),
     staleTime: 30_000,
@@ -193,18 +221,24 @@ export function GitRepositoryGraphView({
       ? "language"
       : state.colorDimension
     : state.colorDimension;
-  const display = useMemo(
-    () =>
-      snapshot.data
-        ? buildGitGraphDisplayModel(
-            snapshot.data,
-            metrics.data ?? null,
-            sizeDimension,
-            colorDimension,
-          )
-        : null,
-    [colorDimension, metrics.data, sizeDimension, snapshot.data],
-  );
+  const display = useMemo(() => {
+    if (!snapshot.data) return null;
+    const base = buildGitGraphDisplayModel(
+      snapshot.data,
+      metrics.data ?? null,
+      sizeDimension,
+      colorDimension,
+    );
+    return commitOverlay.data
+      ? applyGitGraphCommitOverlay(base, snapshot.data, commitOverlay.data)
+      : base;
+  }, [
+    colorDimension,
+    commitOverlay.data,
+    metrics.data,
+    sizeDimension,
+    snapshot.data,
+  ]);
   const breadcrumbs = useMemo(
     () =>
       snapshot.data ? graphBreadcrumbs(snapshot.data, state.focusedNodeId) : [],
@@ -246,10 +280,17 @@ export function GitRepositoryGraphView({
   useEffect(() => {
     onStatusChange?.({
       head: snapshot.data?.revision ?? null,
-      isFetching: snapshot.isFetching || metrics.isFetching,
+      isFetching:
+        snapshot.isFetching || metrics.isFetching || commitOverlay.isFetching,
       nodeCount: snapshot.data?.totalNodes ?? 0,
     });
-  }, [metrics.isFetching, onStatusChange, snapshot.data, snapshot.isFetching]);
+  }, [
+    commitOverlay.isFetching,
+    metrics.isFetching,
+    onStatusChange,
+    snapshot.data,
+    snapshot.isFetching,
+  ]);
 
   if (snapshot.isLoading) {
     return (
@@ -291,6 +332,10 @@ export function GitRepositoryGraphView({
             onActivateFile?.(node.path);
             return;
           }
+          if (node.kind === "ghost" && commitRevision) {
+            onOpenCommit?.(commitRevision);
+            return;
+          }
           if (node.kind !== "directory") return;
           setState((current) => ({
             ...current,
@@ -310,6 +355,41 @@ export function GitRepositoryGraphView({
       />
 
       <div className="absolute left-3 top-3 flex max-w-[calc(100%-5.5rem)] flex-col gap-2">
+        {commitRevision ? (
+          <div className="flex w-fit max-w-full items-center gap-2 rounded-lg border border-violet-500/40 bg-background/92 px-3 py-2 text-xs shadow-sm backdrop-blur">
+            <span className="shrink-0 font-medium text-violet-400">
+              Commit {commitRevision.slice(0, 8)}
+            </span>
+            {commitOverlay.data ? (
+              <span className="truncate text-muted-foreground">
+                {commitOverlay.data.filesChanged.toLocaleString()} files · +
+                {commitOverlay.data.additions.toLocaleString()} −
+                {commitOverlay.data.deletions.toLocaleString()}
+                {commitOverlay.data.truncated ? " · truncated" : ""}
+              </span>
+            ) : commitOverlay.isLoading ? (
+              <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+            ) : null}
+            <Button
+              className="ml-auto size-6 shrink-0"
+              onClick={onClearCommit}
+              size="icon"
+              title="Back to HEAD"
+              type="button"
+              variant="ghost"
+            >
+              <X className="size-3.5" />
+              <span className="sr-only">Back to HEAD</span>
+            </Button>
+          </div>
+        ) : null}
+        {commitOverlay.isError ? (
+          <div className="w-fit max-w-full rounded-lg border border-destructive/30 bg-background/92 px-3 py-2 text-xs text-destructive shadow-sm backdrop-blur">
+            {commitOverlay.error instanceof Error
+              ? commitOverlay.error.message
+              : "The selected commit overlay could not be loaded."}
+          </div>
+        ) : null}
         <details
           className="group w-fit max-w-full rounded-lg border bg-background/88 shadow-sm backdrop-blur"
           open
@@ -349,6 +429,7 @@ export function GitRepositoryGraphView({
               Node color
               <select
                 className="h-8 min-w-40 rounded-md border bg-background px-2 text-xs font-normal normal-case tracking-normal text-foreground"
+                disabled={Boolean(commitRevision)}
                 value={state.colorDimension}
                 onChange={(event) =>
                   setState((current) => ({
@@ -380,6 +461,12 @@ export function GitRepositoryGraphView({
                 })}
               </select>
             </label>
+            {commitRevision ? (
+              <p className="text-[10px] normal-case tracking-normal text-muted-foreground sm:col-span-2">
+                The selected commit controls color and impact intensity. Your
+                node-size dimension remains active.
+              </p>
+            ) : null}
           </div>
         </details>
 

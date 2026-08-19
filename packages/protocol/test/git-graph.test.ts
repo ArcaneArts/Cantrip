@@ -160,5 +160,17 @@ describe("Git graph protocol", () => {
         rootPath: "../outside",
       }).success,
     ).toBe(false);
+    expect(
+      workerCommandSchema.parse({
+        type: "git.graph.commit-overlay",
+        cwd: "/repo",
+        revision,
+      }),
+    ).toEqual({
+      type: "git.graph.commit-overlay",
+      cwd: "/repo",
+      revision,
+      rootPath: null,
+    });
   });
 });

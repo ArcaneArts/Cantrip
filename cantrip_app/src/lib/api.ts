@@ -123,6 +123,8 @@ import {
   gitFileHistorySchema,
   gitBlameSchema,
   gitForcePushPreviewSchema,
+  gitGraphCommitOverlayRequestSchema,
+  gitGraphCommitOverlaySchema,
   gitGraphMetricsSchema,
   gitGraphRequestSchema,
   gitGraphSnapshotSchema,
@@ -304,6 +306,7 @@ import type {
   GitManagedOperationAction,
   GitLfsAction,
   GitDiffScope,
+  GitGraphCommitOverlayRequest,
   GitGraphRequest,
   GitPartialPatchRequest,
   GitRemoteAction,
@@ -1341,6 +1344,22 @@ export async function getProjectWorktreeGraphMetrics(
   return gitGraphMetricsSchema.parse(
     await request(
       projectWorktreeGraphUrl(projectId, worktreeId, "metrics", input),
+    ),
+  );
+}
+
+export async function getProjectWorktreeGraphCommitOverlay(
+  projectId: string,
+  worktreeId: string,
+  input: GitGraphCommitOverlayRequest,
+) {
+  const parsed = gitGraphCommitOverlayRequestSchema.parse(input);
+  const search = new URLSearchParams();
+  if (parsed.rootPath) search.set("rootPath", parsed.rootPath);
+  const query = search.size ? `?${search.toString()}` : "";
+  return gitGraphCommitOverlaySchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/graph/commits/${encodeURIComponent(parsed.revision)}${query}`,
     ),
   );
 }

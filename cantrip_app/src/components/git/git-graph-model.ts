@@ -1,4 +1,5 @@
 import type {
+  GitGraphCommitOverlay,
   GitGraphMetrics,
   GitGraphNodeMetrics,
   GitGraphSnapshot,
@@ -42,6 +43,20 @@ const LANGUAGE_COLORS = [
   "#a3e635",
   "#fb923c",
 ];
+
+const COMMIT_STATUS_COLORS: Record<
+  GitGraphCommitOverlay["nodes"][number]["status"],
+  string
+> = {
+  added: "#34d399",
+  copied: "#22d3ee",
+  deleted: "#fb7185",
+  modified: "#fbbf24",
+  renamed: "#a78bfa",
+  "type-changed": "#fb923c",
+  unmerged: "#f43f5e",
+  unknown: "#94a3b8",
+};
 
 function stableColor(category: string): string {
   let hash = 0;
@@ -296,6 +311,161 @@ export function buildGitGraphDisplayModel(
               (node) => metricsByNode.get(node.id)?.dominantAuthorName,
             )
           : !categoricalColor && availableColors.length === 0,
+    },
+  };
+}
+
+function nearestGraphParentId(
+  path: string,
+  pathToId: ReadonlyMap<string, string>,
+  rootId: string,
+): string {
+  let separator = path.lastIndexOf("/");
+  while (separator > 0) {
+    const parentPath = path.slice(0, separator);
+    const parentId = pathToId.get(parentPath);
+    if (parentId) return parentId;
+    separator = parentPath.lastIndexOf("/");
+  }
+  return rootId;
+}
+
+function commitChangeDescription(
+  node: GitGraphCommitOverlay["nodes"][number],
+): string {
+  const changes =
+    node.additions === null || node.deletions === null
+      ? node.binary
+        ? "binary change"
+        : `${node.weight.toLocaleString()} changed lines`
+      : `+${node.additions.toLocaleString()} −${node.deletions.toLocaleString()}`;
+  const rename = node.originalPath ? ` from ${node.originalPath}` : "";
+  return `${node.status}${rename} · ${changes}`;
+}
+
+function commitImpactColor(
+  status: GitGraphCommitOverlay["nodes"][number]["status"],
+  weight: number,
+  maximum: number,
+): string {
+  const source = COMMIT_STATUS_COLORS[status];
+  const intensity = 0.45 + 0.55 * Math.sqrt(Math.min(1, weight / maximum));
+  const channels = [1, 3, 5].map((offset) =>
+    Number.parseInt(source.slice(offset, offset + 2), 16),
+  );
+  const subdued = [51, 65, 85];
+  return `rgb(${channels
+    .map((channel, index) =>
+      Math.round(subdued[index]! * (1 - intensity) + channel! * intensity),
+    )
+    .join(" ")})`;
+}
+
+export function applyGitGraphCommitOverlay(
+  display: GitGraphDisplayModel,
+  snapshot: GitGraphSnapshot,
+  overlay: GitGraphCommitOverlay,
+): GitGraphDisplayModel {
+  const overlayByPath = new Map(overlay.nodes.map((node) => [node.path, node]));
+  const pathToId = new Map(
+    snapshot.nodes
+      .filter((node) => node.path !== null)
+      .map((node) => [node.path!, node.id] as const),
+  );
+  const weights = overlay.nodes.map(({ weight }) => weight);
+  const weightMaximum = percentile(weights, 0.95);
+  const directoryImpact = new Map<
+    string,
+    { changedDescendants: number; weight: number }
+  >();
+  for (const node of snapshot.nodes) {
+    if (node.kind !== "directory") continue;
+    const changes = overlay.nodes.filter(
+      (change) =>
+        node.path === null ||
+        change.path === node.path ||
+        change.path.startsWith(`${node.path}/`),
+    );
+    if (!changes.length) continue;
+    directoryImpact.set(node.id, {
+      changedDescendants: changes.length,
+      weight: changes.reduce((total, change) => total + change.weight, 0),
+    });
+  }
+  const directoryWeightMaximum = percentile(
+    [...directoryImpact.values()].map(({ weight }) => weight),
+    0.95,
+  );
+  const presentPaths = new Set<string>();
+  const nodes = display.nodes.map((node) => {
+    const change = overlayByPath.get(node.path);
+    if (!change) {
+      const aggregate = directoryImpact.get(node.id);
+      if (aggregate) {
+        return {
+          ...node,
+          accessibleDescription: [
+            node.accessibleDescription,
+            `${aggregate.changedDescendants.toLocaleString()} changed descendants · ${aggregate.weight.toLocaleString()} changed lines`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          color: commitImpactColor(
+            "modified",
+            aggregate.weight,
+            directoryWeightMaximum,
+          ),
+        };
+      }
+      return {
+        ...node,
+        accessibleDescription: [
+          node.accessibleDescription,
+          "unchanged in selected commit",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        color: node.kind === "directory" ? "#475569" : "#334155",
+      };
+    }
+    presentPaths.add(change.path);
+    return {
+      ...node,
+      accessibleDescription: [
+        node.accessibleDescription,
+        commitChangeDescription(change),
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      color: commitImpactColor(change.status, change.weight, weightMaximum),
+    };
+  });
+
+  for (const change of overlay.nodes) {
+    if (presentPaths.has(change.path) || !change.ghost) continue;
+    const name = change.path.split("/").at(-1) ?? change.path;
+    nodes.push({
+      accessibleDescription: commitChangeDescription(change),
+      color: commitImpactColor(change.status, change.weight, weightMaximum),
+      id: `ghost:${overlay.revision}:${change.path}`,
+      kind: "ghost",
+      label: name,
+      parentId: nearestGraphParentId(change.path, pathToId, snapshot.rootId),
+      path: change.path,
+      radius: 5 + Math.sqrt(Math.min(1, change.weight / weightMaximum)) * 18,
+    });
+  }
+
+  const minimum = weights.length ? Math.min(...weights) : null;
+  const maximum = weights.length ? Math.max(...weights) : null;
+  return {
+    nodes,
+    sizeLegend: display.sizeLegend,
+    colorLegend: {
+      label: "Commit status / impact",
+      minimum: minimum === null ? null : `${formatNumber(minimum)} changed`,
+      maximum: maximum === null ? null : `${formatNumber(maximum)} changed`,
+      unavailable: overlay.nodes.length === 0,
     },
   };
 }
