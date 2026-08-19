@@ -432,6 +432,7 @@ export interface ProjectRemovalContext {
     projectSourceId: string;
     workerId: string;
   } | null;
+  folderManagement: ProjectSummary["folderManagement"];
   originKind: ProjectSummary["originKind"];
   preferredWorkerId: string | null;
   replicas: Array<{
@@ -900,6 +901,7 @@ function toProjectSummary(
     name: project.name,
     position: project.position,
     originKind: project.originKind,
+    folderManagement: project.folderManagement,
     capabilities: projectCapabilitiesForOriginKind(project.originKind),
     setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
     setupError: project.setupError,
@@ -11351,6 +11353,7 @@ export class ServerRepository {
           name: input.name,
           position: (lastProjects[0]?.position ?? -1) + 1,
           originKind: "managed-folder",
+          folderManagement: input.existingPath ? "external" : "managed",
           setupStatus: "preparing",
           setupError: null,
           worktreePolicy: "direct",
@@ -11370,6 +11373,7 @@ export class ServerRepository {
         ownerId,
         projectId,
         workerId: input.workerId,
+        requestedPath: input.existingPath ?? null,
         state: "queued",
       });
       return firstOrThrow(projectRows, "creating a folder project");
@@ -11470,6 +11474,7 @@ export class ServerRepository {
   ): Promise<ProjectRemovalContext | null> {
     const rows = await this.database
       .select({
+        folderManagement: schema.projects.folderManagement,
         originKind: schema.projects.originKind,
         preferredWorkerId: schema.projects.preferredWorkerId,
         projectId: schema.projects.id,
@@ -11522,6 +11527,7 @@ export class ServerRepository {
       .where(eq(schema.remoteSurfaces.projectId, projectId));
     return {
       convertedManagedFolderSource,
+      folderManagement: project.folderManagement,
       originKind: project.originKind,
       preferredWorkerId: project.preferredWorkerId,
       replicas,

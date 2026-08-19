@@ -195,6 +195,9 @@ export class ProjectFolderSetupJobExecutor {
             attempt: job.attempt,
             projectId: job.projectId,
             displayName: claimed.projectName,
+            ...(claimed.existingPath
+              ? { existingPath: claimed.existingPath }
+              : {}),
           },
           { timeoutMs: PROJECT_FOLDER_SETUP_TIMEOUT_MS },
         ),

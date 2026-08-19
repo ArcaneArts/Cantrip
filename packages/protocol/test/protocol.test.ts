@@ -187,6 +187,16 @@ describe("worker channel JSON codec", () => {
     ).not.toHaveProperty("path");
     expect(
       workerCommandSchema.parse({
+        type: "project.folder.materialize",
+        jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb339",
+        attempt: 1,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
+        displayName: "Existing project",
+        existingPath: "C:\\code\\existing-project",
+      }),
+    ).toMatchObject({ existingPath: "C:\\code\\existing-project" });
+    expect(
+      workerCommandSchema.parse({
         type: "project.folder.delete",
         projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb338",
       }),
@@ -870,6 +880,7 @@ describe("Cantrip protocol", () => {
     });
     expect(heartbeat.managedFolders).toEqual({
       create: false,
+      attachExisting: false,
       convertToGithub: false,
       remove: false,
     });

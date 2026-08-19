@@ -98,7 +98,7 @@ export function projectSelectionAction({
   }
 
   if (projects.length === 0) {
-    return { projectId: null, showImporter: true };
+    return { projectId: null, showImporter: false };
   }
   if (visibleProjects.some(({ id }) => id === selectedProjectId)) return null;
   return { projectId: visibleProjects[0]?.id ?? null };

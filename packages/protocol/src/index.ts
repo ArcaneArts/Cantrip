@@ -443,6 +443,7 @@ export const unavailableProjectReplicaCapabilities =
 
 export const managedFolderCapabilitiesSchema = z.object({
   create: z.boolean(),
+  attachExisting: z.boolean().default(false),
   convertToGithub: z.boolean().default(false),
   remove: z.boolean(),
 });
@@ -450,6 +451,7 @@ export const managedFolderCapabilitiesSchema = z.object({
 export const unavailableManagedFolderCapabilities =
   managedFolderCapabilitiesSchema.parse({
     create: false,
+    attachExisting: false,
     convertToGithub: false,
     remove: false,
   });
@@ -2073,6 +2075,7 @@ export const githubProjectCreateSchema = z.object({
 export const managedFolderProjectCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   workerId: z.string().min(1),
+  existingPath: z.string().trim().min(1).max(8_192).optional(),
   workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
 });
 
@@ -2109,6 +2112,7 @@ export const projectWorkspaceListSchema = z.array(
 );
 
 export const projectOriginKindSchema = z.enum(["github", "managed-folder"]);
+export const projectFolderManagementSchema = z.enum(["managed", "external"]);
 export const projectSourceKindSchema = z.enum(["git", "folder"]);
 export const projectRootKindSchema = z.enum(["git-worktree", "folder-root"]);
 
@@ -2512,6 +2516,7 @@ export const projectSummarySchema = z
     name: z.string().min(1),
     position: z.number().int().nonnegative(),
     originKind: projectOriginKindSchema.default("github"),
+    folderManagement: projectFolderManagementSchema.nullable().optional(),
     capabilities: projectCapabilitiesSchema.default(
       projectCapabilitiesForOriginKind("github"),
     ),
@@ -2532,6 +2537,17 @@ export const projectSummarySchema = z
     updatedAt: z.string().datetime(),
   })
   .superRefine((project, context) => {
+    if (
+      (project.originKind === "github" && project.folderManagement != null) ||
+      (project.originKind === "managed-folder" &&
+        project.folderManagement === null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "folder management must match the project origin",
+        path: ["folderManagement"],
+      });
+    }
     const expected = projectCapabilitiesForOriginKind(project.originKind);
     for (const capability of projectCapabilitySchema.options) {
       if (project.capabilities[capability] !== expected[capability]) {
@@ -8313,6 +8329,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     attempt: z.number().int().positive(),
     projectId: z.string().uuid(),
     displayName: z.string().trim().min(1).max(120),
+    existingPath: z.string().trim().min(1).max(8_192).optional(),
   }),
   z.object({
     type: z.literal("project.folder.delete"),
@@ -9660,6 +9677,9 @@ export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
 export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
+export type ProjectFolderManagement = z.infer<
+  typeof projectFolderManagementSchema
+>;
 export type ProjectSourceKind = z.infer<typeof projectSourceKindSchema>;
 export type ProjectRootKind = z.infer<typeof projectRootKindSchema>;
 export type ProjectCapabilities = z.infer<typeof projectCapabilitiesSchema>;

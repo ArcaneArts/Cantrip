@@ -177,6 +177,11 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { FolderProjectDialog } from "@/components/projects/folder-project-dialog";
+import {
+  ProjectCreateMenu,
+  type ProjectCreateSource,
+} from "@/components/projects/project-create-menu";
 import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
@@ -235,7 +240,6 @@ import {
   createChatConsole,
   createExplorer,
   createGithubProject,
-  createManagedFolderProject,
   createProjectWorktree,
   createProjectView,
   createProjectWorkspace,
@@ -521,7 +525,6 @@ function RepositoryImporter({
   projectSetupJobs,
   projects,
   workerId,
-  workers,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
@@ -529,17 +532,9 @@ function RepositoryImporter({
   projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projects: ProjectSummary[];
   workerId: string | null;
-  workers: WorkerSummary[];
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const queryClient = useQueryClient();
-  const [importMode, setImportMode] = useState<"folder" | "github">("folder");
-  const [folderName, setFolderName] = useState("");
-  const [folderWorkerId, setFolderWorkerId] = useState(workerId ?? "");
-  const [folderCreateError, setFolderCreateError] = useState<string | null>(
-    null,
-  );
-  const [folderCreating, setFolderCreating] = useState(false);
   const [search, setSearch] = useState("");
   const [createRepositoryOpen, setCreateRepositoryOpen] = useState(false);
   const [pendingRepositoryIds, setPendingRepositoryIds] = useState<Set<string>>(
@@ -557,36 +552,19 @@ function RepositoryImporter({
       new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
     );
   }, [activeWorkspaceId]);
-  const folderWorkers = useMemo(
-    () => workers.filter(({ managedFolders }) => managedFolders.create),
-    [workers],
-  );
-  useEffect(() => {
-    if (folderWorkers.some(({ workerId: id }) => id === folderWorkerId)) return;
-    setFolderWorkerId(
-      folderWorkers.find(({ online }) => online)?.workerId ??
-        folderWorkers[0]?.workerId ??
-        "",
-    );
-  }, [folderWorkerId, folderWorkers]);
   const github = useQuery({
-    enabled: importMode === "github" && Boolean(workerId),
+    enabled: Boolean(workerId),
     queryFn: () => getGithubStatus(workerId!),
     queryKey: ["github-status", workerId],
   });
   const repositories = useQuery({
-    enabled: Boolean(
-      importMode === "github" && workerId && github.data?.authenticated,
-    ),
+    enabled: Boolean(workerId && github.data?.authenticated),
     queryFn: () => getGithubRepositories(workerId!),
     queryKey: ["github-repositories", workerId],
   });
   const cachedRepositories = useQuery({
     enabled: Boolean(
-      importMode === "github" &&
-      workerId &&
-      github.data?.authenticated &&
-      github.data.login,
+      workerId && github.data?.authenticated && github.data.login,
     ),
     queryFn: () => getCachedGithubRepositories(workerId!, github.data!.login!),
     queryKey: ["github-repositories-cache", workerId, github.data?.login],
@@ -615,29 +593,6 @@ function RepositoryImporter({
         ),
     );
     void queryClient.invalidateQueries({ queryKey: ["project-workspaces"] });
-  };
-  const createFolder = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = folderName.trim();
-    if (!name || !folderWorkerId || !activeWorkspaceId || folderCreating)
-      return;
-    setFolderCreating(true);
-    setFolderCreateError(null);
-    const workspaceIds = new Set(selectedWorkspaceIds);
-    workspaceIds.add(activeWorkspaceId);
-    try {
-      const project = await createManagedFolderProject({
-        name,
-        workerId: folderWorkerId,
-        workspaceIds: [...workspaceIds],
-      });
-      rememberProject(project, workspaceIds);
-      onCreatedProject(project);
-    } catch (error) {
-      setFolderCreateError(errorText(error));
-    } finally {
-      setFolderCreating(false);
-    }
   };
   const importRepository = async (repository: GithubRepository) => {
     if (
@@ -723,131 +678,7 @@ function RepositoryImporter({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex w-full flex-1 flex-col gap-4 overflow-hidden p-5 sm:p-8">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">New project</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create a worker-bound folder or clone an existing GitHub repository.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <button
-              aria-pressed={importMode === "folder"}
-              className={cn(
-                "rounded-xl border p-4 text-left transition-colors hover:bg-muted/50",
-                importMode === "folder" && "border-primary bg-primary/5",
-              )}
-              onClick={() => setImportMode("folder")}
-              type="button"
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <Folder className="size-4" /> New folder
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Start with an empty Cantrip-managed directory on one worker.
-              </span>
-            </button>
-            <button
-              aria-pressed={importMode === "github"}
-              className={cn(
-                "rounded-xl border p-4 text-left transition-colors hover:bg-muted/50",
-                importMode === "github" && "border-primary bg-primary/5",
-              )}
-              onClick={() => setImportMode("github")}
-              type="button"
-            >
-              <span className="flex items-center gap-2 font-medium">
-                <FolderGit2 className="size-4" /> GitHub repository
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                Clone an existing repository with Git and GitHub features.
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {importMode === "folder" ? (
-          <Card className="max-w-2xl">
-            <CardHeader>
-              <CardTitle>Create a managed folder</CardTitle>
-              <CardDescription>
-                Cantrip creates a new empty directory. It stays on the selected
-                worker and is unavailable while that worker is offline.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-4" onSubmit={createFolder}>
-                <label className="block space-y-1.5 text-sm">
-                  <span className="font-medium">Project name</span>
-                  <input
-                    autoFocus
-                    className="h-10 w-full rounded-md border bg-background px-3 outline-none ring-ring focus:ring-2"
-                    maxLength={120}
-                    placeholder="My project"
-                    required
-                    value={folderName}
-                    onChange={(event) => setFolderName(event.target.value)}
-                  />
-                  <span className="block text-xs text-muted-foreground">
-                    Names may repeat; Cantrip uses a unique physical directory.
-                  </span>
-                </label>
-                <label className="block space-y-1.5 text-sm">
-                  <span className="font-medium">Owning worker</span>
-                  <select
-                    className="h-10 w-full rounded-md border bg-background px-3 outline-none ring-ring focus:ring-2"
-                    disabled={folderWorkers.length === 0}
-                    required
-                    value={folderWorkerId}
-                    onChange={(event) => setFolderWorkerId(event.target.value)}
-                  >
-                    {folderWorkers.map((worker) => (
-                      <option key={worker.workerId} value={worker.workerId}>
-                        {worker.name} · {worker.online ? "online" : "offline"}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="block text-xs text-muted-foreground">
-                    Remote clients can use this project through Cantrip, but its
-                    files are not replicated or relocated.
-                  </span>
-                </label>
-                {activeWorkspaceId ? (
-                  <WorkspaceMembershipPicker
-                    requiredWorkspaceId={activeWorkspaceId}
-                    selectedIds={selectedWorkspaceIds}
-                    workspaces={workspaces}
-                    onChange={setSelectedWorkspaceIds}
-                  />
-                ) : null}
-                {folderWorkers.length === 0 ? (
-                  <p className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-300">
-                    No enrolled worker supports managed folders yet.
-                  </p>
-                ) : null}
-                {folderCreateError ? (
-                  <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                    {folderCreateError}
-                  </p>
-                ) : null}
-                <Button
-                  disabled={
-                    folderCreating ||
-                    !folderName.trim() ||
-                    !folderWorkerId ||
-                    !activeWorkspaceId
-                  }
-                  type="submit"
-                >
-                  {folderCreating ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Folder className="size-4" />
-                  )}
-                  {folderCreating ? "Creating…" : "Create folder"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        ) : !workerId ? (
+        {!workerId ? (
           <Card>
             <CardHeader>
               <CardTitle>No worker available</CardTitle>
@@ -2948,6 +2779,7 @@ export function App() {
     selectedChatId ? { kind: "chat", chatId: selectedChatId } : null,
   );
   const [showImporter, setShowImporter] = useState(false);
+  const [folderProjectDialogOpen, setFolderProjectDialogOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showServerAdmin, setShowServerAdmin] = useState(false);
   const [settingsSection, setSettingsSection] =
@@ -3091,6 +2923,44 @@ export function App() {
     setMobileTabGridOpen(false);
     mobileBottomTabSequenceRef.current = 0;
     persistedMobileBottomTabsRef.current = null;
+  };
+
+  const openProjectCreateSource = (
+    source: ProjectCreateSource,
+    resetProjectSelection = false,
+  ) => {
+    setDesktopSidebarDrawerOpen(false);
+    if (resetProjectSelection) {
+      setSelectedProjectId(null);
+      setWorkspaceSelection(emptyWorkspaceSelection());
+      resetMobileBottomTabs();
+      setPendingSurfaceSelection(null);
+      setChatConsoleChatId(null);
+    }
+    setShowImporter(source === "github");
+    setFolderProjectDialogOpen(source === "folder");
+    setShowSettings(false);
+    setShowServerAdmin(false);
+    setShowProjectSettings(false);
+  };
+
+  const openCreatedProject = (project: ProjectSummary) => {
+    setSelectedProjectId(project.id);
+    setWorkspaceSelection(emptyWorkspaceSelection(project.id));
+    resetMobileBottomTabs();
+    setPendingSurfaceSelection(null);
+    setChatConsoleChatId(null);
+    setShowImporter(false);
+    setFolderProjectDialogOpen(false);
+    setShowSettings(false);
+    setShowServerAdmin(false);
+    setShowProjectSettings(false);
+    if (project.originKind === "github") {
+      setCreatedRepositoryOnboarding({
+        openInitialChat: !compactShell,
+        projectId: project.id,
+      });
+    }
   };
 
   const openCreatedTab = (
@@ -3333,7 +3203,7 @@ export function App() {
       setSelectedProjectId(null);
       setWorkspaceSelection(emptyWorkspaceSelection());
       resetMobileBottomTabs();
-      setShowImporter(!compactShell);
+      setShowImporter(false);
       setShowSettings(false);
       setShowServerAdmin(false);
       setShowProjectSettings(false);
@@ -5274,7 +5144,7 @@ export function App() {
     setWorkspaceSelection(emptyWorkspaceSelection(nextProjectId));
     setPendingSurfaceSelection(null);
     setChatConsoleChatId(null);
-    setShowImporter(!nextProjectId);
+    setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);
     setShowProjectSettings(false);
@@ -5837,13 +5707,7 @@ export function App() {
                 onCreate={async (name) => {
                   await createWorkspaceMutation.mutateAsync(name);
                 }}
-                onAddProject={() => {
-                  setDesktopSidebarDrawerOpen(false);
-                  setShowImporter(true);
-                  setShowSettings(false);
-                  setShowServerAdmin(false);
-                  setShowProjectSettings(false);
-                }}
+                onAddProject={openProjectCreateSource}
                 onManage={() => {
                   setDesktopSidebarDrawerOpen(false);
                   setSettingsSection("workspaces");
@@ -6028,7 +5892,7 @@ export function App() {
           <MobileProjectHeader
             context={activeProjectWorkspace?.name ?? "Choose a repository"}
             onBack={closeCompactProject}
-            title="New project"
+            title="GitHub repositories"
           />
         ) : compactShell && showSettings ? (
           <MobileProjectHeader
@@ -6140,7 +6004,7 @@ export function App() {
                   data-tauri-drag-region={overlayTitlebar ? "" : undefined}
                 >
                   {showImporter
-                    ? "New project"
+                    ? "GitHub repositories"
                     : showSettings
                       ? "Settings"
                       : showServerAdmin
@@ -6328,19 +6192,12 @@ export function App() {
                     <Settings className="size-4" />
                     <span className="sr-only">Open settings</span>
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setShowImporter(true);
-                      setShowSettings(false);
-                      setShowServerAdmin(false);
-                      setShowProjectSettings(false);
-                    }}
-                  >
-                    <Plus className="size-4" />
-                    Project
-                  </Button>
+                  <ProjectCreateMenu onSelect={openProjectCreateSource}>
+                    <Button size="sm" variant="outline">
+                      <Plus className="size-4" />
+                      Project
+                    </Button>
+                  </ProjectCreateMenu>
                 </>
               ) : null}
             </div>
@@ -6512,16 +6369,7 @@ export function App() {
               await createWorkspaceMutation.mutateAsync(name);
             }}
             onManageWorkspaces={() => openCompactRootSettings("workspaces")}
-            onNewProject={() => {
-              setSelectedProjectId(null);
-              setWorkspaceSelection(emptyWorkspaceSelection());
-              resetMobileBottomTabs();
-              setPendingSurfaceSelection(null);
-              setShowImporter(true);
-              setShowSettings(false);
-              setShowServerAdmin(false);
-              setShowProjectSettings(false);
-            }}
+            onNewProject={(source) => openProjectCreateSource(source, true)}
             onOpenAdmin={openServerAdmin}
             onOpenSettings={() => openCompactRootSettings()}
             onSelectProject={selectProjectFromSidebar}
@@ -6600,27 +6448,10 @@ export function App() {
         ) : showImporter ? (
           <RepositoryImporter
             activeWorkspaceId={activeProjectWorkspace?.id ?? null}
-            onCreatedProject={(project) => {
-              setSelectedProjectId(project.id);
-              setWorkspaceSelection(emptyWorkspaceSelection(project.id));
-              resetMobileBottomTabs();
-              setPendingSurfaceSelection(null);
-              setChatConsoleChatId(null);
-              setShowImporter(false);
-              setShowSettings(false);
-              setShowServerAdmin(false);
-              setShowProjectSettings(false);
-              if (project.originKind === "github") {
-                setCreatedRepositoryOnboarding({
-                  openInitialChat: !compactShell,
-                  projectId: project.id,
-                });
-              }
-            }}
+            onCreatedProject={openCreatedProject}
             projects={projects.data ?? []}
             projectSetupJobs={projectSetupJobs}
             workerId={onlineWorker?.workerId ?? null}
-            workers={workers.data ?? []}
             workspaces={projectWorkspaces.data ?? []}
           />
         ) : compactShell && mobileTabGridOpen && selectedProject ? (
@@ -7141,18 +6972,12 @@ export function App() {
                 Create a new worker-bound folder or clone an accessible GitHub
                 repository.
               </p>
-              <Button
-                className="mt-5"
-                onClick={() => {
-                  setShowImporter(true);
-                  setShowSettings(false);
-                  setShowServerAdmin(false);
-                  setShowProjectSettings(false);
-                }}
-              >
-                <Plus className="size-4" />
-                New project
-              </Button>
+              <ProjectCreateMenu onSelect={openProjectCreateSource}>
+                <Button className="mt-5">
+                  <Plus className="size-4" />
+                  New project
+                </Button>
+              </ProjectCreateMenu>
             </div>
           </div>
         )}
@@ -7177,6 +7002,16 @@ export function App() {
           />
         ) : null}
       </section>
+
+      <FolderProjectDialog
+        activeWorkspaceId={activeProjectWorkspace?.id ?? null}
+        defaultWorkerId={onlineWorker?.workerId ?? null}
+        onCreatedProject={openCreatedProject}
+        onOpenChange={setFolderProjectDialogOpen}
+        open={folderProjectDialogOpen}
+        workers={workers.data ?? []}
+        workspaces={projectWorkspaces.data ?? []}
+      />
 
       <WorktreeCreateDialog
         open={Boolean(worktreeCreateTarget)}

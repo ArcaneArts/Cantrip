@@ -1331,9 +1331,11 @@ export function ProjectChatList({
             <DialogTitle>Remove project?</DialogTitle>
             <DialogDescription>
               “{removeProjectTarget?.name}” will be unlinked from Cantrip.{" "}
-              {removeProjectTarget?.originKind === "managed-folder"
-                ? "The folder remains on its worker, but V1 cannot attach that preserved folder again. Keep the path below if you need it."
-                : "Its repository remains on the worker and can be re-linked later."}
+              {removeProjectTarget?.folderManagement === "external"
+                ? "The attached folder remains unchanged on its worker and can be added again later."
+                : removeProjectTarget?.originKind === "managed-folder"
+                  ? "The folder remains on its worker and can be added again later using its path."
+                  : "Its repository remains on the worker and can be re-linked later."}
             </DialogDescription>
           </DialogHeader>
           {removeProjectTarget?.source ? (
@@ -1341,7 +1343,8 @@ export function ProjectChatList({
               {removeProjectTarget.source.displayPath}
             </code>
           ) : null}
-          {removeProjectTarget?.source ? (
+          {removeProjectTarget?.source &&
+          removeProjectTarget.folderManagement !== "external" ? (
             <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
               <input
                 type="checkbox"

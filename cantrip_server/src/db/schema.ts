@@ -24,6 +24,7 @@ import type {
   ModelReasoningEffortOption,
   PendingPlanQuestion,
   PlanStep,
+  ProjectFolderManagement,
   ProjectOriginKind,
   ProjectFolderSetupJobError,
   ProjectFolderSetupJobState,
@@ -106,6 +107,7 @@ const unavailableProjectReplicaCapabilities = {
 
 const unavailableManagedFolderCapabilities = {
   create: false,
+  attachExisting: false,
   convertToGithub: false,
   remove: false,
 } satisfies ManagedFolderCapabilities;
@@ -1083,6 +1085,8 @@ export const projects = pgTable(
       .$type<ProjectOriginKind>()
       .notNull()
       .default("github"),
+    folderManagement:
+      text("folder_management").$type<ProjectFolderManagement>(),
     setupStatus: text("setup_status").notNull().default("ready"),
     setupError: text("setup_error"),
     worktreePolicy: text("worktree_policy").notNull().default("agent-managed"),
@@ -1112,7 +1116,7 @@ export const projects = pgTable(
     ),
     check(
       "projects_managed_folder_identity_check",
-      sql`${table.originKind} <> 'managed-folder' OR (${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct')`,
+      sql`(${table.originKind} = 'managed-folder' AND ${table.folderManagement} IN ('managed', 'external') AND ${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct') OR (${table.originKind} <> 'managed-folder' AND ${table.folderManagement} IS NULL)`,
     ),
   ],
 );
@@ -1586,7 +1590,7 @@ export const projectWorktrees = pgTable(
     ),
     check(
       "project_worktrees_folder_root_shape_check",
-      sql`${table.rootKind} <> 'folder-root' OR (${table.isPrimary} = true AND ${table.isDefault} = true AND ${table.origin} = 'cantrip' AND ${table.branch} IS NULL AND ${table.head} IS NULL AND ${table.detached} = false)`,
+      sql`${table.rootKind} <> 'folder-root' OR (${table.isPrimary} = true AND ${table.isDefault} = true AND ${table.origin} IN ('cantrip', 'external') AND ${table.branch} IS NULL AND ${table.head} IS NULL AND ${table.detached} = false)`,
     ),
   ],
 );
@@ -1604,6 +1608,7 @@ export const projectFolderSetupJobs = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    requestedPath: text("requested_path"),
     state: text("state").$type<ProjectFolderSetupJobState>().notNull(),
     stateRevision: integer("state_revision").notNull().default(1),
     attempt: integer("attempt").notNull().default(0),

@@ -262,7 +262,11 @@ export function ProjectOverview({
                 </p>
                 <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
                   {folderProject ? (
-                    <Badge variant="secondary">Folder</Badge>
+                    <Badge variant="secondary">
+                      {project.folderManagement === "external"
+                        ? "Attached folder"
+                        : "Managed folder"}
+                    </Badge>
                   ) : primaryWorktree?.branch ? (
                     <span className="inline-flex items-center gap-1.5">
                       <GitBranch className="size-3.5" />
