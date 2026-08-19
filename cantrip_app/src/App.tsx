@@ -108,6 +108,7 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { requestResponse } from "@/lib/api-client";
@@ -2587,6 +2588,11 @@ function ChatTranscript({
                   mode={composerMode}
                   disabled={relocationActive}
                   onChange={setComposerMode}
+                />
+                <ContextUsageRing
+                  messages={messages.data ?? []}
+                  model={selectedModel}
+                  providers={settings?.providers ?? []}
                 />
               </div>
             </div>
