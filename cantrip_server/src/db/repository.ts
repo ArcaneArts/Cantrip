@@ -11,6 +11,7 @@ import {
   unavailableCodeGraphWorkerStatus,
   unavailableManagedFolderCapabilities,
   unavailableProjectReplicaCapabilities,
+  unavailableWorkerEncryptionStatus,
 } from "@cantrip/protocol";
 import type {
   AgentInteractionRequest,
@@ -1554,6 +1555,7 @@ function toWorkerSummary(
     directBroker: worker.directBrokerAdvertisement,
     code: worker.codeCapabilities,
     codegraph: worker.codegraphStatus,
+    encryption: worker.encryptionStatus,
     projectReplicas: worker.projectReplicaCapabilities,
     managedFolders: worker.managedFolderCapabilities,
     chatRelocation: worker.chatRelocationCapability,
@@ -6560,6 +6562,8 @@ export class ServerRepository {
         codeCapabilities: input.heartbeat.code ?? unavailableCodeCapabilities,
         codegraphStatus:
           input.heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
+        encryptionStatus:
+          input.heartbeat.encryption ?? unavailableWorkerEncryptionStatus,
         projectReplicaCapabilities:
           input.heartbeat.projectReplicas ??
           unavailableProjectReplicaCapabilities,
@@ -6784,6 +6788,8 @@ export class ServerRepository {
       directBrokerAdvertisement: heartbeat.directBroker,
       codeCapabilities: heartbeat.code ?? unavailableCodeCapabilities,
       codegraphStatus: heartbeat.codegraph ?? unavailableCodeGraphWorkerStatus,
+      encryptionStatus:
+        heartbeat.encryption ?? unavailableWorkerEncryptionStatus,
       projectReplicaCapabilities:
         heartbeat.projectReplicas ?? unavailableProjectReplicaCapabilities,
       managedFolderCapabilities:

@@ -1,0 +1,1 @@
+ALTER TABLE "workers" ADD COLUMN "encryption_status" jsonb DEFAULT '{"supported":false,"state":"unavailable","principalId":null,"grants":[],"lastSyncedAt":null,"error":null}'::jsonb NOT NULL;

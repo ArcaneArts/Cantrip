@@ -15,6 +15,7 @@ import {
   encryptionPrincipalCreateSchema,
   encryptionPrincipalListSchema,
   encryptionPrincipalSchema,
+  encryptionRevocationSchema,
   type AccountEncryptionProfileInitialize,
   type AccountPasswordEncryptionChange,
   type EncryptionKeyGrantCreate,
@@ -92,6 +93,19 @@ export async function createEncryptionGrant(
     await post(
       `/api/encryption/principals/${encodeURIComponent(principalId)}/grants`,
       encryptionKeyGrantCreateSchema.parse(input),
+    ),
+  );
+}
+
+export async function revokeEncryptionGrant(
+  grantId: string,
+  expectedRevision: number,
+  reason: string,
+) {
+  return encryptionKeyGrantSchema.parse(
+    await post(
+      `/api/encryption/grants/${encodeURIComponent(grantId)}/revoke`,
+      encryptionRevocationSchema.parse({ expectedRevision, reason }),
     ),
   );
 }

@@ -411,6 +411,8 @@ import {
   encryptionPrincipalSchema,
   encryptionProfileMigrationUpdateSchema,
   encryptionRevocationSchema,
+  workerEncryptionBootstrapRequestSchema,
+  workerEncryptionBootstrapResultSchema,
 } from "@cantrip/protocol/encryption";
 import Fastify from "fastify";
 import type { FastifyReply, FastifyRequest } from "fastify";
@@ -24034,6 +24036,84 @@ export async function buildApp({
           });
         }
       });
+    },
+  );
+
+  app.post(
+    "/api/internal/workers/encryption/bootstrap",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const workerIdHeader = request.headers["x-cantrip-worker-id"];
+      const workerId =
+        typeof workerIdHeader === "string" ? workerIdHeader.trim() : "";
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        workerId,
+        "worker:connect",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({ error: "Unauthorized" });
+      }
+      const input = workerEncryptionBootstrapRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      let principal =
+        await repository.encryptionRegistry.findWorkerPrincipalById(
+          workerAuth.ownerId,
+          workerId,
+          input.data.principalId,
+        );
+      principal ??=
+        await repository.encryptionRegistry.findActiveWorkerPrincipal(
+          workerAuth.ownerId,
+          workerId,
+        );
+      if (!principal) {
+        principal = await repository.encryptionRegistry.createPrincipal(
+          workerAuth.ownerId,
+          {
+            id: input.data.principalId,
+            kind: "worker",
+            workerId,
+            label: "Cantrip worker",
+            publicKey: input.data.publicKey,
+          },
+        );
+      }
+      if (
+        !principal ||
+        principal.id !== input.data.principalId ||
+        principal.workerId !== workerId ||
+        principal.publicKey.version !== input.data.publicKey.version ||
+        principal.publicKey.algorithm !== input.data.publicKey.algorithm ||
+        principal.publicKey.format !== input.data.publicKey.format ||
+        principal.publicKey.value !== input.data.publicKey.value
+      ) {
+        return reply.code(409).send({
+          error:
+            "Worker encryption identity conflicts with the registered principal.",
+        });
+      }
+      const grantResult =
+        principal.state === "approved"
+          ? await repository.encryptionRegistry.listActiveGrants(
+              workerAuth.ownerId,
+              principal.id,
+            )
+          : { status: "unavailable" as const };
+      const grants = grantResult.status === "ok" ? grantResult.grants : [];
+      return reply.header("cache-control", "no-store").send(
+        workerEncryptionBootstrapResultSchema.parse({
+          ownerId: workerAuth.ownerId,
+          principal,
+          grants,
+        }),
+      );
     },
   );
 

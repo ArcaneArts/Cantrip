@@ -12,7 +12,7 @@ import type {
   EncryptionProfileMigrationUpdate,
   EncryptionRevocation,
 } from "@cantrip/protocol/encryption";
-import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 
 import * as schema from "./schema.js";
 import type { RepositoryDatabase } from "./repository.js";
@@ -311,6 +311,45 @@ export class EncryptionRegistryRepository {
         asc(schema.encryptionPrincipals.id),
       );
     return rows.map(toPrincipal);
+  }
+
+  async findActiveWorkerPrincipal(
+    ownerId: string,
+    workerId: string,
+  ): Promise<EncryptionPrincipal | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.encryptionPrincipals)
+      .where(
+        and(
+          eq(schema.encryptionPrincipals.ownerId, ownerId),
+          eq(schema.encryptionPrincipals.kind, "worker"),
+          eq(schema.encryptionPrincipals.workerId, workerId),
+          ne(schema.encryptionPrincipals.state, "revoked"),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toPrincipal(rows[0]) : null;
+  }
+
+  async findWorkerPrincipalById(
+    ownerId: string,
+    workerId: string,
+    principalId: string,
+  ): Promise<EncryptionPrincipal | null> {
+    const rows = await this.database
+      .select()
+      .from(schema.encryptionPrincipals)
+      .where(
+        and(
+          eq(schema.encryptionPrincipals.id, principalId),
+          eq(schema.encryptionPrincipals.ownerId, ownerId),
+          eq(schema.encryptionPrincipals.kind, "worker"),
+          eq(schema.encryptionPrincipals.workerId, workerId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toPrincipal(rows[0]) : null;
   }
 
   async createPrincipal(

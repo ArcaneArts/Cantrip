@@ -128,10 +128,10 @@ basis after use; JavaScript strings and runtime-managed copies cannot be
 reliably erased.
 
 The shared primitive package does not unlock a client or worker or encrypt a
-product payload by itself. The server now persists the hierarchy's opaque
-profiles, public principals, and wrapped grants, while worker endpoint custody
-and product payload rows remain planned until their normal and legacy write
-paths are complete. Client custody is implemented below.
+product payload by itself. The server persists the hierarchy's opaque profiles,
+public principals, and wrapped grants. Client and worker custody are implemented
+below; product payload rows remain planned until their normal and legacy write
+paths are complete.
 
 ### Opaque key registry
 
@@ -162,8 +162,8 @@ imports `@cantrip/crypto` nor derives, unwraps, or decrypts keys. The focused
 [registry API test](../cantrip_server/test/encryption-registry-api.test.ts)
 covers initialization compare-and-set behavior, owner isolation, worker
 binding, revocation, byte-preserving opaque storage, migration application,
-and the server dependency boundary. Worker endpoint custody and worker
-self-registration remain later rollout steps.
+the worker-authenticated registration and delivery path, and the server
+dependency boundary.
 
 ### Client key custody
 
@@ -248,6 +248,47 @@ recovery, locked mutation behavior, and password rewrap continuity. The
 also verifies server reauthentication and atomic password/verifier-wrapper
 replacement.
 
+### Persistent worker key custody and scoped grants
+
+The worker custody boundary is implemented by
+[worker-encryption.ts](../cantrip_worker/src/worker-encryption.ts). Each worker
+creates a P-256 encryption keypair and a random principal ID. The initial
+portable fallback stores the private key in a versioned
+`worker-encryption-key.json` record under the worker data directory, written
+atomically with mode `0600`. The record binds the key to the server origin,
+owner ID, worker ID, public key, principal ID, and highest accepted revision
+per component. A record from another server, account, or worker fails closed.
+Future native workers can replace this file boundary with an OS-backed secret
+store without changing the wire protocol.
+
+After worker-credential enrollment, the worker registers its public key at the
+worker-authenticated `/api/internal/workers/encryption/bootstrap` endpoint.
+The server creates only a pending public principal. An unlocked authorized
+client must approve that principal and create each HPKE component-key envelope
+through [worker-encryption-grants.ts](../cantrip_app/src/lib/worker-encryption-grants.ts).
+The server has no operation that derives a component key or manufactures a
+usable grant. The protocol makes both the Account Master Key and the
+`workspace-display-name` component structurally ungrantable to workers.
+
+The same bootstrap endpoint returns active opaque grants after approval. The
+worker unwraps only the newest revision for each scope, rejects revision
+rollback, clears revoked or absent scopes from memory on a successful refresh,
+and never persists plaintext component keys. On restart it reloads its private
+key and fetches the same server-held envelopes, so it does not need the user,
+client, password, or password-derived key. Encryption readiness and granted
+component revisions are included in worker heartbeat status; the server can
+route based on that metadata but cannot use it to decrypt.
+
+The focused [worker custody test](../cantrip_worker/src/worker-encryption.test.ts),
+[client grant test](../cantrip_app/src/lib/worker-encryption-grants.test.ts),
+and [registry integration test](../cantrip_server/test/encryption-registry-api.test.ts)
+cover file permissions, identity binding, client-only grant creation, intended
+recipient decryption, restart recovery, scope denial, revision replacement,
+revocation, and opaque authenticated delivery. An unattended authorized
+worker is deliberately a persistent decryption endpoint: compromise of that
+host exposes every component granted to it. Narrow grants limit this blast
+radius but do not remove it.
+
 ### What each system stores
 
 The server stores:
@@ -320,32 +361,33 @@ database-compromise guarantee is described.
 
 ## Feasibility and rollout ledger
 
-| Data class                                                                       | Current protection                              | Rollout status                 | E2EE feasibility     | Complexity  | What the server loses                                                                          |
-| -------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------ | -------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
-| Shared encryption formats and cryptographic primitives                           | Versioned endpoint-only primitives              | Foundation complete            | Required             | Medium      | No server decryption capability is introduced                                                  |
-| Account profiles, client wrappers, and scoped worker grants                      | Opaque versioned registry; no server key access | Registry foundation complete   | Required             | High        | Password-based server recovery and direct inspection of key material                           |
-| Client device-key custody and in-memory key handling                             | Nonextractable IndexedDB key; memory-only AMK   | Client custody complete        | Required             | Medium      | No server decryption capability is introduced                                                  |
-| Account initialization, device authorization, and password lifecycle             | Client-only initialization and unlock           | Client initialization complete | Required             | High        | Server-only password reset and plaintext recovery                                              |
-| Workspace display names                                                          | Plaintext                                       | Recommended first payload      | Very good            | Low-Medium  | Name-based server search and validation                                                        |
-| Chat message bodies, reasoning, command output, diffs, file paths                | Plaintext                                       | Planned                        | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
-| Task briefs, plans, answers, goals, queued prompts                               | Plaintext                                       | Planned                        | Excellent            | Medium-High | Server cannot inspect or transform task content                                                |
-| Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext   | Planned                        | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
-| Interaction and approval request details and responses                           | Plaintext                                       | Planned                        | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
-| Browser URLs, terminal titles and paths, Explorer paths, remote-window selection | Plaintext                                       | Planned                        | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
-| Tab titles and project display names                                             | Plaintext                                       | Planned                        | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
-| Policies and agent instructions                                                  | Plaintext                                       | Planned                        | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
-| Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                  | Planned replacement            | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
-| MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                       | Planned                        | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
-| Workflow prompts, definitions, structured inputs, and results                    | Plaintext                                       | Planned                        | Good when split      | Very high   | Scheduler can route opaque jobs, but conditions and content evaluation must happen on a worker |
-| Project and repository names, remotes, paths, branch names, and Git output       | Plaintext                                       | Planned partial encryption     | Partial              | High        | Server orchestration currently depends on some of this data                                    |
-| Token usage, quotas, and model-behavior analytics                                | Plaintext/queryable                             | Planned minimization           | Partial              | Medium-High | Fully encrypting numbers removes server dashboards, budgets, and historical analysis           |
-| Diagnostic logs and audit metadata                                               | Redacted but server-readable                    | Planned minimization           | Partial              | Medium      | Fully encrypted logs prevent server-side operations and security investigation                 |
-| Worker platform, capabilities, online state, and tunnel endpoints                | Plaintext                                       | Intentionally plaintext        | Poor                 | High        | The server cannot route sessions or decide which worker supports a feature                     |
-| Workflow status, leases, retries, dependencies, and deadlines                    | Plaintext                                       | Intentionally plaintext        | Poor                 | Very high   | The server cannot schedule or recover jobs                                                     |
-| User IDs, roles, account status, licenses, and memberships                       | Plaintext                                       | Do not encrypt                 | Do not encrypt       | -           | The server must enforce authorization                                                          |
-| Sessions, enrollment codes, and worker credentials                               | Hashed                                          | Keep hashed                    | Do not encrypt; hash | -           | The server must validate them                                                                  |
-| Opaque IDs, foreign-key relationships, ordering, and timestamps                  | Plaintext                                       | Usually keep plaintext         | Usually plaintext    | -           | Needed for synchronization and routing                                                         |
-| Public provider model catalogs and system state                                  | Plaintext/public                                | No encryption benefit          | No benefit           | -           | Generally public or operational data                                                           |
+| Data class                                                                       | Current protection                                | Rollout status                 | E2EE feasibility     | Complexity  | What the server loses                                                                          |
+| -------------------------------------------------------------------------------- | ------------------------------------------------- | ------------------------------ | -------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| Shared encryption formats and cryptographic primitives                           | Versioned endpoint-only primitives                | Foundation complete            | Required             | Medium      | No server decryption capability is introduced                                                  |
+| Account profiles, client wrappers, and scoped worker grants                      | Opaque versioned registry; no server key access   | Registry foundation complete   | Required             | High        | Password-based server recovery and direct inspection of key material                           |
+| Client device-key custody and in-memory key handling                             | Nonextractable IndexedDB key; memory-only AMK     | Client custody complete        | Required             | Medium      | No server decryption capability is introduced                                                  |
+| Account initialization, device authorization, and password lifecycle             | Client-only initialization and unlock             | Client initialization complete | Required             | High        | Server-only password reset and plaintext recovery                                              |
+| Worker key custody, public registration, and scoped component grants             | Protected local private key; opaque server grants | Worker grants complete         | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                 |
+| Workspace display names                                                          | Plaintext                                         | Recommended first payload      | Very good            | Low-Medium  | Name-based server search and validation                                                        |
+| Chat message bodies, reasoning, command output, diffs, file paths                | Plaintext                                         | Planned                        | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
+| Task briefs, plans, answers, goals, queued prompts                               | Plaintext                                         | Planned                        | Excellent            | Medium-High | Server cannot inspect or transform task content                                                |
+| Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext     | Planned                        | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
+| Interaction and approval request details and responses                           | Plaintext                                         | Planned                        | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
+| Browser URLs, terminal titles and paths, Explorer paths, remote-window selection | Plaintext                                         | Planned                        | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
+| Tab titles and project display names                                             | Plaintext                                         | Planned                        | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
+| Policies and agent instructions                                                  | Plaintext                                         | Planned                        | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
+| Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                    | Planned replacement            | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
+| MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                         | Planned                        | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
+| Workflow prompts, definitions, structured inputs, and results                    | Plaintext                                         | Planned                        | Good when split      | Very high   | Scheduler can route opaque jobs, but conditions and content evaluation must happen on a worker |
+| Project and repository names, remotes, paths, branch names, and Git output       | Plaintext                                         | Planned partial encryption     | Partial              | High        | Server orchestration currently depends on some of this data                                    |
+| Token usage, quotas, and model-behavior analytics                                | Plaintext/queryable                               | Planned minimization           | Partial              | Medium-High | Fully encrypting numbers removes server dashboards, budgets, and historical analysis           |
+| Diagnostic logs and audit metadata                                               | Redacted but server-readable                      | Planned minimization           | Partial              | Medium      | Fully encrypted logs prevent server-side operations and security investigation                 |
+| Worker platform, capabilities, online state, and tunnel endpoints                | Plaintext                                         | Intentionally plaintext        | Poor                 | High        | The server cannot route sessions or decide which worker supports a feature                     |
+| Workflow status, leases, retries, dependencies, and deadlines                    | Plaintext                                         | Intentionally plaintext        | Poor                 | Very high   | The server cannot schedule or recover jobs                                                     |
+| User IDs, roles, account status, licenses, and memberships                       | Plaintext                                         | Do not encrypt                 | Do not encrypt       | -           | The server must enforce authorization                                                          |
+| Sessions, enrollment codes, and worker credentials                               | Hashed                                            | Keep hashed                    | Do not encrypt; hash | -           | The server must validate them                                                                  |
+| Opaque IDs, foreign-key relationships, ordering, and timestamps                  | Plaintext                                         | Usually keep plaintext         | Usually plaintext    | -           | Needed for synchronization and routing                                                         |
+| Public provider model catalogs and system state                                  | Plaintext/public                                  | No encryption benefit          | No benefit           | -           | Generally public or operational data                                                           |
 
 The rollout status must be updated as each component lands. A row is not
 `E2EE complete` while any normal write path stores plaintext or while legacy
@@ -434,9 +476,11 @@ counts, worker presence, model-route choices, and traffic patterns.
    Master Key, create the independent password or anonymous recovery wrapper,
    authorize client devices, unlock later sessions with the device key, and
    keep password changes on the same encryption root.
-5. **Persistent worker grants:** generate worker keypairs, authorize scoped
+5. **Persistent worker grants — complete:** generate worker keypairs, authorize scoped
    component keys once, and prove workers can restart and decrypt their granted
-   components without a client or password.
+   components without a client or password. Worker heartbeat status now reports
+   whether its endpoint key is pending, ready, or unavailable and which scoped
+   revisions are in memory.
 6. **First narrow payload:** encrypt workspace display names, migrate legacy
    plaintext on an unlocked client, and update the rollout ledger with evidence.
 7. **Chats and tasks:** encrypt message content, task prose, queued prompts,

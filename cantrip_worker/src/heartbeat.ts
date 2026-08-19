@@ -7,8 +7,10 @@ import {
   type DirectBrokerAdvertisement,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
+  type WorkerEncryptionStatus,
   unavailableCodeCapabilities,
   unavailableCodeGraphWorkerStatus,
+  unavailableWorkerEncryptionStatus,
   workerHeartbeatSchema,
 } from "@cantrip/protocol";
 
@@ -30,6 +32,7 @@ export function createHeartbeat(
   code: CodeCapabilities = unavailableCodeCapabilities,
   directBroker: DirectBrokerAdvertisement = { available: false },
   codegraph: CodeGraphWorkerStatus = unavailableCodeGraphWorkerStatus,
+  encryption: WorkerEncryptionStatus = unavailableWorkerEncryptionStatus,
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -57,6 +60,7 @@ export function createHeartbeat(
     externalCodexHistory:
       process.platform === "darwin" || process.platform === "win32",
     codegraph,
+    encryption,
     startedAt,
   });
 }
