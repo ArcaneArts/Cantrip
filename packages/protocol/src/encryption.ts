@@ -429,6 +429,27 @@ export const encryptionProfileMigrationUpdateSchema = z
   })
   .strict();
 
+export const accountPasswordEncryptionChangeSchema = z
+  .object({
+    currentPassword: z.string().min(1).max(1_024),
+    newPassword: z.string().min(12).max(1_024),
+    expectedProfileRevision: encryptionKeyRevisionSchema,
+    passwordKdf: passwordKdfParametersSchema,
+    passwordWrappedMasterKey: passwordWrappedMasterKeySchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      !samePasswordKdf(value.passwordKdf, value.passwordWrappedMasterKey.kdf)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Password KDF parameters must match the wrapped key envelope.",
+        path: ["passwordKdf"],
+      });
+    }
+  });
+
 export const encryptionPrincipalCreateSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -546,6 +567,9 @@ export type AccountEncryptionProfileInitializeResult = z.infer<
 >;
 export type EncryptionProfileMigrationUpdate = z.infer<
   typeof encryptionProfileMigrationUpdateSchema
+>;
+export type AccountPasswordEncryptionChange = z.infer<
+  typeof accountPasswordEncryptionChangeSchema
 >;
 export type EncryptionPrincipal = z.infer<typeof encryptionPrincipalSchema>;
 export type EncryptionPrincipalCreate = z.infer<

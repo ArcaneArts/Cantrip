@@ -214,6 +214,14 @@ export const authLoginSchema = z.object({
   password: z.string().min(1).max(1_024),
 });
 
+export const authReauthenticationSchema = z
+  .object({ password: z.string().min(1).max(1_024) })
+  .strict();
+
+export const authReauthenticationResultSchema = z
+  .object({ verified: z.literal(true) })
+  .strict();
+
 export const authSessionSchema = z.object({
   currentUser: userSummarySchema,
   csrfToken: z.string().min(32),
@@ -9721,6 +9729,10 @@ export type AccountLicenseWhitelistCreate = z.infer<
 >;
 export type AccountAdminSummary = z.infer<typeof accountAdminSummarySchema>;
 export type AuthLogin = z.infer<typeof authLoginSchema>;
+export type AuthReauthentication = z.infer<typeof authReauthenticationSchema>;
+export type AuthReauthenticationResult = z.infer<
+  typeof authReauthenticationResultSchema
+>;
 export type AuthSession = z.infer<typeof authSessionSchema>;
 export type AuthSessionState = z.infer<typeof authSessionStateSchema>;
 export type MobileSignInGrantCreateResult = z.infer<

@@ -183,6 +183,7 @@ export async function request(
 export async function requestResponse(
   path: string,
   init?: RequestInit,
+  allowedStatuses: readonly number[] = [],
 ): Promise<Response> {
   const method = (init?.method ?? "GET").toUpperCase();
   const url = /^https?:\/\//u.test(path)
@@ -213,7 +214,7 @@ export async function requestResponse(
     throw error;
   }
 
-  if (!response.ok) {
+  if (!response.ok && !allowedStatuses.includes(response.status)) {
     let body = (await response.json().catch(() => null)) as {
       error?: string;
     } | null;

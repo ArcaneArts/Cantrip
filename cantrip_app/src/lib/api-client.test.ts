@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiRouteTemplate, request } from "./api-client";
+import { apiRouteTemplate, request, requestResponse } from "./api-client";
 import {
   clearClientSession,
   getClientSession,
@@ -89,6 +89,27 @@ describe("authenticated API client", () => {
     });
     expect(listener).toHaveBeenCalledWith("Authentication is required.");
     unsubscribe();
+  });
+
+  it("can return an explicitly allowed conflict response for compare-and-set APIs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ created: false }), {
+          status: 409,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    const response = await requestResponse(
+      "/api/encryption/profile/initialize",
+      { method: "POST", body: "{}" },
+      [409],
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ created: false });
   });
 
   it("refreshes a stale CSRF token once and retries the rejected mutation", async () => {

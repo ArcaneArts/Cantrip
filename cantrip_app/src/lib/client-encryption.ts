@@ -1,4 +1,5 @@
 import {
+  bytesEqual,
   clearSensitiveBytes,
   deriveComponentKey as deriveCryptoComponentKey,
   exportHpkePublicKey,
@@ -415,6 +416,20 @@ export class ClientEncryptionService {
     return descriptor(record);
   }
 
+  async replaceDevice(
+    identity: ClientEncryptionIdentity,
+  ): Promise<ClientDeviceDescriptor> {
+    this.requireCrypto();
+    validateIdentity(identity);
+    this.lock();
+    try {
+      await this.deviceStore.delete(identity);
+    } catch (error) {
+      throw this.storageFailure(error, identity);
+    }
+    return this.ensureDevice(identity);
+  }
+
   setAccountMasterKey(input: {
     accountMasterKey: Uint8Array;
     identity: ClientEncryptionIdentity;
@@ -609,13 +624,29 @@ export class ClientEncryptionService {
     kdf?: PasswordKdfParameters;
   }): Promise<PasswordWrappedMasterKey> {
     const accountMasterKey = this.requireUnlocked(input.identity);
-    return wrapAccountMasterKeyWithPassword({
+    const wrapper = await wrapAccountMasterKeyWithPassword({
       password: input.password,
       ownerId: input.identity.ownerId,
       accountMasterKey,
       masterKeyRevision: this.snapshot.masterKeyRevision!,
       kdf: input.kdf,
     });
+    const verified = await unwrapAccountMasterKeyWithPassword({
+      password: input.password,
+      ownerId: input.identity.ownerId,
+      wrapper,
+    });
+    try {
+      if (!bytesEqual(verified, accountMasterKey)) {
+        throw new ClientEncryptionError(
+          "decryption-failed",
+          "The replacement password wrapper failed local verification.",
+        );
+      }
+      return wrapper;
+    } finally {
+      clearSensitiveBytes(verified);
+    }
   }
 
   async createDeviceWrapper(

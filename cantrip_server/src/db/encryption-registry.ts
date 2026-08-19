@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  AccountPasswordEncryptionChange,
   AccountEncryptionProfile,
   AccountEncryptionProfileInitialize,
   AccountEncryptionProfileInitializeResult,
@@ -230,6 +231,74 @@ export class EncryptionRegistryRepository {
       )
       .returning();
     return rows[0] ? toProfile(rows[0]) : null;
+  }
+
+  async changeAccountPassword(
+    ownerId: string,
+    input: Pick<
+      AccountPasswordEncryptionChange,
+      "expectedProfileRevision" | "passwordKdf" | "passwordWrappedMasterKey"
+    >,
+    passwordHash: string,
+  ): Promise<AccountEncryptionProfile | null> {
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const profiles = await transaction
+        .select()
+        .from(schema.accountEncryptionProfiles)
+        .where(eq(schema.accountEncryptionProfiles.ownerId, ownerId))
+        .for("update")
+        .limit(1);
+      const profile = profiles[0];
+      if (
+        !profile ||
+        profile.revision !== input.expectedProfileRevision ||
+        input.passwordWrappedMasterKey.masterKeyRevision !==
+          profile.activeMasterKeyRevision
+      ) {
+        return null;
+      }
+
+      const users = await transaction
+        .update(schema.users)
+        .set({
+          passwordHash,
+          passwordChangedAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.users.id, ownerId),
+            eq(schema.users.kind, "account"),
+            eq(schema.users.status, "active"),
+          ),
+        )
+        .returning({ id: schema.users.id });
+      if (!users[0]) return null;
+
+      const updated = await transaction
+        .update(schema.accountEncryptionProfiles)
+        .set({
+          passwordKdf: input.passwordKdf,
+          passwordWrappedMasterKey: input.passwordWrappedMasterKey,
+          revision: sql`${schema.accountEncryptionProfiles.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.accountEncryptionProfiles.ownerId, ownerId),
+            eq(
+              schema.accountEncryptionProfiles.revision,
+              input.expectedProfileRevision,
+            ),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new Error("Atomic password-wrapper update did not complete.");
+      }
+      return toProfile(updated[0]);
+    });
   }
 
   async listPrincipals(ownerId: string): Promise<EncryptionPrincipal[]> {

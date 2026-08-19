@@ -7,9 +7,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import {
   AlertCircle,
+  KeyRound,
   Loader2,
   LockKeyhole,
   Server,
+  ShieldCheck,
   WandSparkles,
 } from "lucide-react";
 import {
@@ -41,6 +43,10 @@ import {
   setClientSession,
 } from "@/lib/client-session";
 import { errorMessage } from "@/lib/error-message";
+import {
+  prepareClientEncryption,
+  type ClientEncryptionCredential,
+} from "@/lib/account-encryption";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   getActiveServerConnection,
@@ -49,6 +55,13 @@ import {
   type ServerConnectionFailureKind,
 } from "@/lib/server-connections";
 import { router } from "@/router";
+
+type AuthenticatedSessionContext = {
+  bootstrap: ServerBootstrap;
+  csrfToken: string | null;
+  expiresAt: string | null;
+  user: UserSummary;
+};
 
 type ApplicationSessionState =
   | { kind: "loading" }
@@ -63,13 +76,20 @@ type ApplicationSessionState =
       bootstrap: ServerBootstrap;
       notice: string | null;
     }
-  | {
-      kind: "authenticated";
-      bootstrap: ServerBootstrap;
-      csrfToken: string | null;
-      expiresAt: string | null;
-      user: UserSummary;
-    };
+  | ({ kind: "authenticated" } & AuthenticatedSessionContext)
+  | ({
+      credential: ClientEncryptionCredential;
+      kind: "encryption-required";
+      reason: "authorize-device" | "initialize";
+    } & AuthenticatedSessionContext)
+  | ({
+      kind: "encryption-recovery";
+      recoverySecret: string;
+    } & AuthenticatedSessionContext)
+  | ({
+      kind: "encryption-error";
+      message: string;
+    } & AuthenticatedSessionContext);
 
 function connectionFailure(
   error: unknown,
@@ -209,13 +229,50 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
 function sessionState(
   bootstrap: ServerBootstrap,
   session: AuthSession,
-): ApplicationSessionState {
+): Extract<ApplicationSessionState, { kind: "authenticated" }> {
   return {
     kind: "authenticated",
     bootstrap,
     csrfToken: session.csrfToken,
     expiresAt: session.expiresAt,
     user: session.currentUser,
+  };
+}
+
+async function encryptionSessionState(
+  context: AuthenticatedSessionContext,
+  password?: string,
+): Promise<ApplicationSessionState> {
+  setClientSession({
+    authMode: context.bootstrap.auth.mode,
+    csrfToken: context.csrfToken,
+    expiresAt: context.expiresAt,
+    serverId: context.bootstrap.server.id,
+    user: context.user,
+  });
+  const access = await prepareClientEncryption({
+    authMode: context.bootstrap.auth.mode,
+    identity: {
+      ownerId: context.user.id,
+      serverId: context.bootstrap.server.id,
+    },
+    password,
+  });
+  if (access.status === "ready") {
+    return { kind: "authenticated", ...context };
+  }
+  if (access.status === "recovery-created") {
+    return {
+      kind: "encryption-recovery",
+      ...context,
+      recoverySecret: access.recoverySecret,
+    };
+  }
+  return {
+    kind: "encryption-required",
+    ...context,
+    credential: access.credential,
+    reason: access.reason,
   };
 }
 
@@ -328,7 +385,7 @@ function AuthenticationScreen({
 }: {
   bootstrap: ServerBootstrap;
   notice: string | null;
-  onAuthenticated(session: AuthSession): Promise<void>;
+  onAuthenticated(session: AuthSession, password: string): Promise<void>;
 }) {
   const accounts = bootstrap.auth.mode === "accounts";
   const canRegister = accounts && bootstrap.auth.registration.enabled;
@@ -386,7 +443,9 @@ function AuthenticationScreen({
           subsystem: "authentication",
         },
       );
-      await onAuthenticated(session);
+      await onAuthenticated(session, password);
+      setPassword("");
+      setConfirmation("");
     } catch (submitError) {
       clientLogger.warn(
         registering ? "Account registration failed" : "Sign-in failed",
@@ -541,6 +600,160 @@ function AuthenticationScreen({
   );
 }
 
+function EncryptionUnlockScreen({
+  credential,
+  onUnlock,
+  reason,
+}: Extract<ApplicationSessionState, { kind: "encryption-required" }> & {
+  onUnlock(value: string): Promise<void>;
+}) {
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const recovery = credential === "recovery-secret";
+  const initializing = reason === "initialize";
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onUnlock(value);
+      setValue("");
+    } catch (submitError) {
+      setError(errorMessage(submitError));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <SessionFrame>
+      <div className="rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="mb-6 flex items-start gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
+            <KeyRound className="size-4" />
+          </span>
+          <div>
+            <h1 className="font-semibold">
+              {initializing
+                ? "Set up private data encryption"
+                : "Authorize this device"}
+            </h1>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              {recovery
+                ? "Enter the recovery secret created on the first local device. It is used once to authorize this device."
+                : initializing
+                  ? "Confirm your password once to create your encryption keys. This device will unlock itself on later sessions."
+                  : "Enter your password once to authorize this device. It will not be saved or requested on later sessions."}
+            </p>
+          </div>
+        </div>
+        <form className="space-y-4" onSubmit={submit}>
+          <label className="grid gap-1.5 text-sm">
+            {recovery ? "Recovery secret" : "Current password"}
+            <Input
+              autoComplete={recovery ? "off" : "current-password"}
+              autoFocus
+              onChange={(event) => setValue(event.target.value)}
+              required
+              type="password"
+              value={value}
+            />
+          </label>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+          <Button className="w-full" disabled={submitting} type="submit">
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
+            {initializing ? "Enable encryption" : "Authorize device"}
+          </Button>
+        </form>
+        <div className="mt-4 min-w-0">
+          <ServerSwitcher
+            currentUserName="Switch server"
+            workerName="Encryption locked"
+          />
+        </div>
+      </div>
+    </SessionFrame>
+  );
+}
+
+function EncryptionRecoveryScreen({
+  onAcknowledged,
+  recoverySecret,
+}: Extract<ApplicationSessionState, { kind: "encryption-recovery" }> & {
+  onAcknowledged(): void;
+}) {
+  return (
+    <SessionFrame>
+      <div className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
+            <ShieldCheck className="size-4" />
+          </span>
+          <div>
+            <h1 className="font-semibold">Save your recovery secret</h1>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              Local mode has no account password. Store this secret somewhere
+              safe so another device can recover your encrypted data. Cantrip
+              will not save or show it again.
+            </p>
+          </div>
+        </div>
+        <Input
+          aria-label="Recovery secret"
+          autoComplete="off"
+          readOnly
+          value={recoverySecret}
+        />
+        <p className="text-xs leading-5 text-muted-foreground">
+          Losing every authorized device, worker, and this secret permanently
+          loses access. The server cannot recover it.
+        </p>
+        <Button className="w-full" onClick={onAcknowledged}>
+          I saved the recovery secret
+        </Button>
+      </div>
+    </SessionFrame>
+  );
+}
+
+function EncryptionErrorScreen({
+  message,
+  onRetry,
+}: Extract<ApplicationSessionState, { kind: "encryption-error" }> & {
+  onRetry(): void;
+}) {
+  return (
+    <SessionFrame>
+      <div className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
+          <div>
+            <h1 className="font-semibold">Private data is locked</h1>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">
+              {message}
+            </p>
+          </div>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Cantrip will not open the application or write protected data while
+          encryption is unavailable.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button onClick={onRetry}>Try again</Button>
+          <div className="min-w-0 flex-1">
+            <ServerSwitcher
+              currentUserName="Switch server"
+              workerName="Encryption unavailable"
+            />
+          </div>
+        </div>
+      </div>
+    </SessionFrame>
+  );
+}
+
 function AuthenticatedApplication({
   bootstrap,
   user,
@@ -615,16 +828,29 @@ export function ApplicationSession() {
   const refresh = useCallback(() => {
     const startedAt = performance.now();
     setState({ kind: "loading" });
-    void loadApplicationSession().then(
-      (next) => {
+    void (async () => {
+      try {
+        let next = await loadApplicationSession();
         if (next.kind === "authenticated") {
-          setClientSession({
-            authMode: next.bootstrap.auth.mode,
-            csrfToken: next.csrfToken,
-            expiresAt: next.expiresAt,
-            serverId: next.bootstrap.server.id,
-            user: next.user,
-          });
+          const context: AuthenticatedSessionContext = next;
+          try {
+            next = await encryptionSessionState(context);
+          } catch (error) {
+            clientLogger.warn("Client encryption session preparation failed", {
+              durationMs: Math.round(performance.now() - startedAt),
+              ...operationalErrorMetadata(error),
+              event: "encryption.session.prepare.failed",
+              operation: "prepare-encryption",
+              reasonCode: "encryption-unavailable",
+              status: "locked",
+              subsystem: "encryption",
+            });
+            next = {
+              kind: "encryption-error",
+              ...context,
+              message: errorMessage(error),
+            };
+          }
         }
         clientLogger.info("Application session refresh completed", {
           durationMs: Math.round(performance.now() - startedAt),
@@ -634,8 +860,7 @@ export function ApplicationSession() {
           subsystem: "authentication",
         });
         setState(next);
-      },
-      (error) => {
+      } catch (error) {
         const failure = connectionFailure(error);
         clientLogger.warn("Application session refresh failed", {
           durationMs: Math.round(performance.now() - startedAt),
@@ -647,8 +872,8 @@ export function ApplicationSession() {
           subsystem: "authentication",
         });
         setState(failure);
-      },
-    );
+      }
+    })();
   }, []);
 
   useEffect(refresh, [refresh]);
@@ -668,16 +893,22 @@ export function ApplicationSession() {
           subsystem: "authentication",
         });
         clearClientSession();
-        setState((current) =>
-          current.kind === "authenticated" &&
-          current.bootstrap.auth.mode !== "none"
-            ? {
-                kind: "signed-out",
-                bootstrap: current.bootstrap,
-                notice: reason,
-              }
-            : current,
-        );
+        setState((current) => {
+          if (
+            (current.kind === "authenticated" ||
+              current.kind === "encryption-required" ||
+              current.kind === "encryption-recovery" ||
+              current.kind === "encryption-error") &&
+            current.bootstrap.auth.mode !== "none"
+          ) {
+            return {
+              kind: "signed-out",
+              bootstrap: current.bootstrap,
+              notice: reason,
+            };
+          }
+          return current;
+        });
       }),
     [],
   );
@@ -701,19 +932,62 @@ export function ApplicationSession() {
       <AuthenticationScreen
         bootstrap={state.bootstrap}
         notice={state.notice}
-        onAuthenticated={async (session) => {
+        onAuthenticated={async (session, password) => {
           await rememberActiveServerAccount(session.currentUser.id, true);
-          const next = sessionState(state.bootstrap, session);
-          if (next.kind === "authenticated") {
-            setClientSession({
-              authMode: next.bootstrap.auth.mode,
-              csrfToken: next.csrfToken,
-              expiresAt: next.expiresAt,
-              serverId: next.bootstrap.server.id,
-              user: next.user,
+          const context: AuthenticatedSessionContext = sessionState(
+            state.bootstrap,
+            session,
+          );
+          try {
+            setState(await encryptionSessionState(context, password));
+          } catch (encryptionError) {
+            setState({
+              kind: "encryption-error",
+              ...context,
+              message: errorMessage(encryptionError),
             });
           }
-          setState(next);
+        }}
+      />
+    );
+  }
+  if (state.kind === "encryption-required") {
+    return (
+      <EncryptionUnlockScreen
+        {...state}
+        onUnlock={async (password) => {
+          setState(await encryptionSessionState(state, password));
+        }}
+      />
+    );
+  }
+  if (state.kind === "encryption-recovery") {
+    return (
+      <EncryptionRecoveryScreen
+        {...state}
+        onAcknowledged={() =>
+          setState({
+            kind: "authenticated",
+            bootstrap: state.bootstrap,
+            csrfToken: state.csrfToken,
+            expiresAt: state.expiresAt,
+            user: state.user,
+          })
+        }
+      />
+    );
+  }
+  if (state.kind === "encryption-error") {
+    return (
+      <EncryptionErrorScreen
+        {...state}
+        onRetry={() => {
+          void encryptionSessionState(state).then(setState, (retryError) =>
+            setState({
+              ...state,
+              message: errorMessage(retryError),
+            }),
+          );
         }}
       />
     );
