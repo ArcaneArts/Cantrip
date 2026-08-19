@@ -392,7 +392,6 @@ describe("policy persistence", () => {
         {
           type: "workspace",
           workspaceId: secondWorkspace.id,
-          workspaceName: "Company",
         },
         { type: "project", projectId: project.id },
       ]);

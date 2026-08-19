@@ -243,7 +243,6 @@ import {
   createGithubProject,
   createProjectWorktree,
   createProjectView,
-  createProjectWorkspace,
   createRemoteDesktop,
   createTerminal,
   compactChat,
@@ -275,7 +274,6 @@ import {
   getProjects,
   getProjectReplicaJobs,
   getProjectFolderSetupJob,
-  getProjectWorkspaces,
   getProjectTabLayout,
   getProjectWorktrees,
   getProjectWorktreeStatus,
@@ -326,6 +324,10 @@ import {
   updateTerminalWorktree,
   uploadChatAttachment,
 } from "@/lib/api";
+import {
+  createProjectWorkspace,
+  getProjectWorkspaces,
+} from "@/lib/workspace-encryption";
 import {
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,

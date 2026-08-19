@@ -11,6 +11,7 @@ import {
   encryptionKeyGrantCreateSchema,
   encryptionKeyGrantListSchema,
   encryptionKeyGrantSchema,
+  encryptionProfileMigrationUpdateSchema,
   encryptionPrincipalApprovalSchema,
   encryptionPrincipalCreateSchema,
   encryptionPrincipalListSchema,
@@ -20,6 +21,7 @@ import {
   type AccountPasswordEncryptionChange,
   type EncryptionKeyGrantCreate,
   type EncryptionPrincipalCreate,
+  type EncryptionProfileMigrationUpdate,
 } from "@cantrip/protocol/encryption";
 
 import { post, request, requestResponse } from "./api-client";
@@ -45,6 +47,17 @@ export async function initializeAccountEncryptionProfile(
   );
   return accountEncryptionProfileInitializeResultSchema.parse(
     await response.json(),
+  );
+}
+
+export async function updateAccountEncryptionMigration(
+  input: EncryptionProfileMigrationUpdate,
+) {
+  return accountEncryptionProfileSchema.parse(
+    await request("/api/encryption/profile/migration", {
+      method: "PATCH",
+      body: JSON.stringify(encryptionProfileMigrationUpdateSchema.parse(input)),
+    }),
   );
 }
 

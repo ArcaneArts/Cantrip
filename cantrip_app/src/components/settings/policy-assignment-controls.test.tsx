@@ -70,7 +70,6 @@ describe("policy assignment controls", () => {
       {
         type: "workspace",
         workspaceId: "workspace-one",
-        workspaceName: "Company",
       },
     ]);
     expect(
@@ -79,6 +78,7 @@ describe("policy assignment controls", () => {
         false,
         inheritedEffective,
         "project",
+        new Map([["workspace-one", "Company"]]),
       ),
     ).toMatchObject({
       checked: true,
@@ -136,12 +136,26 @@ describe("policy assignment controls", () => {
             {
               type: "workspace",
               workspaceId: "workspace-one",
-              workspaceName: "Company",
             },
           ]),
           effective(direct, [{ type: "project", projectId: "project-one" }]),
         ],
       }),
+    );
+    queryClient.setQueryData(
+      ["project-workspaces"],
+      [
+        {
+          id: "workspace-one",
+          name: "Company",
+          position: 0,
+          isDefault: true,
+          projectIds: ["project-one"],
+          revision: 1,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
     );
 
     const markup = renderToStaticMarkup(

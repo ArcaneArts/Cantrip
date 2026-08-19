@@ -615,7 +615,6 @@ export class PolicyRepository {
         .select({
           policyId: schema.workspacePolicyAssignments.policyId,
           workspaceId: schema.projectWorkspaces.id,
-          workspaceName: schema.projectWorkspaces.name,
         })
         .from(schema.workspacePolicyAssignments)
         .innerJoin(
@@ -640,7 +639,7 @@ export class PolicyRepository {
         )
         .orderBy(
           asc(schema.projectWorkspaces.position),
-          asc(schema.projectWorkspaces.name),
+          asc(schema.projectWorkspaces.createdAt),
         ),
     ]);
     const directlyAssigned = new Set(
@@ -648,13 +647,12 @@ export class PolicyRepository {
     );
     const workspacesByPolicy = new Map<
       string,
-      Array<{ workspaceId: string; workspaceName: string }>
+      Array<{ workspaceId: string }>
     >();
     for (const row of workspaceRows) {
       const current = workspacesByPolicy.get(row.policyId) ?? [];
       current.push({
         workspaceId: row.workspaceId,
-        workspaceName: row.workspaceName,
       });
       workspacesByPolicy.set(row.policyId, current);
     }

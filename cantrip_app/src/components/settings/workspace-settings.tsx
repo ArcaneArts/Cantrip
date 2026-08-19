@@ -27,13 +27,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { getProjects } from "@/lib/api";
 import {
   createProjectWorkspace,
   deleteProjectWorkspace,
-  getProjects,
   getProjectWorkspaces,
   updateProjectWorkspace,
-} from "@/lib/api";
+} from "@/lib/workspace-encryption";
 import { errorMessage } from "@/lib/error-message";
 import { PolicyAssignmentControls } from "./policy-assignment-controls";
 

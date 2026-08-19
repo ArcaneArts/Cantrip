@@ -130,8 +130,7 @@ reliably erased.
 The shared primitive package does not unlock a client or worker or encrypt a
 product payload by itself. The server persists the hierarchy's opaque profiles,
 public principals, and wrapped grants. Client and worker custody are implemented
-below; product payload rows remain planned until their normal and legacy write
-paths are complete.
+below, and workspace display names are the first product payload using them.
 
 ### Opaque key registry
 
@@ -194,9 +193,8 @@ also verifies that switching servers locks in-memory encryption keys.
 Nonextractable browser keys are still usable by JavaScript running in the same
 origin, so they do not protect against a malicious server that changes the
 served application. Clearing site data also deletes the device key and
-requires another recovery or authorization path. This cycle supplies custody
-and lifecycle primitives; account initialization now consumes them as
-described below, but no product payload is yet encrypted.
+requires another recovery or authorization path. Account initialization and
+the workspace-name adapter consume this custody boundary as described below.
 
 ### Account initialization and unlock
 
@@ -368,7 +366,7 @@ database-compromise guarantee is described.
 | Client device-key custody and in-memory key handling                             | Nonextractable IndexedDB key; memory-only AMK     | Client custody complete        | Required             | Medium      | No server decryption capability is introduced                                                  |
 | Account initialization, device authorization, and password lifecycle             | Client-only initialization and unlock             | Client initialization complete | Required             | High        | Server-only password reset and plaintext recovery                                              |
 | Worker key custody, public registration, and scoped component grants             | Protected local private key; opaque server grants | Worker grants complete         | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                 |
-| Workspace display names                                                          | Plaintext                                         | Recommended first payload      | Very good            | Low-Medium  | Name-based server search and validation                                                        |
+| Workspace display names                                                          | AES-256-GCM E2EE; client-only key                 | E2EE complete; lazy migration  | Implemented          | Low-Medium  | Name-based server search and validation                                                        |
 | Chat message bodies, reasoning, command output, diffs, file paths                | Plaintext                                         | Planned                        | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, answers, goals, queued prompts                               | Plaintext                                         | Planned                        | Excellent            | Medium-High | Server cannot inspect or transform task content                                                |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext     | Planned                        | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
@@ -392,6 +390,51 @@ database-compromise guarantee is described.
 The rollout status must be updated as each component lands. A row is not
 `E2EE complete` while any normal write path stores plaintext or while legacy
 plaintext remains without an explicit migration state.
+
+### Workspace display names
+
+Workspace display names are the first production payload encrypted through
+the shared foundation. The app-side
+[workspace adapter](../cantrip_app/src/lib/workspace-encryption.ts) allocates
+the row ID, derives the `workspace-display-name` field and lookup keys, and
+encrypts each name with format-version-1 AES-256-GCM before create or rename
+requests leave the client. Associated data binds the owner, component,
+`project_workspaces` table, row ID, `name` field, format version, and key
+revision. Decryption occurs only in that adapter after an authenticated
+response reaches an unlocked client; presentation and client-side search
+continue to use a decrypted `ProjectWorkspaceSummary`.
+
+The server retains the workspace and owner IDs, membership relationships,
+position, default status, timestamps, optimistic revision, format and key
+revision, bounded envelope, and a 32-byte HMAC-SHA-256 blind uniqueness tag.
+The tag is derived with the separate HKDF lookup-key domain over the trimmed,
+NFKC-normalized, lowercase name. The server can enforce per-owner uniqueness
+but cannot calculate the tag or recover the name. Effective-policy responses
+now carry only workspace IDs; the client resolves their display labels after
+decrypting the workspace list. The workspace component remains structurally
+ungrantable to workers.
+
+[Migration 0102](../cantrip_server/drizzle/0102_minor_klaw.sql) permits either
+a complete legacy plaintext state or a complete encrypted state, never a
+mixture. Once an authorized client unlocks, it receives the explicit remaining
+legacy count and locally replaces each plaintext name with its envelope and
+blind tag under optimistic revision checking. Concurrent migrations are
+idempotent: a revision conflict is followed by a refetch, and plaintext is
+removed atomically on success. Normal API writes accept only the encrypted
+wire representation, and repository compatibility paths reject plaintext
+names after the owner's encryption profile exists.
+
+The focused
+[client adapter test](../cantrip_app/src/lib/workspace-encryption.test.ts) and
+[temporary-database persistence test](../cantrip_server/test/workspace-name-encryption.test.ts)
+cover create, list, rename, client search, locked mutations, row-bound envelope
+authentication, normalized duplicate tags, revision-safe idempotent migration,
+and a zero-legacy-row result while retaining ordering, default, and membership
+metadata. This earns `E2EE complete` for normal writes and the tested migrated
+database. Real deployments migrate lazily when each owner next opens an
+authorized unlocked client, so inactive owners can still have explicitly
+reported legacy plaintext rows until then; this document does not claim those
+deployed rows are already migrated.
 
 ## Chats and tasks
 
@@ -481,8 +524,10 @@ counts, worker presence, model-route choices, and traffic patterns.
    components without a client or password. Worker heartbeat status now reports
    whether its endpoint key is pending, ready, or unavailable and which scoped
    revisions are in memory.
-6. **First narrow payload:** encrypt workspace display names, migrate legacy
-   plaintext on an unlocked client, and update the rollout ledger with evidence.
+6. **First narrow payload — complete:** workspace display names use row-bound
+   authenticated encryption and blind uniqueness tags. Unlocked clients lazily
+   migrate legacy plaintext with explicit remaining counts and revision checks;
+   inactive deployed owners may therefore still have legacy rows.
 7. **Chats and tasks:** encrypt message content, task prose, queued prompts,
    interaction payloads, and relocation snapshots.
 8. **Attachments and relayed streams:** encrypt metadata and add

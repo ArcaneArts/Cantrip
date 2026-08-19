@@ -16,6 +16,7 @@ import {
   updateWorkspacePolicyAssignments,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { getProjectWorkspaces } from "@/lib/workspace-encryption";
 
 export type PolicyAssignmentScope =
   | { kind: "project"; id: string; name: string }
@@ -33,10 +34,13 @@ export function policyAssignmentPresentation(
   directlyAssigned: boolean,
   effective: EffectivePolicySummary | undefined,
   scopeKind: PolicyAssignmentScope["kind"],
+  workspaceNames: ReadonlyMap<string, string> = new Map(),
 ): PolicyAssignmentPresentation {
   const inheritedWorkspaces =
     effective?.sources.flatMap((source) =>
-      source.type === "workspace" ? [source.workspaceName] : [],
+      source.type === "workspace"
+        ? [workspaceNames.get(source.workspaceId) ?? "Workspace"]
+        : [],
     ) ?? [];
   const inherited = inheritedWorkspaces.length > 0;
   const activeMandatory = policy.enabled && policy.mandatory;
@@ -107,6 +111,11 @@ export function PolicyAssignmentControls({
     queryKey: ["effective-policies", scope.id],
     queryFn: () => getProjectEffectivePolicies(scope.id),
   });
+  const workspaces = useQuery({
+    enabled: scope.kind === "project",
+    queryKey: ["project-workspaces"],
+    queryFn: getProjectWorkspaces,
+  });
   const replace = useMutation({
     mutationFn: (policyIds: string[]) => {
       const collectionVersion = assignments.data?.collectionVersion;
@@ -147,8 +156,12 @@ export function PolicyAssignmentControls({
   const effectiveByKey = new Map(
     (effective.data?.policies ?? []).map((policy) => [policy.key, policy]),
   );
+  const workspaceNames = new Map(
+    (workspaces.data ?? []).map((workspace) => [workspace.id, workspace.name]),
+  );
   const policies = assignments.data?.policies ?? [];
-  const requestError = assignments.error ?? effective.error ?? replace.error;
+  const requestError =
+    assignments.error ?? effective.error ?? workspaces.error ?? replace.error;
 
   return (
     <section aria-label={`${scope.name} policy assignments`}>
@@ -184,6 +197,7 @@ export function PolicyAssignmentControls({
             direct.has(policy.id),
             effectiveByKey.get(policy.key),
             scope.kind,
+            workspaceNames,
           );
           return (
             <div

@@ -63,6 +63,7 @@ import type {
 } from "@cantrip/protocol/automations";
 import type {
   ClientMasterKeyWrapper,
+  EncryptedPayloadEnvelope,
   EncryptionComponentScope,
   EncryptionPublicKey,
   PasswordKdfParameters,
@@ -1552,9 +1553,14 @@ export const projectWorkspaces = pgTable(
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
+    name: text("name"),
+    nameEnvelope: jsonb("name_envelope").$type<EncryptedPayloadEnvelope>(),
+    nameBlindIndex: text("name_blind_index"),
+    nameFormatVersion: integer("name_format_version"),
+    nameKeyRevision: integer("name_key_revision"),
     position: integer("position").notNull().default(0),
     isDefault: boolean("is_default").notNull().default(false),
+    revision: integer("revision").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -1563,10 +1569,9 @@ export const projectWorkspaces = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("project_workspaces_owner_name_unique").on(
-      table.ownerId,
-      table.name,
-    ),
+    uniqueIndex("project_workspaces_owner_name_blind_unique")
+      .on(table.ownerId, table.nameBlindIndex)
+      .where(sql`${table.nameBlindIndex} IS NOT NULL`),
     uniqueIndex("project_workspaces_owner_default_unique")
       .on(table.ownerId)
       .where(sql`${table.isDefault} = true`),
@@ -1574,6 +1579,11 @@ export const projectWorkspaces = pgTable(
       table.ownerId,
       table.position,
     ),
+    check(
+      "project_workspaces_name_protection_check",
+      sql`(${table.name} IS NOT NULL AND ${table.nameEnvelope} IS NULL AND ${table.nameBlindIndex} IS NULL AND ${table.nameFormatVersion} IS NULL AND ${table.nameKeyRevision} IS NULL) OR (${table.name} IS NULL AND ${table.nameEnvelope} IS NOT NULL AND ${table.nameBlindIndex} IS NOT NULL AND ${table.nameFormatVersion} = 1 AND ${table.nameKeyRevision} >= 1)`,
+    ),
+    check("project_workspaces_revision_check", sql`${table.revision} >= 1`),
   ],
 );
 
