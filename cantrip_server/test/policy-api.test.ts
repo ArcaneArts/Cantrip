@@ -327,7 +327,6 @@ describe.sequential("policy API", () => {
       {
         type: "workspace",
         workspaceId: workspace.id,
-        workspaceName: workspace.name,
       },
       { type: "project", projectId: project.id },
     ]);
@@ -345,7 +344,7 @@ describe.sequential("policy API", () => {
     const workspaceMembershipUpdate = await app.inject({
       method: "PATCH",
       url: `/api/workspaces/${workspace.id}`,
-      payload: { projectIds: [] },
+      payload: { expectedRevision: workspace.revision, projectIds: [] },
     });
     expect(workspaceMembershipUpdate.statusCode).toBe(200);
     const afterMembership = effectivePolicyListSchema.parse(

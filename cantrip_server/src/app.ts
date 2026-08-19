@@ -295,10 +295,10 @@ import {
   projectShareDirectCreateSchema,
   projectSummarySchema,
   projectPreferredWorkerUpdateSchema,
-  projectWorkspaceCreateSchema,
-  projectWorkspaceListSchema,
-  projectWorkspaceSummarySchema,
-  projectWorkspaceUpdateSchema,
+  encryptedProjectWorkspaceCreateSchema,
+  encryptedProjectWorkspaceUpdateSchema,
+  projectWorkspaceWireListSchema,
+  projectWorkspaceWireSummarySchema,
   projectTabLayoutSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
@@ -12183,14 +12183,14 @@ export async function buildApp({
 
   app.get("/api/workspaces", async (_request, reply) => {
     return reply.send(
-      projectWorkspaceListSchema.parse(
-        await repository.listProjectWorkspaces(applicationOwnerId()),
+      projectWorkspaceWireListSchema.parse(
+        await repository.listProjectWorkspaceWire(applicationOwnerId()),
       ),
     );
   });
 
   app.post("/api/workspaces", async (request, reply) => {
-    const input = projectWorkspaceCreateSchema.safeParse(request.body);
+    const input = encryptedProjectWorkspaceCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -12198,8 +12198,8 @@ export async function buildApp({
       return reply
         .code(201)
         .send(
-          projectWorkspaceSummarySchema.parse(
-            await repository.createProjectWorkspace(
+          projectWorkspaceWireSummarySchema.parse(
+            await repository.createEncryptedProjectWorkspace(
               applicationOwnerId(),
               input.data,
             ),
@@ -12213,18 +12213,20 @@ export async function buildApp({
   app.patch<{ Params: { workspaceId: string } }>(
     "/api/workspaces/:workspaceId",
     async (request, reply) => {
-      const input = projectWorkspaceUpdateSchema.safeParse(request.body);
+      const input = encryptedProjectWorkspaceUpdateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const workspace = await repository.updateProjectWorkspace(
+        const workspace = await repository.updateEncryptedProjectWorkspace(
           applicationOwnerId(),
           request.params.workspaceId,
           input.data,
         );
         return workspace
-          ? reply.send(projectWorkspaceSummarySchema.parse(workspace))
+          ? reply.send(projectWorkspaceWireSummarySchema.parse(workspace))
           : reply.code(404).send({ error: "Workspace not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });

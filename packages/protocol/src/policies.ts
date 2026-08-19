@@ -174,7 +174,6 @@ export const effectivePolicySourceSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("workspace"),
     workspaceId: z.string().min(1),
-    workspaceName: z.string().min(1),
   }),
   z.object({
     type: z.literal("project"),

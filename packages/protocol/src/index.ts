@@ -33,6 +33,8 @@ export * from "./encryption.js";
 import { agentPolicyContextSchema } from "./policies.js";
 import { taskDetailSchema } from "./tasks.js";
 import {
+  encryptedPayloadEnvelopeSchema,
+  encryptionKeyBytesSchema,
   unavailableWorkerEncryptionStatus,
   workerEncryptionStatusSchema,
 } from "./encryption.js";
@@ -2215,12 +2217,104 @@ export const projectWorkspaceUpdateSchema = z
     { message: "At least one workspace field is required." },
   );
 
+const projectWorkspaceWireBaseSchema = z
+  .object({
+    id: z.string().min(1).max(255),
+    position: z.number().int().nonnegative(),
+    isDefault: z.boolean(),
+    projectIds: z.array(z.string().min(1)),
+    revision: z.number().int().positive(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const encryptedProjectWorkspaceNameSchema = z
+  .object({
+    state: z.literal("encrypted"),
+    formatVersion: z.literal(1),
+    keyRevision: z.number().int().positive(),
+    blindIndex: encryptionKeyBytesSchema,
+    envelope: encryptedPayloadEnvelopeSchema.refine(
+      (envelope) => envelope.ciphertext.length <= 448,
+      "Encrypted workspace name is too large.",
+    ),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.envelope.keyRevision !== value.keyRevision) {
+      context.addIssue({
+        code: "custom",
+        message: "Workspace name and envelope key revisions must match.",
+        path: ["envelope", "keyRevision"],
+      });
+    }
+  });
+
+export const legacyProjectWorkspaceNameSchema = z
+  .object({
+    state: z.literal("legacy"),
+    plaintext: z.string().trim().min(1).max(80),
+  })
+  .strict();
+
+export const projectWorkspaceWireSummarySchema =
+  projectWorkspaceWireBaseSchema.extend({
+    nameProtection: z.discriminatedUnion("state", [
+      encryptedProjectWorkspaceNameSchema,
+      legacyProjectWorkspaceNameSchema,
+    ]),
+  });
+
+export const projectWorkspaceWireListSchema = z
+  .object({
+    workspaces: z.array(projectWorkspaceWireSummarySchema),
+    legacyCount: z.number().int().nonnegative(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const actual = value.workspaces.filter(
+      ({ nameProtection }) => nameProtection.state === "legacy",
+    ).length;
+    if (actual !== value.legacyCount) {
+      context.addIssue({
+        code: "custom",
+        message: "Workspace legacy count does not match the payload.",
+        path: ["legacyCount"],
+      });
+    }
+  });
+
+export const encryptedProjectWorkspaceCreateSchema = z
+  .object({
+    id: z.string().uuid(),
+    nameProtection: encryptedProjectWorkspaceNameSchema,
+  })
+  .strict();
+
+export const encryptedProjectWorkspaceUpdateSchema = z
+  .object({
+    expectedRevision: z.number().int().positive(),
+    nameProtection: encryptedProjectWorkspaceNameSchema.optional(),
+    projectIds: z.array(z.string().min(1)).max(10_000).optional(),
+    isDefault: z.literal(true).optional(),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.nameProtection !== undefined ||
+      input.projectIds !== undefined ||
+      input.isDefault !== undefined,
+    { message: "At least one workspace field is required." },
+  );
+
 export const projectWorkspaceSummarySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   position: z.number().int().nonnegative(),
   isDefault: z.boolean(),
   projectIds: z.array(z.string().min(1)),
+  revision: z.number().int().positive(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -10113,6 +10207,21 @@ export type ProjectWorkspaceUpdate = z.infer<
 >;
 export type ProjectWorkspaceSummary = z.infer<
   typeof projectWorkspaceSummarySchema
+>;
+export type EncryptedProjectWorkspaceName = z.infer<
+  typeof encryptedProjectWorkspaceNameSchema
+>;
+export type ProjectWorkspaceWireSummary = z.infer<
+  typeof projectWorkspaceWireSummarySchema
+>;
+export type ProjectWorkspaceWireList = z.infer<
+  typeof projectWorkspaceWireListSchema
+>;
+export type EncryptedProjectWorkspaceCreate = z.infer<
+  typeof encryptedProjectWorkspaceCreateSchema
+>;
+export type EncryptedProjectWorkspaceUpdate = z.infer<
+  typeof encryptedProjectWorkspaceUpdateSchema
 >;
 export type ExecutionSurfaceKind = z.infer<typeof executionSurfaceKindSchema>;
 export type ExecutionPlacement = z.infer<typeof executionPlacementSchema>;

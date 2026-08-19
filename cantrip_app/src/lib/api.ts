@@ -201,10 +201,10 @@ import {
   projectShareAttachmentSchema,
   projectShareDirectCreateSchema,
   projectSummarySchema,
-  projectWorkspaceCreateSchema,
-  projectWorkspaceListSchema,
-  projectWorkspaceSummarySchema,
-  projectWorkspaceUpdateSchema,
+  encryptedProjectWorkspaceCreateSchema,
+  encryptedProjectWorkspaceUpdateSchema,
+  projectWorkspaceWireListSchema,
+  projectWorkspaceWireSummarySchema,
   projectTabLayoutSummarySchema,
   projectWorktreeListSchema,
   serviceLogReadResultSchema,
@@ -343,8 +343,8 @@ import type {
   ProjectPreferredWorkerUpdate,
   ProjectGithubConversionPreflightRequest,
   ProjectGithubConversionStart,
-  ProjectWorkspaceCreate,
-  ProjectWorkspaceUpdate,
+  EncryptedProjectWorkspaceCreate,
+  EncryptedProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
   RemoteDesktopTarget,
   ReasoningEffort,
@@ -1191,24 +1191,29 @@ export async function createDirectTerminalAttachment(
   );
 }
 
-export async function getProjectWorkspaces() {
-  return projectWorkspaceListSchema.parse(await request("/api/workspaces"));
+export async function getProjectWorkspaceWireList() {
+  return projectWorkspaceWireListSchema.parse(await request("/api/workspaces"));
 }
 
-export async function createProjectWorkspace(input: ProjectWorkspaceCreate) {
-  return projectWorkspaceSummarySchema.parse(
-    await post("/api/workspaces", projectWorkspaceCreateSchema.parse(input)),
+export async function createEncryptedProjectWorkspace(
+  input: EncryptedProjectWorkspaceCreate,
+) {
+  return projectWorkspaceWireSummarySchema.parse(
+    await post(
+      "/api/workspaces",
+      encryptedProjectWorkspaceCreateSchema.parse(input),
+    ),
   );
 }
 
-export async function updateProjectWorkspace(
+export async function updateEncryptedProjectWorkspace(
   workspaceId: string,
-  input: ProjectWorkspaceUpdate,
+  input: EncryptedProjectWorkspaceUpdate,
 ) {
-  return projectWorkspaceSummarySchema.parse(
+  return projectWorkspaceWireSummarySchema.parse(
     await request(`/api/workspaces/${encodeURIComponent(workspaceId)}`, {
       method: "PATCH",
-      body: JSON.stringify(projectWorkspaceUpdateSchema.parse(input)),
+      body: JSON.stringify(encryptedProjectWorkspaceUpdateSchema.parse(input)),
     }),
   );
 }

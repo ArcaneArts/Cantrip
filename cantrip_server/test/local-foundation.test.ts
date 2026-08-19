@@ -67,8 +67,8 @@ import {
   projectSummarySchema,
   projectTokenUsageSchema,
   projectTabLayoutSummarySchema,
-  projectWorkspaceListSchema,
-  projectWorkspaceSummarySchema,
+  projectWorkspaceWireListSchema,
+  projectWorkspaceWireSummarySchema,
   projectViewListSchema,
   projectViewSummarySchema,
   queuedPromptListSchema,
@@ -122,6 +122,22 @@ const config: ServerConfig = {
   port: 4310,
   workerToken: "test-worker-token",
 };
+
+function workspaceNameProtection(fill: number) {
+  return {
+    state: "encrypted" as const,
+    formatVersion: 1 as const,
+    keyRevision: 1,
+    blindIndex: Buffer.alloc(32, fill).toString("base64url"),
+    envelope: {
+      version: 1 as const,
+      algorithm: "AES-256-GCM" as const,
+      keyRevision: 1,
+      nonce: Buffer.alloc(12, fill).toString("base64url"),
+      ciphertext: Buffer.alloc(16, fill).toString("base64url"),
+    },
+  };
+}
 
 let turnRequests = 0;
 let compactRequests = 0;
@@ -2414,76 +2430,137 @@ describe("local server foundation", () => {
         },
       }),
     ).toMatchObject({ statusCode: 409 });
-    const defaultWorkspace = projectWorkspaceListSchema.parse(
+    const initialWorkspaces = projectWorkspaceWireListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
-    )[0]!;
+    );
+    const defaultWorkspace = initialWorkspaces.workspaces[0]!;
     expect(defaultWorkspace).toMatchObject({
-      name: "Default",
+      nameProtection: { state: "legacy", plaintext: "Default" },
       isDefault: true,
       projectIds: [project.id],
     });
-    const personalWorkspace = projectWorkspaceSummarySchema.parse(
-      (
-        await firstApp.inject({
-          method: "POST",
-          url: "/api/workspaces",
-          payload: { name: "Personal" },
-        })
-      ).json(),
-    );
-    expect(personalWorkspace).toMatchObject({
-      name: "Personal",
-      isDefault: false,
-      projectIds: [],
-    });
-    const assignedWorkspace = projectWorkspaceSummarySchema.parse(
-      (
-        await firstApp.inject({
-          method: "PATCH",
-          url: `/api/workspaces/${personalWorkspace.id}`,
-          payload: { name: "Personal Projects", projectIds: [project.id] },
-        })
-      ).json(),
-    );
-    expect(assignedWorkspace).toMatchObject({
-      name: "Personal Projects",
-      projectIds: [project.id],
-    });
-    const renamedDefaultWorkspace = projectWorkspaceSummarySchema.parse(
+    const encryptionClientId = "261eec06-fd9d-4244-8bea-b44b29245ac9";
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: "/api/encryption/profile/initialize",
+        payload: {
+          profile: {
+            formatVersion: 1,
+            activeMasterKeyRevision: 1,
+            passwordKdf: null,
+            passwordWrappedMasterKey: null,
+            payloadMigrationStatus: "pending",
+          },
+          initialClient: {
+            id: encryptionClientId,
+            label: "Local foundation client",
+            publicKey: {
+              version: 1,
+              algorithm: "P-256",
+              format: "raw",
+              value: Buffer.alloc(65).toString("base64url"),
+            },
+            wrappedMasterKey: {
+              version: 1,
+              purpose: "client-account-master-key",
+              clientId: encryptionClientId,
+              masterKeyRevision: 1,
+              envelope: {
+                version: 1,
+                algorithm: "HPKE-RFC9180",
+                suite: {
+                  mode: "base",
+                  kem: "DHKEM(P-256,HKDF-SHA256)",
+                  kdf: "HKDF-SHA256",
+                  aead: "AES-256-GCM",
+                },
+                encapsulatedKey: Buffer.alloc(65).toString("base64url"),
+                ciphertext: Buffer.alloc(48).toString("base64url"),
+              },
+            },
+          },
+        },
+      }),
+    ).toMatchObject({ statusCode: 201 });
+    const renamedDefaultWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/workspaces/${defaultWorkspace.id}`,
-          payload: { name: "Main Workspace" },
+          payload: {
+            expectedRevision: defaultWorkspace.revision,
+            nameProtection: workspaceNameProtection(1),
+          },
         })
       ).json(),
     );
     expect(renamedDefaultWorkspace).toMatchObject({
-      name: "Main Workspace",
+      nameProtection: { state: "encrypted" },
       isDefault: true,
     });
-    const promotedWorkspace = projectWorkspaceSummarySchema.parse(
+    const personalWorkspace = projectWorkspaceWireSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "POST",
+          url: "/api/workspaces",
+          payload: {
+            id: "c41a00ec-7438-42a8-929b-5048ca426c8c",
+            nameProtection: workspaceNameProtection(2),
+          },
+        })
+      ).json(),
+    );
+    expect(personalWorkspace).toMatchObject({
+      nameProtection: { state: "encrypted" },
+      isDefault: false,
+      projectIds: [],
+    });
+    const assignedWorkspace = projectWorkspaceWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
           url: `/api/workspaces/${personalWorkspace.id}`,
-          payload: { isDefault: true },
+          payload: {
+            expectedRevision: personalWorkspace.revision,
+            nameProtection: workspaceNameProtection(3),
+            projectIds: [project.id],
+          },
+        })
+      ).json(),
+    );
+    expect(assignedWorkspace).toMatchObject({
+      nameProtection: { state: "encrypted" },
+      projectIds: [project.id],
+    });
+    const promotedWorkspace = projectWorkspaceWireSummarySchema.parse(
+      (
+        await firstApp.inject({
+          method: "PATCH",
+          url: `/api/workspaces/${personalWorkspace.id}`,
+          payload: {
+            expectedRevision: assignedWorkspace.revision,
+            isDefault: true,
+          },
         })
       ).json(),
     );
     expect(promotedWorkspace).toMatchObject({
-      name: "Personal Projects",
+      nameProtection: { state: "encrypted" },
       isDefault: true,
     });
-    const updatedWorkspaces = projectWorkspaceListSchema.parse(
+    const updatedWorkspaces = projectWorkspaceWireListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/workspaces" })).json(),
-    );
+    ).workspaces;
     expect(updatedWorkspaces.filter(({ isDefault }) => isDefault)).toEqual([
       expect.objectContaining({ id: personalWorkspace.id }),
     ]);
     expect(
       updatedWorkspaces.find(({ id }) => id === defaultWorkspace.id),
-    ).toMatchObject({ name: "Main Workspace", isDefault: false });
+    ).toMatchObject({
+      nameProtection: { state: "encrypted" },
+      isDefault: false,
+    });
     expect(
       updatedWorkspaces.filter(({ projectIds }) =>
         projectIds.includes(project.id),
