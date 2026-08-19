@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { EventEmitter } from "node:events";
+import type { FSWatcher } from "node:fs";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -243,6 +245,46 @@ describe("CodeGraph project supervisor", () => {
 
     expect(fake.maximumActive()).toBeLessThanOrEqual(2);
     expect(supervisor.statuses()).toHaveLength(5);
+    supervisor.close();
+  });
+
+  it("debounces file changes and recovers a failed filesystem watcher", async () => {
+    const project = await gitProject("cantrip-codegraph-watcher-");
+    const fake = fakeCodeGraph();
+    let listener:
+      ((event: string, fileName: string | Buffer | null) => void) | null = null;
+    const watchers: EventEmitter[] = [];
+    const supervisor = new CodeGraphProjectSupervisor({
+      authorize: async () => [project],
+      changeDebounceMs: 5,
+      command: "/managed/codegraph",
+      execute: fake.execute,
+      watcherRetryBaseMs: 5,
+      watch: (_root, nextListener) => {
+        listener = nextListener;
+        const watcher = new EventEmitter();
+        Object.assign(watcher, { close: () => undefined });
+        watchers.push(watcher);
+        return watcher as FSWatcher;
+      },
+    });
+
+    await supervisor.configure([
+      { sourcePath: project.root, worktreePath: project.root },
+    ]);
+    await supervisor.waitForIdle();
+    const callsBeforeChange = fake.calls.length;
+    listener?.("change", "src/first.ts");
+    listener?.("change", "src/second.ts");
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    await supervisor.waitForIdle();
+    expect(
+      fake.calls.slice(callsBeforeChange).map(({ args }) => args[0]),
+    ).toEqual(["status", "sync", "status"]);
+
+    watchers[0]?.emit("error", new Error("watcher closed"));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(watchers).toHaveLength(2);
     supervisor.close();
   });
 

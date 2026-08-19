@@ -8,6 +8,7 @@ import {
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type McpServerConfiguration,
+  type WorktreeObservationTarget,
   type WorkerCommand,
   type WorkerEvent,
   type WorkerNotification,
@@ -434,29 +435,59 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   let codegraphNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
-  const codegraphProjects =
-    codegraphRuntime?.status().cliAvailable === true && codegraphInvocation
-      ? new CodeGraphProjectSupervisor({
-          authorize: async (sourcePath, worktreePaths) => {
-            const authorized = await worktrees.authorizeTargets(
-              sourcePath,
-              worktreePaths,
-            );
-            return authorized.map(({ inventory, worktree }) => ({
-              gitCommonDir: inventory.gitCommonDir,
-              root: worktree.path,
-            }));
-          },
-          command: codegraphInvocation.command,
-          commandArguments: codegraphInvocation.arguments,
-          environment: codegraphRuntime.childEnvironment(),
-          onStatus: (status) =>
-            codegraphNotificationEmitter?.({
-              type: "codegraph.status.observed",
-              status,
-            }),
-        })
-      : null;
+  let codegraphProjects: CodeGraphProjectSupervisor | null = null;
+  let codegraphObservationTargets: WorktreeObservationTarget[] = [];
+  const activateCodeGraphProjects = async (): Promise<void> => {
+    if (
+      !codegraphRuntime ||
+      !codegraphInvocation ||
+      codegraphRuntime.status().cliAvailable !== true
+    ) {
+      return;
+    }
+    if (!codegraphProjects) {
+      codegraphProjects = new CodeGraphProjectSupervisor({
+        authorize: async (sourcePath, worktreePaths) => {
+          const authorized = await worktrees.authorizeTargets(
+            sourcePath,
+            worktreePaths,
+          );
+          return authorized.map(({ inventory, worktree }) => ({
+            gitCommonDir: inventory.gitCommonDir,
+            root: worktree.path,
+          }));
+        },
+        command: codegraphInvocation.command,
+        commandArguments: codegraphInvocation.arguments,
+        environment: codegraphRuntime.childEnvironment(),
+        onStatus: (status) =>
+          codegraphNotificationEmitter?.({
+            type: "codegraph.status.observed",
+            status,
+          }),
+      });
+    }
+    await codegraphProjects.configure(codegraphObservationTargets);
+  };
+  await activateCodeGraphProjects();
+  if (codegraphRuntime) {
+    void codegraphRuntime
+      .waitForUpdate()
+      .then(async (status) => {
+        codegraphStatus = status;
+        await activateCodeGraphProjects();
+      })
+      .catch((error) => {
+        workerLogger.event("warn", "CodeGraph background installation failed", {
+          event: "codegraph.runtime.background-install-failed",
+          subsystem: "codegraph",
+          operation: "prepare-runtime",
+          reasonCode: "install-failed",
+          status: "degraded",
+          error: workerLogError(error),
+        });
+      });
+  }
   const agentMcpServers = async (
     cwd: string,
     configured: McpServerConfiguration[],
@@ -1358,7 +1389,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return worktrees.status(command.sourcePath, command.worktreePath);
       case "worktree.observation.configure":
         worktrees.configureObservation(command.targets);
-        void codegraphProjects?.configure(command.targets).catch((error) => {
+        codegraphObservationTargets = [...command.targets];
+        void activateCodeGraphProjects().catch((error) => {
           workerLogger.event(
             "warn",
             "CodeGraph worktree reconciliation failed",
@@ -1401,16 +1433,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (!codegraphRuntime) throw new Error("CodeGraph is unavailable.");
         const acceptedAt = new Date().toISOString();
         const jobId = randomUUID();
-        void codegraphRuntime.updateNow().catch((error) => {
-          workerLogger.event("warn", "CodeGraph update check failed", {
-            event: "codegraph.runtime.update-check-failed",
-            subsystem: "codegraph",
-            operation: "update-check",
-            reasonCode: "update-check-failed",
-            status: "degraded",
-            error: workerLogError(error),
+        void codegraphRuntime
+          .updateNow()
+          .then(async (status) => {
+            codegraphStatus = status;
+            await activateCodeGraphProjects();
+          })
+          .catch((error) => {
+            workerLogger.event("warn", "CodeGraph update check failed", {
+              event: "codegraph.runtime.update-check-failed",
+              subsystem: "codegraph",
+              operation: "update-check",
+              reasonCode: "update-check-failed",
+              status: "degraded",
+              error: workerLogError(error),
+            });
           });
-        });
         return {
           jobId,
           action: "update-check" as const,

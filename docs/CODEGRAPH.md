@@ -1,9 +1,37 @@
-# First-class CodeGraph integration plan
+# First-class CodeGraph integration
 
-- Status: Proposed
+- Status: Implemented
 - Last updated: 2026-08-19
 - Upstream: [colbymchenry/codegraph](https://github.com/colbymchenry/codegraph)
 - Researched release: [v1.5.0](https://github.com/colbymchenry/codegraph/releases/tag/v1.5.0)
+
+This document is the operational and architectural reference for Cantrip's
+managed CodeGraph integration. The original proposal has been retained where
+it explains security boundaries and expected behavior; implementation-specific
+sections now describe the shipped system.
+
+## Implementation snapshot
+
+The integration was delivered as sequential, independently merged milestones:
+
+- PR #560: verified worker-owned runtime acquisition, privacy enforcement, and
+  the stable terminal launcher;
+- PR #564: per-worktree indexing, local Git exclusion, bounded jobs, watcher
+  recovery, and automatic synchronization;
+- PR #567: exact-worktree MCP injection and server-side reserved-name
+  enforcement;
+- PR #568: rolling-compatible worker status plus server-routed status, sync,
+  rebuild, and update-check operations;
+- PR #570: worker, project, MCP settings, and chat-inventory presentation; and
+- the final hardening PR: non-blocking first installation, candidate MCP
+  validation/rollback, expanded failure tests, and this operational update.
+
+Cantrip intentionally does **not** call `codegraph install`, even though the
+upstream installer supports Codex CLI. That installer configures a user's
+global agents. Cantrip instead synthesizes an immutable MCP definition for the
+exact authorized physical worktree of each run. This preserves standalone
+Codex configuration and prevents one project, worktree, or worker from leaking
+into another.
 
 ## 1. Decision
 
@@ -177,8 +205,13 @@ while new terminals and MCP launches use the new version immediately.
 
 ### Startup sequence
 
-Add a `CodeGraphRuntimeManager.prepare()` startup phase before PTYs, automation,
-project indexing, or Codex runtimes are made ready:
+`CodeGraphRuntimeManager.prepare()` creates and publishes the stable launcher
+before PTYs and command services are constructed. A cached runtime is validated
+and has telemetry disabled synchronously. The release check, download, and
+promotion then run in the background; a first installation does not hold up
+terminals, Git, files, or Codex. When a verified first install becomes ready,
+the worker dynamically creates the project supervisor and applies the latest
+server-authorized worktree inventory.
 
 1. Detect the normalized target: `darwin|linux|win32` and `arm64|x64`.
 2. Load and validate the last known verified runtime, if present.
@@ -197,14 +230,16 @@ project indexing, or Codex runtimes are made ready:
    size.
 7. Run the staged executable's version command and require it to match the
    release tag.
-8. Run the staged executable with `telemetry off`. A newly downloaded runtime
-   is never promoted if telemetry suppression cannot be confirmed.
-9. Atomically move the verified directory into `versions/` and replace
-   `current.json`; retain at least the previous verified version.
+8. Run the staged executable with `telemetry off`, then require a real MCP
+   `initialize` response in direct/no-daemon mode. A newly downloaded runtime
+   is never selected if privacy suppression or MCP validation fails.
+9. Atomically move the verified directory into `versions/`, repeat version,
+   telemetry, and MCP validation from its promoted location, and only then
+   replace `current.json`; retain at least the previous verified version.
 10. Run `telemetry off` again through the selected stable launcher on **every**
     startup, even when no update was installed.
-11. Start or reconcile CodeGraph project supervisors, then report worker-ready
-    state.
+11. Start or reconcile CodeGraph project supervisors when the runtime becomes
+    available. Worker readiness is independent of this background completion.
 
 The updater must use GitHub's release API and assets directly rather than
 scraping HTML or executing a remote install script. It must never replace the
@@ -216,17 +251,17 @@ working version in place.
   the release check/download proceeds. CodeGraph reports `checking` or
   `updating`; other worker services do not wait.
 - On a first install with no cached runtime, CodeGraph reports `installing` and
-  project agents may start without its tool after a bounded wait. The rest of
-  the worker still starts.
+  project agents start without its tool. The project supervisor and managed
+  MCP become available dynamically after the verified install completes.
 - An offline check uses the cached runtime. Offline first start reports
   CodeGraph unavailable with a repairable reason.
 - After promotion, idle CodeGraph daemons are restarted and new Codex runs use
   the new version. Active turns finish on the previous version and rematerialize
   their managed MCP at the next safe thread resume. No live turn is killed just
   to update CodeGraph.
-- If the promoted runtime fails its first health or MCP handshake, the manager
-  atomically restores the previous version and records the rejected version so
-  it is not retried continuously during that process lifetime.
+- If the candidate fails its staged or promoted-location MCP handshake, the
+  manager removes the candidate directory and leaves `current.json` pointing
+  at the previous verified runtime. The worker reports the bounded diagnostic.
 - Cantrip owns update cadence. Set `CODEGRAPH_NO_UPDATE_CHECK=1` in all managed
   CodeGraph processes so its background notification check does not duplicate
   the worker's release manager.
@@ -402,16 +437,12 @@ project `AGENTS.md`.
 The managed CodeGraph MCP is synthesized from worker capability and selected
 project placement. It is not a row in the user-owned `mcp_servers` table.
 
-Extend the MCP protocol summary with fields equivalent to:
-
-```ts
-origin: "user" | "worker-system";
-managed: boolean;
-editable: boolean;
-removable: boolean;
-status?: "installing" | "indexing" | "ready" | "degraded" | "unavailable";
-statusMessage?: string;
-```
+The durable MCP CRUD protocol remains limited to user-owned rows. CodeGraph is
+represented separately by the worker's rolling-compatible `codegraph` health
+capability and synthesized by the settings UI. In a live chat, native Codex MCP
+inventory identifies the injected server by its reserved name and the app adds
+`Managed by Cantrip` and `Read only` badges. This avoids persisting a fake MCP
+row or forcing older apps to understand a new user-MCP schema variant.
 
 Reserve the case-insensitive name `codegraph` in create, update, copy, and
 delete routes. The server must reject a conflicting user definition even if an
@@ -419,7 +450,7 @@ older client bypasses the UI. Effective user MCP merging occurs first; the
 worker then appends the authoritative managed entry so database state can never
 shadow it.
 
-Settings should display:
+Settings display:
 
 - **CodeGraph**;
 - a `Managed by Cantrip` and `Read only` badge;
@@ -429,12 +460,12 @@ Settings should display:
 - a bounded failure message with Resync or Rebuild when appropriate.
 
 No edit, delete, disable, copy, authentication, or environment actions appear
-for this row. The chat customization inventory should identify the same server
+for this row. The chat customization inventory identifies the same server
 as managed rather than presenting it as an unexplained extra MCP.
 
 ## 12. Protocol and status model
 
-Add a worker capability and bounded heartbeat/status shape containing:
+The worker heartbeat carries a bounded CodeGraph capability/status shape with:
 
 - availability and supported platform;
 - installed, latest-seen, and previous versions;
@@ -444,7 +475,7 @@ Add a worker capability and bounded heartbeat/status shape containing:
 - number of ready, indexing, queued, and degraded project roots; and
 - whether CLI PATH and MCP injection are active.
 
-Add worker commands for:
+The worker exposes commands for:
 
 - `codegraph.status` for one authorized project/worktree;
 - `codegraph.sync` for incremental reconciliation;
@@ -459,20 +490,20 @@ normal worker observations.
 
 ## 13. Failure and recovery behavior
 
-| Failure                                | Required behavior                                                                                       |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| GitHub unavailable                     | Use the last verified runtime and report a stale update check.                                          |
-| No runtime and offline                 | Disable only CodeGraph; keep the worker online.                                                         |
-| Hash, digest, or version mismatch      | Delete staging data, retain current runtime, surface a security error.                                  |
-| Extraction failure                     | Retain current runtime and remove the partial directory.                                                |
-| Telemetry suppression failure          | Do not promote the new version; mark the current integration degraded.                                  |
-| New runtime fails health/MCP handshake | Roll back atomically to the prior verified version.                                                     |
-| Initial index fails                    | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back.                    |
-| Watcher/daemon exits                   | Restart with bounded exponential backoff and run catch-up sync.                                         |
-| SQLite lock/corruption                 | Stop the daemon, quarantine the derived index, and rebuild after confirmation or safe automatic policy. |
-| Worktree disappears                    | Stop supervision and remove its in-memory registration without touching another checkout.               |
-| Active turn during update              | Let it finish on the old process; rematerialize at the next safe resume.                                |
-| Old server/app during rollout          | Worker omits unsupported status fields and continues normal agents without UI management.               |
+| Failure                                | Required behavior                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| GitHub unavailable                     | Use the last verified runtime and report a stale update check.                                    |
+| No runtime and offline                 | Disable only CodeGraph; keep the worker online.                                                   |
+| Hash, digest, or version mismatch      | Delete staging data, retain current runtime, surface a security error.                            |
+| Extraction failure                     | Retain current runtime and remove the partial directory.                                          |
+| Telemetry suppression failure          | Do not promote the new version; mark the current integration degraded.                            |
+| New runtime fails health/MCP handshake | Roll back atomically to the prior verified version.                                               |
+| Initial index fails                    | Preserve logs, report degraded state, allow retry/rebuild, and let agents fall back.              |
+| Watcher/daemon exits                   | Restart with bounded exponential backoff and run catch-up sync.                                   |
+| SQLite lock/corruption                 | Mark the graph degraded; an explicit Rebuild removes only the derived index and creates it again. |
+| Worktree disappears                    | Stop supervision and remove its in-memory registration without touching another checkout.         |
+| Active turn during update              | Let it finish on the old process; rematerialize at the next safe resume.                          |
+| Old server/app during rollout          | Worker omits unsupported status fields and continues normal agents without UI management.         |
 
 All errors should use the existing worker service logging conventions. Include
 worker, project, worktree, phase, CodeGraph version, duration, and outcome; do
@@ -497,9 +528,9 @@ in server-visible payloads.
 - On Windows/WSL or other cross-environment access, use distinct
   `.codegraph-*` directories; never share one index across OS locking domains.
 
-## 15. Implementation milestones
+## 15. Delivered milestones
 
-### Milestone 1: runtime acquisition and CLI
+### Milestone 1: runtime acquisition and CLI — complete (PR #560)
 
 - Add target mapping, release metadata client, verified download/extraction,
   atomic current/rollback pointers, and startup update checks.
@@ -510,14 +541,14 @@ in server-visible payloads.
 This milestone is independently useful: `codegraph` works in a terminal even
 before Cantrip manages project indexes or MCP.
 
-### Milestone 2: project indexing and auto-sync
+### Milestone 2: project indexing and auto-sync — complete (PR #564)
 
 - Add the project/worktree supervisor and job scheduler.
 - Initialize existing replicas and new worktrees with bounded concurrency.
 - Manage local Git excludes without tracked changes.
 - Supervise watchers/daemons and publish status, sync, and rebuild commands.
 
-### Milestone 3: immutable MCP injection
+### Milestone 3: immutable MCP injection — complete (PR #567)
 
 - Synthesize the project-specific CodeGraph MCP on the worker.
 - Cover every filesystem-backed agent dispatch and safe thread resume.
@@ -525,43 +556,57 @@ before Cantrip manages project indexes or MCP.
 - Add runtime-only fallback guidance for subagents if validation shows it is
   necessary.
 
-### Milestone 4: settings and operations UI
+### Milestone 4: protocol and routing — complete (PR #568)
+
+- Added rolling-compatible heartbeat/status schemas and project job states.
+- Added server-routed status, sync, rebuild, and update-check operations.
+- Persisted bounded worktree health observations without source or graph data.
+
+### Milestone 5: settings and operations UI — complete (PR #570)
 
 - Display the read-only managed MCP in global/project settings and chat
   customization inventory.
 - Add version, update, indexing, freshness, failure, Resync, and Rebuild states.
 - Verify older server/worker degradation and multi-worker placement display.
 
-Each milestone should be delivered through its own worktree and pull request.
-Do not combine the implementation into one broad branch.
+Every milestone was delivered through its own worktree and squash-merged pull
+request rather than one broad implementation branch.
 
-## 16. Validation plan
+## 16. Validation and evidence
 
 ### Automated tests
 
-- Target asset selection for all six current upstream platform/architecture
-  combinations.
-- Conditional release checks, offline cache use, rate limiting, interrupted
-  download resume/restart, and concurrent startup locking.
-- SHA/digest mismatch, archive traversal, symlink escape, oversized extraction,
-  wrong executable version, atomic promotion, and rollback.
-- Ordering proof that `telemetry off` completes before init/MCP and runs after
-  every update; environment kill switches are present on every child.
-- Terminal and terminal-service PATH precedence without changing the host PATH.
-- Canonical root confinement, symlink rejection, per-worktree index isolation,
-  local Git exclusion, and no dirty worktree after indexing.
-- Index job concurrency, watcher restart, burst reconciliation, branch switch,
-  and stale/corrupt index recovery.
-- Managed MCP injection includes the exact current worktree `--path` for chats,
-  resumes, consoles, workflows, relocation/import, and Git agent dispatch.
-- A user MCP named `codegraph` cannot be created, updated, copied, used to
-  shadow, or deleted as the managed entry.
-- Settings render the managed row without mutation actions and tolerate an old
-  server/worker that omits the capability.
+- `codegraph-runtime.test.ts` exercises all six release targets, safe archive
+  paths, a verified first install, launcher privacy variables, conditional
+  ETags, cached-offline startup, non-blocking first-offline startup, concurrent
+  startup locking, checksum and wrong-version rejection, atomic upgrade
+  retention, telemetry ordering, MCP initialization, and candidate rollback.
+- `codegraph-supervisor.test.ts` exercises canonical authorization, unrelated
+  path rejection, isolated project roots, idempotent local Git exclusion,
+  initialization, incremental synchronization, rebuild, server-owned job
+  identity, the two-index-operation concurrency bound, burst debounce, and
+  filesystem watcher recovery.
+- `codegraph-mcp.test.ts` verifies the absolute launcher invocation, exact
+  canonical `--path`, privacy environment, and case-insensitive replacement of
+  any user shadow with the authoritative managed entry.
+- protocol tests verify old heartbeat payloads default to unavailable
+  CodeGraph capability, preserving rolling compatibility.
+- server repository tests reject the reserved name case-insensitively for
+  create and update; repository guards also protect existing-row update,
+  delete, and copy paths.
+- app typechecking and focused settings tests cover capability-omission
+  fallback, managed/read-only presentation, and server-routed actions.
+- A macOS arm64 native smoke on 2026-08-19 downloaded upstream v1.5.0 through
+  the manager, verified telemetry disabled, completed the MCP handshake, then
+  initialized and queried a one-file TypeScript graph successfully.
 
-### Manual matrix
+### Remaining release QA matrix
 
-- macOS arm64/x64, Linux arm64/x64, and Windows arm64/x64 install/update.
+Target selection is unit-tested on every supported combination. Native archive
+execution still requires release QA on its host platform:
+
+- macOS x64, Linux arm64/x64, and Windows arm64/x64 install/update; repeat the
+  completed macOS arm64 smoke in packaged release QA.
 - Clean online start, cached offline start, first offline start, corrupt
   download, and bad release rollback.
 - Primary and secondary worktrees on different branches with edits from an
@@ -572,6 +617,11 @@ Do not combine the implementation into one broad branch.
   placement.
 - Terminal `codegraph status`, agent tool discovery/use, immutable MCP settings,
   and explicit Resync/Rebuild.
+
+Failure in an untested native target does not weaken the security boundary: the
+worker rejects an unverified or non-handshaking candidate and keeps unrelated
+features online. It should nevertheless block claiming that target as manually
+QA'd for a release.
 
 ## 17. Acceptance criteria
 
@@ -595,17 +645,15 @@ The integration is complete when:
 8. CodeGraph installation, update, telemetry, index, or watcher failure degrades
    only CodeGraph and produces actionable worker/app diagnostics.
 
-## 18. Expected implementation touchpoints
+## 18. Implementation touchpoints
 
-The exact file split may change during implementation, but the likely areas
-are:
+The integration is implemented across these areas:
 
 - `cantrip_worker/src/index.ts` for ordered startup and service lifecycle;
-- a new `cantrip_worker/src/codegraph/` module for releases, launcher,
+- `cantrip_worker/src/codegraph/` for releases, launcher,
   telemetry, indexes, jobs, and supervision;
-- `cantrip_worker/src/config.ts` for release channel and bounded update policy;
-- `cantrip_worker/src/terminals.ts` and other command environment builders for
-  launcher PATH exposure;
+- `cantrip_worker/src/cli-broker.ts`, terminal managers, and other command
+  environment builders for launcher PATH exposure;
 - `cantrip_worker/src/worktrees.ts` and replica reconciliation hooks for index
   lifecycle;
 - `cantrip_worker/src/codex/app-server.ts` for the final managed MCP injection;

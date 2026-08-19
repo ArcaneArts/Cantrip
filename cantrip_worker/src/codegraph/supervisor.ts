@@ -115,6 +115,8 @@ export interface CodeGraphProjectSupervisorOptions {
   ) => Promise<ProcessOutcome>;
   now?: () => Date;
   onStatus?: (status: PublicCodeGraphProjectStatus) => void;
+  changeDebounceMs?: number;
+  watcherRetryBaseMs?: number;
   watch?: (
     root: string,
     listener: (event: string, fileName: string | Buffer | null) => void,
@@ -303,6 +305,8 @@ export class CodeGraphProjectSupervisor {
   readonly #onStatus: NonNullable<
     CodeGraphProjectSupervisorOptions["onStatus"]
   >;
+  readonly #changeDebounceMs: number;
+  readonly #watcherRetryBaseMs: number;
   readonly #projects = new Map<string, ManagedProject>();
   readonly #excludeQueues = new Map<string, Promise<void>>();
   readonly #watch: NonNullable<CodeGraphProjectSupervisorOptions["watch"]>;
@@ -327,6 +331,11 @@ export class CodeGraphProjectSupervisor {
     this.#execute = options.execute ?? processOutcome;
     this.#now = options.now ?? (() => new Date());
     this.#onStatus = options.onStatus ?? (() => undefined);
+    this.#changeDebounceMs = Math.max(
+      0,
+      options.changeDebounceMs ?? CHANGE_DEBOUNCE_MS,
+    );
+    this.#watcherRetryBaseMs = Math.max(0, options.watcherRetryBaseMs ?? 5_000);
     this.#watch =
       options.watch ??
       ((root, listener) => watch(root, { recursive: true }, listener));
@@ -678,7 +687,7 @@ export class CodeGraphProjectSupervisor {
         project.changeTimer = setTimeout(() => {
           project.changeTimer = null;
           this.#schedule(project, "sync");
-        }, CHANGE_DEBOUNCE_MS);
+        }, this.#changeDebounceMs);
         project.changeTimer.unref();
       });
       watcher.once("error", (error) => {
@@ -705,7 +714,7 @@ export class CodeGraphProjectSupervisor {
     });
     const delay = Math.min(
       MAX_RETRY_MS,
-      5_000 * 2 ** Math.min(project.failureCount, 6),
+      this.#watcherRetryBaseMs * 2 ** Math.min(project.failureCount, 6),
     );
     project.watcherRetryTimer = setTimeout(() => {
       project.watcherRetryTimer = null;
