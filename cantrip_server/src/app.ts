@@ -202,6 +202,8 @@ import {
   gitBlameSchema,
   gitForcePushApplySchema,
   gitForcePushPreviewSchema,
+  gitGraphCommitOverlayRequestSchema,
+  gitGraphCommitOverlaySchema,
   gitGraphMetricsSchema,
   gitGraphRequestSchema,
   gitGraphSnapshotSchema,
@@ -15064,6 +15066,47 @@ export async function buildApp({
               context.workerId,
               {
                 type: "git.graph.metrics",
+                cwd: context.worktree.path,
+                ...input.data,
+              },
+              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+            ),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string; revision: string };
+    Querystring: { rootPath?: string };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/graph/commits/:revision",
+    async (request, reply) => {
+      const input = gitGraphCommitOverlayRequestSchema.safeParse({
+        revision: request.params.revision,
+        rootPath: request.query.rootPath ?? null,
+      });
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        return reply.send(
+          gitGraphCommitOverlaySchema.parse(
+            await bridge.request(
+              context.workerId,
+              {
+                type: "git.graph.commit-overlay",
                 cwd: context.worktree.path,
                 ...input.data,
               },

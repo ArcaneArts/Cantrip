@@ -491,6 +491,7 @@ export function GitHistoryView({
   const [issueState, setIssueState] = useState<GithubIssueState>("open");
   const [issueRefreshEpoch, setIssueRefreshEpoch] = useState(0);
   const [graphRefreshEpoch, setGraphRefreshEpoch] = useState(0);
+  const [graphRevision, setGraphRevision] = useState<string | null>(null);
   const [graphStatus, setGraphStatus] =
     useState<GitRepositoryGraphStatus | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -523,6 +524,11 @@ export function GitHistoryView({
     setActiveDrawer((current) => toggleGitHistoryToolDrawer(current, kind));
   };
   const closeDrawer = () => setActiveDrawer(null);
+  const showCommitInGraph = useCallback((revision: string) => {
+    setGraphRevision(revision);
+    setActiveDrawer(null);
+    setSection("graph");
+  }, []);
   const selectedWorktree = worktrees.find(({ id }) => id === worktreeId);
   const selectedWorker = workers.find(
     ({ workerId }) => workerId === selectedWorktree?.workerId,
@@ -772,6 +778,7 @@ export function GitHistoryView({
   useEffect(() => {
     setActiveDrawer(null);
     setGraphStatus(null);
+    setGraphRevision(null);
     setForcePushOpen(false);
     setOperationPreset(null);
     setCommitActionRequest(null);
@@ -926,6 +933,7 @@ export function GitHistoryView({
           revision={drawer.revision}
           onClose={closeDrawer}
           onNavigate={openCommitDrawer}
+          onViewInGraph={showCommitInGraph}
           onAction={setCommitActionRequest}
         />
       ) : null}
@@ -1187,10 +1195,13 @@ export function GitHistoryView({
       {section === "graph" ? (
         <GitRepositoryGraphView
           key={`${project.id}:${worktreeId}`}
+          commitRevision={graphRevision}
           projectId={project.id}
           refreshEpoch={graphRefreshEpoch}
           worktreeId={worktreeId}
           onActivateFile={(path) => onOpenGraphFile(worktreeId, path)}
+          onClearCommit={() => setGraphRevision(null)}
+          onOpenCommit={openCommitDrawer}
           onStatusChange={setGraphStatus}
         />
       ) : section !== "history" ? (
@@ -1391,6 +1402,7 @@ export function GitHistoryView({
                         isHead: row.commit.hash === status?.head,
                       }}
                       onAction={setCommitActionRequest}
+                      onViewInGraph={showCommitInGraph}
                     >
                       <div
                         role="button"

@@ -27,6 +27,7 @@ import {
   gitComparisonSchema,
   gitFileDiffSchema,
   gitForcePushPreviewSchema,
+  gitGraphCommitOverlaySchema,
   gitGraphMetricsSchema,
   gitGraphSnapshotSchema,
   gitHistorySchema,
@@ -186,7 +187,13 @@ const gitHistoryCommands: Array<
   Extract<WorkerCommand, { type: "git.history" }>
 > = [];
 const gitGraphCommands: Array<
-  Extract<WorkerCommand, { type: "git.graph.metrics" | "git.graph.snapshot" }>
+  Extract<
+    WorkerCommand,
+    {
+      type:
+        "git.graph.commit-overlay" | "git.graph.metrics" | "git.graph.snapshot";
+    }
+  >
 > = [];
 const gitCommitCommands: Array<
   Extract<WorkerCommand, { type: "git.commit.get" }>
@@ -731,6 +738,29 @@ const workerBridge = {
               averageBlameAgeDays: null,
             },
           ],
+        };
+      case "git.graph.commit-overlay":
+        gitGraphCommands.push(command);
+        return {
+          revision: command.revision,
+          baseRevision: "0".repeat(40),
+          rootPath: command.rootPath,
+          nodes: [
+            {
+              path: "README.md",
+              originalPath: null,
+              status: "modified",
+              additions: 4,
+              deletions: 2,
+              weight: 6,
+              binary: false,
+              ghost: false,
+            },
+          ],
+          filesChanged: 1,
+          additions: 4,
+          deletions: 2,
+          truncated: false,
         };
       case "git.commit.get":
         gitCommitCommands.push(command);
@@ -2445,6 +2475,29 @@ describe.sequential("server worktree control plane", () => {
       rootPath: null,
       maxNodes: 100_000,
     });
+    const graphOverlayResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/commits/${"1".repeat(40)}?rootPath=src`,
+    });
+    expect(graphOverlayResponse.statusCode).toBe(200);
+    expect(
+      gitGraphCommitOverlaySchema.parse(graphOverlayResponse.json()),
+    ).toMatchObject({
+      revision: "1".repeat(40),
+      rootPath: "src",
+      filesChanged: 1,
+    });
+    expect(gitGraphCommands.at(-1)).toMatchObject({
+      type: "git.graph.commit-overlay",
+      cwd: target.path,
+      revision: "1".repeat(40),
+      rootPath: "src",
+    });
+    const invalidOverlayResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/commits/short`,
+    });
+    expect(invalidOverlayResponse.statusCode).toBe(400);
     const invalidGraphResponse = await app.inject({
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/snapshot?rootPath=..%2Foutside`,

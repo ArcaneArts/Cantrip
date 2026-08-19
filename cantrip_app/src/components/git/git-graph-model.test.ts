@@ -1,10 +1,12 @@
 import {
+  gitGraphCommitOverlaySchema,
   gitGraphMetricsSchema,
   gitGraphSnapshotSchema,
 } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  applyGitGraphCommitOverlay,
   buildGitGraphDisplayModel,
   gitGraphDimensionNeedsMetrics,
 } from "./git-graph-model";
@@ -138,5 +140,102 @@ describe("Git graph display model", () => {
     const model = buildGitGraphDisplayModel(snapshot, null, "lines", "churn");
     expect(model.sizeLegend.unavailable).toBe(true);
     expect(model.colorLegend.unavailable).toBe(true);
+  });
+
+  it("overlays commit weight and status while preserving deleted files as ghosts", () => {
+    const nestedSnapshot = gitGraphSnapshotSchema.parse({
+      ...snapshot,
+      totalNodes: 4,
+      nodes: [
+        snapshot.nodes[0],
+        {
+          id: "directory:src",
+          path: "src",
+          parentId: "directory:.",
+          name: "src",
+          kind: "directory",
+          objectId: "f".repeat(40),
+          byteSize: 1_000,
+          extension: null,
+          language: null,
+        },
+        { ...snapshot.nodes[1], parentId: "directory:src" },
+        snapshot.nodes[2],
+      ],
+    });
+    const base = buildGitGraphDisplayModel(
+      nestedSnapshot,
+      null,
+      "bytes",
+      "language",
+    );
+    const overlay = gitGraphCommitOverlaySchema.parse({
+      revision,
+      baseRevision: "e".repeat(40),
+      rootPath: null,
+      filesChanged: 3,
+      additions: 24,
+      deletions: 9,
+      truncated: false,
+      nodes: [
+        {
+          path: "src/app.ts",
+          originalPath: "src/old-app.ts",
+          status: "renamed",
+          additions: 20,
+          deletions: 2,
+          weight: 22,
+          binary: false,
+          ghost: false,
+        },
+        {
+          path: "README.md",
+          originalPath: null,
+          status: "modified",
+          additions: 4,
+          deletions: 1,
+          weight: 5,
+          binary: false,
+          ghost: false,
+        },
+        {
+          path: "src/removed.ts",
+          originalPath: null,
+          status: "deleted",
+          additions: 0,
+          deletions: 6,
+          weight: 6,
+          binary: false,
+          ghost: true,
+        },
+      ],
+    });
+    const model = applyGitGraphCommitOverlay(base, nestedSnapshot, overlay);
+    const renamed = model.nodes.find(({ path }) => path === "src/app.ts")!;
+    const readme = model.nodes.find(({ path }) => path === "README.md")!;
+    const ghost = model.nodes.find(({ path }) => path === "src/removed.ts")!;
+    const sourceDirectory = model.nodes.find(({ path }) => path === "src")!;
+    expect(renamed.radius).toBe(
+      base.nodes.find(({ path }) => path === "src/app.ts")?.radius,
+    );
+    expect(renamed.color).not.toBe(readme.color);
+    expect(renamed.accessibleDescription).toContain(
+      "renamed from src/old-app.ts",
+    );
+    expect(ghost).toMatchObject({
+      kind: "ghost",
+      parentId: "directory:src",
+    });
+    expect(ghost.accessibleDescription).toContain("deleted");
+    expect(sourceDirectory.accessibleDescription).toContain(
+      "2 changed descendants",
+    );
+    expect(sourceDirectory.color).not.toBe("#475569");
+    expect(model.sizeLegend.label).toBe("File bytes");
+    expect(model.colorLegend).toMatchObject({
+      label: "Commit status / impact",
+      minimum: "5 changed",
+      maximum: "22 changed",
+    });
   });
 });
