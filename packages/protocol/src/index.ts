@@ -4650,6 +4650,65 @@ export const explorerFileSchema = z.object({
   version: z.string().regex(/^[a-f0-9]{64}$/u),
 });
 
+export const explorerMediaKindSchema = z.enum(["image", "audio", "video"]);
+
+export const explorerMediaFileSchema = z.object({
+  path: z.string().min(1),
+  kind: explorerMediaKindSchema,
+  mimeType: z.string().min(1).max(200),
+  size: z.number().int().nonnegative(),
+  modifiedAt: z.string().datetime(),
+});
+
+export const explorerMediaFileChunkSchema = explorerMediaFileSchema.extend({
+  offset: z.number().int().nonnegative(),
+  data: z.string().max(400_000),
+  eof: z.boolean(),
+});
+
+const explorerMediaTypesByExtension: Readonly<
+  Record<
+    string,
+    {
+      kind: z.infer<typeof explorerMediaKindSchema>;
+      mimeType: string;
+    }
+  >
+> = {
+  apng: { kind: "image", mimeType: "image/apng" },
+  avif: { kind: "image", mimeType: "image/avif" },
+  bmp: { kind: "image", mimeType: "image/bmp" },
+  gif: { kind: "image", mimeType: "image/gif" },
+  ico: { kind: "image", mimeType: "image/x-icon" },
+  jpeg: { kind: "image", mimeType: "image/jpeg" },
+  jpg: { kind: "image", mimeType: "image/jpeg" },
+  png: { kind: "image", mimeType: "image/png" },
+  svg: { kind: "image", mimeType: "image/svg+xml" },
+  webp: { kind: "image", mimeType: "image/webp" },
+  aac: { kind: "audio", mimeType: "audio/aac" },
+  flac: { kind: "audio", mimeType: "audio/flac" },
+  m4a: { kind: "audio", mimeType: "audio/mp4" },
+  mp3: { kind: "audio", mimeType: "audio/mpeg" },
+  oga: { kind: "audio", mimeType: "audio/ogg" },
+  ogg: { kind: "audio", mimeType: "audio/ogg" },
+  opus: { kind: "audio", mimeType: "audio/ogg" },
+  wav: { kind: "audio", mimeType: "audio/wav" },
+  weba: { kind: "audio", mimeType: "audio/webm" },
+  m4v: { kind: "video", mimeType: "video/mp4" },
+  mov: { kind: "video", mimeType: "video/quicktime" },
+  mp4: { kind: "video", mimeType: "video/mp4" },
+  ogv: { kind: "video", mimeType: "video/ogg" },
+  webm: { kind: "video", mimeType: "video/webm" },
+};
+
+export function explorerMediaTypeForPath(
+  filePath: string,
+): Pick<ExplorerMediaFile, "kind" | "mimeType"> | null {
+  const filename = filePath.split("/").at(-1)?.toLowerCase() ?? "";
+  const extension = filename.includes(".") ? filename.split(".").at(-1) : null;
+  return extension ? (explorerMediaTypesByExtension[extension] ?? null) : null;
+}
+
 export const explorerFileWriteSchema = z.object({
   path: z.string().min(1).max(8_192),
   content: z.string().max(2 * 1024 * 1024),
@@ -8812,6 +8871,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     path: z.string().min(1),
   }),
   z.object({
+    type: z.literal("explorer.media.stat"),
+    root: z.string().min(1),
+    path: z.string().min(1).max(8_192),
+  }),
+  z.object({
+    type: z.literal("explorer.media.read"),
+    root: z.string().min(1),
+    path: z.string().min(1).max(8_192),
+    offset: z.number().int().nonnegative(),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(256 * 1_024),
+  }),
+  z.object({
     type: z.literal("explorer.file.write"),
     root: z.string().min(1),
     path: explorerFileWriteSchema.shape.path,
@@ -10401,6 +10476,11 @@ export type ExplorerDirectoryCommits = z.infer<
   typeof explorerDirectoryCommitsSchema
 >;
 export type ExplorerFile = z.infer<typeof explorerFileSchema>;
+export type ExplorerMediaKind = z.infer<typeof explorerMediaKindSchema>;
+export type ExplorerMediaFile = z.infer<typeof explorerMediaFileSchema>;
+export type ExplorerMediaFileChunk = z.infer<
+  typeof explorerMediaFileChunkSchema
+>;
 export type ExplorerFileWrite = z.infer<typeof explorerFileWriteSchema>;
 export type TerminalClientMessage = z.infer<typeof terminalClientMessageSchema>;
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;

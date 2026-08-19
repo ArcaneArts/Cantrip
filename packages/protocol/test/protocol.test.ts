@@ -60,6 +60,7 @@ import {
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
   explorerFileWriteSchema,
+  explorerMediaTypeForPath,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
   remoteBrowserCursorMessageSchema,
@@ -2518,6 +2519,40 @@ describe("Cantrip protocol", () => {
         path: "src/index.ts",
         content: "export {};\n",
         version: "stale",
+      }),
+    ).toThrow();
+  });
+
+  it("classifies browser-native Explorer media and bounds chunk reads", () => {
+    expect(explorerMediaTypeForPath("assets/cover.PNG")).toEqual({
+      kind: "image",
+      mimeType: "image/png",
+    });
+    expect(explorerMediaTypeForPath("audio/theme.mp3")).toEqual({
+      kind: "audio",
+      mimeType: "audio/mpeg",
+    });
+    expect(explorerMediaTypeForPath("video/demo.webm")).toEqual({
+      kind: "video",
+      mimeType: "video/webm",
+    });
+    expect(explorerMediaTypeForPath("src/index.ts")).toBeNull();
+    expect(
+      workerCommandSchema.parse({
+        type: "explorer.media.read",
+        root: "/workspace/Cantrip",
+        path: "video/demo.webm",
+        offset: 1024,
+        limit: 256 * 1024,
+      }),
+    ).toMatchObject({ type: "explorer.media.read", offset: 1024 });
+    expect(() =>
+      workerCommandSchema.parse({
+        type: "explorer.media.read",
+        root: "/workspace/Cantrip",
+        path: "video/demo.webm",
+        offset: 0,
+        limit: 256 * 1024 + 1,
       }),
     ).toThrow();
   });

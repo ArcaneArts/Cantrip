@@ -44,6 +44,8 @@ import {
   listExplorerDirectoryCommits,
   listExplorerDirectory,
   readExplorerFile,
+  readExplorerMediaFile,
+  statExplorerMediaFile,
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
@@ -1291,6 +1293,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return listExplorerDirectoryCommits(command.root, command.path);
       case "explorer.file.read":
         return readExplorerFile(command.root, command.path);
+      case "explorer.media.stat":
+        return statExplorerMediaFile(command.root, command.path);
+      case "explorer.media.read":
+        return readExplorerMediaFile(
+          command.root,
+          command.path,
+          command.offset,
+          command.limit,
+        );
       case "explorer.file.write":
         return writeExplorerFile(
           command.root,
