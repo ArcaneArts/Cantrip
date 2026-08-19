@@ -351,6 +351,51 @@ describe("chat activity timeline", () => {
     expect(formatTurnMetadata(null)).toBeNull();
   });
 
+  it("does not show rate-limit telemetry in the chat timeline", () => {
+    const timeline = buildChatTimeline([
+      message("user", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Run pwd" },
+      ]),
+      message("commentary", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "text",
+          text: "I’ll run only pwd.",
+          phase: "commentary",
+        },
+      ]),
+      message("rate-limit", "assistant", "2026-08-07T12:00:02.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "rateLimit",
+            id: "turn:turn-1:rate-limit",
+            status: "completed",
+            limitId: "codex",
+            limitName: null,
+            planType: "pro",
+            reachedType: null,
+            primary: {
+              usedPercent: 61,
+              windowDurationMins: 300,
+              resetsAt: null,
+            },
+            secondary: null,
+          },
+        },
+      ]),
+      message("answer", "assistant", "2026-08-07T12:00:03.000Z", [
+        { type: "text", text: "Done.", phase: "final_answer" },
+      ]),
+    ]);
+
+    expect(timeline).toHaveLength(3);
+    expect(timeline[1]).toMatchObject({
+      type: "activityGroup",
+      messages: [{ id: "commentary" }],
+    });
+    expect(JSON.stringify(timeline)).not.toContain("rateLimit");
+  });
+
   it("carries metrics emitted before the final answer onto that answer", () => {
     const timeline = buildChatTimeline([
       message("user", "user", "2026-08-07T12:00:00.000Z", [

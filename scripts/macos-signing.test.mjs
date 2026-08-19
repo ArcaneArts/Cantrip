@@ -31,20 +31,27 @@ test("recognizes thin and universal Mach-O headers", () => {
   assert.equal(isMachOHeader(Buffer.from("#!/bin/sh\n")), false);
 });
 
-test("signs every embedded Mach-O and applies Node JIT entitlements", async () => {
+test("signs every embedded Mach-O and applies runtime JIT entitlements", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "cantrip-sign-runtime-"));
   try {
     const node = path.join(root, "node");
     const codex = path.join(root, "worker", "bin", "codex");
+    const codeModeHost = path.join(
+      root,
+      "worker",
+      "bin",
+      "codex-code-mode-host",
+    );
     await mkdir(path.dirname(codex), { recursive: true });
     await writeFile(node, thinMachO);
     await writeFile(codex, thinMachO);
+    await writeFile(codeModeHost, thinMachO);
     await chmod(node, 0o755);
     await chmod(codex, 0o644);
     await writeFile(path.join(root, "README.txt"), "not native\n");
     assert.deepEqual(
       new Set(await findMachOBinaries(root)),
-      new Set([node, codex]),
+      new Set([node, codex, codeModeHost]),
     );
 
     const calls = [];
@@ -54,15 +61,19 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
       identity: "Developer ID Application: Cantrip Test (TEAMID)",
       run: (arguments_) => calls.push(arguments_),
     });
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 3);
     const nodeCall = calls.find((call) => call.at(-1) === node);
     const codexCall = calls.find((call) => call.at(-1) === codex);
+    const codeModeHostCall = calls.find((call) => call.at(-1) === codeModeHost);
     assert.ok(nodeCall.includes("--timestamp"));
     assert.ok(nodeCall.includes("--options"));
     assert.ok(nodeCall.includes("--entitlements"));
     assert.ok(codexCall.includes("--timestamp"));
     assert.ok(codexCall.includes("--options"));
     assert.equal(codexCall.includes("--entitlements"), false);
+    assert.ok(codeModeHostCall.includes("--timestamp"));
+    assert.ok(codeModeHostCall.includes("--options"));
+    assert.ok(codeModeHostCall.includes("--entitlements"));
 
     const adhocCalls = [];
     await signMacosRuntime({
@@ -71,7 +82,7 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
       identity: "-",
       run: (arguments_) => adhocCalls.push(arguments_),
     });
-    assert.equal(adhocCalls.length, 2);
+    assert.equal(adhocCalls.length, 3);
     assert.equal(
       adhocCalls.some((call) => call.includes("--timestamp")),
       false,
@@ -80,6 +91,63 @@ test("signs every embedded Mach-O and applies Node JIT entitlements", async () =
       adhocCalls
         .find((call) => call.at(-1) === node)
         .includes("--entitlements"),
+    );
+    assert.ok(
+      adhocCalls
+        .find((call) => call.at(-1) === codeModeHost)
+        .includes("--entitlements"),
+    );
+  } finally {
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("rejects a code-mode host without its JIT entitlement", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "cantrip-verify-codex-jit-"),
+  );
+  try {
+    const app = path.join(root, "macos", "Cantrip.app");
+    const codeModeHost = path.join(
+      app,
+      "Contents",
+      "Resources",
+      "runtime",
+      "worker",
+      "bin",
+      "codex-code-mode-host",
+    );
+    const dmg = path.join(root, "dmg", "Cantrip.dmg");
+    await mkdir(path.dirname(codeModeHost), { recursive: true });
+    await mkdir(path.dirname(dmg), { recursive: true });
+    await writeFile(codeModeHost, thinMachO);
+    await writeFile(dmg, "dmg");
+
+    await assert.rejects(
+      verifyMacosDistribution({
+        bundleDirectory: root,
+        runCommand: (_command, arguments_) => {
+          const target = arguments_.at(-1);
+          if (target === app && arguments_[0] === "-dvvv") {
+            return [
+              "Identifier=art.cantrip",
+              "flags=0x10000(runtime)",
+              "Authority=Developer ID Application: Cantrip Test (TEAMID)",
+            ].join("\n");
+          }
+          if (target === codeModeHost && arguments_[0] === "-dvvv") {
+            return [
+              "flags=0x10000(runtime)",
+              "Authority=Developer ID Application: Cantrip Test (TEAMID)",
+            ].join("\n");
+          }
+          if (target === dmg && arguments_[0] === "-dvvv") {
+            return "Authority=Developer ID Application: Cantrip Test (TEAMID)";
+          }
+          return "";
+        },
+      }),
+      /codex-code-mode-host is missing its JIT entitlement/u,
     );
   } finally {
     await rm(root, { force: true, recursive: true });

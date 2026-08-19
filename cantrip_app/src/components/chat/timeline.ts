@@ -109,7 +109,9 @@ function visibleWorkMessage(message: ChatMessage): ChatMessage | null {
   const content = message.content.filter(
     (item) =>
       item.type !== "activity" ||
-      (item.activity.type !== "usage" && item.activity.type !== "turnSummary"),
+      (item.activity.type !== "usage" &&
+        item.activity.type !== "rateLimit" &&
+        item.activity.type !== "turnSummary"),
   );
   return content.length > 0 ? { ...message, content } : null;
 }

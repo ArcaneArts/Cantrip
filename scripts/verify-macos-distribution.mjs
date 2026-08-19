@@ -4,7 +4,10 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { findMachOBinaries } from "./sign-macos-runtime.mjs";
+import {
+  findMachOBinaries,
+  requiresJitEntitlements,
+} from "./sign-macos-runtime.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -135,7 +138,7 @@ export async function verifyMacosDistribution({
       if (!/flags=.*\bruntime\b/u.test(binaryDetails)) {
         throw new Error(`${binary} does not enable Hardened Runtime.`);
       }
-      if (path.basename(binary) === "node") {
+      if (requiresJitEntitlements(binary)) {
         const entitlements = runCommand("codesign", [
           "-d",
           "--entitlements",
