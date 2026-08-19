@@ -123,6 +123,9 @@ import {
   gitFileHistorySchema,
   gitBlameSchema,
   gitForcePushPreviewSchema,
+  gitGraphMetricsSchema,
+  gitGraphRequestSchema,
+  gitGraphSnapshotSchema,
   gitHistorySchema,
   gitLfsActionPreviewSchema,
   gitLfsMutationResultSchema,
@@ -299,6 +302,7 @@ import type {
   GitManagedOperationAction,
   GitLfsAction,
   GitDiffScope,
+  GitGraphRequest,
   GitPartialPatchRequest,
   GitRemoteAction,
   GitRecoveryAction,
@@ -1283,6 +1287,45 @@ export async function getProjectWorktreeHistory(
   return gitHistorySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/history?cursor=${cursor}&limit=100`,
+    ),
+  );
+}
+
+function projectWorktreeGraphUrl(
+  projectId: string,
+  worktreeId: string,
+  resource: "metrics" | "snapshot",
+  input: Partial<GitGraphRequest> = {},
+): string {
+  const parsed = gitGraphRequestSchema.parse(input);
+  const search = new URLSearchParams({
+    maxNodes: String(parsed.maxNodes),
+    revision: parsed.revision,
+  });
+  if (parsed.rootPath) search.set("rootPath", parsed.rootPath);
+  return `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/graph/${resource}?${search.toString()}`;
+}
+
+export async function getProjectWorktreeGraphSnapshot(
+  projectId: string,
+  worktreeId: string,
+  input: Partial<GitGraphRequest> = {},
+) {
+  return gitGraphSnapshotSchema.parse(
+    await request(
+      projectWorktreeGraphUrl(projectId, worktreeId, "snapshot", input),
+    ),
+  );
+}
+
+export async function getProjectWorktreeGraphMetrics(
+  projectId: string,
+  worktreeId: string,
+  input: Partial<GitGraphRequest> = {},
+) {
+  return gitGraphMetricsSchema.parse(
+    await request(
+      projectWorktreeGraphUrl(projectId, worktreeId, "metrics", input),
     ),
   );
 }

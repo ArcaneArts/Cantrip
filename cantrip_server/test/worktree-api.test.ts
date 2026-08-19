@@ -27,6 +27,8 @@ import {
   gitComparisonSchema,
   gitFileDiffSchema,
   gitForcePushPreviewSchema,
+  gitGraphMetricsSchema,
+  gitGraphSnapshotSchema,
   gitHistorySchema,
   gitLfsActionPreviewSchema,
   gitLfsMutationResultSchema,
@@ -182,6 +184,9 @@ const githubReleaseCommands: Array<
 > = [];
 const gitHistoryCommands: Array<
   Extract<WorkerCommand, { type: "git.history" }>
+> = [];
+const gitGraphCommands: Array<
+  Extract<WorkerCommand, { type: "git.graph.metrics" | "git.graph.snapshot" }>
 > = [];
 const gitCommitCommands: Array<
   Extract<WorkerCommand, { type: "git.commit.get" }>
@@ -632,6 +637,100 @@ const workerBridge = {
           ],
           hasMore: false,
           nextCursor: null,
+        };
+      case "git.graph.snapshot":
+        gitGraphCommands.push(command);
+        return {
+          analyzerVersion: 1,
+          revision: "1".repeat(40),
+          branch: "main",
+          rootPath: command.rootPath,
+          rootId: "directory:.",
+          totalNodes: 2,
+          truncated: false,
+          analyzedAt: "2026-08-19T12:00:00.000Z",
+          analysis: {
+            structure: "ready",
+            lines: "pending",
+            history: "pending",
+            blame: "deferred",
+          },
+          nodes: [
+            {
+              id: "directory:.",
+              path: null,
+              parentId: null,
+              name: "Cantrip",
+              kind: "directory",
+              objectId: "2".repeat(40),
+              byteSize: 12,
+              extension: null,
+              language: null,
+            },
+            {
+              id: "file:README.md",
+              path: "README.md",
+              parentId: "directory:.",
+              name: "README.md",
+              kind: "file",
+              objectId: "3".repeat(40),
+              byteSize: 12,
+              extension: "md",
+              language: "Markdown",
+            },
+          ],
+        };
+      case "git.graph.metrics":
+        gitGraphCommands.push(command);
+        return {
+          analyzerVersion: 1,
+          revision: "1".repeat(40),
+          rootPath: command.rootPath,
+          historyScope: "current-branch",
+          renameAware: false,
+          analyzedAt: "2026-08-19T12:00:01.000Z",
+          analysis: {
+            structure: "ready",
+            lines: "ready",
+            history: "ready",
+            blame: "deferred",
+          },
+          nodes: [
+            {
+              nodeId: "directory:.",
+              path: null,
+              lineCount: 1,
+              binary: false,
+              commitTouches: 1,
+              additions: 1,
+              deletions: 0,
+              churn: 1,
+              binaryCommitTouches: 0,
+              firstChangedAt: "2026-08-19T12:00:00.000Z",
+              lastChangedAt: "2026-08-19T12:00:00.000Z",
+              dominantAuthorName: null,
+              dominantAuthorEmail: null,
+              dominantAuthorShare: null,
+              averageBlameAgeDays: null,
+            },
+            {
+              nodeId: "file:README.md",
+              path: "README.md",
+              lineCount: 1,
+              binary: false,
+              commitTouches: 1,
+              additions: 1,
+              deletions: 0,
+              churn: 1,
+              binaryCommitTouches: 0,
+              firstChangedAt: "2026-08-19T12:00:00.000Z",
+              lastChangedAt: "2026-08-19T12:00:00.000Z",
+              dominantAuthorName: null,
+              dominantAuthorEmail: null,
+              dominantAuthorShare: null,
+              averageBlameAgeDays: null,
+            },
+          ],
         };
       case "git.commit.get":
         gitCommitCommands.push(command);
@@ -2316,6 +2415,41 @@ describe.sequential("server worktree control plane", () => {
           .filter((head): head is string => typeof head === "string"),
       ),
     });
+    const graphSnapshotResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/snapshot?rootPath=src&maxNodes=500`,
+    });
+    expect(graphSnapshotResponse.statusCode).toBe(200);
+    expect(
+      gitGraphSnapshotSchema.parse(graphSnapshotResponse.json()),
+    ).toMatchObject({ rootPath: "src", totalNodes: 2 });
+    expect(gitGraphCommands.at(-1)).toMatchObject({
+      type: "git.graph.snapshot",
+      cwd: target.path,
+      revision: "HEAD",
+      rootPath: "src",
+      maxNodes: 500,
+    });
+    const graphMetricsResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/metrics?revision=${"1".repeat(40)}`,
+    });
+    expect(graphMetricsResponse.statusCode).toBe(200);
+    expect(
+      gitGraphMetricsSchema.parse(graphMetricsResponse.json()),
+    ).toMatchObject({ historyScope: "current-branch", renameAware: false });
+    expect(gitGraphCommands.at(-1)).toMatchObject({
+      type: "git.graph.metrics",
+      cwd: target.path,
+      revision: "1".repeat(40),
+      rootPath: null,
+      maxNodes: 100_000,
+    });
+    const invalidGraphResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/git/graph/snapshot?rootPath=..%2Foutside`,
+    });
+    expect(invalidGraphResponse.statusCode).toBe(400);
     const actionResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/actions`,

@@ -6560,6 +6560,12 @@ export const gitGraphMetricsSchema = z.object({
   analysis: gitGraphAnalysisStateSchema,
 });
 
+export const gitGraphRequestSchema = z.object({
+  revision: gitAgentRevisionSchema.default("HEAD"),
+  rootPath: gitRelativePathSchema.nullable().default(null),
+  maxNodes: z.number().int().min(1).max(100_000).default(100_000),
+});
+
 export const gitGraphCommitOverlayNodeSchema = z.object({
   path: gitRelativePathSchema,
   originalPath: gitRelativePathSchema.nullable(),
@@ -8833,20 +8839,18 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .max(500)
       .default([]),
   }),
-  z.object({
-    type: z.literal("git.graph.snapshot"),
-    cwd: z.string().min(1).max(8_192),
-    revision: gitAgentRevisionSchema.default("HEAD"),
-    rootPath: gitRelativePathSchema.nullable().default(null),
-    maxNodes: z.number().int().min(1).max(100_000).default(100_000),
-  }),
-  z.object({
-    type: z.literal("git.graph.metrics"),
-    cwd: z.string().min(1).max(8_192),
-    revision: gitAgentRevisionSchema.default("HEAD"),
-    rootPath: gitRelativePathSchema.nullable().default(null),
-    maxNodes: z.number().int().min(1).max(100_000).default(100_000),
-  }),
+  z
+    .object({
+      type: z.literal("git.graph.snapshot"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitGraphRequestSchema.shape),
+  z
+    .object({
+      type: z.literal("git.graph.metrics"),
+      cwd: z.string().min(1).max(8_192),
+    })
+    .extend(gitGraphRequestSchema.shape),
   z.object({
     type: z.literal("git.file.history"),
     cwd: z.string().min(1).max(8_192),
@@ -10442,6 +10446,7 @@ export type GitGraphNode = z.infer<typeof gitGraphNodeSchema>;
 export type GitGraphSnapshot = z.infer<typeof gitGraphSnapshotSchema>;
 export type GitGraphNodeMetrics = z.infer<typeof gitGraphNodeMetricsSchema>;
 export type GitGraphMetrics = z.infer<typeof gitGraphMetricsSchema>;
+export type GitGraphRequest = z.infer<typeof gitGraphRequestSchema>;
 export type GitGraphCommitOverlayNode = z.infer<
   typeof gitGraphCommitOverlayNodeSchema
 >;

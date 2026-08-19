@@ -41,6 +41,7 @@ function gitHeader(canPush = true): GitHistoryHeaderState {
     branch: "main",
     canPush,
     commitsLoaded: 100,
+    graphNodes: 0,
     head: "abcdef12",
     isFetching: false,
     issueCount: 2,

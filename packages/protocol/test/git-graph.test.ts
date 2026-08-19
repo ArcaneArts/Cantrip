@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   gitGraphCommitOverlaySchema,
   gitGraphMetricsSchema,
+  gitGraphRequestSchema,
   gitGraphSnapshotSchema,
   workerCommandSchema,
 } from "../src/index.js";
@@ -135,6 +136,11 @@ describe("Git graph protocol", () => {
   });
 
   it("applies bounded defaults to worker graph commands", () => {
+    expect(gitGraphRequestSchema.parse({})).toEqual({
+      revision: "HEAD",
+      rootPath: null,
+      maxNodes: 100_000,
+    });
     expect(
       workerCommandSchema.parse({
         type: "git.graph.snapshot",

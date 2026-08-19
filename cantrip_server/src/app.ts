@@ -202,6 +202,9 @@ import {
   gitBlameSchema,
   gitForcePushApplySchema,
   gitForcePushPreviewSchema,
+  gitGraphMetricsSchema,
+  gitGraphRequestSchema,
+  gitGraphSnapshotSchema,
   gitHistorySchema,
   gitLfsActionApplySchema,
   gitLfsActionPreviewSchema,
@@ -14937,6 +14940,98 @@ export async function buildApp({
           revisions,
         });
         return reply.send(gitHistorySchema.parse(history));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  const parseGitGraphRequest = (query: {
+    maxNodes?: string;
+    revision?: string;
+    rootPath?: string;
+  }) =>
+    gitGraphRequestSchema.safeParse({
+      maxNodes:
+        query.maxNodes === undefined ? undefined : Number(query.maxNodes),
+      revision: query.revision,
+      rootPath: query.rootPath ?? null,
+    });
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: {
+      maxNodes?: string;
+      revision?: string;
+      rootPath?: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/graph/snapshot",
+    async (request, reply) => {
+      const input = parseGitGraphRequest(request.query);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        return reply.send(
+          gitGraphSnapshotSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "git.graph.snapshot",
+              cwd: context.worktree.path,
+              ...input.data,
+            }),
+          ),
+        );
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; worktreeId: string };
+    Querystring: {
+      maxNodes?: string;
+      revision?: string;
+      rootPath?: string;
+    };
+  }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/git/graph/metrics",
+    async (request, reply) => {
+      const input = parseGitGraphRequest(request.query);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getProjectWorktreeContext(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      try {
+        return reply.send(
+          gitGraphMetricsSchema.parse(
+            await bridge.request(
+              context.workerId,
+              {
+                type: "git.graph.metrics",
+                cwd: context.worktree.path,
+                ...input.data,
+              },
+              { timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+            ),
+          ),
+        );
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
