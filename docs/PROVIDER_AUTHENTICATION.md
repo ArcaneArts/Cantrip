@@ -1,8 +1,8 @@
 # Portable provider authentication
 
 - Status: implemented for ChatGPT and Grok/SuperGrok
-- Last updated: 2026-08-15
-- Codex boundary: packaged `codex-cli 0.147.0`
+- Last updated: 2026-08-20
+- Codex boundary: packaged `codex-cli 0.148.0`
 - Related: [runtime compatibility](CODEX_RUNTIME_COMPATIBILITY.md),
   [hosted security](HOSTED_SECURITY_ARCHITECTURE.md), and
   [multi-worker placement](MULTI_WORKER_ARCHITECTURE.md)
@@ -82,9 +82,9 @@ refreshing again. An invalid grant becomes `reauth-required`; a changed
 provider subject becomes `conflict`; transient failure leaves the previous
 credential and returns a bounded error.
 
-## ChatGPT through Codex 0.147
+## ChatGPT through Codex 0.148
 
-Server-managed ChatGPT requires Codex 0.147.x, experimental API negotiation,
+Server-managed ChatGPT requires Codex 0.148.x, experimental API negotiation,
 and the `account/login/start` method. Before the runtime starts, the worker:
 
 1. obtains a server lease;
@@ -98,7 +98,7 @@ account and upstream workspace identity are unchanged, and returns the new
 access token. Unsupported Codex versions or capabilities fail before the
 server-managed runtime starts. Normal operation does not create `auth.json`.
 
-This interface is experimental in Codex 0.147. Cantrip does not patch it, but a
+This interface is experimental in Codex 0.148. Cantrip does not patch it, but a
 future Codex release may change its method names, payloads, result type, or
 timeout. Do not widen the pinned range until the login and refresh fixture in
 the runtime compatibility procedure passes against the new source.

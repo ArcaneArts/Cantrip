@@ -6,33 +6,35 @@ to Codex App Server directly.
 
 ## Tested range
 
-Cantrip currently pins and builds `codex-cli 0.147.0` from the official
-`rust-v0.147.0` source tag. Its resolved commit, imported source manifest, and
+Cantrip currently pins and builds `codex-cli 0.148.0` from the official
+`rust-v0.148.0` source tag. Its resolved commit, imported source manifest, and
 manual update workflow live under `cantrip_codex/`. The protocol validators and
 fixtures were checked against the TypeScript and JSON Schema bindings generated
-by that CLI on August 13, 2026:
+by that CLI on August 20, 2026:
 
 ```sh
 codex app-server generate-ts --experimental --out <temporary-directory>
 codex app-server generate-json-schema --experimental --out <temporary-directory>
 ```
 
-The adapter's compatibility range is `>=0.147.0 <0.148.0`, but packaged
-workers contain exactly `0.147.0`; they do not select another compatible patch
+The adapter's compatibility range is `>=0.148.0 <0.149.0`, but packaged
+workers contain exactly `0.148.0`; they do not select another compatible patch
 from the host. Advancing even within the tested range is a Cantrip source and
 worker release. Expanding the range requires regenerating the bindings,
 reviewing schema changes, and updating compatibility tests.
 
 Cantrip keeps the imported snapshot pristine and applies a reviewed patch
-series from `cantrip_codex/patches/` only to the ignored build copy. The current
-patch adds an explicit `dynamicTools` override to `thread/resume`: omission preserves
-persisted declarations, while `[]` clears them. Cantrip sends the empty override
-and its CLI developer instruction on both thread start and resume, migrating
-pre-cutover chats without discarding their conversation history. The build also
-downloads the sandboxed Rusty V8 archive and binding from OpenAI's official
-versioned Codex dependency release, verifies their published SHA-256 values, and
-passes them to Cargo. The ordered patch-set hash is part of the runtime manifest
-and invalidates cached binaries.
+series from `cantrip_codex/patches/` only to the ignored build copy. The series
+preserves explicit empty `dynamicTools` semantics on resume, omits empty
+reasoning objects, removes OpenAI-only tools from compatible-provider requests,
+adds the active-turn pause boundary used by Cantrip, and exposes MCP tools as
+portable function tools when a provider lacks namespace support. Cantrip sends
+the empty dynamic-tool override and its CLI developer instruction on both
+thread start and resume, migrating pre-cutover chats without discarding their
+conversation history. The build also downloads the sandboxed Rusty V8 archive
+and binding from OpenAI's official versioned Codex dependency release, verifies
+their published SHA-256 values, and passes them to Cargo. The ordered patch-set
+hash is part of the runtime manifest and invalidates cached binaries.
 
 ## Startup negotiation
 
@@ -62,9 +64,20 @@ The optional method inventory covers the native customization families Cantrip
 uses: collaboration modes, goals, hooks, skill discovery/configuration/extra
 roots, MCP inventory/OAuth/resource read/reload, plugin list/read/install/remove,
 external-agent detection/import history, and effective configuration reads.
-The probe deliberately sends invalid parameters, so discovering a mutation
-method cannot install a plugin, change a skill, import configuration, or start
-OAuth.
+For 0.148 it also probes process diagnostics, all six durable thread-queue
+operations, and thread-history revert. The generated notification inventory now
+recognizes `thread/queue/changed` and `thread/reverted`. The probe deliberately
+sends invalid parameters, so discovering a mutation method cannot install a
+plugin, change a skill, import configuration, start OAuth, queue a turn, or
+revert history.
+
+These new methods are capability-visible but not yet product operations.
+Cantrip's existing prompt queue remains server-owned, encrypted, and portable
+across workers, while Codex's queue belongs to one runtime thread. Replacing or
+bridging those contracts requires a separate design and migration rather than a
+version-pin change. Process diagnostics and native history revert are likewise
+available for a focused observability or rollback feature without being called
+during worker startup.
 
 External ChatGPT Codex history import uses the same pinned version boundary but
 runs a separate source App Server against the external data home. Discovery is
@@ -76,10 +89,10 @@ compatibility state. See [the import contract](CODEX_CHAT_IMPORT.md).
 
 ## Server-managed ChatGPT authentication
 
-Portable ChatGPT accounts depend on an experimental Codex 0.147 App Server
+Portable ChatGPT accounts depend on an experimental Codex 0.148 App Server
 surface. Before starting a server-managed ChatGPT runtime, the worker requires:
 
-- semantic version `0.147.x`;
+- semantic version `0.148.x`;
 - `initialize.capabilities.experimentalApi` support; and
 - an available `account/login/start` method.
 
@@ -93,7 +106,7 @@ change, and returns the replacement token within the normal App Server request
 timeout. The worker keeps these tokens only in memory and does not create a
 durable `auth.json` for this mode.
 
-This integration required no patch to the imported Codex 0.147 source. It is
+This integration required no patch to the imported Codex 0.148 source. It is
 still experimental upstream: method names, request shapes, login result types,
 or refresh timing may change even if core thread methods remain compatible.
 Cantrip therefore fails with an explicit server-managed-auth compatibility
@@ -129,7 +142,7 @@ enabled and not in the `deprecated` or `removed` stage. Read and mutation
 methods are tracked independently so a runtime can remain inspectable while a
 write control degrades to disabled.
 
-Product readiness may be stricter than method discovery. Codex 0.147 stabilizes
+Product readiness may be stricter than method discovery. Codex 0.148 stabilizes
 the core plugin list/read/install/uninstall methods, but Cantrip has not yet
 implemented and validated plugin product operations against their payloads.
 Cantrip retains those methods in diagnostics while disabling plugin product

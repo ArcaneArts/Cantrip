@@ -18,7 +18,7 @@ import {
 const execFileAsync = promisify(execFile);
 const PROBE_TIMEOUT_MS = 10_000;
 
-export const TESTED_CODEX_RANGE = ">=0.147.0 <0.148.0";
+export const TESTED_CODEX_RANGE = ">=0.148.0 <0.149.0";
 
 export const CODEX_CORE_METHODS = [
   "initialize",
@@ -52,6 +52,19 @@ export const CODEX_CUSTOMIZATION_METHODS = {
   configuration: ["config/read"],
 } as const;
 
+export const CODEX_EXPERIMENTAL_WORKFLOW_METHODS = {
+  diagnostics: ["server/diagnostics"],
+  promptQueue: [
+    "thread/queue/add",
+    "thread/queue/list",
+    "thread/queue/update",
+    "thread/queue/delete",
+    "thread/queue/reorder",
+    "thread/queue/start",
+  ],
+  history: ["thread/revert"],
+} as const;
+
 export const CODEX_OPTIONAL_METHODS = [
   "account/login/start",
   "thread/compact/start",
@@ -60,6 +73,7 @@ export const CODEX_OPTIONAL_METHODS = [
   "permissionProfile/list",
   "app/list",
   ...Object.values(CODEX_CUSTOMIZATION_METHODS).flat(),
+  ...Object.values(CODEX_EXPERIMENTAL_WORKFLOW_METHODS).flat(),
 ] as const;
 
 const PROBED_METHODS = [...CODEX_CORE_METHODS, ...CODEX_OPTIONAL_METHODS];
@@ -126,7 +140,7 @@ export function isTestedCodexVersion(semantic: string): boolean {
   return (
     extra === undefined &&
     major === 0 &&
-    minor === 147 &&
+    minor === 148 &&
     patch !== undefined &&
     Number.isInteger(patch) &&
     patch >= 0

@@ -3889,7 +3889,7 @@ describe("Cantrip protocol", () => {
           homeLabel: "~/.codex",
           availability: "available",
           message: null,
-          runtimeVersion: "0.147.0",
+          runtimeVersion: "0.148.0",
           truncated: false,
           threads: [
             {
@@ -3903,7 +3903,7 @@ describe("Cantrip protocol", () => {
               source: "vscode",
               status: "not-loaded",
               modelProvider: "openai",
-              cliVersion: "0.147.0",
+              cliVersion: "0.148.0",
               git: null,
               match: {
                 kind: "worktree-path",
@@ -3937,7 +3937,6 @@ describe("Cantrip protocol", () => {
                 existingImport: {
                   jobId: "00000000-0000-4000-8000-000000000001",
                   projectId: "project-one",
-                  projectName: "Cantrip",
                   chatId: "chat-one",
                   state: "succeeded",
                 },
@@ -3954,7 +3953,7 @@ describe("Cantrip protocol", () => {
           threads: [
             {
               existingImport: {
-                projectName: "Cantrip",
+                projectId: "project-one",
                 state: "succeeded",
               },
             },

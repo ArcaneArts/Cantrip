@@ -179,7 +179,7 @@ const workerBridge: WorkerCommandBus = {
             source: "vscode",
             status: "not-loaded",
             modelProvider: "openai",
-            cliVersion: "0.147.0",
+            cliVersion: "0.148.0",
             git: null,
             match: {
               kind: "worktree-path",
@@ -269,7 +269,7 @@ const workerBridge: WorkerCommandBus = {
           homeLabel: "~/.codex",
           availability: "available",
           message: null,
-          runtimeVersion: "0.147.0",
+          runtimeVersion: "0.148.0",
           truncated: false,
           threads: [
             {
@@ -283,7 +283,7 @@ const workerBridge: WorkerCommandBus = {
               source: "vscode",
               status: "not-loaded",
               modelProvider: "openai",
-              cliVersion: "0.147.0",
+              cliVersion: "0.148.0",
               git: null,
               match: {
                 kind: "worktree-path",
@@ -314,11 +314,11 @@ async function recordWorker(
     name,
     platform: "darwin",
     architecture: "arm64",
-    codexVersion: "0.147.0",
+    codexVersion: "0.148.0",
     codexRuntime: {
       ...unprobedCodexRuntimeReport,
       compatibility: "compatible",
-      version: { raw: "0.147.0", semantic: "0.147.0" },
+      version: { raw: "0.148.0", semantic: "0.148.0" },
       initialize: {
         userAgent: "cantrip-test",
         platformFamily: "unix",

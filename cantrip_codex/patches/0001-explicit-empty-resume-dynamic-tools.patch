@@ -1,8 +1,11 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-index 4850e06e..ead01bbf 100644
+index 2b52e0c..a66a7b2 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/tests.rs
-@@ -177,1 +177,17 @@ fn thread_resume_params_accept_turns_page_bootstrap() {
+@@ -163,6 +163,22 @@ fn thread_sources_round_trip_as_scalar_labels() {
+     }
+ }
+ 
 +#[test]
 +fn thread_resume_params_preserve_explicit_empty_dynamic_tools() {
 +    let omitted = serde_json::from_value::<ThreadResumeParams>(json!({
@@ -20,11 +23,13 @@ index 4850e06e..ead01bbf 100644
 +}
 +
  #[test]
+ fn approvals_reviewer_serializes_auto_review_and_accepts_legacy_guardian_subagent() {
+     assert_eq!(
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-index 966f45aa..fe275320 100644
+index 6c409e7..3e91e8c 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/thread.rs
-@@ -384,6 +384,15 @@ pub struct ThreadResumeParams {
+@@ -387,6 +387,15 @@ pub struct ThreadResumeParams {
      pub developer_instructions: Option<String>,
      #[ts(optional = nullable)]
      pub personality: Option<Personality>,
@@ -41,10 +46,10 @@ index 966f45aa..fe275320 100644
      /// populating `thread.turns`. This is useful when the client plans to call
      /// `thread/turns/list` immediately after resuming.
 diff --git a/codex-rs/app-server/src/request_processors/thread_processor.rs b/codex-rs/app-server/src/request_processors/thread_processor.rs
-index 85dfb9ec..c622eee1 100644
+index 4bb5e43..83ed2d9 100644
 --- a/codex-rs/app-server/src/request_processors/thread_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/thread_processor.rs
-@@ -3085,6 +3085,7 @@ impl ThreadRequestProcessor {
+@@ -3419,6 +3419,7 @@ impl ThreadRequestProcessor {
              base_instructions,
              developer_instructions,
              personality,
@@ -52,7 +57,7 @@ index 85dfb9ec..c622eee1 100644
              exclude_turns,
              initial_turns_page,
          } = params;
-@@ -3114,13 +3115,17 @@ impl ThreadRequestProcessor {
+@@ -3448,13 +3449,17 @@ impl ThreadRequestProcessor {
                  Err(error) => Err(error),
              }
          };
@@ -71,11 +76,14 @@ index 85dfb9ec..c622eee1 100644
          let paginated_thread_id = resume_source_thread.as_ref().and_then(|thread| {
              matches!(thread.history_mode, ThreadHistoryMode::Paginated).then_some(thread.thread_id)
          });
-diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index c692d040..3d4d01a0 100644
---- a/codex-rs/protocol/src/protocol.rs
-+++ b/codex-rs/protocol/src/protocol.rs
-@@ -2654,1 +2654,18 @@ impl InitialHistory {
+diff --git a/codex-rs/history/src/lib.rs b/codex-rs/history/src/lib.rs
+index f95a9d9..791c59d 100644
+--- a/codex-rs/history/src/lib.rs
++++ b/codex-rs/history/src/lib.rs
+@@ -220,6 +220,23 @@ pub enum InitialHistory {
+ }
+ 
+ impl InitialHistory {
 +    /// Replaces dynamic tools in persisted session metadata for this resume.
 +    /// This preserves the rest of the rollout while allowing callers to
 +    /// explicitly migrate a thread away from tools it previously registered.
@@ -93,4 +101,6 @@ index c692d040..3d4d01a0 100644
 +        }
 +    }
 +
-     pub fn get_selected_capability_roots(&self) -> Vec<SelectedCapabilityRoot> {
+     pub fn scan_rollout_items(&self, mut predicate: impl FnMut(&RolloutItem) -> bool) -> bool {
+         match self {
+             Self::New | Self::Cleared => false,

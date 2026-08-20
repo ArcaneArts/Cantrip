@@ -108,7 +108,7 @@ const unprobedCodexRuntimeReport = {
   adapter: "app-server",
   compatibility: "missing",
   version: null,
-  testedRange: ">=0.147.0 <0.148.0",
+  testedRange: ">=0.148.0 <0.149.0",
   initialize: null,
   methods: {},
   features: [],
