@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   advanceDoubleShiftGesture,
+  commandBarScopesAfterBackspace,
   DOUBLE_SHIFT_WINDOW_MS,
   type DoubleShiftKeyInput,
 } from "./command-bar";
@@ -53,5 +54,15 @@ describe("command bar gesture", () => {
     expect(
       advanceDoubleShiftGesture(2_000, { ...shift, metaKey: true }, 2_100),
     ).toEqual({ lastShiftAt: null, triggered: false });
+  });
+
+  it("removes the armed nested action when Backspace has no query", () => {
+    expect(
+      commandBarScopesAfterBackspace(["new-project", "folder"], ""),
+    ).toEqual(["new-project"]);
+    expect(
+      commandBarScopesAfterBackspace(["new-project", "folder"], "Cantrip"),
+    ).toEqual(["new-project", "folder"]);
+    expect(commandBarScopesAfterBackspace([], "")).toEqual([]);
   });
 });
