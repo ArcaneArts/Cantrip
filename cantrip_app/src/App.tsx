@@ -81,6 +81,7 @@ import {
 import { flushSync } from "react-dom";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
+import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
   AttachmentPreview,
   AttachmentViewerDialog,
@@ -2896,6 +2897,7 @@ export function App() {
     useState<SettingsSection>("general");
   const [settingsPolicyId, setSettingsPolicyId] = useState<string | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [commandBarOpen, setCommandBarOpen] = useState(false);
   const projectOverviewSelected =
     !isPopout &&
     !showImporter &&
@@ -3636,6 +3638,15 @@ export function App() {
     }),
     [newChat.isPending, newTerminal.isPending, projectActionProjectId],
   );
+  const executeAppAction = (actionId: AppActionId) => {
+    const projectId = appActionContext.projectId;
+    if (!projectId) return;
+    if (actionId === APP_ACTION_IDS.newAgentChat) {
+      newChat.mutate({ projectId });
+    } else if (actionId === APP_ACTION_IDS.newTerminal) {
+      newTerminal.mutate({ projectId });
+    }
+  };
   useAppActions({
     context: appActionContext,
     runtime: isPopout
@@ -3643,15 +3654,7 @@ export function App() {
       : desktopRuntime && isMacosDesktopRuntime()
         ? "desktop"
         : "browser",
-    onAction: (actionId) => {
-      const projectId = appActionContext.projectId;
-      if (!projectId) return;
-      if (actionId === APP_ACTION_IDS.newAgentChat) {
-        newChat.mutate({ projectId });
-      } else if (actionId === APP_ACTION_IDS.newTerminal) {
-        newTerminal.mutate({ projectId });
-      }
-    },
+    onAction: executeAppAction,
   });
   const openChatConsole = useMutation({
     mutationFn: (chatId: string) => createChatConsole(chatId),
@@ -5366,6 +5369,23 @@ export function App() {
     setChatConsoleChatId(null);
     setDetachedGroupId(null);
     revealWorkspace();
+  };
+  const selectProjectFromCommandBar = (projectId: string) => {
+    const activeContainsProject =
+      activeProjectWorkspace?.projectIds.includes(projectId) ?? false;
+    const targetWorkspace = activeContainsProject
+      ? activeProjectWorkspace
+      : (projectWorkspaces.data?.find(({ projectIds }) =>
+          projectIds.includes(projectId),
+        ) ?? null);
+    if (targetWorkspace && targetWorkspace.id !== activeProjectWorkspace?.id) {
+      setActiveProjectWorkspaceId(targetWorkspace.id);
+      window.localStorage.setItem(
+        activeProjectWorkspaceStorageKey,
+        targetWorkspace.id,
+      );
+    }
+    selectProjectFromSidebar(projectId);
   };
   const closeCompactProject = () => {
     setSelectedProjectId(null);
@@ -7293,6 +7313,19 @@ export function App() {
           synchronizationPolicy={
             settings.data?.preferences.automaticReplicaSynchronization ?? "off"
           }
+        />
+      ) : null}
+
+      {!isPopout ? (
+        <AppCommandBar
+          context={appActionContext}
+          currentProjectId={selectedProjectId}
+          onAction={executeAppAction}
+          onOpenChange={setCommandBarOpen}
+          onSelectProject={selectProjectFromCommandBar}
+          open={commandBarOpen}
+          projects={projects.data ?? []}
+          workspaces={projectWorkspaces.data ?? []}
         />
       ) : null}
 
