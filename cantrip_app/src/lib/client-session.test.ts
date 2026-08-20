@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  authenticationRequiredAction,
+  clearClientSession,
   clientSessionForRuntime,
+  setClientSession,
   type ClientSessionContext,
 } from "./client-session";
 
@@ -29,5 +32,14 @@ describe("client session runtime", () => {
 
     expect(reloadedWorkspaceCaller).toBe(mountedApplication);
     expect(reloadedWorkspaceCaller.session).toEqual(session);
+  });
+
+  it("routes local encryption challenges back to encryption recovery", () => {
+    setClientSession({ ...session, authMode: "none" });
+
+    expect(authenticationRequiredAction()).toBe("refresh-encryption");
+
+    clearClientSession();
+    expect(authenticationRequiredAction()).toBe("sign-out");
   });
 });

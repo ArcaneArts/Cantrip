@@ -48,6 +48,7 @@ import {
   getAccountEncryptionProfile,
   updateAccountEncryptionMigration,
 } from "./encryption-api";
+import { clientLogger, operationalErrorMetadata } from "./client-log-relay";
 
 const component = "workspace-display-name" as const;
 const table = "project_workspaces";
@@ -126,6 +127,13 @@ export class ProjectWorkspaceEncryptionAdapter {
   }> {
     const session = (this.options.session ?? getClientSession)();
     if (!session) {
+      clientLogger.warn("Workspace encryption has no active client session", {
+        event: "encryption.workspace.identity.failed",
+        operation: "prepare-workspace-encryption",
+        reasonCode: "client-session-missing",
+        status: "locked",
+        subsystem: "encryption",
+      });
       throw new ClientEncryptionError(
         "locked",
         "Workspace encryption is locked for this account.",
@@ -139,15 +147,41 @@ export class ProjectWorkspaceEncryptionAdapter {
       snapshot.identity.ownerId !== session.user.id ||
       snapshot.identity.serverId !== session.serverId
     ) {
-      const access = await (this.options.prepare ?? prepareClientEncryption)({
-        authMode: session.authMode,
-        identity: {
-          ownerId: session.user.id,
-          serverId: session.serverId,
-        },
-        service: this.service,
-      });
+      let access: Awaited<ReturnType<typeof prepareClientEncryption>>;
+      try {
+        access = await (this.options.prepare ?? prepareClientEncryption)({
+          authMode: session.authMode,
+          identity: {
+            ownerId: session.user.id,
+            serverId: session.serverId,
+          },
+          service: this.service,
+        });
+      } catch (error) {
+        clientLogger.warn("Workspace encryption preparation failed", {
+          ...operationalErrorMetadata(error),
+          event: "encryption.workspace.prepare.failed",
+          operation: "prepare-workspace-encryption",
+          reasonCode: "preparation-failed",
+          status: "locked",
+          subsystem: "encryption",
+        });
+        throw error;
+      }
       if (access.status !== "ready") {
+        clientLogger.warn("Workspace encryption needs client authorization", {
+          ...(access.status === "credential-required"
+            ? { credential: access.credential, reason: access.reason }
+            : {}),
+          event: "encryption.workspace.authorization-required",
+          operation: "prepare-workspace-encryption",
+          reasonCode:
+            access.status === "credential-required"
+              ? "device-authorization-required"
+              : "recovery-acknowledgment-required",
+          status: "locked",
+          subsystem: "encryption",
+        });
         const reason =
           "This device encryption key must be authorized again. Sign in once to continue.";
         (this.options.onCredentialRequired ?? notifyAuthenticationRequired)(
@@ -164,6 +198,16 @@ export class ProjectWorkspaceEncryptionAdapter {
       snapshot.identity.ownerId !== session.user.id ||
       snapshot.identity.serverId !== session.serverId
     ) {
+      clientLogger.warn(
+        "Workspace encryption remained locked after preparation",
+        {
+          event: "encryption.workspace.identity.failed",
+          operation: "prepare-workspace-encryption",
+          reasonCode: "prepared-key-state-not-ready",
+          status: "locked",
+          subsystem: "encryption",
+        },
+      );
       throw new ClientEncryptionError(
         "locked",
         "Workspace encryption is locked for this account.",

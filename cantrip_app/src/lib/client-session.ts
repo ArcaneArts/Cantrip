@@ -11,6 +11,8 @@ export interface ClientSessionContext {
   user: UserSummary;
 }
 
+export type AuthenticationRequiredAction = "refresh-encryption" | "sign-out";
+
 type AuthenticationRequiredListener = (reason: string) => void;
 
 type ClientSessionRuntimeState = {
@@ -108,6 +110,12 @@ export function clearClientSession(): void {
 
 export function getClientSession(): ClientSessionContext | null {
   return runtime.session;
+}
+
+export function authenticationRequiredAction(): AuthenticationRequiredAction {
+  return runtime.session?.authMode === "none"
+    ? "refresh-encryption"
+    : "sign-out";
 }
 
 export function clientStorageScope(): string {

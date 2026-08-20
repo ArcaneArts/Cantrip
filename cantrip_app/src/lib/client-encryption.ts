@@ -25,6 +25,8 @@ import {
   type PasswordWrappedMasterKey,
 } from "@cantrip/protocol/encryption";
 
+import { clientLogger, operationalErrorMetadata } from "./client-log-relay";
+
 const deviceDatabaseName = "cantrip-client-encryption";
 const deviceDatabaseVersion = 1;
 const deviceObjectStoreName = "device-keys";
@@ -222,47 +224,93 @@ function isOpaquePrivateKeyHandle(value: unknown): value is CryptoKey {
   return Boolean(value && typeof value === "object");
 }
 
+type DeviceRecordRejectionReason =
+  | "client-id-invalid"
+  | "created-at-invalid"
+  | "owner-binding-mismatch"
+  | "private-key-handle-missing"
+  | "public-key-invalid"
+  | "record-invalid"
+  | "server-binding-mismatch"
+  | "unsupported-version"
+  | "version-missing";
+
+function deviceRecordRejectionReason(
+  raw: unknown,
+  identity: ClientEncryptionIdentity,
+): DeviceRecordRejectionReason | null {
+  if (!raw || typeof raw !== "object") return "record-invalid";
+  const record = raw as Partial<StoredClientDeviceRecord>;
+  if ("version" in raw && record.version !== 1) {
+    return "unsupported-version";
+  }
+  if (record.version !== 1) return "version-missing";
+  if (record.serverId !== identity.serverId) return "server-binding-mismatch";
+  if (record.ownerId !== identity.ownerId) return "owner-binding-mismatch";
+  if (
+    typeof record.clientId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      record.clientId,
+    )
+  ) {
+    return "client-id-invalid";
+  }
+  if (
+    typeof record.createdAt !== "string" ||
+    !Number.isFinite(Date.parse(record.createdAt))
+  ) {
+    return "created-at-invalid";
+  }
+  if (!encryptionPublicKeySchema.safeParse(record.publicKey).success) {
+    return "public-key-invalid";
+  }
+  if (!isOpaquePrivateKeyHandle(record.privateKey)) {
+    return "private-key-handle-missing";
+  }
+  return null;
+}
+
+function logDeviceRecordRejection(
+  raw: unknown,
+  identity: ClientEncryptionIdentity,
+  operation: "load-device" | "load-device-key",
+  error: unknown,
+): void {
+  clientLogger.warn("Stored client encryption device key was rejected", {
+    ...operationalErrorMetadata(error),
+    event: "encryption.device-record.rejected",
+    operation,
+    reasonCode:
+      deviceRecordRejectionReason(raw, identity) ?? "record-parse-failed",
+    status: "rejected",
+    subsystem: "encryption",
+  });
+}
+
 function parseDeviceRecord(
   raw: unknown,
   identity: ClientEncryptionIdentity,
 ): StoredClientDeviceRecord {
-  if (
-    raw &&
-    typeof raw === "object" &&
-    "version" in raw &&
-    (raw as { version?: unknown }).version !== 1
-  ) {
+  const rejectionReason = deviceRecordRejectionReason(raw, identity);
+  if (rejectionReason === "unsupported-version") {
     throw new ClientEncryptionError(
       "unsupported-version",
       "This device key uses an unsupported encryption format. Update Cantrip to continue.",
     );
   }
-  const record = raw as Partial<StoredClientDeviceRecord> | null;
-  const publicKey = encryptionPublicKeySchema.safeParse(record?.publicKey);
-  if (
-    record?.version !== 1 ||
-    record.serverId !== identity.serverId ||
-    record.ownerId !== identity.ownerId ||
-    typeof record.clientId !== "string" ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
-      record.clientId,
-    ) ||
-    typeof record.createdAt !== "string" ||
-    !Number.isFinite(Date.parse(record.createdAt)) ||
-    !publicKey.success ||
-    !isOpaquePrivateKeyHandle(record.privateKey)
-  ) {
+  if (rejectionReason) {
     throw new ClientEncryptionError(
       "corrupt-device-record",
       "This device key is corrupt or belongs to another server or account.",
     );
   }
+  const record = raw as StoredClientDeviceRecord;
   return {
     clientId: record.clientId,
     createdAt: record.createdAt,
     ownerId: record.ownerId,
     privateKey: record.privateKey,
-    publicKey: publicKey.data,
+    publicKey: encryptionPublicKeySchema.parse(record.publicKey),
     serverId: record.serverId,
     version: 1,
   };
@@ -364,6 +412,13 @@ export class ClientEncryptionService {
       throw this.storageFailure(error, identity);
     }
     if (raw === null) {
+      clientLogger.info("No stored client encryption device key was found", {
+        event: "encryption.device-record.missing",
+        operation: "load-device",
+        reasonCode: "device-record-missing",
+        status: "missing",
+        subsystem: "encryption",
+      });
       this.clearKeyMaterial();
       this.publish({
         clientId: null,
@@ -377,6 +432,7 @@ export class ClientEncryptionService {
     try {
       record = parseDeviceRecord(raw, identity);
     } catch (error) {
+      logDeviceRecordRejection(raw, identity, "load-device", error);
       if (
         error instanceof ClientEncryptionError &&
         error.code === "unsupported-version"
@@ -534,6 +590,16 @@ export class ClientEncryptionService {
       raw.clientId !== principal.id ||
       JSON.stringify(raw.publicKey) !== JSON.stringify(principal.publicKey)
     ) {
+      clientLogger.warn(
+        "Stored device key does not match its server authorization",
+        {
+          event: "encryption.device.authorization-mismatch",
+          operation: "unlock-device-key",
+          reasonCode: "device-registration-mismatch",
+          status: "rejected",
+          subsystem: "encryption",
+        },
+      );
       throw this.fail(
         "corrupt",
         input.identity,
@@ -558,7 +624,15 @@ export class ClientEncryptionService {
         masterKeyRevision: grant.keyRevision,
       });
       this.publish({ ...this.snapshot, clientId: raw.clientId });
-    } catch {
+    } catch (error) {
+      clientLogger.warn("Client device key could not unwrap the account key", {
+        ...operationalErrorMetadata(error),
+        event: "encryption.device.unlock.failed",
+        operation: "unlock-device-key",
+        reasonCode: "device-key-unwrapping-failed",
+        status: "locked",
+        subsystem: "encryption",
+      });
       throw this.fail(
         "locked",
         input.identity,
@@ -697,6 +771,13 @@ export class ClientEncryptionService {
       throw this.storageFailure(error, identity);
     }
     if (raw === null) {
+      clientLogger.warn("Stored client encryption device key was not found", {
+        event: "encryption.device-record.missing",
+        operation: "load-device-key",
+        reasonCode: "device-record-missing",
+        status: "missing",
+        subsystem: "encryption",
+      });
       throw this.fail(
         "locked",
         identity,
@@ -708,6 +789,7 @@ export class ClientEncryptionService {
     try {
       return parseDeviceRecord(raw, identity);
     } catch (error) {
+      logDeviceRecordRejection(raw, identity, "load-device-key", error);
       if (
         error instanceof ClientEncryptionError &&
         error.code === "unsupported-version"
@@ -761,6 +843,14 @@ export class ClientEncryptionService {
     error: unknown,
     identity: ClientEncryptionIdentity,
   ): ClientEncryptionError {
+    clientLogger.warn("Client encryption device storage is unavailable", {
+      ...operationalErrorMetadata(error),
+      event: "encryption.device-storage.failed",
+      operation: "access-device-storage",
+      reasonCode: "device-storage-unavailable",
+      status: "unavailable",
+      subsystem: "encryption",
+    });
     const message =
       error instanceof ClientEncryptionError
         ? error.message
