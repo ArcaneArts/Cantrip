@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  encryptedExplorerCreateSchema,
+  encryptedExplorerViewStateUpdateSchema,
+  encryptedExplorerWorktreeUpdateSchema,
   encryptedTerminalCreateSchema,
   encryptedTerminalServiceConfigurationSchema,
+  explorerWireSummarySchema,
   terminalWireSummarySchema,
   workerCommandSchema,
 } from "../src/index.js";
@@ -157,6 +161,55 @@ describe("surface private-state contracts", () => {
         cols: 80,
         rows: 24,
         launch: { type: "shell" },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps Explorer selection paths out of server wire contracts", () => {
+    const id = "00000000-0000-4000-8000-000000000201";
+    const stateProtection = {
+      classification: { recordKind: "explorer-state" as const },
+      protectedState: encrypted,
+    };
+    const titleProtection = {
+      classification: { recordKind: "explorer" as const },
+      protectedLabel: encrypted,
+    };
+    expect(
+      encryptedExplorerCreateSchema.safeParse({
+        id,
+        titleProtection,
+        stateProtection,
+        selectedPath: "private/selection.ts",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedExplorerViewStateUpdateSchema.safeParse({
+        stateProtection,
+        fileMode: "edit",
+        selectedPath: "private/selection.ts",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedExplorerWorktreeUpdateSchema.safeParse({
+        worktreeId: "worktree-2",
+        stateProtection,
+        selectedPath: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      explorerWireSummarySchema.safeParse({
+        id,
+        projectId: "project-1",
+        position: 0,
+        activeWorkerId: "worker-1",
+        worktreeId: "worktree-1",
+        fileMode: "edit",
+        titleProtection,
+        stateProtection,
+        selectedPath: "private/selection.ts",
+        createdAt: "2026-08-20T12:00:00.000Z",
+        updatedAt: "2026-08-20T12:00:00.000Z",
       }).success,
     ).toBe(false);
   });

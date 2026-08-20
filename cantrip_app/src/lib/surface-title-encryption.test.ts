@@ -90,7 +90,10 @@ describe("surface title encryption adapter", () => {
       ),
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
-      selectedPath: null,
+      stateProtection: await adapter.protectExplorerState(
+        ids.explorer,
+        "src/private.ts",
+      ),
       fileMode: "preview",
     };
     const code: CodeTabWireSummary = {
@@ -173,6 +176,7 @@ describe("surface title encryption adapter", () => {
     });
     await expect(adapter.openExplorer(explorer)).resolves.toMatchObject({
       title: "Private explorer",
+      selectedPath: "src/private.ts",
     });
     await expect(adapter.openCodeTab(code)).resolves.toMatchObject({
       title: "Private code",
@@ -215,6 +219,35 @@ describe("surface title encryption adapter", () => {
     };
 
     await expect(adapter.openTerminal(terminal)).rejects.toMatchObject({
+      state: "corrupt",
+    });
+  });
+
+  it("rejects Explorer state replayed under another row id", async () => {
+    const adapter = fixture();
+    const protectedId = "00000000-0000-4000-8000-000000000121";
+    const replayedId = "00000000-0000-4000-8000-000000000122";
+    const explorer: ExplorerWireSummary = {
+      id: replayedId,
+      projectId: "project-a",
+      titleProtection: await adapter.protect(
+        replayedId,
+        "Bound Explorer",
+        "explorer",
+      ),
+      position: 0,
+      activeWorkerId: "worker-a",
+      worktreeId: "worktree-a",
+      stateProtection: await adapter.protectExplorerState(
+        protectedId,
+        "private/replayed.ts",
+      ),
+      fileMode: "edit",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    await expect(adapter.openExplorer(explorer)).rejects.toMatchObject({
       state: "corrupt",
     });
   });

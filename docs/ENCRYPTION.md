@@ -405,9 +405,9 @@ database-compromise guarantee is described.
 | Queued prompts                                                                   | Plaintext                                                                                                    | Planned                                       | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                                | Planned                                       | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Plaintext                                                                                                    | Planned                                       | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
-| Surface private-state contracts, endpoint codecs, and scoped worker grants       | Bounded `surface-private-state` envelopes; independently grantable from display labels                       | Foundation complete; terminal consumer active | Required             | Medium      | No server decryption capability is introduced                                                  |
+| Surface private-state contracts, endpoint codecs, and scoped worker grants       | Bounded `surface-private-state` envelopes; independently grantable from display labels                       | Foundation complete; terminal/Explorer active | Required             | Medium      | No server decryption capability is introduced                                                  |
 | Terminal working directories and service commands                                | AES-256-GCM E2EE; client-created row-bound state; worker-only execution                                      | E2EE complete                                 | Excellent            | Medium      | Server cannot inspect or synthesize launch paths or service commands                           |
-| Explorer selected path                                                           | Plaintext production persistence                                                                             | Persistence switch planned                    | Excellent            | Low-Medium  | Server cannot restore or inspect the selected entry                                            |
+| Explorer selected path                                                           | AES-256-GCM E2EE; client-created row-bound state                                                             | E2EE complete                                 | Excellent            | Low-Medium  | Server cannot restore or inspect the selected entry                                            |
 | Browser initial, current, and navigated URLs                                     | Plaintext production persistence and relay                                                                   | Persistence switch planned                    | Excellent            | Medium      | Server cannot search, validate, or diagnose browser destinations                               |
 | Remote Desktop target selection and private inventory details                    | Plaintext production persistence and relay                                                                   | Persistence switch planned                    | Excellent            | Medium-High | Server cannot inspect targets, application names, window titles, or monitor labels             |
 | Terminal interactive input and output                                            | Plaintext or relayed content                                                                                 | Planned separately                            | Excellent            | High        | Server cannot inspect shell interaction content                                                |
@@ -685,10 +685,10 @@ Operational surface state uses a separate `surface-private-state` component;
 it does not reuse `private-surface-metadata`. A worker can therefore be granted
 the terminal, Explorer, browser, or Remote Desktop state it needs to execute
 without also receiving display-label access. The foundation began as shared
-contracts and trusted endpoint machinery. The terminal persistence switch
-described below is its first production consumer; the Explorer, browser, and
-Remote Desktop ledger rows remain plaintext until their dedicated cycles
-merge.
+contracts and trusted endpoint machinery. The terminal and Explorer
+persistence switches described below are its first production consumers; the
+browser and Remote Desktop ledger rows remain plaintext until their dedicated
+cycles merge.
 
 The bounded opaque
 [wire contract](../packages/protocol/src/surface-private-state.ts) defines
@@ -767,6 +767,36 @@ project-root and repository-relative resolution, wrong-row and missing-grant
 failure, exact reset preservation, opaque worker commands, and a full public
 table scan containing neither the sentinel working directory nor service
 command.
+
+### Explorer selected state
+
+The Explorer selected path now uses a row-bound `explorer-state` bundle under
+`surface-private-state`. The client encrypts the initial `null` selection
+before creation, encrypts each selection update before it leaves the app, and
+decrypts only while constructing the trusted `ExplorerSummary` used for
+restoration and presentation. File mode remains public so preview, visual, and
+edit behavior can be synchronized without exposing the selected entry.
+Changing an Explorer worktree is also a client-authored opaque update that
+resets the protected selection to `null`; the server no longer synthesizes a
+selection value.
+
+The server persists `explorers.protected_state` and returns it through strict
+opaque create, list, worktree-update, and view-state contracts. It retains IDs,
+placement, ordering, file mode, and timestamps, but never searches, compares,
+copies, logs, caches, or publishes the selected path. Explorer directory and
+file operations still carry their own plaintext paths and contents and remain
+a distinct planned ledger row; this cycle does not overstate that boundary.
+
+[Migration 0110](../cantrip_server/drizzle/0110_graceful_triathlon.sql) is a
+narrow pre-release reset. It deletes Explorer rows and only Explorer tab
+memberships, removes empty Explorer-only groups, repairs mixed-group anchors,
+clears custom labels from groups reduced to one member, increments each
+affected project layout revision once, adds required `protected_state`, and
+removes `selected_path`. Account/auth and encryption custody, workers,
+workspaces, projects, sources/worktrees, chats/Tasks, terminal and other
+surfaces, policies, workflows, and unrelated tab members remain intact.
+Focused migration and persistence tests use disposable PGlite databases only;
+no user development database is connected to or reset.
 
 ### Private display-label closure audit
 
@@ -1084,16 +1114,16 @@ counts, worker presence, model-route choices, and traffic patterns.
    component now provides bounded terminal, Explorer, browser, Remote Desktop,
    and inventory bundles; persistent and ephemeral associated-data mappings;
    trusted client/worker adapters; scoped readiness; and restart-safe custody.
-   Terminal working directories and service commands now use it in production;
-   the remaining surface domains are tracked independently.
+   Terminal working directories/service commands and Explorer selected paths
+   now use it in production; the remaining surface domains are tracked
+   independently.
 10. **Attachments and relayed streams:** encrypt metadata and add
     application-layer encryption when bytes traverse relays.
 11. **Secrets:** replace server-decryptable provider and MCP vault envelopes
     with client and worker decryptable envelopes.
-12. **Remaining private metadata persistence:** switch Explorer selected paths,
-    browser URLs, and Remote Desktop selection/inventory to the new component.
-    Git output and policy bodies stay under their appropriate future
-    components.
+12. **Remaining private metadata persistence:** switch browser URLs and Remote
+    Desktop selection/inventory to the new component. Git output and policy
+    bodies stay under their appropriate future components.
 13. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.

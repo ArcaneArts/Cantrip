@@ -102,6 +102,23 @@ it("persists every private display label only as authenticated ciphertext", asyn
       serviceCommand: `${sentinel}-SERVICE-COMMAND`,
     },
   });
+  const explorerStateProtection = await encryptSurfacePrivateState({
+    ownerId: LOCAL_USER_ID,
+    context: {
+      serverId: "surface-title-server",
+      resource: "explorer-row",
+      resourceId: ids.explorer,
+      operationId: null,
+      recordKind: "explorer-state",
+    },
+    keyRevision: 1,
+    componentKey: surfaceStateKey,
+    content: {
+      version: 1,
+      classification: { recordKind: "explorer-state" },
+      selectedPath: `${sentinel}/private-selection.ts`,
+    },
+  });
 
   const database = await connectDatabase(config);
   try {
@@ -229,6 +246,7 @@ it("persists every private display label only as authenticated ciphertext", asyn
       {
         id: ids.explorer,
         titleProtection: await protectedTitle("explorer", ids.explorer),
+        stateProtection: explorerStateProtection,
         tabGroupId: groupId,
       },
       () => true,
@@ -315,6 +333,13 @@ it("persists every private display label only as authenticated ciphertext", asyn
     expect(services[0]).not.toHaveProperty("command");
     expect(terminalContext).not.toHaveProperty("cwd");
     expect(terminalContext).not.toHaveProperty("service");
+    const updatedExplorer = await database.repository.updateExplorerViewState(
+      LOCAL_USER_ID,
+      ids.explorer,
+      { fileMode: "edit", stateProtection: explorerStateProtection },
+    );
+    expect(updatedExplorer).toMatchObject({ fileMode: "edit" });
+    expect(JSON.stringify(updatedExplorer)).not.toContain(sentinel);
   } finally {
     clearSensitiveBytes(surfaceStateKey);
     clearSensitiveBytes(taskKey);
@@ -367,6 +392,10 @@ it("persists every private display label only as authenticated ciphertext", asyn
         expect(names).toContain("protected_state");
         expect(names).not.toContain("directory_path");
         expect(names).not.toContain("service_command");
+      }
+      if (table === "explorers") {
+        expect(names).toContain("protected_state");
+        expect(names).not.toContain("selected_path");
       }
     }
 

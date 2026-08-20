@@ -18,6 +18,7 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 
 import {
   protectedDisplayLabelFields,
+  protectedExplorerFields,
   protectedProjectFields,
   protectedTerminalFields,
 } from "./private-label-fixture.js";
@@ -98,7 +99,7 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
       LOCAL_USER_ID,
       project.id,
       {
-        ...protectedDisplayLabelFields("explorer"),
+        ...protectedExplorerFields(),
         tabGroupId: groupId,
       },
     );

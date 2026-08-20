@@ -302,7 +302,7 @@ describe("private display-label lifecycle", () => {
       ),
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
-      selectedPath: null,
+      stateProtection: await surfaces.protectExplorerState(ids.explorer, null),
       fileMode: "preview",
     };
     const code: CodeTabWireSummary = {

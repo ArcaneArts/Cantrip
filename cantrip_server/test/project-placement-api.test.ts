@@ -28,6 +28,7 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import {
   protectedChatFields,
   protectedDisplayLabelFields,
+  protectedExplorerFields,
   protectedProjectFields,
   protectedTerminalFields,
 } from "./private-label-fixture.js";
@@ -706,7 +707,7 @@ describe.sequential("project execution placement API", () => {
           method: "POST",
           url: `/api/projects/${projectId}/explorers`,
           payload: {
-            ...protectedDisplayLabelFields("explorer"),
+            ...protectedExplorerFields(),
             target: {
               kind: "worktree",
               projectId,
@@ -1177,7 +1178,7 @@ describe.sequential("project execution placement API", () => {
           method: "POST",
           url: `/api/projects/${projectId}/explorers`,
           payload: {
-            ...protectedDisplayLabelFields("explorer"),
+            ...protectedExplorerFields(),
             tabGroupId: groupId,
             target: {
               kind: "worktree",
