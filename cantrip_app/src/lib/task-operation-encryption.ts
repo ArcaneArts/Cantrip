@@ -11,6 +11,7 @@ import type {
   TaskOperationRelayRequest,
   TaskOperationRelayResult,
   TaskPlanningRoundProtectedContent,
+  TaskProtectedContent,
   TaskQuestionAnswer,
 } from "@cantrip/protocol/tasks";
 
@@ -42,6 +43,43 @@ function encryptionContext(input: {
     identity: { ownerId: session.user.id, serverId: session.serverId },
     keyRevision: snapshot.masterKeyRevision,
     service,
+  };
+}
+
+function runningTaskContent(input: {
+  additionalDirection?: string;
+  answers?: TaskQuestionAnswer[];
+  kind: TaskOperationKind;
+  task: TaskDetail;
+}): TaskProtectedContent {
+  const classification = {
+    state:
+      input.kind === "finalize"
+        ? ("finalizing" as const)
+        : ("planning" as const),
+    stableStateBeforeFailure:
+      input.kind === "initial-plan" ? ("draft" as const) : ("review" as const),
+    activeOperationKind: input.kind,
+    planAuthorship: input.task.planAuthorship,
+    planningRound: input.task.planningRound + 1,
+    hasPlan: input.task.planMarkdown !== null,
+    hasQuestions: input.task.currentQuestions.length > 0,
+    hasFinalPlan: input.task.finalPlanMarkdown !== null,
+    hasGoalPrompt: input.task.goalPrompt !== null,
+    lastError: null,
+  };
+  return {
+    version: 1,
+    classification,
+    briefMarkdown: input.task.briefMarkdown,
+    planMarkdown: input.task.planMarkdown,
+    currentQuestions: input.task.currentQuestions,
+    currentAnswers: input.answers ?? input.task.currentAnswers,
+    additionalDirection:
+      input.additionalDirection ?? input.task.additionalDirection,
+    finalPlanMarkdown: input.task.finalPlanMarkdown,
+    goalPrompt: input.task.goalPrompt,
+    lastError: null,
   };
 }
 
@@ -78,6 +116,7 @@ export async function prepareTaskOperationRelay(input: {
     outputGoalPrompt: null,
     error: null,
   };
+  const taskContent = runningTaskContent(input);
   try {
     return await createTaskOperationRelayRequest({
       ownerId: context.identity.ownerId,
@@ -86,6 +125,7 @@ export async function prepareTaskOperationRelay(input: {
       keyRevision: context.keyRevision,
       componentKey,
       content,
+      taskContent,
     });
   } finally {
     clearSensitiveBytes(componentKey);
@@ -108,7 +148,7 @@ export async function openTaskOperationResult(input: {
     keyRevision: context.keyRevision,
   });
   try {
-    const round = await openTaskOperationRelayResult({
+    const opened = await openTaskOperationRelayResult({
       ownerId: context.identity.ownerId,
       keyRevision: context.keyRevision,
       componentKey,
@@ -128,7 +168,7 @@ export async function openTaskOperationResult(input: {
           })
         ).objective
       : null;
-    return { round, goalObjective };
+    return { round: opened.round, goalObjective };
   } finally {
     clearSensitiveBytes(componentKey);
   }

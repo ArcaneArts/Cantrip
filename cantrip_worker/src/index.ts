@@ -2041,26 +2041,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           provider: command.provider,
           threadId: command.threadId,
         });
-      case "chat.goal.create":
-        return runtimeFor(command).createGoal({
+      case "chat.goal.create": {
+        const encryptedTaskGoal = typeof command.objective !== "string";
+        const objective =
+          typeof command.objective === "string"
+            ? command.objective
+            : await openEncryptedTaskGoalObjective({
+                chatId: command.chatId,
+                getComponentKey: () =>
+                  workerEncryption.componentKey("task-content"),
+                goal: command.objective,
+                ownerId: workerEncryption.ownerId(),
+                threadId: command.threadId,
+              });
+        const result = await runtimeFor(command).createGoal({
           cwd: command.cwd,
           model: command.model,
-          objective:
-            typeof command.objective === "string"
-              ? command.objective
-              : await openEncryptedTaskGoalObjective({
-                  chatId: command.chatId,
-                  getComponentKey: () =>
-                    workerEncryption.componentKey("task-content"),
-                  goal: command.objective,
-                  ownerId: workerEncryption.ownerId(),
-                  threadId: command.threadId,
-                }),
+          objective,
           permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
           tokenBudget: command.tokenBudget,
         });
+        return encryptedTaskGoal && result.goal
+          ? {
+              goal: {
+                ...result.goal,
+                objective: "Encrypted Task Goal",
+              },
+            }
+          : result;
+      }
       case "chat.goal.update":
         return runtimeFor(command).updateGoal({
           cwd: command.cwd,

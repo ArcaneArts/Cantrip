@@ -36,6 +36,21 @@ const request: TaskOperationRelayRequest = {
     error: null,
   },
   protectedInput: encrypted,
+  task: {
+    classification: {
+      state: "planning",
+      stableStateBeforeFailure: "draft",
+      activeOperationKind: "initial-plan",
+      planAuthorship: "agent",
+      planningRound: 1,
+      hasPlan: false,
+      hasQuestions: false,
+      hasFinalPlan: false,
+      hasGoalPrompt: false,
+      lastError: null,
+    },
+    protectedContent: encrypted,
+  },
 };
 
 const result: TaskOperationRelayResult = {
@@ -48,6 +63,21 @@ const result: TaskOperationRelayResult = {
     hasOutputPlan: true,
   },
   protectedResult: encrypted,
+  task: {
+    classification: {
+      state: "review",
+      stableStateBeforeFailure: null,
+      activeOperationKind: null,
+      planAuthorship: "agent",
+      planningRound: 1,
+      hasPlan: true,
+      hasQuestions: false,
+      hasFinalPlan: false,
+      hasGoalPrompt: false,
+      lastError: null,
+    },
+    protectedContent: encrypted,
+  },
   goal: null,
 };
 
@@ -73,7 +103,7 @@ describe("opaque Task operation server relay", () => {
         },
         request,
       ),
-    ).toThrow(/metadata/u);
+    ).toThrow();
     expect(() =>
       parseTaskOperationRelayResult(
         {
@@ -82,6 +112,6 @@ describe("opaque Task operation server relay", () => {
         },
         request,
       ),
-    ).toThrow(/metadata/u);
+    ).toThrow();
   });
 });

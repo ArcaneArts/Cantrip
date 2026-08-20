@@ -127,7 +127,7 @@ import type {
   TerminalUpdate,
   TaskCreate,
   TaskCreateResult,
-  TaskDetail,
+  TaskOpaqueSummary,
   ThemePreference,
   TunnelAttachmentSummary,
   TunnelDestinationEndpoint,
@@ -227,7 +227,11 @@ import { ProjectGithubConversionJobRepository } from "./project-github-conversio
 import { EncryptionRegistryRepository } from "./encryption-registry.js";
 import { PolicyRepository } from "./policies.js";
 import { ProjectReplicaJobRepository } from "./project-replica-jobs.js";
-import { TaskRepository, toTaskDetail } from "./tasks.js";
+import {
+  TaskRepository,
+  taskOpaqueColumns,
+  toTaskOpaqueSummary,
+} from "./tasks.js";
 import { WorkflowRunRepository } from "./workflow-runs.js";
 import { WorkflowRepository } from "./workflows.js";
 import { WorkflowTriggerRepository } from "./workflow-triggers.js";
@@ -12078,7 +12082,7 @@ export class ServerRepository {
     input: ChatCreate | TaskCreate,
     experience: ChatExperience,
     isWorkerConnected?: (workerId: string) => boolean,
-  ): Promise<{ chat: ChatSummary; task: TaskDetail | null } | null> {
+  ): Promise<{ chat: ChatSummary; task: TaskOpaqueSummary | null } | null> {
     const target =
       input.target ??
       (input.worktreeId
@@ -12108,10 +12112,12 @@ export class ServerRepository {
 
     const position = await this.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
+      const chatId =
+        experience === "task" ? (input as TaskCreate).chatId : randomUUID();
       const result = await transaction
         .insert(schema.chats)
         .values({
-          id: randomUUID(),
+          id: chatId,
           projectId,
           title: input.title,
           experience,
@@ -12152,14 +12158,17 @@ export class ServerRepository {
           ? firstOrThrow(
               await transaction
                 .insert(schema.tasks)
-                .values({ chatId: chat.id })
+                .values({
+                  chatId: chat.id,
+                  ...taskOpaqueColumns((input as TaskCreate).task),
+                })
                 .returning(),
               "creating a Task record",
             )
           : null;
       return {
         chat: toChatSummary(chat),
-        task: task ? toTaskDetail(task) : null,
+        task: task ? toTaskOpaqueSummary(task) : null,
       };
     });
   }

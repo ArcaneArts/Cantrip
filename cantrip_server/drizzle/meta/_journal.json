@@ -722,6 +722,13 @@
       "when": 1787178330571,
       "tag": "0102_minor_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1787183342522,
+      "tag": "0103_foamy_wolf_cub",
+      "breakpoints": true
     }
   ]
 }

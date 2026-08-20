@@ -241,12 +241,8 @@ import {
   tabGroupOrderSchema,
   tabGroupUpdateSchema,
   taskCreateResultSchema,
-  taskContinuationStartSchema,
-  taskDetailSchema,
   taskImplementationDashboardSchema,
-  taskDraftUpdateSchema,
-  taskOperationStartSchema,
-  taskPlanUpdateSchema,
+  taskImplementationOpaqueDashboardSchema,
   terminalListSchema,
   terminalSummarySchema,
   tunnelAttachmentCreateResultSchema,
@@ -387,6 +383,13 @@ import {
   withQuery,
 } from "@/lib/api-client";
 import { getActiveServerUrl } from "@/lib/server-connections";
+import {
+  createInitialTaskOpaqueContent,
+  openTaskOpaqueSummary,
+  prepareTaskDraftPersistence,
+  prepareTaskEncryptedOperation,
+  prepareTaskPlanPersistence,
+} from "@/lib/task-persistence-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -2779,8 +2782,12 @@ export async function createTask(
   tabGroupId?: string,
   target?: ExecutionTarget,
 ) {
-  return taskCreateResultSchema.parse(
+  const chatId = crypto.randomUUID();
+  const task = await createInitialTaskOpaqueContent(chatId);
+  const created = taskCreateResultSchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
+      chatId,
+      task,
       title,
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
@@ -2788,18 +2795,26 @@ export async function createTask(
       ...(target ? { target } : {}),
     }),
   );
+  return {
+    chat: created.chat,
+    task: await openTaskOpaqueSummary(created.task),
+  };
 }
 
 export async function getTask(chatId: string) {
-  return taskDetailSchema.parse(
+  return openTaskOpaqueSummary(
     await request(`/api/tasks/${encodeURIComponent(chatId)}`),
   );
 }
 
 export async function getTaskImplementationDashboard(chatId: string) {
-  return taskImplementationDashboardSchema.parse(
+  const opaque = taskImplementationOpaqueDashboardSchema.parse(
     await request(`/api/tasks/${encodeURIComponent(chatId)}/dashboard`),
   );
+  return taskImplementationDashboardSchema.parse({
+    ...opaque,
+    task: await openTaskOpaqueSummary(opaque.task),
+  });
 }
 
 export async function getTaskAttachments(chatId: string) {
@@ -2808,12 +2823,52 @@ export async function getTaskAttachments(chatId: string) {
   );
 }
 
+function assertCurrentTaskVersion(
+  currentVersion: number,
+  expectedVersion: number,
+) {
+  if (currentVersion !== expectedVersion) {
+    throw new CantripApiError(
+      "The Task changed before this update was saved.",
+      409,
+    );
+  }
+}
+
 export async function updateTaskDraft(chatId: string, input: TaskDraftUpdate) {
-  return taskDetailSchema.parse(
+  const current = await getTask(chatId);
+  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  const mutation = await prepareTaskDraftPersistence(current, input);
+  return openTaskOpaqueSummary(
     await request(`/api/tasks/${encodeURIComponent(chatId)}/draft`, {
       method: "PATCH",
-      body: JSON.stringify(taskDraftUpdateSchema.parse(input)),
+      body: JSON.stringify(mutation),
     }),
+  );
+}
+
+async function sendEncryptedTaskOperation(
+  chatId: string,
+  path: "plan" | "continue" | "begin-implementation" | "retry",
+  input: TaskOperationStart | TaskContinuationStart,
+  kind: "initial-plan" | "continue-plan" | "finalize",
+) {
+  const current = await getTask(chatId);
+  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  const operation = await prepareTaskEncryptedOperation(current, {
+    kind,
+    operationId: input.operationId,
+    rowVersion: input.rowVersion,
+    ...(path === "continue" || path === "begin-implementation"
+      ? {
+          answers: (input as TaskContinuationStart).answers,
+          additionalDirection: (input as TaskContinuationStart)
+            .additionalDirection,
+        }
+      : {}),
+  });
+  return openTaskOpaqueSummary(
+    await post(`/api/tasks/${encodeURIComponent(chatId)}/${path}`, operation),
   );
 }
 
@@ -2821,19 +2876,17 @@ export async function startTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
 ) {
-  return taskDetailSchema.parse(
-    await post(
-      `/api/tasks/${encodeURIComponent(chatId)}/plan`,
-      taskOperationStartSchema.parse(input),
-    ),
-  );
+  return sendEncryptedTaskOperation(chatId, "plan", input, "initial-plan");
 }
 
 export async function updateTaskPlan(chatId: string, input: TaskPlanUpdate) {
-  return taskDetailSchema.parse(
+  const current = await getTask(chatId);
+  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  const mutation = await prepareTaskPlanPersistence(current, input);
+  return openTaskOpaqueSummary(
     await request(`/api/tasks/${encodeURIComponent(chatId)}/plan`, {
       method: "PATCH",
-      body: JSON.stringify(taskPlanUpdateSchema.parse(input)),
+      body: JSON.stringify(mutation),
     }),
   );
 }
@@ -2842,23 +2895,18 @@ export async function continueTaskPlanning(
   chatId: string,
   input: TaskContinuationStart,
 ) {
-  return taskDetailSchema.parse(
-    await post(
-      `/api/tasks/${encodeURIComponent(chatId)}/continue`,
-      taskContinuationStartSchema.parse(input),
-    ),
-  );
+  return sendEncryptedTaskOperation(chatId, "continue", input, "continue-plan");
 }
 
 export async function beginTaskImplementation(
   chatId: string,
   input: TaskContinuationStart,
 ) {
-  return taskDetailSchema.parse(
-    await post(
-      `/api/tasks/${encodeURIComponent(chatId)}/begin-implementation`,
-      taskContinuationStartSchema.parse(input),
-    ),
+  return sendEncryptedTaskOperation(
+    chatId,
+    "begin-implementation",
+    input,
+    "finalize",
   );
 }
 
@@ -2866,11 +2914,19 @@ export async function retryTaskPlanning(
   chatId: string,
   input: TaskOperationStart,
 ) {
-  return taskDetailSchema.parse(
-    await post(
-      `/api/tasks/${encodeURIComponent(chatId)}/retry`,
-      taskOperationStartSchema.parse(input),
-    ),
+  const current = await getTask(chatId);
+  assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
+  const kind = current.lastError?.operationKind;
+  if (!kind || kind === "implementation") {
+    throw new Error("This Task has no encrypted planning operation to retry.");
+  }
+  const operation = await prepareTaskEncryptedOperation(current, {
+    kind,
+    operationId: input.operationId,
+    rowVersion: input.rowVersion,
+  });
+  return openTaskOpaqueSummary(
+    await post(`/api/tasks/${encodeURIComponent(chatId)}/retry`, operation),
   );
 }
 

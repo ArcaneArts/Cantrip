@@ -695,6 +695,20 @@ export const taskGoalObjectiveProtectedContentSchema = z
   })
   .strict();
 
+export const taskOpaqueContentSchema = z
+  .object({
+    classification: taskProtectedClassificationSchema,
+    protectedContent: encryptedTaskProtectedContentSchema,
+  })
+  .strict();
+
+export const taskPlanningRoundOpaqueContentSchema = z
+  .object({
+    classification: taskPlanningRoundProtectedClassificationSchema,
+    protectedContent: encryptedTaskPlanningRoundProtectedContentSchema,
+  })
+  .strict();
+
 export const taskOperationRelayRequestSchema = z
   .object({
     chatId: z.string().min(1).max(200),
@@ -702,6 +716,7 @@ export const taskOperationRelayRequestSchema = z
     fingerprint: encryptionKeyBytesSchema,
     classification: taskPlanningRoundProtectedClassificationSchema,
     protectedInput: encryptedTaskPlanningRoundProtectedContentSchema,
+    task: taskOpaqueContentSchema,
   })
   .strict()
   .superRefine((value, context) => {
@@ -735,6 +750,7 @@ export const taskOperationRelayResultSchema = z
     fingerprint: encryptionKeyBytesSchema,
     classification: taskPlanningRoundProtectedClassificationSchema,
     protectedResult: encryptedTaskPlanningRoundProtectedContentSchema,
+    task: taskOpaqueContentSchema,
     goal: taskOperationRelayGoalSchema.nullable(),
   })
   .strict()
@@ -764,6 +780,101 @@ export const taskOperationRelayResultSchema = z
         path: ["goal", "classification"],
       });
     }
+    const expectedState = finalizing ? "implementing" : "review";
+    if (
+      value.task.classification.state !== expectedState ||
+      value.task.classification.stableStateBeforeFailure !== null ||
+      value.task.classification.activeOperationKind !== null ||
+      value.task.classification.planningRound !==
+        value.classification.ordinal ||
+      !value.task.classification.hasPlan ||
+      value.task.classification.hasQuestions !==
+        value.classification.hasOutputQuestions ||
+      value.task.classification.hasFinalPlan !== finalizing ||
+      value.task.classification.hasGoalPrompt !== finalizing ||
+      value.task.classification.lastError !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task result state is inconsistent.",
+        path: ["task", "classification"],
+      });
+    }
+  });
+
+export const taskOpaqueMutationSchema = z
+  .object({
+    rowVersion: z.number().int().positive(),
+    task: taskOpaqueContentSchema,
+    draftAttachmentIds: z
+      .array(z.string().min(1).max(200))
+      .max(100)
+      .refine((ids) => new Set(ids).size === ids.length, {
+        message: "Task attachment IDs must be unique.",
+      })
+      .optional(),
+  })
+  .strict();
+
+export const taskEncryptedOperationStartSchema = z
+  .object({
+    rowVersion: z.number().int().positive(),
+    operation: taskOperationRelayRequestSchema,
+    failure: z
+      .object({
+        task: taskOpaqueContentSchema,
+        round: taskPlanningRoundOpaqueContentSchema,
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const { classification } = value.operation;
+    const task = value.operation.task.classification;
+    const failedTask = value.failure.task.classification;
+    const failedRound = value.failure.round.classification;
+    const expectedRunningState =
+      classification.kind === "finalize" ? "finalizing" : "planning";
+    const expectedStableState =
+      classification.kind === "initial-plan" ? "draft" : "review";
+    if (
+      task.state !== expectedRunningState ||
+      task.stableStateBeforeFailure !== expectedStableState ||
+      task.activeOperationKind !== classification.kind ||
+      task.planningRound !== classification.ordinal ||
+      task.lastError !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task operation state is inconsistent.",
+        path: ["operation", "task", "classification"],
+      });
+    }
+    if (
+      failedTask.state !== "failed" ||
+      failedTask.stableStateBeforeFailure !== expectedStableState ||
+      failedTask.activeOperationKind !== null ||
+      failedTask.planningRound !== classification.ordinal ||
+      failedTask.lastError?.operationKind !== classification.kind
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task failure state is inconsistent.",
+        path: ["failure", "task", "classification"],
+      });
+    }
+    if (
+      failedRound.ordinal !== classification.ordinal ||
+      failedRound.kind !== classification.kind ||
+      failedRound.status !== "failed" ||
+      failedRound.error?.operationKind !== classification.kind
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted planning-round failure state is inconsistent.",
+        path: ["failure", "round", "classification"],
+      });
+    }
   });
 
 export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
@@ -783,6 +894,12 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
     updatedAt: z.iso.datetime(),
   })
   .strict();
+
+export const taskImplementationOpaqueDashboardSchema =
+  taskImplementationDashboardSchema
+    .omit({ task: true })
+    .extend({ task: taskOpaqueSummarySchema })
+    .strict();
 
 export const taskPlanningRoundOpaqueSummarySchema =
   taskPlanningRoundProtectedClassificationSchema
@@ -911,7 +1028,18 @@ export type TaskOperationRelayGoal = z.infer<
 export type TaskOperationRelayResult = z.infer<
   typeof taskOperationRelayResultSchema
 >;
+export type TaskOpaqueContent = z.infer<typeof taskOpaqueContentSchema>;
+export type TaskPlanningRoundOpaqueContent = z.infer<
+  typeof taskPlanningRoundOpaqueContentSchema
+>;
+export type TaskOpaqueMutation = z.infer<typeof taskOpaqueMutationSchema>;
+export type TaskEncryptedOperationStart = z.infer<
+  typeof taskEncryptedOperationStartSchema
+>;
 export type TaskOpaqueSummary = z.infer<typeof taskOpaqueSummarySchema>;
+export type TaskImplementationOpaqueDashboard = z.infer<
+  typeof taskImplementationOpaqueDashboardSchema
+>;
 export type TaskPlanningRoundOpaqueSummary = z.infer<
   typeof taskPlanningRoundOpaqueSummarySchema
 >;
