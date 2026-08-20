@@ -736,6 +736,13 @@
       "when": 1787186067225,
       "tag": "0104_short_mole_man",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1787200731683,
+      "tag": "0105_superb_energizer",
+      "breakpoints": true
     }
   ]
 }

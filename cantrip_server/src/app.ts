@@ -156,7 +156,7 @@ import {
   githubPullRequestLifecyclePreviewSchema,
   githubPullRequestReviewActionSchema,
   githubIssueStateSchema,
-  githubProjectCreateSchema,
+  encryptedGithubProjectCreateSchema,
   githubRepositoryCreateSchema,
   githubRepositoryListSchema,
   githubRepositoryOwnerListSchema,
@@ -274,10 +274,10 @@ import {
   mcpServerSummarySchema,
   mentionedSkillNames,
   managedFolderDeleteResultSchema,
-  managedFolderProjectCreateSchema,
+  encryptedManagedFolderProjectCreateSchema,
   orderedIdsSchema,
   operationalProbeSchema,
-  projectListSchema,
+  projectWireListSchema,
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
   projectGithubConversionJobSummarySchema,
@@ -300,7 +300,7 @@ import {
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectShareDirectCreateSchema,
-  projectSummarySchema,
+  projectWireSummarySchema,
   projectPreferredWorkerUpdateSchema,
   encryptedProjectWorkspaceCreateSchema,
   encryptedProjectWorkspaceUpdateSchema,
@@ -11434,7 +11434,7 @@ export async function buildApp({
 
   app.get("/api/projects", async (_request, reply) => {
     const projects = await repository.listProjects(applicationOwnerId());
-    return reply.send(projectListSchema.parse(projects));
+    return reply.send(projectWireListSchema.parse(projects));
   });
 
   app.post<{ Params: { projectId: string } }>(
@@ -14440,7 +14440,7 @@ export async function buildApp({
         input.data.workerId,
       );
       return project
-        ? reply.send(projectSummarySchema.parse(project))
+        ? reply.send(projectWireSummarySchema.parse(project))
         : reply.code(404).send({ error: "Project or worker not found." });
     },
   );
@@ -14458,7 +14458,7 @@ export async function buildApp({
         input.data,
       );
       return project
-        ? reply.send(projectSummarySchema.parse(project))
+        ? reply.send(projectWireSummarySchema.parse(project))
         : reply.code(404).send({ error: "Project not found." });
     },
   );
@@ -17416,7 +17416,9 @@ export async function buildApp({
   );
 
   app.post("/api/projects/from-folder", async (request, reply) => {
-    const input = managedFolderProjectCreateSchema.safeParse(request.body);
+    const input = encryptedManagedFolderProjectCreateSchema.safeParse(
+      request.body,
+    );
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -17449,7 +17451,9 @@ export async function buildApp({
         job: created.job,
       });
       projectFolderSetupJobExecutor.queueAvailable();
-      return reply.code(202).send(projectSummarySchema.parse(created.project));
+      return reply
+        .code(202)
+        .send(projectWireSummarySchema.parse(created.project));
     } catch (error) {
       if (error instanceof ProjectWorkspaceInvariantError) {
         return reply.code(400).send({ error: error.message });
@@ -17757,7 +17761,7 @@ export async function buildApp({
   );
 
   app.post("/api/projects/from-github", async (request, reply) => {
-    const input = githubProjectCreateSchema.safeParse(request.body);
+    const input = encryptedGithubProjectCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -17796,7 +17800,7 @@ export async function buildApp({
         job,
       });
       projectReplicaJobExecutor.queueAvailable();
-      return reply.code(202).send(projectSummarySchema.parse(project));
+      return reply.code(202).send(projectWireSummarySchema.parse(project));
     } catch (error) {
       if (error instanceof ProjectWorkspaceInvariantError) {
         return reply.code(400).send({ error: error.message });
@@ -19060,7 +19064,6 @@ export async function buildApp({
             sessionId: session.id,
             codeTabId: context.codeTab.id,
             projectId: context.codeTab.projectId,
-            projectName: context.projectName,
             worktreeId: context.worktreeId,
             worktreeName: context.worktreeName,
             cwd: context.cwd,

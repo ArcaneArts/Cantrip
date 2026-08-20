@@ -17,6 +17,8 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-remote-desktop-fleet-api-"),
 );
@@ -130,6 +132,7 @@ beforeAll(async () => {
   }
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "primary-worker",
+    ...protectedProjectFields(),
     repositoryId: "remote-desktop-fleet-api",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

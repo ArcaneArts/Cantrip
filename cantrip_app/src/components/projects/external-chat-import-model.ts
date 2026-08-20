@@ -92,7 +92,6 @@ export function filterExternalChatImportCandidates(
       thread.preview,
       thread.cwd,
       thread.modelProvider,
-      thread.existingImport?.projectName,
       thread.git?.branch,
       thread.git?.originUrl,
     ].some((value) => value?.toLowerCase().includes(normalized)),

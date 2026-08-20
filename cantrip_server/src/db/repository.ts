@@ -7,6 +7,7 @@ import {
   isManagedCodeGraphMcpName,
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
+  projectWireSummarySchema,
   taskMessageOpaqueContentSchema,
   taskMessageOpaqueSummarySchema,
   unavailableCodeCapabilities,
@@ -64,8 +65,8 @@ import type {
   ExecutionTarget,
   ExecutionTargetCatalog,
   ExecutionTargetResolution,
-  GithubProjectCreate,
-  ManagedFolderProjectCreate,
+  EncryptedGithubProjectCreate,
+  EncryptedManagedFolderProjectCreate,
   GitManagedOperationContext,
   GitManagedOperationRecord,
   GitManagedOperationWorkerState,
@@ -104,7 +105,7 @@ import type {
   ProjectCloneResult,
   ProjectFolderSetupJobSummary,
   ProjectReplicaSummary,
-  ProjectSummary,
+  ProjectWireSummary,
   ProjectTokenUsage,
   ProviderTelemetryAnalytics,
   ProviderTelemetryDeleteResult,
@@ -457,8 +458,8 @@ export interface ProjectRemovalContext {
     projectSourceId: string;
     workerId: string;
   } | null;
-  folderManagement: ProjectSummary["folderManagement"];
-  originKind: ProjectSummary["originKind"];
+  folderManagement: ProjectWireSummary["folderManagement"];
+  originKind: ProjectWireSummary["originKind"];
   preferredWorkerId: string | null;
   replicas: Array<{
     cwd: string;
@@ -466,7 +467,7 @@ export interface ProjectRemovalContext {
     workerId: string;
   }>;
   remoteSurfaces: RemoteSurfaceSummary[];
-  setupStatus: ProjectSummary["setupStatus"];
+  setupStatus: ProjectWireSummary["setupStatus"];
   terminals: Array<{
     id: string;
     workerId: string;
@@ -549,7 +550,6 @@ export interface CodeTabExecutionContext {
   capabilities: CodeCapabilities;
   codeTab: CodeTabSummary;
   cwd: string;
-  projectName: string;
   workerId: string;
   worktreeId: string;
   worktreeName: string;
@@ -906,10 +906,10 @@ function toAuditEvent(event: AuditEventRow): AuditEvent {
   };
 }
 
-function toProjectSummary(
+function toProjectWireSummary(
   project: ProjectRow,
   replicas: ProjectReplicaSummary[] = [],
-): ProjectSummary {
+): ProjectWireSummary {
   const github =
     project.githubRepositoryId &&
     project.githubRepositoryFullName &&
@@ -921,16 +921,17 @@ function toProjectSummary(
         }
       : null;
 
-  return {
+  return projectWireSummarySchema.parse({
     id: project.id,
-    name: project.name,
+    nameProtection: project.protectedLabel,
     position: project.position,
     originKind: project.originKind,
     folderManagement: project.folderManagement,
     capabilities: projectCapabilitiesForOriginKind(project.originKind),
-    setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
+    setupStatus: project.setupStatus as ProjectWireSummary["setupStatus"],
     setupError: project.setupError,
-    worktreePolicy: project.worktreePolicy as ProjectSummary["worktreePolicy"],
+    worktreePolicy:
+      project.worktreePolicy as ProjectWireSummary["worktreePolicy"],
     preferredWorkerId: project.preferredWorkerId,
     github,
     source: replicas[0]
@@ -945,7 +946,7 @@ function toProjectSummary(
     replicas,
     createdAt: toISOString(project.createdAt),
     updatedAt: toISOString(project.updatedAt),
-  };
+  });
 }
 
 function toTunnelAttachmentSummary(
@@ -6994,7 +6995,7 @@ export class ServerRepository {
             .select({
               projectReplicaId: schema.projectSources.id,
               projectId: schema.projects.id,
-              nameWithOwner: sql<string>`coalesce(${schema.projects.githubRepositoryFullName}, ${schema.projects.name})`,
+              nameWithOwner: sql<string>`coalesce(${schema.projects.githubRepositoryFullName}, ${schema.projectSources.displayPath})`,
               displayPath: schema.projectSources.displayPath,
             })
             .from(schema.projectSources)
@@ -8178,7 +8179,7 @@ export class ServerRepository {
     return replicasByProject;
   }
 
-  async listProjects(ownerId: string): Promise<ProjectSummary[]> {
+  async listProjects(ownerId: string): Promise<ProjectWireSummary[]> {
     const projects = await this.database
       .select()
       .from(schema.projects)
@@ -8189,14 +8190,14 @@ export class ServerRepository {
       projects.map(({ id }) => id),
     );
     return projects.map((project) =>
-      toProjectSummary(project, replicasByProject.get(project.id) ?? []),
+      toProjectWireSummary(project, replicasByProject.get(project.id) ?? []),
     );
   }
 
   async getProject(
     ownerId: string,
     projectId: string,
-  ): Promise<ProjectSummary | null> {
+  ): Promise<ProjectWireSummary | null> {
     const projects = await this.database
       .select()
       .from(schema.projects)
@@ -8209,7 +8210,7 @@ export class ServerRepository {
       .limit(1);
     const project = projects[0];
     if (!project) return null;
-    return toProjectSummary(
+    return toProjectWireSummary(
       project,
       (await this.listProjectReplicas(ownerId, projectId)) ?? [],
     );
@@ -8916,7 +8917,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
     input: ProjectWorktreePolicyUpdate,
-  ): Promise<ProjectSummary | null> {
+  ): Promise<ProjectWireSummary | null> {
     const rows = await this.database
       .update(schema.projects)
       .set({ worktreePolicy: input.policy, updatedAt: new Date() })
@@ -8928,7 +8929,7 @@ export class ServerRepository {
       )
       .returning();
     if (!rows[0]) return null;
-    return toProjectSummary(
+    return toProjectWireSummary(
       rows[0],
       (await this.listProjectReplicas(ownerId, projectId)) ?? [],
     );
@@ -8938,7 +8939,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
     workerId: string | null,
-  ): Promise<ProjectSummary | null> {
+  ): Promise<ProjectWireSummary | null> {
     if (workerId && !(await this.getWorker(ownerId, workerId))) {
       return null;
     }
@@ -8953,7 +8954,7 @@ export class ServerRepository {
       )
       .returning();
     if (!rows[0]) return null;
-    return toProjectSummary(
+    return toProjectWireSummary(
       rows[0],
       (await this.listProjectReplicas(ownerId, projectId)) ?? [],
     );
@@ -11658,8 +11659,8 @@ export class ServerRepository {
 
   async createGithubProject(
     ownerId: string,
-    input: GithubProjectCreate,
-  ): Promise<ProjectSummary> {
+    input: EncryptedGithubProjectCreate,
+  ): Promise<ProjectWireSummary> {
     const defaultWorkspace = await this.ensureDefaultProjectWorkspace(ownerId);
     const workspaceIds = [
       ...new Set(input.workspaceIds ?? [defaultWorkspace.id]),
@@ -11688,9 +11689,9 @@ export class ServerRepository {
       const projectResult = await transaction
         .insert(schema.projects)
         .values({
-          id: randomUUID(),
+          id: input.id,
           ownerId,
-          name: input.nameWithOwner.split("/")[1] ?? input.nameWithOwner,
+          protectedLabel: input.nameProtection,
           position: (lastProjects[0]?.position ?? -1) + 1,
           originKind: "github",
           setupStatus: "cloning",
@@ -11709,15 +11710,15 @@ export class ServerRepository {
       );
       return created;
     });
-    return toProjectSummary(project);
+    return toProjectWireSummary(project);
   }
 
   async createManagedFolderProject(
     ownerId: string,
-    input: ManagedFolderProjectCreate,
+    input: EncryptedManagedFolderProjectCreate,
   ): Promise<{
     job: ProjectFolderSetupJobSummary;
-    project: ProjectSummary;
+    project: ProjectWireSummary;
   }> {
     const defaultWorkspace = await this.ensureDefaultProjectWorkspace(ownerId);
     const workspaceIds = [
@@ -11737,7 +11738,7 @@ export class ServerRepository {
         "Folder project creation referenced an unknown workspace.",
       );
     }
-    const projectId = randomUUID();
+    const projectId = input.id;
     const jobId = randomUUID();
     const project = await this.database.transaction(async (transaction) => {
       const workers = await transaction
@@ -11765,7 +11766,7 @@ export class ServerRepository {
         .values({
           id: projectId,
           ownerId,
-          name: input.name,
+          protectedLabel: input.nameProtection,
           position: (lastProjects[0]?.position ?? -1) + 1,
           originKind: "managed-folder",
           folderManagement: input.existingPath ? "external" : "managed",
@@ -11795,7 +11796,7 @@ export class ServerRepository {
     });
     const job = await this.projectFolderSetupJobs.get(ownerId, projectId);
     if (!job) throw new Error("Folder setup job was not created.");
-    return { job, project: toProjectSummary(project) };
+    return { job, project: toProjectWireSummary(project) };
   }
 
   async completeGithubProjectSetup(
@@ -11803,7 +11804,7 @@ export class ServerRepository {
     projectId: string,
     workerId: string,
     clone: ProjectCloneResult,
-  ): Promise<ProjectSummary | null> {
+  ): Promise<ProjectWireSummary | null> {
     const completed = await this.database.transaction(async (transaction) => {
       const projectRows = await transaction
         .select()
@@ -11854,7 +11855,7 @@ export class ServerRepository {
       return firstOrThrow(projectResult, "completing project setup");
     });
     return completed
-      ? toProjectSummary(
+      ? toProjectWireSummary(
           completed,
           (await this.listProjectReplicas(ownerId, projectId)) ?? [],
         )
@@ -11949,7 +11950,7 @@ export class ServerRepository {
       remoteSurfaces: remoteSurfaces.map(({ surface }) =>
         toRemoteSurfaceSummary(surface),
       ),
-      setupStatus: project.setupStatus as ProjectSummary["setupStatus"],
+      setupStatus: project.setupStatus as ProjectWireSummary["setupStatus"],
       terminals,
     };
   }
@@ -12720,7 +12721,6 @@ export class ServerRepository {
     const rows = await this.database
       .select({
         codeTab: schema.codeTabs,
-        projectName: schema.projects.name,
         worktree: schema.projectWorktrees,
         codeCapabilities: schema.workers.codeCapabilities,
       })
@@ -12748,7 +12748,6 @@ export class ServerRepository {
           capabilities: row.codeCapabilities,
           codeTab: toCodeTabSummary(row.codeTab),
           cwd: row.worktree.absolutePath,
-          projectName: row.projectName,
           workerId: row.codeTab.activeWorkerId,
           worktreeId: row.worktree.id,
           worktreeName: row.worktree.name,

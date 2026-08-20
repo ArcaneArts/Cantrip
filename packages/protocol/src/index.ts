@@ -52,6 +52,7 @@ import {
   workerEncryptionRefreshRequestSchema,
   workerEncryptionStatusSchema,
 } from "./encryption.js";
+import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
@@ -2206,12 +2207,28 @@ export const githubProjectCreateSchema = z.object({
   workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
 });
 
+export const encryptedGithubProjectCreateSchema = githubProjectCreateSchema
+  .extend({
+    id: z.string().uuid(),
+    nameProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict();
+
 export const managedFolderProjectCreateSchema = z.object({
   name: z.string().trim().min(1).max(120),
   workerId: z.string().min(1),
   existingPath: z.string().trim().min(1).max(8_192).optional(),
   workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
 });
+
+export const encryptedManagedFolderProjectCreateSchema =
+  managedFolderProjectCreateSchema
+    .omit({ name: true })
+    .extend({
+      id: z.string().uuid(),
+      nameProtection: privateDisplayLabelOpaqueSchema,
+    })
+    .strict();
 
 export const projectWorkspaceCreateSchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -2736,57 +2753,79 @@ export const projectSetupStatusSchema = z.enum([
   "failed",
 ]);
 
-export const projectSummarySchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    position: z.number().int().nonnegative(),
-    originKind: projectOriginKindSchema.default("github"),
-    folderManagement: projectFolderManagementSchema.nullable().optional(),
-    capabilities: projectCapabilitiesSchema.default(
-      projectCapabilitiesForOriginKind("github"),
-    ),
-    setupStatus: projectSetupStatusSchema,
-    setupError: z.string().min(1).nullable(),
-    worktreePolicy: worktreePolicySchema,
-    preferredWorkerId: z.string().min(1).nullable().optional(),
-    github: z
-      .object({
-        repositoryId: z.string().min(1),
-        nameWithOwner: z.string().min(1),
-        url: z.url(),
-      })
-      .nullable(),
-    source: projectSourceSummarySchema.nullable(),
-    replicas: projectReplicaListSchema.default([]),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .superRefine((project, context) => {
-    if (
-      (project.originKind === "github" && project.folderManagement != null) ||
-      (project.originKind === "managed-folder" &&
-        project.folderManagement === null)
-    ) {
+const projectSummaryBaseSchema = z.object({
+  id: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  originKind: projectOriginKindSchema.default("github"),
+  folderManagement: projectFolderManagementSchema.nullable().optional(),
+  capabilities: projectCapabilitiesSchema.default(
+    projectCapabilitiesForOriginKind("github"),
+  ),
+  setupStatus: projectSetupStatusSchema,
+  setupError: z.string().min(1).nullable(),
+  worktreePolicy: worktreePolicySchema,
+  preferredWorkerId: z.string().min(1).nullable().optional(),
+  github: z
+    .object({
+      repositoryId: z.string().min(1),
+      nameWithOwner: z.string().min(1),
+      url: z.url(),
+    })
+    .nullable(),
+  source: projectSourceSummarySchema.nullable(),
+  replicas: projectReplicaListSchema.default([]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+function refineProjectSummary(
+  project: z.infer<typeof projectSummaryBaseSchema>,
+  context: z.RefinementCtx,
+): void {
+  if (
+    (project.originKind === "github" && project.folderManagement != null) ||
+    (project.originKind === "managed-folder" &&
+      project.folderManagement === null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "folder management must match the project origin",
+      path: ["folderManagement"],
+    });
+  }
+  const expected = projectCapabilitiesForOriginKind(project.originKind);
+  for (const capability of projectCapabilitySchema.options) {
+    if (project.capabilities[capability] !== expected[capability]) {
       context.addIssue({
         code: "custom",
-        message: "folder management must match the project origin",
-        path: ["folderManagement"],
+        message: `${capability} capability does not match ${project.originKind} origin`,
+        path: ["capabilities", capability],
       });
     }
-    const expected = projectCapabilitiesForOriginKind(project.originKind);
-    for (const capability of projectCapabilitySchema.options) {
-      if (project.capabilities[capability] !== expected[capability]) {
-        context.addIssue({
-          code: "custom",
-          message: `${capability} capability does not match ${project.originKind} origin`,
-          path: ["capabilities", capability],
-        });
-      }
+  }
+}
+
+export const projectSummarySchema = projectSummaryBaseSchema
+  .extend({ name: z.string().min(1).max(1_000) })
+  .strict()
+  .superRefine(refineProjectSummary);
+
+export const projectWireSummarySchema = projectSummaryBaseSchema
+  .extend({ nameProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .superRefine((project, context) => {
+    refineProjectSummary(project, context);
+    if (project.nameProtection.classification.recordKind !== "project") {
+      context.addIssue({
+        code: "custom",
+        message: "Project display-label classification must be project.",
+        path: ["nameProtection", "classification", "recordKind"],
+      });
     }
   });
 
 export const projectListSchema = z.array(projectSummarySchema);
+export const projectWireListSchema = z.array(projectWireSummarySchema);
 
 export const projectPreferredWorkerUpdateSchema = z.object({
   workerId: z.string().min(1).nullable(),
@@ -8070,7 +8109,6 @@ export const chatImportStateSchema = z.enum([
 export const externalChatImportReferenceSchema = z.object({
   jobId: z.string().uuid(),
   projectId: z.string().min(1).max(200),
-  projectName: z.string().min(1).max(200),
   chatId: z.string().min(1).max(200).nullable(),
   state: chatImportStateSchema,
 });
@@ -8815,7 +8853,6 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     projectId: z.string().uuid(),
-    displayName: z.string().trim().min(1).max(120),
     existingPath: z.string().trim().min(1).max(8_192).optional(),
   }),
   z.object({
@@ -9361,7 +9398,6 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1),
     codeTabId: z.string().min(1),
     projectId: z.string().min(1),
-    projectName: z.string().trim().min(1).max(200).optional(),
     worktreeId: z.string().min(1),
     worktreeName: z.string().trim().min(1).max(200).optional(),
     cwd: z.string().min(1),
@@ -10242,6 +10278,7 @@ export type ProjectCapabilityUnavailableError = z.infer<
   typeof projectCapabilityUnavailableErrorSchema
 >;
 export type ProjectSummary = z.infer<typeof projectSummarySchema>;
+export type ProjectWireSummary = z.infer<typeof projectWireSummarySchema>;
 export type ProjectPreferredWorkerUpdate = z.infer<
   typeof projectPreferredWorkerUpdateSchema
 >;
@@ -10482,8 +10519,14 @@ export type GithubWorkerRepository = z.infer<
   typeof githubWorkerRepositorySchema
 >;
 export type GithubProjectCreate = z.infer<typeof githubProjectCreateSchema>;
+export type EncryptedGithubProjectCreate = z.infer<
+  typeof encryptedGithubProjectCreateSchema
+>;
 export type ManagedFolderProjectCreate = z.infer<
   typeof managedFolderProjectCreateSchema
+>;
+export type EncryptedManagedFolderProjectCreate = z.infer<
+  typeof encryptedManagedFolderProjectCreateSchema
 >;
 export type ProjectCloneResult = z.infer<typeof projectCloneResultSchema>;
 export type ManagedFolderMaterializeReady = z.infer<

@@ -243,7 +243,6 @@ import {
   createTask,
   createChatConsole,
   createExplorer,
-  createGithubProject,
   createProjectWorktree,
   createProjectView,
   createRemoteDesktop,
@@ -275,7 +274,6 @@ import {
   getGithubStatus,
   getMessages,
   getAgentInteractionRequests,
-  getProjects,
   getProjectReplicaJobs,
   getProjectFolderSetupJob,
   getProjectTabLayout,
@@ -333,6 +331,7 @@ import {
   createProjectWorkspace,
   getProjectWorkspaces,
 } from "@/lib/workspace-encryption";
+import { createGithubProject, getProjects } from "@/lib/project-encryption";
 import {
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,

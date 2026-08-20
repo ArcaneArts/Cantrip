@@ -22,6 +22,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { WorkerBridge, WorkerUnavailableError } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const origin = "https://app.cantrip.test";
 const bootstrapToken = "worker-enrollment-bootstrap-token-123456";
 const password = "correct horse battery staple";
@@ -558,6 +560,7 @@ describe("per-worker enrollment credentials", () => {
         registered.json().currentUser.id as string,
         {
           workerId: "worker-one",
+          ...protectedProjectFields(),
           repositoryId: "worker-reenrollment-project",
           nameWithOwner: "ArcaneArts/Cantrip",
           url: "https://github.com/ArcaneArts/Cantrip",

@@ -319,7 +319,7 @@ export class CodeSupervisor {
         profileId: command.profileId,
         profileKey,
         projectId: command.projectId,
-        projectName: command.projectName ?? path.basename(cwd),
+        projectName: path.basename(cwd),
         sessionId: command.sessionId,
         startedAt: null,
         status: "starting",
@@ -349,7 +349,6 @@ export class CodeSupervisor {
     session.appearance = command.appearance;
     session.themeMode = "follow-cantrip";
     session.profileId = command.profileId;
-    session.projectName = command.projectName ?? session.projectName;
     session.worktreeName = command.worktreeName ?? session.worktreeName;
     session.lastActivityAt = isoNow();
     session.lastError = null;

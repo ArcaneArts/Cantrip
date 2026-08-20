@@ -15,6 +15,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { DEFAULT_MODEL_ROUTE_ID, LOCAL_USER_ID } from "../src/db/repository.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-workflow-run-api-"),
 );
@@ -77,6 +79,7 @@ beforeAll(async () => {
   );
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
+    ...protectedProjectFields(),
     repositoryId: "workflow-run-repository",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

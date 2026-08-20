@@ -10,6 +10,8 @@ import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const key = (fill: number) => Buffer.alloc(32, fill);
 
@@ -29,6 +31,7 @@ describe("MCP secret persistence", () => {
         LOCAL_USER_ID,
         {
           workerId: "worker-1",
+          ...protectedProjectFields(),
           repositoryId: "repo-source",
           nameWithOwner: "ArcaneArts/Cantrip",
           url: "https://github.com/ArcaneArts/Cantrip",
@@ -38,6 +41,7 @@ describe("MCP secret persistence", () => {
         LOCAL_USER_ID,
         {
           workerId: "worker-1",
+          ...protectedProjectFields(),
           repositoryId: "repo-target",
           nameWithOwner: "ArcaneArts/Iris",
           url: "https://github.com/ArcaneArts/Iris",

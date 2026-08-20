@@ -35,11 +35,11 @@ import {
   deleteProjectMcpServer,
   getGlobalMcpServers,
   getProjectMcpServers,
-  getProjects,
   getWorkers,
   updateGlobalMcpServer,
   updateProjectMcpServer,
 } from "@/lib/api";
+import { getProjects } from "@/lib/project-encryption";
 import { cn } from "@/lib/utils";
 import { errorMessage as errorText } from "@/lib/error-message";
 

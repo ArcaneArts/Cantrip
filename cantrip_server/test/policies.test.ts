@@ -13,6 +13,8 @@ import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 async function fixture() {
@@ -305,6 +307,7 @@ describe("policy persistence", () => {
 
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "not-needed-for-concurrency",
+        ...protectedProjectFields(),
         repositoryId: "concurrent-policy-project",
         nameWithOwner: "ArcaneArts/ConcurrentPolicyProject",
         url: "https://github.com/ArcaneArts/ConcurrentPolicyProject",
@@ -379,6 +382,7 @@ describe("policy persistence", () => {
       );
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "not-needed-for-persistence",
+        ...protectedProjectFields(),
         repositoryId: "policy-project",
         nameWithOwner: "ArcaneArts/PolicyProject",
         url: "https://github.com/ArcaneArts/PolicyProject",
@@ -478,6 +482,7 @@ describe("policy persistence", () => {
 
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "not-needed-for-persistence",
+        ...protectedProjectFields(),
         repositoryId: "private-policy-project",
         nameWithOwner: "ArcaneArts/PrivatePolicyProject",
         url: "https://github.com/ArcaneArts/PrivatePolicyProject",

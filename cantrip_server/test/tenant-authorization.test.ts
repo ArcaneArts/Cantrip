@@ -8,6 +8,8 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const origin = "https://app.cantrip.test";
 const password = "correct horse battery staple";
 const dataDirectories: string[] = [];
@@ -160,6 +162,7 @@ describe("hosted tenant authorization", () => {
       const project = await database.repository.createGithubProject(
         first.userId,
         {
+          ...protectedProjectFields(),
           repositoryId: "private-project-one",
           nameWithOwner: "first/private-project",
           url: "https://github.com/first/private-project.git",

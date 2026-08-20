@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   agentInteractionRequestListSchema,
   appLiveServerMessageSchema,
-  projectSummarySchema,
+  projectWireSummarySchema,
   type AppLiveServerMessage,
   type WorkerCommand,
   type WorkerWorktreeSummary,
@@ -29,6 +29,7 @@ import type {
   WorkerRequestOptions,
 } from "../src/workers/bridge.js";
 import { WorkerUnavailableError } from "../src/workers/bridge.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-workflow-execution-"),
@@ -1690,10 +1691,10 @@ describe.sequential("single-agent workflow execution", () => {
       const createFolderResponse = await app.inject({
         method: "POST",
         url: "/api/projects/from-folder",
-        payload: { name: "Workflow scratch", workerId: "test-worker" },
+        payload: { ...protectedProjectFields(), workerId: "test-worker" },
       });
       expect(createFolderResponse.statusCode).toBe(202);
-      const folderProject = projectSummarySchema.parse(
+      const folderProject = projectWireSummarySchema.parse(
         createFolderResponse.json(),
       );
       projectId = folderProject.id;

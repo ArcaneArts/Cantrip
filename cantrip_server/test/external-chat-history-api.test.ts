@@ -25,6 +25,7 @@ import {
   LOCAL_USER_ID,
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-external-chat-history-api-"),
@@ -351,6 +352,7 @@ beforeAll(async () => {
   await recordWorker("legacy-worker", "Legacy Worker", false);
   await recordWorker("unrelated-worker", "Unrelated Worker", true);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
+    ...protectedProjectFields(),
     workerId: "local-worker",
     repositoryId: "external-chat-history-api",
     nameWithOwner: "ArcaneArts/Cantrip",
@@ -631,7 +633,6 @@ describe.sequential("external Codex chat history discovery API", () => {
         ?.sources[0]?.threads[0]?.existingImport,
     ).toMatchObject({
       projectId,
-      projectName: "Cantrip",
       chatId: expect.any(String),
       state: "succeeded",
     });

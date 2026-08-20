@@ -7,8 +7,8 @@ import {
   projectFolderSetupJobSummarySchema,
   projectGithubConversionJobSummarySchema,
   projectGithubConversionPreflightResultSchema,
-  projectListSchema,
-  projectSummarySchema,
+  projectWireListSchema,
+  projectWireSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -28,6 +28,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-project-folder-api-"),
@@ -240,14 +241,14 @@ afterAll(async () => {
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
-async function createFolder(name = "Scratch prototype") {
+async function createFolder(_name = "Scratch prototype") {
   const response = await app.inject({
     method: "POST",
     url: "/api/projects/from-folder",
-    payload: { name, workerId: "folder-worker" },
+    payload: { ...protectedProjectFields(), workerId: "folder-worker" },
   });
   expect(response.statusCode).toBe(202);
-  return projectSummarySchema.parse(response.json());
+  return projectWireSummarySchema.parse(response.json());
 }
 
 async function waitUntilReady(projectId: string) {
@@ -256,7 +257,7 @@ async function waitUntilReady(projectId: string) {
       method: "GET",
       url: "/api/projects",
     });
-    const project = projectListSchema
+    const project = projectWireListSchema
       .parse(response.json())
       .find(({ id }) => id === projectId)!;
     expect(project.setupStatus).toBe("ready");
@@ -272,12 +273,12 @@ describe("managed folder project lifecycle", () => {
       url: "/api/projects/from-folder",
       payload: {
         existingPath,
-        name: "Existing project",
+        ...protectedProjectFields(),
         workerId: "folder-worker",
       },
     });
     expect(response.statusCode).toBe(202);
-    const created = projectSummarySchema.parse(response.json());
+    const created = projectWireSummarySchema.parse(response.json());
     expect(created.folderManagement).toBe("external");
     const ready = await waitUntilReady(created.id);
     expect(ready).toMatchObject({
@@ -344,7 +345,7 @@ describe("managed folder project lifecycle", () => {
     const second = await createFolder();
     expect(first.id).not.toBe(second.id);
     expect(first).toMatchObject({
-      name: "Scratch prototype",
+      nameProtection: { classification: { recordKind: "project" } },
       originKind: "managed-folder",
       setupStatus: "preparing",
       capabilities: {
@@ -408,7 +409,7 @@ describe("managed folder project lifecycle", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/projects/from-folder",
-      payload: { name: "Legacy", workerId: "legacy-worker" },
+      payload: { ...protectedProjectFields(), workerId: "legacy-worker" },
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({
@@ -420,7 +421,7 @@ describe("managed folder project lifecycle", () => {
     const unknownWorker = await app.inject({
       method: "POST",
       url: "/api/projects/from-folder",
-      payload: { name: "Unknown worker", workerId: "missing-worker" },
+      payload: { ...protectedProjectFields(), workerId: "missing-worker" },
     });
     expect(unknownWorker.statusCode).toBe(404);
     expect(unknownWorker.json()).toEqual({ error: "Worker not found." });
@@ -429,7 +430,7 @@ describe("managed folder project lifecycle", () => {
       method: "POST",
       url: "/api/projects/from-folder",
       payload: {
-        name: "Unknown workspace",
+        ...protectedProjectFields(),
         workerId: "folder-worker",
         workspaceIds: ["019fe8aa-a7a3-7404-8a96-d3be7f0fb999"],
       },
@@ -668,7 +669,7 @@ describe("managed folder project lifecycle", () => {
       expect(job.error?.code).toBe("worker-offline");
       return job;
     });
-    const durable = projectListSchema
+    const durable = projectWireListSchema
       .parse(
         (
           await app.inject({
@@ -1135,7 +1136,7 @@ describe("managed folder project lifecycle", () => {
     const projects = await app.inject({ method: "GET", url: "/api/projects" });
     expect(projects.statusCode).toBe(200);
     expect(
-      projectListSchema
+      projectWireListSchema
         .parse(projects.json())
         .find(({ id }) => id === project.id),
     ).toMatchObject({ id: project.id, source: ready.source });

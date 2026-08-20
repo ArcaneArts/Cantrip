@@ -17,6 +17,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-policy-api-"));
 const config: ServerConfig = {
   agentModel: "gemma4:26b",
@@ -260,6 +262,7 @@ describe.sequential("policy API", () => {
       LOCAL_USER_ID,
       {
         workerId: "policy-api-worker",
+        ...protectedProjectFields(),
         repositoryId: "policy-api-project",
         nameWithOwner: "ArcaneArts/PolicyApiProject",
         url: "https://github.com/ArcaneArts/PolicyApiProject",

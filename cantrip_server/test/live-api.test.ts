@@ -23,6 +23,8 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-live-api-"));
 const config: ServerConfig = {
   agentModel: "gemma4:26b",
@@ -119,6 +121,7 @@ beforeAll(async () => {
   await database.repository.recordWorker(LOCAL_USER_ID, liveTestHeartbeat);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "live-test-worker",
+    ...protectedProjectFields(),
     repositoryId: "live-test-repository",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

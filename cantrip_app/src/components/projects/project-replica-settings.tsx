@@ -34,9 +34,9 @@ import {
   removeProjectReplica,
   retryProjectReplicaJob,
   synchronizeProjectReplica,
-  updateProjectPreferredWorker,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { updateProjectPreferredWorker } from "@/lib/project-encryption";
 import { cn } from "@/lib/utils";
 
 const selectClass =

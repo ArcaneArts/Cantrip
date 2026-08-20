@@ -15,6 +15,8 @@ import {
   LOCAL_USER_ID,
 } from "../src/db/repository.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-jobs-"),
 );
@@ -139,6 +141,7 @@ beforeAll(async () => {
   }
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "worker-alpha",
+    ...protectedProjectFields(),
     repositoryId: "chat-relocation-project",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

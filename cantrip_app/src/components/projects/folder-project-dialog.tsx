@@ -18,7 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { createManagedFolderProject } from "@/lib/api";
+import { createManagedFolderProject } from "@/lib/project-encryption";
 import { listDesktopWorkers } from "@/lib/desktop-worker";
 import { pickLocalFolder } from "@/lib/desktop-folder-picker";
 import { errorMessage } from "@/lib/error-message";

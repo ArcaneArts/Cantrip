@@ -27,7 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { getProjects } from "@/lib/api";
+import { getProjects } from "@/lib/project-encryption";
 import {
   createProjectWorkspace,
   deleteProjectWorkspace,

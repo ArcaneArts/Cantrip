@@ -496,10 +496,7 @@ export class ChatImportJobRepository {
     const workerIds = [...new Set(sourceWorkerIds)];
     if (workerIds.length === 0) return [];
     const rows = await this.database
-      .select({
-        job: schema.chatImportJobs,
-        projectName: schema.projects.name,
-      })
+      .select({ job: schema.chatImportJobs })
       .from(schema.chatImportJobs)
       .innerJoin(
         schema.projects,
@@ -514,7 +511,7 @@ export class ChatImportJobRepository {
           inArray(schema.chatImportJobs.sourceWorkerId, workerIds),
         ),
       );
-    return rows.map(({ job, projectName }) => ({
+    return rows.map(({ job }) => ({
       sourceKind: job.sourceKind,
       sourceWorkerId: job.sourceWorkerId,
       sourceId: job.sourceId,
@@ -522,7 +519,6 @@ export class ChatImportJobRepository {
       reference: externalChatImportReferenceSchema.parse({
         jobId: job.id,
         projectId: job.projectId,
-        projectName,
         chatId: job.chatId,
         state: job.state,
       }),
