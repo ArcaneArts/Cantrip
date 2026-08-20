@@ -98,11 +98,11 @@ import type {
   QueuedPromptUpdate,
   ReasoningEffort,
   RemoteDesktopWireSummary,
-  RemoteDesktopTarget,
   RemoteSurfaceCapabilities,
   EncryptedRemoteSurfaceCreate,
   RemoteSurfaceStatus,
   RemoteSurfaceWireSummary,
+  SurfacePrivateStateOpaque,
   EncryptedRemoteSurfaceUpdate,
   ProjectCloneResult,
   ProjectFolderSetupJobSummary,
@@ -1771,6 +1771,9 @@ function toRemoteSurfaceWireSummary(
   if (!titleProtection) {
     throw new Error("Remote Surface is missing its canonical protected label.");
   }
+  if (!stateProtection || !stateRevision) {
+    throw new Error("Remote Surface is missing its canonical protected state.");
+  }
   return {
     id: surface.id,
     projectId: surface.projectId,
@@ -1799,17 +1802,17 @@ function toRemoteDesktopWireSummary(
   if (surface.configuration.kind !== "desktop") {
     throw new Error("Remote Desktop is not backed by a desktop surface.");
   }
+  if (!surface.protectedState || !surface.stateRevision) {
+    throw new Error("Remote Desktop is missing its protected target state.");
+  }
   return {
     id: view.id,
     projectId: view.projectId,
     titleProtection: view.protectedLabel,
     position: view.position,
     workerId: surface.workerId,
-    target: surface.configuration.target ?? {
-      kind: "monitor",
-      id: null,
-      name: null,
-    },
+    stateProtection: surface.protectedState,
+    stateRevision: surface.stateRevision,
     status: surface.status as RemoteDesktopWireSummary["status"],
     lastError: surface.lastError,
     createdAt: toISOString(view.createdAt),
@@ -13350,7 +13353,11 @@ export class ServerRepository {
       !context ||
       (input.configuration &&
         input.configuration.kind !== context.surface.kind) ||
-      (input.stateProtection && context.surface.kind !== "browser") ||
+      (input.stateProtection &&
+        input.stateProtection.classification.recordKind !==
+          (context.surface.kind === "browser"
+            ? "browser-state"
+            : "remote-desktop-state")) ||
       (input.titleProtection &&
         context.surface.titleProtection.classification.recordKind !==
           "remote-surface")
@@ -13512,8 +13519,8 @@ export class ServerRepository {
     desktopId: string,
     titleProtection: PrivateDisplayLabelOpaque,
     workerId: string,
+    stateProtection: SurfacePrivateStateOpaque,
     tabGroupId?: string,
-    target: RemoteDesktopTarget = { kind: "monitor", id: null, name: null },
   ): Promise<RemoteDesktopWireSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
@@ -13554,10 +13561,9 @@ export class ServerRepository {
         workerId,
         kind: "desktop",
         preferredTransport: "webrtc",
-        configuration: {
-          kind: "desktop",
-          target,
-        },
+        configuration: { kind: "desktop" },
+        protectedState: stateProtection,
+        stateRevision: 1,
       });
       await attachProjectTab(transaction, {
         projectId,

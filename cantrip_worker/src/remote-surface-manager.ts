@@ -27,13 +27,12 @@ export interface RemoteSurfacePrivateState {
 function privateState(
   command: AttachCommand | ConfigureCommand,
 ): RemoteSurfacePrivateState | null {
-  if (command.configuration.kind !== "browser") return null;
   if (
     !command.stateProtection ||
     !command.stateResource ||
     !command.stateRevision
   ) {
-    throw new Error("Browser surface private state is unavailable.");
+    throw new Error("Remote Surface private state is unavailable.");
   }
   return {
     serverId: command.serverId,

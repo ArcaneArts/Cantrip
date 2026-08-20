@@ -28,7 +28,11 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedProjectFields,
+  protectedRemoteDesktopFields,
+  protectedRemoteDesktopInventory,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-project-folder-api-"),
@@ -163,7 +167,13 @@ const bridge: WorkerCommandBus = {
       return { available: true, message: null };
     }
     if (command.type === "surface.desktop.targets") {
-      return { monitors: [], windows: [] };
+      return {
+        operationId: command.operationId,
+        stateProtection: protectedRemoteDesktopInventory(),
+        monitorCount: 0,
+        windowCount: 0,
+        truncated: false,
+      };
     }
     if (command.type === "browser.services.discover") return [];
     if (command.type === "terminal.close") return { closed: true };
@@ -739,7 +749,7 @@ describe("managed folder project lifecycle", () => {
       ["explorers", { title: "Folder explorer" }],
       ["code-tabs", { title: "Folder code" }],
       ["browsers", { title: "Folder browser" }],
-      ["remote-desktops", {}],
+      ["remote-desktops", protectedRemoteDesktopFields()],
     ] as const) {
       const response = await app.inject({
         method: "POST",

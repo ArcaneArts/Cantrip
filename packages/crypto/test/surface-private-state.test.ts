@@ -63,6 +63,7 @@ const cases: Array<{
     content: {
       version: 1,
       classification: { recordKind: "browser-state" },
+      revision: 1,
       url: "https://private.example/path",
     },
   },
@@ -77,6 +78,7 @@ const cases: Array<{
     content: {
       version: 1,
       classification: { recordKind: "remote-desktop-state" },
+      revision: 1,
       target: {
         kind: "window",
         id: "window-secret",
@@ -109,6 +111,10 @@ const cases: Array<{
         },
       ],
       windows: [],
+      requested: null,
+      active: null,
+      launchingApplication: null,
+      message: null,
     },
   },
 ];

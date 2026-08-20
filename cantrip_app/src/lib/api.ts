@@ -356,6 +356,7 @@ import type {
   EncryptedProjectWorkspaceCreate,
   EncryptedProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
+  RemoteDesktopSummary,
   RemoteDesktopTarget,
   ReasoningEffort,
   SkillSettingsContext,
@@ -3404,30 +3405,45 @@ export async function getRemoteDesktops(projectId: string) {
       `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
     ),
   );
-  return Promise.all(
+  const opened = await Promise.all(
     desktops.map((desktop) =>
       surfaceTitleEncryption.openRemoteDesktop(desktop),
     ),
   );
+  for (const desktop of opened) {
+    remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
+  }
+  return opened;
 }
 
 export async function getRemoteDesktopFleet(projectId: string) {
-  return surfaceTitleEncryption.openRemoteDesktopFleet(
+  const fleet = await surfaceTitleEncryption.openRemoteDesktopFleet(
     remoteDesktopFleetWireSchema.parse(
       await request(
         `/api/projects/${encodeURIComponent(projectId)}/remote-desktop-fleet`,
       ),
     ),
   );
+  for (const worker of fleet.workers) {
+    for (const desktop of worker.desktops) {
+      remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
+    }
+  }
+  return fleet;
 }
 
 export async function getRemoteDesktop(desktopId: string) {
-  return surfaceTitleEncryption.openRemoteDesktop(
+  const desktop = await surfaceTitleEncryption.openRemoteDesktop(
     remoteDesktopWireSummarySchema.parse(
       await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`),
     ),
   );
+  remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
+  return desktop;
 }
+
+const remoteDesktopStateRevisions = new Map<string, number>();
+const remoteDesktopUpdateChains = new Map<string, Promise<void>>();
 
 export async function createRemoteDesktop(
   projectId: string,
@@ -3436,39 +3452,87 @@ export async function createRemoteDesktop(
   desktopTarget?: RemoteDesktopTarget,
 ) {
   const id = crypto.randomUUID();
+  const initialTarget = desktopTarget ?? {
+    kind: "monitor" as const,
+    id: null,
+    name: null,
+  };
   const titleProtection = await surfaceTitleEncryption.protect(
     id,
     "Remote Desktop",
     "project-view",
   );
-  return surfaceTitleEncryption.openRemoteDesktop(
+  const stateProtection =
+    await surfaceTitleEncryption.protectRemoteDesktopState(
+      id,
+      initialTarget,
+      1,
+    );
+  const desktop = await surfaceTitleEncryption.openRemoteDesktop(
     remoteDesktopWireSummarySchema.parse(
       await post(
         `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
         {
           id,
+          stateProtection,
           titleProtection,
           ...(tabGroupId ? { tabGroupId } : {}),
           ...(target ? { target } : {}),
-          ...(desktopTarget ? { desktopTarget } : {}),
         },
       ),
     ),
   );
+  remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
+  return desktop;
 }
 
 export async function updateRemoteDesktopTarget(
   desktopId: string,
   target: RemoteDesktopTarget,
 ) {
-  return surfaceTitleEncryption.openRemoteDesktop(
-    remoteDesktopWireSummarySchema.parse(
-      await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ target }),
-      }),
-    ),
-  );
+  let resolveResult!: (desktop: RemoteDesktopSummary) => void;
+  let rejectResult!: (error: unknown) => void;
+  const result = new Promise<RemoteDesktopSummary>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  const previous =
+    remoteDesktopUpdateChains.get(desktopId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const expectedStateRevision = remoteDesktopStateRevisions.get(desktopId);
+      if (!expectedStateRevision) {
+        throw new Error("Remote Desktop state revision is unavailable.");
+      }
+      const stateProtection =
+        await surfaceTitleEncryption.protectRemoteDesktopState(
+          desktopId,
+          target,
+          expectedStateRevision + 1,
+        );
+      const desktop = await surfaceTitleEncryption.openRemoteDesktop(
+        remoteDesktopWireSummarySchema.parse(
+          await request(
+            `/api/remote-desktops/${encodeURIComponent(desktopId)}`,
+            {
+              method: "PATCH",
+              body: JSON.stringify({ expectedStateRevision, stateProtection }),
+            },
+          ),
+        ),
+      );
+      remoteDesktopStateRevisions.set(desktop.id, desktop.stateRevision);
+      resolveResult(desktop);
+    })
+    .catch(rejectResult)
+    .finally(() => {
+      if (remoteDesktopUpdateChains.get(desktopId) === next) {
+        remoteDesktopUpdateChains.delete(desktopId);
+      }
+    });
+  remoteDesktopUpdateChains.set(desktopId, next);
+  return result;
 }
 
 export async function getProjectViews(projectId: string) {

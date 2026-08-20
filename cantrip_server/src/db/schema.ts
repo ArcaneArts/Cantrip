@@ -2475,34 +2475,43 @@ export const browsers = pgTable("browsers", {
     .defaultNow(),
 });
 
-export const remoteSurfaces = pgTable("remote_surfaces", {
-  id: text("id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  workerId: text("worker_id")
-    .notNull()
-    .references(() => workers.id, { onDelete: "cascade" }),
-  kind: text("kind").notNull(),
-  protectedLabel: jsonb("protected_label").$type<PrivateDisplayLabelOpaque>(),
-  status: text("status").notNull().default("idle"),
-  preferredTransport: text("preferred_transport")
-    .notNull()
-    .default("websocket"),
-  configuration: jsonb("configuration")
-    .$type<RemoteSurfaceConfiguration>()
-    .notNull(),
-  protectedState: jsonb("protected_state").$type<SurfacePrivateStateOpaque>(),
-  stateRevision: integer("state_revision"),
-  lastError: text("last_error"),
-  lastConnectedAt: timestamp("last_connected_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const remoteSurfaces = pgTable(
+  "remote_surfaces",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    workerId: text("worker_id")
+      .notNull()
+      .references(() => workers.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    protectedLabel: jsonb("protected_label").$type<PrivateDisplayLabelOpaque>(),
+    status: text("status").notNull().default("idle"),
+    preferredTransport: text("preferred_transport")
+      .notNull()
+      .default("websocket"),
+    configuration: jsonb("configuration")
+      .$type<RemoteSurfaceConfiguration>()
+      .notNull(),
+    protectedState: jsonb("protected_state").$type<SurfacePrivateStateOpaque>(),
+    stateRevision: integer("state_revision"),
+    lastError: text("last_error"),
+    lastConnectedAt: timestamp("last_connected_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    check(
+      "remote_surfaces_desktop_private_state_check",
+      sql`${table.kind} <> 'desktop' OR (${table.protectedState} IS NOT NULL AND ${table.stateRevision} IS NOT NULL AND ${table.configuration} = '{"kind":"desktop"}'::jsonb)`,
+    ),
+  ],
+);
 
 export const projectViews = pgTable("project_views", {
   id: text("id").primaryKey(),

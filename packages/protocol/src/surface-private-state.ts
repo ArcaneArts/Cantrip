@@ -119,6 +119,7 @@ export const remoteDesktopPrivateStateProtectedContentSchema = z
     classification: z
       .object({ recordKind: z.literal("remote-desktop-state") })
       .strict(),
+    revision: z.number().int().positive().safe(),
     target: remoteDesktopPrivateTargetSchema,
   })
   .strict();
@@ -165,6 +166,16 @@ export const remoteDesktopPrivateInventoryProtectedContentSchema = z
       .strict(),
     monitors: z.array(remoteDesktopPrivateMonitorSchema).max(64),
     windows: z.array(remoteDesktopPrivateWindowSchema).max(2_000),
+    requested: remoteDesktopPrivateTargetSchema.nullable().default(null),
+    active: remoteDesktopPrivateTargetSchema.nullable().default(null),
+    launchingApplication: z
+      .string()
+      .trim()
+      .min(1)
+      .max(500)
+      .nullable()
+      .default(null),
+    message: z.string().max(2_048).nullable().default(null),
   })
   .strict();
 

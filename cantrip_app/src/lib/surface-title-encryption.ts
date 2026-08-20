@@ -31,6 +31,8 @@ import type {
 import {
   browserPrivateStateProtectedContentSchema,
   explorerPrivateStateProtectedContentSchema,
+  remoteDesktopPrivateInventoryProtectedContentSchema,
+  remoteDesktopPrivateStateProtectedContentSchema,
   terminalPrivateStateProtectedContentSchema,
   type SurfacePrivateStateOpaque,
 } from "@cantrip/protocol/surface-private-state";
@@ -209,6 +211,53 @@ export class SurfaceTitleEncryptionAdapter {
     });
   }
 
+  protectRemoteDesktopState(
+    desktopId: string,
+    target: RemoteDesktopSummary["target"],
+    revision: number,
+  ): Promise<SurfacePrivateStateOpaque> {
+    const identity = this.identity();
+    return encodeSurfacePrivateStateForClient({
+      identity,
+      context: {
+        serverId: identity.serverId,
+        resource: "remote-desktop-row",
+        resourceId: desktopId,
+        operationId: null,
+        recordKind: "remote-desktop-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "remote-desktop-state" },
+        revision,
+        target,
+      },
+      service: this.service,
+    });
+  }
+
+  async openRemoteDesktopInventoryOperation(input: {
+    resourceId: string;
+    operationId: string;
+    stateProtection: SurfacePrivateStateOpaque;
+  }) {
+    const identity = this.identity();
+    return remoteDesktopPrivateInventoryProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "remote-desktop-inventory",
+          resourceId: input.resourceId,
+          operationId: input.operationId,
+          recordKind: "remote-desktop-inventory",
+        },
+        opaque: input.stateProtection,
+        service: this.service,
+      }),
+    );
+  }
+
   async openBrowserOperation(input: {
     browserId: string;
     operationId: string;
@@ -349,10 +398,33 @@ export class SurfaceTitleEncryptionAdapter {
   async openRemoteDesktop(
     desktop: RemoteDesktopWireSummary,
   ): Promise<RemoteDesktopSummary> {
-    const { titleProtection, ...publicDesktop } = desktop;
+    const identity = this.identity();
+    const state = remoteDesktopPrivateStateProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "remote-desktop-row",
+          resourceId: desktop.id,
+          operationId: null,
+          recordKind: "remote-desktop-state",
+        },
+        opaque: desktop.stateProtection,
+        service: this.service,
+      }),
+    );
+    if (state.revision !== desktop.stateRevision) {
+      throw new Error("Remote Desktop private state revision is stale.");
+    }
+    const {
+      stateProtection: _stateProtection,
+      titleProtection,
+      ...publicDesktop
+    } = desktop;
     return remoteDesktopSummarySchema.parse({
       ...publicDesktop,
       title: await this.openLabel(desktop.id, titleProtection, "project-view"),
+      target: state.target,
     });
   }
 
@@ -362,12 +434,33 @@ export class SurfaceTitleEncryptionAdapter {
     return remoteDesktopFleetSchema.parse({
       ...fleet,
       workers: await Promise.all(
-        fleet.workers.map(async (worker) => ({
-          ...worker,
-          desktops: await Promise.all(
-            worker.desktops.map((desktop) => this.openRemoteDesktop(desktop)),
-          ),
-        })),
+        fleet.workers.map(async (worker) => {
+          const {
+            inventoryOperationId,
+            inventoryProtection,
+            monitorCount: _monitorCount,
+            windowCount: _windowCount,
+            ...publicWorker
+          } = worker;
+          const inventory =
+            inventoryOperationId && inventoryProtection
+              ? await this.openRemoteDesktopInventoryOperation({
+                  resourceId: worker.workerId,
+                  operationId: inventoryOperationId,
+                  stateProtection: inventoryProtection,
+                })
+              : { monitors: [], windows: [] };
+          return {
+            ...publicWorker,
+            inventory: {
+              monitors: inventory.monitors,
+              windows: inventory.windows,
+            },
+            desktops: await Promise.all(
+              worker.desktops.map((desktop) => this.openRemoteDesktop(desktop)),
+            ),
+          };
+        }),
       ),
     });
   }

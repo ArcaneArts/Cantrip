@@ -345,7 +345,12 @@ describe("private display-label lifecycle", () => {
         "project-view",
       ),
       workerId: "worker-a",
-      target: { kind: "monitor", id: null, name: null },
+      stateProtection: await surfaces.protectRemoteDesktopState(
+        ids.desktop,
+        { kind: "monitor", id: null, name: null },
+        1,
+      ),
+      stateRevision: 1,
       status: "idle",
       lastError: null,
     };

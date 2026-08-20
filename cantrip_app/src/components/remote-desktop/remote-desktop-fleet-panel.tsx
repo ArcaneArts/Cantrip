@@ -16,7 +16,8 @@ import {
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { getRemoteDesktopFleet } from "@/lib/api";
+import { getRemoteDesktopFleet, getWorkers } from "@/lib/api";
+import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import { cn } from "@/lib/utils";
 
 const MAX_VISIBLE_TARGETS_PER_WORKER = 100;
@@ -93,7 +94,17 @@ export function RemoteDesktopFleetPanel({
   const [search, setSearch] = useState("");
   const fleet = useQuery({
     queryKey: ["remote-desktop-fleet", currentDesktop.projectId],
-    queryFn: () => getRemoteDesktopFleet(currentDesktop.projectId),
+    queryFn: async () => {
+      const workers = await getWorkers();
+      await Promise.allSettled(
+        workers
+          .filter((worker) => worker.online && worker.remoteSurfaces.desktop)
+          .map((worker) =>
+            ensureSurfacePrivateStateWorkerEncryption({ worker }),
+          ),
+      );
+      return getRemoteDesktopFleet(currentDesktop.projectId);
+    },
     retry: false,
     staleTime: 5_000,
   });

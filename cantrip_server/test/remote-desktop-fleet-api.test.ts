@@ -6,7 +6,6 @@ import {
   remoteDesktopFleetWireSchema,
   remoteDesktopWireSummarySchema,
   unprobedCodexRuntimeReport,
-  type RemoteDesktopTargetInventory,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -20,6 +19,9 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import {
   protectedDisplayLabelFields,
   protectedProjectFields,
+  protectedRemoteDesktopFields,
+  protectedRemoteDesktopInventory,
+  protectedRemoteDesktopState,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
@@ -45,35 +47,6 @@ const connectedWorkers = new Set([
   "failing-worker",
 ]);
 const requested: Array<{ workerId: string; command: WorkerCommand }> = [];
-const inventory: RemoteDesktopTargetInventory = {
-  monitors: [
-    {
-      kind: "monitor",
-      id: "display-1",
-      name: "Studio Display",
-      x: 0,
-      y: 0,
-      width: 2560,
-      height: 1440,
-      primary: true,
-    },
-  ],
-  windows: [
-    {
-      kind: "window",
-      id: "window-1",
-      application: "Code",
-      title: "Cantrip",
-      iconKey: "code",
-      x: 20,
-      y: 30,
-      width: 1200,
-      height: 800,
-      minimized: false,
-      focused: true,
-    },
-  ],
-};
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -95,11 +68,18 @@ const workerBridge: WorkerCommandBus = {
       if (workerId === "failing-worker") {
         throw new Error("Worker command surface.desktop.targets timed out.");
       }
-      return inventory;
+      return {
+        operationId: command.operationId,
+        stateProtection: protectedRemoteDesktopInventory(),
+        monitorCount: 1,
+        windowCount: 1,
+        truncated: false,
+      };
     }
     if (command.type === "surface.desktop.probe") {
       return { available: true, message: null };
     }
+    if (command.type === "surface.configure") return { accepted: true };
     throw new Error(`Unexpected worker command ${command.type}.`);
   },
 };
@@ -107,6 +87,7 @@ const workerBridge: WorkerCommandBus = {
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let projectId: string;
+let createdDesktopId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
@@ -159,6 +140,7 @@ beforeAll(async () => {
     "existing-desktop",
     protectedDisplayLabelFields("project-view").titleProtection,
     "healthy-worker",
+    protectedRemoteDesktopState(),
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
 });
@@ -182,7 +164,12 @@ describe.sequential("Remote Desktop fleet API", () => {
     ).toMatchObject({
       workerName: "Healthy Linux",
       status: "ok",
-      inventory,
+      inventoryOperationId: expect.any(String),
+      inventoryProtection: expect.objectContaining({
+        classification: { recordKind: "remote-desktop-inventory" },
+      }),
+      monitorCount: 1,
+      windowCount: 1,
       desktops: [
         expect.objectContaining({
           id: "existing-desktop",
@@ -195,7 +182,8 @@ describe.sequential("Remote Desktop fleet API", () => {
       fleet.workers.find(({ workerId }) => workerId === "offline-worker"),
     ).toMatchObject({
       status: "offline",
-      inventory: { monitors: [], windows: [] },
+      inventoryOperationId: null,
+      inventoryProtection: null,
       error: { code: "worker-offline" },
     });
     expect(
@@ -209,14 +197,20 @@ describe.sequential("Remote Desktop fleet API", () => {
     ).toBe(false);
     expect(requested).toEqual(
       expect.arrayContaining([
-        {
+        expect.objectContaining({
           workerId: "primary-worker",
-          command: { type: "surface.desktop.targets" },
-        },
-        {
+          command: expect.objectContaining({
+            type: "surface.desktop.targets",
+            resourceId: "primary-worker",
+          }),
+        }),
+        expect.objectContaining({
           workerId: "healthy-worker",
-          command: { type: "surface.desktop.targets" },
-        },
+          command: expect.objectContaining({
+            type: "surface.desktop.targets",
+            resourceId: "healthy-worker",
+          }),
+        }),
       ]),
     );
     expect(
@@ -224,19 +218,14 @@ describe.sequential("Remote Desktop fleet API", () => {
     ).toBe(false);
   });
 
-  it("creates a worker-specific stream with the selected fleet target", async () => {
+  it("creates a worker-specific stream with an opaque selected target", async () => {
+    const protectedFields = protectedRemoteDesktopFields();
     const response = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/remote-desktops`,
       payload: {
-        ...protectedDisplayLabelFields("project-view"),
+        ...protectedFields,
         target: { kind: "worker", projectId, workerId: "healthy-worker" },
-        desktopTarget: {
-          kind: "window",
-          id: "window-1",
-          application: "Code",
-          title: "Cantrip",
-        },
       },
     });
     expect(response.statusCode).toBe(201);
@@ -244,17 +233,71 @@ describe.sequential("Remote Desktop fleet API", () => {
       {
         projectId,
         workerId: "healthy-worker",
-        target: {
-          kind: "window",
-          id: "window-1",
-          application: "Code",
-          title: "Cantrip",
-        },
+        stateRevision: 1,
+        stateProtection: protectedFields.stateProtection,
       },
     );
+    createdDesktopId = (response.json() as { id: string }).id;
+    expect(response.body).not.toContain("Studio Display");
+    expect(response.body).not.toContain("Cantrip");
     expect(requested.at(-1)).toEqual({
       workerId: "healthy-worker",
       command: { type: "surface.desktop.probe" },
     });
+  });
+
+  it("updates the active target with only revisioned ciphertext and rejects stale writes", async () => {
+    const stateProtection = protectedRemoteDesktopState();
+    const response = await app.inject({
+      method: "PATCH",
+      url: `/api/remote-desktops/${createdDesktopId}`,
+      payload: { expectedStateRevision: 1, stateProtection },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(remoteDesktopWireSummarySchema.parse(response.json())).toMatchObject(
+      {
+        id: createdDesktopId,
+        stateProtection,
+        stateRevision: 2,
+      },
+    );
+    expect(requested.at(-1)).toEqual({
+      workerId: "healthy-worker",
+      command: {
+        type: "surface.configure",
+        surfaceId: createdDesktopId,
+        serverId: expect.any(String),
+        configuration: { kind: "desktop" },
+        stateResource: "remote-desktop-row",
+        stateRevision: 2,
+        stateProtection,
+      },
+    });
+    expect(JSON.stringify(requested.at(-1))).not.toContain("window-1");
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/remote-desktops/${createdDesktopId}`,
+          payload: { expectedStateRevision: 1, stateProtection },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/remote-desktops/${createdDesktopId}`,
+          payload: {
+            target: {
+              kind: "window",
+              id: "private-window",
+              application: "Private App",
+              title: "Private Window",
+            },
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
   });
 });

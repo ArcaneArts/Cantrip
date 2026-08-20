@@ -331,15 +331,15 @@ import {
   queuedPromptSchema,
   queuedPromptUpdateSchema,
   encryptedRemoteDesktopCreateSchema,
+  encryptedRemoteDesktopUpdateSchema,
   directAttachmentTicketSchema,
   directTransportTelemetrySchema,
   directTunnelTicketSchema,
   remoteDesktopFleetWireSchema,
   remoteDesktopProbeResultSchema,
+  remoteDesktopProtectedInventorySchema,
   remoteDesktopWireListSchema,
   remoteDesktopWireSummarySchema,
-  remoteDesktopTargetInventorySchema,
-  remoteDesktopUpdateSchema,
   remoteSurfaceAttachResultSchema,
   remoteSurfaceConnectionMessageSchema,
   encryptedRemoteSurfaceCreateSchema,
@@ -20067,80 +20067,104 @@ export async function buildApp({
         );
       const fleetTruncated =
         capableWorkers.length > REMOTE_DESKTOP_FLEET_WORKER_LIMIT;
-      const results = await Promise.all(
-        capableWorkers
-          .slice(0, REMOTE_DESKTOP_FLEET_WORKER_LIMIT)
-          .map(async (worker) => {
-            const workerName = worker.name.slice(0, 200);
-            const workerDesktops = desktops.filter(
-              (desktop) => desktop.workerId === worker.workerId,
-            );
-            const base = {
-              workerId: worker.workerId,
-              workerName,
-              platform: worker.platform.slice(0, 100),
-              architecture: worker.architecture.slice(0, 100),
-              desktops: workerDesktops,
-            };
-            if (!worker.online || !bridge.isConnected(worker.workerId)) {
-              return {
-                ...base,
-                status: "offline" as const,
-                inventory: { monitors: [], windows: [] },
-                error: {
-                  code: "worker-offline" as const,
-                  message: `${workerName} is offline.`,
-                },
-              };
-            }
-            try {
-              return {
-                ...base,
-                status: "ok" as const,
-                inventory: remoteDesktopTargetInventorySchema.parse(
-                  await bridge.request(
-                    worker.workerId,
-                    { type: "surface.desktop.targets" },
-                    { timeoutMs: REMOTE_DESKTOP_FLEET_TIMEOUT_MS },
-                  ),
-                ),
-                error: null,
-              };
-            } catch (error) {
-              const message = errorMessage(error).slice(0, 1_000);
-              const unavailable = error instanceof WorkerUnavailableError;
-              const timedOut = /timed out/iu.test(message);
-              return {
-                ...base,
-                status: unavailable
-                  ? ("offline" as const)
-                  : timedOut
-                    ? ("timed-out" as const)
-                    : ("error" as const),
-                inventory: { monitors: [], windows: [] },
-                error: {
-                  code: unavailable
-                    ? ("worker-offline" as const)
-                    : timedOut
-                      ? ("worker-timeout" as const)
-                      : ("worker-error" as const),
-                  message: message || `Could not inspect ${workerName}.`,
-                },
-              };
-            }
-          }),
+      const inspectedWorkers = capableWorkers.slice(
+        0,
+        REMOTE_DESKTOP_FLEET_WORKER_LIMIT,
       );
-      let remainingTargets = REMOTE_DESKTOP_FLEET_TARGET_LIMIT;
+      const targetLimitPerWorker = inspectedWorkers.length
+        ? Math.floor(
+            REMOTE_DESKTOP_FLEET_TARGET_LIMIT / inspectedWorkers.length,
+          )
+        : 0;
+      const results = await Promise.all(
+        inspectedWorkers.map(async (worker) => {
+          const workerName = worker.name.slice(0, 200);
+          const workerDesktops = desktops.filter(
+            (desktop) => desktop.workerId === worker.workerId,
+          );
+          const base = {
+            workerId: worker.workerId,
+            workerName,
+            platform: worker.platform.slice(0, 100),
+            architecture: worker.architecture.slice(0, 100),
+            desktops: workerDesktops,
+          };
+          if (!worker.online || !bridge.isConnected(worker.workerId)) {
+            return {
+              ...base,
+              status: "offline" as const,
+              inventoryOperationId: null,
+              inventoryProtection: null,
+              monitorCount: 0,
+              windowCount: 0,
+              truncated: false,
+              error: {
+                code: "worker-offline" as const,
+                message: `${workerName} is offline.`,
+              },
+            };
+          }
+          try {
+            const operationId = randomUUID();
+            const inventory = remoteDesktopProtectedInventorySchema.parse(
+              await bridge.request(
+                worker.workerId,
+                {
+                  type: "surface.desktop.targets",
+                  serverId,
+                  operationId,
+                  resourceId: worker.workerId,
+                  limit: targetLimitPerWorker,
+                },
+                { timeoutMs: REMOTE_DESKTOP_FLEET_TIMEOUT_MS },
+              ),
+            );
+            return {
+              ...base,
+              status: "ok" as const,
+              inventoryOperationId: inventory.operationId,
+              inventoryProtection: inventory.stateProtection,
+              monitorCount: inventory.monitorCount,
+              windowCount: inventory.windowCount,
+              truncated: inventory.truncated,
+              error: null,
+            };
+          } catch (error) {
+            const message = errorMessage(error).slice(0, 1_000);
+            const unavailable = error instanceof WorkerUnavailableError;
+            const timedOut = /timed out/iu.test(message);
+            return {
+              ...base,
+              status: unavailable
+                ? ("offline" as const)
+                : timedOut
+                  ? ("timed-out" as const)
+                  : ("error" as const),
+              inventoryOperationId: null,
+              inventoryProtection: null,
+              monitorCount: 0,
+              windowCount: 0,
+              truncated: false,
+              error: {
+                code: unavailable
+                  ? ("worker-offline" as const)
+                  : timedOut
+                    ? ("worker-timeout" as const)
+                    : ("worker-error" as const),
+                message: unavailable
+                  ? `${workerName} is offline.`
+                  : timedOut
+                    ? `Timed out inspecting ${workerName}.`
+                    : `Could not inspect ${workerName}.`,
+              },
+            };
+          }
+        }),
+      );
       let targetTruncated = false;
       let surfaceTruncated = false;
       const boundedWorkers = results.map((result) => {
-        const monitors = result.inventory.monitors.slice(0, remainingTargets);
-        remainingTargets -= monitors.length;
-        const windows = result.inventory.windows.slice(0, remainingTargets);
-        remainingTargets -= windows.length;
-        const targetWasTruncated =
-          monitors.length < result.inventory.monitors.length ||
-          windows.length < result.inventory.windows.length;
+        const targetWasTruncated = result.truncated;
         const boundedDesktops = result.desktops.slice(
           0,
           REMOTE_DESKTOP_FLEET_SURFACE_LIMIT,
@@ -20151,7 +20175,6 @@ export async function buildApp({
         surfaceTruncated ||= surfaceWasTruncated;
         return {
           ...result,
-          inventory: { monitors, windows },
           desktops: boundedDesktops,
           truncated: targetWasTruncated || surfaceWasTruncated,
         };
@@ -20187,7 +20210,7 @@ export async function buildApp({
   app.patch<{ Params: { desktopId: string } }>(
     "/api/remote-desktops/:desktopId",
     async (request, reply) => {
-      const input = remoteDesktopUpdateSchema.safeParse(request.body);
+      const input = encryptedRemoteDesktopUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20198,15 +20221,25 @@ export async function buildApp({
       if (!context || context.surface.kind !== "desktop") {
         return reply.code(404).send({ error: "Remote Desktop not found." });
       }
-      const configuration = {
-        kind: "desktop" as const,
-        target: input.data.target,
-      };
-      const updated = await repository.updateRemoteSurface(
-        applicationOwnerId(),
-        context.surface.id,
-        { configuration },
-      );
+      let updated;
+      try {
+        updated = await repository.updateRemoteSurface(
+          applicationOwnerId(),
+          context.surface.id,
+          {
+            expectedStateRevision: input.data.expectedStateRevision,
+            stateProtection: input.data.stateProtection,
+          },
+        );
+      } catch (error) {
+        if (error instanceof SurfacePrivateStateConflictError) {
+          return reply.code(409).send({
+            code: "stale-state",
+            error: "Remote Desktop state changed before this update.",
+          });
+        }
+        throw error;
+      }
       if (!updated) {
         return reply.code(404).send({ error: "Remote Desktop not found." });
       }
@@ -20218,10 +20251,10 @@ export async function buildApp({
               type: "surface.configure",
               surfaceId: context.surface.id,
               serverId,
-              configuration,
-              stateResource: null,
-              stateRevision: null,
-              stateProtection: null,
+              configuration: { kind: "desktop" },
+              stateResource: "remote-desktop-row",
+              stateRevision: updated.stateRevision,
+              stateProtection: updated.stateProtection,
             },
             { timeoutMs: 20_000 },
           );
@@ -20229,14 +20262,14 @@ export async function buildApp({
           await updateRemoteSurfaceStatus(
             context.surface.id,
             "error",
-            errorMessage(error),
+            "The worker could not apply the encrypted Remote Desktop target.",
           );
         }
       } else {
         await updateRemoteSurfaceStatus(
           context.surface.id,
           "offline",
-          "Worker is offline. The saved target will be restored when it reconnects.",
+          "Worker is offline. The saved encrypted target will be restored when it reconnects.",
         );
       }
       const desktop = await repository.getRemoteDesktop(
@@ -20303,8 +20336,8 @@ export async function buildApp({
           input.data.id,
           input.data.titleProtection,
           workerId,
+          input.data.stateProtection,
           input.data.tabGroupId,
-          input.data.desktopTarget,
         );
         if (!desktop) {
           return reply
@@ -20648,7 +20681,7 @@ export async function buildApp({
                         .recordKind === "browser"
                       ? "browser-row"
                       : "browser-remote-surface"
-                    : null,
+                    : "remote-desktop-row",
                 stateRevision: context.surface.stateRevision,
                 stateProtection: context.surface.stateProtection,
                 preferredTransport: context.surface.preferredTransport,
