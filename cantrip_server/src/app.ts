@@ -35,6 +35,7 @@ import {
   browserServiceListSchema,
   browserWireSummarySchema,
   browserTunnelRequestSchema,
+  browserPrivateStateOpaqueSchema,
   encryptedBrowserUpdateSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
@@ -633,6 +634,7 @@ import {
   CodeCapabilityUnavailableError,
   ExecutionLaneConflictError,
   ExecutionPlacementUnavailableError,
+  SurfacePrivateStateConflictError,
   ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
@@ -3404,7 +3406,7 @@ export async function buildApp({
       return null;
     }
     const browser = await repository.updateBrowser(ownerId, browserId, input);
-    if (!browser || input.url === undefined) return browser;
+    if (!browser || input.stateProtection === undefined) return browser;
     publishLiveInvalidation("browser", {
       entityId: browserId,
       projectId: browser.projectId,
@@ -3437,12 +3439,20 @@ export async function buildApp({
         {
           type: "surface.configure",
           surfaceId: browserId,
+          serverId,
           configuration: updatedContext.surface.configuration,
+          stateResource: "browser-row",
+          stateRevision: updatedContext.surface.stateRevision,
+          stateProtection: updatedContext.surface.stateProtection,
         },
         { timeoutMs: 20_000 },
       );
     } catch (error) {
-      await updateRemoteSurfaceStatus(browserId, "error", errorMessage(error));
+      await updateRemoteSurfaceStatus(
+        browserId,
+        "error",
+        "Browser private state could not be applied.",
+      );
       if (options.requireOnline) throw error;
     }
     return browser;
@@ -4038,20 +4048,6 @@ export async function buildApp({
     }
     return value;
   };
-  const browserToolUrl = (input: Record<string, unknown>) => {
-    const value = boundedToolString(input, "url", 4_096);
-    let url: URL;
-    try {
-      url = new URL(value);
-    } catch {
-      throw new Error("url must be a valid HTTP or HTTPS URL.");
-    }
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error("url must use HTTP or HTTPS.");
-    }
-    return url.toString();
-  };
-
   type ExecutionOperationContext = {
     chatId: string | null;
     executionLaneId: string | null;
@@ -4181,6 +4177,13 @@ export async function buildApp({
       case "target.inspect": {
         const target = executionTargetArgument(call.arguments);
         const resolution = await resolveTarget(target, true);
+        const browserContext =
+          target.kind === "surface" && target.surfaceKind === "browser"
+            ? await repository.getRemoteSurfaceExecutionContext(
+                applicationOwnerId(),
+                target.surfaceId,
+              )
+            : null;
         return cantripCliCommandResultSchema.parse({
           summary:
             resolution.availability === "available"
@@ -4188,7 +4191,11 @@ export async function buildApp({
               : (resolution.unavailableReason ?? "The target is unavailable."),
           target,
           worktreeId: resolution.placement.worktreeId,
-          data: resolution,
+          data: {
+            ...resolution,
+            serverId,
+            stateRevision: browserContext?.surface.stateRevision ?? null,
+          },
         });
       }
       case "explorer.list": {
@@ -4449,7 +4456,12 @@ export async function buildApp({
         const browser = await applyBrowserUpdate(
           applicationOwnerId(),
           target.surfaceId,
-          { url: browserToolUrl(call.arguments) },
+          encryptedBrowserUpdateSchema.parse({
+            expectedStateRevision: call.arguments.expectedStateRevision,
+            stateProtection: browserPrivateStateOpaqueSchema.parse(
+              call.arguments.stateProtection,
+            ),
+          }),
           {
             expectedWorkerId: resolution.placement.workerId,
             requireOnline: true,
@@ -5312,6 +5324,13 @@ export async function buildApp({
           arguments: { target: target.target },
         });
       }
+      case "target.resolve-browser": {
+        const target = await selectTarget(context, "browser", selector);
+        return executeExecutionOperation(context, {
+          operation: "target.inspect",
+          arguments: { target: target.target },
+        });
+      }
       case "explorer.list": {
         const target = await selectTarget(context, "explorer", selector);
         const entries: unknown[] = [];
@@ -5425,7 +5444,8 @@ export async function buildApp({
           operation: "browser.navigate",
           arguments: {
             target: target.target,
-            url: boundedToolString(call.arguments, "url", 4_096),
+            expectedStateRevision: call.arguments.expectedStateRevision,
+            stateProtection: call.arguments.stateProtection,
           },
         });
       }
@@ -19851,7 +19871,14 @@ export async function buildApp({
       }
       let target;
       try {
-        target = browserTunnelTarget(input.data.url, workerId);
+        target = browserTunnelTarget(
+          {
+            protocol: input.data.protocol,
+            host: input.data.host,
+            port: input.data.port,
+          },
+          workerId,
+        );
       } catch (error) {
         return reply.code(400).send({ error: errorMessage(error) });
       }
@@ -19937,14 +19964,24 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const browser = await applyBrowserUpdate(
-        applicationOwnerId(),
-        request.params.browserId,
-        input.data,
-      );
-      return browser
-        ? reply.send(browserWireSummarySchema.parse(browser))
-        : reply.code(404).send({ error: "Browser not found." });
+      try {
+        const browser = await applyBrowserUpdate(
+          applicationOwnerId(),
+          request.params.browserId,
+          input.data,
+        );
+        return browser
+          ? reply.send(browserWireSummarySchema.parse(browser))
+          : reply.code(404).send({ error: "Browser not found." });
+      } catch (error) {
+        if (error instanceof SurfacePrivateStateConflictError) {
+          return reply.code(409).send({
+            code: "stale-state",
+            error: "Browser state changed before this update.",
+          });
+        }
+        throw error;
+      }
     },
   );
 
@@ -20180,7 +20217,11 @@ export async function buildApp({
             {
               type: "surface.configure",
               surfaceId: context.surface.id,
+              serverId,
               configuration,
+              stateResource: null,
+              stateRevision: null,
+              stateProtection: null,
             },
             { timeoutMs: 20_000 },
           );
@@ -20349,14 +20390,24 @@ export async function buildApp({
             "Desktop surface configuration is managed by the project worker.",
         });
       }
-      const surface = await repository.updateRemoteSurface(
-        applicationOwnerId(),
-        request.params.surfaceId,
-        input.data,
-      );
-      return surface
-        ? reply.send(remoteSurfaceWireSummarySchema.parse(surface))
-        : reply.code(404).send({ error: "Remote Surface not found." });
+      try {
+        const surface = await repository.updateRemoteSurface(
+          applicationOwnerId(),
+          request.params.surfaceId,
+          input.data,
+        );
+        return surface
+          ? reply.send(remoteSurfaceWireSummarySchema.parse(surface))
+          : reply.code(404).send({ error: "Remote Surface not found." });
+      } catch (error) {
+        if (error instanceof SurfacePrivateStateConflictError) {
+          return reply.code(409).send({
+            code: "stale-state",
+            error: "Remote Surface state changed before this update.",
+          });
+        }
+        throw error;
+      }
     },
   );
 
@@ -20589,7 +20640,17 @@ export async function buildApp({
                 surfaceId,
                 attachmentId,
                 projectId: context.surface.projectId,
+                serverId,
                 configuration: context.surface.configuration,
+                stateResource:
+                  context.surface.kind === "browser"
+                    ? context.surface.titleProtection.classification
+                        .recordKind === "browser"
+                      ? "browser-row"
+                      : "browser-remote-surface"
+                    : null,
+                stateRevision: context.surface.stateRevision,
+                stateProtection: context.surface.stateProtection,
                 preferredTransport: context.surface.preferredTransport,
                 webrtc: webRtcConfiguration,
                 viewport: viewport.data,
@@ -24478,11 +24539,17 @@ export async function buildApp({
                         409,
                         errorMessage(error),
                       )
-                    : new CliCommandRequestError(
-                        "invalid",
-                        400,
-                        errorMessage(error),
-                      );
+                    : error instanceof SurfacePrivateStateConflictError
+                      ? new CliCommandRequestError(
+                          "conflict",
+                          409,
+                          "Browser state changed before this operation.",
+                        )
+                      : new CliCommandRequestError(
+                          "invalid",
+                          400,
+                          errorMessage(error),
+                        );
           if (mutation) {
             await appendAudit(request, {
               action: "cli.command.mutated",

@@ -424,6 +424,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   await workerEncryption
     .refresh({ credential: config.token })
     .catch(() => undefined);
+  cliBroker.setSurfacePrivateStateService(workerEncryption);
+  browserAdapter.setSurfacePrivateStateService(workerEncryption);
   let connected = false;
   let commandChannelStarted = false;
   let heartbeatInFlight: Promise<void> | null = null;
@@ -1829,10 +1831,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         await remoteSurfaces.detach(command.surfaceId, command.attachmentId);
         return { accepted: true };
       case "surface.configure":
-        await remoteSurfaces.configure(
-          command.surfaceId,
-          command.configuration,
-        );
+        await remoteSurfaces.configure(command);
         return { accepted: true };
       case "surface.suspend":
         await remoteSurfaces.suspend(command.surfaceId);

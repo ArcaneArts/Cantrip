@@ -4129,7 +4129,7 @@ export function App() {
       input,
     }: {
       browserId: string;
-      input: { title?: string; url?: string };
+      input: { title?: string; url?: string; stateRevision?: number };
     }) => updateBrowser(browserId, input),
     onSuccess: (updated) =>
       queryClient.setQueryData<BrowserSummary[]>(
@@ -6809,7 +6809,10 @@ export function App() {
                 if (input) {
                   updateBrowserMutation.mutate({
                     browserId: selectedBrowser.id,
-                    input,
+                    input: {
+                      ...input,
+                      stateRevision: selectedBrowser.stateRevision,
+                    },
                   });
                 }
               }}

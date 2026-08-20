@@ -15,6 +15,33 @@ import {
 import { workerLogError, workerLogger } from "./logger.js";
 
 type AttachCommand = Extract<WorkerCommand, { type: "surface.attach" }>;
+type ConfigureCommand = Extract<WorkerCommand, { type: "surface.configure" }>;
+
+export interface RemoteSurfacePrivateState {
+  serverId: string;
+  stateProtection: NonNullable<AttachCommand["stateProtection"]>;
+  stateResource: NonNullable<AttachCommand["stateResource"]>;
+  stateRevision: NonNullable<AttachCommand["stateRevision"]>;
+}
+
+function privateState(
+  command: AttachCommand | ConfigureCommand,
+): RemoteSurfacePrivateState | null {
+  if (command.configuration.kind !== "browser") return null;
+  if (
+    !command.stateProtection ||
+    !command.stateResource ||
+    !command.stateRevision
+  ) {
+    throw new Error("Browser surface private state is unavailable.");
+  }
+  return {
+    serverId: command.serverId,
+    stateProtection: command.stateProtection,
+    stateResource: command.stateResource,
+    stateRevision: command.stateRevision,
+  };
+}
 
 const MAX_ATTACHMENTS_PER_SURFACE = 4;
 
@@ -38,6 +65,7 @@ export interface RemoteSurfaceSession {
   suspend(): Promise<void> | void;
   updateConfiguration?(
     configuration: RemoteSurfaceConfiguration,
+    privateState: RemoteSurfacePrivateState | null,
   ): Promise<void> | void;
 }
 
@@ -112,7 +140,10 @@ export class RemoteSurfaceManager {
         "Remote Surface kind changed while its session was live.",
       );
     } else if (managed.session.updateConfiguration) {
-      await managed.session.updateConfiguration(command.configuration);
+      await managed.session.updateConfiguration(
+        command.configuration,
+        privateState(command),
+      );
     }
 
     if (
@@ -232,16 +263,16 @@ export class RemoteSurfaceManager {
     });
   }
 
-  async configure(
-    surfaceId: string,
-    configuration: RemoteSurfaceConfiguration,
-  ): Promise<void> {
-    const managed = this.#sessions.get(surfaceId);
+  async configure(command: ConfigureCommand): Promise<void> {
+    const managed = this.#sessions.get(command.surfaceId);
     if (!managed) return;
-    if (managed.session.configuration.kind !== configuration.kind) {
+    if (managed.session.configuration.kind !== command.configuration.kind) {
       throw new Error("Remote Surface kind cannot change while it is live.");
     }
-    await managed.session.updateConfiguration?.(configuration);
+    await managed.session.updateConfiguration?.(
+      command.configuration,
+      privateState(command),
+    );
   }
 
   async suspend(surfaceId: string): Promise<void> {

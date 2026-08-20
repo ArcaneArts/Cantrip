@@ -480,6 +480,7 @@ export interface RemoteSurfaceFrameContext {
 }
 
 export interface UseRemoteSurfaceTransportOptions {
+  enabled?: boolean;
   messages: RemoteSurfaceTransportMessages;
   onConnecting?(): void;
   onFrame(
@@ -521,6 +522,13 @@ export function useRemoteSurfaceTransport(
     useState<RemoteSurfaceWebRtcState | null>(null);
 
   useEffect(() => {
+    if (options.enabled === false) {
+      clientRef.current?.close();
+      clientRef.current = null;
+      setActiveTransport(null);
+      setTransportState(null);
+      return;
+    }
     let client: RemoteSurfaceTransportClient;
     client = new RemoteSurfaceTransportClient({
       surfaceId: options.surfaceId,
@@ -553,7 +561,7 @@ export function useRemoteSurfaceTransport(
       if (clientRef.current === client) clientRef.current = null;
       client.close();
     };
-  }, [options.surfaceId]);
+  }, [options.enabled, options.surfaceId]);
 
   const retry = useCallback(() => clientRef.current?.retry(), []);
   const sendFrame = useCallback(

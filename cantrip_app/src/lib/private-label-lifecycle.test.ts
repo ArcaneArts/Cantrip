@@ -328,7 +328,12 @@ describe("private display-label lifecycle", () => {
         `${sentinel}-browser`,
         "browser",
       ),
-      url: "https://example.com",
+      stateProtection: await surfaces.protectBrowserState(
+        ids.browser,
+        "https://example.com",
+        1,
+      ),
+      stateRevision: 1,
       workerId: "worker-a",
     };
     const desktop: RemoteDesktopWireSummary = {
@@ -358,9 +363,14 @@ describe("private display-label lifecycle", () => {
       preferredTransport: "webrtc",
       configuration: {
         kind: "browser",
-        initialUrl: "https://example.com",
         profileId: null,
       },
+      stateProtection: await surfaces.protectBrowserRemoteSurfaceState(
+        ids.surface,
+        "https://example.com",
+        1,
+      ),
+      stateRevision: 1,
       lastError: null,
       lastConnectedAt: null,
       createdAt: timestamp,

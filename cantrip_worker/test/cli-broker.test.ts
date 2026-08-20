@@ -10,6 +10,17 @@ import {
 import os from "node:os";
 import path from "node:path";
 
+import {
+  clearSensitiveBytes,
+  decryptSurfacePrivateState,
+  deriveComponentKey,
+  generateAccountMasterKey,
+  wrapComponentKeyForWorker,
+} from "@cantrip/crypto";
+import type {
+  EncryptionKeyGrant,
+  EncryptionPrincipal,
+} from "@cantrip/protocol/encryption";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -18,6 +29,7 @@ import {
 } from "../src/cli-broker.js";
 import { readWorkerLogs } from "../src/logger.js";
 import { TerminalManager } from "../src/terminal-manager.js";
+import { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const directories: string[] = [];
 const originalConnection = process.env[CANTRIP_CLI_CONNECTION_ENV];
@@ -272,6 +284,155 @@ describe("Cantrip CLI worker broker", () => {
     expect(serializedLogs).toContain("chat-one");
     expect(serializedLogs).not.toContain("/workspace/project");
     expect(serializedLogs).not.toContain("worker-token");
+  });
+
+  it("encrypts browser URLs on the worker before relaying the command", async () => {
+    const directory = await temporaryDirectory();
+    const serverId = "https://cantrip.example";
+    const ownerId = "browser-cli-owner";
+    const workerId = "worker-example";
+    const surfaceId = "browser-surface";
+    const sentinelUrl = "https://private.example.test/cli-sentinel";
+    const service = await WorkerEncryptionService.open({
+      dataDirectory: path.join(directory, "worker-data"),
+      serverUrl: serverId,
+      workerId,
+    });
+    const registration = service.registration();
+    const timestamp = "2026-08-20T12:00:00.000Z";
+    const principal: EncryptionPrincipal = {
+      id: registration.principalId,
+      ownerId,
+      kind: "worker",
+      workerId,
+      label: "Browser CLI worker",
+      publicKey: registration.publicKey,
+      state: "approved",
+      revision: 1,
+      approvedAt: timestamp,
+      revokedAt: null,
+      revokedReason: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const componentKey = deriveComponentKey({
+      accountMasterKey: generateAccountMasterKey(),
+      ownerId,
+      component: "surface-private-state",
+      keyRevision: 1,
+    });
+    const wrappedKey = await wrapComponentKeyForWorker({
+      ownerId,
+      workerId,
+      component: "surface-private-state",
+      componentKey,
+      keyRevision: 1,
+      workerPublicKey: principal.publicKey,
+    });
+    const grant: EncryptionKeyGrant = {
+      id: crypto.randomUUID(),
+      ownerId,
+      principalId: principal.id,
+      component: "surface-private-state",
+      keyRevision: 1,
+      wrappedKey,
+      state: "active",
+      revision: 1,
+      revokedAt: null,
+      revokedReason: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    await service.acceptBootstrap({ ownerId, principal, grants: [grant] });
+
+    const calls: unknown[] = [];
+    const broker = new CantripCliBroker(
+      {
+        dataDirectory: path.join(directory, "worker-data"),
+        serverUrl: serverId,
+        token: "worker-token",
+        workerId,
+      },
+      {
+        binary: path.join(directory, "cantrip"),
+        execute: async (request) => {
+          calls.push(request);
+          if (request.command === "target.resolve-browser") {
+            return {
+              summary: "Resolved browser.",
+              target: {
+                kind: "surface",
+                projectId: "browser-project",
+                surfaceKind: "browser",
+                surfaceId,
+              },
+              worktreeId: null,
+              continuationScheduled: false,
+              mutated: false,
+              data: { serverId, stateRevision: 3 },
+            };
+          }
+          return {
+            summary: "Opened browser.",
+            target: {
+              kind: "surface",
+              projectId: "browser-project",
+              surfaceKind: "browser",
+              surfaceId,
+            },
+            worktreeId: null,
+            continuationScheduled: false,
+            mutated: true,
+          };
+        },
+      },
+    );
+    broker.setSurfacePrivateStateService(service);
+    const connection = await broker.start();
+    try {
+      const response = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "browser.open",
+          context: { codexThreadId: null, terminalId: null, cwd: null },
+          arguments: { target: surfaceId, url: sentinelUrl },
+        }),
+      });
+      expect(response.status).toBe(200);
+      expect(JSON.stringify(calls)).not.toContain(sentinelUrl);
+      expect(calls).toHaveLength(2);
+      const encrypted = calls[1] as {
+        arguments: {
+          expectedStateRevision: number;
+          stateProtection: Parameters<
+            typeof decryptSurfacePrivateState
+          >[0]["opaque"];
+        };
+      };
+      expect(encrypted.arguments.expectedStateRevision).toBe(3);
+      await expect(
+        decryptSurfacePrivateState({
+          ownerId,
+          context: {
+            serverId,
+            resource: "browser-row",
+            resourceId: surfaceId,
+            operationId: null,
+            recordKind: "browser-state",
+          },
+          keyRevision: 1,
+          componentKey,
+          opaque: encrypted.arguments.stateProtection,
+        }),
+      ).resolves.toMatchObject({ revision: 4, url: sentinelUrl });
+    } finally {
+      clearSensitiveBytes(componentKey);
+      await broker.close();
+    }
   });
 
   it("reports server transport failures as unavailable", async () => {

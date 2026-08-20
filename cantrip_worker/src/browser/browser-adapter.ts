@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -17,9 +17,17 @@ import {
 import type {
   RemoteSurfaceAdapter,
   RemoteSurfaceAttachment,
+  RemoteSurfacePrivateState,
   RemoteSurfaceSession,
 } from "../remote-surface-manager.js";
-import { workerLogError, workerLogger } from "../logger.js";
+import { workerLogger } from "../logger.js";
+import type { WorkerEncryptionService } from "../worker-encryption.js";
+import {
+  BrowserNavigationOperationGuard,
+  openBrowserNavigationOperation,
+  openBrowserPersistentPrivateState,
+  protectBrowserLocationOperation,
+} from "./browser-private-state.js";
 import { CdpClient } from "./cdp-client.js";
 import { BrowserCdpSession } from "./browser-session.js";
 import { findChromiumExecutable } from "./chromium.js";
@@ -160,6 +168,9 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #process: ChildProcess | null;
   readonly #surfaceId: string;
   readonly #targetId: string;
+  readonly #ownerId: string;
+  readonly #serverId: string;
+  readonly #surfacePrivateState: WorkerEncryptionService;
   #closed = false;
   #currentUrl: string;
   #cursor = "default";
@@ -167,7 +178,9 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   #loading = true;
   #navigationOperation: string | null = null;
   #navigationStartedAtMs: number | null = null;
+  #stateRevision: number;
   #stateRefresh: Promise<void> | null = null;
+  readonly #navigationOperations = new BrowserNavigationOperationGuard();
 
   private constructor(options: {
     client: CdpClient;
@@ -176,17 +189,26 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     onCrash(error: Error): void;
     process: ChildProcess | null;
+    initialUrl: string;
+    ownerId: string;
+    serverId: string;
+    stateRevision: number;
+    surfacePrivateState: WorkerEncryptionService;
     surfaceId: string;
     targetId: string;
   }) {
     this.#client = options.client;
     this.#cdp = options.cdp;
     this.configuration = options.configuration;
-    this.#currentUrl = options.configuration.initialUrl;
+    this.#currentUrl = options.initialUrl;
     this.#emit = options.emit;
     this.#onCrash = options.onCrash;
     this.#process = options.process;
     this.#surfaceId = options.surfaceId;
+    this.#ownerId = options.ownerId;
+    this.#serverId = options.serverId;
+    this.#stateRevision = options.stateRevision;
+    this.#surfacePrivateState = options.surfacePrivateState;
     this.#targetId = options.targetId;
     this.#client.onClose((error) => {
       if (!this.#closed) this.#onCrash(error);
@@ -214,8 +236,13 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     dataDirectory: string;
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     executable: string;
+    initialUrl: string;
     onCrash(error: Error): void;
     onLaunch?(process: ChildProcess): void;
+    ownerId: string;
+    serverId: string;
+    stateRevision: number;
+    surfacePrivateState: WorkerEncryptionService;
     surfaceId: string;
     viewport: RemoteSurfaceViewport;
   }): Promise<BrowserRemoteSurfaceSession> {
@@ -253,6 +280,11 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
         emit: options.emit,
         onCrash: options.onCrash,
         process,
+        initialUrl: options.initialUrl,
+        ownerId: options.ownerId,
+        serverId: options.serverId,
+        stateRevision: options.stateRevision,
+        surfacePrivateState: options.surfacePrivateState,
         surfaceId: options.surfaceId,
         targetId,
       });
@@ -276,19 +308,22 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#attachments.delete(attachmentId);
   }
 
-  async updateConfiguration(
+  async applyConfiguration(
     configuration: RemoteSurfaceConfiguration,
+    initialUrl: string,
+    stateRevision: number,
   ): Promise<void> {
     if (configuration.kind !== "browser") {
       throw new Error("Browser configuration kind cannot change.");
     }
     this.configuration = configuration;
-    if (this.#currentUrl === configuration.initialUrl) return;
+    this.#stateRevision = stateRevision;
+    if (this.#currentUrl === initialUrl) return;
     this.startNavigation("configuration");
     this.#loading = true;
     await this.publishState();
     try {
-      await this.command("Page.navigate", { url: configuration.initialUrl });
+      await this.command("Page.navigate", { url: initialUrl });
     } catch (error) {
       this.failNavigation(error);
       throw error;
@@ -305,11 +340,24 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       JSON.parse(decoder.decode(payload)),
     );
     if (message.type === "navigate") {
+      const privateState = await openBrowserNavigationOperation({
+        operationId: message.operationId,
+        ownerId: this.#ownerId,
+        serverId: this.#serverId,
+        service: this.#surfacePrivateState,
+        stateProtection: message.stateProtection,
+        surfaceId: this.#surfaceId,
+      });
+      this.#navigationOperations.accept({
+        expectedRevision: this.#stateRevision,
+        operationId: message.operationId,
+        revision: privateState.revision,
+      });
       this.startNavigation("navigate");
       this.#loading = true;
       await this.publishState();
       try {
-        await this.command("Page.navigate", { url: message.url });
+        await this.command("Page.navigate", { url: privateState.url });
       } catch (error) {
         this.failNavigation(error);
         throw error;
@@ -432,12 +480,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     ]);
     await this.configureViewport(viewport);
     this.startNavigation("initial");
-    await this.command("Page.navigate", {
-      url:
-        this.configuration.kind === "browser"
-          ? this.configuration.initialUrl
-          : "about:blank",
-    });
+    await this.command("Page.navigate", { url: this.#currentUrl });
   }
 
   private startNavigation(operation: string): void {
@@ -467,7 +510,7 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#navigationStartedAtMs = null;
   }
 
-  private failNavigation(error: unknown): void {
+  private failNavigation(_error: unknown): void {
     workerLogger.event("warn", "Browser navigation failed", {
       event: "browser.navigation.failed",
       subsystem: "browser",
@@ -479,7 +522,6 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
         this.#navigationStartedAtMs === null
           ? undefined
           : Date.now() - this.#navigationStartedAtMs,
-      error: workerLogError(error),
     });
     this.#navigationOperation = null;
     this.#navigationStartedAtMs = null;
@@ -525,10 +567,20 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       const entry = history.entries[history.currentIndex];
       if (!entry) return;
       this.#currentUrl = entry.url;
+      const operationId = randomUUID();
       const state: RemoteBrowserServerMessage =
         remoteBrowserServerMessageSchema.parse({
           type: "browser-state",
-          url: entry.url,
+          operationId,
+          stateProtection: await protectBrowserLocationOperation({
+            operationId,
+            ownerId: this.#ownerId,
+            revision: this.#stateRevision,
+            serverId: this.#serverId,
+            service: this.#surfacePrivateState,
+            surfaceId: this.#surfaceId,
+            url: entry.url,
+          }),
           title: entry.title,
           canGoBack: history.currentIndex > 0,
           canGoForward: history.currentIndex < history.entries.length - 1,
@@ -700,6 +752,9 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   readonly #executable: string;
   readonly #options: BrowserAdapterOptions;
   readonly #onClose: () => void;
+  readonly #ownerId: string;
+  readonly #serverId: string;
+  readonly #surfacePrivateState: WorkerEncryptionService;
   #closed = false;
   #currentUrl: string;
   #opening: Promise<BrowserRemoteSurfaceSession> | null = null;
@@ -707,13 +762,16 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   #restartTimer: ReturnType<typeof setTimeout> | null = null;
   #session: BrowserRemoteSurfaceSession | null = null;
   #sessionStartedAtMs: number | null = null;
+  #stateRevision: number;
 
   private constructor(options: {
     command: Parameters<RemoteSurfaceAdapter["open"]>[0];
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     executable: string;
+    initialState: { revision: number; url: string };
     onClose(): void;
     options: BrowserAdapterOptions;
+    surfacePrivateState: WorkerEncryptionService;
   }) {
     if (options.command.configuration.kind !== "browser") {
       throw new Error("Browser session requires browser configuration.");
@@ -724,15 +782,21 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#onClose = options.onClose;
     this.#options = options.options;
     this.configuration = options.command.configuration;
-    this.#currentUrl = this.configuration.initialUrl;
+    this.#currentUrl = options.initialState.url;
+    this.#stateRevision = options.initialState.revision;
+    this.#surfacePrivateState = options.surfacePrivateState;
+    this.#ownerId = options.surfacePrivateState.ownerId();
+    this.#serverId = options.command.serverId;
   }
 
   static async open(options: {
     command: Parameters<RemoteSurfaceAdapter["open"]>[0];
     emit: Parameters<RemoteSurfaceAdapter["open"]>[1];
     executable: string;
+    initialState: { revision: number; url: string };
     onClose(): void;
     options: BrowserAdapterOptions;
+    surfacePrivateState: WorkerEncryptionService;
   }): Promise<ResilientBrowserRemoteSurfaceSession> {
     const session = new ResilientBrowserRemoteSurfaceSession(options);
     await session.ensureSession();
@@ -753,16 +817,31 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
 
   async updateConfiguration(
     configuration: RemoteSurfaceConfiguration,
+    privateState: RemoteSurfacePrivateState | null,
   ): Promise<void> {
     if (configuration.kind !== "browser") {
       throw new Error("Browser configuration kind cannot change.");
     }
+    if (!privateState) {
+      throw new Error("Browser surface private state is unavailable.");
+    }
+    const opened = await openBrowserPersistentPrivateState({
+      ownerId: this.#ownerId,
+      service: this.#surfacePrivateState,
+      state: privateState,
+      surfaceId: this.#command.surfaceId,
+    });
     this.configuration = configuration;
+    this.#stateRevision = opened.revision;
     if (this.#session) {
-      await this.#session.updateConfiguration(configuration);
+      await this.#session.applyConfiguration(
+        configuration,
+        opened.url,
+        opened.revision,
+      );
       this.#currentUrl = this.#session.currentUrl;
     } else {
-      this.#currentUrl = configuration.initialUrl;
+      this.#currentUrl = opened.url;
     }
   }
 
@@ -847,18 +926,20 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     let session: BrowserRemoteSurfaceSession;
     try {
       session = await BrowserRemoteSurfaceSession.open({
-        configuration: {
-          ...this.configuration,
-          initialUrl: this.#currentUrl,
-        },
+        configuration: this.configuration,
         dataDirectory: this.#options.dataDirectory,
         emit: (attachmentId, channel, payload) =>
           this.forward(attachmentId, channel, payload),
         executable: this.#executable,
+        initialUrl: this.#currentUrl,
         onCrash: (error) => {
           if (opened) this.handleCrash(opened, error);
         },
         onLaunch: this.#options.onLaunch,
+        ownerId: this.#ownerId,
+        serverId: this.#serverId,
+        stateRevision: this.#stateRevision,
+        surfacePrivateState: this.#surfacePrivateState,
         surfaceId: this.#command.surfaceId,
         viewport: this.#command.viewport,
       });
@@ -876,7 +957,6 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
           surfaceId: this.#command.surfaceId,
           attempt,
           durationMs: Date.now() - startedAtMs,
-          error: workerLogError(error),
         },
       );
       throw error;
@@ -911,26 +991,18 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     channel: RemoteSurfaceChannel,
     payload: Uint8Array,
   ): boolean {
-    if (channel === "control") {
-      const state = remoteBrowserServerMessageSchema.safeParse(
-        JSON.parse(decoder.decode(payload)),
-      );
-      if (state.success && state.data.type === "browser-state") {
-        this.#currentUrl = state.data.url;
-      }
-    }
     return this.#emit(attachmentId, channel, payload);
   }
 
   private handleCrash(
     session: BrowserRemoteSurfaceSession,
-    error: Error,
+    _error: Error,
   ): void {
     if (this.#closed || this.#session !== session) return;
     this.#currentUrl = session.currentUrl;
     this.#session = null;
     void session.close().catch(() => undefined);
-    this.publishRuntime("recovering", error.message);
+    this.publishRuntime("recovering", "Browser runtime is reconnecting.");
     workerLogger.event("warn", "Browser surface runtime disconnected", {
       event: "browser.runtime.disconnected",
       subsystem: "browser",
@@ -941,7 +1013,6 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       durationMs: this.#sessionStartedAtMs
         ? Date.now() - this.#sessionStartedAtMs
         : undefined,
-      error: workerLogError(error),
     });
     this.#sessionStartedAtMs = null;
     this.scheduleRestart();
@@ -962,11 +1033,8 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     });
     this.#restartTimer = setTimeout(() => {
       this.#restartTimer = null;
-      void this.ensureSession().catch((error: unknown) => {
-        this.publishRuntime(
-          "recovering",
-          error instanceof Error ? error.message : String(error),
-        );
+      void this.ensureSession().catch(() => {
+        this.publishRuntime("recovering", "Browser runtime is reconnecting.");
         this.scheduleRestart();
       });
     }, delay);
@@ -998,6 +1066,7 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
     Promise<ResilientBrowserRemoteSurfaceSession>
   >();
   readonly #sessions = new Map<string, ResilientBrowserRemoteSurfaceSession>();
+  #surfacePrivateState: WorkerEncryptionService | null = null;
 
   constructor(private readonly options: BrowserAdapterOptions) {
     this.executable = options.executable ?? findChromiumExecutable();
@@ -1012,6 +1081,10 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
 
   get available(): boolean {
     return Boolean(this.executable);
+  }
+
+  setSurfacePrivateStateService(service: WorkerEncryptionService): void {
+    this.#surfacePrivateState = service;
   }
 
   session(surfaceId: string): BrowserCdpSession | null {
@@ -1029,6 +1102,14 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
       throw new Error(
         "No Chromium browser was found. Set CANTRIP_CHROMIUM_EXECUTABLE.",
       );
+    }
+    if (
+      !this.#surfacePrivateState ||
+      !command.stateProtection ||
+      !command.stateResource ||
+      !command.stateRevision
+    ) {
+      throw new Error("Browser surface encryption is unavailable.");
     }
     const existing = this.#sessions.get(command.surfaceId);
     if (existing) {
@@ -1050,17 +1131,30 @@ export class BrowserRemoteSurfaceAdapter implements RemoteSurfaceAdapter {
     const opening = this.#openings.get(command.surfaceId);
     if (opening) return opening;
 
+    const initialState = await openBrowserPersistentPrivateState({
+      ownerId: this.#surfacePrivateState.ownerId(),
+      service: this.#surfacePrivateState,
+      state: {
+        serverId: command.serverId,
+        stateProtection: command.stateProtection,
+        stateResource: command.stateResource,
+        stateRevision: command.stateRevision,
+      },
+      surfaceId: command.surfaceId,
+    });
     let session: ResilientBrowserRemoteSurfaceSession | null = null;
     const next = ResilientBrowserRemoteSurfaceSession.open({
       command,
       emit,
       executable: this.executable,
+      initialState,
       onClose: () => {
         if (session && this.#sessions.get(command.surfaceId) === session) {
           this.#sessions.delete(command.surfaceId);
         }
       },
       options: this.options,
+      surfacePrivateState: this.#surfacePrivateState,
     }).then((opened) => {
       session = opened;
       this.#sessions.set(command.surfaceId, opened);

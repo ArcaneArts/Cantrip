@@ -370,6 +370,7 @@ import type {
   TaskPlanUpdate,
   TunnelAttachmentCreate,
   BrowserTunnelRequest,
+  BrowserSummary,
   TunnelUserCreate,
   TunnelUserUpdate,
   UserSettingsUpdate,
@@ -3229,9 +3230,13 @@ export async function getBrowsers(projectId: string) {
   const browsers = browserWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/browsers`),
   );
-  return Promise.all(
+  const opened = await Promise.all(
     browsers.map((browser) => surfaceTitleEncryption.openBrowser(browser)),
   );
+  for (const browser of opened) {
+    browserStateRevisions.set(browser.id, browser.stateRevision);
+  }
+  return opened;
 }
 
 export async function getBrowserServices(browserId: string) {
@@ -3250,12 +3255,42 @@ export async function getProjectBrowserServices(projectId: string) {
 
 export async function ensureBrowserTunnel(
   browserId: string,
-  input: BrowserTunnelRequest,
+  input: { url: string; workerId?: string },
 ) {
+  const url = new URL(input.url);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error(
+      "Local Browser tunnels require an uncredentialed HTTP or HTTPS URL.",
+    );
+  }
+  const hostname = url.hostname.toLowerCase();
+  const host =
+    hostname === "127.0.0.1" || hostname === "0.0.0.0"
+      ? "127.0.0.1"
+      : hostname === "localhost"
+        ? "localhost"
+        : hostname === "::1" || hostname === "[::1]"
+          ? "::1"
+          : null;
+  if (!host) {
+    throw new Error(
+      "Local Browser tunnels may only target a loopback service on the selected worker.",
+    );
+  }
+  const route: BrowserTunnelRequest = {
+    protocol: url.protocol === "https:" ? "https" : "http",
+    host,
+    port: url.port ? Number(url.port) : url.protocol === "https:" ? 443 : 80,
+    ...(input.workerId ? { workerId: input.workerId } : {}),
+  };
   return tunnelSummarySchema.parse(
     await post(
       `/api/browsers/${encodeURIComponent(browserId)}/tunnel`,
-      browserTunnelRequestSchema.parse(input),
+      browserTunnelRequestSchema.parse(route),
     ),
   );
 }
@@ -3273,43 +3308,94 @@ export async function createBrowser(
     title,
     "browser",
   );
-  return surfaceTitleEncryption.openBrowser(
+  const stateProtection = await surfaceTitleEncryption.protectBrowserState(
+    id,
+    url ?? "https://example.com/",
+    1,
+  );
+  const browser = await surfaceTitleEncryption.openBrowser(
     browserWireSummarySchema.parse(
       await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
         id,
         titleProtection,
-        ...(url ? { url } : {}),
+        stateProtection,
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
       }),
     ),
   );
+  browserStateRevisions.set(browser.id, browser.stateRevision);
+  return browser;
 }
 
-export async function updateBrowser(
+const browserStateRevisions = new Map<string, number>();
+const browserUpdateChains = new Map<string, Promise<void>>();
+
+export function updateBrowser(
   browserId: string,
-  input: { title?: string; url?: string },
+  input: { title?: string; url?: string; stateRevision?: number },
 ) {
-  const titleProtection = input.title
-    ? await surfaceTitleEncryption.protect(browserId, input.title, "browser")
-    : undefined;
-  return surfaceTitleEncryption.openBrowser(
-    browserWireSummarySchema.parse(
-      await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          ...(titleProtection ? { titleProtection } : {}),
-          ...(input.url ? { url: input.url } : {}),
-        }),
-      }),
-    ),
-  );
+  let resolveResult!: (browser: BrowserSummary) => void;
+  let rejectResult!: (error: unknown) => void;
+  const result = new Promise<BrowserSummary>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  const previous = browserUpdateChains.get(browserId) ?? Promise.resolve();
+  const next = previous
+    .catch(() => undefined)
+    .then(async () => {
+      const titleProtection = input.title
+        ? await surfaceTitleEncryption.protect(
+            browserId,
+            input.title,
+            "browser",
+          )
+        : undefined;
+      const expectedStateRevision =
+        browserStateRevisions.get(browserId) ?? input.stateRevision;
+      if (input.url && !expectedStateRevision) {
+        throw new Error("Browser state revision is unavailable.");
+      }
+      const stateProtection = input.url
+        ? await surfaceTitleEncryption.protectBrowserState(
+            browserId,
+            input.url,
+            expectedStateRevision! + 1,
+          )
+        : undefined;
+      const browser = await surfaceTitleEncryption.openBrowser(
+        browserWireSummarySchema.parse(
+          await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
+            method: "PATCH",
+            body: JSON.stringify({
+              ...(titleProtection ? { titleProtection } : {}),
+              ...(stateProtection
+                ? { expectedStateRevision, stateProtection }
+                : {}),
+            }),
+          }),
+        ),
+      );
+      browserStateRevisions.set(browser.id, browser.stateRevision);
+      resolveResult(browser);
+    })
+    .catch(rejectResult)
+    .finally(() => {
+      if (browserUpdateChains.get(browserId) === next) {
+        browserUpdateChains.delete(browserId);
+      }
+    });
+  browserUpdateChains.set(browserId, next);
+  return result;
 }
 
 export async function deleteBrowser(browserId: string) {
   await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
     method: "DELETE",
   });
+  browserStateRevisions.delete(browserId);
+  browserUpdateChains.delete(browserId);
 }
 
 export async function getRemoteDesktops(projectId: string) {

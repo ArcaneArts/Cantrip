@@ -22,6 +22,7 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
+  protectedBrowserFields,
   protectedDisplayLabelFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
@@ -181,7 +182,7 @@ beforeAll(async () => {
     LOCAL_USER_ID,
     project.id,
     {
-      ...protectedDisplayLabelFields("browser"),
+      ...protectedBrowserFields(),
       target: {
         kind: "worker",
         projectId: project.id,
@@ -297,8 +298,7 @@ describe.sequential("browser service discovery API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/browsers`,
       payload: {
-        ...protectedDisplayLabelFields("browser"),
-        url: "http://127.0.0.1:8080/",
+        ...protectedBrowserFields(),
         target: {
           kind: "worker",
           projectId,
@@ -308,8 +308,11 @@ describe.sequential("browser service discovery API", () => {
     });
     expect(response.statusCode).toBe(201);
     expect(browserWireSummarySchema.parse(response.json())).toMatchObject({
-      url: "http://127.0.0.1:8080/",
       workerId: "healthy-worker",
+      stateRevision: 1,
+      stateProtection: {
+        classification: { recordKind: "browser-state" },
+      },
       titleProtection: {
         classification: { recordKind: "browser" },
       },
@@ -320,7 +323,7 @@ describe.sequential("browser service discovery API", () => {
     const response = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
-      payload: { url: "http://localhost:5173/app?mode=dev#ready" },
+      payload: { protocol: "http", host: "localhost", port: 5173 },
     });
 
     expect(response.statusCode).toBe(200);
@@ -361,7 +364,9 @@ describe.sequential("browser service discovery API", () => {
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
       payload: {
-        url: "http://localhost:5173/another-path",
+        protocol: "http",
+        host: "localhost",
+        port: 5173,
         workerId: "test-worker",
       },
     });
@@ -370,7 +375,7 @@ describe.sequential("browser service discovery API", () => {
     const retarget = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
-      payload: { url: "https://127.0.0.1:8443/stream" },
+      payload: { protocol: "https", host: "127.0.0.1", port: 8443 },
     });
     const retargeted = tunnelSummarySchema.parse(retarget.json());
     expect(retargeted).toMatchObject({
@@ -387,7 +392,9 @@ describe.sequential("browser service discovery API", () => {
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
       payload: {
-        url: "http://127.0.0.1:3000/",
+        protocol: "http",
+        host: "127.0.0.1",
+        port: 3000,
         workerId: "secondary-worker",
       },
     });
@@ -403,16 +410,21 @@ describe.sequential("browser service discovery API", () => {
     });
   });
 
-  it("rejects non-loopback and credentialed Browser tunnel targets", async () => {
+  it("rejects non-loopback and plaintext Browser tunnel targets", async () => {
     const external = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
-      payload: { url: "https://example.com/" },
+      payload: { protocol: "https", host: "example.com", port: 443 },
     });
     const credentialed = await app.inject({
       method: "POST",
       url: `/api/browsers/${browserId}/tunnel`,
-      payload: { url: "http://user:password@localhost:5173/" },
+      payload: {
+        protocol: "http",
+        host: "localhost",
+        port: 5173,
+        url: "http://user:password@localhost:5173/",
+      },
     });
     expect(external.statusCode).toBe(400);
     expect(credentialed.statusCode).toBe(400);

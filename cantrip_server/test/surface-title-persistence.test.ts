@@ -119,6 +119,42 @@ it("persists every private display label only as authenticated ciphertext", asyn
       selectedPath: `${sentinel}/private-selection.ts`,
     },
   });
+  const browserStateProtection = await encryptSurfacePrivateState({
+    ownerId: LOCAL_USER_ID,
+    context: {
+      serverId: "surface-title-server",
+      resource: "browser-row",
+      resourceId: ids.browser,
+      operationId: null,
+      recordKind: "browser-state",
+    },
+    keyRevision: 1,
+    componentKey: surfaceStateKey,
+    content: {
+      version: 1,
+      classification: { recordKind: "browser-state" },
+      revision: 1,
+      url: `https://example.com/${sentinel}`,
+    },
+  });
+  const browserRemoteSurfaceStateProtection = await encryptSurfacePrivateState({
+    ownerId: LOCAL_USER_ID,
+    context: {
+      serverId: "surface-title-server",
+      resource: "browser-remote-surface",
+      resourceId: ids.surface,
+      operationId: null,
+      recordKind: "browser-state",
+    },
+    keyRevision: 1,
+    componentKey: surfaceStateKey,
+    content: {
+      version: 1,
+      classification: { recordKind: "browser-state" },
+      revision: 1,
+      url: `https://example.com/${sentinel}/remote`,
+    },
+  });
 
   const database = await connectDatabase(config);
   try {
@@ -282,6 +318,7 @@ it("persists every private display label only as authenticated ciphertext", asyn
         {
           id: ids.browser,
           titleProtection: await protectedTitle("browser", ids.browser),
+          stateProtection: browserStateProtection,
         },
         () => true,
       ),
@@ -296,9 +333,9 @@ it("persists every private display label only as authenticated ciphertext", asyn
         id: ids.surface,
         workerId: "surface-title-worker",
         titleProtection: await protectedTitle("remote-surface", ids.surface),
+        stateProtection: browserRemoteSurfaceStateProtection,
         configuration: {
           kind: "browser",
-          initialUrl: "https://example.com",
           profileId: null,
         },
       }),
@@ -396,6 +433,15 @@ it("persists every private display label only as authenticated ciphertext", asyn
       if (table === "explorers") {
         expect(names).toContain("protected_state");
         expect(names).not.toContain("selected_path");
+      }
+      if (table === "browsers") {
+        expect(names).toContain("protected_state");
+        expect(names).toContain("state_revision");
+        expect(names).not.toContain("url");
+      }
+      if (table === "remote_surfaces") {
+        expect(names).toContain("protected_state");
+        expect(names).toContain("state_revision");
       }
     }
 

@@ -21,6 +21,7 @@ import path from "node:path";
 import {
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
+  executionTargetSchema,
   type CantripCliCommandRequest,
   type CantripCliCommandResult,
 } from "@cantrip/protocol";
@@ -31,6 +32,8 @@ import {
   invokeCantripCliCommand,
 } from "./cli-client.js";
 import { workerLogError, workerLogger } from "./logger.js";
+import { encodeSurfacePrivateStateForWorker } from "./surface-private-state-encryption.js";
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 export const CANTRIP_CLI_CONNECTION_ENV = "CANTRIP_CLI_CONNECTION";
 export const CANTRIP_CLI_CONNECTION_FILE = "cli-connection.json";
@@ -184,6 +187,7 @@ export class CantripCliBroker {
   readonly #sessionToken = randomBytes(32).toString("base64url");
   readonly #execute: CliCommandExecutor;
   readonly #threadContexts = new Map<string, CantripCliChatContext>();
+  #surfacePrivateState: WorkerEncryptionService | null = null;
   #server: Server | null = null;
 
   constructor(
@@ -233,6 +237,83 @@ export class CantripCliBroker {
       status: "completed",
       chatId: context.chatId,
       counts: { contexts: this.#threadContexts.size },
+    });
+  }
+
+  setSurfacePrivateStateService(service: WorkerEncryptionService): void {
+    this.#surfacePrivateState = service;
+  }
+
+  private async protectBrowserNavigation(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+  ): Promise<CantripCliCommandRequest> {
+    if (command.command !== "browser.open") return command;
+    if (!this.#surfacePrivateState) {
+      throw new Error("Browser private-state encryption is unavailable.");
+    }
+    const rawUrl = command.arguments.url;
+    if (typeof rawUrl !== "string" || rawUrl.length > 4_096) {
+      throw new Error("Browser navigation needs a valid URL.");
+    }
+    const url = new URL(rawUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("Browser navigation requires HTTP or HTTPS.");
+    }
+    const resolution = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: "target.resolve-browser",
+        context: command.context,
+        arguments: {
+          ...(typeof command.arguments.target === "string"
+            ? { target: command.arguments.target }
+            : {}),
+        },
+      }),
+      `${requestId}:resolve-browser`,
+      chatContext,
+    );
+    const target = executionTargetSchema.parse(resolution.target);
+    const details = resolution.data as {
+      serverId?: unknown;
+      stateRevision?: unknown;
+    } | null;
+    if (
+      target.kind !== "surface" ||
+      target.surfaceKind !== "browser" ||
+      typeof details?.serverId !== "string" ||
+      !Number.isSafeInteger(details.stateRevision) ||
+      Number(details.stateRevision) < 1
+    ) {
+      throw new Error("The browser target has no usable encrypted state.");
+    }
+    const expectedStateRevision = Number(details.stateRevision);
+    const stateProtection = await encodeSurfacePrivateStateForWorker({
+      ownerId: this.#surfacePrivateState.ownerId(),
+      context: {
+        serverId: details.serverId,
+        resource: "browser-row",
+        resourceId: target.surfaceId,
+        operationId: null,
+        recordKind: "browser-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "browser-state" },
+        revision: expectedStateRevision + 1,
+        url: url.toString(),
+      },
+      service: this.#surfacePrivateState,
+    });
+    return cantripCliCommandRequestSchema.parse({
+      command: command.command,
+      context: command.context,
+      arguments: {
+        target: target.surfaceId,
+        expectedStateRevision,
+        stateProtection,
+      },
     });
   }
 
@@ -310,6 +391,11 @@ export class CantripCliBroker {
               requestId,
               ...(chatContext ? { chatId: chatContext.chatId } : {}),
             });
+            command = await this.protectBrowserNavigation(
+              command,
+              requestId,
+              chatContext,
+            );
             const result = await this.#execute(command, requestId, chatContext);
             workerLogger.event("debug", "Cantrip CLI command completed", {
               event: "cli.command.completed",

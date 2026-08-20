@@ -207,6 +207,13 @@ function terminalStateFixture() {
   };
 }
 
+function browserStateFixture() {
+  return {
+    classification: { recordKind: "browser-state" as const },
+    protectedState: terminalStateFixture().protectedState,
+  };
+}
+
 describe("worker channel JSON codec", () => {
   it("accepts a worker restart control command", () => {
     expect(workerCommandSchema.parse({ type: "worker.restart" })).toEqual({
@@ -4215,6 +4222,10 @@ describe("Cantrip protocol", () => {
       workerCommandSchema.parse({
         type: "surface.configure",
         surfaceId: "desktop-1",
+        serverId: "server-1",
+        stateResource: null,
+        stateRevision: null,
+        stateProtection: null,
         configuration: {
           kind: "desktop",
           target: {
@@ -4653,13 +4664,14 @@ describe("Cantrip protocol", () => {
     expect(
       remoteBrowserServerMessageSchema.parse({
         type: "browser-state",
-        url: "about:blank",
+        operationId: "00000000-0000-4000-8000-000000000001",
+        stateProtection: browserStateFixture(),
         title: "",
         canGoBack: false,
         canGoForward: false,
         loading: true,
       }),
-    ).toMatchObject({ url: "about:blank", loading: true });
+    ).toMatchObject({ loading: true });
     expect(
       remoteBrowserClientMessageSchema.parse({
         type: "touch",

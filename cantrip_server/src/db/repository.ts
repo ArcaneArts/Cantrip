@@ -392,6 +392,7 @@ export interface ChatAttachmentRecord extends ChatAttachmentSummary {
 }
 
 export class ExecutionLaneConflictError extends Error {}
+export class SurfacePrivateStateConflictError extends Error {}
 export class ExecutionPlacementUnavailableError extends Error {
   constructor(
     readonly code:
@@ -1520,7 +1521,8 @@ function toBrowserWireSummary(
     projectId: browser.projectId,
     titleProtection: browser.protectedLabel,
     position: browser.position,
-    url: browser.url,
+    stateProtection: browser.protectedState,
+    stateRevision: browser.stateRevision,
     workerId,
     createdAt: toISOString(browser.createdAt),
     updatedAt: toISOString(browser.updatedAt),
@@ -1763,6 +1765,8 @@ function jsonPermissionSubset(granted: unknown, requested: unknown): boolean {
 function toRemoteSurfaceWireSummary(
   surface: typeof schema.remoteSurfaces.$inferSelect,
   titleProtection: PrivateDisplayLabelOpaque | null = surface.protectedLabel,
+  stateProtection = surface.protectedState,
+  stateRevision = surface.stateRevision,
 ): RemoteSurfaceWireSummary {
   if (!titleProtection) {
     throw new Error("Remote Surface is missing its canonical protected label.");
@@ -1777,6 +1781,8 @@ function toRemoteSurfaceWireSummary(
     preferredTransport:
       surface.preferredTransport as RemoteSurfaceWireSummary["preferredTransport"],
     configuration: surface.configuration,
+    stateProtection,
+    stateRevision,
     lastError: surface.lastError,
     lastConnectedAt: surface.lastConnectedAt
       ? toISOString(surface.lastConnectedAt)
@@ -13027,8 +13033,9 @@ export class ServerRepository {
           id: browserId,
           projectId,
           protectedLabel: input.titleProtection,
+          protectedState: input.stateProtection,
+          stateRevision: 1,
           position,
-          ...(input.url ? { url: input.url } : {}),
         })
         .returning();
       const browser = firstOrThrow(result, "creating a browser");
@@ -13040,7 +13047,6 @@ export class ServerRepository {
         preferredTransport: "webrtc",
         configuration: {
           kind: "browser",
-          initialUrl: browser.url,
           profileId: null,
         },
       });
@@ -13071,27 +13077,38 @@ export class ServerRepository {
           ...(input.titleProtection
             ? { protectedLabel: input.titleProtection }
             : {}),
-          ...(input.url ? { url: input.url } : {}),
+          ...(input.stateProtection
+            ? {
+                protectedState: input.stateProtection,
+                stateRevision: input.expectedStateRevision! + 1,
+              }
+            : {}),
           updatedAt: new Date(),
         })
-        .where(eq(schema.browsers.id, browserId))
+        .where(
+          and(
+            eq(schema.browsers.id, browserId),
+            ...(input.expectedStateRevision === undefined
+              ? []
+              : [
+                  eq(
+                    schema.browsers.stateRevision,
+                    input.expectedStateRevision,
+                  ),
+                ]),
+          ),
+        )
         .returning();
       const browser = result[0];
-      if (!browser) return null;
+      if (!browser) {
+        if (input.expectedStateRevision === undefined) return null;
+        throw new SurfacePrivateStateConflictError(
+          "Browser private state changed before this update.",
+        );
+      }
       await transaction
         .update(schema.remoteSurfaces)
-        .set({
-          ...(input.url === undefined ||
-          surface?.surface.configuration.kind !== "browser"
-            ? {}
-            : {
-                configuration: {
-                  ...surface.surface.configuration,
-                  initialUrl: input.url,
-                },
-              }),
-          updatedAt: new Date(),
-        })
+        .set({ updatedAt: new Date() })
         .where(eq(schema.remoteSurfaces.id, browserId));
       return toBrowserWireSummary(browser, surface?.workerId ?? null);
     });
@@ -13162,7 +13179,6 @@ export class ServerRepository {
           preferredTransport: "webrtc",
           configuration: {
             kind: "browser" as const,
-            initialUrl: browser.url,
             profileId: null,
           },
         })),
@@ -13178,6 +13194,8 @@ export class ServerRepository {
       .select({
         surface: schema.remoteSurfaces,
         browserLabel: schema.browsers.protectedLabel,
+        browserState: schema.browsers.protectedState,
+        browserStateRevision: schema.browsers.stateRevision,
         viewLabel: schema.projectViews.protectedLabel,
       })
       .from(schema.remoteSurfaces)
@@ -13201,11 +13219,20 @@ export class ServerRepository {
         asc(schema.remoteSurfaces.createdAt),
         asc(schema.remoteSurfaces.id),
       );
-    return rows.map(({ surface, browserLabel, viewLabel }) =>
-      toRemoteSurfaceWireSummary(
+    return rows.map(
+      ({
         surface,
-        surface.protectedLabel ?? browserLabel ?? viewLabel,
-      ),
+        browserLabel,
+        browserState,
+        browserStateRevision,
+        viewLabel,
+      }) =>
+        toRemoteSurfaceWireSummary(
+          surface,
+          surface.protectedLabel ?? browserLabel ?? viewLabel,
+          browserState ?? surface.protectedState,
+          browserStateRevision ?? surface.stateRevision,
+        ),
     );
   }
 
@@ -13245,6 +13272,8 @@ export class ServerRepository {
         workerId: input.workerId,
         kind: input.configuration.kind,
         protectedLabel: input.titleProtection,
+        protectedState: input.stateProtection ?? null,
+        stateRevision: input.stateProtection ? 1 : null,
         configuration: input.configuration,
       })
       .returning();
@@ -13262,6 +13291,8 @@ export class ServerRepository {
         surface: schema.remoteSurfaces,
         remoteSurfaceCapabilities: schema.workers.remoteSurfaceCapabilities,
         browserLabel: schema.browsers.protectedLabel,
+        browserState: schema.browsers.protectedState,
+        browserStateRevision: schema.browsers.stateRevision,
         viewLabel: schema.projectViews.protectedLabel,
       })
       .from(schema.remoteSurfaces)
@@ -13298,6 +13329,8 @@ export class ServerRepository {
             surface.protectedLabel ??
               rows[0]!.browserLabel ??
               rows[0]!.viewLabel,
+            rows[0]!.browserState ?? surface.protectedState,
+            rows[0]!.browserStateRevision ?? surface.stateRevision,
           ),
           workerId: surface.workerId,
         }
@@ -13317,6 +13350,7 @@ export class ServerRepository {
       !context ||
       (input.configuration &&
         input.configuration.kind !== context.surface.kind) ||
+      (input.stateProtection && context.surface.kind !== "browser") ||
       (input.titleProtection &&
         context.surface.titleProtection.classification.recordKind !==
           "remote-surface")
@@ -13330,13 +13364,36 @@ export class ServerRepository {
           ? { protectedLabel: input.titleProtection }
           : {}),
         ...(input.configuration ? { configuration: input.configuration } : {}),
+        ...(input.stateProtection
+          ? {
+              protectedState: input.stateProtection,
+              stateRevision: input.expectedStateRevision! + 1,
+            }
+          : {}),
         ...(input.preferredTransport
           ? { preferredTransport: input.preferredTransport }
           : {}),
         updatedAt: new Date(),
       })
-      .where(eq(schema.remoteSurfaces.id, surfaceId))
+      .where(
+        and(
+          eq(schema.remoteSurfaces.id, surfaceId),
+          ...(input.expectedStateRevision === undefined
+            ? []
+            : [
+                eq(
+                  schema.remoteSurfaces.stateRevision,
+                  input.expectedStateRevision,
+                ),
+              ]),
+        ),
+      )
       .returning();
+    if (!result[0] && input.expectedStateRevision !== undefined) {
+      throw new SurfacePrivateStateConflictError(
+        "Remote Surface private state changed before this update.",
+      );
+    }
     return result[0]
       ? toRemoteSurfaceWireSummary(
           result[0],

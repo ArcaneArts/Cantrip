@@ -2462,8 +2462,11 @@ export const browsers = pgTable("browsers", {
   protectedLabel: jsonb("protected_label")
     .$type<PrivateDisplayLabelOpaque>()
     .notNull(),
+  protectedState: jsonb("protected_state")
+    .$type<SurfacePrivateStateOpaque>()
+    .notNull(),
+  stateRevision: integer("state_revision").notNull().default(1),
   position: integer("position").notNull().default(0),
-  url: text("url").notNull().default("https://example.com/"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -2489,6 +2492,8 @@ export const remoteSurfaces = pgTable("remote_surfaces", {
   configuration: jsonb("configuration")
     .$type<RemoteSurfaceConfiguration>()
     .notNull(),
+  protectedState: jsonb("protected_state").$type<SurfacePrivateStateOpaque>(),
+  stateRevision: integer("state_revision"),
   lastError: text("last_error"),
   lastConnectedAt: timestamp("last_connected_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true })

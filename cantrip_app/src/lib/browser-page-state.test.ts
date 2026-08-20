@@ -8,6 +8,7 @@ const browser: BrowserSummary = {
   projectId: "project-1",
   title: "Browser",
   position: 0,
+  stateRevision: 1,
   url: "https://example.com/",
   createdAt: "2026-08-08T12:00:00.000Z",
   updatedAt: "2026-08-08T12:00:00.000Z",
