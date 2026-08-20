@@ -13,6 +13,10 @@ export * from "./communication-content.js";
 import {
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
+  encryptedInteractionResponseContentSchema,
+  interactionProtectedClassificationSchema,
+  interactionRequestOpaqueContentSchema,
+  interactionResponseOpaqueContentSchema,
   queuedPromptOpaqueContentSchema,
 } from "./communication-content.js";
 
@@ -6494,6 +6498,29 @@ export const agentInteractionResolutionCreateSchema = z
     message: "Agent interaction response exceeds the 1 MB storage limit.",
   });
 
+export const encryptedAgentInteractionRequestCreateSchema = z
+  .object({
+    requestKey: z.string().min(1).max(200),
+    projectId: z.string().min(1),
+    provenance: agentInteractionProvenanceSchema,
+    ...interactionRequestOpaqueContentSchema.shape,
+    expiresAt: z.string().datetime().nullable(),
+  })
+  .strict()
+  .refine(fitsAgentInteractionStorageLimit, {
+    message: "Protected agent interaction request exceeds the storage limit.",
+  });
+
+export const encryptedAgentInteractionResolutionCreateSchema = z
+  .object({
+    idempotencyKey: z.string().min(1).max(200),
+    ...interactionResponseOpaqueContentSchema.shape,
+  })
+  .strict()
+  .refine(fitsAgentInteractionStorageLimit, {
+    message: "Protected agent interaction response exceeds the storage limit.",
+  });
+
 export const agentInteractionRuntimeRequestSchema = z.object({
   requestKey: z.string().min(1).max(200),
   threadId: z.string().min(1),
@@ -6502,6 +6529,17 @@ export const agentInteractionRuntimeRequestSchema = z.object({
   payload: agentInteractionRequestPayloadSchema,
   expiresAt: z.string().datetime(),
 });
+
+export const encryptedAgentInteractionRuntimeRequestSchema = z
+  .object({
+    requestKey: z.string().min(1).max(200),
+    threadId: z.string().min(1),
+    turnId: z.string().min(1).nullable(),
+    itemId: z.string().min(1).nullable(),
+    ...interactionRequestOpaqueContentSchema.shape,
+    expiresAt: z.string().datetime(),
+  })
+  .strict();
 
 export const agentInteractionAcceptedSchema = z.object({
   accepted: z.literal(true),
@@ -6568,6 +6606,81 @@ export const agentInteractionRequestSchema = z
 export const agentInteractionRequestListSchema = z.array(
   agentInteractionRequestSchema,
 );
+
+export const encryptedAgentInteractionRequestSchema = z
+  .object({
+    id: z.string().min(1),
+    requestKey: z.string().min(1),
+    projectId: z.string().min(1),
+    provenance: agentInteractionProvenanceSchema,
+    classification: interactionProtectedClassificationSchema,
+    protectedPayload:
+      interactionRequestOpaqueContentSchema.shape.protectedPayload,
+    status: agentInteractionRequestStatusSchema,
+    protectedResponse: encryptedInteractionResponseContentSchema.nullable(),
+    resolvedByUserId: z.string().min(1).nullable(),
+    expiresAt: z.string().datetime().nullable(),
+    resolvedAt: z.string().datetime().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .strict()
+  .superRefine((request, context) => {
+    if (request.status === "pending") {
+      if (
+        request.protectedResponse ||
+        request.resolvedByUserId ||
+        request.resolvedAt
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["status"],
+          message: "Pending requests cannot contain resolution data.",
+        });
+      }
+      return;
+    }
+    if (request.status === "resolved") {
+      if (
+        !request.protectedResponse ||
+        !request.resolvedByUserId ||
+        !request.resolvedAt
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["status"],
+          message: "Resolved requests require protected resolution data.",
+        });
+      }
+      return;
+    }
+    if (
+      request.protectedResponse ||
+      request.resolvedByUserId ||
+      !request.resolvedAt
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message:
+          "Expired and interrupted requests require a terminal timestamp without a response.",
+      });
+    }
+  });
+
+export const agentInteractionRequestWireSchema = z.union([
+  agentInteractionRequestSchema,
+  encryptedAgentInteractionRequestSchema,
+]);
+
+export const agentInteractionRequestWireListSchema = z.array(
+  agentInteractionRequestWireSchema,
+);
+
+export const agentInteractionResolutionWireCreateSchema = z.union([
+  agentInteractionResolutionCreateSchema,
+  encryptedAgentInteractionResolutionCreateSchema,
+]);
 
 export const agentInteractionRequestQuerySchema = z.object({
   chatId: z.string().min(1).optional(),
@@ -10927,6 +11040,13 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     provider: workerRuntimeProviderSchema,
   }),
   z.object({
+    type: z.literal("agent.interaction.respond.protected"),
+    requestKey: z.string().min(1).max(200),
+    response: interactionResponseOpaqueContentSchema,
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
     type: z.literal("agent.interaction.cancel"),
     requestKey: z.string().min(1).max(200),
     reason: z.string().min(1).max(4_000),
@@ -11045,6 +11165,10 @@ export const workerEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("agent.interaction.requested"),
     request: agentInteractionRuntimeRequestSchema,
+  }),
+  z.object({
+    type: z.literal("agent.interaction.requested.protected"),
+    request: encryptedAgentInteractionRuntimeRequestSchema,
   }),
   z.object({
     type: z.literal("agent.interaction.cleared"),
@@ -12259,14 +12383,32 @@ export type AgentInteractionRequestCreate = z.infer<
 export type AgentInteractionResolutionCreate = z.infer<
   typeof agentInteractionResolutionCreateSchema
 >;
+export type EncryptedAgentInteractionRequestCreate = z.infer<
+  typeof encryptedAgentInteractionRequestCreateSchema
+>;
+export type EncryptedAgentInteractionResolutionCreate = z.infer<
+  typeof encryptedAgentInteractionResolutionCreateSchema
+>;
 export type AgentInteractionRuntimeRequest = z.infer<
   typeof agentInteractionRuntimeRequestSchema
+>;
+export type EncryptedAgentInteractionRuntimeRequest = z.infer<
+  typeof encryptedAgentInteractionRuntimeRequestSchema
 >;
 export type AgentInteractionAccepted = z.infer<
   typeof agentInteractionAcceptedSchema
 >;
 export type AgentInteractionRequest = z.infer<
   typeof agentInteractionRequestSchema
+>;
+export type EncryptedAgentInteractionRequest = z.infer<
+  typeof encryptedAgentInteractionRequestSchema
+>;
+export type AgentInteractionRequestWire = z.infer<
+  typeof agentInteractionRequestWireSchema
+>;
+export type AgentInteractionResolutionWireCreate = z.infer<
+  typeof agentInteractionResolutionWireCreateSchema
 >;
 export type AgentInteractionRequestQuery = z.infer<
   typeof agentInteractionRequestQuerySchema

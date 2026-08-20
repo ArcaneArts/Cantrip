@@ -77,6 +77,10 @@ import {
   openEncryptedChatTurn,
 } from "./chat-message-encryption.js";
 import {
+  openAgentInteractionResponse,
+  protectAgentInteractionRequest,
+} from "./interaction-encryption.js";
+import {
   encryptTaskTurnResult,
   executeEncryptedTaskOperation,
   openTaskRelocationPayload,
@@ -1909,10 +1913,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           ? new EncryptedChatEventSealer(workerEncryption)
           : null;
         let protectedEventQueue = Promise.resolve();
+        let protectedEventFailure: unknown = null;
         const emitProtected = (create: () => Promise<WorkerEvent>): void => {
-          protectedEventQueue = protectedEventQueue.then(async () => {
-            emit(await create());
-          });
+          protectedEventQueue = protectedEventQueue
+            .then(async () => {
+              emit(await create());
+            })
+            .catch((error: unknown) => {
+              protectedEventFailure ??= error;
+            });
         };
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
@@ -1954,7 +1963,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ? {}
               : {
                   onInteractionRequest: (request) =>
-                    emit({ type: "agent.interaction.requested", request }),
+                    encryptedChat
+                      ? emitProtected(async () => {
+                          try {
+                            return {
+                              type: "agent.interaction.requested.protected",
+                              request: await protectAgentInteractionRequest({
+                                request,
+                                service: workerEncryption,
+                              }),
+                            };
+                          } catch (error) {
+                            await runtime.cancelAgentInteraction(
+                              request.requestKey,
+                              "Cantrip could not encrypt the interaction safely.",
+                            );
+                            throw error;
+                          }
+                        })
+                      : emit({ type: "agent.interaction.requested", request }),
                   onInteractionCleared: (requestKey) =>
                     emit({ type: "agent.interaction.cleared", requestKey }),
                   onInteractionExpired: (requestKey) =>
@@ -2050,6 +2077,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           });
           const result = await runTurn(prompt, { kind: "visible" });
           await protectedEventQueue;
+          if (protectedEventFailure) throw protectedEventFailure;
           return encryptChatTurnResult({
             idempotencyKey: command.resultMode.idempotencyKey,
             messageId: command.resultMode.messageId,
@@ -2379,6 +2407,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return runtimeFor(command).answerAgentInteraction(
           command.requestKey,
           command.response,
+        );
+      case "agent.interaction.respond.protected":
+        return runtimeFor(command).answerAgentInteraction(
+          command.requestKey,
+          await openAgentInteractionResponse({
+            requestKey: command.requestKey,
+            response: command.response,
+            service: workerEncryption,
+          }),
         );
       case "agent.interaction.cancel":
         return runtimeFor(command).cancelAgentInteraction(

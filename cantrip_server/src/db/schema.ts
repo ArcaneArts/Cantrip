@@ -79,7 +79,11 @@ import type {
   WorkerComponentKeyGrant,
   WorkerEncryptionStatus,
 } from "@cantrip/protocol/encryption";
-import type { QueuedPromptOpaqueContent } from "@cantrip/protocol/communication-content";
+import type {
+  EncryptedInteractionRequestContent,
+  EncryptedInteractionResponseContent,
+  QueuedPromptOpaqueContent,
+} from "@cantrip/protocol/communication-content";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -2650,8 +2654,12 @@ export const agentInteractionRequests = pgTable(
     workflowNodeId: text("workflow_node_id"),
     kind: text("kind").notNull(),
     status: text("status").notNull().default("pending"),
-    payload: jsonb("payload").$type<AgentInteractionRequestPayload>().notNull(),
+    payload: jsonb("payload").$type<AgentInteractionRequestPayload>(),
+    protectedPayload:
+      jsonb("protected_payload").$type<EncryptedInteractionRequestContent>(),
     response: jsonb("response").$type<AgentInteractionResponse>(),
+    protectedResponse:
+      jsonb("protected_response").$type<EncryptedInteractionResponseContent>(),
     resolutionIdempotencyKey: text("resolution_idempotency_key"),
     resolvedByUserId: text("resolved_by_user_id").references(() => users.id, {
       onDelete: "set null",
