@@ -884,9 +884,14 @@ interface ReasoningItem {
 }
 
 interface McpToolCallItem {
+  arguments?: unknown;
   durationMs: number | null;
   error: { message: string } | null;
   id: string;
+  result?: {
+    content?: unknown[];
+    structuredContent?: unknown;
+  } | null;
   server: string;
   status: "inProgress" | "completed" | "failed";
   tool: string;
@@ -1646,6 +1651,51 @@ function boundedText(value: string | null | undefined, limit = 20_000) {
   return `${value.slice(0, limit)}\n…truncated…`;
 }
 
+function boundedJson(value: unknown) {
+  if (value === null || value === undefined) return null;
+  try {
+    return boundedText(
+      typeof value === "string" ? value : JSON.stringify(value, null, 2),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function objectStringField(value: unknown, field: string) {
+  if (typeof value !== "object" || value === null || !(field in value)) {
+    return null;
+  }
+  const candidate = (value as Record<string, unknown>)[field];
+  return typeof candidate === "string" ? candidate : null;
+}
+
+function mcpResultText(result: McpToolCallItem["result"]) {
+  if (!result) return null;
+  const text = (result.content ?? [])
+    .flatMap((content) => {
+      if (
+        typeof content === "object" &&
+        content !== null &&
+        "text" in content &&
+        typeof content.text === "string"
+      ) {
+        return [content.text];
+      }
+      return [];
+    })
+    .join("\n\n")
+    .trim();
+  if (text) return boundedText(text);
+  if (
+    result.structuredContent !== null &&
+    result.structuredContent !== undefined
+  ) {
+    return boundedJson(result.structuredContent);
+  }
+  return (result.content?.length ?? 0) > 0 ? boundedJson(result.content) : null;
+}
+
 function stableActivityId(prefix: string, ...parts: Array<string | null>) {
   const digest = createHash("sha256")
     .update(parts.map((part) => part ?? "").join("\0"))
@@ -2087,12 +2137,17 @@ export function normalizeCodexThreadItem(
     });
   }
   if (item.type === "mcpToolCall") {
+    const isCodeGraph = item.server.toLowerCase() === "codegraph";
     return agentActivitySchema.parse({
       type: "mcpToolCall",
       id: item.id,
       status: activityStatus(item.status),
       server: item.server,
       tool: item.tool,
+      query: isCodeGraph
+        ? boundedText(objectStringField(item.arguments, "query"), 4_000)
+        : null,
+      resultText: isCodeGraph ? mcpResultText(item.result) : null,
       error: boundedText(item.error?.message),
       durationMs: item.durationMs,
       correlation,
