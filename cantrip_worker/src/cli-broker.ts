@@ -25,6 +25,11 @@ import {
   type CantripCliCommandRequest,
   type CantripCliCommandResult,
 } from "@cantrip/protocol";
+import {
+  policyCliWireListResultSchema,
+  policyCliWireReadResultSchema,
+  policyKeySchema,
+} from "@cantrip/protocol/policies";
 
 import type { WorkerConfig } from "./config.js";
 import {
@@ -33,6 +38,7 @@ import {
 } from "./cli-client.js";
 import { workerLogError, workerLogger } from "./logger.js";
 import { encodeSurfacePrivateStateForWorker } from "./surface-private-state-encryption.js";
+import { openPolicyCliDetail, openPolicyCliList } from "./policy-encryption.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 export const CANTRIP_CLI_CONNECTION_ENV = "CANTRIP_CLI_CONNECTION";
@@ -188,6 +194,7 @@ export class CantripCliBroker {
   readonly #execute: CliCommandExecutor;
   readonly #threadContexts = new Map<string, CantripCliChatContext>();
   #surfacePrivateState: WorkerEncryptionService | null = null;
+  #policyEncryption: WorkerEncryptionService | null = null;
   #server: Server | null = null;
 
   constructor(
@@ -242,6 +249,77 @@ export class CantripCliBroker {
 
   setSurfacePrivateStateService(service: WorkerEncryptionService): void {
     this.#surfacePrivateState = service;
+  }
+
+  setPolicyEncryptionService(service: WorkerEncryptionService): void {
+    this.#policyEncryption = service;
+  }
+
+  private async executePolicyCommand(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+  ): Promise<CantripCliCommandResult | null> {
+    if (
+      command.command !== "policy.list" &&
+      command.command !== "policy.read"
+    ) {
+      return null;
+    }
+    if (!this.#policyEncryption) {
+      throw new Error("Policy encryption is unavailable.");
+    }
+    const listRequest = cantripCliCommandRequestSchema.parse({
+      command: "policy.list",
+      context: command.context,
+      arguments: {},
+    });
+    const listResult = await this.#execute(
+      listRequest,
+      `${requestId}:policy-list`,
+      chatContext,
+    );
+    const wire = policyCliWireListResultSchema.parse(listResult.data);
+    const opened = await openPolicyCliList({
+      policies: wire,
+      service: this.#policyEncryption,
+    });
+    if (command.command === "policy.list") {
+      return cantripCliCommandResultSchema.parse({
+        ...listResult,
+        summary: `Found ${opened.policies.length} effective polic${opened.policies.length === 1 ? "y" : "ies"}.`,
+        data: opened,
+      });
+    }
+
+    const key = policyKeySchema.parse(command.arguments.key);
+    const index = opened.policies.findIndex((policy) => policy.key === key);
+    if (index < 0) {
+      throw new CantripServerRequestError(
+        `Policy ${key} is not effective for the current project.`,
+        404,
+        "not-found",
+      );
+    }
+    const policyId = wire.policies[index]!.id;
+    const detailResult = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: "policy.read",
+        context: command.context,
+        arguments: { policyId },
+      }),
+      `${requestId}:policy-read`,
+      chatContext,
+    );
+    const detail = policyCliWireReadResultSchema.parse(detailResult.data);
+    return cantripCliCommandResultSchema.parse({
+      ...detailResult,
+      summary: `Read policy ${key}.`,
+      data: await openPolicyCliDetail({
+        policy: detail.policy,
+        service: this.#policyEncryption,
+      }),
+    });
   }
 
   private async protectBrowserNavigation(
@@ -391,6 +469,30 @@ export class CantripCliBroker {
               requestId,
               ...(chatContext ? { chatId: chatContext.chatId } : {}),
             });
+            const policyResult = await this.executePolicyCommand(
+              command,
+              requestId,
+              chatContext,
+            );
+            if (policyResult) {
+              workerLogger.event("debug", "Cantrip CLI command completed", {
+                event: "cli.command.completed",
+                subsystem: "cli-broker",
+                operation: command.command,
+                status: "completed",
+                requestId,
+                durationMs: Date.now() - startedAtMs,
+                mutated: policyResult.mutated,
+                continuationScheduled: policyResult.continuationScheduled,
+                ...(chatContext ? { chatId: chatContext.chatId } : {}),
+              });
+              sendJson(
+                response,
+                200,
+                cantripCliCommandResultSchema.parse(policyResult),
+              );
+              return;
+            }
             command = await this.protectBrowserNavigation(
               command,
               requestId,

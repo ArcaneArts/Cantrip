@@ -120,13 +120,16 @@ async function apiFor(
 }
 
 describe("Task worker encryption readiness", () => {
-  it("approves and grants only task-content before refreshing the worker", async () => {
+  it("approves and grants Task and policy content before refreshing the worker", async () => {
     const client = service();
     const { api, createdComponents } = await apiFor("worker-a", "pending");
     const refresh = vi.fn(async () => ({
       component: "task-content" as const,
       keyRevision: 3,
-      status: status("ready", [{ component: "task-content", keyRevision: 3 }]),
+      status: status("ready", [
+        { component: "task-content", keyRevision: 3 },
+        { component: "policy-content", keyRevision: 3 },
+      ]),
     }));
 
     const refreshed = await ensureTaskWorkerEncryption({
@@ -137,13 +140,14 @@ describe("Task worker encryption readiness", () => {
       worker: worker(status("pending-approval")),
     });
 
-    expect(createdComponents).toEqual(["task-content"]);
+    expect(createdComponents).toEqual(["task-content", "policy-content"]);
     expect(refresh).toHaveBeenCalledWith("worker-a", {
       component: "task-content",
       keyRevision: 3,
     });
     expect(refreshed.grants).toEqual([
       { component: "task-content", keyRevision: 3 },
+      { component: "policy-content", keyRevision: 3 },
     ]);
   });
 
@@ -200,12 +204,16 @@ describe("Task worker encryption readiness", () => {
           keyRevision: 2,
           status: status("ready", [
             { component: "task-content", keyRevision: 1 },
+            { component: "policy-content", keyRevision: 2 },
           ]),
         }),
         service: client,
         session,
         worker: worker(
-          status("ready", [{ component: "task-content", keyRevision: 1 }]),
+          status("ready", [
+            { component: "task-content", keyRevision: 1 },
+            { component: "policy-content", keyRevision: 2 },
+          ]),
         ),
       }),
     ).rejects.toMatchObject({ state: "wrong-revision" });
@@ -215,7 +223,10 @@ describe("Task worker encryption readiness", () => {
     const refresh = vi.fn(async () => ({
       component: "task-content" as const,
       keyRevision: 3,
-      status: status("ready", [{ component: "task-content", keyRevision: 3 }]),
+      status: status("ready", [
+        { component: "task-content", keyRevision: 3 },
+        { component: "policy-content", keyRevision: 3 },
+      ]),
     }));
     const api = {
       listPrincipals: vi.fn(() => Promise.reject(new Error("not called"))),
@@ -227,7 +238,10 @@ describe("Task worker encryption readiness", () => {
         service: service(),
         session,
         worker: worker(
-          status("ready", [{ component: "task-content", keyRevision: 3 }]),
+          status("ready", [
+            { component: "task-content", keyRevision: 3 },
+            { component: "policy-content", keyRevision: 3 },
+          ]),
         ),
       }),
     ).resolves.toMatchObject({ state: "ready" });
@@ -243,7 +257,10 @@ describe("Task worker encryption readiness", () => {
     expect(
       taskWorkerEncryptionReadiness(
         worker(
-          status("ready", [{ component: "task-content", keyRevision: 1 }]),
+          status("ready", [
+            { component: "task-content", keyRevision: 1 },
+            { component: "policy-content", keyRevision: 1 },
+          ]),
         ),
         snapshot,
       ),

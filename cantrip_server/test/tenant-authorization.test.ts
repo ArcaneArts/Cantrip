@@ -8,6 +8,7 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
+import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
 import { protectedProjectFields } from "./private-label-fixture.js";
 
 const origin = "https://app.cantrip.test";
@@ -189,28 +190,23 @@ describe("hosted tenant authorization", () => {
       const secondPolicies = secondPoliciesResponse.json() as {
         policies: Array<{ id: string }>;
       };
-      expect(firstPolicies.policies).toHaveLength(2);
-      expect(secondPolicies.policies).toHaveLength(2);
-      expect(secondPolicies.policies[0]!.id).not.toBe(
-        firstPolicies.policies[0]!.id,
-      );
-      const privatePolicyBody =
-        "# First account instructions\n\nNever disclose tenant-policy-secret.";
+      expect(firstPolicies.policies).toHaveLength(0);
+      expect(secondPolicies.policies).toHaveLength(0);
       const privatePolicyResponse = await app.inject({
         method: "POST",
         url: "/api/policies",
         headers: headers(first, true),
-        payload: {
-          key: "first-private-policy",
-          name: "First private policy",
-          summary: "Instructions private to the first account.",
-          bodyMarkdown: privatePolicyBody,
-          enabled: true,
-          mandatory: false,
-        },
+        payload: opaquePolicyCreate("tenant-policy-secret"),
       });
       expect(privatePolicyResponse.statusCode).toBe(201);
       const privatePolicyId = privatePolicyResponse.json().id as string;
+      const secondPolicyResponse = await app.inject({
+        method: "POST",
+        url: "/api/policies",
+        headers: headers(second, true),
+        payload: opaquePolicyCreate("second-tenant-policy"),
+      });
+      expect(secondPolicyResponse.statusCode).toBe(201);
       const unknownPolicyId = "00000000-0000-0000-0000-00000000fff0";
       for (const policyId of [privatePolicyId, unknownPolicyId]) {
         const read = await app.inject({
@@ -230,25 +226,11 @@ describe("hosted tenant authorization", () => {
           method: "PATCH",
           url: `/api/policies/${policyId}`,
           headers: headers(second, true),
-          payload: { rowVersion: 1, name: "Unauthorized policy update" },
+          payload: { rowVersion: 1, enabled: false },
         });
         expect({
           body: update.json(),
           statusCode: update.statusCode,
-        }).toEqual({
-          body: { error: "Policy not found." },
-          statusCode: 404,
-        });
-
-        const reset = await app.inject({
-          method: "POST",
-          url: `/api/policies/${policyId}/reset-template`,
-          headers: headers(second, true),
-          payload: { rowVersion: 1 },
-        });
-        expect({
-          body: reset.json(),
-          statusCode: reset.statusCode,
         }).toEqual({
           body: { error: "Policy not found." },
           statusCode: 404,
@@ -268,12 +250,7 @@ describe("hosted tenant authorization", () => {
           statusCode: 404,
         });
         expect(
-          JSON.stringify([
-            read.json(),
-            update.json(),
-            reset.json(),
-            remove.json(),
-          ]),
+          JSON.stringify([read.json(), update.json(), remove.json()]),
         ).not.toContain("tenant-policy-secret");
       }
       const secondPoliciesAfterCreate = await app.inject({
@@ -292,7 +269,7 @@ describe("hosted tenant authorization", () => {
         policies: Array<{ id: string }>;
       };
       expect(JSON.stringify(secondPoliciesAfterCreate.json())).not.toContain(
-        "first-private-policy",
+        "tenant-policy-secret",
       );
 
       expect(
@@ -316,7 +293,7 @@ describe("hosted tenant authorization", () => {
           headers: headers(first, true),
           payload: {
             collectionVersion: firstPoliciesAfterCreate.collectionVersion,
-            policyIds: [secondPolicies.policies[0]!.id],
+            policyIds: [secondPolicyResponse.json().id as string],
           },
         }),
       ).toMatchObject({ statusCode: 404 });

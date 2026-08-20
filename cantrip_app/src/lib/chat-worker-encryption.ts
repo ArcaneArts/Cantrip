@@ -59,7 +59,11 @@ export function chatWorkerEncryptionReadiness(
     return "pending-approval";
   }
   if (worker.encryption.state === "error") return "unavailable";
-  const requiredComponents = ["chat-content", "interaction-content"] as const;
+  const requiredComponents = [
+    "chat-content",
+    "interaction-content",
+    "policy-content",
+  ] as const;
   if (
     !requiredComponents.every((component) =>
       worker.encryption.grants.some(
@@ -124,7 +128,7 @@ export async function ensureChatWorkerEncryption(input: {
   if (readiness !== "ready") {
     await authorizeWorkerEncryption({
       api: input.api,
-      components: ["chat-content", "interaction-content"],
+      components: ["chat-content", "interaction-content", "policy-content"],
       identity,
       keyRevision: snapshot.masterKeyRevision,
       service,

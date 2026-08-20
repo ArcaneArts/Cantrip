@@ -46,7 +46,7 @@ export * from "./encryption.js";
 export * from "./private-labels.js";
 export * from "./surface-private-state.js";
 
-import { agentPolicyContextSchema } from "./policies.js";
+import { effectivePolicyWireListSchema } from "./policies.js";
 import {
   taskGoalSyncContextSchema,
   taskGoalObjectiveOpaqueSnapshotSchema,
@@ -10890,7 +10890,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       isPrimary: z.boolean(),
       worktreeMode: z.enum(["agent-managed", "pinned"]),
       worktreePolicy: worktreePolicySchema,
-      policyContext: agentPolicyContextSchema.nullable().default(null),
+      policyProjectId: z.string().min(1).max(200),
+      policies: effectivePolicyWireListSchema.default({ policies: [] }),
       threadId: z.string().min(1).nullable(),
       prompt: z.string().min(1).optional(),
       protectedPrompt: chatMessageOpaqueContentSchema.optional(),

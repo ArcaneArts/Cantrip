@@ -59,16 +59,18 @@ export function taskWorkerEncryptionReadiness(
     return "pending-approval";
   }
   if (worker.encryption.state === "error") return "unavailable";
-  const grants = worker.encryption.grants.filter(
-    ({ component }) => component === "task-content",
-  );
-  if (grants.length === 0) return "missing-grant";
-  if (
-    !grants.some(
-      ({ keyRevision }) => keyRevision === snapshot.masterKeyRevision,
-    )
-  ) {
-    return "wrong-revision";
+  for (const component of ["task-content", "policy-content"] as const) {
+    const grants = worker.encryption.grants.filter(
+      (grant) => grant.component === component,
+    );
+    if (grants.length === 0) return "missing-grant";
+    if (
+      !grants.some(
+        ({ keyRevision }) => keyRevision === snapshot.masterKeyRevision,
+      )
+    ) {
+      return "wrong-revision";
+    }
   }
   return worker.encryption.state === "ready" ? "ready" : "missing-grant";
 }
@@ -149,7 +151,7 @@ export async function ensureTaskWorkerEncryption(input: {
   if (readiness !== "ready") {
     await authorizeWorkerEncryption({
       api: input.api,
-      components: ["task-content"],
+      components: ["task-content", "policy-content"],
       identity,
       keyRevision: snapshot.masterKeyRevision,
       service,

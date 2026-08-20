@@ -5,14 +5,12 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it } from "vitest";
 
-import {
-  PolicyConflictError,
-  PolicyScopeNotFoundError,
-} from "../src/db/policies.js";
+import { PolicyConflictError } from "../src/db/policies.js";
 import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
+import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
 import { protectedProjectFields } from "./private-label-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
@@ -29,487 +27,174 @@ async function fixture() {
     }),
   );
   await repository.ensureLocalIdentity();
-  await repository.policies.ensureBootstrap(LOCAL_USER_ID);
   return { client, repository };
 }
 
-describe("policy persistence", () => {
-  it("bootstraps editable defaults exactly once and keeps their templates", async () => {
+function defaultBootstrap() {
+  return {
+    expectedBootstrapVersion: 0,
+    policies: [
+      opaquePolicyCreate("manual-change-protocol", {
+        mandatory: true,
+        templateKey: "manual-change-protocol",
+      }),
+      opaquePolicyCreate("codegraph", {
+        mandatory: true,
+        templateKey: "codegraph",
+      }),
+    ],
+  };
+}
+
+describe("opaque policy persistence", () => {
+  it("accepts encrypted client bootstrap exactly once without semantic access", async () => {
     const { client, repository } = await fixture();
     try {
       const initial = await repository.policies.list(LOCAL_USER_ID);
-      expect(initial.policies).toEqual([
-        expect.objectContaining({
-          key: "manual-change-protocol",
-          name: "Manual Change Protocol",
-          enabled: true,
-          mandatory: true,
-          position: 0,
-          rowVersion: 1,
-          templateKey: "manual-change-protocol",
-        }),
-        expect.objectContaining({
-          key: "codegraph",
-          name: "Codegraph",
-          enabled: true,
-          mandatory: true,
-          position: 1,
-          rowVersion: 1,
-          templateKey: "codegraph",
-        }),
-      ]);
-      expect(await repository.policies.ensureBootstrap(LOCAL_USER_ID)).toBe(
-        false,
-      );
+      expect(initial).toMatchObject({ bootstrapVersion: 0, policies: [] });
 
-      const defaultPolicy = initial.policies[0]!;
-      expect(
-        await repository.policies.delete(
-          LOCAL_USER_ID,
-          defaultPolicy.id,
-          defaultPolicy.rowVersion,
-        ),
-      ).toBe(true);
-      expect((await repository.policies.list(LOCAL_USER_ID)).policies).toEqual([
-        expect.objectContaining({ key: "codegraph" }),
-      ]);
-      expect(await repository.policies.ensureBootstrap(LOCAL_USER_ID)).toBe(
-        false,
-      );
-
-      const restored = await repository.policies.createFromTemplate(
+      const bootstrapped = await repository.policies.bootstrap(
         LOCAL_USER_ID,
-        "manual-change-protocol",
+        defaultBootstrap(),
       );
-      expect(restored).toMatchObject({
-        key: "manual-change-protocol",
-        mandatory: true,
-        templateKey: "manual-change-protocol",
-      });
-      expect(repository.policies.listTemplates()).toHaveLength(2);
+      expect(bootstrapped.bootstrapVersion).toBe(2);
+      expect(bootstrapped.policies).toHaveLength(2);
       expect(
-        repository.policies.getTemplate("manual-change-protocol")?.bodyMarkdown,
-      ).toContain("independently reviewable and mergeable");
-    } finally {
-      await client.close();
-    }
-  });
-
-  it("bootstraps existing owners transactionally without reseeding", async () => {
-    const { client, repository } = await fixture();
-    try {
-      await client.exec(`
-        INSERT INTO users (id, kind, display_name)
-        VALUES ('existing-owner', 'anonymous', 'Existing Owner');
-      `);
-      const attempts = await Promise.all(
-        Array.from({ length: 8 }, () =>
-          repository.policies.ensureBootstrap("existing-owner"),
-        ),
-      );
-      expect(attempts.filter(Boolean)).toHaveLength(1);
-      expect(
-        (await repository.policies.list("existing-owner")).policies.map(
-          ({ key }) => key,
-        ),
+        bootstrapped.policies.map(({ templateKey }) => templateKey),
       ).toEqual(["manual-change-protocol", "codegraph"]);
-      expect(await repository.policies.ensureAllOwnersBootstrapped()).toBe(0);
+      expect(JSON.stringify(bootstrapped)).not.toContain(
+        "Manual Change Protocol",
+      );
 
-      const raw = await client.query<{ count: number }>(`
-        SELECT count(*)::int AS count
+      const raced = await repository.policies.bootstrap(
+        LOCAL_USER_ID,
+        defaultBootstrap(),
+      );
+      expect(raced.policies).toHaveLength(2);
+      const raw = await client.query<{
+        key_blind_index: string;
+        protected_body: unknown;
+        protected_summary: unknown;
+      }>(`
+        SELECT key_blind_index, protected_summary, protected_body
         FROM policies
-        WHERE owner_id = 'existing-owner'
-          AND key IN ('manual-change-protocol', 'codegraph')
+        WHERE owner_id = '${LOCAL_USER_ID}'
       `);
-      expect(raw.rows[0]?.count).toBe(2);
-    } finally {
-      await client.close();
-    }
-  });
-
-  it("adds Codegraph to version-one owners without recreating deleted defaults", async () => {
-    const { client, repository } = await fixture();
-    try {
-      await client.exec(`
-        INSERT INTO users (id, kind, display_name)
-        VALUES ('version-one-owner', 'anonymous', 'Version One Owner');
-        INSERT INTO policy_owner_states (
-          owner_id,
-          bootstrap_version,
-          collection_version
-        ) VALUES ('version-one-owner', 1, 7);
-      `);
-
+      expect(raw.rows).toHaveLength(2);
       expect(
-        await repository.policies.ensureBootstrap("version-one-owner"),
+        raw.rows.every(({ key_blind_index }) => key_blind_index.length === 43),
       ).toBe(true);
-      const upgraded = await repository.policies.list("version-one-owner");
-      expect(upgraded.collectionVersion).toBe(8);
-      expect(upgraded.policies).toEqual([
-        expect.objectContaining({
-          key: "codegraph",
-          position: 0,
-          mandatory: true,
-        }),
-      ]);
-
-      const codegraph = upgraded.policies[0]!;
-      expect(
-        await repository.policies.delete(
-          "version-one-owner",
-          codegraph.id,
-          codegraph.rowVersion,
-        ),
-      ).toBe(true);
-      expect(
-        await repository.policies.ensureBootstrap("version-one-owner"),
-      ).toBe(false);
-      expect(
-        (await repository.policies.list("version-one-owner")).policies,
-      ).toEqual([]);
     } finally {
       await client.close();
     }
   });
 
-  it("bootstraps newly created accounts", async () => {
+  it("preserves optimistic mutations and blind-index uniqueness", async () => {
     const { client, repository } = await fixture();
     try {
-      const account = await repository.createAccount({
-        displayName: "Account Owner",
-        email: "owner@example.test",
-        normalizedEmail: "owner@example.test",
-        passwordHash: "test-password-hash",
-        role: "owner",
-      });
-      expect(
-        (await repository.policies.list(account.id)).policies.map(
-          ({ key, enabled, mandatory }) => ({ key, enabled, mandatory }),
-        ),
-      ).toEqual([
-        { key: "manual-change-protocol", enabled: true, mandatory: true },
-        { key: "codegraph", enabled: true, mandatory: true },
-      ]);
-    } finally {
-      await client.close();
-    }
-  });
-
-  it("uses optimistic edit and collection versions", async () => {
-    const { client, repository } = await fixture();
-    try {
-      const first = await repository.policies.create(LOCAL_USER_ID, {
-        key: "review-before-merge",
-        name: "Review before merge",
-        summary: "Review every change before merging it.",
-        bodyMarkdown: "# Review\n\nInspect the final diff.",
-        enabled: true,
-        mandatory: false,
-      });
+      const createdInput = opaquePolicyCreate("review-policy");
+      const created = await repository.policies.create(
+        LOCAL_USER_ID,
+        createdInput,
+      );
+      const replacement = opaquePolicyCreate("review-policy-updated");
       const updated = await repository.policies.update(
         LOCAL_USER_ID,
-        first.id,
-        { rowVersion: first.rowVersion, mandatory: true },
+        created.id,
+        {
+          rowVersion: created.rowVersion,
+          content: {
+            protectedSummary: replacement.content.protectedSummary,
+            protectedBody: replacement.content.protectedBody,
+          },
+          mandatory: true,
+        },
       );
       expect(updated).toMatchObject({ rowVersion: 2, mandatory: true });
       await expect(
-        repository.policies.update(LOCAL_USER_ID, first.id, {
-          rowVersion: first.rowVersion,
-          name: "Stale edit",
+        repository.policies.update(LOCAL_USER_ID, created.id, {
+          rowVersion: created.rowVersion,
+          enabled: false,
         }),
       ).rejects.toMatchObject<Partial<PolicyConflictError>>({
         code: "stale-version",
       });
-
-      const beforeOrder = await repository.policies.list(LOCAL_USER_ID);
-      const reversed = await repository.policies.reorder(LOCAL_USER_ID, {
-        collectionVersion: beforeOrder.collectionVersion,
-        policyIds: beforeOrder.policies.map(({ id }) => id).reverse(),
-      });
-      expect(reversed.policies.map(({ id }) => id)).toEqual(
-        beforeOrder.policies.map(({ id }) => id).reverse(),
-      );
       await expect(
-        repository.policies.reorder(LOCAL_USER_ID, {
-          collectionVersion: beforeOrder.collectionVersion,
-          policyIds: beforeOrder.policies.map(({ id }) => id),
-        }),
-      ).rejects.toMatchObject<Partial<PolicyConflictError>>({
-        code: "collection-changed",
-      });
-    } finally {
-      await client.close();
-    }
-  });
-
-  it("serializes concurrent edits, reorders, assignments, and deletes", async () => {
-    const { client, repository } = await fixture();
-    try {
-      const editedPolicy = await repository.policies.create(LOCAL_USER_ID, {
-        key: "concurrent-edit",
-        name: "Concurrent edit",
-        summary: "Exercise simultaneous optimistic edits.",
-        bodyMarkdown: "# Concurrent edit",
-        enabled: true,
-        mandatory: false,
-      });
-      const editResults = await Promise.allSettled([
-        repository.policies.update(LOCAL_USER_ID, editedPolicy.id, {
-          rowVersion: editedPolicy.rowVersion,
-          name: "First saved edit",
-        }),
-        repository.policies.update(LOCAL_USER_ID, editedPolicy.id, {
-          rowVersion: editedPolicy.rowVersion,
-          name: "Second saved edit",
-        }),
-      ]);
-      expect(
-        editResults.filter(({ status }) => status === "fulfilled"),
-      ).toHaveLength(1);
-      expect(editResults.filter(({ status }) => status === "rejected")).toEqual(
-        [
-          expect.objectContaining({
-            reason: expect.objectContaining({ code: "stale-version" }),
+        repository.policies.create(
+          LOCAL_USER_ID,
+          opaquePolicyCreate("duplicate", {
+            id: crypto.randomUUID(),
           }),
-        ],
-      );
-
-      await repository.policies.create(LOCAL_USER_ID, {
-        key: "concurrent-order",
-        name: "Concurrent order",
-        summary: "Exercise simultaneous optimistic ordering.",
-        bodyMarkdown: "# Concurrent order",
-        enabled: true,
-        mandatory: false,
+        ),
+      ).resolves.toBeDefined();
+      await expect(
+        repository.policies.create(
+          LOCAL_USER_ID,
+          opaquePolicyCreate("duplicate", {
+            id: crypto.randomUUID(),
+          }),
+        ),
+      ).rejects.toMatchObject<Partial<PolicyConflictError>>({
+        code: "duplicate-key",
       });
+
       const beforeOrder = await repository.policies.list(LOCAL_USER_ID);
-      const orderIds = beforeOrder.policies.map(({ id }) => id);
-      const orderResults = await Promise.allSettled([
-        repository.policies.reorder(LOCAL_USER_ID, {
-          collectionVersion: beforeOrder.collectionVersion,
-          policyIds: [...orderIds].reverse(),
-        }),
-        repository.policies.reorder(LOCAL_USER_ID, {
-          collectionVersion: beforeOrder.collectionVersion,
-          policyIds: [...orderIds.slice(1), orderIds[0]!],
-        }),
-      ]);
-      expect(
-        orderResults.filter(({ status }) => status === "fulfilled"),
-      ).toHaveLength(1);
-      expect(
-        orderResults.filter(({ status }) => status === "rejected"),
-      ).toEqual([
-        expect.objectContaining({
-          reason: expect.objectContaining({ code: "collection-changed" }),
-        }),
-      ]);
-
-      const project = await repository.createGithubProject(LOCAL_USER_ID, {
-        workerId: "not-needed-for-concurrency",
-        ...protectedProjectFields(),
-        repositoryId: "concurrent-policy-project",
-        nameWithOwner: "ArcaneArts/ConcurrentPolicyProject",
-        url: "https://github.com/ArcaneArts/ConcurrentPolicyProject",
+      const reversedIds = beforeOrder.policies.map(({ id }) => id).reverse();
+      const reordered = await repository.policies.reorder(LOCAL_USER_ID, {
+        collectionVersion: beforeOrder.collectionVersion,
+        policyIds: reversedIds,
       });
-      const beforeAssignments = await repository.policies.list(LOCAL_USER_ID);
-      const assignmentResults = await Promise.allSettled([
-        repository.policies.replaceProjectAssignments(
-          LOCAL_USER_ID,
-          project.id,
-          {
-            collectionVersion: beforeAssignments.collectionVersion,
-            policyIds: [editedPolicy.id],
-          },
-        ),
-        repository.policies.replaceProjectAssignments(
-          LOCAL_USER_ID,
-          project.id,
-          {
-            collectionVersion: beforeAssignments.collectionVersion,
-            policyIds: [],
-          },
-        ),
-      ]);
-      expect(
-        assignmentResults.filter(({ status }) => status === "fulfilled"),
-      ).toHaveLength(1);
-      expect(
-        assignmentResults.filter(({ status }) => status === "rejected"),
-      ).toEqual([
-        expect.objectContaining({
-          reason: expect.objectContaining({ code: "collection-changed" }),
-        }),
-      ]);
-
-      const deletedPolicy = await repository.policies.create(LOCAL_USER_ID, {
-        key: "concurrent-delete",
-        name: "Concurrent delete",
-        summary: "Exercise simultaneous deletes.",
-        bodyMarkdown: "# Concurrent delete",
-        enabled: true,
-        mandatory: false,
-      });
-      const deleteResults = await Promise.all([
-        repository.policies.delete(
-          LOCAL_USER_ID,
-          deletedPolicy.id,
-          deletedPolicy.rowVersion,
-        ),
-        repository.policies.delete(
-          LOCAL_USER_ID,
-          deletedPolicy.id,
-          deletedPolicy.rowVersion,
-        ),
-      ]);
-      expect(deleteResults.sort()).toEqual([false, true]);
-      expect(
-        await repository.policies.get(LOCAL_USER_ID, deletedPolicy.id),
-      ).toBeNull();
+      expect(reordered.policies.map(({ id }) => id)).toEqual(reversedIds);
     } finally {
       await client.close();
     }
   });
 
-  it("unions mandatory, workspace, and direct policies without duplicates", async () => {
+  it("resolves public assignment sources while returning opaque summaries", async () => {
     const { client, repository } = await fixture();
     try {
-      const defaultWorkspace =
-        await repository.ensureDefaultProjectWorkspace(LOCAL_USER_ID);
-      const secondWorkspace = await repository.createProjectWorkspace(
-        LOCAL_USER_ID,
-        { name: "Company" },
-      );
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
-        workerId: "not-needed-for-persistence",
+        workerId: "policy-worker",
         ...protectedProjectFields(),
-        repositoryId: "policy-project",
-        nameWithOwner: "ArcaneArts/PolicyProject",
-        url: "https://github.com/ArcaneArts/PolicyProject",
-        workspaceIds: [defaultWorkspace.id, secondWorkspace.id],
+        repositoryId: "opaque-policy-project",
+        nameWithOwner: "ArcaneArts/OpaquePolicyProject",
+        url: "https://github.com/ArcaneArts/OpaquePolicyProject",
       });
-      const scoped = await repository.policies.create(LOCAL_USER_ID, {
-        key: "scoped-review",
-        name: "Scoped review",
-        summary: "Apply review rules to selected projects.",
-        bodyMarkdown: "# Scoped review\n\nReview selected projects.",
-        enabled: true,
-        mandatory: false,
-      });
-      const disabled = await repository.policies.create(LOCAL_USER_ID, {
-        key: "disabled-policy",
-        name: "Disabled policy",
-        summary: "This policy must remain inactive.",
-        bodyMarkdown: "# Disabled\n\nDo not apply this policy.",
-        enabled: false,
-        mandatory: true,
-      });
-
-      let collection = await repository.policies.list(LOCAL_USER_ID);
-      const afterWorkspace =
-        await repository.policies.replaceWorkspaceAssignments(
-          LOCAL_USER_ID,
-          secondWorkspace.id,
-          {
-            collectionVersion: collection.collectionVersion,
-            policyIds: [scoped.id],
-          },
-        );
-      collection = await repository.policies.list(LOCAL_USER_ID);
-      expect(collection.collectionVersion).toBe(afterWorkspace);
+      const mandatory = await repository.policies.create(
+        LOCAL_USER_ID,
+        opaquePolicyCreate("mandatory", { mandatory: true }),
+      );
+      const assigned = await repository.policies.create(
+        LOCAL_USER_ID,
+        opaquePolicyCreate("assigned"),
+      );
+      const disabled = await repository.policies.create(
+        LOCAL_USER_ID,
+        opaquePolicyCreate("disabled", { enabled: false, mandatory: true }),
+      );
+      const list = await repository.policies.list(LOCAL_USER_ID);
       await repository.policies.replaceProjectAssignments(
         LOCAL_USER_ID,
         project.id,
         {
-          collectionVersion: collection.collectionVersion,
-          policyIds: [scoped.id, disabled.id],
+          collectionVersion: list.collectionVersion,
+          policyIds: [assigned.id, disabled.id],
         },
       );
-
-      expect(
-        await repository.policies.listWorkspaceAssignments(
-          LOCAL_USER_ID,
-          secondWorkspace.id,
-        ),
-      ).toMatchObject({ directPolicyIds: [scoped.id] });
-      expect(
-        await repository.policies.listProjectAssignments(
-          LOCAL_USER_ID,
-          project.id,
-        ),
-      ).toMatchObject({ directPolicyIds: [scoped.id, disabled.id] });
 
       const effective = await repository.policies.resolveEffective(
         LOCAL_USER_ID,
         project.id,
       );
-      expect(effective?.policies.map(({ key }) => key)).toEqual([
-        "manual-change-protocol",
-        "codegraph",
-        "scoped-review",
+      expect(effective?.policies.map(({ id }) => id)).toEqual([
+        mandatory.id,
+        assigned.id,
       ]);
       expect(
-        effective?.policies.find(({ key }) => key === "scoped-review")?.sources,
-      ).toEqual([
-        {
-          type: "workspace",
-          workspaceId: secondWorkspace.id,
-        },
-        { type: "project", projectId: project.id },
-      ]);
-      expect(
-        effective?.policies.find(({ key }) => key === "manual-change-protocol")
-          ?.sources,
-      ).toEqual([{ type: "mandatory" }]);
-    } finally {
-      await client.close();
-    }
-  });
-
-  it("enforces owner isolation for reads, scopes, and assignments", async () => {
-    const { client, repository } = await fixture();
-    try {
-      await client.exec(`
-        INSERT INTO users (id, kind, display_name)
-        VALUES ('other-owner', 'anonymous', 'Other Owner');
-      `);
-      await repository.policies.ensureBootstrap("other-owner");
-      const localPolicy = (await repository.policies.list(LOCAL_USER_ID))
-        .policies[0]!;
-      expect(
-        await repository.policies.get("other-owner", localPolicy.id),
-      ).toBeNull();
-
-      const project = await repository.createGithubProject(LOCAL_USER_ID, {
-        workerId: "not-needed-for-persistence",
-        ...protectedProjectFields(),
-        repositoryId: "private-policy-project",
-        nameWithOwner: "ArcaneArts/PrivatePolicyProject",
-        url: "https://github.com/ArcaneArts/PrivatePolicyProject",
-      });
-      expect(
-        await repository.policies.resolveEffective("other-owner", project.id),
-      ).toBeNull();
-      expect(
-        await repository.policies.listProjectAssignments(
-          "other-owner",
-          project.id,
-        ),
-      ).toBeNull();
-      const otherCollection = await repository.policies.list("other-owner");
-      await expect(
-        repository.policies.replaceProjectAssignments(
-          "other-owner",
-          project.id,
-          {
-            collectionVersion: otherCollection.collectionVersion,
-            policyIds: [otherCollection.policies[0]!.id],
-          },
-        ),
-      ).rejects.toBeInstanceOf(PolicyScopeNotFoundError);
-      expect(
-        (await repository.policies.list("other-owner")).collectionVersion,
-      ).toBe(otherCollection.collectionVersion);
+        effective?.policies.find(({ id }) => id === assigned.id)?.sources,
+      ).toEqual([{ type: "project", projectId: project.id }]);
+      expect(effective?.policies[0]).not.toHaveProperty("key");
+      expect(effective?.policies[0]).toHaveProperty("protectedSummary");
     } finally {
       await client.close();
     }

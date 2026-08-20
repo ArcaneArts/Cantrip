@@ -67,6 +67,35 @@ const prohibitedTaskProtocolSymbols = new Set([
   "taskQuestionSchema",
 ]);
 
+const prohibitedPolicyProtocolSymbols = new Set([
+  "AgentPolicyContext",
+  "EffectivePolicyList",
+  "EffectivePolicySummary",
+  "PolicyAssignmentList",
+  "PolicyCliListResult",
+  "PolicyCliReadResult",
+  "PolicyCreate",
+  "PolicyDetail",
+  "PolicyList",
+  "PolicyProtectedBodyContent",
+  "PolicyProtectedSummaryContent",
+  "PolicySummary",
+  "PolicyUpdate",
+  "agentPolicyContextSchema",
+  "effectivePolicyListSchema",
+  "effectivePolicySummarySchema",
+  "policyAssignmentListSchema",
+  "policyCliListResultSchema",
+  "policyCliReadResultSchema",
+  "policyCreateSchema",
+  "policyDetailSchema",
+  "policyListSchema",
+  "policyProtectedBodyContentSchema",
+  "policyProtectedSummaryContentSchema",
+  "policySummarySchema",
+  "policyUpdateSchema",
+]);
+
 const prohibitedPrivateDisplayLabelProtocolSymbols = new Set([
   "BrowserCreate",
   "BrowserSummary",
@@ -306,6 +335,54 @@ async function taskProductionDependencyAudit() {
     productionCryptoImports: 0,
     prohibitedTrustedTaskImports: 0,
     taskProtocolSources: [...new Set(taskProtocolSources)].sort(),
+  };
+}
+
+async function policyProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  const opaqueProtocolSources = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const policyImports = namedImportsFrom(
+      sourceText,
+      "@cantrip/protocol/policies",
+    );
+    if (
+      policyImports.some((symbol) =>
+        /(?:Encrypted|Opaque|Wire).*(?:Policy)|Policy.*(?:Encrypted|Opaque|Wire)/u.test(
+          symbol,
+        ),
+      )
+    ) {
+      opaqueProtocolSources.push(relativeFile);
+    }
+    if (!relativeFile.endsWith("/policies/templates.ts")) {
+      for (const symbol of policyImports) {
+        if (prohibitedPolicyProtocolSymbols.has(symbol)) {
+          failures.push(
+            `${relativeFile}: prohibited trusted policy symbol ${symbol}`,
+          );
+        }
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\b(?:buildAgentPolicyContext|buildEncryptedAgentPolicyContext|decryptPolicy(?:Body|Summary)Content|openPolicy(?:Cli|Wire))[A-Za-z0-9_]*/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references trusted policy code (${match[0]})`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the policy E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    prohibitedTrustedPolicyImports: 0,
+    opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
   };
 }
 
@@ -1187,6 +1264,87 @@ function tableInitializer(sourceText, declarationName) {
   return sourceText.slice(start, end + 1);
 }
 
+async function policyRepositoryBoundaryAudit() {
+  const schemaPath = resolve(serverSourcePath, "db/schema.ts");
+  const repositoryPath = resolve(serverSourcePath, "db/policies.ts");
+  const [schemaText, repositoryText, applicationText] = await Promise.all([
+    readFile(schemaPath, "utf8"),
+    readFile(repositoryPath, "utf8"),
+    readFile(appPath, "utf8"),
+  ]);
+  const failures = [];
+  const initializer = tableInitializer(schemaText, "policies");
+  for (const [property, column] of [
+    ["keyBlindIndex", "key_blind_index"],
+    ["protectedSummary", "protected_summary"],
+    ["protectedBody", "protected_body"],
+  ]) {
+    if (
+      !new RegExp(
+        `\\b${property}\\s*:\\s*(?:text|jsonb)\\(["']${column}["']\\)`,
+        "u",
+      ).test(initializer)
+    ) {
+      failures.push(`policies: missing opaque ${column} storage`);
+    }
+  }
+  for (const field of ["key", "name", "summary", "bodyMarkdown"]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(initializer)) {
+      failures.push(`policies: legacy plaintext ${field} field returned`);
+    }
+    if (
+      new RegExp(`schema\\.policies\\.${field}\\b`, "u").test(repositoryText)
+    ) {
+      failures.push(`policies: repository references plaintext ${field}`);
+    }
+  }
+  for (const marker of [
+    "toPolicySummary",
+    "toPolicyDetail",
+    "encryptedPolicyCreateSchema",
+    "encryptedPolicyUpdateSchema",
+    "effectivePolicyWireListSchema",
+  ]) {
+    if (!repositoryText.includes(marker)) {
+      failures.push(`policies: missing opaque repository marker ${marker}`);
+    }
+  }
+  for (const obsolete of [
+    "/api/policies/from-template/",
+    "/reset-template",
+    "buildAgentPolicyContext",
+  ]) {
+    if (applicationText.includes(obsolete)) {
+      failures.push(`application: obsolete plaintext policy path ${obsolete}`);
+    }
+  }
+  for (const marker of [
+    'app.post("/api/policies/bootstrap"',
+    "encryptedPolicyBootstrapSchema",
+    "policyCliWireListResultSchema",
+    "policyCliWireReadResultSchema",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`application: missing opaque policy marker ${marker}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Policy repository boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["policies"],
+    guards: [
+      "policies:opaque-summary-and-body-only",
+      "policies:blind-key-uniqueness",
+      "policy-routes:encrypted-ingress-and-wire-egress",
+      "policy-cli:opaque-server-selection",
+      "policy-agent-context:worker-only",
+    ],
+  };
+}
+
 async function privateDisplayLabelRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
@@ -1541,6 +1699,8 @@ async function buildInventory() {
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
+    policyDependencies,
+    policyRepository,
     privateDisplayLabelDependencies,
     privateDisplayLabelRepository,
     surfacePrivateStateDependencies,
@@ -1551,6 +1711,8 @@ async function buildInventory() {
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
+    policyProductionDependencyAudit(),
+    policyRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
     privateDisplayLabelRepositoryBoundaryAudit(),
     surfacePrivateStateProductionDependencyAudit(),
@@ -1649,6 +1811,11 @@ async function buildInventory() {
       ...taskDependencies,
       repositoryGuards: taskRepositoryGuards,
       routeContracts: taskRouteContracts,
+    },
+    policyE2eeBoundary: {
+      status: "enforced",
+      ...policyDependencies,
+      ...policyRepository,
     },
     privateDisplayLabelE2eeBoundary: {
       status: "enforced",

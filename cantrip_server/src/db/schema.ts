@@ -68,6 +68,10 @@ import type {
   ProjectAutomationSchedule,
 } from "@cantrip/protocol/automations";
 import type {
+  EncryptedPolicyBodyContent,
+  EncryptedPolicySummaryContent,
+} from "@cantrip/protocol/policies";
+import type {
   ClientMasterKeyWrapper,
   EncryptedPayloadEnvelope,
   EncryptionComponentScope,
@@ -977,10 +981,13 @@ export const policies = pgTable(
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    key: text("key").notNull(),
-    name: text("name").notNull(),
-    summary: text("summary").notNull(),
-    bodyMarkdown: text("body_markdown").notNull(),
+    keyBlindIndex: text("key_blind_index").notNull(),
+    protectedSummary: jsonb("protected_summary")
+      .$type<EncryptedPolicySummaryContent>()
+      .notNull(),
+    protectedBody: jsonb("protected_body")
+      .$type<EncryptedPolicyBodyContent>()
+      .notNull(),
     enabled: boolean("enabled").notNull().default(true),
     mandatory: boolean("mandatory").notNull().default(false),
     position: integer("position").notNull().default(0),
@@ -994,31 +1001,14 @@ export const policies = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("policies_owner_key_unique").on(table.ownerId, table.key),
-    index("policies_owner_position_index").on(
+    uniqueIndex("policies_owner_key_blind_unique").on(
       table.ownerId,
-      table.position,
-      table.key,
+      table.keyBlindIndex,
     ),
+    index("policies_owner_position_index").on(table.ownerId, table.position),
     check(
-      "policies_key_length_check",
-      sql`length(${table.key}) BETWEEN 1 AND 80`,
-    ),
-    check(
-      "policies_key_format_check",
-      sql`${table.key} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
-    ),
-    check(
-      "policies_name_length_check",
-      sql`length(btrim(${table.name})) BETWEEN 1 AND 120`,
-    ),
-    check(
-      "policies_summary_length_check",
-      sql`length(btrim(${table.summary})) BETWEEN 1 AND 1000`,
-    ),
-    check(
-      "policies_body_length_check",
-      sql`length(${table.bodyMarkdown}) BETWEEN 1 AND 100000`,
+      "policies_key_blind_index_length_check",
+      sql`length(${table.keyBlindIndex}) = 43`,
     ),
     check("policies_position_check", sql`${table.position} >= 0`),
     check("policies_row_version_check", sql`${table.rowVersion} >= 1`),

@@ -2686,7 +2686,7 @@ export class ServerRepository {
       .returning();
     const user = firstOrThrow(rows, "creating an account");
     await this.ensureDefaultProjectWorkspace(user.id);
-    await this.policies.ensureBootstrap(user.id);
+    await this.policies.ensureOwnerState(user.id);
     return toUserSummary(user);
   }
 
