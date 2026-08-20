@@ -203,26 +203,16 @@ describe("client encryption key custody", () => {
     restarted.lock();
   });
 
-  it("accepts a structured-cloned WebKit FrozenArray for device-key usages", async () => {
+  it("treats a structured-cloned WebKit device key as an opaque native handle", async () => {
     const store = new MemoryDeviceKeyStore();
     const service = new ClientEncryptionService(store);
     const device = await service.ensureDevice(identity);
     const stored = store.read(identity) as StoredClientDeviceRecord;
-    const usages = {
-      0: "deriveBits",
-      length: 1,
-      *[Symbol.iterator]() {
-        yield "deriveBits";
-      },
-    } as unknown as CryptoKey["usages"];
     store.seed(identity, {
       ...stored,
-      privateKey: {
-        algorithm: stored.privateKey.algorithm,
-        extractable: false,
-        type: "private",
-        usages,
-      },
+      // WKWebView can restore the native handle while presenting descriptor
+      // fields differently across its IndexedDB structured-clone boundary.
+      privateKey: {} as CryptoKey,
     });
 
     await expect(service.loadDevice(identity)).resolves.toEqual(device);
@@ -311,6 +301,17 @@ describe("client encryption key custody", () => {
       }),
     ).rejects.toMatchObject({ code: "unsupported-version" });
     expect(service.getSnapshot().status).toBe("unsupported-version");
+
+    const stored = store.read(identity) as StoredClientDeviceRecord;
+    store.seed(identity, { ...stored, privateKey: {} as CryptoKey });
+    await expect(
+      service.unlockWithDevice({
+        identity,
+        grant: approved.grant,
+        principal: approved.principal,
+      }),
+    ).rejects.toMatchObject({ code: "decryption-failed" });
+    expect(service.getSnapshot().status).toBe("locked");
 
     store.seed(identity, { version: 1 });
     await expect(service.loadDevice(identity)).rejects.toMatchObject({
