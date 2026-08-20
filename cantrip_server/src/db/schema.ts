@@ -48,12 +48,16 @@ import type {
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
-  TaskLastError,
+  EncryptedTaskPlanningRoundProtectedContent,
+  EncryptedTaskProtectedContent,
+  TaskOpaqueContent,
   TaskOperationKind,
+  TaskOperationRelayRequest,
+  TaskOperationRelayResult,
   TaskPlanAuthorship,
+  TaskPlanningRoundOpaqueContent,
   TaskPlanningRoundStatus,
-  TaskQuestion,
-  TaskQuestionAnswer,
+  TaskProtectedLastErrorMetadata,
   TaskStableState,
   TaskState,
 } from "@cantrip/protocol/tasks";
@@ -2163,32 +2167,26 @@ export const tasks = pgTable(
     activeOperationKind: text(
       "active_operation_kind",
     ).$type<TaskOperationKind>(),
-    briefMarkdown: text("brief_markdown").notNull().default(""),
     draftAttachmentIds: jsonb("draft_attachment_ids")
       .$type<string[]>()
       .notNull()
       .default([]),
-    planMarkdown: text("plan_markdown"),
     planAuthorship: text("plan_authorship")
       .$type<TaskPlanAuthorship>()
       .notNull()
       .default("agent"),
-    currentQuestions: jsonb("current_questions")
-      .$type<TaskQuestion[]>()
-      .notNull()
-      .default([]),
-    currentAnswers: jsonb("current_answers")
-      .$type<TaskQuestionAnswer[]>()
-      .notNull()
-      .default([]),
-    additionalDirection: text("additional_direction").notNull().default(""),
-    finalPlanMarkdown: text("final_plan_markdown"),
-    goalPrompt: text("goal_prompt"),
     planningRound: integer("planning_round").notNull().default(0),
+    hasPlan: boolean("has_plan").notNull().default(false),
+    hasQuestions: boolean("has_questions").notNull().default(false),
+    hasFinalPlan: boolean("has_final_plan").notNull().default(false),
+    hasGoalPrompt: boolean("has_goal_prompt").notNull().default(false),
+    protectedContent: jsonb("protected_content")
+      .$type<EncryptedTaskProtectedContent>()
+      .notNull(),
     implementationStartedAt: timestamp("implementation_started_at", {
       withTimezone: true,
     }),
-    lastError: jsonb("last_error").$type<TaskLastError>(),
+    lastError: jsonb("last_error").$type<TaskProtectedLastErrorMetadata>(),
     rowVersion: integer("row_version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -2221,26 +2219,6 @@ export const tasks = pgTable(
       "tasks_plan_authorship_check",
       sql`${table.planAuthorship} IN ('agent', 'user-edited', 'mixed')`,
     ),
-    check(
-      "tasks_brief_length_check",
-      sql`length(${table.briefMarkdown}) <= 100000`,
-    ),
-    check(
-      "tasks_plan_length_check",
-      sql`${table.planMarkdown} IS NULL OR length(${table.planMarkdown}) BETWEEN 1 AND 100000`,
-    ),
-    check(
-      "tasks_final_plan_length_check",
-      sql`${table.finalPlanMarkdown} IS NULL OR length(${table.finalPlanMarkdown}) BETWEEN 1 AND 100000`,
-    ),
-    check(
-      "tasks_goal_prompt_length_check",
-      sql`${table.goalPrompt} IS NULL OR length(${table.goalPrompt}) BETWEEN 1 AND 100000`,
-    ),
-    check(
-      "tasks_direction_length_check",
-      sql`length(${table.additionalDirection}) <= 10000`,
-    ),
     check("tasks_planning_round_check", sql`${table.planningRound} >= 0`),
     check("tasks_row_version_check", sql`${table.rowVersion} >= 1`),
   ],
@@ -2259,23 +2237,24 @@ export const taskPlanningRounds = pgTable(
       .$type<TaskPlanningRoundStatus>()
       .notNull()
       .default("running"),
-    inputBriefMarkdown: text("input_brief_markdown").notNull(),
-    inputPlanMarkdown: text("input_plan_markdown"),
-    inputQuestions: jsonb("input_questions")
-      .$type<TaskQuestion[]>()
+    hasOutputPlan: boolean("has_output_plan").notNull().default(false),
+    hasOutputQuestions: boolean("has_output_questions")
       .notNull()
-      .default([]),
-    inputAnswers: jsonb("input_answers")
-      .$type<TaskQuestionAnswer[]>()
+      .default(false),
+    hasOutputGoalPrompt: boolean("has_output_goal_prompt")
       .notNull()
-      .default([]),
-    additionalDirection: text("additional_direction").notNull().default(""),
-    outputPlanMarkdown: text("output_plan_markdown"),
-    outputQuestions: jsonb("output_questions")
-      .$type<TaskQuestion[]>()
-      .notNull()
-      .default([]),
-    outputGoalPrompt: text("output_goal_prompt"),
+      .default(false),
+    protectedContent: jsonb("protected_content")
+      .$type<EncryptedTaskPlanningRoundProtectedContent>()
+      .notNull(),
+    relayRequest: jsonb("relay_request")
+      .$type<TaskOperationRelayRequest>()
+      .notNull(),
+    relayResult: jsonb("relay_result").$type<TaskOperationRelayResult>(),
+    failureTask: jsonb("failure_task").$type<TaskOpaqueContent>().notNull(),
+    failureRound: jsonb("failure_round")
+      .$type<TaskPlanningRoundOpaqueContent>()
+      .notNull(),
     userMessageId: text("user_message_id").references(() => chatMessages.id, {
       onDelete: "set null",
     }),
@@ -2288,7 +2267,7 @@ export const taskPlanningRounds = pgTable(
       { onDelete: "set null" },
     ),
     turnId: text("turn_id"),
-    error: jsonb("error").$type<TaskLastError>(),
+    error: jsonb("error").$type<TaskProtectedLastErrorMetadata>(),
     startedAt: timestamp("started_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -2311,26 +2290,6 @@ export const taskPlanningRounds = pgTable(
     check(
       "task_planning_rounds_status_check",
       sql`${table.status} IN ('running', 'completed', 'failed', 'interrupted')`,
-    ),
-    check(
-      "task_planning_rounds_input_brief_length_check",
-      sql`length(${table.inputBriefMarkdown}) <= 100000`,
-    ),
-    check(
-      "task_planning_rounds_input_plan_length_check",
-      sql`${table.inputPlanMarkdown} IS NULL OR length(${table.inputPlanMarkdown}) <= 100000`,
-    ),
-    check(
-      "task_planning_rounds_output_plan_length_check",
-      sql`${table.outputPlanMarkdown} IS NULL OR length(${table.outputPlanMarkdown}) <= 100000`,
-    ),
-    check(
-      "task_planning_rounds_goal_prompt_length_check",
-      sql`${table.outputGoalPrompt} IS NULL OR length(${table.outputGoalPrompt}) <= 100000`,
-    ),
-    check(
-      "task_planning_rounds_direction_length_check",
-      sql`length(${table.additionalDirection}) <= 10000`,
     ),
   ],
 );

@@ -8,6 +8,7 @@ import {
 import {
   taskOperationRelayResultSchema,
   type TaskPlanningRoundProtectedContent,
+  type TaskProtectedContent,
 } from "@cantrip/protocol/tasks";
 import { describe, expect, it, vi } from "vitest";
 
@@ -40,6 +41,35 @@ function protectedInput(
   };
 }
 
+function taskContent(
+  kind: "initial-plan" | "continue-plan" | "finalize",
+): TaskProtectedContent {
+  return {
+    version: 1,
+    classification: {
+      state: kind === "finalize" ? "finalizing" : "planning",
+      stableStateBeforeFailure: kind === "initial-plan" ? "draft" : "review",
+      activeOperationKind: kind,
+      planAuthorship: "agent",
+      planningRound: 3,
+      hasPlan: kind !== "initial-plan",
+      hasQuestions: false,
+      hasFinalPlan: false,
+      hasGoalPrompt: false,
+      lastError: null,
+    },
+    briefMarkdown: "SENTINEL worker-only brief",
+    planMarkdown:
+      kind === "initial-plan" ? null : "# SENTINEL worker-only plan",
+    currentQuestions: [],
+    currentAnswers: [],
+    additionalDirection: "SENTINEL worker-only direction",
+    finalPlanMarkdown: null,
+    goalPrompt: null,
+    lastError: null,
+  };
+}
+
 describe("worker encrypted Task operations", () => {
   it("decrypts only at execution and returns an opaque validated planner result", async () => {
     const componentKey = randomBytes(32);
@@ -50,6 +80,7 @@ describe("worker encrypted Task operations", () => {
       keyRevision,
       componentKey,
       content: protectedInput("initial-plan"),
+      taskContent: taskContent("initial-plan"),
     });
     const run = vi.fn(async ({ prompt }: { prompt: string }) => {
       expect(prompt).toContain("SENTINEL worker-only brief");
@@ -86,8 +117,11 @@ describe("worker encrypted Task operations", () => {
         result: relay,
       }),
     ).resolves.toMatchObject({
-      outputPlanMarkdown: "# SENTINEL encrypted output plan",
-      outputQuestions: [],
+      round: {
+        outputPlanMarkdown: "# SENTINEL encrypted output plan",
+        outputQuestions: [],
+      },
+      task: { planMarkdown: "# SENTINEL encrypted output plan" },
     });
   });
 
@@ -100,6 +134,7 @@ describe("worker encrypted Task operations", () => {
       keyRevision,
       componentKey,
       content: protectedInput("finalize"),
+      taskContent: taskContent("finalize"),
     });
     const result = await executeEncryptedTaskOperation({
       getComponentKey: () => ({
@@ -174,6 +209,7 @@ describe("worker encrypted Task operations", () => {
       keyRevision,
       componentKey,
       content: protectedInput("continue-plan"),
+      taskContent: taskContent("continue-plan"),
     });
     const run = vi.fn();
     await expect(

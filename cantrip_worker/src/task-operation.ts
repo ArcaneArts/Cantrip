@@ -18,6 +18,7 @@ import {
   type TaskOperationRelayRequest,
   type TaskOperationRelayGoal,
   type TaskPlanningRoundProtectedContent,
+  type TaskProtectedContent,
 } from "@cantrip/protocol/tasks";
 
 const PLANNER_RULES = `You are planning a Cantrip Task. Investigate the repository and its effective Policies before proposing architecture. This turn is strictly read-only: do not edit files, mutate Git or GitHub, call side-effecting tools, or implement any part of the plan.
@@ -181,12 +182,14 @@ export async function executeEncryptedTaskOperation(input: {
     if (component.keyRevision !== request.protectedInput.keyRevision) {
       throw new Error("The Task encryption key revision is unavailable.");
     }
-    const protectedInput = await openTaskOperationRelayRequest({
+    const opened = await openTaskOperationRelayRequest({
       ownerId: input.ownerId,
       keyRevision: component.keyRevision,
       componentKey: component.key,
       request,
     });
+    const protectedInput = opened.round;
+    const taskInput = opened.task;
     const finalizing = protectedInput.classification.kind === "finalize";
     const rawResult = agentTurnResultSchema.parse(
       await input.run({
@@ -223,6 +226,44 @@ export async function executeEncryptedTaskOperation(input: {
       outputQuestions: plannerResult?.questions ?? [],
       outputGoalPrompt: objective,
     };
+    const taskClassification = finalizing
+      ? {
+          state: "implementing" as const,
+          stableStateBeforeFailure: null,
+          activeOperationKind: null,
+          planAuthorship: taskInput.classification.planAuthorship,
+          planningRound: protectedInput.classification.ordinal,
+          hasPlan: true,
+          hasQuestions: false,
+          hasFinalPlan: true,
+          hasGoalPrompt: true,
+          lastError: null,
+        }
+      : {
+          state: "review" as const,
+          stableStateBeforeFailure: null,
+          activeOperationKind: null,
+          planAuthorship: "agent" as const,
+          planningRound: protectedInput.classification.ordinal,
+          hasPlan: true,
+          hasQuestions: Boolean(plannerResult?.questions.length),
+          hasFinalPlan: false,
+          hasGoalPrompt: false,
+          lastError: null,
+        };
+    const taskResult: TaskProtectedContent = {
+      version: 1,
+      classification: taskClassification,
+      briefMarkdown: protectedInput.inputBriefMarkdown,
+      planMarkdown:
+        finalizerResult?.finalPlanMarkdown ?? plannerResult!.planMarkdown,
+      currentQuestions: plannerResult?.questions ?? [],
+      currentAnswers: finalizing ? protectedInput.inputAnswers : [],
+      additionalDirection: finalizing ? protectedInput.additionalDirection : "",
+      finalPlanMarkdown: finalizerResult?.finalPlanMarkdown ?? null,
+      goalPrompt: objective,
+      lastError: null,
+    };
     const goalClassification = objective
       ? {
           chatId: request.chatId,
@@ -254,6 +295,7 @@ export async function executeEncryptedTaskOperation(input: {
       componentKey: component.key,
       request,
       content: protectedResult,
+      taskContent: taskResult,
       goal,
     });
     return agentTurnResultSchema.parse({

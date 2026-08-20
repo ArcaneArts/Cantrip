@@ -180,6 +180,21 @@ describe("Task encryption contracts", () => {
         error: null,
       },
       protectedInput: encrypted,
+      task: {
+        classification: {
+          state: "planning",
+          stableStateBeforeFailure: "review",
+          activeOperationKind: "continue-plan",
+          planAuthorship: "agent",
+          planningRound: 2,
+          hasPlan: true,
+          hasQuestions: false,
+          hasFinalPlan: false,
+          hasGoalPrompt: false,
+          lastError: null,
+        },
+        protectedContent: encrypted,
+      },
     });
     expect(request).not.toHaveProperty("prompt");
     expect(
@@ -205,6 +220,21 @@ describe("Task encryption contracts", () => {
           hasOutputPlan: true,
         },
         protectedResult: encrypted,
+        task: {
+          classification: {
+            state: "review",
+            stableStateBeforeFailure: null,
+            activeOperationKind: null,
+            planAuthorship: "agent",
+            planningRound: 2,
+            hasPlan: true,
+            hasQuestions: false,
+            hasFinalPlan: false,
+            hasGoalPrompt: false,
+            lastError: null,
+          },
+          protectedContent: encrypted,
+        },
         goal: null,
       }).classification.status,
     ).toBe("completed");

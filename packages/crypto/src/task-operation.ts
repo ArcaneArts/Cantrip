@@ -2,16 +2,20 @@ import {
   taskOperationRelayRequestSchema,
   taskOperationRelayResultSchema,
   taskPlanningRoundProtectedContentSchema,
+  taskProtectedContentSchema,
   type TaskOperationRelayRequest,
   type TaskOperationRelayResult,
   type TaskPlanningRoundProtectedClassification,
   type TaskPlanningRoundProtectedContent,
+  type TaskProtectedContent,
 } from "@cantrip/protocol/tasks";
 
 import { bytesEqual, clearSensitiveBytes, decodeBase64Url } from "./bytes.js";
 import { computeBlindLookupTag, deriveLookupKey } from "./kdf.js";
 import {
+  decryptTaskProtectedContent,
   decryptTaskPlanningRoundProtectedContent,
+  encryptTaskProtectedContent,
   encryptTaskPlanningRoundProtectedContent,
 } from "./task-content.js";
 
@@ -22,8 +26,10 @@ function taskOperationFingerprint(input: {
   keyRevision: number;
   operationId: string;
   ownerId: string;
+  taskContent: TaskProtectedContent;
 }): string {
   const content = taskPlanningRoundProtectedContentSchema.parse(input.content);
+  const taskContent = taskProtectedContentSchema.parse(input.taskContent);
   const lookupKey = deriveLookupKey({
     componentKey: input.componentKey,
     ownerId: input.ownerId,
@@ -35,7 +41,13 @@ function taskOperationFingerprint(input: {
   try {
     return computeBlindLookupTag(
       lookupKey,
-      JSON.stringify([1, input.chatId, input.operationId, content]),
+      JSON.stringify([
+        1,
+        input.chatId,
+        input.operationId,
+        content,
+        taskContent,
+      ]),
     );
   } finally {
     clearSensitiveBytes(lookupKey);
@@ -60,12 +72,17 @@ export async function createTaskOperationRelayRequest(input: {
   keyRevision: number;
   operationId: string;
   ownerId: string;
+  taskContent: TaskProtectedContent;
 }): Promise<TaskOperationRelayRequest> {
   const content = taskPlanningRoundProtectedContentSchema.parse(input.content);
   return taskOperationRelayRequestSchema.parse({
     chatId: input.chatId,
     operationId: input.operationId,
-    fingerprint: taskOperationFingerprint({ ...input, content }),
+    fingerprint: taskOperationFingerprint({
+      ...input,
+      content,
+      taskContent: input.taskContent,
+    }),
     classification: content.classification,
     protectedInput: await encryptTaskPlanningRoundProtectedContent({
       ownerId: input.ownerId,
@@ -74,6 +91,16 @@ export async function createTaskOperationRelayRequest(input: {
       componentKey: input.componentKey,
       content,
     }),
+    task: {
+      classification: input.taskContent.classification,
+      protectedContent: await encryptTaskProtectedContent({
+        ownerId: input.ownerId,
+        chatId: input.chatId,
+        keyRevision: input.keyRevision,
+        componentKey: input.componentKey,
+        content: input.taskContent,
+      }),
+    },
   });
 }
 
@@ -82,9 +109,12 @@ export async function openTaskOperationRelayRequest(input: {
   keyRevision: number;
   ownerId: string;
   request: TaskOperationRelayRequest;
-}): Promise<TaskPlanningRoundProtectedContent> {
+}): Promise<{
+  round: TaskPlanningRoundProtectedContent;
+  task: TaskProtectedContent;
+}> {
   const request = taskOperationRelayRequestSchema.parse(input.request);
-  const content = await decryptTaskPlanningRoundProtectedContent({
+  const round = await decryptTaskPlanningRoundProtectedContent({
     ownerId: input.ownerId,
     roundId: request.operationId,
     keyRevision: input.keyRevision,
@@ -92,18 +122,27 @@ export async function openTaskOperationRelayRequest(input: {
     encrypted: request.protectedInput,
     publicClassification: request.classification,
   });
+  const task = await decryptTaskProtectedContent({
+    ownerId: input.ownerId,
+    chatId: request.chatId,
+    keyRevision: input.keyRevision,
+    componentKey: input.componentKey,
+    encrypted: request.task.protectedContent,
+    publicClassification: request.task.classification,
+  });
   const expected = taskOperationFingerprint({
     ownerId: input.ownerId,
     chatId: request.chatId,
     operationId: request.operationId,
     keyRevision: input.keyRevision,
     componentKey: input.componentKey,
-    content,
+    content: round,
+    taskContent: task,
   });
   if (!fingerprintsMatch(request.fingerprint, expected)) {
     throw new Error("Encrypted Task operation fingerprint is invalid.");
   }
-  return content;
+  return { round, task };
 }
 
 export async function createTaskOperationRelayResult(input: {
@@ -113,6 +152,7 @@ export async function createTaskOperationRelayResult(input: {
   keyRevision: number;
   ownerId: string;
   request: TaskOperationRelayRequest;
+  taskContent: TaskProtectedContent;
 }): Promise<TaskOperationRelayResult> {
   const request = taskOperationRelayRequestSchema.parse(input.request);
   const content = taskPlanningRoundProtectedContentSchema.parse(input.content);
@@ -128,6 +168,16 @@ export async function createTaskOperationRelayResult(input: {
       componentKey: input.componentKey,
       content,
     }),
+    task: {
+      classification: input.taskContent.classification,
+      protectedContent: await encryptTaskProtectedContent({
+        ownerId: input.ownerId,
+        chatId: request.chatId,
+        keyRevision: input.keyRevision,
+        componentKey: input.componentKey,
+        content: input.taskContent,
+      }),
+    },
     goal: input.goal,
   });
 }
@@ -138,7 +188,10 @@ export async function openTaskOperationRelayResult(input: {
   ownerId: string;
   request: TaskOperationRelayRequest;
   result: TaskOperationRelayResult;
-}): Promise<TaskPlanningRoundProtectedContent> {
+}): Promise<{
+  round: TaskPlanningRoundProtectedContent;
+  task: TaskProtectedContent;
+}> {
   const request = taskOperationRelayRequestSchema.parse(input.request);
   const result = taskOperationRelayResultSchema.parse(input.result);
   if (
@@ -150,7 +203,7 @@ export async function openTaskOperationRelayResult(input: {
   ) {
     throw new Error("Encrypted Task operation result metadata is invalid.");
   }
-  return decryptTaskPlanningRoundProtectedContent({
+  const round = await decryptTaskPlanningRoundProtectedContent({
     ownerId: input.ownerId,
     roundId: result.operationId,
     keyRevision: input.keyRevision,
@@ -158,6 +211,15 @@ export async function openTaskOperationRelayResult(input: {
     encrypted: result.protectedResult,
     publicClassification: result.classification,
   });
+  const task = await decryptTaskProtectedContent({
+    ownerId: input.ownerId,
+    chatId: result.chatId,
+    keyRevision: input.keyRevision,
+    componentKey: input.componentKey,
+    encrypted: result.task.protectedContent,
+    publicClassification: result.task.classification,
+  });
+  return { round, task };
 }
 
 export function taskOperationRunningClassification(input: {

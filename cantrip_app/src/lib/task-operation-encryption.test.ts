@@ -78,11 +78,11 @@ describe("client Task operation encryption", () => {
         componentKey,
         request,
       });
-      expect(input.inputPlanMarkdown).toBe("# SENTINEL existing plan");
+      expect(input.round.inputPlanMarkdown).toBe("# SENTINEL existing plan");
       const resultContent = {
-        ...input,
+        ...input.round,
         classification: {
-          ...input.classification,
+          ...input.round.classification,
           status: "completed" as const,
           hasOutputPlan: true,
         },
@@ -94,6 +94,22 @@ describe("client Task operation encryption", () => {
         componentKey,
         request,
         content: resultContent,
+        taskContent: {
+          ...input.task,
+          classification: {
+            ...input.task.classification,
+            state: "review",
+            stableStateBeforeFailure: null,
+            activeOperationKind: null,
+            planAuthorship: "agent",
+            hasPlan: true,
+            hasQuestions: false,
+            lastError: null,
+          },
+          planMarkdown: "# SENTINEL revised plan",
+          currentQuestions: [],
+          lastError: null,
+        },
         goal: null,
       });
       await expect(

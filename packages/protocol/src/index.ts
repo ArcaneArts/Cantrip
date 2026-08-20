@@ -32,7 +32,8 @@ export * from "./encryption.js";
 
 import { agentPolicyContextSchema } from "./policies.js";
 import {
-  taskDetailSchema,
+  taskOpaqueContentSchema,
+  taskOpaqueSummarySchema,
   taskOperationRelayGoalSchema,
   taskOperationRelayRequestSchema,
 } from "./tasks.js";
@@ -3486,11 +3487,34 @@ export const chatCreateSchema = z
 
 export const taskCreateSchema = z
   .object({
+    chatId: z.string().uuid(),
+    task: taskOpaqueContentSchema,
     title: z.string().trim().min(1).max(200).default("New task"),
     ...chatPlacementCreateFields,
   })
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",
+  })
+  .superRefine((input, context) => {
+    const classification = input.task.classification;
+    if (
+      classification.state !== "draft" ||
+      classification.stableStateBeforeFailure !== null ||
+      classification.activeOperationKind !== null ||
+      classification.planAuthorship !== "agent" ||
+      classification.planningRound !== 0 ||
+      classification.hasPlan ||
+      classification.hasQuestions ||
+      classification.hasFinalPlan ||
+      classification.hasGoalPrompt ||
+      classification.lastError !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "A new encrypted Task must begin as an empty draft.",
+        path: ["task", "classification"],
+      });
+    }
   });
 
 export const chatUpdateSchema = z.object({
@@ -3536,7 +3560,7 @@ export const chatSummarySchema = z.object({
 
 export const taskCreateResultSchema = z.object({
   chat: chatSummarySchema,
-  task: taskDetailSchema,
+  task: taskOpaqueSummarySchema,
 });
 
 export const chatListSchema = z.array(chatSummarySchema);

@@ -31,6 +31,30 @@ const inputContent = {
   error: null,
 };
 
+const inputTaskContent = {
+  version: 1 as const,
+  classification: {
+    state: "planning" as const,
+    stableStateBeforeFailure: "draft" as const,
+    activeOperationKind: "initial-plan" as const,
+    planAuthorship: "agent" as const,
+    planningRound: 1,
+    hasPlan: false,
+    hasQuestions: false,
+    hasFinalPlan: false,
+    hasGoalPrompt: false,
+    lastError: null,
+  },
+  briefMarkdown: "SENTINEL private Task brief",
+  planMarkdown: null,
+  currentQuestions: [],
+  currentAnswers: [],
+  additionalDirection: "SENTINEL private direction",
+  finalPlanMarkdown: null,
+  goalPrompt: null,
+  lastError: null,
+};
+
 describe("encrypted Task operation relay codecs", () => {
   it("binds an opaque keyed fingerprint to encrypted operation input", async () => {
     const componentKey = randomBytes(32);
@@ -41,6 +65,7 @@ describe("encrypted Task operation relay codecs", () => {
       keyRevision,
       componentKey,
       content: inputContent,
+      taskContent: inputTaskContent,
     });
     const retry = await createTaskOperationRelayRequest({
       ownerId,
@@ -49,6 +74,7 @@ describe("encrypted Task operation relay codecs", () => {
       keyRevision,
       componentKey,
       content: inputContent,
+      taskContent: inputTaskContent,
     });
     expect(first.fingerprint).toBe(retry.fingerprint);
     expect(first.protectedInput.envelope.nonce).not.toBe(
@@ -62,7 +88,7 @@ describe("encrypted Task operation relay codecs", () => {
         componentKey,
         request: first,
       }),
-    ).resolves.toEqual(inputContent);
+    ).resolves.toEqual({ round: inputContent, task: inputTaskContent });
     await expect(
       openTaskOperationRelayRequest({
         ownerId,
@@ -85,6 +111,7 @@ describe("encrypted Task operation relay codecs", () => {
       keyRevision,
       componentKey,
       content: inputContent,
+      taskContent: inputTaskContent,
     });
     const content = {
       ...inputContent,
@@ -101,6 +128,17 @@ describe("encrypted Task operation relay codecs", () => {
       componentKey,
       request,
       content,
+      taskContent: {
+        ...inputTaskContent,
+        classification: {
+          ...inputTaskContent.classification,
+          state: "review",
+          stableStateBeforeFailure: null,
+          activeOperationKind: null,
+          hasPlan: true,
+        },
+        planMarkdown: "SENTINEL private generated plan",
+      },
       goal: null,
     });
     expect(JSON.stringify(result)).not.toContain("SENTINEL");
@@ -112,7 +150,20 @@ describe("encrypted Task operation relay codecs", () => {
         request,
         result,
       }),
-    ).resolves.toEqual(content);
+    ).resolves.toEqual({
+      round: content,
+      task: {
+        ...inputTaskContent,
+        classification: {
+          ...inputTaskContent.classification,
+          state: "review",
+          stableStateBeforeFailure: null,
+          activeOperationKind: null,
+          hasPlan: true,
+        },
+        planMarkdown: "SENTINEL private generated plan",
+      },
+    });
     await expect(
       openTaskOperationRelayResult({
         ownerId,
