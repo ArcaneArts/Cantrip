@@ -2,11 +2,8 @@ import { lstat, readFile, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  providerLegacyCredentialCaptureResultSchema,
-  providerLegacyCredentialPurgeResultSchema,
+  providerLegacyCredentialSchema,
   type ProviderLegacyCredential,
-  type ProviderLegacyCredentialCaptureResult,
-  type ProviderLegacyCredentialPurgeResult,
 } from "@cantrip/protocol";
 
 const MAX_CREDENTIAL_FILE_BYTES = 4 * 1_024 * 1_024;
@@ -122,10 +119,15 @@ export function legacyProviderCredentialSubject(
     : `grok:${credential.userId}`;
 }
 
+export type LocalProviderCredentialCaptureResult =
+  | { status: "missing" }
+  | { status: "malformed" }
+  | { status: "available"; credential: ProviderLegacyCredential };
+
 export async function captureLegacyProviderCredential(
   credentialHome: string,
   kind: "chatgpt" | "grok",
-): Promise<ProviderLegacyCredentialCaptureResult> {
+): Promise<LocalProviderCredentialCaptureResult> {
   let parsed: unknown | null;
   try {
     parsed = await readCredentialFile(credentialPath(credentialHome, kind));
@@ -135,46 +137,12 @@ export async function captureLegacyProviderCredential(
   if (parsed === null) return { status: "missing" };
   const value = object(parsed);
   if (!value) return { status: "malformed" };
-  const result = providerLegacyCredentialCaptureResultSchema.safeParse({
-    credential:
-      kind === "chatgpt" ? chatGptCredential(value) : grokCredential(value),
-    status: "available",
-  });
-  return result.success ? result.data : { status: "malformed" };
-}
-
-export async function purgeLegacyProviderCredential(
-  credentialHome: string,
-  kind: "chatgpt" | "grok",
-  expectedSubject: string,
-  serverCredentialRevision: number,
-): Promise<ProviderLegacyCredentialPurgeResult> {
-  const captured = await captureLegacyProviderCredential(credentialHome, kind);
-  if (captured.status === "malformed") {
-    throw new Error("Malformed legacy provider credentials were not removed.");
-  }
-  if (
-    captured.status === "available" &&
-    legacyProviderCredentialSubject(captured.credential) !== expectedSubject
-  ) {
-    throw new Error(
-      "Legacy provider credential identity does not match the server.",
-    );
-  }
-  let purged = false;
-  if (captured.status === "available") {
-    try {
-      await unlink(credentialPath(credentialHome, kind));
-      purged = true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-  }
-  return providerLegacyCredentialPurgeResultSchema.parse({
-    purged,
-    serverCredentialRevision,
-    subject: expectedSubject,
-  });
+  const credential = providerLegacyCredentialSchema.safeParse(
+    kind === "chatgpt" ? chatGptCredential(value) : grokCredential(value),
+  );
+  return credential.success
+    ? { status: "available", credential: credential.data }
+    : { status: "malformed" };
 }
 
 /**

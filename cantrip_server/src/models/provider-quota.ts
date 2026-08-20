@@ -90,7 +90,7 @@ export async function readAndPersistProviderQuotaSnapshot(
           name: context.provider.name,
           kind: context.provider.kind,
           baseUrl: context.provider.baseUrl,
-          apiKey: null,
+          protectedApiKey: null,
           accountId: context.accountId,
           credentialHomeKey: context.provider.credentialHomeKey,
         },

@@ -24,6 +24,10 @@ import {
   protectedChatFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
+import {
+  protectedProviderCredentialFixture,
+  providerCredentialMetadataFixture,
+} from "./protected-provider-credential-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-executor-"),
@@ -238,18 +242,8 @@ describe.sequential("chat relocation executor", () => {
       LOCAL_USER_ID,
       provider.id,
       account.id,
-      {
-        accessToken: "server-owned-access-token",
-        accountId: "upstream-workspace",
-        email: "person@example.test",
-        expiresAt: Date.now() + 3_600_000,
-        idToken: "server-owned-identity-token",
-        kind: "chatgpt",
-        planType: "pro",
-        refreshToken: "server-owned-refresh-token",
-        userId: "upstream-user",
-        version: 1,
-      },
+      protectedProviderCredentialFixture("F"),
+      providerCredentialMetadataFixture(),
     );
     const portableModel = await database.repository.createModelProfile(
       LOCAL_USER_ID,

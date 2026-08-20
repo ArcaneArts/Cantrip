@@ -1,10 +1,10 @@
 import {
   isZaiCodingPlanBaseUrl,
   normalizeResponsesBaseUrl,
-  type WorkerCommand,
 } from "@cantrip/protocol";
+import type { RuntimeProvider } from "../protected-secrets.js";
 
-type CodexProvider = Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
+type CodexProvider = RuntimeProvider;
 
 export type CodexModelProviderName = "cantrip_runtime" | "ollama" | "openai";
 

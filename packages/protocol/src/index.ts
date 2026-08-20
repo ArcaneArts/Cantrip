@@ -42,6 +42,7 @@ export * from "./policies.js";
 export * from "./tasks.js";
 
 export * from "./encryption.js";
+export * from "./protected-secrets.js";
 
 export * from "./private-labels.js";
 export * from "./surface-private-state.js";
@@ -66,6 +67,13 @@ import {
   workerEncryptionRefreshRequestSchema,
   workerEncryptionStatusSchema,
 } from "./encryption.js";
+import {
+  mcpServerOpaqueRuntimeSchema,
+  providerCredentialProtectedContentSchema,
+  providerCredentialPublicMetadataSchema,
+  protectedProviderCredentialSchema,
+  protectedSecretEnvelopeSchema,
+} from "./protected-secrets.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import {
   browserPrivateStateOpaqueSchema,
@@ -1288,10 +1296,7 @@ export const providerAccessTokenLeaseRequestSchema = z.object({
   minimumValiditySeconds: z.number().int().min(30).max(600).default(120),
 });
 
-/**
- * Worker-only, short-lived OAuth material. Refresh and identity tokens are
- * intentionally absent so workers never receive durable provider secrets.
- */
+/** Worker-only in-memory view opened from an authorized durable envelope. */
 export const providerAccessTokenLeaseSchema = z.object({
   accessToken: z.string().min(1).max(1_000_000),
   credentialRevision: z.number().int().nonnegative(),
@@ -1316,28 +1321,9 @@ export const providerAccessTokenLeaseSchema = z.object({
   providerKind: z.enum(["chatgpt", "grok"]),
 });
 
-const providerLegacyCredentialBaseSchema = z.object({
-  accessToken: z.string().min(1).max(1_000_000),
-  email: z.string().max(1_024).nullable(),
-  expiresAt: z.number().int().positive().nullable(),
-  planType: z.string().max(1_024).nullable(),
-  refreshToken: z.string().min(1).max(1_000_000).nullable(),
-  version: z.literal(1),
-});
-
-/** Internal worker-to-server migration payload. Never expose through app APIs. */
-export const providerLegacyCredentialSchema = z.discriminatedUnion("kind", [
-  providerLegacyCredentialBaseSchema.extend({
-    accountId: z.string().min(1).max(512),
-    idToken: z.string().min(1).max(1_000_000).nullable(),
-    kind: z.literal("chatgpt"),
-    userId: z.string().min(1).max(512).nullable(),
-  }),
-  providerLegacyCredentialBaseSchema.extend({
-    kind: z.literal("grok"),
-    userId: z.string().min(1).max(512),
-  }),
-]);
+/** @deprecated Use providerCredentialProtectedContentSchema. */
+export const providerLegacyCredentialSchema =
+  providerCredentialProtectedContentSchema;
 
 export const providerLegacyCredentialCaptureResultSchema = z.discriminatedUnion(
   "status",
@@ -1345,8 +1331,9 @@ export const providerLegacyCredentialCaptureResultSchema = z.discriminatedUnion(
     z.object({ status: z.literal("missing") }),
     z.object({ status: z.literal("malformed") }),
     z.object({
-      credential: providerLegacyCredentialSchema,
-      serverManagedAuth: z.boolean().default(false),
+      credential: protectedProviderCredentialSchema,
+      metadata: providerCredentialPublicMetadataSchema,
+      portableAuth: z.boolean().default(false),
       status: z.literal("available"),
     }),
   ],
@@ -1355,7 +1342,7 @@ export const providerLegacyCredentialCaptureResultSchema = z.discriminatedUnion(
 export const providerLegacyCredentialPurgeResultSchema = z.object({
   purged: z.boolean(),
   serverCredentialRevision: z.number().int().positive(),
-  subject: z.string().min(1).max(1_024),
+  subjectBlindIndex: encryptionKeyBytesSchema,
 });
 
 /**
@@ -1568,6 +1555,21 @@ export const modelProviderCreateSchema = z.object({
 
 export const modelProviderUpdateSchema = modelProviderCreateSchema;
 
+export const encryptedModelProviderCreateSchema = modelProviderCreateSchema
+  .omit({ apiKey: true })
+  .extend({
+    id: z.string().uuid(),
+    protectedApiKey: protectedSecretEnvelopeSchema.nullable().default(null),
+  })
+  .strict();
+
+export const encryptedModelProviderUpdateSchema = modelProviderCreateSchema
+  .omit({ apiKey: true })
+  .extend({
+    protectedApiKey: protectedSecretEnvelopeSchema.nullable().optional(),
+  })
+  .strict();
+
 export const modelProviderSummarySchema = modelProviderCreateSchema
   .omit({ apiKey: true })
   .extend({
@@ -1706,6 +1708,19 @@ export const mcpServerConfigurationSchema = z.discriminatedUnion("transport", [
   mcpServerHttpConfigurationSchema,
 ]);
 
+export const encryptedMcpServerCreateSchema = z
+  .object({
+    id: z.string().uuid(),
+    enabled: z.boolean(),
+    nameBlindIndex: encryptionKeyBytesSchema,
+    protectedConfiguration: protectedSecretEnvelopeSchema,
+  })
+  .strict();
+
+export const encryptedMcpServerUpdateSchema = encryptedMcpServerCreateSchema
+  .omit({ id: true })
+  .strict();
+
 export const mcpServerScopeSchema = z.enum(["global", "project"]);
 
 export const mcpServerSummarySchema = mcpServerConfigurationSchema.and(
@@ -1719,6 +1734,19 @@ export const mcpServerSummarySchema = mcpServerConfigurationSchema.and(
 );
 
 export const mcpServerListSchema = z.array(mcpServerSummarySchema).max(200);
+
+export const mcpServerWireSummarySchema = mcpServerOpaqueRuntimeSchema.and(
+  z.object({
+    scope: mcpServerScopeSchema,
+    projectId: z.string().min(1).nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  }),
+);
+
+export const mcpServerWireListSchema = z
+  .array(mcpServerWireSummarySchema)
+  .max(200);
 
 export const mcpServerCopySchema = z.object({
   sourceProjectId: z.string().min(1),
@@ -9492,7 +9520,7 @@ const workerRuntimeProviderSchema = z.object({
   name: z.string().min(1),
   kind: modelProviderKindSchema,
   baseUrl: z.url(),
-  apiKey: z.string().min(1).nullable(),
+  protectedApiKey: protectedSecretEnvelopeSchema.nullable().default(null),
   accountId: z.string().min(1).nullable().default(null),
   credentialHomeKey: z.string().min(1).max(500).nullable().default(null),
 });
@@ -9689,8 +9717,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("model.ollama.catalog"),
-    baseUrl: z.url(),
-    apiKey: z.string().min(1).nullable(),
+    provider: workerRuntimeProviderSchema.extend({ kind: z.literal("ollama") }),
   }),
   z.object({
     type: z.literal("model.chatgpt.catalog"),
@@ -9747,7 +9774,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     providerKind: z.enum(["chatgpt", "grok"]),
     providerAccountId: z.string().min(1).max(512),
     credentialHomeKey: z.string().min(1).max(500),
-    expectedSubject: z.string().min(1).max(1_024),
+    expectedSubjectBlindIndex: encryptionKeyBytesSchema,
     serverCredentialRevision: z.number().int().positive(),
   }),
   z.object({
@@ -10343,7 +10370,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .max(30 * 60 * 1_000),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
-    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("worktree.list"),
@@ -10658,7 +10685,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
           model: workerRuntimeModelSchema,
           provider: workerRuntimeProviderSchema,
           permissionProfileId: permissionProfileIdSchema.optional(),
-          mcpServers: z.array(mcpServerConfigurationSchema).max(200).optional(),
+          mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).optional(),
         }),
       ]),
     })
@@ -10906,7 +10933,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       provider: workerRuntimeProviderSchema,
       permissionProfileId: permissionProfileIdSchema,
       planMode: planModeSchema,
-      mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
       automationPaused: z.boolean().default(false),
       resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
     })
@@ -10934,7 +10961,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("workflow.node.execute"),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
-    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("workflow.definition.generate"),
@@ -10950,7 +10977,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       .max(15 * 60 * 1_000),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
-    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("workflow.repository.scan"),
@@ -11045,7 +11072,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
-    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("chat.relocation.hydration.begin"),
@@ -11063,7 +11090,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
-    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
   }),
   z.object({
     type: z.literal("chat.relocation.hydration.chunk"),
@@ -11517,6 +11544,12 @@ export type DetailedTokenUsageTotals = z.infer<
 >;
 export type ModelProviderCreate = z.infer<typeof modelProviderCreateSchema>;
 export type ModelProviderUpdate = z.infer<typeof modelProviderUpdateSchema>;
+export type EncryptedModelProviderCreate = z.infer<
+  typeof encryptedModelProviderCreateSchema
+>;
+export type EncryptedModelProviderUpdate = z.infer<
+  typeof encryptedModelProviderUpdateSchema
+>;
 export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
 export type ModelRouteInput = z.infer<typeof modelRouteInputSchema>;
 export type ModelRouteSummary = z.infer<typeof modelRouteSummarySchema>;
@@ -11528,6 +11561,13 @@ export type McpServerConfiguration = z.infer<
 >;
 export type McpServerScope = z.infer<typeof mcpServerScopeSchema>;
 export type McpServerSummary = z.infer<typeof mcpServerSummarySchema>;
+export type EncryptedMcpServerCreate = z.infer<
+  typeof encryptedMcpServerCreateSchema
+>;
+export type EncryptedMcpServerUpdate = z.infer<
+  typeof encryptedMcpServerUpdateSchema
+>;
+export type McpServerWireSummary = z.infer<typeof mcpServerWireSummarySchema>;
 export type McpServerCopy = z.infer<typeof mcpServerCopySchema>;
 export type MobileProjectTabConfigurations = z.infer<
   typeof mobileProjectTabConfigurationsSchema

@@ -48,10 +48,11 @@ Some data is already protected, but it is not end-to-end encrypted:
   sign-in, enrollment, and worker tokens are also stored as hashes. See
   [service.ts](../cantrip_server/src/auth/service.ts) and
   [schema.ts](../cantrip_server/src/db/schema.ts).
-- Provider API keys, ChatGPT/Grok credentials, and MCP secrets use AES-256-GCM
-  envelopes. However, the server owns the encryption key and can decrypt them.
-  This is database and backup protection, not E2EE. See
-  [secret-vault.ts](../cantrip_server/src/security/secret-vault.ts).
+- Provider API keys, ChatGPT/Grok credentials, and complete MCP configurations
+  now use endpoint-only AES-256-GCM envelopes. Authorized clients seal API keys
+  and MCP configuration; authorized workers open provider credentials, refresh
+  OAuth tokens, and reseal replacements. The server owns no usable decryption
+  key for these payloads.
 - Attachment bytes are stored on workers rather than in the server database.
   The server stores attachment metadata and replica locations. See
   [attachment-store.ts](../cantrip_worker/src/attachment-store.ts) and
@@ -421,8 +422,8 @@ database-compromise guarantee is described.
 | Custom tab-group display labels                                                  | AES-256-GCM E2EE for custom labels; unnamed groups derive from decrypted members client-side                                          | E2EE complete                                    | Implemented          | Medium      | Server retains layout structure but cannot present or synthesize group labels                  |
 | Private display-label server boundary and lifecycle audit                        | Generated route inventory, repository/schema guards, endpoint restart proof, full temporary-DB sentinel scan                          | Closure audit complete                           | Required             | Medium      | Server builds and persists only opaque label contracts                                         |
 | Cantrip policy content and effective agent policy context                        | AES-256-GCM E2EE for policy keys, names, summaries, bodies, prompt context, and CLI presentation; keyed blind uniqueness              | E2EE complete                                    | Implemented          | Medium-High | Server cannot inspect policy semantics, compose policy prompts, or resolve CLI keys            |
-| Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                                                        | Planned replacement                              | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
-| MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                                                                                                             | Planned                                          | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
+| Provider API keys and ChatGPT/Grok OAuth access, refresh, and identity tokens    | Row-bound AES-256-GCM E2EE under `provider-credential`; authorized-worker refresh and reseal                                          | E2EE complete                                    | Implemented          | High        | Server cannot test credentials, refresh tokens, or use private catalog endpoints               |
+| MCP names, commands, URLs, headers, environment, and configuration               | Complete row-bound AES-256-GCM configuration under `mcp-secret`; keyed name blind index                                               | E2EE complete                                    | Implemented          | High        | Server can route by scope and blind override key but cannot validate or describe configuration |
 | Workflow prompts, definitions, structured inputs, and results                    | Plaintext                                                                                                                             | Planned                                          | Good when split      | Very high   | Scheduler can route opaque jobs, but conditions and content evaluation must happen on a worker |
 | Repository identities and names, remotes, paths, branch names, and Git output    | Plaintext                                                                                                                             | Planned partial encryption                       | Partial              | High        | Server orchestration currently depends on some of this data                                    |
 | Token usage, quotas, and model-behavior analytics                                | Plaintext/queryable                                                                                                                   | Planned minimization                             | Partial              | Medium-High | Fully encrypting numbers removes server dashboards, budgets, and historical analysis           |
@@ -1282,16 +1283,56 @@ routes.
 
 ## Credentials and provider configuration
 
-Credentials are high-value but architecturally harder. Provider records
-currently include base URLs, encrypted API keys, account identity, refresh
-state, quota observations, and server-managed refresh leases.
+Provider API keys and ChatGPT/Grok OAuth credentials now use the independently
+scoped `provider-credential` component. The app allocates a provider ID and
+seals a static API key before create or update leaves the client. Runtime
+commands carry that opaque envelope to an authorized worker, which opens it
+only when constructing the provider runtime. The server's provider test and
+catalog paths no longer receive the usable key; public OpenRouter catalog data
+can still be fetched anonymously, while credential-specific operations require
+an authorized worker.
 
-True E2EE means the server stores an opaque credential envelope, an authorized
-worker decrypts it when launching Codex, OAuth refresh occurs on a worker or
-client, and updated tokens are re-encrypted before upload. The server retains
-only provider kind, opaque account ID, health state, routing priority,
-expiration time, and selected quota metadata. Provider testing and refresh are
-unavailable while every authorized worker is offline.
+OAuth capture, use, and refresh follow the same custody boundary. After normal
+device login, the app grants `provider-credential` to the selected worker. The
+worker reads the provider's local login result, encrypts the complete access,
+refresh, identity-token, and upstream-identity bundle against the account row,
+and uploads only the envelope, keyed subject blind index, optimistic revision,
+and bounded expiry metadata. Email, upstream identity, and plan details remain
+inside the protected bundle. When a token needs refreshing, the
+worker fetches that opaque record through its worker-authenticated route,
+decrypts and validates provider identity locally, contacts the provider, and
+reseals the replacement before upload. Its short-lived usable access lease is
+memory-only. Restarted authorized workers recover the same scoped grant using
+their persistent app-managed private key; the user does not re-enter the login
+password.
+
+The complete user MCP configuration uses the separate `mcp-secret` component.
+The client encrypts the name, transport, command, arguments, URL, bearer-token
+environment reference, headers, environment headers, and environment values as
+one row-bound payload. A keyed blind index over the normalized name preserves
+global/project override and uniqueness behavior. Project copy is performed by
+the client so the configuration is decrypted and rebound to the new row ID;
+workers open effective global/project configurations only immediately before
+runtime use. The server retains only the MCP row and project IDs, scope,
+enabled flag, timestamps, ciphertext, and blind name tag.
+
+[Migration 0120](../cantrip_server/drizzle/0120_protected_provider_mcp_secrets.sql)
+is an explicit pre-release destructive cutover. It deletes existing MCP rows,
+signs existing provider accounts out, drops all server-decryptable provider and
+MCP secret columns, and adds only endpoint-created envelopes and blind indexes.
+Users recreate MCP configuration and use the normal provider sign-in flow; no
+plaintext compatibility reader, recovery secret, local encryption password, or
+separate encryption prompt is introduced.
+
+The generated [server boundary inventory](security/server-route-inventory.json)
+guards the opaque schema, repository, and route contracts, removal of the
+server token-lease endpoint, and presence of worker-only open/reseal paths. The
+server still retains provider kind/name/base URL, opaque account ID and label,
+routing priority, expiry/health state, coarse plan/quota counters reported by
+quota observation paths, and public catalog data. It does not persist OAuth
+email or upstream identity metadata. The remaining fields are visible
+operational or presentation metadata, not usable credentials; label and
+analytics minimization remain tracked in the later audit cycle.
 
 ## Projects, worktrees, and Git
 
@@ -1401,8 +1442,11 @@ counts, worker presence, model-route choices, and traffic patterns.
     the legacy plaintext rows and reboots packaged defaults through the client.
 13. **Attachments and relayed streams:** encrypt metadata and add
     application-layer encryption when bytes traverse relays.
-14. **Secrets:** replace server-decryptable provider and MCP vault envelopes
-    with client and worker decryptable envelopes.
+14. **Provider and MCP secrets — complete:** clients seal provider API keys and
+    complete MCP configurations; authorized workers open provider/MCP payloads,
+    refresh OAuth tokens, and reseal replacements. The server stores only
+    opaque envelopes, revisions, blind indexes, and documented operational
+    metadata after the pre-release destructive cutover.
 15. **Private surface metadata persistence — complete:** Remote Desktop
     selection/inventory and Browser URL persistence/navigation now use the
     independently scoped component. Git output stays under its appropriate

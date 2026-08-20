@@ -105,6 +105,10 @@ import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedProviderCredentialFixture,
+  providerCredentialMetadataFixture,
+} from "./protected-provider-credential-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-local-foundation-"),
@@ -169,7 +173,6 @@ const authProviderKinds: Array<"chatgpt" | "grok"> = [];
 const clearedProviderAccounts: Array<
   Extract<WorkerCommand, { type: "provider.auth.account.clear" }>
 > = [];
-const revokedProviderKinds: Array<"chatgpt" | "grok"> = [];
 const exhaustedProviderIds = new Set<string>();
 const authUsageByCredentialHomeKey = new Map<string, number>();
 const steeredPrompts: string[] = [];
@@ -1750,12 +1753,6 @@ describe("local server foundation", () => {
       config,
       database: firstDatabase,
       logger: false,
-      providerCredentialRevoker: {
-        revoke: async (credential) => {
-          revokedProviderKinds.push(credential.kind);
-          return "revoked";
-        },
-      },
       workerBridge,
     });
 
@@ -1815,10 +1812,21 @@ describe("local server foundation", () => {
       method: "POST",
       url: "/api/settings/providers",
       payload: {
+        id: "00000000-0000-4000-8000-000000000941",
         name: "Test provider",
         kind: "openai-compatible",
         baseUrl: "https://models.example.test/v1",
-        apiKey: "server-only-secret",
+        protectedApiKey: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
       },
     });
     expect(providerResponse.body).not.toContain("server-only-secret");
@@ -1969,6 +1977,7 @@ describe("local server foundation", () => {
           method: "POST",
           url: "/api/settings/providers",
           payload: {
+            id: "00000000-0000-4000-8000-000000000943",
             name: "Personal ChatGPT",
             kind: "chatgpt",
             baseUrl: "https://api.openai.com/v1",
@@ -1987,18 +1996,8 @@ describe("local server foundation", () => {
       LOCAL_USER_ID,
       chatGptProvider.id,
       primaryChatGptAccount.id,
-      {
-        accessToken: "server-owned-access-token",
-        accountId: "upstream-workspace",
-        email: "test@example.com",
-        expiresAt: Date.now() + 3_600_000,
-        idToken: "server-owned-identity-token",
-        kind: "chatgpt",
-        planType: "plus",
-        refreshToken: "server-owned-refresh-token",
-        userId: "upstream-user",
-        version: 1,
-      },
+      protectedProviderCredentialFixture("B"),
+      providerCredentialMetadataFixture(),
     );
     await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: primaryChatGptAccount.id,
@@ -2126,23 +2125,12 @@ describe("local server foundation", () => {
         type: "provider.auth.account.clear",
       }),
     ]);
-    expect(revokedProviderKinds).toEqual(["chatgpt"]);
     await firstDatabase.repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
       chatGptProvider.id,
       primaryChatGptAccount.id,
-      {
-        accessToken: "server-owned-access-token",
-        accountId: "upstream-workspace",
-        email: "test@example.com",
-        expiresAt: Date.now() + 3_600_000,
-        idToken: "server-owned-identity-token",
-        kind: "chatgpt",
-        planType: "plus",
-        refreshToken: "server-owned-refresh-token",
-        userId: "upstream-user",
-        version: 1,
-      },
+      protectedProviderCredentialFixture("B"),
+      providerCredentialMetadataFixture(),
     );
     const additionalAccount = (
       await firstApp.inject({
@@ -2207,6 +2195,7 @@ describe("local server foundation", () => {
         method: "POST",
         url: "/api/settings/providers",
         payload: {
+          id: "00000000-0000-4000-8000-000000000944",
           name: "Another ChatGPT",
           kind: "chatgpt",
           baseUrl: "https://api.openai.com/v1",
@@ -2219,6 +2208,7 @@ describe("local server foundation", () => {
           method: "POST",
           url: "/api/settings/providers",
           payload: {
+            id: "00000000-0000-4000-8000-000000000945",
             name: "SuperGrok",
             kind: "grok",
             baseUrl: "https://cli-chat-proxy.grok.com/v1",
@@ -2233,16 +2223,8 @@ describe("local server foundation", () => {
       LOCAL_USER_ID,
       grokProvider.id,
       grokProvider.accounts[0]!.id,
-      {
-        accessToken: "server-owned-grok-access-token",
-        email: "grok@example.com",
-        expiresAt: Date.now() + 3_600_000,
-        kind: "grok",
-        planType: "SuperGrok",
-        refreshToken: "server-owned-grok-refresh-token",
-        userId: "grok-user",
-        version: 1,
-      },
+      protectedProviderCredentialFixture("C"),
+      providerCredentialMetadataFixture(),
     );
     expect(
       (
@@ -2254,8 +2236,8 @@ describe("local server foundation", () => {
     ).toMatchObject({
       authenticated: true,
       authMode: "grok",
-      email: "grok@example.com",
-      planType: "SuperGrok",
+      email: null,
+      planType: null,
       weeklyUsage: null,
     });
     expect(authProviderKinds.at(-1)).toBe("chatgpt");
@@ -2274,6 +2256,7 @@ describe("local server foundation", () => {
         method: "POST",
         url: "/api/settings/providers",
         payload: {
+          id: "00000000-0000-4000-8000-000000000946",
           name: "Another Grok",
           kind: "grok",
           baseUrl: "https://cli-chat-proxy.grok.com/v1",
@@ -5514,18 +5497,8 @@ describe("local server foundation", () => {
       LOCAL_USER_ID,
       chatGptProvider.id,
       additionalAccount.id,
-      {
-        accessToken: "server-owned-work-access-token",
-        accountId: "upstream-work-workspace",
-        email: "work@example.com",
-        expiresAt: Date.now() + 3_600_000,
-        idToken: "server-owned-work-identity-token",
-        kind: "chatgpt",
-        planType: "plus",
-        refreshToken: "server-owned-work-refresh-token",
-        userId: "upstream-work-user",
-        version: 1,
-      },
+      protectedProviderCredentialFixture("D"),
+      providerCredentialMetadataFixture(),
     );
     await firstDatabase.repository.recordModelProviderAccountUsage({
       accountId: additionalAccount.id,

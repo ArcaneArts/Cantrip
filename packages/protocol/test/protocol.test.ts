@@ -1068,31 +1068,34 @@ describe("Cantrip protocol", () => {
         providerKind: "chatgpt",
         providerAccountId: "account-one",
         credentialHomeKey: "home-one",
-        expectedSubject: "chatgpt:upstream-account",
+        expectedSubjectBlindIndex: "A".repeat(43),
         serverCredentialRevision: 2,
       }).type,
     ).toBe("provider.auth.legacy.purge");
     const legacyCapture = providerLegacyCredentialCaptureResultSchema.parse({
       status: "available",
       credential: {
-        accessToken: "access-token",
-        accountId: "upstream-account",
-        email: "person@example.test",
-        expiresAt: null,
-        idToken: "id-token",
-        kind: "chatgpt",
-        planType: "pro",
-        refreshToken: "refresh-token",
-        userId: "upstream-user",
-        version: 1,
+        subjectBlindIndex: "A".repeat(43),
+        protectedCredential: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "A".repeat(16),
+            ciphertext: "A".repeat(22),
+          },
+        },
       },
+      metadata: { expiresAt: null },
     });
     expect(legacyCapture).toMatchObject({
-      serverManagedAuth: false,
+      portableAuth: false,
       status: "available",
     });
     if (legacyCapture.status !== "available") throw new Error("capture failed");
-    expect(legacyCapture.credential.kind).toBe("chatgpt");
+    expect(legacyCapture.credential.subjectBlindIndex).toBe("A".repeat(43));
   });
 
   it("validates exact-revision replica job commands and durable state", () => {

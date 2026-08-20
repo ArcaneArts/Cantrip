@@ -27,7 +27,7 @@ const runtime: ModelRuntime = {
     name: "Test provider",
     kind: "openai-compatible",
     baseUrl: "http://127.0.0.1:1234/v1",
-    apiKey: null,
+    protectedApiKey: null,
     accountId: null,
     credentialHomeKey: null,
     weeklyUsageReservePercent: 0,

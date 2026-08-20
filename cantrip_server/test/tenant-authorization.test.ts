@@ -9,7 +9,10 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 
 import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const origin = "https://app.cantrip.test";
 const password = "correct horse battery staple";
@@ -103,10 +106,21 @@ describe("hosted tenant authorization", () => {
         url: "/api/settings/providers",
         headers: headers(first, true),
         payload: {
+          id: "00000000-0000-4000-8000-000000000942",
           name: "First private provider",
           kind: "openai-compatible",
           baseUrl: "https://models.first.example/v1",
-          apiKey: "first-private-key",
+          protectedApiKey: {
+            formatVersion: 1,
+            keyRevision: 1,
+            envelope: {
+              version: 1,
+              algorithm: "AES-256-GCM",
+              keyRevision: 1,
+              nonce: "AAAAAAAAAAAAAAAA",
+              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+            },
+          },
         },
       });
       expect(providerResponse.statusCode).toBe(201);
@@ -416,7 +430,7 @@ describe("hosted tenant authorization", () => {
           method: "POST",
           url: `/api/projects/${projectId}/chats`,
           headers: headers(second, true),
-          payload: { title: "Unauthorized chat" },
+          payload: protectedChatFields(),
         });
         expect({
           body: response.json(),

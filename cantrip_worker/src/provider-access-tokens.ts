@@ -1,11 +1,23 @@
 import {
   providerAccessTokenLeaseRequestSchema,
   providerAccessTokenLeaseSchema,
+  providerCredentialWireRecordSchema,
   type ProviderAccessTokenLease,
 } from "@cantrip/protocol";
+import { providerCredentialUploadSchema } from "@cantrip/protocol/protected-secrets";
 
 import type { WorkerConfig } from "./config.js";
 import { workerLogger } from "./logger.js";
+import {
+  ProviderCredentialIdentityConflictError,
+  ProviderCredentialRequiresSignInError,
+  refreshProviderCredential,
+} from "./provider-credential-refresh.js";
+import {
+  openProviderCredential,
+  protectProviderCredential,
+} from "./protected-secrets.js";
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 const CACHE_EXPIRY_BUFFER_MS = 30_000;
 
@@ -40,15 +52,16 @@ export class ProviderAccessTokenRequestError extends Error {
     readonly code: ProviderAccessTokenRequestErrorCode | null,
   ) {
     super(
-      `Cantrip Server could not issue a provider access lease (HTTP ${status}${code ? `, ${code}` : ""}).`,
+      `Cantrip could not obtain a provider access lease (HTTP ${status}${code ? `, ${code}` : ""}).`,
     );
     this.name = "ProviderAccessTokenRequestError";
   }
 }
 
 /**
- * Fetches worker-scoped access leases and retains them in memory only. Durable
- * provider credentials remain exclusively on the Cantrip server.
+ * Fetches an opaque worker-scoped credential, opens and refreshes it inside
+ * this authorized worker, and retains the resulting access lease in memory.
+ * Any refreshed durable credential is sealed again before upload.
  */
 export class ProviderAccessTokenClient {
   readonly #cache = new Map<string, ProviderAccessTokenLease>();
@@ -71,6 +84,7 @@ export class ProviderAccessTokenClient {
       WorkerConfig,
       "serverUrl" | "token" | "workerId"
     >,
+    private readonly encryption: WorkerEncryptionService,
     options: ProviderAccessTokenClientOptions = {},
   ) {
     this.#fetch = options.fetch ?? fetch;
@@ -234,17 +248,15 @@ export class ProviderAccessTokenClient {
   ): Promise<ProviderAccessTokenLease> {
     const startedAtMs = this.#now();
     const url = new URL(
-      `/api/internal/workers/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(providerAccountId)}/access-lease`,
+      `/api/internal/workers/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(providerAccountId)}/credential`,
       this.config.serverUrl,
     );
     url.searchParams.set("workerId", this.config.workerId);
-    const response = await this.#fetch(url, {
-      body: JSON.stringify(request),
+    let response = await this.#fetch(url, {
       headers: {
         authorization: `Bearer ${this.config.token}`,
-        "content-type": "application/json",
       },
-      method: "POST",
+      method: "GET",
       signal: AbortSignal.timeout(this.#requestTimeoutMs),
     });
     if (!response.ok) {
@@ -280,7 +292,120 @@ export class ProviderAccessTokenClient {
       );
       throw error;
     }
-    const lease = providerAccessTokenLeaseSchema.parse(await response.json());
+    let record = providerCredentialWireRecordSchema.parse(
+      await response.json(),
+    );
+    let credential = await openProviderCredential({
+      accountId: providerAccountId,
+      credential: record.credential,
+      service: this.encryption,
+    });
+    if (credential.kind !== record.providerKind) {
+      throw new ProviderAccessTokenRequestError(409, "identity-conflict");
+    }
+    const requiresRefresh =
+      request.forceRefresh ||
+      (credential.expiresAt !== null &&
+        credential.expiresAt <=
+          this.#now() + request.minimumValiditySeconds * 1_000);
+    if (requiresRefresh) {
+      try {
+        credential = await refreshProviderCredential(
+          credential,
+          AbortSignal.timeout(this.#requestTimeoutMs),
+        );
+      } catch (error) {
+        throw new ProviderAccessTokenRequestError(
+          409,
+          error instanceof ProviderCredentialRequiresSignInError
+            ? "reauth-required"
+            : error instanceof ProviderCredentialIdentityConflictError
+              ? "identity-conflict"
+              : "refresh-failed",
+        );
+      }
+      const protectedReplacement = await protectProviderCredential({
+        accountId: providerAccountId,
+        credential,
+        service: this.encryption,
+      });
+      response = await this.#fetch(url, {
+        body: JSON.stringify(
+          providerCredentialUploadSchema.parse({
+            ...protectedReplacement,
+            expectedRevision: record.credentialRevision,
+          }),
+        ),
+        headers: {
+          authorization: `Bearer ${this.config.token}`,
+          "content-type": "application/json",
+        },
+        method: "PUT",
+        signal: AbortSignal.timeout(this.#requestTimeoutMs),
+      });
+      if (response.status === 409) {
+        const staleRevision = record.credentialRevision;
+        response = await this.#fetch(url, {
+          headers: { authorization: `Bearer ${this.config.token}` },
+          method: "GET",
+          signal: AbortSignal.timeout(this.#requestTimeoutMs),
+        });
+        if (!response.ok) {
+          throw new ProviderAccessTokenRequestError(
+            response.status,
+            "refresh-failed",
+          );
+        }
+        record = providerCredentialWireRecordSchema.parse(
+          await response.json(),
+        );
+        if (record.credentialRevision <= staleRevision) {
+          throw new ProviderAccessTokenRequestError(409, "refresh-failed");
+        }
+        credential = await openProviderCredential({
+          accountId: providerAccountId,
+          credential: record.credential,
+          service: this.encryption,
+        });
+        if (
+          credential.kind !== record.providerKind ||
+          (credential.expiresAt !== null &&
+            credential.expiresAt <=
+              this.#now() + request.minimumValiditySeconds * 1_000)
+        ) {
+          throw new ProviderAccessTokenRequestError(409, "refresh-failed");
+        }
+      } else if (!response.ok) {
+        throw new ProviderAccessTokenRequestError(response.status, null);
+      } else {
+        record = providerCredentialWireRecordSchema.parse(
+          await response.json(),
+        );
+      }
+    }
+    const issuedAt = new Date(this.#now());
+    const lease = providerAccessTokenLeaseSchema.parse({
+      accessToken: credential.accessToken,
+      credentialRevision: record.credentialRevision,
+      expiresAt: credential.expiresAt
+        ? new Date(credential.expiresAt).toISOString()
+        : null,
+      email: credential.email,
+      issuedAt: issuedAt.toISOString(),
+      leaseExpiresAt: new Date(issuedAt.getTime() + 5 * 60_000).toISOString(),
+      planType: credential.planType,
+      providerAccountId,
+      providerId,
+      providerIdentity:
+        credential.kind === "chatgpt"
+          ? {
+              accountId: credential.accountId,
+              kind: "chatgpt",
+              userId: credential.userId,
+            }
+          : { kind: "grok", userId: credential.userId },
+      providerKind: credential.kind,
+    });
     workerLogger.sampled(
       `provider-access-completed:${providerId}:${providerAccountId}`,
       20,

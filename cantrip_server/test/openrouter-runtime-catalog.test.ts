@@ -24,7 +24,7 @@ function runtime(input: {
       name: input.id,
       kind: input.kind ?? "openai-compatible",
       baseUrl: input.baseUrl ?? "https://openrouter.ai/api/v1",
-      apiKey: null,
+      protectedApiKey: null,
       accountId: null,
       credentialHomeKey: null,
       weeklyUsageReservePercent: 3,

@@ -132,16 +132,21 @@ describe("ChatGPT catalog", () => {
           provider.id,
           account.id,
           {
-            accessToken: `access-${account.id}`,
-            accountId: `upstream-${account.id}`,
-            email: `${account.id}@example.com`,
-            expiresAt: Date.now() + 3_600_000,
-            idToken: `identity-${account.id}`,
-            kind: "chatgpt",
-            planType: "pro",
-            refreshToken: `refresh-${account.id}`,
-            userId: `user-${account.id}`,
-            version: 1,
+            subjectBlindIndex: "A".repeat(43),
+            protectedCredential: {
+              formatVersion: 1,
+              keyRevision: 1,
+              envelope: {
+                version: 1,
+                algorithm: "AES-256-GCM",
+                keyRevision: 1,
+                nonce: "AAAAAAAAAAAAAAAA",
+                ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+              },
+            },
+          },
+          {
+            expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
           },
         );
         await repository.recordModelProviderAccountStatus(

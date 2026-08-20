@@ -107,20 +107,16 @@ describe("OpenRouter catalog", () => {
     });
 
     const first = await cache.read({
-      apiKey: null,
       baseUrl: "https://openrouter.ai/api/v1",
       cacheKey: "public",
-      userScoped: false,
     });
     expect(first.servedStale).toBe(false);
     expect(first.snapshot.models).toHaveLength(2);
 
     now += 101;
     const stale = await cache.read({
-      apiKey: null,
       baseUrl: "https://openrouter.ai/api/v1",
       cacheKey: "public",
-      userScoped: false,
     });
     expect(stale.servedStale).toBe(true);
     await stale.backgroundRefresh;
@@ -129,10 +125,8 @@ describe("OpenRouter catalog", () => {
     );
 
     const fresh = await cache.read({
-      apiKey: null,
       baseUrl: "https://openrouter.ai/api/v1",
       cacheKey: "public",
-      userScoped: false,
     });
     expect(fresh.servedStale).toBe(false);
     expect(requests).toHaveLength(2);
@@ -155,7 +149,6 @@ describe("OpenRouter catalog", () => {
         name: "OpenRouter",
         kind: "openai-compatible",
         baseUrl: "https://openrouter.ai/api/v1",
-        apiKey: "sk-or-test",
       });
       const requests: Array<{ authorization: string | null; url: string }> = [];
       const fetchImplementation = (async (
@@ -185,25 +178,15 @@ describe("OpenRouter catalog", () => {
       expect(catalog?.models).toHaveLength(2);
       expect(catalog?.syncStates.map((state) => state.status)).toEqual([
         "current",
-        "current",
       ]);
       const userAvailability = catalog?.availability.filter(
         (availability) => availability.scopeKey === "openrouter:user",
       );
-      expect(
-        userAvailability?.filter(({ state }) => state === "available"),
-      ).toHaveLength(1);
-      expect(
-        userAvailability?.filter(({ state }) => state === "unavailable"),
-      ).toHaveLength(1);
+      expect(userAvailability).toEqual([]);
       expect(requests).toEqual([
         {
-          authorization: "Bearer sk-or-test",
+          authorization: null,
           url: "https://openrouter.ai/api/v1/models",
-        },
-        {
-          authorization: "Bearer sk-or-test",
-          url: "https://openrouter.ai/api/v1/models/user",
         },
       ]);
       const profiles = await client.query<{ count: number }>(

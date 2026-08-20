@@ -5,7 +5,7 @@ import {
   chatRelocationHydrationResultSchema,
   mentionedSkillNames,
   type ChatRelocationContextPayload,
-  type McpServerConfiguration,
+  type McpServerOpaqueRuntime,
   type PlanMode,
 } from "@cantrip/protocol";
 
@@ -70,7 +70,7 @@ export async function hydrateCanonicalChat(input: {
   chatId: string;
   cwd: string;
   expectedSha256?: string;
-  mcpServers: McpServerConfiguration[];
+  mcpServers: McpServerOpaqueRuntime[];
   payload: ChatRelocationContextPayload;
   permissionProfileId: string;
   planMode: PlanMode;

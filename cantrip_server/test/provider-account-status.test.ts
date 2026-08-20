@@ -11,7 +11,7 @@ function account(
     id: "account-one",
     providerId: "provider-one",
     label: "Primary",
-    email: "person@example.test",
+    email: null,
     planType: "pro",
     position: 0,
     enabled: true,
@@ -27,11 +27,11 @@ function account(
 }
 
 describe("global provider account status", () => {
-  it("reports server-owned authentication and quota without worker bindings", () => {
+  it("reports protected authentication metadata without worker bindings", () => {
     expect(providerAccountAuthStatus("chatgpt", account())).toMatchObject({
       authenticated: true,
       authMode: "chatgpt",
-      email: "person@example.test",
+      email: null,
       planType: "pro",
       weeklyUsage: { usedPercent: 42, resetsAt: 1_787_400_000 },
       loginError: null,

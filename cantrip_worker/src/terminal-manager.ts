@@ -15,6 +15,7 @@ import * as pty from "node-pty";
 
 import { codexProviderConfiguration } from "./codex/provider-config.js";
 import { workerLogError, workerLogger } from "./logger.js";
+import type { RuntimeProvider } from "./protected-secrets.js";
 
 const MAX_SCROLLBACK_CHARS = 2_000_000;
 let spawnHelperChecked = false;
@@ -60,18 +61,23 @@ interface TerminalSession {
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
 
-type CodexLaunchCommand = Extract<
-  WorkerCommand,
-  { type: "terminal.open" }
->["launch"] & {
+type CodexLaunchCommand = Omit<
+  Extract<
+    Extract<WorkerCommand, { type: "terminal.open" }>["launch"],
+    { type: "codex" }
+  >,
+  "provider"
+> & {
   binary?: string;
   codexHome?: string;
+  provider: RuntimeProvider;
 };
 
 export type TerminalLaunch =
   | { type: "shell" }
   | { type: "command"; command: string }
-  | (Extract<CodexLaunchCommand, { type: "codex" }> & {
+  | (CodexLaunchCommand & {
+      type: "codex";
       binary: string;
       codexHome: string;
       remoteUrl: string;

@@ -1,15 +1,12 @@
 import type {
   CodexRuntimeReport,
   ProviderAccessTokenLease,
-  WorkerCommand,
 } from "@cantrip/protocol";
 
 import type { ProviderAccessTokenClient } from "../provider-access-tokens.js";
+import type { RuntimeProvider } from "../protected-secrets.js";
 
-export type RuntimeProvider = Extract<
-  WorkerCommand,
-  { type: "chat.turn" }
->["provider"];
+export type { RuntimeProvider } from "../protected-secrets.js";
 
 export interface ExternalChatGptAuthSession {
   credentialRevision: number;
@@ -22,13 +19,13 @@ export function chatGptExternalAuthCapabilityError(
   report: CodexRuntimeReport,
 ): string | null {
   if (!report.version || !/^0\.148\.\d+$/u.test(report.version.semantic)) {
-    return "Server-managed ChatGPT accounts require Codex 0.148.x.";
+    return "Portable ChatGPT accounts require Codex 0.148.x.";
   }
   if (!report.initialize?.experimentalApi) {
-    return "Server-managed ChatGPT accounts require Codex experimental API support.";
+    return "Portable ChatGPT accounts require Codex experimental API support.";
   }
   if (report.methods["account/login/start"] !== "available") {
-    return "Codex does not advertise account/login/start for server-managed ChatGPT authentication.";
+    return "Codex does not advertise account/login/start for portable ChatGPT authentication.";
   }
   return null;
 }
@@ -126,9 +123,7 @@ export async function refreshExternalChatGptAuthSession(
       },
     );
   } catch {
-    throw new Error(
-      "Cantrip Server could not refresh the ChatGPT access lease.",
-    );
+    throw new Error("Cantrip could not refresh the ChatGPT access lease.");
   }
   const response = chatGptExternalRefreshResponse(
     session,

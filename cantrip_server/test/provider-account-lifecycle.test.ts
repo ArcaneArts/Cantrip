@@ -8,15 +8,18 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
-import { ProviderAccessTokenService } from "../src/models/provider-access-tokens.js";
 import { ProviderAccountLifecycleService } from "../src/models/provider-account-lifecycle.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import {
+  protectedProviderCredentialFixture,
+  providerCredentialMetadataFixture,
+} from "./protected-provider-credential-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 describe("global provider account lifecycle", () => {
-  it("clears the credential before closing every worker runtime", async () => {
+  it("clears the opaque credential before closing every worker runtime", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
     await migrate(database, { migrationsFolder });
@@ -34,23 +37,13 @@ describe("global provider account lifecycle", () => {
       name: "ChatGPT",
     });
     const account = provider.accounts[0]!;
-    const refreshToken = "server-only-refresh-token";
+    const protectedCredential = protectedProviderCredentialFixture("K");
     await repository.storeModelProviderAccountCredential(
       LOCAL_USER_ID,
       provider.id,
       account.id,
-      {
-        accessToken: "server-only-access-token",
-        accountId: "upstream-account",
-        email: "person@example.test",
-        expiresAt: Date.now() + 60 * 60_000,
-        idToken: null,
-        kind: "chatgpt",
-        planType: "pro",
-        refreshToken,
-        userId: "upstream-user",
-        version: 1,
-      },
+      protectedCredential,
+      providerCredentialMetadataFixture(),
     );
     for (const workerId of ["worker-a", "worker-b"]) {
       await repository.recordWorker(LOCAL_USER_ID, {
@@ -84,13 +77,9 @@ describe("global provider account lifecycle", () => {
     } satisfies WorkerCommandBus;
     const invalidateCatalog = vi.fn(async () => undefined);
     const logger = { warn: vi.fn() };
-    const revoke = vi.fn(async () => "revoked" as const);
-    const leases = new ProviderAccessTokenService(repository);
     const lifecycle = new ProviderAccountLifecycleService(repository, bridge, {
-      accessTokens: leases,
       invalidateCatalog,
       logger,
-      revoker: { revoke },
     });
 
     try {
@@ -105,11 +94,10 @@ describe("global provider account lifecycle", () => {
       ).resolves.toEqual({
         catalogInvalidated: true,
         credentialCleared: true,
-        revocation: "revoked",
+        revocation: "not-applicable",
         workersClosed: 2,
         workersFailed: 0,
       });
-      expect(revoke).toHaveBeenCalledOnce();
       expect(invalidateCatalog).toHaveBeenCalledOnce();
       expect(commands).toEqual(
         ["worker-a", "worker-b"].map((workerId) => ({
@@ -141,17 +129,8 @@ describe("global provider account lifecycle", () => {
           { authState: "signed-out" },
         ],
       });
-      await expect(
-        leases.issue({
-          accountId: account.id,
-          forceRefresh: false,
-          minimumValidityMs: 2 * 60_000,
-          ownerId: LOCAL_USER_ID,
-          providerId: provider.id,
-        }),
-      ).rejects.toMatchObject({ code: "credential-unavailable" });
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(
-        refreshToken,
+        protectedCredential.protectedCredential.envelope.ciphertext,
       );
     } finally {
       await client.close();

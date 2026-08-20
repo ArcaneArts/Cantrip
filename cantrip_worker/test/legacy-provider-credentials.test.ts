@@ -8,7 +8,6 @@ import {
   captureLegacyProviderCredential,
   discardLegacyProviderCredential,
   legacyProviderCredentialSubject,
-  purgeLegacyProviderCredential,
 } from "../src/legacy-provider-credentials.js";
 
 const directories: string[] = [];
@@ -38,7 +37,7 @@ afterEach(async () => {
 });
 
 describe("legacy provider credentials", () => {
-  it("captures ChatGPT auth.json and purges only an acknowledged identity", async () => {
+  it("captures ChatGPT auth.json before the protected upload discards it", async () => {
     const home = await credentialHome();
     const accessToken = jwt({ exp: 1_800_000_000 });
     const idToken = jwt({
@@ -82,35 +81,14 @@ describe("legacy provider credentials", () => {
       "chatgpt:upstream-account",
     );
     await expect(
-      purgeLegacyProviderCredential(
-        home,
-        "chatgpt",
-        "chatgpt:different-account",
-        2,
-      ),
-    ).rejects.toThrow("identity does not match");
-    expect(
-      (await captureLegacyProviderCredential(home, "chatgpt")).status,
-    ).toBe("available");
-
-    await expect(
-      purgeLegacyProviderCredential(
-        home,
-        "chatgpt",
-        "chatgpt:upstream-account",
-        2,
-      ),
-    ).resolves.toEqual({
-      purged: true,
-      serverCredentialRevision: 2,
-      subject: "chatgpt:upstream-account",
-    });
+      discardLegacyProviderCredential(home, "chatgpt"),
+    ).resolves.toBe(true);
     expect(
       (await captureLegacyProviderCredential(home, "chatgpt")).status,
     ).toBe("missing");
   });
 
-  it("captures and purges Grok credentials without provider logout", async () => {
+  it("captures and discards Grok credentials without provider logout", async () => {
     const home = await credentialHome();
     await writeFile(
       path.join(home, "grok-auth.json"),
@@ -135,9 +113,9 @@ describe("legacy provider credentials", () => {
         userId: "grok-user",
       },
     });
-    await expect(
-      purgeLegacyProviderCredential(home, "grok", "grok:grok-user", 1),
-    ).resolves.toMatchObject({ purged: true });
+    await expect(discardLegacyProviderCredential(home, "grok")).resolves.toBe(
+      true,
+    );
   });
 
   it("reports malformed files without echoing their contents", async () => {
@@ -151,9 +129,6 @@ describe("legacy provider credentials", () => {
     const captured = await captureLegacyProviderCredential(home, "grok");
     expect(captured).toEqual({ status: "malformed" });
     expect(JSON.stringify(captured)).not.toContain(leakedCandidate);
-    await expect(
-      purgeLegacyProviderCredential(home, "grok", "grok:user", 1),
-    ).rejects.toThrow("Malformed");
     await expect(discardLegacyProviderCredential(home, "grok")).resolves.toBe(
       true,
     );

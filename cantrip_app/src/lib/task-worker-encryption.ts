@@ -59,7 +59,12 @@ export function taskWorkerEncryptionReadiness(
     return "pending-approval";
   }
   if (worker.encryption.state === "error") return "unavailable";
-  for (const component of ["task-content", "policy-content"] as const) {
+  for (const component of [
+    "task-content",
+    "mcp-secret",
+    "policy-content",
+    "provider-credential",
+  ] as const) {
     const grants = worker.encryption.grants.filter(
       (grant) => grant.component === component,
     );
@@ -151,7 +156,12 @@ export async function ensureTaskWorkerEncryption(input: {
   if (readiness !== "ready") {
     await authorizeWorkerEncryption({
       api: input.api,
-      components: ["task-content", "policy-content"],
+      components: [
+        "task-content",
+        "mcp-secret",
+        "policy-content",
+        "provider-credential",
+      ],
       identity,
       keyRevision: snapshot.masterKeyRevision,
       service,

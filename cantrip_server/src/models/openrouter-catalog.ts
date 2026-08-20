@@ -10,7 +10,6 @@ import type {
 } from "../db/repository.js";
 
 export const OPENROUTER_GLOBAL_SCOPE = "openrouter:global";
-export const OPENROUTER_USER_SCOPE = "openrouter:user";
 
 const DEFAULT_CACHE_TTL_MS = 6 * 60 * 60 * 1_000;
 const OPENROUTER_REQUEST_TIMEOUT_MS = 30_000;
@@ -79,10 +78,10 @@ function parseCatalogPayload(payload: unknown): OpenRouterModelRecord[] {
   });
 }
 
-function modelsUrl(baseUrl: string, userScoped: boolean): URL {
+function modelsUrl(baseUrl: string): URL {
   const url = new URL(baseUrl);
   const path = url.pathname.replace(/\/+$/u, "");
-  url.pathname = `${path}/models${userScoped ? "/user" : ""}`;
+  url.pathname = `${path}/models`;
   url.search = "";
   url.hash = "";
   return url;
@@ -196,11 +195,9 @@ export class OpenRouterCatalogCache {
   }
 
   async read(input: {
-    apiKey: string | null;
     baseUrl: string;
     cacheKey: string;
     force?: boolean;
-    userScoped: boolean;
   }): Promise<CatalogRead> {
     const existing = this.#cache.get(input.cacheKey);
     const fresh = existing && this.#now() - existing.fetchedAt < this.#ttlMs;
@@ -229,10 +226,8 @@ export class OpenRouterCatalogCache {
 
   #refresh(
     input: {
-      apiKey: string | null;
       baseUrl: string;
       cacheKey: string;
-      userScoped: boolean;
     },
     existing: CatalogSnapshot | undefined,
   ): Promise<CatalogSnapshot> {
@@ -240,17 +235,11 @@ export class OpenRouterCatalogCache {
     if (active) return active;
     const refresh = (async () => {
       const headers = new Headers({ accept: "application/json" });
-      if (input.apiKey) {
-        headers.set("authorization", `Bearer ${input.apiKey}`);
-      }
       if (existing?.etag) headers.set("if-none-match", existing.etag);
-      const response = await this.#fetch(
-        modelsUrl(input.baseUrl, input.userScoped),
-        {
-          headers,
-          signal: AbortSignal.timeout(OPENROUTER_REQUEST_TIMEOUT_MS),
-        },
-      );
+      const response = await this.#fetch(modelsUrl(input.baseUrl), {
+        headers,
+        signal: AbortSignal.timeout(OPENROUTER_REQUEST_TIMEOUT_MS),
+      });
       if (response.status === 304 && existing) {
         const snapshot = { ...existing, fetchedAt: this.#now() };
         this.#cache.set(input.cacheKey, snapshot);
@@ -308,9 +297,7 @@ export class OpenRouterCatalogService {
     }
 
     const startedAt = new Date();
-    const scopes = provider.apiKey
-      ? [OPENROUTER_GLOBAL_SCOPE, OPENROUTER_USER_SCOPE]
-      : [OPENROUTER_GLOBAL_SCOPE];
+    const scopes = [OPENROUTER_GLOBAL_SCOPE];
     await Promise.all(
       scopes.map((scopeKey) =>
         this.#repository.setProviderCatalogSyncState(provider.id, {
@@ -324,36 +311,16 @@ export class OpenRouterCatalogService {
 
     try {
       const publicRead = await this.#cache.read({
-        apiKey: provider.apiKey,
         baseUrl: provider.baseUrl,
         cacheKey: `public:${new URL(provider.baseUrl).origin}`,
         force,
-        userScoped: false,
       });
-      const userRead = provider.apiKey
-        ? await this.#cache.read({
-            apiKey: provider.apiKey,
-            baseUrl: provider.baseUrl,
-            cacheKey: `user:${provider.id}`,
-            force,
-            userScoped: true,
-          })
-        : null;
-      const servedStale =
-        publicRead.servedStale || (userRead?.servedStale ?? false);
-      await this.#persist(provider, publicRead.snapshot, userRead?.snapshot);
-      await this.#recordSuccess(
-        provider,
-        publicRead.snapshot,
-        userRead?.snapshot,
-        servedStale,
-      );
+      const servedStale = publicRead.servedStale;
+      await this.#persist(provider, publicRead.snapshot);
+      await this.#recordSuccess(provider, publicRead.snapshot, servedStale);
 
-      const background = [
-        publicRead.backgroundRefresh,
-        userRead?.backgroundRefresh ?? null,
-      ].filter((refresh): refresh is Promise<CatalogSnapshot> =>
-        Boolean(refresh),
+      const background = [publicRead.backgroundRefresh].filter(
+        (refresh): refresh is Promise<CatalogSnapshot> => Boolean(refresh),
       );
       if (background.length > 0) {
         this.#scheduleBackgroundPersistence(
@@ -398,7 +365,6 @@ export class OpenRouterCatalogService {
   async #persist(
     provider: ModelProviderCatalogRuntime,
     publicSnapshot: CatalogSnapshot,
-    userSnapshot?: CatalogSnapshot,
   ): Promise<void> {
     const normalized = publicSnapshot.models.map(normalizeOpenRouterModel);
     const publicIds = new Set(normalized.map((model) => model.nativeModelId));
@@ -411,25 +377,11 @@ export class OpenRouterCatalogService {
         availableNativeModelIds: publicIds,
       },
     );
-    if (userSnapshot) {
-      await this.#repository.reconcileProviderModelCatalog(
-        provider.ownerId,
-        provider.id,
-        {
-          models: normalized,
-          availabilityScope: OPENROUTER_USER_SCOPE,
-          availableNativeModelIds: new Set(
-            userSnapshot.models.map((model) => model.id),
-          ),
-        },
-      );
-    }
   }
 
   async #recordSuccess(
     provider: ModelProviderCatalogRuntime,
     publicSnapshot: CatalogSnapshot,
-    userSnapshot: CatalogSnapshot | undefined,
     servedStale: boolean,
   ): Promise<void> {
     const now = new Date();
@@ -440,15 +392,6 @@ export class OpenRouterCatalogService {
       etag: publicSnapshot.etag,
       ...(servedStale ? {} : { lastSuccessAt: now }),
     });
-    if (userSnapshot) {
-      await this.#repository.setProviderCatalogSyncState(provider.id, {
-        scopeKey: OPENROUTER_USER_SCOPE,
-        status: servedStale ? "stale" : "current",
-        error: null,
-        etag: userSnapshot.etag,
-        ...(servedStale ? {} : { lastSuccessAt: now }),
-      });
-    }
   }
 
   #scheduleBackgroundPersistence(

@@ -1345,6 +1345,131 @@ async function policyRepositoryBoundaryAudit() {
   };
 }
 
+async function providerSecretRepositoryBoundaryAudit() {
+  const schemaPath = resolve(serverSourcePath, "db/schema.ts");
+  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
+  const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
+  const [schemaText, repositoryText, applicationText, workerText] =
+    await Promise.all(
+      [schemaPath, repositoryPath, appPath, workerPath].map((path) =>
+        readFile(path, "utf8"),
+      ),
+    );
+  const failures = [];
+  const providerTable = tableInitializer(schemaText, "modelProviders");
+  const accountTable = tableInitializer(schemaText, "modelProviderAccounts");
+  const mcpTable = tableInitializer(schemaText, "mcpServers");
+  for (const [initializer, marker, description] of [
+    [providerTable, "protectedApiKey", "model provider API-key envelope"],
+    [accountTable, "protectedCredential", "provider credential envelope"],
+    [
+      accountTable,
+      "credentialSubjectBlindIndex",
+      "provider credential blind identity",
+    ],
+    [mcpTable, "protectedConfiguration", "MCP configuration envelope"],
+    [mcpTable, "nameBlindIndex", "MCP name blind index"],
+  ]) {
+    if (!initializer.includes(marker)) {
+      failures.push(`schema: missing ${description}`);
+    }
+  }
+  for (const [initializer, fields, table] of [
+    [providerTable, ["apiKey", "apiKeyEnvelope"], "modelProviders"],
+    [
+      accountTable,
+      ["credentialEnvelope", "credentialSubject"],
+      "modelProviderAccounts",
+    ],
+    [
+      mcpTable,
+      [
+        "name",
+        "transport",
+        "command",
+        "args",
+        "url",
+        "environment",
+        "environmentEnvelope",
+        "headers",
+        "headersEnvelope",
+        "environmentHeaders",
+        "bearerTokenEnvironmentVariable",
+      ],
+      "mcpServers",
+    ],
+  ]) {
+    for (const field of fields) {
+      if (new RegExp(`\\b${field}\\s*:`, "u").test(initializer)) {
+        failures.push(`${table}: legacy plaintext ${field} storage returned`);
+      }
+    }
+  }
+  for (const reference of [
+    "schema.modelProviders.apiKey",
+    "schema.modelProviders.apiKeyEnvelope",
+    "schema.modelProviderAccounts.credentialEnvelope",
+    "schema.modelProviderAccounts.credentialSubject",
+    "schema.mcpServers.environmentEnvelope",
+    "schema.mcpServers.headersEnvelope",
+  ]) {
+    if (
+      new RegExp(`${reference.replaceAll(".", "\\.")}\\b`, "u").test(
+        repositoryText,
+      )
+    ) {
+      failures.push(`repository: legacy reference ${reference}`);
+    }
+  }
+  for (const obsolete of [
+    "/access-lease",
+    "modelProviderCreateSchema.safeParse(request.body)",
+    "mcpServerConfigurationSchema.safeParse(request.body)",
+  ]) {
+    if (applicationText.includes(obsolete)) {
+      failures.push(`application: obsolete plaintext path ${obsolete}`);
+    }
+  }
+  for (const marker of [
+    "encryptedModelProviderCreateSchema",
+    "encryptedModelProviderUpdateSchema",
+    "encryptedMcpServerCreateSchema",
+    "encryptedMcpServerUpdateSchema",
+    "providerCredentialWireRecordSchema",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`application: missing opaque contract ${marker}`);
+    }
+  }
+  for (const marker of [
+    "openRuntimeProvider",
+    "openMcpServers",
+    "protectProviderCredential",
+  ]) {
+    if (!workerText.includes(marker)) {
+      failures.push(`worker: missing trusted secret operation ${marker}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Provider/MCP secret repository boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: [
+      "model_providers",
+      "model_provider_accounts",
+      "mcp_servers",
+    ],
+    guards: [
+      "provider-api-keys:opaque-only",
+      "provider-oauth-credentials:opaque-worker-refresh",
+      "mcp-configurations:opaque-and-blind-indexed",
+      "legacy-provider-and-mcp-columns:absent",
+    ],
+  };
+}
+
 async function privateDisplayLabelRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
@@ -1701,6 +1826,7 @@ async function buildInventory() {
     taskRepositoryGuards,
     policyDependencies,
     policyRepository,
+    providerSecretRepository,
     privateDisplayLabelDependencies,
     privateDisplayLabelRepository,
     surfacePrivateStateDependencies,
@@ -1713,6 +1839,7 @@ async function buildInventory() {
     taskRepositoryBoundaryAudit(),
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
+    providerSecretRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
     privateDisplayLabelRepositoryBoundaryAudit(),
     surfacePrivateStateProductionDependencyAudit(),
@@ -1816,6 +1943,10 @@ async function buildInventory() {
       status: "enforced",
       ...policyDependencies,
       ...policyRepository,
+    },
+    providerSecretE2eeBoundary: {
+      status: "enforced",
+      ...providerSecretRepository,
     },
     privateDisplayLabelE2eeBoundary: {
       status: "enforced",

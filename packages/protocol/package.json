@@ -32,6 +32,10 @@
       "types": "./src/encryption.ts",
       "import": "./dist/encryption.js"
     },
+    "./protected-secrets": {
+      "types": "./src/protected-secrets.ts",
+      "import": "./dist/protected-secrets.js"
+    },
     "./private-labels": {
       "types": "./src/private-labels.ts",
       "import": "./dist/private-labels.js"

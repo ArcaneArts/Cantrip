@@ -190,7 +190,7 @@ export class ChatGptCatalogService {
                 name: "ChatGPT",
                 kind: "chatgpt",
                 baseUrl: provider.baseUrl,
-                apiKey: null,
+                protectedApiKey: null,
                 accountId: account.id,
                 credentialHomeKey: runtime.credentialHomeKey,
               },
