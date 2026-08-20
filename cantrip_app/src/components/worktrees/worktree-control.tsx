@@ -26,6 +26,7 @@ import {
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Command,
   CommandEmpty,
@@ -603,7 +604,7 @@ export function WorktreeCreateDialog({
           </label>
           <label className="block space-y-1.5 text-sm">
             <span>Checkout</span>
-            <select
+            <NativeSelect
               value={intent}
               onChange={(event) => {
                 setBranch("");
@@ -617,7 +618,7 @@ export function WorktreeCreateDialog({
               <option value="newBranch">New branch</option>
               <option value="existingBranch">Existing branch</option>
               <option value="detached">Detached revision</option>
-            </select>
+            </NativeSelect>
           </label>
           {intent === "existingBranch" ? (
             <label className="block space-y-1.5 text-sm">

@@ -235,6 +235,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  EmptyState,
+  EmptyStateActions,
+  EmptyStateContent,
+  EmptyStateDescription,
+  EmptyStateIcon,
+  EmptyStateTitle,
+} from "@/components/ui/empty-state";
+import {
   createBrowser,
   createCodeTab,
   chatAttachmentContentUrl,
@@ -1933,17 +1941,17 @@ function ChatTranscript({
       >
         <div ref={transcriptContentRef} className="flex w-full flex-col gap-5">
           {messages.data?.length === 0 ? (
-            <div className="grid min-h-[45vh] place-items-center text-center">
-              <div>
-                <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+            <EmptyState className="min-h-[45vh] flex-none p-0">
+              <EmptyStateContent>
+                <EmptyStateIcon>
                   <WandSparkles className="size-5" />
-                </div>
-                <h2 className="mt-4 font-semibold">Start working</h2>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                </EmptyStateIcon>
+                <EmptyStateTitle>Start working</EmptyStateTitle>
+                <EmptyStateDescription>
                   Ask Cantrip to inspect, explain, or change this repository.
-                </p>
-              </div>
-            </div>
+                </EmptyStateDescription>
+              </EmptyStateContent>
+            </EmptyState>
           ) : null}
 
           {timeline.map((entry) => {
@@ -6622,33 +6630,36 @@ export function App() {
             onSelectGroup={selectGroupFromMobileSwitcher}
           />
         ) : groupOwnedElsewhere && selectedTabGroup ? (
-          <div className="grid flex-1 place-items-center p-6 text-center">
-            <div>
-              <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+          <EmptyState>
+            <EmptyStateContent>
+              <EmptyStateIcon>
                 <ExternalLink className="size-5" />
-              </div>
-              <h1 className="mt-4 font-semibold">Open in another window</h1>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+              </EmptyStateIcon>
+              <EmptyStateTitle as="h1">Open in another window</EmptyStateTitle>
+              <EmptyStateDescription>
                 This tab group is attached to its desktop pop-out.
-              </p>
-              <Button
-                className="mt-5"
-                variant="outline"
-                onClick={() =>
-                  void focusDesktopPopoutGroup(selectedTabGroup.id)
-                    .then((focused) => {
-                      if (!focused) {
-                        void resumeDetachedGroup(selectedTabGroup.id);
-                      }
-                    })
-                    .catch((error: unknown) => setPopoutError(errorText(error)))
-                }
-              >
-                <ExternalLink className="size-4" />
-                Focus window
-              </Button>
-            </div>
-          </div>
+              </EmptyStateDescription>
+              <EmptyStateActions>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    void focusDesktopPopoutGroup(selectedTabGroup.id)
+                      .then((focused) => {
+                        if (!focused) {
+                          void resumeDetachedGroup(selectedTabGroup.id);
+                        }
+                      })
+                      .catch((error: unknown) =>
+                        setPopoutError(errorText(error)),
+                      )
+                  }
+                >
+                  <ExternalLink className="size-4" />
+                  Focus window
+                </Button>
+              </EmptyStateActions>
+            </EmptyStateContent>
+          </EmptyState>
         ) : selectedProjectView?.kind === "remote-desktop" ? (
           remoteDesktop.data ? (
             <Suspense
@@ -6877,9 +6888,9 @@ export function App() {
           />
         ) : selectedProject ? (
           selectedProject.setupStatus !== "ready" ? (
-            <div className="grid flex-1 place-items-center p-6 text-center">
-              <div>
-                <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
                   {selectedProject.setupStatus === "cloning" ||
                   (selectedProject.setupStatus === "preparing" &&
                     !selectedFolderSetupNeedsAttention) ? (
@@ -6890,8 +6901,8 @@ export function App() {
                   ) : (
                     <CircleAlert className="size-5 text-destructive" />
                   )}
-                </div>
-                <h1 className="mt-4 font-semibold">
+                </EmptyStateIcon>
+                <EmptyStateTitle as="h1">
                   {selectedProject.setupStatus === "cloning"
                     ? "Cloning repository…"
                     : selectedProject.setupStatus === "preparing" &&
@@ -6902,8 +6913,8 @@ export function App() {
                         : selectedProject.originKind === "managed-folder"
                           ? "Folder setup needs attention"
                           : "Repository setup failed"}
-                </h1>
-                <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                </EmptyStateTitle>
+                <EmptyStateDescription className="max-w-md">
                   {selectedProject.setupStatus === "cloning"
                     ? `${selectedProject.github?.nameWithOwner ?? selectedProject.name} is being prepared on the worker. You can keep adding other projects while it finishes.`
                     : selectedProject.setupStatus === "preparing" &&
@@ -6912,7 +6923,7 @@ export function App() {
                       : (selectedFolderSetupJob?.error?.message ??
                         selectedProject.setupError ??
                         "The worker could not prepare this project.")}
-                </p>
+                </EmptyStateDescription>
                 {selectedProject.setupStatus === "cloning" ? (
                   <div className="mx-auto mt-4 w-full max-w-sm text-left">
                     <div
@@ -6982,8 +6993,8 @@ export function App() {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
-            </div>
+              </EmptyStateContent>
+            </EmptyState>
           ) : projectOverviewSelected ? (
             <ProjectOverview
               compact={compactShell}
@@ -7024,17 +7035,17 @@ export function App() {
               onOpenTabs={() => setMobileTabGridOpen(true)}
             />
           ) : (
-            <div className="grid flex-1 place-items-center p-6 text-center">
-              <div>
-                <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+            <EmptyState>
+              <EmptyStateContent>
+                <EmptyStateIcon>
                   <SquareTerminal className="size-5" />
-                </div>
-                <h1 className="mt-4 font-semibold">No tabs yet</h1>
-                <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+                </EmptyStateIcon>
+                <EmptyStateTitle as="h1">No tabs yet</EmptyStateTitle>
+                <EmptyStateDescription>
                   Start a Codex agent, shell, file explorer, Code workspace, or
                   browser in {selectedProject.name}.
-                </p>
-                <div className="mt-5 flex justify-center gap-2">
+                </EmptyStateDescription>
+                <EmptyStateActions>
                   <Button
                     disabled={newChat.isPending || !selectedProject.source}
                     onClick={() =>
@@ -7104,34 +7115,36 @@ export function App() {
                     )}
                     Code
                   </Button>
-                </div>
+                </EmptyStateActions>
                 {newChat.isError ? (
                   <p className="mt-3 text-xs text-destructive">
                     {errorText(newChat.error)}
                   </p>
                 ) : null}
-              </div>
-            </div>
+              </EmptyStateContent>
+            </EmptyState>
           )
         ) : (
-          <div className="grid flex-1 place-items-center p-6 text-center">
-            <div>
-              <div className="mx-auto grid size-12 place-items-center rounded-2xl border bg-card">
+          <EmptyState>
+            <EmptyStateContent>
+              <EmptyStateIcon>
                 <Folder className="size-5" />
-              </div>
-              <h1 className="mt-4 font-semibold">Add your first project</h1>
-              <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">
+              </EmptyStateIcon>
+              <EmptyStateTitle as="h1">Add your first project</EmptyStateTitle>
+              <EmptyStateDescription>
                 Create a new worker-bound folder or clone an accessible GitHub
                 repository.
-              </p>
-              <ProjectCreateMenu onSelect={openProjectCreateSource}>
-                <Button className="mt-5">
-                  <Plus className="size-4" />
-                  New project
-                </Button>
-              </ProjectCreateMenu>
-            </div>
-          </div>
+              </EmptyStateDescription>
+              <EmptyStateActions>
+                <ProjectCreateMenu onSelect={openProjectCreateSource}>
+                  <Button>
+                    <Plus className="size-4" />
+                    New project
+                  </Button>
+                </ProjectCreateMenu>
+              </EmptyStateActions>
+            </EmptyStateContent>
+          </EmptyState>
         )}
         {compactShell &&
         selectedProject &&

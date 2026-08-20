@@ -23,6 +23,7 @@ import {
   previewProjectWorktreeRecovery,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -280,7 +281,7 @@ export function GitRecoveryDialog({
                 </div>
                 <label className="block space-y-1 text-xs">
                   <span>Recovery action</span>
-                  <select
+                  <NativeSelect
                     value={mode}
                     onChange={(event) =>
                       setMode(event.target.value as RecoveryMode)
@@ -292,12 +293,12 @@ export function GitRecoveryDialog({
                       Restore existing branch
                     </option>
                     <option value="reset">Reset this worktree</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 {mode === "reset" ? (
                   <label className="block space-y-1 text-xs">
                     <span>Reset mode</span>
-                    <select
+                    <NativeSelect
                       value={resetMode}
                       onChange={(event) =>
                         setResetMode(event.target.value as typeof resetMode)
@@ -309,7 +310,7 @@ export function GitRecoveryDialog({
                       <option value="hard">
                         Hard — overwrite tracked files
                       </option>
-                    </select>
+                    </NativeSelect>
                   </label>
                 ) : (
                   <label className="block space-y-1 text-xs">

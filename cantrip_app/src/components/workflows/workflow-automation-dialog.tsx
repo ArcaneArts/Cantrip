@@ -7,6 +7,7 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -265,8 +266,7 @@ export function WorkflowAutomationDialog({
           </label>
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium">Trigger type</span>
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+            <NativeSelect
               value={type}
               onChange={(event) => {
                 const next = event.target.value as AutomationType;
@@ -281,7 +281,7 @@ export function WorkflowAutomationDialog({
                   </option>
                 ),
               )}
-            </select>
+            </NativeSelect>
           </label>
 
           <label className="grid gap-1.5 text-sm">
@@ -302,8 +302,7 @@ export function WorkflowAutomationDialog({
             <>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Missed intervals</span>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={catchUpPolicy}
                   onChange={(event) =>
                     setCatchUpPolicy(event.target.value as "once" | "skip")
@@ -311,12 +310,11 @@ export function WorkflowAutomationDialog({
                 >
                   <option value="once">Run once on recovery</option>
                   <option value="skip">Skip overdue runs</option>
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Worker offline</span>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={offlinePolicy}
                   onChange={(event) =>
                     setOfflinePolicy(event.target.value as "pause" | "queue")
@@ -324,7 +322,7 @@ export function WorkflowAutomationDialog({
                 >
                   <option value="pause">Pause delivery</option>
                   <option value="queue">Queue a durable run</option>
-                </select>
+                </NativeSelect>
               </label>
             </>
           ) : null}
@@ -348,8 +346,7 @@ export function WorkflowAutomationDialog({
             <>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Event</span>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={gitEvent}
                   onChange={(event) =>
                     setGitEvent(event.target.value as "push" | "pull-request")
@@ -357,7 +354,7 @@ export function WorkflowAutomationDialog({
                 >
                   <option value="push">Push</option>
                   <option value="pull-request">Pull request</option>
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Branch pattern</span>

@@ -10,6 +10,7 @@ import { ExternalLink, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -210,8 +211,8 @@ export function GithubPullRequestCreateDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-medium">
                 Head branch
-                <select
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                <NativeSelect
+                  className="mt-1 w-full px-2"
                   value={form.head}
                   onChange={(event) =>
                     setForm({ ...form, head: event.target.value })
@@ -223,13 +224,13 @@ export function GithubPullRequestCreateDialog({
                       {branch}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="text-xs font-medium">
                 Base branch
                 <input
                   list="github-pr-base-branches"
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 w-full"
                   value={form.base}
                   onChange={(event) =>
                     setForm({ ...form, base: event.target.value })
@@ -246,7 +247,7 @@ export function GithubPullRequestCreateDialog({
               Title
               <input
                 autoFocus
-                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className="mt-1 w-full"
                 value={form.title}
                 onChange={(event) =>
                   setForm({ ...form, title: event.target.value })
@@ -283,7 +284,7 @@ export function GithubPullRequestCreateDialog({
               <label className="text-xs font-medium">
                 Labels (comma separated)
                 <input
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 w-full"
                   placeholder="feature, needs-review"
                   value={form.labels}
                   onChange={(event) =>
@@ -294,7 +295,7 @@ export function GithubPullRequestCreateDialog({
               <label className="text-xs font-medium">
                 Reviewers (comma separated)
                 <input
-                  className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className="mt-1 w-full"
                   placeholder="octocat, reviewer"
                   value={form.reviewers}
                   onChange={(event) =>
@@ -306,7 +307,7 @@ export function GithubPullRequestCreateDialog({
             <label className="block text-xs font-medium">
               Linked issues (comma separated)
               <input
-                className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className="mt-1 w-full"
                 placeholder="#12, #34"
                 value={form.linkedIssues}
                 onChange={(event) =>

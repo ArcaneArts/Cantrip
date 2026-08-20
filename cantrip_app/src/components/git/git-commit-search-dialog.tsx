@@ -7,6 +7,7 @@ import { GitCommitHorizontal, Loader2, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -158,16 +159,16 @@ export function GitCommitSearchDialog({
                 onChange={(event) => update("dateTo", event.target.value)}
                 className="h-8 text-xs"
               />
-              <select
+              <NativeSelect
                 aria-label="Revision scope"
                 value={draft.scope}
                 onChange={(event) => update("scope", event.target.value)}
-                className="h-8 rounded-md border bg-background px-2 text-xs"
+                size="sm"
               >
                 <option value="all">All refs</option>
                 <option value="branch">Branch</option>
                 <option value="tag">Tag</option>
-              </select>
+              </NativeSelect>
               <Input
                 aria-label="Branch or tag"
                 disabled={draft.scope === "all"}

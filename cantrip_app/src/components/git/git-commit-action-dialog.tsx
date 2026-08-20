@@ -4,6 +4,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -367,7 +368,7 @@ export function GitCommitActionDialog({
                 request.target.parents.length > 1 ? (
                 <label className="grid gap-1 text-sm">
                   Mainline parent
-                  <select
+                  <NativeSelect
                     className="h-9 rounded-md border bg-background px-3"
                     value={editor.mainlineParent ?? 1}
                     onChange={(event) =>
@@ -382,7 +383,7 @@ export function GitCommitActionDialog({
                         Parent {index + 1} · {parent.slice(0, 10)}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   <span className="text-xs text-muted-foreground">
                     Git keeps this parent's side and reverses the merge relative
                     to it.

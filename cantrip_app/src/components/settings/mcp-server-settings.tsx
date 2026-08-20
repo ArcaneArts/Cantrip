@@ -18,6 +18,7 @@ import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -491,8 +492,8 @@ export function McpServerSettings({
                 />
               </Field>
               <Field label="Transport">
-                <select
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2"
+                <NativeSelect
+                  className="w-full"
                   value={draft.transport}
                   onChange={(event) =>
                     setDraft((current) => ({
@@ -503,7 +504,7 @@ export function McpServerSettings({
                 >
                   <option value="stdio">Local command (stdio)</option>
                   <option value="http">Streamable HTTP</option>
-                </select>
+                </NativeSelect>
               </Field>
             </div>
             {draft.transport === "stdio" ? (
@@ -670,8 +671,8 @@ export function McpServerSettings({
           </DialogHeader>
           <div className="grid gap-4">
             <Field label="Source project">
-              <select
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2"
+              <NativeSelect
+                className="w-full"
                 value={sourceProjectId}
                 onChange={(event) => {
                   setSourceProjectId(event.target.value);
@@ -684,11 +685,11 @@ export function McpServerSettings({
                     {project.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Field>
             <Field label="MCP server">
-              <select
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2"
+              <NativeSelect
+                className="w-full"
                 value={sourceServerId}
                 disabled={!sourceProjectId || sourceServers.isLoading}
                 onChange={(event) => setSourceServerId(event.target.value)}
@@ -699,7 +700,7 @@ export function McpServerSettings({
                     {server.name} · {server.transport}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </Field>
             {sourceProjectId &&
             !sourceServers.isLoading &&

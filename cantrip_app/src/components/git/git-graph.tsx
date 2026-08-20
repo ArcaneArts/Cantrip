@@ -16,6 +16,7 @@ import {
   type RepositoryGraphInputNode,
 } from "@/components/repository-graph";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   getProjectWorktreeGraphCommitOverlay,
   getProjectWorktreeGraphMetrics,
@@ -469,7 +470,7 @@ export function GitRepositoryGraphView({
           <div className="grid gap-2 border-t p-3 sm:grid-cols-2">
             <label className="grid gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               Node size
-              <select
+              <NativeSelect
                 className="h-8 min-w-40 rounded-md border bg-background px-2 text-xs font-normal normal-case tracking-normal text-foreground"
                 value={state.sizeDimension}
                 onChange={(event) =>
@@ -491,11 +492,11 @@ export function GitRepositoryGraphView({
                       : ""}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <label className="grid gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               Node color
-              <select
+              <NativeSelect
                 className="h-8 min-w-40 rounded-md border bg-background px-2 text-xs font-normal normal-case tracking-normal text-foreground"
                 disabled={Boolean(commitRevision)}
                 value={state.colorDimension}
@@ -527,7 +528,7 @@ export function GitRepositoryGraphView({
                     </option>
                   );
                 })}
-              </select>
+              </NativeSelect>
             </label>
             {commitRevision ? (
               <p className="text-[10px] normal-case tracking-normal text-muted-foreground sm:col-span-2">

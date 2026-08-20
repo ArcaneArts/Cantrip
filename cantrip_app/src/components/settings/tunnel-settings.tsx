@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -794,7 +795,7 @@ export function TunnelSettings({
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Project</span>
-                <select
+                <NativeSelect
                   className={inputClass}
                   value={draft.projectId}
                   onChange={(event) =>
@@ -810,11 +811,11 @@ export function TunnelSettings({
                       {item.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Destination worker</span>
-                <select
+                <NativeSelect
                   className={inputClass}
                   required
                   value={draft.workerId}
@@ -834,11 +835,11 @@ export function TunnelSettings({
                       {worker.online ? "" : " (offline)"}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Protocol</span>
-                <select
+                <NativeSelect
                   className={inputClass}
                   value={draft.protocolHint}
                   onChange={(event) =>
@@ -853,11 +854,11 @@ export function TunnelSettings({
                       {protocol.label}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Worker host</span>
-                <select
+                <NativeSelect
                   className={inputClass}
                   value={draft.host}
                   onChange={(event) =>
@@ -870,7 +871,7 @@ export function TunnelSettings({
                   <option value="127.0.0.1">127.0.0.1</option>
                   <option value="localhost">localhost</option>
                   <option value="::1">::1</option>
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Destination port</span>

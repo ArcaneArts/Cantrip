@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -270,8 +271,7 @@ function AutomationDialog({
                 </label>
                 <label className="grid gap-1.5 text-sm">
                   <span className="font-medium">Target agent</span>
-                  <select
-                    className="h-9 rounded-md border bg-background px-3 text-sm"
+                  <NativeSelect
                     value={chatId}
                     onChange={(event) => setChatId(event.target.value)}
                   >
@@ -280,7 +280,7 @@ function AutomationDialog({
                         {chat.title}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
               </div>
 
@@ -300,8 +300,7 @@ function AutomationDialog({
             <div className="grid gap-4">
               <label className="grid gap-1.5 text-sm sm:max-w-xs">
                 <span className="font-medium">Schedule</span>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={mode}
                   onChange={(event) =>
                     setMode(event.target.value as ScheduleMode)
@@ -310,7 +309,7 @@ function AutomationDialog({
                   <option value="interval">Every interval</option>
                   <option value="weekly">Selected weekdays</option>
                   <option value="cron">Advanced cron</option>
-                </select>
+                </NativeSelect>
               </label>
 
               {mode === "interval" ? (
@@ -326,8 +325,8 @@ function AutomationDialog({
                   </label>
                   <label className="grid gap-1.5 text-sm">
                     <span className="font-medium">Unit</span>
-                    <select
-                      className="h-9 rounded-md border bg-background px-3 text-sm capitalize"
+                    <NativeSelect
+                      className="capitalize"
                       value={unit}
                       onChange={(event) =>
                         setUnit(
@@ -340,7 +339,7 @@ function AutomationDialog({
                           {option}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </label>
                   <label className="grid gap-1.5 text-sm">
                     <span className="font-medium">First run / anchor</span>
@@ -445,8 +444,7 @@ function AutomationDialog({
               </div>
               <label className="grid gap-1.5 text-sm sm:max-w-md">
                 <span className="font-medium">Condition type</span>
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={conditionMode}
                   onChange={(event) =>
                     setConditionMode(event.target.value as ConditionMode)
@@ -459,7 +457,7 @@ function AutomationDialog({
                       {conditionModeLabels[mode]}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
 
               {conditionMode === "script" ? (

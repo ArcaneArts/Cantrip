@@ -21,6 +21,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -351,8 +352,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         {!project ? (
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium">Worker</span>
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+            <NativeSelect
               value={workerId ?? ""}
               onChange={(event) => {
                 setSelectedSkill(null);
@@ -365,7 +365,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
                   {worker.online ? "" : " (offline)"}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         ) : (
           <div className="grid gap-1.5 text-sm">
@@ -377,8 +377,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
         )}
         <label className="grid gap-1.5 text-sm">
           <span className="font-medium">Codex account / provider</span>
-          <select
-            className="h-9 rounded-md border bg-background px-3 text-sm"
+          <NativeSelect
             value={providerId ?? ""}
             onChange={(event) => {
               setSelectedSkill(null);
@@ -390,7 +389,7 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
                 {provider.name}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       </div>
 

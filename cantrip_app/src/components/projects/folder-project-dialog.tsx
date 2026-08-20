@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { WorkspaceMembershipPicker } from "@/components/workspaces/workspace-membership-picker";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -246,8 +247,8 @@ export function FolderProjectDialog({
             </label>
             <label className="grid gap-2 text-sm">
               <span className="font-medium">Owning worker</span>
-              <select
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm outline-none ring-ring focus:ring-2"
+              <NativeSelect
+                className="w-full"
                 disabled={eligibleWorkers.length === 0}
                 required
                 value={workerId}
@@ -258,7 +259,7 @@ export function FolderProjectDialog({
                     {worker.name} · {worker.online ? "online" : "offline"}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           </div>
 

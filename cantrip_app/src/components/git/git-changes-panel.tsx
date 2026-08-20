@@ -24,6 +24,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -478,7 +479,7 @@ export function GitChangesPanel({
 
           <div className="grid min-w-0 shrink-0 gap-2 overflow-hidden border-b p-3">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.25rem] gap-2">
-              <select
+              <NativeSelect
                 aria-label="Current Git branch"
                 className="h-9 w-full min-w-0 rounded-md border bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                 value={status.branch}
@@ -507,7 +508,7 @@ export function GitChangesPanel({
                     ))}
                   </optgroup>
                 ) : null}
-              </select>
+              </NativeSelect>
               <Button
                 size="icon"
                 variant="outline"
