@@ -12,12 +12,15 @@ use std::{
 };
 
 use serde_json::json;
-#[cfg(target_os = "macos")]
-use tauri::menu::MenuItemKind;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, State, WindowEvent,
+};
+#[cfg(target_os = "macos")]
+use tauri::{
+    menu::{MenuItemKind, PredefinedMenuItem},
+    Emitter,
 };
 #[cfg(desktop)]
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -420,9 +423,17 @@ fn close_desktop_windows(app: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
+const NEW_AGENT_CHAT_ACTION_ID: &str = "project.new-agent-chat";
+#[cfg(target_os = "macos")]
+const NEW_TERMINAL_ACTION_ID: &str = "project.new-terminal";
+#[cfg(target_os = "macos")]
+const APP_ACTION_EVENT: &str = "cantrip://app-action";
+
+#[cfg(target_os = "macos")]
 fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
     let menu = Menu::default(app.handle())?;
-    let Some(MenuItemKind::Submenu(application_menu)) = menu.items()?.into_iter().next() else {
+    let items = menu.items()?;
+    let Some(MenuItemKind::Submenu(application_menu)) = items.first() else {
         return Err(tauri::Error::AssetNotFound("macOS application menu".into()));
     };
     let items = application_menu.items()?;
@@ -436,7 +447,64 @@ fn setup_macos_application_menu(app: &tauri::App) -> tauri::Result<()> {
         true,
         Some("CmdOrCtrl+Q"),
     )?)?;
+    let file_menu = menu
+        .items()?
+        .into_iter()
+        .find_map(|item| match item {
+            MenuItemKind::Submenu(submenu) if submenu.text().ok().as_deref() == Some("File") => {
+                Some(submenu)
+            }
+            _ => None,
+        })
+        .ok_or_else(|| tauri::Error::AssetNotFound("macOS File menu".into()))?;
+    let new_agent_chat = MenuItem::with_id(
+        app,
+        NEW_AGENT_CHAT_ACTION_ID,
+        "New Agent Chat",
+        false,
+        Some("CmdOrCtrl+N"),
+    )?;
+    let new_terminal = MenuItem::with_id(
+        app,
+        NEW_TERMINAL_ACTION_ID,
+        "New Terminal",
+        false,
+        Some("CmdOrCtrl+T"),
+    )?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    file_menu.prepend_items(&[&new_agent_chat, &new_terminal, &separator])?;
     menu.set_as_app_menu()?;
+    Ok(())
+}
+
+#[tauri::command]
+fn set_desktop_app_action_availability(
+    app: tauri::AppHandle,
+    enabled_action_ids: Vec<String>,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let menu = app
+            .menu()
+            .ok_or_else(|| "The macOS application menu is unavailable.".to_string())?;
+        let submenus = menu.items().map_err(|error| error.to_string())?;
+        for action_id in [NEW_AGENT_CHAT_ACTION_ID, NEW_TERMINAL_ACTION_ID] {
+            let enabled = enabled_action_ids.iter().any(|id| id == action_id);
+            let item = submenus.iter().find_map(|item| match item {
+                MenuItemKind::Submenu(submenu) => submenu.get(action_id),
+                _ => None,
+            });
+            let Some(MenuItemKind::MenuItem(item)) = item else {
+                return Err(format!("The {action_id} menu action is unavailable."));
+            };
+            item.set_enabled(enabled)
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, enabled_action_ids);
+    }
     Ok(())
 }
 
@@ -848,6 +916,7 @@ pub fn run() {
             local_logs::read_local_service_logs,
             local_server_url,
             relay_client_log,
+            set_desktop_app_action_availability,
             set_macos_pro_mode,
             project_share::fallback_project_share,
             project_share::list_direct_project_share_tunnels,
@@ -916,10 +985,13 @@ pub fn run() {
                 setup_tray(app)?;
                 #[cfg(target_os = "macos")]
                 setup_macos_application_menu(app)?;
-                app.on_menu_event(|app, event| {
-                    if event.id().as_ref() == "close-cantrip-windows" {
-                        close_desktop_windows(app);
+                app.on_menu_event(|app, event| match event.id().as_ref() {
+                    "close-cantrip-windows" => close_desktop_windows(app),
+                    #[cfg(target_os = "macos")]
+                    NEW_AGENT_CHAT_ACTION_ID | NEW_TERMINAL_ACTION_ID => {
+                        let _ = app.emit_to("main", APP_ACTION_EVENT, event.id().as_ref());
                     }
+                    _ => {}
                 });
                 if std::env::args().any(|argument| argument == "--background") {
                     if let Some(window) = app.get_webview_window("main") {

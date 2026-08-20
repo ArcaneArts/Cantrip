@@ -205,6 +205,12 @@ import {
 import { hasScrolledContent } from "@/lib/scroll-divider";
 import { errorMessage as errorText } from "@/lib/error-message";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
+import {
+  APP_ACTION_IDS,
+  projectIdForAppActionView,
+  type AppActionContext,
+  type AppActionId,
+} from "@/lib/app-actions";
 import { githubRepositoryOnboardingAction } from "@/lib/github-repository-onboarding";
 import {
   assignMobileBottomTab,
@@ -364,6 +370,7 @@ import {
 import { browserUpdateForPageState } from "@/lib/browser-page-state";
 import { scopedClientStorageKey } from "@/lib/client-session";
 import { useDesktopDirectTransportTelemetry } from "@/lib/direct-transport-telemetry";
+import { useAppActions } from "@/lib/use-app-actions";
 import {
   buildProjectSurfaceIndex,
   type ProjectSurface,
@@ -3604,6 +3611,42 @@ export function App() {
       void queryClient.invalidateQueries({
         queryKey: ["terminals", terminal.projectId],
       });
+    },
+  });
+  const appActionView = isPopout
+    ? "popout"
+    : showSettings || showServerAdmin
+      ? "global"
+      : showImporter || folderProjectDialogOpen
+        ? "project-creation"
+        : showProjectSettings
+          ? "project-settings"
+          : "project";
+  const projectActionProjectId = projectIdForAppActionView(
+    selectedProject?.id ?? null,
+    appActionView,
+  );
+  const appActionContext = useMemo<AppActionContext>(
+    () => ({
+      pendingActionIds: new Set<AppActionId>([
+        ...(newChat.isPending ? [APP_ACTION_IDS.newAgentChat] : []),
+        ...(newTerminal.isPending ? [APP_ACTION_IDS.newTerminal] : []),
+      ]),
+      projectId: projectActionProjectId,
+    }),
+    [newChat.isPending, newTerminal.isPending, projectActionProjectId],
+  );
+  useAppActions({
+    context: appActionContext,
+    runtime: isPopout ? "disabled" : desktopRuntime ? "desktop" : "browser",
+    onAction: (actionId) => {
+      const projectId = appActionContext.projectId;
+      if (!projectId) return;
+      if (actionId === APP_ACTION_IDS.newAgentChat) {
+        newChat.mutate({ projectId });
+      } else if (actionId === APP_ACTION_IDS.newTerminal) {
+        newTerminal.mutate({ projectId });
+      }
     },
   });
   const openChatConsole = useMutation({
