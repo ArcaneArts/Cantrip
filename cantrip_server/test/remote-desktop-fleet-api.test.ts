@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  remoteDesktopFleetSchema,
-  remoteDesktopSummarySchema,
+  remoteDesktopFleetWireSchema,
+  remoteDesktopWireSummarySchema,
   unprobedCodexRuntimeReport,
   type RemoteDesktopTargetInventory,
   type WorkerCommand,
@@ -17,7 +17,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedDisplayLabelFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-remote-desktop-fleet-api-"),
@@ -154,6 +157,7 @@ beforeAll(async () => {
     LOCAL_USER_ID,
     projectId,
     "existing-desktop",
+    protectedDisplayLabelFields("project-view").titleProtection,
     "healthy-worker",
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
@@ -171,7 +175,7 @@ describe.sequential("Remote Desktop fleet API", () => {
       url: `/api/projects/${projectId}/remote-desktop-fleet`,
     });
     expect(response.statusCode).toBe(200);
-    const fleet = remoteDesktopFleetSchema.parse(response.json());
+    const fleet = remoteDesktopFleetWireSchema.parse(response.json());
     expect(fleet).toMatchObject({ projectId, partial: true, truncated: false });
     expect(
       fleet.workers.find(({ workerId }) => workerId === "healthy-worker"),
@@ -225,6 +229,7 @@ describe.sequential("Remote Desktop fleet API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/remote-desktops`,
       payload: {
+        ...protectedDisplayLabelFields("project-view"),
         target: { kind: "worker", projectId, workerId: "healthy-worker" },
         desktopTarget: {
           kind: "window",
@@ -235,16 +240,18 @@ describe.sequential("Remote Desktop fleet API", () => {
       },
     });
     expect(response.statusCode).toBe(201);
-    expect(remoteDesktopSummarySchema.parse(response.json())).toMatchObject({
-      projectId,
-      workerId: "healthy-worker",
-      target: {
-        kind: "window",
-        id: "window-1",
-        application: "Code",
-        title: "Cantrip",
+    expect(remoteDesktopWireSummarySchema.parse(response.json())).toMatchObject(
+      {
+        projectId,
+        workerId: "healthy-worker",
+        target: {
+          kind: "window",
+          id: "window-1",
+          application: "Code",
+          title: "Cantrip",
+        },
       },
-    });
+    );
     expect(requested.at(-1)).toEqual({
       workerId: "healthy-worker",
       command: { type: "surface.desktop.probe" },

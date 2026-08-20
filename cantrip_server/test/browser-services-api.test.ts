@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
-  browserSummarySchema,
+  browserWireSummarySchema,
   cantripVersionSchema,
   tunnelAttachmentCreateResultSchema,
   tunnelSummarySchema,
@@ -21,7 +21,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedDisplayLabelFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-browser-services-api-"),
@@ -178,7 +181,7 @@ beforeAll(async () => {
     LOCAL_USER_ID,
     project.id,
     {
-      title: "Browser",
+      ...protectedDisplayLabelFields("browser"),
       target: {
         kind: "worker",
         projectId: project.id,
@@ -294,7 +297,7 @@ describe.sequential("browser service discovery API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/browsers`,
       payload: {
-        title: "Healthy Service",
+        ...protectedDisplayLabelFields("browser"),
         url: "http://127.0.0.1:8080/",
         target: {
           kind: "worker",
@@ -304,10 +307,12 @@ describe.sequential("browser service discovery API", () => {
       },
     });
     expect(response.statusCode).toBe(201);
-    expect(browserSummarySchema.parse(response.json())).toMatchObject({
-      title: "Healthy Service",
+    expect(browserWireSummarySchema.parse(response.json())).toMatchObject({
       url: "http://127.0.0.1:8080/",
       workerId: "healthy-worker",
+      titleProtection: {
+        classification: { recordKind: "browser" },
+      },
     });
   });
 

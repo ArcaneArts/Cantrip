@@ -1,6 +1,35 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import type { PrivateDisplayLabelOpaque } from "@cantrip/protocol/private-labels";
+import type {
+  PrivateDisplayLabelOpaque,
+  PrivateDisplayLabelRecordKind,
+} from "@cantrip/protocol/private-labels";
+
+export function protectedDisplayLabelFields(
+  recordKind: PrivateDisplayLabelRecordKind,
+  id = randomUUID(),
+): {
+  id: string;
+  titleProtection: PrivateDisplayLabelOpaque;
+} {
+  return {
+    id,
+    titleProtection: {
+      classification: { recordKind },
+      protectedLabel: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: randomBytes(12).toString("base64url"),
+          ciphertext: randomBytes(32).toString("base64url"),
+        },
+      },
+    },
+  };
+}
 
 export function protectedProjectFields(id = randomUUID()): {
   id: string;
@@ -29,21 +58,5 @@ export function protectedChatFields(id = randomUUID()): {
   id: string;
   titleProtection: PrivateDisplayLabelOpaque;
 } {
-  return {
-    id,
-    titleProtection: {
-      classification: { recordKind: "chat" },
-      protectedLabel: {
-        formatVersion: 1,
-        keyRevision: 1,
-        envelope: {
-          version: 1,
-          algorithm: "AES-256-GCM",
-          keyRevision: 1,
-          nonce: randomBytes(12).toString("base64url"),
-          ciphertext: randomBytes(32).toString("base64url"),
-        },
-      },
-    },
-  };
+  return protectedDisplayLabelFields("chat", id);
 }

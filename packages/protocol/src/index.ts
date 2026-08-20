@@ -2704,37 +2704,74 @@ export const executionTargetWireDescriptorSchema =
       titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
     })
     .superRefine((descriptor, context) => {
-      const protectedChat = descriptor.resourceKind === "chat";
+      const expectedRecordKind =
+        descriptor.resourceKind === "chat"
+          ? "chat"
+          : descriptor.resourceKind === "terminal"
+            ? "terminal"
+            : descriptor.resourceKind === "explorer"
+              ? "explorer"
+              : descriptor.resourceKind === "code"
+                ? "code-tab"
+                : descriptor.resourceKind === "browser"
+                  ? "browser"
+                  : descriptor.resourceKind === "remote-desktop"
+                    ? "project-view"
+                    : descriptor.resourceKind === "remote-surface"
+                      ? "remote-surface"
+                      : null;
+      const protectedResource = expectedRecordKind !== null;
       if (
-        protectedChat !== (descriptor.titleProtection !== null) ||
-        protectedChat === (descriptor.title !== null)
+        protectedResource !== (descriptor.titleProtection !== null) ||
+        protectedResource === (descriptor.title !== null)
       ) {
         context.addIssue({
           code: "custom",
           message:
-            "Chat execution targets require an opaque title; other targets require a plaintext title.",
+            "Surface execution targets require an opaque title; placement targets require a plaintext title.",
           path: ["titleProtection"],
         });
       }
       if (
         descriptor.titleProtection &&
-        descriptor.titleProtection.classification.recordKind !== "chat"
+        descriptor.titleProtection.classification.recordKind !==
+          expectedRecordKind
       ) {
         context.addIssue({
           code: "custom",
-          message: "Execution-target title classification must be chat.",
+          message:
+            "Execution-target title classification must match its resource kind.",
           path: ["titleProtection", "classification", "recordKind"],
         });
       }
+      if (protectedResource && descriptor.target.kind !== "surface") {
+        context.addIssue({
+          code: "custom",
+          message: "Protected execution targets must identify a surface.",
+          path: ["target"],
+        });
+      }
       if (
-        protectedChat &&
-        (descriptor.target.kind !== "surface" ||
-          descriptor.target.surfaceKind !== "chat")
+        protectedResource &&
+        descriptor.target.kind === "surface" &&
+        descriptor.target.surfaceKind !== descriptor.resourceKind
       ) {
         context.addIssue({
           code: "custom",
-          message: "Chat execution targets must identify a chat surface.",
-          path: ["target"],
+          message:
+            "Execution-target resource and surface kinds must describe the same surface.",
+          path: ["target", "surfaceKind"],
+        });
+      }
+      if (
+        protectedResource &&
+        descriptor.placement.surface?.kind !== descriptor.resourceKind
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Execution-target placement must point at the protected surface.",
+          path: ["placement", "surface"],
         });
       }
     });
@@ -3825,9 +3862,8 @@ export const repositoryRelativePathSchema = z
     "Expected a safe repository-relative path.",
   );
 
-export const terminalCreateSchema = z
+const terminalCreateBaseSchema = z
   .object({
-    title: z.string().trim().min(1).max(200).default("Terminal"),
     directoryPath: repositoryRelativePathSchema.optional(),
     worktreeId: z.string().min(1).optional(),
     tabGroupId: z.string().min(1).optional(),
@@ -3837,9 +3873,51 @@ export const terminalCreateSchema = z
     message: "Choose either a legacy worktreeId or an execution target.",
   });
 
+export const terminalCreateSchema = terminalCreateBaseSchema.safeExtend({
+  title: z.string().trim().min(1).max(200).default("Terminal"),
+});
+
+export const encryptedTerminalCreateSchema = terminalCreateBaseSchema
+  .safeExtend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "terminal",
+    {
+      message: "Terminal title classification must be terminal.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
+export const encryptedLinkedConsoleCreateSchema = z
+  .object({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "terminal",
+    {
+      message: "Linked console title classification must be terminal.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const terminalUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
+
+export const encryptedTerminalUpdateSchema = z
+  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "terminal",
+    {
+      message: "Terminal title classification must be terminal.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
 
 export const terminalServiceConfigurationSchema = z
   .object({
@@ -3868,10 +3946,9 @@ export const terminalServiceRuntimeConfigurationSchema = z.object({
     }),
 });
 
-export const terminalSummarySchema = z.object({
+const terminalSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   position: z.number().int().nonnegative(),
   status: z.enum(["idle", "running", "exited", "offline", "failed"]),
   activeWorkerId: z.string().min(1),
@@ -3885,7 +3962,23 @@ export const terminalSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const terminalSummarySchema = terminalSummaryBaseSchema.extend({
+  title: z.string().min(1).max(200),
+});
+
+export const terminalWireSummarySchema = terminalSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .refine(
+    (terminal) =>
+      terminal.titleProtection.classification.recordKind === "terminal",
+    {
+      message: "Terminal title classification must be terminal.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const terminalListSchema = z.array(terminalSummarySchema);
+export const terminalWireListSchema = z.array(terminalWireSummarySchema);
 
 export const scriptCommandKindSchema = z.enum([
   "package",
@@ -3914,9 +4007,8 @@ export const scriptCommandSchema = z.object({
 
 export const scriptCommandListSchema = z.array(scriptCommandSchema).max(500);
 
-export const explorerCreateSchema = z
+const explorerCreateBaseSchema = z
   .object({
-    title: z.string().trim().min(1).max(200).default("Explorer"),
     worktreeId: z.string().min(1).optional(),
     tabGroupId: z.string().min(1).optional(),
     target: executionTargetSchema.optional(),
@@ -3925,9 +4017,37 @@ export const explorerCreateSchema = z
     message: "Choose either a legacy worktreeId or an execution target.",
   });
 
+export const explorerCreateSchema = explorerCreateBaseSchema.safeExtend({
+  title: z.string().trim().min(1).max(200).default("Explorer"),
+});
+
+export const encryptedExplorerCreateSchema = explorerCreateBaseSchema
+  .safeExtend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "explorer",
+    {
+      message: "Explorer title classification must be explorer.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const explorerUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
+
+export const encryptedExplorerUpdateSchema = z
+  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "explorer",
+    {
+      message: "Explorer title classification must be explorer.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
 
 export const explorerFileModeSchema = z.enum(["preview", "visual", "edit"]);
 
@@ -3936,10 +4056,9 @@ export const explorerViewStateUpdateSchema = z.object({
   fileMode: explorerFileModeSchema,
 });
 
-export const explorerSummarySchema = z.object({
+const explorerSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   position: z.number().int().nonnegative(),
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
@@ -3949,7 +4068,23 @@ export const explorerSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const explorerSummarySchema = explorerSummaryBaseSchema.extend({
+  title: z.string().min(1).max(200),
+});
+
+export const explorerWireSummarySchema = explorerSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .refine(
+    (explorer) =>
+      explorer.titleProtection.classification.recordKind === "explorer",
+    {
+      message: "Explorer title classification must be explorer.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const explorerListSchema = z.array(explorerSummarySchema);
+export const explorerWireListSchema = z.array(explorerWireSummarySchema);
 
 export const codeThemeModeSchema = z.enum(["follow-cantrip", "independent"]);
 export const codeAppearanceSchema = z.enum([
@@ -3980,9 +4115,8 @@ export const codeSessionStatusSchema = z.enum([
   "failed",
 ]);
 
-export const codeTabCreateSchema = z
+const codeTabCreateBaseSchema = z
   .object({
-    title: z.string().trim().min(1).max(200).default("Code"),
     worktreeId: z.string().min(1).optional(),
     profileId: z.string().trim().min(1).max(200).default("default"),
     themeMode: codeThemeModeSchema.default("follow-cantrip"),
@@ -3992,6 +4126,23 @@ export const codeTabCreateSchema = z
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",
   });
+
+export const codeTabCreateSchema = codeTabCreateBaseSchema.safeExtend({
+  title: z.string().trim().min(1).max(200).default("Code"),
+});
+
+export const encryptedCodeTabCreateSchema = codeTabCreateBaseSchema
+  .safeExtend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "code-tab",
+    {
+      message: "Code-tab title classification must be code-tab.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
 
 export const codeTabUpdateSchema = z
   .object({
@@ -4003,10 +4154,34 @@ export const codeTabUpdateSchema = z
     { message: "At least one Code tab field is required." },
   );
 
-export const codeTabSummarySchema = z.object({
+export const encryptedCodeTabUpdateSchema = z
+  .object({
+    titleProtection: privateDisplayLabelOpaqueSchema.optional(),
+    themeMode: codeThemeModeSchema.optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.titleProtection === undefined && input.themeMode === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "At least one Code tab field is required.",
+      });
+    }
+    if (
+      input.titleProtection &&
+      input.titleProtection.classification.recordKind !== "code-tab"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Code-tab title classification must be code-tab.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+  });
+
+const codeTabSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   position: z.number().int().nonnegative(),
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
@@ -4018,7 +4193,23 @@ export const codeTabSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const codeTabSummarySchema = codeTabSummaryBaseSchema.extend({
+  title: z.string().min(1).max(200),
+});
+
+export const codeTabWireSummarySchema = codeTabSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .refine(
+    (codeTab) =>
+      codeTab.titleProtection.classification.recordKind === "code-tab",
+    {
+      message: "Code-tab title classification must be code-tab.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const codeTabListSchema = z.array(codeTabSummarySchema);
+export const codeTabWireListSchema = z.array(codeTabWireSummarySchema);
 
 export const codeEditorBuildSchema = z.object({
   version: z.string().min(1),
@@ -4314,8 +4505,7 @@ export const CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES =
 export const CODE_ADAPTER_WEBSOCKET_TEXT_RECORD = 0;
 export const CODE_ADAPTER_WEBSOCKET_BINARY_RECORD = 1;
 export const CODE_ADAPTER_WEBSOCKET_CLOSE_RECORD = 2;
-export const browserCreateSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Browser"),
+const browserCreateBaseSchema = z.object({
   url: z
     .string()
     .url()
@@ -4327,6 +4517,24 @@ export const browserCreateSchema = z.object({
   tabGroupId: z.string().min(1).optional(),
   target: executionTargetSchema.optional(),
 });
+
+export const browserCreateSchema = browserCreateBaseSchema.extend({
+  title: z.string().trim().min(1).max(200).default("Browser"),
+});
+
+export const encryptedBrowserCreateSchema = browserCreateBaseSchema
+  .extend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "browser",
+    {
+      message: "Browser title classification must be browser.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
 
 export const browserUpdateSchema = z
   .object({
@@ -4344,10 +4552,34 @@ export const browserUpdateSchema = z
     message: "At least one browser field is required.",
   });
 
-export const browserSummarySchema = z.object({
+export const encryptedBrowserUpdateSchema = z
+  .object({
+    titleProtection: privateDisplayLabelOpaqueSchema.optional(),
+    url: browserUpdateSchema.shape.url,
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.titleProtection === undefined && input.url === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: "At least one browser field is required.",
+      });
+    }
+    if (
+      input.titleProtection &&
+      input.titleProtection.classification.recordKind !== "browser"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Browser title classification must be browser.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+  });
+
+const browserSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   position: z.number().int().nonnegative(),
   url: z.string().url(),
   workerId: z.string().min(1).nullable().optional(),
@@ -4355,7 +4587,23 @@ export const browserSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const browserSummarySchema = browserSummaryBaseSchema.extend({
+  title: z.string().min(1).max(200),
+});
+
+export const browserWireSummarySchema = browserSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .refine(
+    (browser) =>
+      browser.titleProtection.classification.recordKind === "browser",
+    {
+      message: "Browser title classification must be browser.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const browserListSchema = z.array(browserSummarySchema);
+export const browserWireListSchema = z.array(browserWireSummarySchema);
 
 export const browserServiceProtocolSchema = z.enum(["http", "https"]);
 
@@ -4447,6 +4695,21 @@ export const remoteDesktopCreateSchema = z
   })
   .strict();
 
+export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateSchema
+  .extend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.titleProtection.classification.recordKind === "project-view",
+    {
+      message: "Remote Desktop title classification must be project-view.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const remoteDesktopMonitorSchema = z.object({
   kind: z.literal("monitor"),
   id: z.string().min(1).max(200),
@@ -4487,10 +4750,9 @@ export const remoteDesktopUpdateSchema = z.object({
   target: remoteDesktopTargetSchema,
 });
 
-export const remoteDesktopSummarySchema = z.object({
+const remoteDesktopSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   position: z.number().int().nonnegative(),
   workerId: z.string().min(1),
   target: remoteDesktopTargetSchema.default({
@@ -4504,7 +4766,25 @@ export const remoteDesktopSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const remoteDesktopSummarySchema = remoteDesktopSummaryBaseSchema.extend(
+  { title: z.string().min(1).max(200) },
+);
+
+export const remoteDesktopWireSummarySchema = remoteDesktopSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .refine(
+    (desktop) =>
+      desktop.titleProtection.classification.recordKind === "project-view",
+    {
+      message: "Remote Desktop title classification must be project-view.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const remoteDesktopListSchema = z.array(remoteDesktopSummarySchema);
+export const remoteDesktopWireListSchema = z.array(
+  remoteDesktopWireSummarySchema,
+);
 
 export const remoteDesktopFleetWorkerStatusSchema = z.enum([
   "ok",
@@ -4530,12 +4810,21 @@ export const remoteDesktopFleetWorkerSchema = z.object({
   truncated: z.boolean().default(false),
 });
 
+export const remoteDesktopFleetWireWorkerSchema =
+  remoteDesktopFleetWorkerSchema.extend({
+    desktops: z.array(remoteDesktopWireSummarySchema).max(64),
+  });
+
 export const remoteDesktopFleetSchema = z.object({
   projectId: z.string().min(1),
   observedAt: z.string().datetime(),
   partial: z.boolean(),
   truncated: z.boolean().default(false),
   workers: z.array(remoteDesktopFleetWorkerSchema).max(64),
+});
+
+export const remoteDesktopFleetWireSchema = remoteDesktopFleetSchema.extend({
+  workers: z.array(remoteDesktopFleetWireWorkerSchema).max(64),
 });
 
 export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
@@ -4560,6 +4849,22 @@ export const remoteSurfaceCreateSchema = z.object({
   configuration: remoteSurfaceConfigurationSchema,
 });
 
+export const encryptedRemoteSurfaceCreateSchema = remoteSurfaceCreateSchema
+  .omit({ title: true })
+  .extend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.titleProtection.classification.recordKind === "remote-surface",
+    {
+      message: "Remote Surface title classification must be remote-surface.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const remoteSurfaceUpdateSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
@@ -4574,12 +4879,41 @@ export const remoteSurfaceUpdateSchema = z
     { message: "At least one remote surface field is required." },
   );
 
-export const remoteSurfaceSummarySchema = z.object({
+export const encryptedRemoteSurfaceUpdateSchema = z
+  .object({
+    titleProtection: privateDisplayLabelOpaqueSchema.optional(),
+    configuration: remoteSurfaceConfigurationSchema.optional(),
+    preferredTransport: remoteSurfaceTransportSchema.optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (
+      input.titleProtection === undefined &&
+      input.configuration === undefined &&
+      input.preferredTransport === undefined
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "At least one remote surface field is required.",
+      });
+    }
+    if (
+      input.titleProtection &&
+      input.titleProtection.classification.recordKind !== "remote-surface"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Remote Surface title classification must be remote-surface.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+  });
+
+const remoteSurfaceSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   workerId: z.string().min(1),
   kind: remoteSurfaceKindSchema,
-  title: z.string().min(1),
   status: remoteSurfaceStatusSchema,
   preferredTransport: remoteSurfaceTransportSchema,
   configuration: remoteSurfaceConfigurationSchema,
@@ -4589,7 +4923,32 @@ export const remoteSurfaceSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const remoteSurfaceSummarySchema = remoteSurfaceSummaryBaseSchema.extend(
+  { title: z.string().min(1).max(200) },
+);
+
+export const remoteSurfaceWireSummarySchema = remoteSurfaceSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .superRefine((surface, context) => {
+    const recordKind = surface.titleProtection.classification.recordKind;
+    if (
+      recordKind !== "remote-surface" &&
+      !(surface.kind === "browser" && recordKind === "browser") &&
+      !(surface.kind === "desktop" && recordKind === "project-view")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Remote Surface title classification must match its canonical owner.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+  });
+
 export const remoteSurfaceListSchema = z.array(remoteSurfaceSummarySchema);
+export const remoteSurfaceWireListSchema = z.array(
+  remoteSurfaceWireSummarySchema,
+);
 
 export const remoteSurfaceViewportSchema = z.object({
   width: z.number().int().min(1).max(16_384),
@@ -4943,6 +5302,22 @@ export const projectViewCreateSchema = z.object({
   tabGroupId: z.string().min(1).optional(),
 });
 
+export const encryptedProjectViewCreateSchema = projectViewCreateSchema
+  .omit({ title: true })
+  .extend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.titleProtection.classification.recordKind === "project-view",
+    {
+      message: "Project-view title classification must be project-view.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const projectTabKindSchema = z.enum([
   "chat",
   "terminal",
@@ -4971,29 +5346,28 @@ export const projectTabMemberSummarySchema =
 export const projectTabMemberWireSummarySchema =
   projectTabMemberSummaryBaseSchema
     .extend({
-      title: z.string().min(1).nullable(),
-      titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
+      titleProtection: privateDisplayLabelOpaqueSchema,
     })
     .superRefine((member, context) => {
-      const protectedChat = member.tabKind === "chat";
+      const expectedRecordKind =
+        member.tabKind === "chat"
+          ? "chat"
+          : member.tabKind === "terminal"
+            ? "terminal"
+            : member.tabKind === "explorer"
+              ? "explorer"
+              : member.tabKind === "browser"
+                ? "browser"
+                : member.tabKind === "code"
+                  ? "code-tab"
+                  : "project-view";
       if (
-        protectedChat !== (member.titleProtection !== null) ||
-        protectedChat === (member.title !== null)
+        member.titleProtection.classification.recordKind !== expectedRecordKind
       ) {
         context.addIssue({
           code: "custom",
           message:
-            "Chat tab members require an opaque title; other members require a plaintext title.",
-          path: ["titleProtection"],
-        });
-      }
-      if (
-        member.titleProtection &&
-        member.titleProtection.classification.recordKind !== "chat"
-      ) {
-        context.addIssue({
-          code: "custom",
-          message: "Chat tab-member title classification must be chat.",
+            "Tab-member title classification must match its surface kind.",
           path: ["titleProtection", "classification", "recordKind"],
         });
       }
@@ -5081,10 +5455,21 @@ export const projectViewUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
 
-export const projectViewSummarySchema = z.object({
+export const encryptedProjectViewUpdateSchema = z
+  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .refine(
+    (input) =>
+      input.titleProtection.classification.recordKind === "project-view",
+    {
+      message: "Project-view title classification must be project-view.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
+const projectViewSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   kind: projectViewKindSchema,
   worktreeId: z.string().min(1).nullable(),
   position: z.number().int().nonnegative(),
@@ -5092,7 +5477,22 @@ export const projectViewSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const projectViewSummarySchema = projectViewSummaryBaseSchema.extend({
+  title: z.string().min(1).max(200),
+});
+
+export const projectViewWireSummarySchema = projectViewSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .refine(
+    (view) => view.titleProtection.classification.recordKind === "project-view",
+    {
+      message: "Project-view title classification must be project-view.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const projectViewListSchema = z.array(projectViewSummarySchema);
+export const projectViewWireListSchema = z.array(projectViewWireSummarySchema);
 
 export const explorerEntrySchema = z.object({
   name: z.string().min(1),
@@ -11095,7 +11495,13 @@ export type ChatPermissionProfileUpdate = z.infer<
   typeof chatPermissionProfileUpdateSchema
 >;
 export type TerminalCreate = z.infer<typeof terminalCreateSchema>;
+export type EncryptedTerminalCreate = z.infer<
+  typeof encryptedTerminalCreateSchema
+>;
 export type TerminalUpdate = z.infer<typeof terminalUpdateSchema>;
+export type EncryptedTerminalUpdate = z.infer<
+  typeof encryptedTerminalUpdateSchema
+>;
 export type TerminalServiceConfiguration = z.infer<
   typeof terminalServiceConfigurationSchema
 >;
@@ -11103,22 +11509,37 @@ export type TerminalServiceRuntimeConfiguration = z.infer<
   typeof terminalServiceRuntimeConfigurationSchema
 >;
 export type TerminalSummary = z.infer<typeof terminalSummarySchema>;
+export type TerminalWireSummary = z.infer<typeof terminalWireSummarySchema>;
 export type ScriptCommandKind = z.infer<typeof scriptCommandKindSchema>;
 export type ScriptCommand = z.infer<typeof scriptCommandSchema>;
 export type ExplorerCreate = z.infer<typeof explorerCreateSchema>;
+export type EncryptedExplorerCreate = z.infer<
+  typeof encryptedExplorerCreateSchema
+>;
 export type ExplorerUpdate = z.infer<typeof explorerUpdateSchema>;
+export type EncryptedExplorerUpdate = z.infer<
+  typeof encryptedExplorerUpdateSchema
+>;
 export type ExplorerFileMode = z.infer<typeof explorerFileModeSchema>;
 export type ExplorerViewStateUpdate = z.infer<
   typeof explorerViewStateUpdateSchema
 >;
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
+export type ExplorerWireSummary = z.infer<typeof explorerWireSummarySchema>;
 export type CodeThemeMode = z.infer<typeof codeThemeModeSchema>;
 export type CodeAppearance = z.infer<typeof codeAppearanceSchema>;
 export type CodeTabStatus = z.infer<typeof codeTabStatusSchema>;
 export type CodeSessionStatus = z.infer<typeof codeSessionStatusSchema>;
 export type CodeTabCreate = z.infer<typeof codeTabCreateSchema>;
+export type EncryptedCodeTabCreate = z.infer<
+  typeof encryptedCodeTabCreateSchema
+>;
 export type CodeTabUpdate = z.infer<typeof codeTabUpdateSchema>;
+export type EncryptedCodeTabUpdate = z.infer<
+  typeof encryptedCodeTabUpdateSchema
+>;
 export type CodeTabSummary = z.infer<typeof codeTabSummarySchema>;
+export type CodeTabWireSummary = z.infer<typeof codeTabWireSummarySchema>;
 export type CodeEditorBuild = z.infer<typeof codeEditorBuildSchema>;
 export type CodeProbeResult = z.infer<typeof codeProbeResultSchema>;
 export type CodeSessionSummary = z.infer<typeof codeSessionSummarySchema>;
@@ -11151,8 +11572,15 @@ export type ProjectShareAttachment = z.infer<
   typeof projectShareAttachmentSchema
 >;
 export type BrowserCreate = z.infer<typeof browserCreateSchema>;
+export type EncryptedBrowserCreate = z.infer<
+  typeof encryptedBrowserCreateSchema
+>;
 export type BrowserUpdate = z.infer<typeof browserUpdateSchema>;
+export type EncryptedBrowserUpdate = z.infer<
+  typeof encryptedBrowserUpdateSchema
+>;
 export type BrowserSummary = z.infer<typeof browserSummarySchema>;
+export type BrowserWireSummary = z.infer<typeof browserWireSummarySchema>;
 export type BrowserServiceProtocol = z.infer<
   typeof browserServiceProtocolSchema
 >;
@@ -11169,6 +11597,9 @@ export type BrowserServiceFleetDiscovery = z.infer<
 >;
 export type BrowserTunnelRequest = z.infer<typeof browserTunnelRequestSchema>;
 export type RemoteDesktopCreate = z.infer<typeof remoteDesktopCreateSchema>;
+export type EncryptedRemoteDesktopCreate = z.infer<
+  typeof encryptedRemoteDesktopCreateSchema
+>;
 export type RemoteDesktopTarget = z.infer<typeof remoteDesktopTargetSchema>;
 export type RemoteDesktopMonitor = z.infer<typeof remoteDesktopMonitorSchema>;
 export type RemoteDesktopWindow = z.infer<typeof remoteDesktopWindowSchema>;
@@ -11180,19 +11611,37 @@ export type RemoteDesktopApplicationIcon = z.infer<
 >;
 export type RemoteDesktopUpdate = z.infer<typeof remoteDesktopUpdateSchema>;
 export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
+export type RemoteDesktopWireSummary = z.infer<
+  typeof remoteDesktopWireSummarySchema
+>;
 export type RemoteDesktopFleetWorkerStatus = z.infer<
   typeof remoteDesktopFleetWorkerStatusSchema
 >;
 export type RemoteDesktopFleetWorker = z.infer<
   typeof remoteDesktopFleetWorkerSchema
 >;
+export type RemoteDesktopFleetWireWorker = z.infer<
+  typeof remoteDesktopFleetWireWorkerSchema
+>;
 export type RemoteDesktopFleet = z.infer<typeof remoteDesktopFleetSchema>;
+export type RemoteDesktopFleetWire = z.infer<
+  typeof remoteDesktopFleetWireSchema
+>;
 export type RemoteSurfaceConfiguration = z.infer<
   typeof remoteSurfaceConfigurationSchema
 >;
 export type RemoteSurfaceCreate = z.infer<typeof remoteSurfaceCreateSchema>;
+export type EncryptedRemoteSurfaceCreate = z.infer<
+  typeof encryptedRemoteSurfaceCreateSchema
+>;
 export type RemoteSurfaceUpdate = z.infer<typeof remoteSurfaceUpdateSchema>;
+export type EncryptedRemoteSurfaceUpdate = z.infer<
+  typeof encryptedRemoteSurfaceUpdateSchema
+>;
 export type RemoteSurfaceSummary = z.infer<typeof remoteSurfaceSummarySchema>;
+export type RemoteSurfaceWireSummary = z.infer<
+  typeof remoteSurfaceWireSummarySchema
+>;
 export type RemoteSurfaceViewport = z.infer<typeof remoteSurfaceViewportSchema>;
 export type DesktopStreamSettings = z.infer<typeof desktopStreamSettingsSchema>;
 export type RemoteSurfaceConnectionMessage = z.infer<
@@ -11237,8 +11686,17 @@ export type RemoteSurfaceFrameHeader = z.infer<
 >;
 export type ProjectViewKind = z.infer<typeof projectViewKindSchema>;
 export type ProjectViewCreate = z.infer<typeof projectViewCreateSchema>;
+export type EncryptedProjectViewCreate = z.infer<
+  typeof encryptedProjectViewCreateSchema
+>;
 export type ProjectViewUpdate = z.infer<typeof projectViewUpdateSchema>;
+export type EncryptedProjectViewUpdate = z.infer<
+  typeof encryptedProjectViewUpdateSchema
+>;
 export type ProjectViewSummary = z.infer<typeof projectViewSummarySchema>;
+export type ProjectViewWireSummary = z.infer<
+  typeof projectViewWireSummarySchema
+>;
 export type ProjectTabKind = z.infer<typeof projectTabKindSchema>;
 export type ProjectTabMemberSummary = z.infer<
   typeof projectTabMemberSummarySchema

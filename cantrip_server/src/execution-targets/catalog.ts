@@ -1,19 +1,19 @@
 import type {
-  BrowserSummary,
+  BrowserWireSummary,
   ChatWireSummary,
-  CodeTabSummary,
+  CodeTabWireSummary,
   ExecutionPlacement,
   ExecutionTarget,
   ExecutionTargetAvailability,
   ExecutionTargetWireCatalog,
   ExecutionTargetWireDescriptor,
   ExecutionTargetResourceKind,
-  ExplorerSummary,
+  ExplorerWireSummary,
   ProjectReplicaSummary,
   ProjectWorktreeSummary,
-  RemoteDesktopSummary,
-  RemoteSurfaceSummary,
-  TerminalSummary,
+  RemoteDesktopWireSummary,
+  RemoteSurfaceWireSummary,
+  TerminalWireSummary,
   WorkerSummary,
   PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
@@ -59,16 +59,16 @@ export function executionTargetAvailability(
 }
 
 export function buildExecutionTargetCatalog(input: {
-  browsers: readonly BrowserSummary[];
+  browsers: readonly BrowserWireSummary[];
   chats: readonly ChatWireSummary[];
-  codeTabs: readonly CodeTabSummary[];
-  desktops: readonly RemoteDesktopSummary[];
-  explorers: readonly ExplorerSummary[];
+  codeTabs: readonly CodeTabWireSummary[];
+  desktops: readonly RemoteDesktopWireSummary[];
+  explorers: readonly ExplorerWireSummary[];
   isWorkerConnected?: (workerId: string) => boolean;
   projectId: string;
-  remoteSurfaces: readonly RemoteSurfaceSummary[];
+  remoteSurfaces: readonly RemoteSurfaceWireSummary[];
   replicas: readonly ProjectReplicaSummary[];
-  terminals: readonly TerminalSummary[];
+  terminals: readonly TerminalWireSummary[];
   workers: readonly WorkerSummary[];
   worktrees: readonly ProjectWorktreeSummary[];
 }): ExecutionTargetWireCatalog {
@@ -130,8 +130,7 @@ export function buildExecutionTargetCatalog(input: {
       "chat" | "terminal" | "explorer" | "code"
     >;
     status: string | null;
-    title?: string;
-    titleProtection?: PrivateDisplayLabelOpaque;
+    titleProtection: PrivateDisplayLabelOpaque;
     worktreeId: string;
   }) => {
     const worktree = worktreesById.get(surface.worktreeId);
@@ -158,10 +157,7 @@ export function buildExecutionTargetCatalog(input: {
         surfaceKind: surface.resourceKind,
         surfaceId: surface.id,
       },
-      ...(surface.title ? { title: surface.title } : {}),
-      ...(surface.titleProtection
-        ? { titleProtection: surface.titleProtection }
-        : {}),
+      titleProtection: surface.titleProtection,
     });
   };
 
@@ -268,7 +264,7 @@ export function buildExecutionTargetCatalog(input: {
       id: terminal.id,
       resourceKind: "terminal",
       status: terminal.status,
-      title: terminal.title,
+      titleProtection: terminal.titleProtection,
       worktreeId: terminal.worktreeId,
     });
   }
@@ -278,7 +274,7 @@ export function buildExecutionTargetCatalog(input: {
       id: explorer.id,
       resourceKind: "explorer",
       status: null,
-      title: explorer.title,
+      titleProtection: explorer.titleProtection,
       worktreeId: explorer.worktreeId,
     });
   }
@@ -288,7 +284,7 @@ export function buildExecutionTargetCatalog(input: {
       id: codeTab.id,
       resourceKind: "code",
       status: codeTab.status,
-      title: codeTab.title,
+      titleProtection: codeTab.titleProtection,
       worktreeId: codeTab.worktreeId,
     });
   }
@@ -315,7 +311,7 @@ export function buildExecutionTargetCatalog(input: {
         surfaceKind: "browser",
         surfaceId: browser.id,
       },
-      title: browser.title,
+      titleProtection: browser.titleProtection,
     });
   }
   for (const desktop of input.desktops) {
@@ -337,7 +333,7 @@ export function buildExecutionTargetCatalog(input: {
         surfaceKind: "remote-desktop",
         surfaceId: desktop.id,
       },
-      title: desktop.title,
+      titleProtection: desktop.titleProtection,
     });
   }
   for (const surface of input.remoteSurfaces) {
@@ -359,7 +355,7 @@ export function buildExecutionTargetCatalog(input: {
         surfaceKind: "remote-surface",
         surfaceId: surface.id,
       },
-      title: surface.title,
+      titleProtection: surface.titleProtection,
     });
   }
   descriptors.sort(

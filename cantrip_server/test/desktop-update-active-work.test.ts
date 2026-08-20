@@ -16,6 +16,7 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
   protectedChatFields,
+  protectedDisplayLabelFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
 
@@ -152,7 +153,7 @@ describe.sequential("desktop update active-work API", () => {
     const terminal = await database.repository.createTerminal(
       LOCAL_USER_ID,
       projectId,
-      { title: "Local service" },
+      protectedDisplayLabelFields("terminal"),
     );
     if (!terminal) throw new Error("Could not create update test terminal.");
     await database.repository.updateTerminalService(

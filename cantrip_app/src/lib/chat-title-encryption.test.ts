@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { ChatTitleEncryptionAdapter } from "./chat-title-encryption";
 import { ClientEncryptionService } from "./client-encryption";
 import type { ClientSessionContext } from "./client-session";
+import { SurfaceTitleEncryptionAdapter } from "./surface-title-encryption";
 
 const identity = { ownerId: "owner-a", serverId: "server-a" } as const;
 const timestamp = "2026-08-20T12:00:00.000Z";
@@ -70,11 +71,21 @@ async function wire(
 
 describe("chat title encryption adapter", () => {
   it("opens ordinary, Task, archived, catalog, and tab-layout title copies", async () => {
-    const { adapter } = fixture();
+    const { adapter, service } = fixture();
+    const surfaceAdapter = new SurfaceTitleEncryptionAdapter({
+      service,
+      session,
+    });
     const chatId = "00000000-0000-4000-8000-000000000011";
     const taskId = "00000000-0000-4000-8000-000000000012";
+    const terminalId = "00000000-0000-4000-8000-000000000013";
     const chat = await wire(adapter, chatId, "Private agent");
     const task = await wire(adapter, taskId, "Private task", "task");
+    const terminalProtection = await surfaceAdapter.protect(
+      terminalId,
+      "Private terminal",
+      "terminal",
+    );
 
     await expect(adapter.open(chat)).resolves.toMatchObject({
       title: "Private agent",
@@ -126,9 +137,33 @@ describe("chat title encryption adapter", () => {
             titleProtection: chat.titleProtection,
             status: "idle",
           },
+          {
+            target: {
+              kind: "surface",
+              projectId: "project-a",
+              surfaceKind: "terminal",
+              surfaceId: terminalId,
+            },
+            placement: {
+              projectId: "project-a",
+              workerId: "worker-a",
+              projectReplicaId: "replica-a",
+              worktreeId: "worktree-a",
+              surface: { kind: "terminal", id: terminalId },
+            },
+            worker: { workerId: "worker-a", name: "Worker", online: true },
+            availability: "available",
+            unavailableReason: null,
+            resourceKind: "terminal",
+            title: null,
+            titleProtection: terminalProtection,
+            status: "idle",
+          },
         ],
       }),
-    ).resolves.toMatchObject({ targets: [{ title: "Private agent" }] });
+    ).resolves.toMatchObject({
+      targets: [{ title: "Private agent" }, { title: "Private terminal" }],
+    });
 
     await expect(
       adapter.openTabLayout({
@@ -148,9 +183,19 @@ describe("chat title encryption adapter", () => {
                 projectId: "project-a",
                 tabKind: "chat",
                 tabId: chatId,
-                title: null,
                 titleProtection: chat.titleProtection,
                 position: 0,
+                createdAt: timestamp,
+                updatedAt: timestamp,
+              },
+              {
+                tabKey: `terminal:${terminalId}`,
+                groupId: "group-a",
+                projectId: "project-a",
+                tabKind: "terminal",
+                tabId: terminalId,
+                titleProtection: terminalProtection,
+                position: 1,
                 createdAt: timestamp,
                 updatedAt: timestamp,
               },
@@ -162,7 +207,10 @@ describe("chat title encryption adapter", () => {
       }),
     ).resolves.toMatchObject({
       groups: [
-        { title: "Private agent", members: [{ title: "Private agent" }] },
+        {
+          title: "Private agent",
+          members: [{ title: "Private agent" }, { title: "Private terminal" }],
+        },
       ],
     });
   });
