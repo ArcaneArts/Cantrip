@@ -3638,7 +3638,11 @@ export function App() {
   );
   useAppActions({
     context: appActionContext,
-    runtime: isPopout ? "disabled" : desktopRuntime ? "desktop" : "browser",
+    runtime: isPopout
+      ? "disabled"
+      : desktopRuntime && isMacosDesktopRuntime()
+        ? "desktop"
+        : "browser",
     onAction: (actionId) => {
       const projectId = appActionContext.projectId;
       if (!projectId) return;
