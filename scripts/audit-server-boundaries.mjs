@@ -66,6 +66,86 @@ const prohibitedTaskProtocolSymbols = new Set([
   "taskQuestionSchema",
 ]);
 
+const prohibitedPrivateDisplayLabelProtocolSymbols = new Set([
+  "BrowserCreate",
+  "BrowserSummary",
+  "BrowserUpdate",
+  "ChatCreate",
+  "ChatFork",
+  "ChatSummary",
+  "ChatUpdate",
+  "CodeTabCreate",
+  "CodeTabSummary",
+  "CodeTabUpdate",
+  "ExplorerCreate",
+  "ExplorerSummary",
+  "ExplorerUpdate",
+  "ProjectSummary",
+  "ProjectTabLayoutSummary",
+  "ProjectViewCreate",
+  "ProjectViewSummary",
+  "ProjectViewUpdate",
+  "RemoteDesktopCreate",
+  "RemoteDesktopSummary",
+  "RemoteSurfaceCreate",
+  "RemoteSurfaceSummary",
+  "RemoteSurfaceUpdate",
+  "TabGroupSummary",
+  "TabGroupUpdate",
+  "TerminalCreate",
+  "TerminalSummary",
+  "TerminalUpdate",
+  "browserCreateSchema",
+  "browserListSchema",
+  "browserSummarySchema",
+  "browserUpdateSchema",
+  "chatCreateSchema",
+  "chatForkSchema",
+  "chatListSchema",
+  "chatSummarySchema",
+  "chatUpdateSchema",
+  "codeTabCreateSchema",
+  "codeTabListSchema",
+  "codeTabSummarySchema",
+  "codeTabUpdateSchema",
+  "explorerCreateSchema",
+  "explorerListSchema",
+  "explorerSummarySchema",
+  "explorerUpdateSchema",
+  "projectListSchema",
+  "projectSummarySchema",
+  "projectTabLayoutSummarySchema",
+  "projectViewCreateSchema",
+  "projectViewListSchema",
+  "projectViewSummarySchema",
+  "projectViewUpdateSchema",
+  "remoteDesktopCreateSchema",
+  "remoteDesktopListSchema",
+  "remoteDesktopSummarySchema",
+  "remoteSurfaceCreateSchema",
+  "remoteSurfaceListSchema",
+  "remoteSurfaceSummarySchema",
+  "remoteSurfaceUpdateSchema",
+  "tabGroupSummarySchema",
+  "tabGroupUpdateSchema",
+  "terminalCreateSchema",
+  "terminalListSchema",
+  "terminalSummarySchema",
+  "terminalUpdateSchema",
+]);
+
+const privateDisplayLabelTables = [
+  ["projects", "name"],
+  ["chats", "title"],
+  ["terminals", "title"],
+  ["explorers", "title"],
+  ["codeTabs", "title"],
+  ["browsers", "title"],
+  ["remoteSurfaces", "title"],
+  ["projectViews", "title"],
+  ["tabGroups", "title"],
+];
+
 async function typescriptFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const nested = await Promise.all(
@@ -152,6 +232,52 @@ async function taskProductionDependencyAudit() {
     productionCryptoImports: 0,
     prohibitedTrustedTaskImports: 0,
     taskProtocolSources: [...new Set(taskProtocolSources)].sort(),
+  };
+}
+
+async function privateDisplayLabelProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  const opaqueProtocolSources = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const protocolImports = namedImportsFrom(sourceText, "@cantrip/protocol");
+    if (
+      protocolImports.some(
+        (symbol) =>
+          /(?:Wire|Encrypted|Opaque)/u.test(symbol) &&
+          /(?:Browser|Chat|CodeTab|Explorer|Project|Remote|TabGroup|Terminal)/u.test(
+            symbol,
+          ),
+      )
+    ) {
+      opaqueProtocolSources.push(relativeFile);
+    }
+    for (const symbol of protocolImports) {
+      if (prohibitedPrivateDisplayLabelProtocolSymbols.has(symbol)) {
+        failures.push(
+          `${relativeFile}: prohibited trusted private-label symbol ${symbol}`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\b(?:decodePrivateDisplayLabelForClient|decryptPrivateDisplayLabel|encodePrivateDisplayLabelForClient)\b/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references trusted private-label code (${match[0]})`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the private-display-label E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    productionCryptoImports: 0,
+    prohibitedTrustedLabelImports: 0,
+    opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
   };
 }
 function routeBoundary(path) {
@@ -313,7 +439,7 @@ function taskRouteBoundaryAudit(routes) {
     [
       "POST",
       "/api/projects/:projectId/tasks",
-      "taskCreateSchema",
+      "encryptedTaskCreateSchema",
       "opaque-create",
     ],
     ["GET", "/api/tasks/:chatId", "taskOpaqueSummarySchema", "opaque-read"],
@@ -412,6 +538,233 @@ function taskRouteBoundaryAudit(routes) {
   );
 }
 
+function privateDisplayLabelRouteBoundaryAudit(routes) {
+  const requirements = [
+    ["GET", "/api/projects", "projectWireListSchema", "opaque-list"],
+    [
+      "POST",
+      "/api/projects/from-folder",
+      "encryptedManagedFolderProjectCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "POST",
+      "/api/projects/from-github",
+      "encryptedGithubProjectCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/chats",
+      "chatWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/archived-chats",
+      "archivedChatWireListSchema",
+      "opaque-archive-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/chats",
+      "encryptedChatCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/tasks",
+      "encryptedTaskCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/chats/:chatId",
+      "encryptedChatUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "POST",
+      "/api/chats/:chatId/fork",
+      "encryptedChatForkSchema",
+      "encrypted-copy",
+    ],
+    [
+      "POST",
+      "/api/chats/:chatId/restore",
+      "chatWireSummarySchema",
+      "opaque-restore",
+    ],
+    [
+      "POST",
+      "/api/chats/:chatId/console",
+      "encryptedLinkedConsoleCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/terminals",
+      "terminalWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/terminals",
+      "encryptedTerminalCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/terminals/:terminalId",
+      "encryptedTerminalUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/explorers",
+      "explorerWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/explorers",
+      "encryptedExplorerCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/explorers/:explorerId",
+      "encryptedExplorerUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/code-tabs",
+      "codeTabWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/code-tabs",
+      "encryptedCodeTabCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/code-tabs/:codeTabId",
+      "encryptedCodeTabUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/browsers",
+      "browserWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/browsers",
+      "encryptedBrowserCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/browsers/:browserId",
+      "encryptedBrowserUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/remote-desktops",
+      "remoteDesktopWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/remote-desktops",
+      "encryptedRemoteDesktopCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "GET",
+      "/api/remote-desktops/:desktopId",
+      "remoteDesktopWireSummarySchema",
+      "opaque-read",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/remote-surfaces",
+      "remoteSurfaceWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/remote-surfaces",
+      "encryptedRemoteSurfaceCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/remote-surfaces/:surfaceId",
+      "encryptedRemoteSurfaceUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/views",
+      "projectViewWireListSchema",
+      "opaque-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/views",
+      "encryptedProjectViewCreateSchema",
+      "encrypted-create",
+    ],
+    [
+      "PATCH",
+      "/api/project-views/:viewId",
+      "encryptedProjectViewUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/tab-groups",
+      "projectTabLayoutWireSummarySchema",
+      "opaque-layout",
+    ],
+    [
+      "PATCH",
+      "/api/projects/:projectId/tab-groups/:groupId",
+      "encryptedTabGroupUpdateSchema",
+      "encrypted-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/execution-targets",
+      "executionTargetWireCatalogSchema",
+      "opaque-target-catalog",
+    ],
+  ];
+  const contracts = [];
+  for (const [method, path, marker, contract] of requirements) {
+    const route = routes.find(
+      (candidate) => candidate.method === method && candidate.path === path,
+    );
+    if (!route || !route.source.includes(marker)) {
+      throw new Error(
+        `Private-label E2EE route contract is missing ${method} ${path} (${marker}).`,
+      );
+    }
+    contracts.push({ contract, method, path });
+  }
+  return contracts.sort(
+    (left, right) =>
+      left.path.localeCompare(right.path) ||
+      left.method.localeCompare(right.method),
+  );
+}
+
 function methodBody(sourceText, methodName) {
   const expression = new RegExp(
     `^  (?:private\\s+)?async\\s+${methodName}\\s*\\(`,
@@ -475,6 +828,100 @@ async function taskRepositoryBoundaryAudit() {
     "projectAutomation.target:agent-only",
     "updateQueuedPrompt:agent-only",
   ];
+}
+
+function tableInitializer(sourceText, declarationName) {
+  const declaration = sourceText.indexOf(`export const ${declarationName}`);
+  if (declaration < 0) throw new Error(`Missing ${declarationName}.`);
+  const start = sourceText.indexOf(
+    "(",
+    sourceText.indexOf("pgTable", declaration),
+  );
+  if (start < 0)
+    throw new Error(`Missing pgTable initializer for ${declarationName}.`);
+  const end = matchingDelimiter(sourceText, start, "(", ")");
+  return sourceText.slice(start, end + 1);
+}
+
+async function privateDisplayLabelRepositoryBoundaryAudit() {
+  const schemaPath = resolve(serverSourcePath, "db/schema.ts");
+  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
+  const tabLayoutsPath = resolve(serverSourcePath, "db/tab-layouts.ts");
+  const secondaryPaths = [
+    resolve(serverSourcePath, "db/chat-import-jobs.ts"),
+    resolve(serverSourcePath, "db/chat-relocation-jobs.ts"),
+    resolve(serverSourcePath, "db/project-automations.ts"),
+  ];
+  const [schemaText, repositoryText, tabLayoutsText, ...secondaryTexts] =
+    await Promise.all(
+      [schemaPath, repositoryPath, tabLayoutsPath, ...secondaryPaths].map(
+        (path) => readFile(path, "utf8"),
+      ),
+    );
+  const failures = [];
+  for (const [table, legacyField] of privateDisplayLabelTables) {
+    const initializer = tableInitializer(schemaText, table);
+    if (
+      !/\bprotectedLabel\s*:\s*jsonb\(["']protected_label["']\)/u.test(
+        initializer,
+      )
+    ) {
+      failures.push(`${table}: missing protected_label JSONB storage`);
+    }
+    if (new RegExp(`\\b${legacyField}\\s*:`, "u").test(initializer)) {
+      failures.push(`${table}: legacy plaintext ${legacyField} field returned`);
+    }
+  }
+  const persistenceText = `${repositoryText}\n${tabLayoutsText}`;
+  for (const [table, legacyField] of privateDisplayLabelTables) {
+    if (
+      new RegExp(
+        `schema\\.${table}\\.${legacyField}\\b|schema\\.${table}\\[(["'])${legacyField}\\1\\]`,
+        "u",
+      ).test(persistenceText)
+    ) {
+      failures.push(`${table}: repository references plaintext ${legacyField}`);
+    }
+  }
+  for (const marker of [
+    "toProjectWireSummary",
+    "toChatWireSummary",
+    "toTerminalWireSummary",
+    "toExplorerWireSummary",
+    "toCodeTabWireSummary",
+    "toBrowserWireSummary",
+    "toRemoteSurfaceWireSummary",
+    "toRemoteDesktopWireSummary",
+    "toProjectViewWireSummary",
+  ]) {
+    if (!persistenceText.includes(marker)) {
+      failures.push(`repository: missing opaque serializer ${marker}`);
+    }
+  }
+  const secondaryText = secondaryTexts.join("\n");
+  if (
+    !secondaryText.includes("transcript.titleProtection") ||
+    !secondaryText.includes("titleProtection: chat.protectedLabel")
+  ) {
+    failures.push(
+      "secondary jobs: import or relocation stopped copying opaque title protection",
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Private-label repository boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: privateDisplayLabelTables.map(([table]) => table),
+    guards: [
+      "covered-tables:protected-label-jsonb-only",
+      "repository:wire-only-label-serialization",
+      "tab-layouts:opaque-member-and-group-labels",
+      "chat-imports:opaque-title-copy",
+      "chat-relocations:opaque-title-copy",
+    ],
+  };
 }
 
 function literalValuesInInitializer(sourceText, declarationName, opener) {
@@ -553,6 +1000,8 @@ async function buildInventory() {
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
+    privateDisplayLabelDependencies,
+    privateDisplayLabelRepository,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
     readFile(protocolPath, "utf8"),
@@ -560,9 +1009,13 @@ async function buildInventory() {
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
+    privateDisplayLabelProductionDependencyAudit(),
+    privateDisplayLabelRepositoryBoundaryAudit(),
   ]);
   const parsedRoutes = parseRoutes(sourceText);
   const taskRouteContracts = taskRouteBoundaryAudit(parsedRoutes);
+  const privateDisplayLabelRouteContracts =
+    privateDisplayLabelRouteBoundaryAudit(parsedRoutes);
   const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
   routes.sort(
     (left, right) =>
@@ -605,7 +1058,7 @@ async function buildInventory() {
   );
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     sources: {
       applicationRoutes: "cantrip_server/src/app.ts",
       liveProtocol: "packages/protocol/src/live.ts",
@@ -649,6 +1102,12 @@ async function buildInventory() {
       ...taskDependencies,
       repositoryGuards: taskRepositoryGuards,
       routeContracts: taskRouteContracts,
+    },
+    privateDisplayLabelE2eeBoundary: {
+      status: "enforced",
+      ...privateDisplayLabelDependencies,
+      ...privateDisplayLabelRepository,
+      routeContracts: privateDisplayLabelRouteContracts,
     },
     externalTransports: [
       {

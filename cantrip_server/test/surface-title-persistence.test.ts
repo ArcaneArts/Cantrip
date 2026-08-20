@@ -12,15 +12,14 @@ import {
   clearSensitiveBytes,
   deriveComponentKey,
   encryptPrivateDisplayLabel,
+  encryptTaskProtectedContent,
   generateAccountMasterKey,
 } from "../../packages/crypto/src/index.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
-
-it("persists surface and project-view titles only as authenticated ciphertext", async () => {
+it("persists every private display label only as authenticated ciphertext", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-surface-title-persistence-"),
   );
@@ -37,11 +36,18 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
     port: 4310,
     workerToken: "test-worker-token",
   };
+  const sentinel = "PRIVATE-LABEL-SENTINEL";
   const accountMasterKey = generateAccountMasterKey();
   const componentKey = deriveComponentKey({
     accountMasterKey,
     ownerId: LOCAL_USER_ID,
     component: "private-surface-metadata",
+    keyRevision: 1,
+  });
+  const taskKey = deriveComponentKey({
+    accountMasterKey,
+    ownerId: LOCAL_USER_ID,
+    component: "task-content",
     keyRevision: 1,
   });
   const protectedTitle = async (
@@ -54,9 +60,12 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
       rowId,
       keyRevision: 1,
       componentKey,
-      label: `SURFACE-TITLE-SENTINEL-${recordKind}`,
+      label: `${sentinel}-${recordKind}`,
     });
   const ids = {
+    project: randomUUID(),
+    chat: randomUUID(),
+    task: randomUUID(),
     terminal: randomUUID(),
     explorer: randomUUID(),
     code: randomUUID(),
@@ -96,7 +105,8 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
       LOCAL_USER_ID,
       {
         workerId: "surface-title-worker",
-        ...protectedProjectFields(),
+        id: ids.project,
+        nameProtection: await protectedTitle("project", ids.project),
         repositoryId: "surface-title-repository",
         nameWithOwner: "ArcaneArts/Cantrip",
         url: "https://github.com/ArcaneArts/Cantrip",
@@ -115,25 +125,99 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
       },
     );
 
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      project.id,
+      {
+        id: ids.chat,
+        titleProtection: await protectedTitle("chat", ids.chat),
+        worktreeMode: "agent-managed",
+      },
+    );
+    const taskContent = {
+      version: 1 as const,
+      classification: {
+        state: "draft" as const,
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        planAuthorship: "agent" as const,
+        planningRound: 0,
+        hasPlan: false,
+        hasQuestions: false,
+        hasFinalPlan: false,
+        hasGoalPrompt: false,
+        lastError: null,
+      },
+      briefMarkdown: `${sentinel}-task-content`,
+      planMarkdown: null,
+      currentQuestions: [],
+      currentAnswers: [],
+      additionalDirection: "",
+      finalPlanMarkdown: null,
+      goalPrompt: null,
+      lastError: null,
+    };
+    const task = await database.repository.createTask(
+      LOCAL_USER_ID,
+      project.id,
+      {
+        chatId: ids.task,
+        titleProtection: await protectedTitle("chat", ids.task),
+        task: {
+          classification: taskContent.classification,
+          protectedContent: await encryptTaskProtectedContent({
+            ownerId: LOCAL_USER_ID,
+            chatId: ids.task,
+            keyRevision: 1,
+            componentKey: taskKey,
+            content: taskContent,
+          }),
+        },
+      },
+    );
+    expect(chat).not.toBeNull();
+    expect(task).not.toBeNull();
+
+    const terminal = await database.repository.createTerminal(
+      LOCAL_USER_ID,
+      project.id,
+      {
+        id: ids.terminal,
+        titleProtection: await protectedTitle("terminal", ids.terminal),
+      },
+      () => true,
+    );
+    const initialLayout = await database.repository.tabLayouts.get(
+      LOCAL_USER_ID,
+      project.id,
+    );
+    const groupId = initialLayout!.groups.find(({ members }) =>
+      members.some(({ tabId }) => tabId === ids.terminal),
+    )!.id;
+    const explorer = await database.repository.createExplorer(
+      LOCAL_USER_ID,
+      project.id,
+      {
+        id: ids.explorer,
+        titleProtection: await protectedTitle("explorer", ids.explorer),
+        tabGroupId: groupId,
+      },
+      () => true,
+    );
+    const groupedLayout = await database.repository.tabLayouts.get(
+      LOCAL_USER_ID,
+      project.id,
+    );
+    await database.repository.tabLayouts.updateGroup(
+      LOCAL_USER_ID,
+      project.id,
+      groupId,
+      {
+        revision: groupedLayout!.revision,
+        titleProtection: await protectedTitle("tab-group", groupId),
+      },
+    );
     const created = await Promise.all([
-      database.repository.createTerminal(
-        LOCAL_USER_ID,
-        project.id,
-        {
-          id: ids.terminal,
-          titleProtection: await protectedTitle("terminal", ids.terminal),
-        },
-        () => true,
-      ),
-      database.repository.createExplorer(
-        LOCAL_USER_ID,
-        project.id,
-        {
-          id: ids.explorer,
-          titleProtection: await protectedTitle("explorer", ids.explorer),
-        },
-        () => true,
-      ),
       database.repository.createCodeTab(
         LOCAL_USER_ID,
         project.id,
@@ -177,9 +261,14 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
         titleProtection: await protectedTitle("project-view", ids.view),
       }),
     ]);
+    expect(terminal).not.toBeNull();
+    expect(explorer).not.toBeNull();
     expect(created.every(Boolean)).toBe(true);
-    expect(JSON.stringify(created)).not.toContain("SURFACE-TITLE-SENTINEL");
+    expect(
+      JSON.stringify([project, chat, task, terminal, explorer, created]),
+    ).not.toContain(sentinel);
   } finally {
+    clearSensitiveBytes(taskKey);
     clearSensitiveBytes(componentKey);
     clearSensitiveBytes(accountMasterKey);
     await database.close();
@@ -187,20 +276,34 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
 
   const scan = new PGlite(path.join(dataDirectory, "server-db"));
   try {
+    const databaseTables = await scan.query<{ tablename: string }>(`
+      SELECT tablename
+      FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY tablename
+    `);
+    for (const { tablename } of databaseTables.rows) {
+      const rows = await scan.query<{ record: string }>(
+        `SELECT row_to_json(row)::text AS record FROM "${tablename}" row`,
+      );
+      expect(JSON.stringify(rows.rows), tablename).not.toContain(sentinel);
+    }
+
     for (const table of [
+      "projects",
+      "chats",
       "terminals",
       "explorers",
       "code_tabs",
       "browsers",
       "project_views",
       "remote_surfaces",
+      "tab_groups",
     ]) {
       const rows = await scan.query<{ record: string }>(
         `SELECT row_to_json(row)::text AS record FROM ${table} row`,
       );
-      expect(JSON.stringify(rows.rows), table).not.toContain(
-        "SURFACE-TITLE-SENTINEL",
-      );
+      expect(JSON.stringify(rows.rows), table).not.toContain(sentinel);
       const columns = await scan.query<{ column_name: string }>(
         `SELECT column_name FROM information_schema.columns
          WHERE table_schema = 'public' AND table_name = $1`,
@@ -208,7 +311,9 @@ it("persists surface and project-view titles only as authenticated ciphertext", 
       );
       const names = columns.rows.map(({ column_name }) => column_name);
       expect(names, table).toContain("protected_label");
-      expect(names, table).not.toContain("title");
+      expect(names, table).not.toContain(
+        table === "projects" ? "name" : "title",
+      );
     }
 
     const remoteLabels = await scan.query<{

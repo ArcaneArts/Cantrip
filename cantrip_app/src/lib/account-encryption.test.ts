@@ -42,6 +42,10 @@ const testKdf = () =>
 class MemoryDeviceKeyStore implements ClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
 
+  seed(target: ClientEncryptionIdentity, record: unknown): void {
+    this.records.set(this.key(target), record);
+  }
+
   delete(target: ClientEncryptionIdentity): Promise<void> {
     this.records.delete(this.key(target));
     return Promise.resolve();
@@ -371,6 +375,47 @@ describe("account encryption initialization", () => {
         authMode: "accounts",
         identity,
         service: newDevice,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+  });
+
+  it("replaces an unrecoverable local device record and requires authorization once", async () => {
+    const api = new MemoryAccountEncryptionApi(password);
+    await prepareClientEncryption({
+      api,
+      authMode: "accounts",
+      identity,
+      password,
+      passwordKdf: testKdf(),
+      service: new ClientEncryptionService(new MemoryDeviceKeyStore()),
+    });
+    const store = new MemoryDeviceKeyStore();
+    store.seed(identity, { version: 1 });
+    const replacement = new ClientEncryptionService(store);
+
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        service: replacement,
+      }),
+    ).resolves.toEqual({
+      credential: "password",
+      reason: "authorize-device",
+      status: "credential-required",
+    });
+    expect(replacement.getSnapshot()).toMatchObject({
+      clientId: expect.any(String),
+      status: "locked",
+    });
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        password,
+        service: replacement,
       }),
     ).resolves.toEqual({ status: "ready" });
   });
