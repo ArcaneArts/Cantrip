@@ -1,9 +1,4 @@
-import {
-  clearSensitiveBytes,
-  encodeBase64Url,
-  generateAccountMasterKey,
-  randomBytes,
-} from "@cantrip/crypto";
+import { clearSensitiveBytes, generateAccountMasterKey } from "@cantrip/crypto";
 import type { AuthMode } from "@cantrip/protocol";
 import type {
   AccountEncryptionProfile,
@@ -38,7 +33,7 @@ import {
 } from "./encryption-api";
 import { CantripApiError } from "./api-client";
 
-export type ClientEncryptionCredential = "password" | "recovery-secret";
+export type ClientEncryptionCredential = "password";
 
 export type ClientEncryptionAccess =
   | { status: "ready" }
@@ -46,8 +41,7 @@ export type ClientEncryptionAccess =
       credential: ClientEncryptionCredential;
       reason: "authorize-device" | "initialize";
       status: "credential-required";
-    }
-  | { recoverySecret: string; status: "recovery-created" };
+    };
 
 export interface AccountEncryptionApi {
   approvePrincipal(
@@ -297,7 +291,7 @@ async function unlockExistingProfile(input: {
   if (!input.profile.passwordWrappedMasterKey) {
     throw new ClientEncryptionError(
       "locked",
-      "This account does not have password or recovery-key access configured.",
+      "This account does not have password access configured.",
     );
   }
   if (input.authMode !== "none") {
@@ -318,27 +312,25 @@ async function unlockExistingProfile(input: {
   return { status: "ready" };
 }
 
-function createRecoverySecret(): string {
-  const bytes = randomBytes(32);
-  try {
-    return `ctr1_${encodeBase64Url(bytes)}`;
-  } finally {
-    clearSensitiveBytes(bytes);
-  }
-}
-
 async function initializeProfile(input: {
   api: AccountEncryptionApi;
   authMode: AuthMode;
   device: ClientDeviceDescriptor;
   identity: ClientEncryptionIdentity;
-  password: string;
+  password?: string;
   passwordKdf?: PasswordKdfParameters;
-  recoverySecret: string | null;
   service: ClientEncryptionService;
 }): Promise<ClientEncryptionAccess> {
-  if (input.authMode !== "none") {
-    await input.api.reauthenticate(input.password);
+  const accountPassword =
+    input.authMode === "none" ? undefined : input.password;
+  if (input.authMode !== "none" && !accountPassword) {
+    throw new ClientEncryptionError(
+      "locked",
+      "Normal sign-in is required to initialize private data encryption.",
+    );
+  }
+  if (accountPassword) {
+    await input.api.reauthenticate(accountPassword);
   }
   const accountMasterKey = generateAccountMasterKey();
   try {
@@ -347,16 +339,18 @@ async function initializeProfile(input: {
       identity: input.identity,
       masterKeyRevision: 1,
     });
-    const passwordWrappedMasterKey = await input.service.createPasswordWrapper({
-      identity: input.identity,
-      password: input.password,
-      kdf: input.passwordKdf,
-    });
+    const passwordWrappedMasterKey = accountPassword
+      ? await input.service.createPasswordWrapper({
+          identity: input.identity,
+          password: accountPassword,
+          kdf: input.passwordKdf,
+        })
+      : null;
     const result = await input.api.initializeProfile({
       profile: {
         formatVersion: 1,
         activeMasterKeyRevision: 1,
-        passwordKdf: passwordWrappedMasterKey.kdf,
+        passwordKdf: passwordWrappedMasterKey?.kdf ?? null,
         passwordWrappedMasterKey,
         payloadMigrationStatus: "pending",
       },
@@ -372,14 +366,20 @@ async function initializeProfile(input: {
     if (!result.created) {
       input.service.lock();
       if (input.authMode === "none") {
-        return {
-          credential: "recovery-secret",
-          reason: "authorize-device",
-          status: "credential-required",
-        };
+        throw new ClientEncryptionError(
+          "locked",
+          "Authorize this device from an existing local device or reset the local encrypted data.",
+        );
+      }
+      if (!accountPassword) {
+        throw new ClientEncryptionError(
+          "locked",
+          "Normal sign-in is required to authorize this device.",
+        );
       }
       return unlockExistingProfile({
         ...input,
+        password: accountPassword,
         profile: result.profile,
         principals: await input.api.listPrincipals(),
       });
@@ -390,12 +390,7 @@ async function initializeProfile(input: {
       identity: input.identity,
       principal: result.principal,
     });
-    return input.recoverySecret
-      ? {
-          recoverySecret: input.recoverySecret,
-          status: "recovery-created",
-        }
-      : { status: "ready" };
+    return { status: "ready" };
   } finally {
     clearSensitiveBytes(accountMasterKey);
   }
@@ -418,7 +413,7 @@ async function prepareClientEncryptionOnce(
     }
     // A malformed nonextractable key cannot be repaired or exported. Replace
     // only the local registration; the new key must still be authorized by the
-    // password/recovery wrapper before it can unwrap the Account Master Key.
+    // login-password wrapper before it can unwrap the Account Master Key.
     device = await service.replaceDevice(input.identity);
   }
   const profileState = await api.getProfile();
@@ -431,16 +426,13 @@ async function prepareClientEncryptionOnce(
         status: "credential-required",
       };
     }
-    const recoverySecret =
-      input.authMode === "none" ? createRecoverySecret() : null;
     return initializeProfile({
       api,
       authMode: input.authMode,
       device,
       identity: input.identity,
-      password: recoverySecret ?? input.password!,
+      password: input.password,
       passwordKdf: input.passwordKdf,
-      recoverySecret,
       service,
     });
   }
@@ -470,8 +462,14 @@ async function prepareClientEncryptionOnce(
   }
 
   if (!input.password) {
+    if (input.authMode === "none") {
+      throw new ClientEncryptionError(
+        "locked",
+        "Authorize this device from an existing local device or reset the local encrypted data.",
+      );
+    }
     return {
-      credential: input.authMode === "none" ? "recovery-secret" : "password",
+      credential: "password",
       reason: "authorize-device",
       status: "credential-required",
     };
