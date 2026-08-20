@@ -750,6 +750,29 @@ export function WorkerSettings() {
 
   return (
     <div className="grid w-full gap-4">
+      <WorkerNetworkGraph
+        currentClient={{
+          connected: liveStatus === "live",
+          deviceLabel: currentClientDeviceLabel(
+            desktopApp,
+            navigator.userAgent,
+          ),
+          email: bootstrap.data?.auth.currentUser?.email,
+          userName: bootstrap.data?.auth.currentUser?.displayName,
+        }}
+        localWorkerIds={localWorkerIds}
+        server={{
+          deploymentMode: bootstrap.data?.server.deploymentMode,
+          id: bootstrap.data?.server.id,
+          kind: activeConnection.kind,
+          name: activeConnection.name,
+          url: serverUrl,
+          version: bootstrap.data?.server.version.version,
+        }}
+        sessions={accountSessions.data ?? []}
+        workers={workers.data ?? []}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
         <SettingsSearchField
           ariaLabel="Search workers"
@@ -998,28 +1021,6 @@ export function WorkerSettings() {
             <span className="sr-only">Refresh workers</span>
           </Button>
         </div>
-        <WorkerNetworkGraph
-          currentClient={{
-            connected: liveStatus === "live",
-            deviceLabel: currentClientDeviceLabel(
-              desktopApp,
-              navigator.userAgent,
-            ),
-            email: bootstrap.data?.auth.currentUser?.email,
-            userName: bootstrap.data?.auth.currentUser?.displayName,
-          }}
-          localWorkerIds={localWorkerIds}
-          server={{
-            deploymentMode: bootstrap.data?.server.deploymentMode,
-            id: bootstrap.data?.server.id,
-            kind: activeConnection.kind,
-            name: activeConnection.name,
-            url: serverUrl,
-            version: bootstrap.data?.server.version.version,
-          }}
-          sessions={accountSessions.data ?? []}
-          workers={workers.data ?? []}
-        />
         <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1.2fr)_108px] gap-3 border-t px-3 py-2 text-[10px] uppercase tracking-wide text-muted-foreground lg:grid">
           <span>Worker</span>
           <span>Runtime</span>
