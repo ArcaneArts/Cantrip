@@ -43,7 +43,8 @@ describe("GitWorkbenchToolbar", () => {
       <GitWorkbenchToolbar disabled tools={tools} />,
     );
 
-    expect(markup).toContain('aria-pressed="true"');
+    expect(markup).toContain('aria-selected="true"');
+    expect(markup).toContain('aria-label="Git tools"');
     expect(markup).toContain('aria-label="Operations active"');
     expect(markup.match(/disabled=""/g)).toHaveLength(gitWorkbenchTools.length);
   });

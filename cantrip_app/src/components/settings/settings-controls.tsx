@@ -1,12 +1,16 @@
 import { Search, X, type LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  NavigationTabBar,
+  type NavigationTab,
+} from "@/components/ui/navigation-tab-bar";
 import { cn } from "@/lib/utils";
 
-export interface SettingsTab<TabId extends string> {
+export interface SettingsTab<
+  TabId extends string,
+> extends NavigationTab<TabId> {
   icon: LucideIcon;
-  id: TabId;
-  label: string;
 }
 
 export function SettingsTabBar<TabId extends string>({
@@ -21,32 +25,13 @@ export function SettingsTabBar<TabId extends string>({
   tabs: readonly SettingsTab<TabId>[];
 }) {
   return (
-    <div
-      aria-label={ariaLabel}
-      className="flex w-full min-w-0 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
-      role="tablist"
-    >
-      {tabs.map(({ icon: Icon, id, label }) => (
-        <Button
-          key={id}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === id}
-          size="sm"
-          variant="ghost"
-          className={cn(
-            "h-10 shrink-0 rounded-none border-b-2 px-2.5 text-xs",
-            activeTab === id
-              ? "border-foreground text-foreground"
-              : "border-transparent text-muted-foreground",
-          )}
-          onClick={() => onTabChange(id)}
-        >
-          <Icon className="size-3.5" />
-          {label}
-        </Button>
-      ))}
-    </div>
+    <NavigationTabBar
+      activeTab={activeTab}
+      ariaLabel={ariaLabel}
+      className="w-full border-b px-4 sm:px-6"
+      tabs={tabs}
+      onTabChange={onTabChange}
+    />
   );
 }
 

@@ -21,11 +21,16 @@ import {
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  CircleCheck,
+  CircleDot,
   FileDiff,
   GitBranch,
   GitCommitHorizontal,
   GitFork,
+  GitPullRequest,
+  History,
   Loader2,
+  Network,
   Plus,
   RefreshCw,
   ScanLine,
@@ -54,6 +59,10 @@ import {
   unlockProjectWorktree,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import {
+  NavigationTabBar,
+  type NavigationTab,
+} from "@/components/ui/navigation-tab-bar";
 import {
   Dialog,
   DialogContent,
@@ -109,6 +118,18 @@ import {
   GitRepositoryGraphView,
   type GitRepositoryGraphStatus,
 } from "./git-graph";
+
+const gitViewTabs: readonly NavigationTab<GitViewSection>[] = [
+  { id: "history", label: "History", icon: History },
+  { id: "issues", label: "Issues", icon: CircleDot },
+  { id: "prs", label: "PRs", icon: GitPullRequest },
+  { id: "graph", label: "Graph", icon: Network },
+];
+
+const gitIssueStateTabs: readonly NavigationTab<GithubIssueState>[] = [
+  { id: "open", label: "Open", icon: CircleDot },
+  { id: "closed", label: "Closed", icon: CircleCheck },
+];
 
 const laneColors = [
   "#22d3ee",
@@ -994,30 +1015,18 @@ export function GitHistoryView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-slot="git-history">
-      <div className="relative flex h-8 shrink-0 items-center gap-2 px-3">
-        <div className="flex rounded-md bg-muted/50 p-px">
-          {(["history", "issues", "prs", "graph"] as const).map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              aria-pressed={candidate === section}
-              disabled={
-                (candidate === "issues" || candidate === "prs") &&
-                !project.github
-              }
-              onClick={() => setSection(candidate)}
-              className={cn(
-                "h-6 rounded px-2.5 py-0 text-[11px] leading-none text-muted-foreground transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-                candidate === section &&
-                  "bg-background font-medium text-foreground shadow-sm",
-              )}
-            >
-              {candidate === "prs"
-                ? "PRs"
-                : candidate[0]!.toUpperCase() + candidate.slice(1)}
-            </button>
-          ))}
-        </div>
+      <div className="relative flex h-10 shrink-0 items-center gap-2 px-3">
+        <NavigationTabBar<GitViewSection>
+          activeTab={section}
+          ariaLabel="Git sections"
+          className="w-fit max-w-full"
+          tabs={gitViewTabs.map((tab) => ({
+            ...tab,
+            disabled:
+              (tab.id === "issues" || tab.id === "prs") && !project.github,
+          }))}
+          onTabChange={setSection}
+        />
 
         <div className="ml-auto flex items-center gap-1">
           {section === "history" && standalone ? (
@@ -1116,23 +1125,13 @@ export function GitHistoryView({
             />
           ) : null}
           {section === "issues" || section === "prs" ? (
-            <div className="mr-0.5 flex rounded-md bg-muted/50 p-px">
-              {(["open", "closed"] as const).map((candidate) => (
-                <button
-                  key={candidate}
-                  type="button"
-                  aria-pressed={candidate === issueState}
-                  onClick={() => setIssueState(candidate)}
-                  className={cn(
-                    "h-6 rounded px-2.5 py-0 text-[11px] leading-none capitalize text-muted-foreground",
-                    candidate === issueState &&
-                      "bg-background font-medium text-foreground shadow-sm",
-                  )}
-                >
-                  {candidate}
-                </button>
-              ))}
-            </div>
+            <NavigationTabBar<GithubIssueState>
+              activeTab={issueState}
+              ariaLabel={`${section === "prs" ? "Pull request" : "Issue"} state`}
+              className="mr-0.5 w-fit max-w-full"
+              tabs={gitIssueStateTabs}
+              onTabChange={setIssueState}
+            />
           ) : null}
           {standalone || section !== "history" ? (
             <Button

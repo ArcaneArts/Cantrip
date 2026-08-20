@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { NavigationTabBar } from "@/components/ui/navigation-tab-bar";
 import {
   StyledDropdownMenuContent,
   StyledDropdownMenuItem,
@@ -115,26 +116,18 @@ export function GitWorkbenchToolbar({
     );
   }
 
-  return gitWorkbenchTools.map(({ icon: Icon, id, label }) => {
-    const tool = tools[id];
-    return (
-      <Button
-        key={id}
-        size="sm"
-        variant={tool.active ? "outline" : "ghost"}
-        className="h-6 gap-1 px-2 text-[11px]"
-        disabled={disabled}
-        aria-pressed={tool.active}
-        onClick={tool.onSelect}
-      >
-        <Icon className="size-3" /> {label}
-        {tool.attention ? (
-          <span
-            aria-label={`${label} active`}
-            className="size-1.5 rounded-full bg-amber-500"
-          />
-        ) : null}
-      </Button>
-    );
-  });
+  const activeTool = gitWorkbenchTools.find(({ id }) => tools[id].active);
+  return (
+    <NavigationTabBar<GitWorkbenchTool>
+      activeTab={activeTool?.id ?? null}
+      ariaLabel="Git tools"
+      className="w-fit max-w-full"
+      disabled={disabled}
+      tabs={gitWorkbenchTools.map((tool) => ({
+        ...tool,
+        attention: tools[tool.id].attention,
+      }))}
+      onTabChange={(id) => tools[id].onSelect()}
+    />
+  );
 }
