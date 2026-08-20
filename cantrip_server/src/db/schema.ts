@@ -17,6 +17,7 @@ import type {
   CodeGraphWorkerStatus,
   CodexRuntimeReport,
   DirectBrokerAdvertisement,
+  EncryptedChatMessageProtectedContent,
   EncryptedTaskMessageProtectedContent,
   GitManagedOperationState,
   GitManagedOperationType,
@@ -78,6 +79,7 @@ import type {
   WorkerComponentKeyGrant,
   WorkerEncryptionStatus,
 } from "@cantrip/protocol/encryption";
+import type { QueuedPromptOpaqueContent } from "@cantrip/protocol/communication-content";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -2696,6 +2698,12 @@ export const chatMessages = pgTable(
     role: text("role").notNull(),
     mode: text("mode").$type<ChatTurnMode>().notNull().default("default"),
     content: jsonb("content").$type<ChatMessageContent>(),
+    protectedContent:
+      jsonb("protected_content").$type<EncryptedChatMessageProtectedContent>(),
+    attachmentIds: jsonb("attachment_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     taskProtectedContent: jsonb(
       "task_protected_content",
     ).$type<EncryptedTaskMessageProtectedContent>(),
@@ -2729,7 +2737,7 @@ export const chatMessages = pgTable(
     ),
     check(
       "chat_messages_content_shape_check",
-      sql`(${table.content} IS NOT NULL AND ${table.taskProtectedContent} IS NULL) OR (${table.content} IS NULL AND ${table.taskProtectedContent} IS NOT NULL)`,
+      sql`(CASE WHEN ${table.content} IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN ${table.protectedContent} IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN ${table.taskProtectedContent} IS NOT NULL THEN 1 ELSE 0 END) = 1`,
     ),
   ],
 );
@@ -3305,7 +3313,8 @@ export const queuedPrompts = pgTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
-    text: text("text").notNull(),
+    text: text("text"),
+    opaqueContent: jsonb("opaque_content").$type<QueuedPromptOpaqueContent>(),
     mode: text("mode").$type<ChatTurnMode>().notNull().default("default"),
     attachments: jsonb("attachments")
       .$type<ChatAttachmentSummary[]>()
@@ -3332,6 +3341,10 @@ export const queuedPrompts = pgTable(
     uniqueIndex("queued_prompts_chat_idempotency_unique").on(
       table.chatId,
       table.idempotencyKey,
+    ),
+    check(
+      "queued_prompts_content_shape_check",
+      sql`(${table.text} IS NOT NULL AND ${table.opaqueContent} IS NULL) OR (${table.text} IS NULL AND ${table.opaqueContent} IS NOT NULL)`,
     ),
   ],
 );

@@ -113,6 +113,7 @@ import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
 import { requestResponse } from "@/lib/api-client";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import {
   imageInputCapabilityMessage,
   resolveImageInputCapability,
@@ -1005,6 +1006,10 @@ function ChatTranscript({
   syncEnabled: boolean;
 }) {
   const queryClient = useQueryClient();
+  const workers = useQuery({
+    queryFn: getWorkers,
+    queryKey: ["workers"],
+  });
   const liveStatus = useAppLiveStatus();
   const chatResourcesLive = liveStatus === "live";
   const relocationActive = isChatRelocationActive(relocationJob);
@@ -1420,13 +1425,13 @@ function ChatTranscript({
     }
   };
   const send = useMutation({
-    mutationFn: ({
-      attachmentIds,
+    mutationFn: async ({
+      attachments,
       mode,
       reasoningEffort,
       text,
     }: {
-      attachmentIds: string[];
+      attachments: ChatAttachmentSummary[];
       mode: ChatTurnMode;
       reasoningEffort: ReasoningEffort | null;
       text: string;
@@ -1434,18 +1439,23 @@ function ChatTranscript({
       const startedAt = performance.now();
       clientLogger.info("Chat turn submission started", {
         chatId: chat.id,
-        counts: { attachments: attachmentIds.length },
+        counts: { attachments: attachments.length },
         event: "chat.turn.submit.started",
         mode,
         operation: "submit-turn",
         projectId: chat.projectId,
         subsystem: "chat",
       });
+      await ensureChatWorkerEncryption({
+        worker: workers.data?.find(
+          ({ workerId }) => workerId === chat.activeWorkerId,
+        ),
+      });
       return startTurn(
         chat.id,
         text,
         selectedModelId,
-        attachmentIds,
+        attachments,
         mode,
         reasoningEffort,
       ).then(
@@ -1497,13 +1507,13 @@ function ChatTranscript({
     }: {
       id: string;
       input: {
-        attachmentIds?: string[];
+        attachments?: ChatAttachmentSummary[];
         text?: string;
         mode?: ChatTurnMode;
         reasoningEffort?: ReasoningEffort | null;
         frozen?: boolean;
       };
-    }) => updateQueuedPrompt(id, input),
+    }) => updateQueuedPrompt(chat.id, id, input),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["prompt-queue", chat.id] }),
@@ -1780,9 +1790,7 @@ function ChatTranscript({
             text,
             mode: composerMode,
             reasoningEffort: composerReasoningEffort,
-            attachmentIds: readyAttachments.map(
-              ({ attachment }) => attachment.id,
-            ),
+            attachments: readyAttachments.map(({ attachment }) => attachment),
             frozen: editingPrompt.frozen,
           },
         },
@@ -1802,7 +1810,7 @@ function ChatTranscript({
       text,
       mode: composerMode,
       reasoningEffort: composerReasoningEffort,
-      attachmentIds: readyAttachments.map(({ attachment }) => attachment.id),
+      attachments: readyAttachments.map(({ attachment }) => attachment),
     });
   };
 
@@ -1861,7 +1869,7 @@ function ChatTranscript({
       if (prompt) {
         send.mutate({
           text: prompt,
-          attachmentIds: [],
+          attachments: [],
           mode: composerMode,
           reasoningEffort: composerReasoningEffort,
         });

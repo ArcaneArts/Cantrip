@@ -171,8 +171,24 @@ export const queuedPromptOpaqueContentSchema = z
     worktreeId: z.string().min(1).max(200).nullable().default(null),
     frozen: z.boolean().default(false),
     idempotencyKey: z.string().min(1).max(200),
+    pendingMessage: chatMessageOpaqueContentSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.pendingMessage.classification.mode !== value.classification.mode ||
+      JSON.stringify(value.pendingMessage.classification.attachmentIds) !==
+        JSON.stringify(value.classification.attachmentIds) ||
+      value.pendingMessage.reasoningEffort !== value.reasoningEffort
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Queued prompt metadata must match its future encrypted chat message.",
+        path: ["pendingMessage"],
+      });
+    }
+  });
 
 export const interactionProtectedClassificationSchema = z
   .object({ kind: interactionKindSchema })
