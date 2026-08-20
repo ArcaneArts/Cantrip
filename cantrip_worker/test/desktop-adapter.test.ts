@@ -1,11 +1,87 @@
 import type { ToolResult } from "@zavora-ai/computer-use-mcp/client";
+import {
+  decryptSurfacePrivateState,
+  encryptSurfacePrivateState,
+} from "@cantrip/crypto";
 import { remoteDesktopServerMessageSchema } from "@cantrip/protocol";
+import {
+  remoteDesktopPrivateInventoryProtectedContentSchema,
+  type SurfacePrivateStateOpaque,
+} from "@cantrip/protocol/surface-private-state";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   ManagedDesktopRemoteSurfaceAdapter,
   type DesktopAutomationClient,
 } from "../src/desktop/desktop-adapter.js";
+import type { WorkerEncryptionService } from "../src/worker-encryption.js";
+import { readWorkerLogs } from "../src/logger.js";
+
+const ownerId = "desktop-owner";
+const serverId = "desktop-server";
+const workerId = "desktop-worker";
+const componentKey = new Uint8Array(32).fill(47);
+const encryptionService = {
+  status: () => ({ error: null }),
+  ownerId: () => ownerId,
+  componentKey: () => ({ key: componentKey.slice(), keyRevision: 1 }),
+} as unknown as WorkerEncryptionService;
+
+async function protectedTarget(
+  surfaceId: string,
+  target:
+    | { kind: "monitor"; id: string | null; name: string | null }
+    | {
+        kind: "window";
+        id: string | null;
+        application: string;
+        title: string | null;
+      },
+  revision = 1,
+): Promise<SurfacePrivateStateOpaque> {
+  return encryptSurfacePrivateState({
+    ownerId,
+    context: {
+      serverId,
+      resource: "remote-desktop-row",
+      resourceId: surfaceId,
+      operationId: null,
+      recordKind: "remote-desktop-state",
+    },
+    keyRevision: 1,
+    componentKey,
+    content: {
+      version: 1,
+      classification: { recordKind: "remote-desktop-state" },
+      revision,
+      target,
+    },
+  });
+}
+
+async function openInventory(
+  message: Extract<
+    ReturnType<typeof remoteDesktopServerMessageSchema.parse>,
+    { type: "desktop-targets" }
+  >,
+  resourceId: string,
+) {
+  return remoteDesktopPrivateInventoryProtectedContentSchema.parse(
+    await decryptSurfacePrivateState({
+      ownerId,
+      context: {
+        serverId,
+        resource: "remote-desktop-inventory",
+        resourceId,
+        operationId: message.operationId,
+        recordKind: "remote-desktop-inventory",
+      },
+      keyRevision: 1,
+      componentKey,
+      opaque: message.stateProtection,
+    }),
+  );
+}
 
 function textResult(
   text = "ok",
@@ -104,12 +180,50 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       applicationIcons,
     );
     await adapter.initialize();
+    adapter.setSurfacePrivateStateService(encryptionService, workerId);
     expect(adapter.available).toBe(true);
     await expect(adapter.probe()).resolves.toEqual({
       available: true,
       message: null,
     });
-    await expect(adapter.targets()).resolves.toEqual(desktopTargets);
+    const protectedInventory = await adapter.targets({
+      type: "surface.desktop.targets",
+      serverId,
+      operationId: "00000000-0000-4000-8000-000000000801",
+      resourceId: workerId,
+      limit: 100,
+    });
+    expect(JSON.stringify(protectedInventory)).not.toContain("Primary");
+    await expect(
+      openInventory(
+        {
+          type: "desktop-targets",
+          operationId: protectedInventory.operationId,
+          stateProtection: protectedInventory.stateProtection,
+          monitorCount: protectedInventory.monitorCount,
+          windowCount: protectedInventory.windowCount,
+        },
+        workerId,
+      ),
+    ).resolves.toMatchObject(desktopTargets);
+    await expect(
+      adapter.targets({
+        type: "surface.desktop.targets",
+        serverId,
+        operationId: protectedInventory.operationId,
+        resourceId: workerId,
+        limit: 100,
+      }),
+    ).rejects.toThrow(/replayed/u);
+    await expect(
+      adapter.targets({
+        type: "surface.desktop.targets",
+        serverId,
+        operationId: "00000000-0000-4000-8000-000000000802",
+        resourceId: "another-worker",
+        limit: 100,
+      }),
+    ).rejects.toThrow(/another worker/u);
     expect(capture).not.toHaveBeenCalled();
 
     const emissions: Array<{ channel: string; payload: Uint8Array }> = [];
@@ -119,10 +233,15 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         surfaceId: "desktop-1",
         attachmentId: "attachment-1",
         projectId: "project-1",
-        configuration: {
-          kind: "desktop",
-          target: { kind: "monitor", id: null, name: null },
-        },
+        serverId,
+        configuration: { kind: "desktop" },
+        stateResource: "remote-desktop-row",
+        stateRevision: 1,
+        stateProtection: await protectedTarget("desktop-1", {
+          kind: "monitor",
+          id: null,
+          name: null,
+        }),
         preferredTransport: "websocket",
         viewport: { width: 1_280, height: 720, devicePixelRatio: 1 },
         webrtc: null,
@@ -168,6 +287,67 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         );
       }),
     ).toBe(true);
+    const targetMessage = emissions
+      .filter(({ channel }) => channel === "control")
+      .map(({ payload }) =>
+        remoteDesktopServerMessageSchema.parse(
+          JSON.parse(new TextDecoder().decode(payload)),
+        ),
+      )
+      .find((message) => message.type === "desktop-targets");
+    expect(targetMessage?.type).toBe("desktop-targets");
+    if (targetMessage?.type === "desktop-targets") {
+      await expect(
+        openInventory(targetMessage, "desktop-1"),
+      ).resolves.toMatchObject({
+        monitors: desktopTargets.monitors,
+        requested: { kind: "monitor", id: null, name: null },
+      });
+    }
+    await session.updateConfiguration?.(
+      { kind: "desktop" },
+      {
+        serverId,
+        stateResource: "remote-desktop-row",
+        stateRevision: 2,
+        stateProtection: await protectedTarget(
+          "desktop-1",
+          { kind: "monitor", id: "display-1", name: "Primary" },
+          2,
+        ),
+      },
+    );
+    const reconfiguredMessage = emissions
+      .filter(({ channel }) => channel === "control")
+      .map(({ payload }) =>
+        remoteDesktopServerMessageSchema.parse(
+          JSON.parse(new TextDecoder().decode(payload)),
+        ),
+      )
+      .filter((message) => message.type === "desktop-targets")
+      .at(-1);
+    if (reconfiguredMessage?.type === "desktop-targets") {
+      await expect(
+        openInventory(reconfiguredMessage, "desktop-1"),
+      ).resolves.toMatchObject({
+        requested: { kind: "monitor", id: "display-1", name: "Primary" },
+      });
+    }
+    await expect(
+      session.updateConfiguration?.(
+        { kind: "desktop" },
+        {
+          serverId,
+          stateResource: "remote-desktop-row",
+          stateRevision: 1,
+          stateProtection: await protectedTarget("desktop-1", {
+            kind: "monitor",
+            id: null,
+            name: null,
+          }),
+        },
+      ),
+    ).rejects.toThrow(/stale/u);
 
     await session.handleFrame(
       "attachment-1",
@@ -225,6 +405,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
   });
 
   it("launches a saved application and focuses its window before input", async () => {
+    const logCursor = readWorkerLogs({}).nextCursor;
     let launched = false;
     let focusFailure = false;
     const launchApplication = vi.fn(async () => {
@@ -320,6 +501,7 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       launchApplication,
     );
     await adapter.initialize();
+    adapter.setSurfacePrivateStateService(encryptionService, workerId);
     const emissions: Uint8Array[] = [];
     const session = await adapter.open(
       {
@@ -327,15 +509,16 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
         surfaceId: "desktop-window",
         attachmentId: "attachment-window",
         projectId: "project-1",
-        configuration: {
-          kind: "desktop",
-          target: {
-            kind: "window",
-            id: "old-window-id",
-            application: "Code",
-            title: "Cantrip",
-          },
-        },
+        serverId,
+        configuration: { kind: "desktop" },
+        stateResource: "remote-desktop-row",
+        stateRevision: 1,
+        stateProtection: await protectedTarget("desktop-window", {
+          kind: "window",
+          id: "old-window-id",
+          application: "Code",
+          title: "Cantrip",
+        }),
         preferredTransport: "websocket",
         viewport: { width: 1_200, height: 800, devicePixelRatio: 1 },
         webrtc: null,
@@ -361,15 +544,25 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
       expect.objectContaining({
         type: "desktop-state",
         status: "launching",
-        message: "Launching Code on the worker…",
+        message: "Launching the selected application on the worker.",
       }),
     );
-    expect(
-      messages.find((message) => message.type === "desktop-targets"),
-    ).toMatchObject({
-      active: { kind: "window", application: "Code", title: "Cantrip" },
-      requested: { kind: "window", application: "Code", title: "Cantrip" },
-    });
+    const targets = messages.find(
+      (message) => message.type === "desktop-targets",
+    );
+    expect(targets?.type).toBe("desktop-targets");
+    if (targets?.type === "desktop-targets") {
+      await expect(
+        openInventory(targets, "desktop-window"),
+      ).resolves.toMatchObject({
+        active: { kind: "window", application: "Code", title: "Cantrip" },
+        requested: {
+          kind: "window",
+          application: "Code",
+          title: "Cantrip",
+        },
+      });
+    }
 
     focusTarget.mockClear();
     await session.handleFrame(
@@ -426,8 +619,12 @@ describe("ManagedDesktopRemoteSurfaceAdapter", () => {
             message.type === "desktop-state" && message.status === "error",
         ),
     ).toMatchObject({
-      message: expect.stringContaining("input was not sent"),
+      message: "Remote Desktop input is unavailable.",
     });
+    expect(JSON.stringify(messages)).not.toContain("Cantrip");
+    expect(
+      JSON.stringify(readWorkerLogs({ afterCursor: logCursor }).records),
+    ).not.toContain("Cantrip");
     session.close();
     await adapter.shutdown();
   });

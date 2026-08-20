@@ -136,7 +136,12 @@ describe("surface title encryption adapter", () => {
         "project-view",
       ),
       workerId: "worker-a",
-      target: { kind: "monitor", id: null, name: null },
+      stateProtection: await adapter.protectRemoteDesktopState(
+        ids.desktop,
+        { kind: "monitor", id: null, name: null },
+        1,
+      ),
+      stateRevision: 1,
       status: "idle",
       lastError: null,
     };
@@ -196,7 +201,11 @@ describe("surface title encryption adapter", () => {
     });
     await expect(adapter.openRemoteDesktop(desktop)).resolves.toMatchObject({
       title: "Private desktop",
+      target: { kind: "monitor", id: null, name: null },
     });
+    await expect(
+      adapter.openRemoteDesktop({ ...desktop, stateRevision: 2 }),
+    ).rejects.toThrow(/stale/u);
     await expect(adapter.openRemoteSurface(surface)).resolves.toMatchObject({
       title: "Private surface",
     });

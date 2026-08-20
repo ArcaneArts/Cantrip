@@ -57,6 +57,8 @@ import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import {
   browserPrivateStateOpaqueSchema,
   explorerPrivateStateOpaqueSchema,
+  remoteDesktopPrivateInventoryOpaqueSchema,
+  remoteDesktopPrivateStateOpaqueSchema,
   terminalPrivateStateOpaqueSchema,
 } from "./surface-private-state.js";
 
@@ -4738,13 +4740,13 @@ export const remoteDesktopCreateSchema = z
   .object({
     tabGroupId: z.string().min(1).optional(),
     target: executionTargetSchema.optional(),
-    desktopTarget: remoteDesktopTargetSchema.optional(),
   })
   .strict();
 
 export const encryptedRemoteDesktopCreateSchema = remoteDesktopCreateSchema
   .extend({
     id: z.string().uuid(),
+    stateProtection: remoteDesktopPrivateStateOpaqueSchema,
     titleProtection: privateDisplayLabelOpaqueSchema,
   })
   .strict()
@@ -4793,20 +4795,19 @@ export const remoteDesktopTargetInventorySchema = z.object({
   windows: z.array(remoteDesktopWindowSchema).max(2_000),
 });
 
-export const remoteDesktopUpdateSchema = z.object({
-  target: remoteDesktopTargetSchema,
-});
+export const encryptedRemoteDesktopUpdateSchema = z
+  .object({
+    expectedStateRevision: z.number().int().positive().safe(),
+    stateProtection: remoteDesktopPrivateStateOpaqueSchema,
+  })
+  .strict();
 
 const remoteDesktopSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   position: z.number().int().nonnegative(),
   workerId: z.string().min(1),
-  target: remoteDesktopTargetSchema.default({
-    kind: "monitor",
-    id: null,
-    name: null,
-  }),
+  stateRevision: z.number().int().positive().safe(),
   status: remoteSurfaceStatusSchema,
   lastError: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -4814,19 +4815,27 @@ const remoteDesktopSummaryBaseSchema = z.object({
 });
 
 export const remoteDesktopSummarySchema = remoteDesktopSummaryBaseSchema.extend(
-  { title: z.string().min(1).max(200) },
+  {
+    title: z.string().min(1).max(200),
+    target: remoteDesktopTargetSchema,
+  },
 );
 
 export const remoteDesktopWireSummarySchema = remoteDesktopSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
-  .refine(
-    (desktop) =>
-      desktop.titleProtection.classification.recordKind === "project-view",
-    {
-      message: "Remote Desktop title classification must be project-view.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
+  .extend({
+    stateProtection: remoteDesktopPrivateStateOpaqueSchema,
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .superRefine((desktop, context) => {
+    if (desktop.titleProtection.classification.recordKind !== "project-view") {
+      context.addIssue({
+        code: "custom",
+        message: "Remote Desktop title classification must be project-view.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+  });
 
 export const remoteDesktopListSchema = z.array(remoteDesktopSummarySchema);
 export const remoteDesktopWireListSchema = z.array(
@@ -4857,9 +4866,39 @@ export const remoteDesktopFleetWorkerSchema = z.object({
   truncated: z.boolean().default(false),
 });
 
-export const remoteDesktopFleetWireWorkerSchema =
-  remoteDesktopFleetWorkerSchema.extend({
+export const remoteDesktopProtectedInventorySchema = z
+  .object({
+    operationId: z.string().uuid(),
+    stateProtection: remoteDesktopPrivateInventoryOpaqueSchema,
+    monitorCount: z.number().int().nonnegative().max(64),
+    windowCount: z.number().int().nonnegative().max(2_000),
+    truncated: z.boolean().default(false),
+  })
+  .strict();
+
+export const remoteDesktopFleetWireWorkerSchema = remoteDesktopFleetWorkerSchema
+  .omit({ inventory: true })
+  .extend({
+    inventoryOperationId: z.string().uuid().nullable(),
+    inventoryProtection: remoteDesktopPrivateInventoryOpaqueSchema.nullable(),
+    monitorCount: z.number().int().nonnegative().max(64),
+    windowCount: z.number().int().nonnegative().max(2_000),
     desktops: z.array(remoteDesktopWireSummarySchema).max(64),
+  })
+  .strict()
+  .superRefine((worker, context) => {
+    if (
+      (worker.status === "ok") !==
+      (worker.inventoryOperationId !== null &&
+        worker.inventoryProtection !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Available Remote Desktop workers require protected inventory.",
+        path: ["inventoryProtection"],
+      });
+    }
   });
 
 export const remoteDesktopFleetSchema = z.object({
@@ -4870,23 +4909,22 @@ export const remoteDesktopFleetSchema = z.object({
   workers: z.array(remoteDesktopFleetWorkerSchema).max(64),
 });
 
-export const remoteDesktopFleetWireSchema = remoteDesktopFleetSchema.extend({
-  workers: z.array(remoteDesktopFleetWireWorkerSchema).max(64),
-});
+export const remoteDesktopFleetWireSchema = remoteDesktopFleetSchema
+  .extend({
+    workers: z.array(remoteDesktopFleetWireWorkerSchema).max(64),
+  })
+  .strict();
 
 export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("browser"),
     profileId: z.string().trim().min(1).max(200).nullable().default(null),
   }),
-  z.object({
-    kind: z.literal("desktop"),
-    target: remoteDesktopTargetSchema.default({
-      kind: "monitor",
-      id: null,
-      name: null,
-    }),
-  }),
+  z
+    .object({
+      kind: z.literal("desktop"),
+    })
+    .strict(),
 ]);
 
 export const remoteSurfaceCreateSchema = z.object({
@@ -4899,7 +4937,12 @@ export const encryptedRemoteSurfaceCreateSchema = remoteSurfaceCreateSchema
   .omit({ title: true })
   .extend({
     id: z.string().uuid(),
-    stateProtection: browserPrivateStateOpaqueSchema.optional(),
+    stateProtection: z
+      .union([
+        browserPrivateStateOpaqueSchema,
+        remoteDesktopPrivateStateOpaqueSchema,
+      ])
+      .optional(),
     titleProtection: privateDisplayLabelOpaqueSchema,
   })
   .strict()
@@ -4911,13 +4954,16 @@ export const encryptedRemoteSurfaceCreateSchema = remoteSurfaceCreateSchema
         path: ["titleProtection", "classification", "recordKind"],
       });
     }
+    const expectedStateKind =
+      input.configuration.kind === "browser"
+        ? "browser-state"
+        : "remote-desktop-state";
     if (
-      (input.configuration.kind === "browser") !==
-      (input.stateProtection !== undefined)
+      input.stateProtection?.classification.recordKind !== expectedStateKind
     ) {
       context.addIssue({
         code: "custom",
-        message: "Only browser Remote Surfaces require protected state.",
+        message: "Remote Surface protected state must match its kind.",
         path: ["stateProtection"],
       });
     }
@@ -4943,7 +4989,12 @@ export const encryptedRemoteSurfaceUpdateSchema = z
     titleProtection: privateDisplayLabelOpaqueSchema.optional(),
     configuration: remoteSurfaceConfigurationSchema.optional(),
     preferredTransport: remoteSurfaceTransportSchema.optional(),
-    stateProtection: browserPrivateStateOpaqueSchema.optional(),
+    stateProtection: z
+      .union([
+        browserPrivateStateOpaqueSchema,
+        remoteDesktopPrivateStateOpaqueSchema,
+      ])
+      .optional(),
   })
   .strict()
   .superRefine((input, context) => {
@@ -5005,7 +5056,12 @@ export const remoteSurfaceSummarySchema = remoteSurfaceSummaryBaseSchema.extend(
 export const remoteSurfaceWireSummarySchema = remoteSurfaceSummaryBaseSchema
   .extend({
     titleProtection: privateDisplayLabelOpaqueSchema,
-    stateProtection: browserPrivateStateOpaqueSchema.nullable(),
+    stateProtection: z
+      .union([
+        browserPrivateStateOpaqueSchema,
+        remoteDesktopPrivateStateOpaqueSchema,
+      ])
+      .nullable(),
   })
   .superRefine((surface, context) => {
     const recordKind = surface.titleProtection.classification.recordKind;
@@ -5021,14 +5077,16 @@ export const remoteSurfaceWireSummarySchema = remoteSurfaceSummaryBaseSchema
         path: ["titleProtection", "classification", "recordKind"],
       });
     }
-    const browser = surface.kind === "browser";
+    const expectedRecordKind =
+      surface.kind === "browser" ? "browser-state" : "remote-desktop-state";
     if (
-      browser !== (surface.stateProtection !== null) ||
-      browser !== (surface.stateRevision !== null)
+      surface.stateProtection?.classification.recordKind !==
+        expectedRecordKind ||
+      surface.stateRevision === null
     ) {
       context.addIssue({
         code: "custom",
-        message: "Browser Remote Surfaces require protected state.",
+        message: "Remote Surfaces require protected state matching their kind.",
         path: ["stateProtection"],
       });
     }
@@ -5159,14 +5217,15 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
       .nullable()
       .default(null),
   }),
-  z.object({
-    type: z.literal("desktop-targets"),
-    inventory: remoteDesktopTargetInventorySchema,
-    requested: remoteDesktopTargetSchema,
-    active: remoteDesktopTargetSchema,
-    launchingApplication: z.string().trim().min(1).max(500).nullable(),
-    message: z.string().max(2_048).nullable(),
-  }),
+  z
+    .object({
+      type: z.literal("desktop-targets"),
+      operationId: z.string().uuid(),
+      stateProtection: remoteDesktopPrivateInventoryOpaqueSchema,
+      monitorCount: z.number().int().nonnegative().max(64),
+      windowCount: z.number().int().nonnegative().max(2_000),
+    })
+    .strict(),
   z.object({
     type: z.literal("desktop-target-icons"),
     icons: z.array(remoteDesktopApplicationIconSchema).max(64),
@@ -10399,10 +10458,20 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       serverId: z.string().min(1).max(255),
       configuration: remoteSurfaceConfigurationSchema,
       stateResource: z
-        .enum(["browser-row", "browser-remote-surface"])
+        .enum([
+          "browser-row",
+          "browser-remote-surface",
+          "remote-desktop-row",
+          "remote-desktop-surface",
+        ])
         .nullable(),
       stateRevision: z.number().int().positive().safe().nullable(),
-      stateProtection: browserPrivateStateOpaqueSchema.nullable(),
+      stateProtection: z
+        .union([
+          browserPrivateStateOpaqueSchema,
+          remoteDesktopPrivateStateOpaqueSchema,
+        ])
+        .nullable(),
       preferredTransport: remoteSurfaceTransportSchema,
       webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
       viewport: remoteSurfaceViewportSchema,
@@ -10410,15 +10479,26 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     })
     .strict()
     .superRefine((command, context) => {
-      const browser = command.configuration.kind === "browser";
+      const expectedRecordKind =
+        command.configuration.kind === "browser"
+          ? "browser-state"
+          : "remote-desktop-state";
+      const validResource =
+        command.configuration.kind === "browser"
+          ? command.stateResource === "browser-row" ||
+            command.stateResource === "browser-remote-surface"
+          : command.stateResource === "remote-desktop-row" ||
+            command.stateResource === "remote-desktop-surface";
       if (
-        browser !== (command.stateProtection !== null) ||
-        browser !== (command.stateRevision !== null) ||
-        browser !== (command.stateResource !== null)
+        command.stateProtection?.classification.recordKind !==
+          expectedRecordKind ||
+        command.stateRevision === null ||
+        !validResource
       ) {
         context.addIssue({
           code: "custom",
-          message: "Browser surface commands require protected state.",
+          message:
+            "Surface commands require protected state matching their kind.",
           path: ["stateProtection"],
         });
       }
@@ -10435,22 +10515,43 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       serverId: z.string().min(1).max(255),
       configuration: remoteSurfaceConfigurationSchema,
       stateResource: z
-        .enum(["browser-row", "browser-remote-surface"])
+        .enum([
+          "browser-row",
+          "browser-remote-surface",
+          "remote-desktop-row",
+          "remote-desktop-surface",
+        ])
         .nullable(),
       stateRevision: z.number().int().positive().safe().nullable(),
-      stateProtection: browserPrivateStateOpaqueSchema.nullable(),
+      stateProtection: z
+        .union([
+          browserPrivateStateOpaqueSchema,
+          remoteDesktopPrivateStateOpaqueSchema,
+        ])
+        .nullable(),
     })
     .strict()
     .superRefine((command, context) => {
-      const browser = command.configuration.kind === "browser";
+      const expectedRecordKind =
+        command.configuration.kind === "browser"
+          ? "browser-state"
+          : "remote-desktop-state";
+      const validResource =
+        command.configuration.kind === "browser"
+          ? command.stateResource === "browser-row" ||
+            command.stateResource === "browser-remote-surface"
+          : command.stateResource === "remote-desktop-row" ||
+            command.stateResource === "remote-desktop-surface";
       if (
-        browser !== (command.stateProtection !== null) ||
-        browser !== (command.stateRevision !== null) ||
-        browser !== (command.stateResource !== null)
+        command.stateProtection?.classification.recordKind !==
+          expectedRecordKind ||
+        command.stateRevision === null ||
+        !validResource
       ) {
         context.addIssue({
           code: "custom",
-          message: "Browser surface commands require protected state.",
+          message:
+            "Surface commands require protected state matching their kind.",
           path: ["stateProtection"],
         });
       }
@@ -10470,9 +10571,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("surface.desktop.probe"),
   }),
-  z.object({
-    type: z.literal("surface.desktop.targets"),
-  }),
+  z
+    .object({
+      type: z.literal("surface.desktop.targets"),
+      serverId: z.string().min(1).max(255),
+      operationId: z.string().uuid(),
+      resourceId: z.string().min(1).max(200),
+      limit: z.number().int().nonnegative().max(2_064),
+    })
+    .strict(),
   z.object({
     type: z.literal("model.provider.test"),
     model: workerRuntimeModelSchema,
@@ -11797,7 +11904,9 @@ export type RemoteDesktopTargetInventory = z.infer<
 export type RemoteDesktopApplicationIcon = z.infer<
   typeof remoteDesktopApplicationIconSchema
 >;
-export type RemoteDesktopUpdate = z.infer<typeof remoteDesktopUpdateSchema>;
+export type EncryptedRemoteDesktopUpdate = z.infer<
+  typeof encryptedRemoteDesktopUpdateSchema
+>;
 export type RemoteDesktopSummary = z.infer<typeof remoteDesktopSummarySchema>;
 export type RemoteDesktopWireSummary = z.infer<
   typeof remoteDesktopWireSummarySchema
@@ -11807,6 +11916,9 @@ export type RemoteDesktopFleetWorkerStatus = z.infer<
 >;
 export type RemoteDesktopFleetWorker = z.infer<
   typeof remoteDesktopFleetWorkerSchema
+>;
+export type RemoteDesktopProtectedInventory = z.infer<
+  typeof remoteDesktopProtectedInventorySchema
 >;
 export type RemoteDesktopFleetWireWorker = z.infer<
   typeof remoteDesktopFleetWireWorkerSchema

@@ -8,6 +8,7 @@ import {
   encodeSurfacePrivateStateForWorker,
 } from "../surface-private-state-encryption.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
+import type { RemoteSurfacePrivateState } from "../remote-surface-manager.js";
 
 export type BrowserPersistentStateResource =
   "browser-row" | "browser-remote-surface";
@@ -15,7 +16,7 @@ export type BrowserPersistentStateResource =
 export interface BrowserPersistentPrivateState {
   serverId: string;
   stateProtection: SurfacePrivateStateOpaque;
-  stateResource: BrowserPersistentStateResource;
+  stateResource: RemoteSurfacePrivateState["stateResource"];
   stateRevision: number;
 }
 
@@ -46,6 +47,12 @@ export async function openBrowserPersistentPrivateState(input: {
   surfaceId: string;
   state: BrowserPersistentPrivateState;
 }): Promise<{ revision: number; url: string }> {
+  if (
+    input.state.stateResource !== "browser-row" &&
+    input.state.stateResource !== "browser-remote-surface"
+  ) {
+    throw new Error("Browser private state has the wrong resource.");
+  }
   const content = browserPrivateStateProtectedContentSchema.parse(
     await decodeSurfacePrivateStateForWorker({
       ownerId: input.ownerId,

@@ -133,12 +133,14 @@ import {
   projectTabLayoutWireSummarySchema,
   projectTokenUsageSchema,
   remoteDesktopCreateSchema,
+  encryptedRemoteDesktopCreateSchema,
+  encryptedRemoteDesktopUpdateSchema,
   remoteDesktopFleetSchema,
   remoteDesktopClientMessageSchema,
   remoteDesktopServerMessageSchema,
   remoteDesktopSummarySchema,
+  remoteDesktopWireSummarySchema,
   remoteDesktopTargetInventorySchema,
-  remoteDesktopUpdateSchema,
   operationalProbeSchema,
   scriptCommandListSchema,
   serverBootstrapSchema,
@@ -210,6 +212,20 @@ function terminalStateFixture() {
 function browserStateFixture() {
   return {
     classification: { recordKind: "browser-state" as const },
+    protectedState: terminalStateFixture().protectedState,
+  };
+}
+
+function remoteDesktopStateFixture() {
+  return {
+    classification: { recordKind: "remote-desktop-state" as const },
+    protectedState: terminalStateFixture().protectedState,
+  };
+}
+
+function remoteDesktopInventoryFixture() {
+  return {
+    classification: { recordKind: "remote-desktop-inventory" as const },
     protectedState: terminalStateFixture().protectedState,
   };
 }
@@ -4080,14 +4096,14 @@ describe("Cantrip protocol", () => {
       tabGroupId: "group-1",
     });
     expect(
-      remoteDesktopCreateSchema.parse({
+      remoteDesktopCreateSchema.safeParse({
         desktopTarget: {
           kind: "monitor",
           id: "display-1",
           name: "Studio Display",
         },
-      }).desktopTarget,
-    ).toMatchObject({ kind: "monitor", id: "display-1" });
+      }).success,
+    ).toBe(false);
     expect(
       remoteDesktopCreateSchema.safeParse({ host: "127.0.0.1" }).success,
     ).toBe(false);
@@ -4097,6 +4113,7 @@ describe("Cantrip protocol", () => {
       title: "Desk",
       position: 2,
       workerId: "worker-1",
+      stateRevision: 1,
       target: { kind: "monitor", id: null, name: null },
       status: "offline",
       lastError: null,
@@ -4106,15 +4123,46 @@ describe("Cantrip protocol", () => {
     expect(summary).not.toHaveProperty("password");
     expect(summary).not.toHaveProperty("secretRef");
     expect(
-      remoteDesktopUpdateSchema.parse({
+      remoteDesktopWireSummarySchema.safeParse({
+        id: "desktop-1",
+        projectId: "project-1",
+        titleProtection: protectedLabelFixture("project-view"),
+        position: 2,
+        workerId: "worker-1",
+        stateProtection: remoteDesktopStateFixture(),
+        stateRevision: 1,
+        target: { kind: "monitor", id: null, name: "Private display" },
+        status: "offline",
+        lastError: null,
+        createdAt: "2026-08-08T12:00:00.000Z",
+        updatedAt: "2026-08-08T12:00:00.000Z",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedRemoteDesktopCreateSchema.safeParse({
+        id: "00000000-0000-4000-8000-000000000421",
+        titleProtection: protectedLabelFixture("project-view"),
+        stateProtection: remoteDesktopStateFixture(),
+        desktopTarget: {
+          kind: "window",
+          id: "window-42",
+          application: "Code",
+          title: "Cantrip",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedRemoteDesktopUpdateSchema.safeParse({
+        expectedStateRevision: 1,
+        stateProtection: remoteDesktopStateFixture(),
         target: {
           kind: "window",
           id: "window-42",
           application: "Code",
           title: "Cantrip",
         },
-      }).target,
-    ).toMatchObject({ kind: "window", application: "Code" });
+      }).success,
+    ).toBe(false);
     expect(
       remoteDesktopTargetInventorySchema.parse({
         monitors: [
@@ -4150,7 +4198,13 @@ describe("Cantrip protocol", () => {
       workerCommandSchema.parse({ type: "surface.desktop.probe" }).type,
     ).toBe("surface.desktop.probe");
     expect(
-      workerCommandSchema.parse({ type: "surface.desktop.targets" }).type,
+      workerCommandSchema.parse({
+        type: "surface.desktop.targets",
+        serverId: "server-1",
+        operationId: "00000000-0000-4000-8000-000000000422",
+        resourceId: "worker-1",
+        limit: 100,
+      }).type,
     ).toBe("surface.desktop.targets");
     expect(
       remoteDesktopFleetSchema.parse({
@@ -4201,6 +4255,25 @@ describe("Cantrip protocol", () => {
       remoteDesktopClientMessageSchema.parse({ type: "refresh-targets" }).type,
     ).toBe("refresh-targets");
     expect(
+      remoteDesktopServerMessageSchema.safeParse({
+        type: "desktop-targets",
+        inventory: { monitors: [], windows: [] },
+        requested: { kind: "monitor", id: null, name: "Private display" },
+        active: { kind: "monitor", id: null, name: "Private display" },
+        launchingApplication: null,
+        message: null,
+      }).success,
+    ).toBe(false);
+    expect(
+      remoteDesktopServerMessageSchema.parse({
+        type: "desktop-targets",
+        operationId: "00000000-0000-4000-8000-000000000423",
+        stateProtection: remoteDesktopInventoryFixture(),
+        monitorCount: 1,
+        windowCount: 2,
+      }),
+    ).not.toHaveProperty("inventory");
+    expect(
       remoteDesktopClientMessageSchema.parse({
         type: "request-target-icons",
         keys: ["desktop-app-v1-abc123"],
@@ -4223,17 +4296,10 @@ describe("Cantrip protocol", () => {
         type: "surface.configure",
         surfaceId: "desktop-1",
         serverId: "server-1",
-        stateResource: null,
-        stateRevision: null,
-        stateProtection: null,
-        configuration: {
-          kind: "desktop",
-          target: {
-            kind: "monitor",
-            id: "1",
-            name: "Studio Display",
-          },
-        },
+        stateResource: "remote-desktop-row",
+        stateRevision: 1,
+        stateProtection: remoteDesktopStateFixture(),
+        configuration: { kind: "desktop" },
       }).type,
     ).toBe("surface.configure");
     expect(

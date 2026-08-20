@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/styled-menu";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
+  getWorkers,
   remoteSurfaceWebSocketUrl,
   updateRemoteDesktopTarget,
 } from "@/lib/api";
@@ -45,6 +46,8 @@ import {
   cachedRemoteDesktopIcon,
   cacheRemoteDesktopIcons,
 } from "@/lib/remote-desktop-icon-cache";
+import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
+import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
   useRemoteSurfaceTransport,
   type RemoteSurfaceFrameContext,
@@ -201,6 +204,7 @@ export function ManagedRemoteDesktopView({
     {},
   );
   const requestedIconKeysRef = useRef(new Set<string>());
+  const seenInventoryOperationsRef = useRef(new Set<string>());
   const [requestedTarget, setRequestedTarget] = useState(desktop.target);
   const [activeTarget, setActiveTarget] = useState(desktop.target);
   const [launchingApplication, setLaunchingApplication] = useState<
@@ -210,7 +214,37 @@ export function ManagedRemoteDesktopView({
   const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
     null,
   );
+  const [encryptionReady, setEncryptionReady] = useState(false);
+  const [encryptionError, setEncryptionError] = useState<string | null>(null);
+  const [encryptionAttempt, setEncryptionAttempt] = useState(0);
   const surfaceReady = renderedSurfaceId === desktop.id;
+
+  useEffect(() => {
+    let disposed = false;
+    setEncryptionReady(false);
+    setEncryptionError(null);
+    void getWorkers()
+      .then((workers) =>
+        ensureSurfacePrivateStateWorkerEncryption({
+          worker: workers.find(
+            (worker) => worker.workerId === desktop.workerId,
+          ),
+        }),
+      )
+      .then(() => {
+        if (!disposed) setEncryptionReady(true);
+      })
+      .catch(() => {
+        if (!disposed) {
+          setEncryptionError(
+            "Remote Desktop encryption is unavailable for this worker.",
+          );
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [desktop.id, desktop.workerId, encryptionAttempt]);
 
   const updateTarget = useMutation({
     mutationFn: (target: RemoteDesktopTarget) =>
@@ -257,11 +291,38 @@ export function ManagedRemoteDesktopView({
       context.reportError(message.status === "error" ? message.message : null);
       setStreamStatus(message.stream);
     } else if (message.type === "desktop-targets") {
-      setTargetInventory(message.inventory);
-      setRequestedTarget(message.requested);
-      setActiveTarget(message.active);
-      setLaunchingApplication(message.launchingApplication);
-      setTargetMessage(message.message);
+      if (seenInventoryOperationsRef.current.has(message.operationId)) return;
+      seenInventoryOperationsRef.current.add(message.operationId);
+      if (seenInventoryOperationsRef.current.size > 1_000) {
+        seenInventoryOperationsRef.current.delete(
+          seenInventoryOperationsRef.current.values().next().value!,
+        );
+      }
+      void surfaceTitleEncryption
+        .openRemoteDesktopInventoryOperation({
+          resourceId: desktop.id,
+          operationId: message.operationId,
+          stateProtection: message.stateProtection,
+        })
+        .then((privateState) => {
+          if (!context.isCurrent()) return;
+          setTargetInventory({
+            monitors: privateState.monitors,
+            windows: privateState.windows,
+          });
+          if (privateState.requested)
+            setRequestedTarget(privateState.requested);
+          if (privateState.active) setActiveTarget(privateState.active);
+          setLaunchingApplication(privateState.launchingApplication);
+          setTargetMessage(privateState.message);
+        })
+        .catch(() => {
+          if (context.isCurrent()) {
+            context.reportError(
+              "The worker returned invalid encrypted desktop inventory.",
+            );
+          }
+        });
     } else if (message.type === "desktop-target-icons") {
       const resolved = cacheRemoteDesktopIcons(desktop.workerId, message.icons);
       setIconSources((current) => ({ ...current, ...resolved }));
@@ -287,6 +348,7 @@ export function ManagedRemoteDesktopView({
     sendFrame,
     setError,
   } = useRemoteSurfaceTransport({
+    enabled: encryptionReady,
     surfaceKind: "remote-desktop",
     surfaceId: desktop.id,
     webSocketUrl: () =>
@@ -313,6 +375,12 @@ export function ManagedRemoteDesktopView({
     [sendFrame],
   );
 
+  const retryDesktop = () => {
+    setError(null);
+    setEncryptionAttempt((attempt) => attempt + 1);
+    if (encryptionReady) retry();
+  };
+
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 3_000);
@@ -321,6 +389,7 @@ export function ManagedRemoteDesktopView({
 
   useEffect(() => {
     setRequestedTarget(desktop.target);
+    seenInventoryOperationsRef.current.clear();
   }, [desktop.target]);
 
   useEffect(() => {
@@ -675,13 +744,13 @@ export function ManagedRemoteDesktopView({
           <ClipboardPaste className="size-3.5" />
           <span className="sr-only">Paste local clipboard</span>
         </Button>
-        {runtimeStatus === "error" ? (
+        {runtimeStatus === "error" || encryptionError ? (
           <Button
             type="button"
             size="sm"
             variant="outline"
             className="h-8 gap-1.5"
-            onClick={retry}
+            onClick={retryDesktop}
           >
             <RotateCw className="size-3.5" />
             Retry
@@ -735,9 +804,10 @@ export function ManagedRemoteDesktopView({
               Launching {launchingApplication ?? "application"} on the worker…
             </div>
           ) : null}
-          {error || updateTarget.error ? (
+          {encryptionError || error || updateTarget.error ? (
             <div className="pointer-events-none absolute bottom-4 left-1/2 max-w-xl -translate-x-1/2 rounded-md bg-destructive/90 px-3 py-2 text-sm text-destructive-foreground shadow-lg">
-              {error ??
+              {encryptionError ??
+                error ??
                 (updateTarget.error instanceof Error
                   ? updateTarget.error.message
                   : "Could not change the Remote Desktop target.")}

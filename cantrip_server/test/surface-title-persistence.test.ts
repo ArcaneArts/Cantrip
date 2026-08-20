@@ -155,6 +155,29 @@ it("persists every private display label only as authenticated ciphertext", asyn
       url: `https://example.com/${sentinel}/remote`,
     },
   });
+  const remoteDesktopStateProtection = await encryptSurfacePrivateState({
+    ownerId: LOCAL_USER_ID,
+    context: {
+      serverId: "surface-title-server",
+      resource: "remote-desktop-row",
+      resourceId: ids.desktop,
+      operationId: null,
+      recordKind: "remote-desktop-state",
+    },
+    keyRevision: 1,
+    componentKey: surfaceStateKey,
+    content: {
+      version: 1,
+      classification: { recordKind: "remote-desktop-state" },
+      revision: 1,
+      target: {
+        kind: "window",
+        id: "private-window",
+        application: `${sentinel}-application`,
+        title: `${sentinel}-window`,
+      },
+    },
+  });
 
   const database = await connectDatabase(config);
   try {
@@ -328,6 +351,7 @@ it("persists every private display label only as authenticated ciphertext", asyn
         ids.desktop,
         await protectedTitle("project-view", ids.desktop),
         "surface-title-worker",
+        remoteDesktopStateProtection,
       ),
       database.repository.createRemoteSurface(LOCAL_USER_ID, project.id, {
         id: ids.surface,
@@ -464,6 +488,20 @@ it("persists every private display label only as authenticated ciphertext", asyn
     expect(
       remoteLabels.rows.find(({ id }) => id === ids.surface)?.protected_label,
     ).not.toBeNull();
+    const desktopStorage = await scan.query<{
+      configuration: unknown;
+      protected_state: unknown;
+      state_revision: number;
+    }>(
+      `SELECT configuration, protected_state, state_revision
+       FROM remote_surfaces WHERE id = $1`,
+      [ids.desktop],
+    );
+    expect(desktopStorage.rows[0]).toMatchObject({
+      configuration: { kind: "desktop" },
+      protected_state: remoteDesktopStateProtection,
+      state_revision: 1,
+    });
 
     const canonicalLabels = await scan.query<{ protected_label: unknown }>(
       `SELECT protected_label FROM browsers WHERE id = $1

@@ -426,6 +426,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     .catch(() => undefined);
   cliBroker.setSurfacePrivateStateService(workerEncryption);
   browserAdapter.setSurfacePrivateStateService(workerEncryption);
+  desktopAdapter.setSurfacePrivateStateService(
+    workerEncryption,
+    config.workerId,
+  );
   let connected = false;
   let commandChannelStarted = false;
   let heartbeatInFlight: Promise<void> | null = null;
@@ -1845,7 +1849,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "surface.desktop.probe":
         return desktopAdapter.probe();
       case "surface.desktop.targets":
-        return desktopAdapter.targets();
+        return desktopAdapter.targets(command);
       case "model.provider.test": {
         const startedAtMs = Date.now();
         const testId = randomUUID();
