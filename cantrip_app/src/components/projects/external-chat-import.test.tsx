@@ -221,7 +221,6 @@ describe("external Codex chat import settings", () => {
     importedElsewhere.workers[0]!.sources[0]!.threads[1]!.existingImport = {
       jobId: "00000000-0000-4000-8000-000000000009",
       projectId: "project-two",
-      projectName: "Cantrip Mirror",
       chatId: "chat-two",
       state: "succeeded",
     };

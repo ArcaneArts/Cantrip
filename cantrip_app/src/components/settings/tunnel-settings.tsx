@@ -35,11 +35,11 @@ import {
 import {
   createTunnel,
   deleteTunnel,
-  getProjects,
   getTunnels,
   getWorkers,
   updateTunnel,
 } from "@/lib/api";
+import { getProjects } from "@/lib/project-encryption";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import {
   desktopTunnelAvailable,

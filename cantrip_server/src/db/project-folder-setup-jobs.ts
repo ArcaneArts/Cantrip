@@ -26,7 +26,6 @@ export interface ClaimedProjectFolderSetupJob {
   existingPath: string | null;
   job: ProjectFolderSetupJobSummary;
   ownerId: string;
-  projectName: string;
 }
 
 function toISOString(value: Date): string {
@@ -80,10 +79,7 @@ export class ProjectFolderSetupJobRepository {
     const now = new Date();
     return this.database.transaction(async (transaction) => {
       const candidates = await transaction
-        .select({
-          job: schema.projectFolderSetupJobs,
-          projectName: schema.projects.name,
-        })
+        .select({ job: schema.projectFolderSetupJobs })
         .from(schema.projectFolderSetupJobs)
         .innerJoin(
           schema.projects,
@@ -138,7 +134,6 @@ export class ProjectFolderSetupJobRepository {
         commandId,
         existingPath: rows[0].requestedPath,
         job: toJob(rows[0]),
-        projectName: candidate.projectName,
       };
     });
   }

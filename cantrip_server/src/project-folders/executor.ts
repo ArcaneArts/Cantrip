@@ -194,7 +194,6 @@ export class ProjectFolderSetupJobExecutor {
             jobId: job.id,
             attempt: job.attempt,
             projectId: job.projectId,
-            displayName: claimed.projectName,
             ...(claimed.existingPath
               ? { existingPath: claimed.existingPath }
               : {}),

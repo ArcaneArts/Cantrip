@@ -22,6 +22,8 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const sentinel = "SENTINEL private Task prose";
 const encrypted = {
   formatVersion: 1 as const,
@@ -238,6 +240,7 @@ beforeAll(async () => {
   });
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "task-worker",
+    ...protectedProjectFields(),
     repositoryId: "task-e2ee",
     nameWithOwner: "ArcaneArts/TaskE2EE",
     url: "https://github.com/ArcaneArts/TaskE2EE",

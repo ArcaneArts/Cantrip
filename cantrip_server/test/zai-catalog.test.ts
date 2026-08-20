@@ -18,6 +18,8 @@ import {
 } from "../src/models/zai-catalog.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 async function setup() {
@@ -223,6 +225,7 @@ describe("Z.ai Coding Plan catalog", () => {
       });
       const project = await repository.createGithubProject(LOCAL_USER_ID, {
         workerId: "zai-worker",
+        ...protectedProjectFields(),
         repositoryId: "zai-migration-repository",
         nameWithOwner: "ArcaneArts/ZaiMigration",
         url: "https://github.com/ArcaneArts/ZaiMigration",

@@ -384,18 +384,19 @@ database-compromise guarantee is described.
 | Account initialization, device authorization, and password lifecycle             | Client-only initialization and unlock                                                                     | Client initialization complete            | Required             | High        | Server-only password reset and plaintext recovery                                              |
 | Worker key custody, public registration, and scoped component grants             | Protected local private key; opaque server grants; Task operations require exact scoped readiness         | Worker grants and Task readiness complete | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                 |
 | Workspace display names                                                          | AES-256-GCM E2EE; client-only key                                                                         | E2EE complete; lazy migration             | Implemented          | Low-Medium  | Name-based server search and validation                                                        |
+| Project display names                                                            | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                       | E2EE complete                             | Implemented          | Medium      | Independent label search and presentation; repository identity remains queryable               |
 | Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths | Plaintext                                                                                                 | Planned                                   | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, questions, answers, directions, errors, messages, and Goals  | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation | E2EE complete                             | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                |
 | Queued prompts                                                                   | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                             | Planned                                   | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
 | Browser URLs, terminal and Explorer paths, remote-window selection               | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
-| Project, chat, surface, project-view, and tab-group display labels               | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
+| Chat, surface, project-view, and tab-group display labels                        | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
 | Policies and agent instructions                                                  | Plaintext                                                                                                 | Planned                                   | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
 | Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                            | Planned replacement                       | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
 | MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                                                                                 | Planned                                   | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
 | Workflow prompts, definitions, structured inputs, and results                    | Plaintext                                                                                                 | Planned                                   | Good when split      | Very high   | Scheduler can route opaque jobs, but conditions and content evaluation must happen on a worker |
-| Project and repository names, remotes, paths, branch names, and Git output       | Plaintext                                                                                                 | Planned partial encryption                | Partial              | High        | Server orchestration currently depends on some of this data                                    |
+| Repository identities and names, remotes, paths, branch names, and Git output    | Plaintext                                                                                                 | Planned partial encryption                | Partial              | High        | Server orchestration currently depends on some of this data                                    |
 | Token usage, quotas, and model-behavior analytics                                | Plaintext/queryable                                                                                       | Planned minimization                      | Partial              | Medium-High | Fully encrypting numbers removes server dashboards, budgets, and historical analysis           |
 | Diagnostic logs and audit metadata                                               | Redacted but server-readable                                                                              | Planned minimization                      | Partial              | Medium      | Fully encrypted logs prevent server-side operations and security investigation                 |
 | Worker platform, capabilities, online state, and tunnel endpoints                | Plaintext                                                                                                 | Intentionally plaintext                   | Poor                 | High        | The server cannot route sessions or decide which worker supports a feature                     |
@@ -454,6 +455,52 @@ authorized unlocked client, so inactive owners can still have explicitly
 reported legacy plaintext rows until then; this document does not claim those
 deployed rows are already migrated.
 
+### Project display names
+
+Project display names are the first protected-label payload moved from the
+shared contract into production persistence. The
+[project adapter](../cantrip_app/src/lib/project-encryption.ts) allocates the
+project UUID, derives the `private-surface-metadata` component key, and
+encrypts the name before either GitHub or managed-folder creation leaves the
+client. The same adapter decrypts opaque project summaries and performs
+display-name sorting locally. Locked, corrupt, tampered, or row-swapped labels
+fail closed rather than falling back to repository identity or another
+server-visible value.
+
+The server stores `projects.protected_label`, validates only its bounded wire
+shape and `project` classification, and never imports the shared crypto
+package. Project list, create, setup, preferred-worker, and worktree-policy
+responses remain opaque until the trusted client adapter opens them.
+Repository identity (`github_repository_id`, repository full name, and URL),
+source and worktree paths, Git state, placement, ordering, and setup status are
+still plaintext operational metadata and remain separate ledger work. Project
+folder materialization and Code launch use project UUIDs and worker-local path
+basenames, so workers do not receive a project-label key grant merely for
+setup. Secondary external-chat-import references no longer copy the project
+display name. A GitHub project's initial visible label is derived from its
+plaintext repository full name, so a database reader can infer that initial
+label even though the dedicated protected field is opaque. The E2EE status
+applies to project-label persistence, not repository-identity confidentiality.
+
+[Migration 0105](../cantrip_server/drizzle/0105_superb_energizer.sql)
+deliberately deletes every project before replacing the required plaintext
+`name` column with required opaque `protected_label` storage. This is a
+pre-release reset, not a legacy-data migration: project-owned rows and
+memberships cascade away, while users, sessions, account encryption profiles,
+principals, grants, workers and credentials, account settings, and workspace
+rows are preserved. No real local or deployed database is modified by the
+focused tests.
+
+The focused
+[client adapter test](../cantrip_app/src/lib/project-encryption.test.ts),
+[project setup API tests](../cantrip_server/test/project-folder-api.test.ts),
+and
+[temporary migration test](../cantrip_server/test/project-label-reset-migration.test.ts)
+cover encrypted create/list round trips, client-side sorting, locked writes,
+wrong-row and tamper rejection, opaque server and worker commands, and exact
+reset preservation. Project display names therefore earn `E2EE complete`;
+repository names, URLs, and paths do not.
+
 ## Chats and tasks
 
 Ordinary agent chats remain a high-value future E2EE candidate. Their message
@@ -504,10 +551,11 @@ The adapters fail closed with explicit locked, missing, revoked, stale,
 corrupt, and unsupported states. Focused protocol, shared-codec, client,
 worker, and readiness tests cover every record kind, classification agreement,
 associated-data swaps, tampering, bounds, intended-worker isolation, and
-restart recovery. This milestone does **not** change production persistence:
-all listed display-label columns and their secondary copies remain plaintext
-until the following rollout cycles replace their write and read paths. The
-ledger therefore records contract completion without claiming E2EE.
+restart recovery. Project display names now use this contract in production
+persistence. The other listed display-label columns and their secondary copies
+remain plaintext until the following rollout cycles replace their write and
+read paths. The ledger therefore claims E2EE only for the project row above and
+records contract completion without claiming E2EE for the remaining labels.
 
 ### Task content contract foundation
 
@@ -712,7 +760,9 @@ unavailable while every authorized worker is offline.
 
 Source contents already remain on workers. The server stores repository
 identity, GitHub URL, local paths, worktree paths, branch and HEAD state,
-conflicts, Git operation output, and replica jobs.
+conflicts, Git operation output, and replica jobs. The user-chosen project
+display name is now encrypted independently of that operational repository
+identity.
 
 A reasonable split encrypts display names, repository URLs, absolute and
 display paths, branch names, conflicted paths, Git output, errors, and status
@@ -775,17 +825,20 @@ counts, worker presence, model-route choices, and traffic patterns.
    scan contains zero Task sentinel prose. Ordinary chats, queued prompts, and
    general interaction payloads remain plaintext and planned; Task/chat titles
    remain plaintext metadata.
-8. **Private display-label contracts — complete; persistence remains
-   plaintext:** one bounded bundle, exact associated-data mapping, trusted
+8. **Private display-label contracts — complete; project persistence
+   complete:** one bounded bundle, exact associated-data mapping, trusted
    client and worker adapters, scoped worker readiness, and fail-closed label
    states cover projects, chats, surfaces, project views, and tab groups.
+   Project display names now use opaque persistence after a deliberate
+   project-domain reset; the other label classes remain plaintext.
 9. **Attachments and relayed streams:** encrypt metadata and add
    application-layer encryption when bytes traverse relays.
 10. **Secrets:** replace server-decryptable provider and MCP vault envelopes
     with client and worker decryptable envelopes.
-11. **Private metadata persistence:** move the protected display labels above
-    onto their shared opaque contract, then encrypt browser URLs, paths, Git
-    output, and policy bodies under their appropriate components.
+11. **Remaining private metadata persistence:** move chat, surface,
+    project-view, and tab-group labels onto their shared opaque contract, then
+    encrypt browser URLs, paths, Git output, and policy bodies under their
+    appropriate components.
 12. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.

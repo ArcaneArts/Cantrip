@@ -14,6 +14,8 @@ import {
 } from "../src/db/project-replica-jobs.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-project-replica-jobs-"),
 );
@@ -61,6 +63,7 @@ describe("durable project replica jobs", () => {
     });
     const project = await first.repository.createGithubProject(LOCAL_USER_ID, {
       workerId: "replica-worker",
+      ...protectedProjectFields(),
       repositoryId: "repository-one",
       nameWithOwner: "ArcaneArts/Cantrip",
       url: "https://github.com/ArcaneArts/Cantrip",
@@ -351,6 +354,7 @@ describe("durable project replica jobs", () => {
       LOCAL_USER_ID,
       {
         workerId: "replica-worker",
+        ...protectedProjectFields(),
         repositoryId: "repository-two",
         nameWithOwner: "ArcaneArts/Offline",
         url: "https://github.com/ArcaneArts/Offline",

@@ -8,6 +8,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 function testConfig(dataDirectory: string): ServerConfig {
   return {
     agentModel: "test-model",
@@ -80,6 +82,7 @@ describe("MCP server settings repository", () => {
         LOCAL_USER_ID,
         {
           workerId: "worker-1",
+          ...protectedProjectFields(),
           repositoryId: "repository-1",
           nameWithOwner: "ArcaneArts/Cantrip",
           url: "https://github.com/ArcaneArts/Cantrip",
@@ -89,6 +92,7 @@ describe("MCP server settings repository", () => {
         LOCAL_USER_ID,
         {
           workerId: "worker-1",
+          ...protectedProjectFields(),
           repositoryId: "repository-2",
           nameWithOwner: "ArcaneArts/Iris",
           url: "https://github.com/ArcaneArts/Iris",

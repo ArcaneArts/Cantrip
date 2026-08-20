@@ -48,6 +48,8 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const ownerId = LOCAL_USER_ID;
 const workerId = "task-lifecycle-worker";
 const threadId = "thread-task-e2ee-lifecycle";
@@ -549,6 +551,7 @@ beforeAll(async () => {
   });
   const project = await database.repository.createGithubProject(ownerId, {
     workerId,
+    ...protectedProjectFields(),
     repositoryId: "task-e2ee-lifecycle",
     nameWithOwner: "ArcaneArts/TaskE2EELifecycle",
     url: "https://github.com/ArcaneArts/TaskE2EELifecycle",

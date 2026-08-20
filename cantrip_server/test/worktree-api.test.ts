@@ -75,6 +75,8 @@ import {
   type WorkerCommandBus,
 } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-worktree-api-"),
 );
@@ -1570,6 +1572,7 @@ beforeAll(async () => {
   expect(recordedWorker.code.available).toBe(true);
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
+    ...protectedProjectFields(),
     repositoryId: "repo-1",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

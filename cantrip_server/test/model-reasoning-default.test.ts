@@ -9,6 +9,8 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-model-reasoning-default-"),
 );
@@ -63,6 +65,7 @@ describe.sequential("remembered model reasoning defaults", () => {
       LOCAL_USER_ID,
       {
         workerId: "reasoning-worker",
+        ...protectedProjectFields(),
         repositoryId: "reasoning-repository",
         nameWithOwner: "ArcaneArts/Reasoning",
         url: "https://github.com/ArcaneArts/Reasoning",

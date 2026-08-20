@@ -167,7 +167,7 @@ import {
   providerModelCatalogResultSchema,
   modelProviderSummarySchema,
   modelProviderUpdateSchema,
-  managedFolderProjectCreateSchema,
+  encryptedManagedFolderProjectCreateSchema,
   mcpServerConfigurationSchema,
   mcpServerCopySchema,
   mcpServerListSchema,
@@ -186,7 +186,7 @@ import {
   policyTemplateListSchema,
   policyTemplateResetSchema,
   policyUpdateSchema,
-  projectListSchema,
+  projectWireListSchema,
   projectExternalChatDiscoverySchema,
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
@@ -207,7 +207,7 @@ import {
   providerTelemetryExportSchema,
   projectShareAttachmentSchema,
   projectShareDirectCreateSchema,
-  projectSummarySchema,
+  projectWireSummarySchema,
   encryptedProjectWorkspaceCreateSchema,
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
@@ -322,9 +322,9 @@ import type {
   GithubPullRequestLifecycleApply,
   GithubPullRequestReviewAction,
   GithubReleaseCreate,
-  GithubProjectCreate,
+  EncryptedGithubProjectCreate,
   GithubRepositoryCreate,
-  ManagedFolderProjectCreate,
+  EncryptedManagedFolderProjectCreate,
   ModelProfileCreate,
   ModelProfileUpdate,
   ModelProviderCreate,
@@ -1124,8 +1124,8 @@ export async function getCachedGithubRepositories(
   );
 }
 
-export async function getProjects() {
-  return projectListSchema.parse(await request("/api/projects"));
+export async function getProjectWireList() {
+  return projectWireListSchema.parse(await request("/api/projects"));
 }
 
 export async function getProjectMcpServers(projectId: string) {
@@ -2461,19 +2461,21 @@ export async function cancelProjectReplicaJob(
   );
 }
 
-export async function createGithubProject(input: GithubProjectCreate) {
-  return projectSummarySchema.parse(
+export async function createEncryptedGithubProject(
+  input: EncryptedGithubProjectCreate,
+) {
+  return projectWireSummarySchema.parse(
     await post("/api/projects/from-github", input),
   );
 }
 
-export async function createManagedFolderProject(
-  input: ManagedFolderProjectCreate,
+export async function createEncryptedManagedFolderProject(
+  input: EncryptedManagedFolderProjectCreate,
 ) {
-  return projectSummarySchema.parse(
+  return projectWireSummarySchema.parse(
     await post(
       "/api/projects/from-folder",
-      managedFolderProjectCreateSchema.parse(input),
+      encryptedManagedFolderProjectCreateSchema.parse(input),
     ),
   );
 }
@@ -2547,11 +2549,11 @@ export async function retryProjectGithubConversion(
   );
 }
 
-export async function updateProjectWorktreePolicy(
+export async function updateProjectWorktreePolicyWire(
   projectId: string,
   policy: WorktreePolicy,
 ) {
-  return projectSummarySchema.parse(
+  return projectWireSummarySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktree-policy`,
       {
@@ -2562,11 +2564,11 @@ export async function updateProjectWorktreePolicy(
   );
 }
 
-export async function updateProjectPreferredWorker(
+export async function updateProjectPreferredWorkerWire(
   projectId: string,
   input: ProjectPreferredWorkerUpdate,
 ) {
-  return projectSummarySchema.parse(
+  return projectWireSummarySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/preferred-worker`,
       {

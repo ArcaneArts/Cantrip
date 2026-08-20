@@ -97,7 +97,6 @@ describe("project folder setup executor", () => {
           .mockResolvedValueOnce({
             ownerId: "owner-one",
             commandId: "command-one",
-            projectName: "Scratch",
             job: active,
           })
           .mockResolvedValue(null),
@@ -148,7 +147,6 @@ describe("project folder setup executor", () => {
           .mockResolvedValueOnce({
             ownerId: "owner-one",
             commandId: "command-one",
-            projectName: "../display-only",
             job: active,
           })
           .mockResolvedValue(null),
@@ -173,9 +171,8 @@ describe("project folder setup executor", () => {
         jobId: active.id,
         attempt: active.attempt,
         projectId: active.projectId,
-        displayName: "../display-only",
       },
-      expect.any(Object),
+      { timeoutMs: 60_000 },
     );
     expect(complete).toHaveBeenCalledWith(
       active.id,

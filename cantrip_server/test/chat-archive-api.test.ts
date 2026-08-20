@@ -19,6 +19,8 @@ import {
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-archive-api-"),
 );
@@ -86,6 +88,7 @@ beforeAll(async () => {
   });
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "archive-worker",
+    ...protectedProjectFields(),
     repositoryId: "archive-repository",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",

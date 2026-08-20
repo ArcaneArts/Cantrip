@@ -23,14 +23,14 @@ function externalImportReferenceLabel(
   reference: ExternalChatImportReference,
 ): string {
   if (reference.state === "succeeded") {
-    return `Imported to ${reference.projectName}`;
+    return "Imported to the selected project";
   }
   if (["blocked", "failed", "cancelled"].includes(reference.state)) {
     return reference.chatId
-      ? `Transcript imported to ${reference.projectName}`
-      : `Import incomplete in ${reference.projectName}`;
+      ? "Transcript imported to the selected project"
+      : "Import incomplete in the selected project";
   }
-  return `Importing in ${reference.projectName}`;
+  return "Importing in the selected project";
 }
 
 export function ExternalChatCandidateRow({

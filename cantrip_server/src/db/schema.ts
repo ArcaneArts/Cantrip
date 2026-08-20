@@ -26,6 +26,7 @@ import type {
   ModelReasoningEffortOption,
   PendingPlanQuestion,
   PlanStep,
+  PrivateDisplayLabelOpaque,
   ProjectFolderManagement,
   ProjectOriginKind,
   ProjectFolderSetupJobError,
@@ -1281,7 +1282,9 @@ export const projects = pgTable(
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
+    protectedLabel: jsonb("protected_label")
+      .$type<PrivateDisplayLabelOpaque>()
+      .notNull(),
     position: integer("position").notNull().default(0),
     originKind: text("origin_kind")
       .$type<ProjectOriginKind>()

@@ -74,9 +74,9 @@ import {
   requestCodeGraphWorktreeAction,
   removeProjectWorktree,
   unlockProjectWorktree,
-  updateProjectWorktreePolicy,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { updateProjectWorktreePolicy } from "@/lib/project-encryption";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
 import { ProjectArchiveSettings } from "./project-archive-settings";

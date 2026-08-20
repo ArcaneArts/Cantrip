@@ -17,6 +17,8 @@ import type {
   WorkerRequestOptions,
 } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const origin = "https://app.cantrip.test";
 const password = "correct horse battery staple";
 const dataDirectories: string[] = [];
@@ -160,6 +162,7 @@ describe("hosted chat owner context", () => {
       });
       const project = await database.repository.createGithubProject(ownerId, {
         workerId,
+        ...protectedProjectFields(),
         repositoryId: "hosted-owner-context-repository",
         nameWithOwner: "ArcaneArts/HostedOwnerContext",
         url: "https://github.com/ArcaneArts/HostedOwnerContext",

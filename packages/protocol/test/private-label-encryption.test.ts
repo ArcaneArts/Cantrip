@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  encryptedGithubProjectCreateSchema,
+  encryptedManagedFolderProjectCreateSchema,
+  projectWireSummarySchema,
+} from "../src/index.js";
+import {
   encryptedPrivateDisplayLabelSchema,
   privateDisplayLabelOpaqueSchema,
   privateDisplayLabelProtectedContentSchema,
@@ -83,6 +88,62 @@ describe("private display-label encryption contracts", () => {
         envelope: {
           ...encrypted.envelope,
           ciphertext: "A".repeat(6_000),
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps project display names out of create requests and wire summaries", () => {
+    const id = "019fe8aa-a7a3-7404-8a96-d3be7f0fb338";
+    const nameProtection = {
+      classification: { recordKind: "project" as const },
+      protectedLabel: encrypted,
+    };
+
+    expect(
+      encryptedGithubProjectCreateSchema.safeParse({
+        id,
+        nameProtection,
+        workerId: "worker-one",
+        repositoryId: "repository-one",
+        nameWithOwner: "ArcaneArts/Cantrip",
+        url: "https://github.com/ArcaneArts/Cantrip",
+        name: "Private project name",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedManagedFolderProjectCreateSchema.safeParse({
+        id,
+        nameProtection,
+        workerId: "worker-one",
+        name: "Private project name",
+      }).success,
+    ).toBe(false);
+
+    const wire = projectWireSummarySchema.parse({
+      id,
+      nameProtection,
+      position: 0,
+      setupStatus: "ready",
+      setupError: null,
+      worktreePolicy: "agent-managed",
+      preferredWorkerId: null,
+      github: {
+        repositoryId: "repository-one",
+        nameWithOwner: "ArcaneArts/Cantrip",
+        url: "https://github.com/ArcaneArts/Cantrip",
+      },
+      source: null,
+      createdAt: "2026-08-18T12:00:00.000Z",
+      updatedAt: "2026-08-18T12:00:00.000Z",
+    });
+    expect(wire).not.toHaveProperty("name");
+    expect(
+      projectWireSummarySchema.safeParse({
+        ...wire,
+        nameProtection: {
+          ...nameProtection,
+          classification: { recordKind: "chat" },
         },
       }).success,
     ).toBe(false);

@@ -59,12 +59,12 @@ import {
   modelProfileSummarySchema,
   modelProviderAccountListSchema,
   modelProviderSummarySchema,
-  projectListSchema,
+  projectWireListSchema,
   projectReplicaJobListSchema,
   projectReplicaListSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
-  projectSummarySchema,
+  projectWireSummarySchema,
   projectTokenUsageSchema,
   projectTabLayoutSummarySchema,
   projectWorkspaceWireListSchema,
@@ -104,6 +104,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { protectedProjectFields } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-local-foundation-"),
@@ -2328,6 +2329,7 @@ describe("local server foundation", () => {
       method: "POST",
       url: "/api/projects/from-github",
       payload: {
+        ...protectedProjectFields(),
         workerId: "test-worker",
         repositoryId: "github-repository-1",
         nameWithOwner: "ArcaneArts/Cantrip",
@@ -2335,7 +2337,9 @@ describe("local server foundation", () => {
       },
     });
     expect(projectResponse.statusCode).toBe(202);
-    const queuedProject = projectSummarySchema.parse(projectResponse.json());
+    const queuedProject = projectWireSummarySchema.parse(
+      projectResponse.json(),
+    );
     expect(queuedProject).toMatchObject({
       originKind: "github",
       capabilities: {
@@ -2349,7 +2353,7 @@ describe("local server foundation", () => {
       setupError: null,
       source: null,
     });
-    const preferredProject = projectSummarySchema.parse(
+    const preferredProject = projectWireSummarySchema.parse(
       (
         await firstApp.inject({
           method: "PATCH",
@@ -2371,6 +2375,7 @@ describe("local server foundation", () => {
       method: "POST",
       url: "/api/projects/from-github",
       payload: {
+        ...protectedProjectFields(),
         workerId: "test-worker",
         repositoryId: "github-repository-2",
         nameWithOwner: "ArcaneArts/ParallelClone",
@@ -2378,9 +2383,11 @@ describe("local server foundation", () => {
       },
     });
     expect(parallelResponse.statusCode).toBe(202);
-    const parallelProject = projectSummarySchema.parse(parallelResponse.json());
+    const parallelProject = projectWireSummarySchema.parse(
+      parallelResponse.json(),
+    );
     await vi.waitFor(async () => {
-      const currentProjects = projectListSchema.parse(
+      const currentProjects = projectWireListSchema.parse(
         (await firstApp.inject({ method: "GET", url: "/api/projects" })).json(),
       );
       expect(
@@ -2403,7 +2410,7 @@ describe("local server foundation", () => {
     releaseProjectClone?.();
     releaseProjectClone = null;
     const project = await vi.waitFor(async () => {
-      const current = projectListSchema
+      const current = projectWireListSchema
         .parse(
           (
             await firstApp.inject({ method: "GET", url: "/api/projects" })
@@ -3575,6 +3582,7 @@ describe("local server foundation", () => {
       method: "POST",
       url: "/api/projects/from-github",
       payload: {
+        ...protectedProjectFields(),
         workerId: "test-worker",
         repositoryId: "github-repository-1",
         nameWithOwner: "ArcaneArts/Cantrip",
@@ -6228,7 +6236,7 @@ describe("local server foundation", () => {
         ],
       },
     );
-    const replicatedProjects = projectListSchema.parse(
+    const replicatedProjects = projectWireListSchema.parse(
       (await firstApp.inject({ method: "GET", url: "/api/projects" })).json(),
     );
     expect(replicatedProjects).toHaveLength(1);
@@ -6302,7 +6310,7 @@ describe("local server foundation", () => {
       workerBridge,
     });
 
-    const projects = projectListSchema.parse(
+    const projects = projectWireListSchema.parse(
       (await secondApp.inject({ method: "GET", url: "/api/projects" })).json(),
     );
     const workers = workerListSchema.parse(
@@ -6476,19 +6484,20 @@ describe("local server foundation", () => {
     expect(unlinkResponse.statusCode).toBe(204);
     expect(deletedProjectPaths).toEqual([]);
     expect(
-      projectListSchema.parse(
+      projectWireListSchema.parse(
         (
           await secondApp.inject({ method: "GET", url: "/api/projects" })
         ).json(),
       ),
     ).toEqual([]);
 
-    const queuedRelinked = projectSummarySchema.parse(
+    const queuedRelinked = projectWireSummarySchema.parse(
       (
         await secondApp.inject({
           method: "POST",
           url: "/api/projects/from-github",
           payload: {
+            ...protectedProjectFields(),
             workerId: "test-worker",
             repositoryId: "github-repository-1",
             nameWithOwner: "ArcaneArts/Cantrip",
@@ -6498,7 +6507,7 @@ describe("local server foundation", () => {
       ).json(),
     );
     const relinked = await vi.waitFor(async () => {
-      const current = projectListSchema
+      const current = projectWireListSchema
         .parse(
           (
             await secondApp.inject({ method: "GET", url: "/api/projects" })

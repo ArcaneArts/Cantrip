@@ -18,6 +18,8 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { protectedProjectFields } from "./private-label-fixture.js";
+
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-tunnel-control-plane-"),
 );
@@ -84,6 +86,7 @@ beforeAll(async () => {
   await recordWorker(LOCAL_USER_ID, "worker-b");
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "worker-a",
+    ...protectedProjectFields(),
     repositoryId: "tunnel-control-plane",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
