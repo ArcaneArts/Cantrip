@@ -30,6 +30,7 @@ export interface ContextUsageSummary {
   contextWindowTokens: number;
   remainingPercent: number;
   remainingTokens: number;
+  usedPercent: number;
   usedTokens: number;
 }
 
@@ -75,6 +76,7 @@ export function latestContextUsage(
           (remainingTokens / contextWindowTokens) * 100,
         ),
         remainingTokens,
+        usedPercent: clampPercent((usedTokens / contextWindowTokens) * 100),
         usedTokens,
       };
     }
@@ -410,7 +412,7 @@ export function ContextUsageRing({
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
-                  strokeDasharray={`${usage.remainingPercent} 100`}
+                  strokeDasharray={`${usage.usedPercent} 100`}
                 />
               ) : null}
             </svg>

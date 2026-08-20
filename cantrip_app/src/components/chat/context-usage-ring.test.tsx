@@ -165,6 +165,7 @@ describe("context usage ring", () => {
       contextWindowTokens: 100_000,
       remainingPercent: 75,
       remainingTokens: 75_000,
+      usedPercent: 25,
       usedTokens: 25_000,
     });
   });
@@ -246,6 +247,7 @@ describe("context usage ring", () => {
 
     expect(markup).toContain("75% context left");
     expect(markup).toContain("25,000 of 100,000 tokens used");
+    expect(markup).toContain('stroke-dasharray="25 100"');
     expect(markup).toContain("72% total 7-day available across 2 accounts");
     expect(markup).toContain('aria-expanded="false"');
   });
