@@ -3,12 +3,14 @@ import { Bot, Pause } from "lucide-react";
 
 interface ChatRunStatusProps {
   automationPaused: boolean;
+  syncingCodeGraph: boolean;
   status: ChatSummary["status"];
   waitingForPlanAnswer: boolean;
 }
 
 export function ChatRunStatus({
   automationPaused,
+  syncingCodeGraph,
   status,
   waitingForPlanAnswer,
 }: ChatRunStatusProps) {
@@ -17,7 +19,9 @@ export function ChatRunStatus({
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
     return (
       <div aria-live="polite" role="status" className="text-sm">
-        <span className="chat-working-shimmer">Working...</span>
+        <span className="chat-working-shimmer">
+          {syncingCodeGraph ? "Syncing CodeGraph..." : "Working..."}
+        </span>
       </div>
     );
   }

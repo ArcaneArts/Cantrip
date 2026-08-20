@@ -8,6 +8,7 @@ describe("ChatRunStatus", () => {
     const markup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
+        syncingCodeGraph={false}
         status="running"
         waitingForPlanAnswer={false}
       />,
@@ -20,10 +21,26 @@ describe("ChatRunStatus", () => {
     expect(markup).not.toContain("<svg");
   });
 
+  it("identifies CodeGraph synchronization before agent work begins", () => {
+    const markup = renderToStaticMarkup(
+      <ChatRunStatus
+        automationPaused={false}
+        syncingCodeGraph
+        status="running"
+        waitingForPlanAnswer={false}
+      />,
+    );
+
+    expect(markup).toContain("Syncing CodeGraph...");
+    expect(markup).toContain("chat-working-shimmer");
+    expect(markup).not.toContain("Working...");
+  });
+
   it("keeps actionable waiting states explicit", () => {
     const approvalMarkup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused={false}
+        syncingCodeGraph={false}
         status="waiting-for-approval"
         waitingForPlanAnswer={false}
       />,
@@ -31,6 +48,7 @@ describe("ChatRunStatus", () => {
     const pausedMarkup = renderToStaticMarkup(
       <ChatRunStatus
         automationPaused
+        syncingCodeGraph={false}
         status="running"
         waitingForPlanAnswer={false}
       />,
@@ -45,6 +63,7 @@ describe("ChatRunStatus", () => {
       renderToStaticMarkup(
         <ChatRunStatus
           automationPaused={false}
+          syncingCodeGraph={false}
           status="idle"
           waitingForPlanAnswer={false}
         />,
