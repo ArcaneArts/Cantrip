@@ -33,7 +33,7 @@ function keyboard(
 }
 
 describe("application actions", () => {
-  it("registers project creation actions for the future command bar", () => {
+  it("registers project actions for the command bar", () => {
     expect(
       availableAppActions(projectContext).map(({ id, label, shortcut }) => ({
         id,

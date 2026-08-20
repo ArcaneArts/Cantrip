@@ -19,7 +19,7 @@ export type AppActionDescriptor = {
 
 /**
  * Canonical application action registry. Native menus, keyboard shortcuts,
- * and the future Shift-Shift command bar all consume this same collection.
+ * and the Shift-Shift command bar all consume this same collection.
  */
 export const APP_ACTIONS = [
   {
