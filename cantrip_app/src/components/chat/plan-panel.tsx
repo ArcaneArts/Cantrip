@@ -3,17 +3,10 @@ import type {
   ChatPlanState,
   PendingPlanQuestion,
 } from "@cantrip/protocol";
-import {
-  Check,
-  CircleHelp,
-  CircleSlash2,
-  ListChecks,
-  Loader2,
-} from "lucide-react";
+import { CircleHelp, ListChecks, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 export function buildPlanAnswers(
   question: PendingPlanQuestion,
@@ -72,34 +65,11 @@ export function PlanPanel({
               {state.explanation}
             </p>
           ) : null}
-          {state.steps.length > 0 ? (
-            <ol className="mt-2 space-y-1.5 text-sm">
-              {state.steps.map((step, index) => (
-                <li key={`${index}:${step.step}`} className="flex gap-2">
-                  {step.status === "completed" ? (
-                    <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />
-                  ) : step.status === "inProgress" ? (
-                    <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-sky-500" />
-                  ) : (
-                    <CircleSlash2 className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                  )}
-                  <span
-                    className={cn(
-                      "leading-5",
-                      step.status === "completed" &&
-                        "text-muted-foreground line-through",
-                    )}
-                  >
-                    {step.step}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          ) : (
+          {state.steps.length === 0 ? (
             <p className="mt-1 text-sm text-muted-foreground">
               Codex is gathering context for a plan.
             </p>
-          )}
+          ) : null}
         </div>
       </div>
 
