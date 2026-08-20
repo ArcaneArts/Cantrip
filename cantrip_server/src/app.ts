@@ -108,14 +108,22 @@ import {
   encryptedChatForkSchema,
   chatWireListSchema,
   chatMessageCreateSchema,
+  chatMessageOpaqueContentSchema,
   chatMessageListSchema,
   chatMessageWireListSchema,
   chatMessageSchema,
+  chatMessageRelayResultSchema,
   chatModelUpdateSchema,
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
   chatPromptSteerResultSchema,
+  encryptedChatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
+  encryptedChatPromptSubmitResultSchema,
+  encryptedChatTurnCreateSchema,
+  encryptedQueuedPromptListSchema,
+  encryptedQueuedPromptSchema,
+  encryptedQueuedPromptUpdateSchema,
   chatWireSummarySchema,
   taskWireCreateResultSchema,
   encryptedTaskCreateSchema,
@@ -328,6 +336,7 @@ import {
   queuedPromptCreateSchema,
   queuedPromptListSchema,
   queuedPromptOrderSchema,
+  queuedPromptOpaqueContentSchema,
   queuedPromptSchema,
   queuedPromptUpdateSchema,
   encryptedRemoteDesktopCreateSchema,
@@ -435,6 +444,8 @@ import type {
   AppLiveScope,
   EncryptedBrowserUpdate,
   ChatMessage,
+  ChatMessageOpaqueContent,
+  ChatMessageOpaqueSummary,
   ChatReasoningState,
   ChatTurnCreate,
   CodeRuntimeStatus,
@@ -1932,6 +1943,27 @@ export async function buildApp({
       );
     }
   };
+  const publishEncryptedChatMessage = (
+    message: ChatMessageOpaqueSummary,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "chat", chatId: message.chatId },
+        resource: "chat-message",
+        action: "updated",
+        entityId: message.id,
+        revision: message.sequence,
+        payload: appLiveEventPayloadSchema.parse(message),
+      });
+    } catch (error) {
+      app.log.error(
+        { chatId: message.chatId, err: error, messageId: message.id },
+        "Could not publish encrypted chat message",
+      );
+    }
+  };
   const appendLiveChatMessage = async (
     ...input: Parameters<typeof repository.appendMessage>
   ): ReturnType<typeof repository.appendMessage> => {
@@ -1975,8 +2007,45 @@ export async function buildApp({
     if (message) publishTaskMessage(message);
     return message;
   };
+  const appendLiveEncryptedChatMessage = async (
+    ownerId: string,
+    chatId: string,
+    message: ChatMessageOpaqueContent,
+    attribution?: { executionLaneId: string; worktreeId: string },
+  ) => {
+    const saved = await repository.appendEncryptedMessage(
+      ownerId,
+      chatId,
+      message,
+      attribution,
+    );
+    if (saved) publishEncryptedChatMessage(saved);
+    return saved;
+  };
+  const upsertLiveEncryptedChatMessage = async (
+    ownerId: string,
+    chatId: string,
+    message: ChatMessageOpaqueContent,
+    attribution?: { executionLaneId: string; worktreeId: string },
+  ) => {
+    const saved = await repository.upsertEncryptedMessage(
+      ownerId,
+      chatId,
+      message,
+      attribution,
+    );
+    if (saved) publishEncryptedChatMessage(saved);
+    return saved;
+  };
+  const setLiveEncryptedChatMessageModelRoute = async (
+    ...input: Parameters<typeof repository.setEncryptedMessageModelRoute>
+  ) => {
+    const message = await repository.setEncryptedMessageModelRoute(...input);
+    if (message) publishEncryptedChatMessage(message);
+    return message;
+  };
   const taskMessageServerStub = (
-    message: TaskMessageOpaqueSummary,
+    message: TaskMessageOpaqueSummary | ChatMessageOpaqueSummary,
   ): ChatMessage => ({
     id: message.id,
     chatId: message.chatId,
@@ -6221,7 +6290,10 @@ export async function buildApp({
       )
         return;
       const prompt = (
-        await repository.listQueuedPrompts(applicationOwnerId(), chatId)
+        await repository.listEncryptedQueuedPrompts(
+          applicationOwnerId(),
+          chatId,
+        )
       ).find((candidate) => !candidate.frozen);
       if (!prompt) return;
       app.log.info(
@@ -6246,14 +6318,26 @@ export async function buildApp({
         );
         if (!context) return;
       }
-      await beginPromptTurn(context, {
-        text: prompt.text,
-        attachmentIds: prompt.attachments.map(({ id }) => id),
-        mode: prompt.mode,
-        modelId: prompt.modelId,
-        reasoningEffort: prompt.reasoningEffort,
-        idempotencyKey: `queue:${prompt.id}`,
-      });
+      await beginTurn(
+        context,
+        {
+          text: "Encrypted queued prompt.",
+          attachmentIds: prompt.classification.attachmentIds,
+          mode: prompt.classification.mode,
+          modelId: prompt.modelId,
+          reasoningEffort: prompt.reasoningEffort,
+          idempotencyKey: prompt.pendingMessage.idempotencyKey,
+        },
+        {
+          encryptedChatMessages: {
+            userMessage: prompt.pendingMessage,
+            response: {
+              id: randomUUID(),
+              idempotencyKey: `assistant:${prompt.pendingMessage.id}`,
+            },
+          },
+        },
+      );
       await deleteLiveQueuedPrompt(applicationOwnerId(), prompt.id);
     } catch (error) {
       app.log.error(
@@ -6558,6 +6642,10 @@ export async function buildApp({
         userMessage: TaskMessageOpaqueContent;
         response?: { id: string; idempotencyKey: string };
       };
+      encryptedChatMessages?: {
+        userMessage: ChatMessageOpaqueContent;
+        response: { id: string; idempotencyKey: string };
+      };
       messageRole?: "system" | "user";
       purpose?: string;
       runtimes?: ModelRuntime[];
@@ -6598,6 +6686,7 @@ export async function buildApp({
       ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
       : null;
     const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
+    const encryptedChatMessages = options.encryptedChatMessages ?? null;
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
     }
@@ -6650,14 +6739,18 @@ export async function buildApp({
       worktreeId: execution.worktreeId,
     };
     let priorMessages: ChatMessage[] = [];
+    let protectedHistory: ChatMessageOpaqueSummary[] = [];
     let userMessage: ChatMessage;
     let immediateCorrectiveFollowup = false;
     try {
       await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
-      const priorHeaders = encryptedTaskMessages
-        ? await repository.listMessageHeaders(ownerId, execution.chatId)
-        : await repository.listMessages(ownerId, execution.chatId);
-      if (!encryptedTaskMessages) priorMessages = priorHeaders as ChatMessage[];
+      const priorHeaders =
+        encryptedTaskMessages || encryptedChatMessages
+          ? await repository.listMessageHeaders(ownerId, execution.chatId)
+          : await repository.listMessages(ownerId, execution.chatId);
+      if (!encryptedTaskMessages && !encryptedChatMessages) {
+        priorMessages = priorHeaders as ChatMessage[];
+      }
       for (let index = priorHeaders.length - 1; index >= 0; index -= 1) {
         const message = priorHeaders[index]!;
         if (message.role !== "assistant") continue;
@@ -6666,7 +6759,30 @@ export async function buildApp({
           Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs <= 120_000;
         break;
       }
-      if (encryptedTaskMessages) {
+      if (encryptedChatMessages) {
+        protectedHistory = await repository.listEncryptedMessages(
+          ownerId,
+          execution.chatId,
+        );
+        const appended = await appendLiveEncryptedChatMessage(
+          ownerId,
+          execution.chatId,
+          encryptedChatMessages.userMessage,
+          attribution,
+        );
+        if (!appended) throw new Error("Encrypted Chat not found.");
+        userMessage = taskMessageServerStub(appended);
+        await setLiveEncryptedChatMessageModelRoute(
+          ownerId,
+          userMessage.id,
+          modelId,
+          runtimes[0]!,
+          {
+            appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
+            reasoningAdjusted: preparedRuntimes[0]!.adjusted,
+          },
+        );
+      } else if (encryptedTaskMessages) {
         const appended = await appendLiveTaskMessage(
           ownerId,
           execution.chatId,
@@ -6786,9 +6902,11 @@ export async function buildApp({
               ? requestedPrompt
               : continuationPrompt(priorMessages, requestedPrompt);
           if (index > 0) {
-            const setRoute = encryptedTaskMessages
-              ? setLiveTaskMessageModelRoute
-              : setLiveChatMessageModelRoute;
+            const setRoute = encryptedChatMessages
+              ? setLiveEncryptedChatMessageModelRoute
+              : encryptedTaskMessages
+                ? setLiveTaskMessageModelRoute
+                : setLiveChatMessageModelRoute;
             await setRoute(ownerId, userMessage.id, modelId, runtime, {
               appliedReasoningEffort: preparedReasoning.appliedReasoningEffort,
               reasoningAdjusted: preparedReasoning.adjusted,
@@ -6796,6 +6914,7 @@ export async function buildApp({
           }
           if (
             !encryptedTaskMessages &&
+            !encryptedChatMessages &&
             preparedReasoning.adjusted &&
             requestedReasoningEffort
           ) {
@@ -6907,7 +7026,12 @@ export async function buildApp({
                 worktreeMode: execution.worktreeMode,
                 worktreePolicy: execution.worktreePolicy,
                 policyContext,
-                prompt: workerPrompt,
+                ...(encryptedChatMessages
+                  ? {
+                      protectedPrompt: encryptedChatMessages.userMessage,
+                      protectedHistory,
+                    }
+                  : { prompt: workerPrompt, protectedHistory: [] }),
                 attachments: attachments.map((attachment) => ({
                   id: attachment.id,
                   fileName: attachment.fileName,
@@ -6915,9 +7039,10 @@ export async function buildApp({
                   sizeBytes: attachment.sizeBytes,
                   kind: attachment.kind,
                 })),
-                skillNames: options.structuredResult
-                  ? []
-                  : mentionedSkillNames(input.text),
+                skillNames:
+                  options.structuredResult || encryptedChatMessages
+                    ? []
+                    : mentionedSkillNames(input.text),
                 model: runtime.model,
                 provider: runtime.provider,
                 permissionProfileId:
@@ -6937,7 +7062,14 @@ export async function buildApp({
                         idempotencyKey:
                           encryptedTaskMessages.response.idempotencyKey,
                       }
-                    : { kind: "visible" },
+                    : encryptedChatMessages
+                      ? {
+                          kind: "chat-message-encrypted" as const,
+                          messageId: encryptedChatMessages.response.id,
+                          idempotencyKey:
+                            encryptedChatMessages.response.idempotencyKey,
+                        }
+                      : { kind: "visible" },
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -6999,6 +7131,41 @@ export async function buildApp({
                           ? "expired"
                           : "interrupted",
                       );
+                      return;
+                    }
+                    if (event.type === "agent.protected-message") {
+                      behaviorTurnId = event.telemetry.turnId ?? behaviorTurnId;
+                      if (event.telemetry.kind === "message") {
+                        behaviorTracker.markVisibleResponse(
+                          event.telemetry.phase !== "commentary",
+                          observedAt,
+                        );
+                        if (event.telemetry.phase !== "commentary") {
+                          recordFinal(
+                            finals,
+                            event.telemetry.turnId,
+                            event.message.id,
+                          );
+                        }
+                      } else if (event.telemetry.kind === "activity") {
+                        behaviorTracker.markActivity(observedAt);
+                      } else {
+                        behaviorTracker.markVisibleResponse(true, observedAt);
+                        recordFinal(
+                          finals,
+                          event.telemetry.turnId,
+                          event.message.id,
+                        );
+                      }
+                      const saved = await upsertLiveEncryptedChatMessage(
+                        ownerId,
+                        execution.chatId,
+                        event.message,
+                        attribution,
+                      );
+                      if (!saved) {
+                        throw new Error("Encrypted Chat message was rejected.");
+                      }
                       return;
                     }
                     if (event.type === "agent.message") {
@@ -7266,6 +7433,36 @@ export async function buildApp({
                 modelId,
                 runtime,
               );
+            } else if (encryptedChatMessages) {
+              const encryptedResult = chatMessageRelayResultSchema.parse(
+                result.structuredResult,
+              );
+              if (
+                !encryptedResult.message ||
+                encryptedResult.message.id !==
+                  encryptedChatMessages.response.id ||
+                encryptedResult.message.idempotencyKey !==
+                  encryptedChatMessages.response.idempotencyKey
+              ) {
+                throw new Error(
+                  "The encrypted chat message result metadata is invalid.",
+                );
+              }
+              if (!hasFinal(finals, result.turnId, result.text)) {
+                const assistant = await appendLiveEncryptedChatMessage(
+                  ownerId,
+                  execution.chatId,
+                  encryptedResult.message,
+                  attribution,
+                );
+                if (!assistant) throw new Error("Encrypted Chat not found.");
+                await setLiveEncryptedChatMessageModelRoute(
+                  ownerId,
+                  assistant.id,
+                  modelId,
+                  runtime,
+                );
+              }
             } else if (!hasFinal(finals, result.turnId, result.text)) {
               await appendLiveChatMessage(
                 ownerId,
@@ -7479,7 +7676,7 @@ export async function buildApp({
           },
           "Agent turn failed",
         );
-        if (!encryptedTaskMessages) {
+        if (!encryptedTaskMessages && !encryptedChatMessages) {
           await appendLiveChatMessage(
             ownerId,
             execution.chatId,
@@ -22720,13 +22917,15 @@ export async function buildApp({
             applicationOwnerId(),
             request.params.chatId,
           )
-        : await repository.listMessages(
+        : await repository.listAgentMessageWire(
             applicationOwnerId(),
             request.params.chatId,
           );
       return reply.send(
         chatMessageWireListSchema.parse(
-          task ? { kind: "task-encrypted", messages } : messages,
+          task
+            ? { kind: "task-encrypted", messages }
+            : { kind: "chat-mixed", messages },
         ),
       );
     },
@@ -23136,7 +23335,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/messages",
     async (request, reply) => {
-      const input = chatMessageCreateSchema.safeParse(request.body);
+      const input = chatMessageOpaqueContentSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -23152,7 +23351,7 @@ export async function buildApp({
           error: "Task messages must be encrypted by a trusted endpoint.",
         });
       }
-      const message = await appendLiveChatMessage(
+      const message = await appendLiveEncryptedChatMessage(
         applicationOwnerId(),
         request.params.chatId,
         input.data,
@@ -23160,7 +23359,7 @@ export async function buildApp({
       if (!message) {
         return reply.code(404).send({ error: "Chat not found" });
       }
-      return reply.code(201).send(chatMessageSchema.parse(message));
+      return reply.code(201).send(message);
     },
   );
 
@@ -23604,8 +23803,8 @@ export async function buildApp({
         });
       }
       return reply.send(
-        queuedPromptListSchema.parse(
-          await repository.listQueuedPrompts(
+        encryptedQueuedPromptListSchema.parse(
+          await repository.listEncryptedQueuedPrompts(
             applicationOwnerId(),
             request.params.chatId,
           ),
@@ -23617,7 +23816,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/queue",
     async (request, reply) => {
-      const input = queuedPromptCreateSchema.safeParse(request.body);
+      const input = queuedPromptOpaqueContentSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -23637,22 +23836,18 @@ export async function buildApp({
         modelId = await resolveModelId(context, input.data.modelId);
         attachments = await resolvePromptAttachments(
           context,
-          input.data.attachmentIds,
+          input.data.classification.attachmentIds,
         );
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
-      const prompt = await createLiveQueuedPrompt(
+      if (modelId !== input.data.modelId) {
+        return reply.code(409).send({ error: "Selected model was not found." });
+      }
+      const prompt = await repository.createEncryptedQueuedPrompt(
         applicationOwnerId(),
         context.chatId,
-        {
-          ...input.data,
-          reasoningEffort:
-            input.data.reasoningEffort !== undefined
-              ? input.data.reasoningEffort
-              : context.reasoningEffort,
-        },
-        modelId,
+        input.data,
         attachments.map((attachment) =>
           chatAttachmentSummarySchema.parse(attachment),
         ),
@@ -23671,7 +23866,7 @@ export async function buildApp({
         "Chat prompt queued",
       );
       if (!prompt.frozen) void dispatchNextQueuedPrompt(context.chatId);
-      return reply.code(201).send(queuedPromptSchema.parse(prompt));
+      return reply.code(201).send(encryptedQueuedPromptSchema.parse(prompt));
     },
   );
 
@@ -23696,11 +23891,11 @@ export async function buildApp({
   app.patch<{ Params: { promptId: string } }>(
     "/api/queued-prompts/:promptId",
     async (request, reply) => {
-      const input = queuedPromptUpdateSchema.safeParse(request.body);
+      const input = encryptedQueuedPromptUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
-      const current = await repository.getQueuedPrompt(
+      const current = await repository.getEncryptedQueuedPrompt(
         applicationOwnerId(),
         request.params.promptId,
       );
@@ -23711,41 +23906,28 @@ export async function buildApp({
         applicationOwnerId(),
         current.chatId,
       );
+      if (!promptContext) {
+        return reply.code(404).send({ error: "Chat not found." });
+      }
       if (promptContext?.experience === "task") {
         return reply.code(409).send({
           error: "Queued prompts are unavailable for encrypted Tasks.",
         });
       }
-      let attachments:
-        Awaited<ReturnType<typeof resolvePromptAttachments>> | undefined;
-      if (input.data.attachmentIds !== undefined) {
-        const context = await repository.getChatExecutionContext(
-          applicationOwnerId(),
-          current.chatId,
+      let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
+      try {
+        attachments = await resolvePromptAttachments(
+          promptContext,
+          input.data.prompt.classification.attachmentIds,
         );
-        if (!context) return reply.code(404).send({ error: "Chat not found." });
-        try {
-          attachments = await resolvePromptAttachments(
-            context,
-            input.data.attachmentIds,
-          );
-        } catch (error) {
-          return reply.code(409).send({ error: errorMessage(error) });
-        }
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
       }
-      if (
-        !(input.data.text ?? current.text) &&
-        (attachments ?? current.attachments).length === 0
-      ) {
-        return reply
-          .code(400)
-          .send({ error: "A prompt needs text or at least one attachment." });
-      }
-      const prompt = await updateLiveQueuedPrompt(
+      const prompt = await repository.replaceEncryptedQueuedPrompt(
         applicationOwnerId(),
         request.params.promptId,
-        input.data,
-        attachments?.map((attachment) =>
+        input.data.prompt,
+        attachments.map((attachment) =>
           chatAttachmentSummarySchema.parse(attachment),
         ),
       );
@@ -23753,7 +23935,7 @@ export async function buildApp({
         return reply.code(404).send({ error: "Queued prompt not found." });
       }
       if (!prompt.frozen) void dispatchNextQueuedPrompt(prompt.chatId);
-      return reply.send(queuedPromptSchema.parse(prompt));
+      return reply.send(encryptedQueuedPromptSchema.parse(prompt));
     },
   );
 
@@ -23773,7 +23955,7 @@ export async function buildApp({
   app.post<{ Params: { promptId: string } }>(
     "/api/queued-prompts/:promptId/steer",
     async (request, reply) => {
-      const queued = await repository.getQueuedPrompt(
+      const queued = await repository.getEncryptedQueuedPrompt(
         applicationOwnerId(),
         request.params.promptId,
       );
@@ -23792,9 +23974,9 @@ export async function buildApp({
       }
 
       try {
-        let message: ChatMessage;
+        let message: ChatMessageOpaqueSummary;
         if (chatIsExecuting(context.status)) {
-          if (queued.mode !== "default") {
+          if (queued.classification.mode !== "default") {
             throw new Error(
               "Plan and Goal mode prompts cannot steer an active turn. Leave this prompt queued for the next turn.",
             );
@@ -23811,15 +23993,13 @@ export async function buildApp({
           if (!runtime) throw new Error("Selected model was not found.");
           const attachments = await resolvePromptAttachments(
             context,
-            queued.attachments.map(({ id }) => id),
+            queued.classification.attachmentIds,
           );
           await bridge.request(context.workerId, {
             type: "chat.steer",
             chatId: context.chatId,
             threadId: context.threadId,
-            prompt:
-              queued.text ||
-              "Review the attached files and respond to the user.",
+            protectedPrompt: queued.pendingMessage,
             attachments: attachments.map((attachment) => ({
               id: attachment.id,
               fileName: attachment.fileName,
@@ -23830,24 +24010,10 @@ export async function buildApp({
             model: runtime.model,
             provider: runtime.provider,
           });
-          const appended = await appendLiveChatMessage(
+          const appended = await appendLiveEncryptedChatMessage(
             applicationOwnerId(),
             context.chatId,
-            {
-              role: "user",
-              mode: queued.mode,
-              reasoningEffort: queued.reasoningEffort,
-              content: [
-                ...(queued.text
-                  ? [{ type: "text" as const, text: queued.text }]
-                  : []),
-                ...queued.attachments.map((attachment) => ({
-                  type: "attachment" as const,
-                  attachment,
-                })),
-              ],
-              idempotencyKey: `steer:${queued.id}`,
-            },
+            queued.pendingMessage,
             context.executionLaneId
               ? {
                   executionLaneId: context.executionLaneId,
@@ -23874,14 +24040,34 @@ export async function buildApp({
             if (!selected) throw new Error("Worktree could not be selected.");
             context = selected;
           }
-          message = await beginPromptTurn(context, {
-            text: queued.text,
-            attachmentIds: queued.attachments.map(({ id }) => id),
-            mode: queued.mode,
-            modelId: queued.modelId,
-            reasoningEffort: queued.reasoningEffort,
-            idempotencyKey: `queue:${queued.id}`,
-          });
+          await beginTurn(
+            context,
+            {
+              text: "Encrypted queued prompt.",
+              attachmentIds: queued.classification.attachmentIds,
+              mode: queued.classification.mode,
+              modelId: queued.modelId,
+              reasoningEffort: queued.reasoningEffort,
+              idempotencyKey: queued.pendingMessage.idempotencyKey,
+            },
+            {
+              encryptedChatMessages: {
+                userMessage: queued.pendingMessage,
+                response: {
+                  id: randomUUID(),
+                  idempotencyKey: `assistant:${queued.pendingMessage.id}`,
+                },
+              },
+            },
+          );
+          const started = await repository.getEncryptedMessageByIdempotencyKey(
+            applicationOwnerId(),
+            context.chatId,
+            queued.pendingMessage.idempotencyKey,
+          );
+          if (!started)
+            throw new Error("Encrypted chat message was not saved.");
+          message = started;
         }
         await deleteLiveQueuedPrompt(applicationOwnerId(), queued.id);
         app.log.info(
@@ -23898,7 +24084,10 @@ export async function buildApp({
           "Queued prompt steered into chat",
         );
         return reply.send(
-          chatPromptSteerResultSchema.parse({ steered: true, message }),
+          encryptedChatPromptSteerResultSchema.parse({
+            steered: true,
+            message,
+          }),
         );
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -23909,7 +24098,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/turns",
     async (request, reply) => {
-      const input = chatTurnCreateSchema.safeParse(request.body);
+      const input = encryptedChatTurnCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -23925,14 +24114,14 @@ export async function buildApp({
           error: "Task turns must use the encrypted Task operation flow.",
         });
       }
-      const existing = await repository.getMessageByIdempotencyKey(
+      const existing = await repository.getEncryptedMessageByIdempotencyKey(
         applicationOwnerId(),
         context.chatId,
-        input.data.idempotencyKey,
+        input.data.message.idempotencyKey,
       );
       if (existing) {
         return reply.send(
-          chatPromptSubmitResultSchema.parse({
+          encryptedChatPromptSubmitResultSchema.parse({
             status: "started",
             message: existing,
           }),
@@ -23945,25 +24134,15 @@ export async function buildApp({
           modelId = await resolveModelId(context, input.data.modelId);
           attachments = await resolvePromptAttachments(
             context,
-            input.data.attachmentIds,
+            input.data.queuedPrompt.classification.attachmentIds,
           );
         } catch (error) {
           return reply.code(409).send({ error: errorMessage(error) });
         }
-        const prompt = await createLiveQueuedPrompt(
+        const prompt = await repository.createEncryptedQueuedPrompt(
           applicationOwnerId(),
           context.chatId,
-          {
-            ...input.data,
-            modelId,
-            reasoningEffort:
-              input.data.reasoningEffort !== undefined
-                ? input.data.reasoningEffort
-                : context.reasoningEffort,
-            frozen: false,
-            worktreeId: null,
-          },
-          modelId,
+          input.data.queuedPrompt,
           attachments.map((attachment) =>
             chatAttachmentSummarySchema.parse(attachment),
           ),
@@ -23989,7 +24168,7 @@ export async function buildApp({
         }
         return prompt
           ? reply.code(202).send(
-              chatPromptSubmitResultSchema.parse({
+              encryptedChatPromptSubmitResultSchema.parse({
                 status: "queued",
                 prompt,
               }),
@@ -23998,9 +24177,34 @@ export async function buildApp({
       }
 
       try {
-        const message = await beginPromptTurn(context, input.data);
+        await beginTurn(
+          context,
+          {
+            text: "Encrypted prompt.",
+            attachmentIds: input.data.message.classification.attachmentIds,
+            mode: input.data.message.classification.mode,
+            modelId: input.data.modelId,
+            reasoningEffort: input.data.message.reasoningEffort,
+            idempotencyKey: input.data.message.idempotencyKey,
+          },
+          {
+            encryptedChatMessages: {
+              userMessage: input.data.message,
+              response: {
+                id: randomUUID(),
+                idempotencyKey: `assistant:${input.data.message.id}`,
+              },
+            },
+          },
+        );
+        const message = await repository.getEncryptedMessageByIdempotencyKey(
+          applicationOwnerId(),
+          context.chatId,
+          input.data.message.idempotencyKey,
+        );
+        if (!message) throw new Error("Encrypted chat message was not saved.");
         return reply.code(202).send(
-          chatPromptSubmitResultSchema.parse({
+          encryptedChatPromptSubmitResultSchema.parse({
             status: "started",
             message,
           }),

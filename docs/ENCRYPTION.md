@@ -400,10 +400,10 @@ database-compromise guarantee is described.
 | Worker key custody, public registration, and scoped component grants             | Protected local private key; opaque server grants; Task operations require exact scoped readiness                           | Worker grants and Task readiness complete     | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                 |
 | Workspace display names                                                          | AES-256-GCM E2EE; client-only key                                                                                           | E2EE complete; lazy migration                 | Implemented          | Low-Medium  | Name-based server search and validation                                                        |
 | Project display names                                                            | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                                         | E2EE complete                                 | Implemented          | Medium      | Independent label search and presentation; repository identity remains queryable               |
-| Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths | Versioned `chat-content` endpoint envelope contract; production rows remain plaintext                                       | Codec foundation complete; payload planned    | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
+| Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths | Primary client turn and worker stream paths use row-bound `chat-content`; legacy server-authored/import/sync paths remain   | Primary turn path E2EE; closure ongoing       | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, questions, answers, directions, errors, messages, and Goals  | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation                   | E2EE complete                                 | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                |
 | Ordinary chat and Task display titles                                            | AES-256-GCM E2EE; client-created labels and scoped worker-created import labels                                             | E2EE complete                                 | Implemented          | Medium      | Title search, concatenation, automation copies, and execution-target presentation              |
-| Queued prompts                                                                   | Versioned row-bound `chat-content` endpoint envelope contract; production rows remain plaintext                             | Codec foundation complete; payload planned    | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
+| Queued prompts                                                                   | Client-sealed `chat-content`, including the future row-bound message; worker opens only when dispatching or steering        | Primary queue path E2EE; closure ongoing      | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                                               | Planned                                       | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Separate request/response `interaction-content` endpoint envelope contracts; production rows remain plaintext               | Codec foundation complete; payload planned    | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
 | Surface private-state contracts, endpoint codecs, and scoped worker grants       | Bounded `surface-private-state` envelopes; independently grantable from display labels                                      | E2EE closure complete and statically enforced | Required             | Medium      | No server decryption capability is introduced                                                  |
@@ -540,14 +540,26 @@ Ordinary messages and queued prompts use the independently scoped
 component, table, row or request key, field, format version, and key revision.
 The contracts authenticate the small public classifications needed for
 routing, reject row replay and tampering, and bound encoded plaintext before
-encryption. They do not by themselves make the existing production persistence
-paths E2EE; the rows above remain incomplete until those paths store and relay
-only these opaque contracts.
+encryption. The primary ordinary-chat path now uses them end to end: the client
+seals user messages and queued prompts, grants `chat-content` to the selected
+worker, and opens persisted/live envelopes; the worker opens prompts and
+history only at execution, seals streamed messages, activity, checkpoints, and
+the final result; and the server stores and relays those values as opaque JSON.
+Queued prompts carry a separately row-bound prompt envelope plus the already
+sealed future message, so dispatch and steering do not require server
+decryption or re-encryption.
 
-Ordinary agent chats remain a high-value future E2EE candidate. Their message
-content stays in `chat_messages.content`, while routing and ordering are
-separate fields such as chat ID, sequence, role, worktree, model route, and
-timestamp. Task-experience chats now use a separate encrypted message shape;
+This row remains incomplete because several secondary producers still need to
+move onto the same endpoint path: server-authored worktree continuation and
+failure notices, external import and thread-sync reconstruction, relocation
+and fork copies, plan snapshots/questions, and automation-generated turns. A
+temporary mixed read contract preserves those existing paths while they are
+converted; it is not the final E2EE boundary and must be removed during closure.
+
+Ordinary agent chats now have a dedicated `chat_messages.protected_content`
+shape for the primary turn path, while routing and ordering remain separate
+fields such as chat ID, sequence, role, worktree, model route, and timestamp.
+Task-experience chats use a separate encrypted message shape;
 Task rows and planning rounds likewise separate public workflow state from
 encrypted sensitive prose. Ordinary-chat and Task titles now use the shared
 `private-surface-metadata` protected-label contract. Clients allocate the chat
@@ -560,8 +572,8 @@ metadata, or exposes a plaintext chat title through archives, relocation,
 execution-target catalogs, or tab-layout summaries. Fork labels are derived
 and encrypted by the client. Project automation presentation resolves the
 already-decrypted chat list, and default tab-group titles are derived from
-decrypted members in the client. Ordinary agent-chat message bodies remain
-plaintext and are tracked separately above.
+decrypted members in the client. The remaining ordinary-chat plaintext
+producers are tracked separately above and prevent an E2EE-complete claim.
 
 [Migration 0106](../cantrip_server/drizzle/0106_wandering_squadron_sinister.sql)
 adds the required opaque column and removes `chats.title`. It deliberately does

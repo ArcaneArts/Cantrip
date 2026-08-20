@@ -32,6 +32,7 @@ import {
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatMessageListSchema,
+  chatMessageSchema,
   chatMessageWireListSchema,
   chatWireSummarySchema,
   chatCompactAcceptedSchema,
@@ -54,7 +55,12 @@ import {
   chatPermissionProfileStateSchema,
   chatPermissionProfileUpdateSchema,
   chatPromptSteerResultSchema,
+  encryptedChatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
+  encryptedChatPromptSubmitResultSchema,
+  encryptedChatTurnCreateSchema,
+  encryptedQueuedPromptListSchema,
+  encryptedQueuedPromptSchema,
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
   codeAttachmentSchema,
@@ -278,6 +284,7 @@ import type {
   AgentInteractionRequestStatus,
   AgentInteractionResolutionCreate,
   ChatWorktreeUpdate,
+  ChatAttachmentSummary,
   ChatAttachmentKind,
   ChatAttachmentSource,
   ChatGoalCreate,
@@ -289,6 +296,7 @@ import type {
   ChatRelocationJobCancel,
   ChatRelocationJobRetry,
   ChatTurnMode,
+  EncryptedQueuedPrompt,
   CodeAppearance,
   CodeThemeMode,
   CodexExternalImportApply,
@@ -404,6 +412,12 @@ import {
   openTaskGoalOpaqueSnapshot,
   openTaskMessageOpaqueSummary,
 } from "@/lib/task-message-encryption";
+import {
+  createEncryptedChatTurn,
+  openChatMessageOpaqueSummary,
+  openQueuedPromptOpaqueSummary,
+  replaceEncryptedQueuedPrompt,
+} from "@/lib/chat-message-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -4078,7 +4092,11 @@ export async function getMessages(chatId: string) {
       ? response
       : await Promise.all(
           response.messages.map((message) =>
-            openTaskMessageOpaqueSummary(message),
+            response.kind === "task-encrypted"
+              ? openTaskMessageOpaqueSummary(message)
+              : chatMessageSchema.safeParse(message).success
+                ? chatMessageSchema.parse(message)
+                : openChatMessageOpaqueSummary(message),
           ),
         ),
   );
@@ -4273,43 +4291,82 @@ export async function startTurn(
   chatId: string,
   text: string,
   modelId: string,
-  attachmentIds: string[] = [],
+  attachments: ChatAttachmentSummary[] = [],
   mode: ChatTurnMode = "default",
   reasoningEffort: ReasoningEffort | null = null,
 ) {
-  return chatPromptSubmitResultSchema.parse(
-    await post(`/api/chats/${encodeURIComponent(chatId)}/turns`, {
-      text,
-      attachmentIds,
-      mode,
-      modelId,
-      reasoningEffort,
-      idempotencyKey: crypto.randomUUID(),
-    }),
+  const idempotencyKey = crypto.randomUUID();
+  const input = await createEncryptedChatTurn({
+    attachments,
+    idempotencyKey,
+    messageId: crypto.randomUUID(),
+    mode,
+    modelId,
+    promptId: crypto.randomUUID(),
+    reasoningEffort,
+    text,
+  });
+  const result = encryptedChatPromptSubmitResultSchema.parse(
+    await post(
+      `/api/chats/${encodeURIComponent(chatId)}/turns`,
+      encryptedChatTurnCreateSchema.parse(input),
+    ),
   );
+  return result.status === "started"
+    ? {
+        status: "started" as const,
+        message: await openChatMessageOpaqueSummary(result.message),
+      }
+    : {
+        status: "queued" as const,
+        prompt: await openQueuedPromptOpaqueSummary(result.prompt),
+      };
 }
 
 export async function getQueuedPrompts(chatId: string) {
-  return queuedPromptListSchema.parse(
+  const prompts = encryptedQueuedPromptListSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/queue`),
+  );
+  return queuedPromptListSchema.parse(
+    await Promise.all(
+      prompts.map((prompt) => openQueuedPromptOpaqueSummary(prompt)),
+    ),
   );
 }
 
 export async function updateQueuedPrompt(
+  chatId: string,
   promptId: string,
   input: {
-    attachmentIds?: string[];
+    attachments?: ChatAttachmentSummary[];
     text?: string;
     mode?: ChatTurnMode;
     reasoningEffort?: ReasoningEffort | null;
     frozen?: boolean;
   },
 ) {
-  return queuedPromptSchema.parse(
-    await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }),
+  const current = encryptedQueuedPromptListSchema
+    .parse(await request(`/api/chats/${encodeURIComponent(chatId)}/queue`))
+    .find((prompt) => prompt.id === promptId);
+  if (!current) throw new Error("Queued prompt not found.");
+  const opened = await openQueuedPromptOpaqueSummary(current);
+  const replacement = await replaceEncryptedQueuedPrompt(current, {
+    attachments: input.attachments ?? opened.attachments,
+    text: input.text ?? opened.text,
+    mode: input.mode ?? opened.mode,
+    reasoningEffort:
+      input.reasoningEffort !== undefined
+        ? input.reasoningEffort
+        : opened.reasoningEffort,
+    frozen: input.frozen ?? opened.frozen,
+  });
+  return openQueuedPromptOpaqueSummary(
+    encryptedQueuedPromptSchema.parse(
+      await request(`/api/queued-prompts/${encodeURIComponent(promptId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ prompt: replacement }),
+      }),
+    ),
   );
 }
 
@@ -4362,7 +4419,11 @@ export async function reorderQueuedPrompts(chatId: string, ids: string[]) {
 }
 
 export async function steerQueuedPrompt(promptId: string) {
-  return chatPromptSteerResultSchema.parse(
+  const result = encryptedChatPromptSteerResultSchema.parse(
     await post(`/api/queued-prompts/${encodeURIComponent(promptId)}/steer`, {}),
   );
+  return chatPromptSteerResultSchema.parse({
+    steered: true,
+    message: await openChatMessageOpaqueSummary(result.message),
+  });
 }

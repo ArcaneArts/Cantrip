@@ -11,6 +11,12 @@ export * from "./json-message.js";
 export * from "./communication-content.js";
 
 import {
+  chatMessageOpaqueContentSchema,
+  chatMessageOpaqueSummarySchema,
+  queuedPromptOpaqueContentSchema,
+} from "./communication-content.js";
+
+import {
   directBrokerAdvertisementSchema,
   directCapabilityPrepareCommandSchema,
   directCapabilityRenewCommandSchema,
@@ -6647,8 +6653,89 @@ export const chatMessageWireListSchema = z.union([
       messages: z.array(taskMessageOpaqueSummarySchema).max(100_000),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("chat-encrypted"),
+      messages: z.array(chatMessageOpaqueSummarySchema).max(100_000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("chat-mixed"),
+      messages: z
+        .array(z.union([chatMessageOpaqueSummarySchema, chatMessageSchema]))
+        .max(100_000),
+    })
+    .strict(),
   chatMessageListSchema,
 ]);
+
+export const encryptedQueuedPromptSchema = queuedPromptOpaqueContentSchema
+  .extend({
+    chatId: z.string().min(1).max(200),
+    attachments: chatAttachmentListSchema.default([]),
+    position: z.number().int().nonnegative(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const encryptedQueuedPromptListSchema = z
+  .array(encryptedQueuedPromptSchema)
+  .max(1_000);
+
+export const encryptedChatTurnCreateSchema = z
+  .object({
+    message: chatMessageOpaqueContentSchema,
+    queuedPrompt: queuedPromptOpaqueContentSchema,
+    modelId: z.string().min(1).max(200).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      JSON.stringify(value.message) !==
+      JSON.stringify(value.queuedPrompt.pendingMessage)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The queued prompt must carry the submitted encrypted message.",
+        path: ["queuedPrompt", "pendingMessage"],
+      });
+    }
+    if (
+      value.modelId !== undefined &&
+      value.modelId !== value.queuedPrompt.modelId
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The queued prompt model must match the submitted model.",
+        path: ["queuedPrompt", "modelId"],
+      });
+    }
+  });
+
+export const encryptedQueuedPromptUpdateSchema = z
+  .object({ prompt: queuedPromptOpaqueContentSchema })
+  .strict();
+
+export const encryptedChatPromptSubmitResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("started"),
+        message: chatMessageOpaqueSummarySchema,
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("queued"),
+        prompt: encryptedQueuedPromptSchema,
+      })
+      .strict(),
+  ],
+);
 
 export const chatTurnCreateSchema = z
   .object({
@@ -6743,6 +6830,13 @@ export const chatPromptSteerResultSchema = z.object({
   steered: z.literal(true),
   message: chatMessageSchema,
 });
+
+export const encryptedChatPromptSteerResultSchema = z
+  .object({
+    steered: z.literal(true),
+    message: chatMessageOpaqueSummarySchema,
+  })
+  .strict();
 
 export const chatCompactAcceptedSchema = z.object({
   accepted: z.literal(true),
@@ -8818,7 +8912,18 @@ export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
     messageId: z.string().uuid(),
     idempotencyKey: z.string().min(1).max(200),
   }),
+  z.object({
+    kind: z.literal("chat-message-encrypted"),
+    messageId: z.string().uuid(),
+    idempotencyKey: z.string().min(1).max(200),
+  }),
 ]);
+
+export const chatMessageRelayResultSchema = z
+  .object({
+    message: chatMessageOpaqueContentSchema.nullable(),
+  })
+  .strict();
 
 export const normalizedAgentMessageSchema = z.object({
   id: z.string().min(1),
@@ -10587,30 +10692,56 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
-  z.object({
-    type: z.literal("chat.turn"),
-    chatId: z.string().min(1),
-    clientMessageId: z.string().min(1),
-    executionLaneId: z.string().min(1),
-    worktreeId: z.string().min(1),
-    rootKind: projectRootKindSchema.default("git-worktree"),
-    cwd: z.string().min(1),
-    isPrimary: z.boolean(),
-    worktreeMode: z.enum(["agent-managed", "pinned"]),
-    worktreePolicy: worktreePolicySchema,
-    policyContext: agentPolicyContextSchema.nullable().default(null),
-    threadId: z.string().min(1).nullable(),
-    prompt: z.string().min(1),
-    attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
-    skillNames: z.array(z.string().min(1)).max(64).default([]),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-    permissionProfileId: permissionProfileIdSchema,
-    planMode: planModeSchema,
-    mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
-    automationPaused: z.boolean().default(false),
-    resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
-  }),
+  z
+    .object({
+      type: z.literal("chat.turn"),
+      chatId: z.string().min(1),
+      clientMessageId: z.string().min(1),
+      executionLaneId: z.string().min(1),
+      worktreeId: z.string().min(1),
+      rootKind: projectRootKindSchema.default("git-worktree"),
+      cwd: z.string().min(1),
+      isPrimary: z.boolean(),
+      worktreeMode: z.enum(["agent-managed", "pinned"]),
+      worktreePolicy: worktreePolicySchema,
+      policyContext: agentPolicyContextSchema.nullable().default(null),
+      threadId: z.string().min(1).nullable(),
+      prompt: z.string().min(1).optional(),
+      protectedPrompt: chatMessageOpaqueContentSchema.optional(),
+      protectedHistory: z
+        .array(chatMessageOpaqueSummarySchema)
+        .max(100_000)
+        .default([]),
+      attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
+      skillNames: z.array(z.string().min(1)).max(64).default([]),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+      permissionProfileId: permissionProfileIdSchema,
+      planMode: planModeSchema,
+      mcpServers: z.array(mcpServerConfigurationSchema).max(200).default([]),
+      automationPaused: z.boolean().default(false),
+      resultMode: agentTurnResultModeSchema.default({ kind: "visible" }),
+    })
+    .superRefine((command, context) => {
+      if (Boolean(command.prompt) === Boolean(command.protectedPrompt)) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Chat turns require exactly one visible or protected prompt.",
+          path: ["protectedPrompt"],
+        });
+      }
+      if (
+        command.protectedPrompt &&
+        command.resultMode.kind !== "chat-message-encrypted"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Protected chat prompts require protected chat results.",
+          path: ["resultMode"],
+        });
+      }
+    }),
   workflowNodeExecutionRequestSchema.extend({
     type: z.literal("workflow.node.execute"),
     model: workerRuntimeModelSchema,
@@ -10802,15 +10933,27 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
   }),
-  z.object({
-    type: z.literal("chat.steer"),
-    chatId: z.string().min(1),
-    threadId: z.string().min(1).nullable(),
-    prompt: z.string().trim().min(1).max(100_000),
-    attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-  }),
+  z
+    .object({
+      type: z.literal("chat.steer"),
+      chatId: z.string().min(1),
+      threadId: z.string().min(1).nullable(),
+      prompt: z.string().trim().min(1).max(100_000).optional(),
+      protectedPrompt: chatMessageOpaqueContentSchema.optional(),
+      attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
+      model: workerRuntimeModelSchema,
+      provider: workerRuntimeProviderSchema,
+    })
+    .superRefine((command, context) => {
+      if (Boolean(command.prompt) === Boolean(command.protectedPrompt)) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Chat steering requires exactly one visible or protected prompt.",
+          path: ["protectedPrompt"],
+        });
+      }
+    }),
   z.object({
     type: z.literal("chat.sync"),
     chatId: z.string().min(1),
@@ -10857,6 +11000,28 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.message"),
     message: normalizedAgentMessageSchema,
   }),
+  z
+    .object({
+      type: z.literal("agent.protected-message"),
+      message: chatMessageOpaqueContentSchema,
+      telemetry: z.discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("message"),
+          phase: agentMessagePhaseSchema.nullable(),
+          turnId: z.string().min(1).nullable(),
+        }),
+        z.object({
+          kind: z.literal("activity"),
+          activityType: z.string().min(1).max(100),
+          turnId: z.string().min(1).nullable(),
+        }),
+        z.object({
+          kind: z.literal("checkpoint"),
+          turnId: z.string().min(1),
+        }),
+      ]),
+    })
+    .strict(),
   z.object({ type: z.literal("terminal.ready") }),
   z.object({
     type: z.literal("agent.checkpoint"),
@@ -12048,6 +12213,16 @@ export type CodexEventCorrelation = z.infer<typeof codexEventCorrelationSchema>;
 export type ChatMessageContent = z.infer<typeof chatMessageContentSchema>;
 export type ChatMessageCreate = z.infer<typeof chatMessageCreateSchema>;
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+export type EncryptedChatTurnCreate = z.infer<
+  typeof encryptedChatTurnCreateSchema
+>;
+export type EncryptedChatPromptSubmitResult = z.infer<
+  typeof encryptedChatPromptSubmitResultSchema
+>;
+export type EncryptedQueuedPrompt = z.infer<typeof encryptedQueuedPromptSchema>;
+export type EncryptedQueuedPromptUpdate = z.infer<
+  typeof encryptedQueuedPromptUpdateSchema
+>;
 export type ChatAttachmentKind = z.infer<typeof chatAttachmentKindSchema>;
 export type ChatAttachmentSource = z.infer<typeof chatAttachmentSourceSchema>;
 export type ChatAttachmentSummary = z.infer<typeof chatAttachmentSummarySchema>;

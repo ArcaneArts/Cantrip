@@ -14,8 +14,10 @@ import type {
   GitStatus,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
+import { chatMessageOpaqueSummarySchema } from "@cantrip/protocol/communication-content";
 import { taskMessageOpaqueSummarySchema } from "@cantrip/protocol/tasks";
 
+import { openChatMessageOpaqueSummary } from "./chat-message-encryption";
 import { openTaskMessageOpaqueSummary } from "./task-message-encryption";
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
@@ -459,7 +461,40 @@ export class AppLiveQueryBridge {
     }
 
     const parsed = chatMessageSchema.safeParse(event.payload);
+    const encryptedChat = chatMessageOpaqueSummarySchema.safeParse(
+      event.payload,
+    );
     const encrypted = taskMessageOpaqueSummarySchema.safeParse(event.payload);
+    if (
+      encryptedChat.success &&
+      encryptedChat.data.id === event.entityId &&
+      encryptedChat.data.chatId === event.scope.chatId
+    ) {
+      void openChatMessageOpaqueSummary(encryptedChat.data)
+        .catch(() => openTaskMessageOpaqueSummary(encryptedChat.data))
+        .then((message) => {
+          const latest = this.#messageCursors.get(entityKey);
+          if (latest !== undefined && event.cursor <= latest) return;
+          const cached =
+            this.#queryClient.getQueryData<ChatMessage[]>(queryKey) ?? [];
+          this.#queryClient.setQueryData<ChatMessage[]>(
+            queryKey,
+            [
+              ...cached.filter((candidate) => candidate.id !== message.id),
+              message,
+            ].sort(
+              (left, right) =>
+                left.sequence - right.sequence ||
+                left.id.localeCompare(right.id),
+            ),
+          );
+          this.#messageCursors.set(entityKey, event.cursor);
+        })
+        .catch(() => {
+          void this.#queryClient.invalidateQueries({ queryKey });
+        });
+      return true;
+    }
     if (
       encrypted.success &&
       encrypted.data.id === event.entityId &&

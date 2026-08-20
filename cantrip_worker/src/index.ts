@@ -72,6 +72,11 @@ import {
 } from "./legacy-provider-credentials.js";
 import { readWorkerLogs, workerLogError, workerLogger } from "./logger.js";
 import {
+  EncryptedChatEventSealer,
+  encryptChatTurnResult,
+  openEncryptedChatTurn,
+} from "./chat-message-encryption.js";
+import {
   encryptTaskTurnResult,
   executeEncryptedTaskOperation,
   openTaskRelocationPayload,
@@ -1898,6 +1903,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.resultMode.kind === "task-message-encrypted";
         const encryptedTaskOperation =
           command.resultMode.kind === "task-encrypted";
+        const encryptedChat =
+          command.resultMode.kind === "chat-message-encrypted";
+        const encryptedChatSealer = encryptedChat
+          ? new EncryptedChatEventSealer(workerEncryption)
+          : null;
+        let protectedEventQueue = Promise.resolve();
+        const emitProtected = (create: () => Promise<WorkerEvent>): void => {
+          protectedEventQueue = protectedEventQueue.then(async () => {
+            emit(await create());
+          });
+        };
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
           command.mcpServers,
@@ -1926,7 +1942,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             resultMode,
             prompt,
             rootKind: command.rootKind,
-            skillNames: encryptedTaskOperation ? [] : command.skillNames,
+            skillNames: encryptedTaskOperation
+              ? []
+              : encryptedChat
+                ? mentionedSkillNames(prompt)
+                : command.skillNames,
             threadId: command.threadId,
             worktreeMode: command.worktreeMode,
             worktreePolicy: command.worktreePolicy,
@@ -1941,28 +1961,57 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     emit({ type: "agent.interaction.expired", requestKey }),
                   ...(encryptedTask
                     ? {}
-                    : {
-                        onActivity: (activity) =>
-                          emit({ type: "agent.activity", activity }),
-                        onMessage: (message) =>
-                          emit({ type: "agent.message", message }),
-                        onCheckpoint: ({ text, turnId }) =>
-                          emit({ type: "agent.checkpoint", text, turnId }),
-                        onPlan: ({ explanation, steps, turnId }) =>
-                          emit({
-                            type: "agent.plan.updated",
-                            explanation,
-                            steps,
-                            turnId,
-                          }),
-                        onPlanQuestion: (question) =>
-                          emit({ type: "agent.plan.question", question }),
-                        onPlanQuestionResolved: (questionId) =>
-                          emit({
-                            type: "agent.plan.question-resolved",
-                            questionId,
-                          }),
-                      }),
+                    : encryptedChatSealer
+                      ? {
+                          onActivity: (activity) =>
+                            emitProtected(() =>
+                              encryptedChatSealer.activity(activity),
+                            ),
+                          onMessage: (message) =>
+                            emitProtected(() =>
+                              encryptedChatSealer.message(message),
+                            ),
+                          onCheckpoint: ({ text, turnId }) =>
+                            emitProtected(() =>
+                              encryptedChatSealer.checkpoint({ text, turnId }),
+                            ),
+                          onPlan: ({ explanation, steps, turnId }) =>
+                            emit({
+                              type: "agent.plan.updated",
+                              explanation,
+                              steps,
+                              turnId,
+                            }),
+                          onPlanQuestion: (question) =>
+                            emit({ type: "agent.plan.question", question }),
+                          onPlanQuestionResolved: (questionId) =>
+                            emit({
+                              type: "agent.plan.question-resolved",
+                              questionId,
+                            }),
+                        }
+                      : {
+                          onActivity: (activity) =>
+                            emit({ type: "agent.activity", activity }),
+                          onMessage: (message) =>
+                            emit({ type: "agent.message", message }),
+                          onCheckpoint: ({ text, turnId }) =>
+                            emit({ type: "agent.checkpoint", text, turnId }),
+                          onPlan: ({ explanation, steps, turnId }) =>
+                            emit({
+                              type: "agent.plan.updated",
+                              explanation,
+                              steps,
+                              turnId,
+                            }),
+                          onPlanQuestion: (question) =>
+                            emit({ type: "agent.plan.question", question }),
+                          onPlanQuestionResolved: (questionId) =>
+                            emit({
+                              type: "agent.plan.question-resolved",
+                              questionId,
+                            }),
+                        }),
                 }),
             onThreadLoaded: (threadId) => {
               cliBroker.bindCodexThread(threadId, {
@@ -1982,7 +2031,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           });
         }
         if (command.resultMode.kind === "task-message-encrypted") {
-          const result = await runTurn(command.prompt, { kind: "visible" });
+          const result = await runTurn(command.prompt!, { kind: "visible" });
           return encryptTaskTurnResult({
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),
@@ -1992,7 +2041,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             result,
           });
         }
-        return runTurn(command.prompt, command.resultMode);
+        if (command.resultMode.kind === "chat-message-encrypted") {
+          const prompt = await openEncryptedChatTurn({
+            history: command.protectedHistory,
+            prompt: command.protectedPrompt!,
+            service: workerEncryption,
+            threadId: command.threadId,
+          });
+          const result = await runTurn(prompt, { kind: "visible" });
+          await protectedEventQueue;
+          return encryptChatTurnResult({
+            idempotencyKey: command.resultMode.idempotencyKey,
+            messageId: command.resultMode.messageId,
+            result,
+            service: workerEncryption,
+          });
+        }
+        return runTurn(command.prompt!, command.resultMode);
       }
       case "workflow.node.execute":
         return runtimeFor(command).runWorkflowNode({
@@ -2320,11 +2385,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.requestKey,
           command.reason,
         );
-      case "chat.steer":
+      case "chat.steer": {
+        const prompt = command.protectedPrompt
+          ? await openEncryptedChatTurn({
+              history: [],
+              prompt: command.protectedPrompt,
+              service: workerEncryption,
+              threadId: command.threadId,
+            })
+          : command.prompt!;
         return runtimeFor(command).steerThread(
           command.chatId,
           command.threadId,
-          command.prompt,
+          prompt,
           command.attachments.map((attachment) => ({
             ...attachment,
             path: attachments.resolve(
@@ -2336,6 +2409,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.model,
           command.provider,
         );
+      }
       case "chat.sync":
         return runtimeFor(command).syncThread({
           cwd: command.cwd,

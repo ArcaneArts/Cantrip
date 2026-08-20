@@ -4,6 +4,10 @@ import {
   DEFAULT_PERMISSION_PROFILE_ID,
   MCP_SECRET_MASK,
   agentInteractionRequestSchema,
+  chatMessageOpaqueContentSchema,
+  chatMessageOpaqueSummarySchema,
+  encryptedQueuedPromptSchema,
+  queuedPromptOpaqueContentSchema,
   isManagedCodeGraphMcpName,
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
@@ -135,6 +139,10 @@ import type {
   TaskOpaqueSummary,
   TaskMessageOpaqueContent,
   TaskMessageOpaqueSummary,
+  ChatMessageOpaqueContent,
+  ChatMessageOpaqueSummary,
+  EncryptedQueuedPrompt,
+  QueuedPromptOpaqueContent,
   ThemePreference,
   TunnelAttachmentSummary,
   TunnelDestinationEndpoint,
@@ -2026,6 +2034,39 @@ function toChatMessage(
   };
 }
 
+function toEncryptedChatMessage(
+  message: typeof schema.chatMessages.$inferSelect,
+): ChatMessageOpaqueSummary {
+  if (
+    !message.protectedContent ||
+    message.content ||
+    message.taskProtectedContent
+  ) {
+    throw new Error("Visible or Task messages require a different mapper.");
+  }
+  return chatMessageOpaqueSummarySchema.parse({
+    id: message.id,
+    chatId: message.chatId,
+    worktreeId: message.worktreeId,
+    executionLaneId: message.executionLaneId,
+    sequence: message.sequence,
+    role: message.role,
+    mode: message.mode,
+    attachmentIds: message.attachmentIds,
+    protectedContent: message.protectedContent,
+    modelId: message.modelId,
+    modelRouteId: message.modelRouteId,
+    providerId: message.providerId,
+    providerName: message.providerName,
+    providerModelName: message.providerModelName,
+    reasoningEffort: message.reasoningEffort,
+    appliedReasoningEffort: message.appliedReasoningEffort,
+    reasoningAdjusted: message.reasoningAdjusted,
+    idempotencyKey: message.idempotencyKey,
+    createdAt: toISOString(message.createdAt),
+  });
+}
+
 function toTaskMessage(
   message: typeof schema.chatMessages.$inferSelect,
 ): TaskMessageOpaqueSummary {
@@ -2077,6 +2118,9 @@ function toChatAttachment(
 function toQueuedPrompt(
   prompt: typeof schema.queuedPrompts.$inferSelect,
 ): QueuedPrompt {
+  if (prompt.text === null) {
+    throw new Error("Encrypted queued prompts require the opaque mapper.");
+  }
   return {
     id: prompt.id,
     chatId: prompt.chatId,
@@ -2091,6 +2135,22 @@ function toQueuedPrompt(
     createdAt: toISOString(prompt.createdAt),
     updatedAt: toISOString(prompt.updatedAt),
   };
+}
+
+function toEncryptedQueuedPrompt(
+  prompt: typeof schema.queuedPrompts.$inferSelect,
+): EncryptedQueuedPrompt {
+  if (!prompt.opaqueContent || prompt.text !== null) {
+    throw new Error("Visible queued prompts require the plaintext mapper.");
+  }
+  return encryptedQueuedPromptSchema.parse({
+    ...prompt.opaqueContent,
+    chatId: prompt.chatId,
+    attachments: prompt.attachments,
+    position: prompt.position,
+    createdAt: toISOString(prompt.createdAt),
+    updatedAt: toISOString(prompt.updatedAt),
+  });
 }
 
 export class ServerRepository {
@@ -15303,6 +15363,64 @@ export class ServerRepository {
     return rows.map(({ message }) => toChatMessage(message));
   }
 
+  async listEncryptedMessages(
+    ownerId: string,
+    chatId: string,
+  ): Promise<ChatMessageOpaqueSummary[]> {
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "agent"),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          isNotNull(schema.chatMessages.protectedContent),
+        ),
+      )
+      .orderBy(asc(schema.chatMessages.sequence));
+    return rows.map(({ message }) => toEncryptedChatMessage(message));
+  }
+
+  async listAgentMessageWire(ownerId: string, chatId: string) {
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "agent"),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chatMessages.chatId, chatId))
+      .orderBy(asc(schema.chatMessages.sequence));
+    return rows.map(({ message }) =>
+      message.protectedContent
+        ? toEncryptedChatMessage(message)
+        : toChatMessage(message),
+    );
+  }
+
   async listTaskMessages(
     ownerId: string,
     chatId: string,
@@ -15376,6 +15494,147 @@ export class ServerRepository {
         asc(schema.queuedPrompts.createdAt),
       );
     return rows.map(({ prompt }) => toQueuedPrompt(prompt));
+  }
+
+  async listEncryptedQueuedPrompts(
+    ownerId: string,
+    chatId: string,
+  ): Promise<EncryptedQueuedPrompt[]> {
+    const rows = await this.database
+      .select({ prompt: schema.queuedPrompts })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.queuedPrompts.chatId, chatId))
+      .orderBy(
+        asc(schema.queuedPrompts.position),
+        asc(schema.queuedPrompts.createdAt),
+      );
+    return rows.map(({ prompt }) => toEncryptedQueuedPrompt(prompt));
+  }
+
+  async getEncryptedQueuedPrompt(
+    ownerId: string,
+    promptId: string,
+  ): Promise<EncryptedQueuedPrompt | null> {
+    const rows = await this.database
+      .select({ prompt: schema.queuedPrompts })
+      .from(schema.queuedPrompts)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.queuedPrompts.id, promptId))
+      .limit(1);
+    return rows[0] ? toEncryptedQueuedPrompt(rows[0].prompt) : null;
+  }
+
+  async createEncryptedQueuedPrompt(
+    ownerId: string,
+    chatId: string,
+    input: QueuedPromptOpaqueContent,
+    attachments: ChatAttachmentSummary[],
+  ): Promise<EncryptedQueuedPrompt | null> {
+    const prompt = queuedPromptOpaqueContentSchema.parse(input);
+    const chat = await this.database
+      .select({ experience: schema.chats.experience })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    if (!chat[0] || chat[0].experience !== "agent") return null;
+    const existing = await this.database
+      .select()
+      .from(schema.queuedPrompts)
+      .where(
+        and(
+          eq(schema.queuedPrompts.chatId, chatId),
+          eq(schema.queuedPrompts.idempotencyKey, prompt.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) return toEncryptedQueuedPrompt(existing[0]);
+    const last = await this.database
+      .select({ position: schema.queuedPrompts.position })
+      .from(schema.queuedPrompts)
+      .where(eq(schema.queuedPrompts.chatId, chatId))
+      .orderBy(desc(schema.queuedPrompts.position))
+      .limit(1);
+    const result = await this.database
+      .insert(schema.queuedPrompts)
+      .values({
+        id: prompt.id,
+        chatId,
+        text: null,
+        opaqueContent: prompt,
+        mode: prompt.classification.mode,
+        attachments,
+        modelId: prompt.modelId,
+        reasoningEffort: prompt.reasoningEffort,
+        worktreeId: prompt.worktreeId,
+        position: (last[0]?.position ?? -1) + 1,
+        frozen: prompt.frozen,
+        idempotencyKey: prompt.idempotencyKey,
+      })
+      .returning();
+    return toEncryptedQueuedPrompt(firstOrThrow(result, "queueing a prompt"));
+  }
+
+  async replaceEncryptedQueuedPrompt(
+    ownerId: string,
+    promptId: string,
+    input: QueuedPromptOpaqueContent,
+    attachments: ChatAttachmentSummary[],
+  ): Promise<EncryptedQueuedPrompt | null> {
+    const prompt = queuedPromptOpaqueContentSchema.parse(input);
+    if (prompt.id !== promptId) return null;
+    const result = await this.database
+      .update(schema.queuedPrompts)
+      .set({
+        opaqueContent: prompt,
+        mode: prompt.classification.mode,
+        attachments,
+        reasoningEffort: prompt.reasoningEffort,
+        worktreeId: prompt.worktreeId,
+        frozen: prompt.frozen,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.queuedPrompts.id, promptId),
+          exists(
+            this.database
+              .select({ id: schema.chats.id })
+              .from(schema.chats)
+              .innerJoin(
+                schema.projects,
+                and(
+                  eq(schema.projects.id, schema.chats.projectId),
+                  eq(schema.projects.ownerId, ownerId),
+                ),
+              )
+              .where(eq(schema.chats.id, schema.queuedPrompts.chatId)),
+          ),
+        ),
+      )
+      .returning();
+    return result[0] ? toEncryptedQueuedPrompt(result[0]) : null;
   }
 
   async getQueuedPrompt(
@@ -15553,7 +15812,7 @@ export class ServerRepository {
   async deleteQueuedPrompt(
     ownerId: string,
     promptId: string,
-  ): Promise<QueuedPrompt | null> {
+  ): Promise<QueuedPrompt | EncryptedQueuedPrompt | null> {
     const owned = await this.database
       .select({ prompt: schema.queuedPrompts })
       .from(schema.queuedPrompts)
@@ -15571,7 +15830,9 @@ export class ServerRepository {
     await this.database
       .delete(schema.queuedPrompts)
       .where(eq(schema.queuedPrompts.id, promptId));
-    return toQueuedPrompt(owned[0].prompt);
+    return owned[0].prompt.opaqueContent
+      ? toEncryptedQueuedPrompt(owned[0].prompt)
+      : toQueuedPrompt(owned[0].prompt);
   }
 
   async reorderQueuedPrompts(
@@ -15690,6 +15951,220 @@ export class ServerRepository {
       .set({ updatedAt: new Date() })
       .where(eq(schema.chats.id, chatId));
     return toChatMessage(message);
+  }
+
+  async appendEncryptedMessage(
+    ownerId: string,
+    chatId: string,
+    input: ChatMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    const message = chatMessageOpaqueContentSchema.parse(input);
+    const chat = await this.database
+      .select({
+        experience: schema.chats.experience,
+        worktreeId: schema.chats.activeWorktreeId,
+      })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
+      .limit(1);
+    if (!chat[0] || chat[0].experience !== "agent") return null;
+    const activeLanes = attribution
+      ? await this.database
+          .select({ id: schema.chatExecutionLanes.id })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, attribution.worktreeId),
+            ),
+          )
+          .limit(1)
+      : await this.database
+          .select({ id: schema.chatExecutionLanes.id })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+              eq(schema.chatExecutionLanes.state, "active"),
+            ),
+          )
+          .limit(1);
+    if (attribution && !activeLanes[0]) return null;
+    const existing = await this.database
+      .select()
+      .from(schema.chatMessages)
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          eq(schema.chatMessages.idempotencyKey, message.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) {
+      if (
+        existing[0].id !== message.id ||
+        existing[0].role !== message.classification.role ||
+        existing[0].mode !== message.classification.mode ||
+        existing[0].reasoningEffort !== message.reasoningEffort ||
+        JSON.stringify(existing[0].attachmentIds) !==
+          JSON.stringify(message.classification.attachmentIds) ||
+        JSON.stringify(existing[0].protectedContent) !==
+          JSON.stringify(message.protectedContent)
+      ) {
+        throw new Error(
+          "Encrypted chat message idempotency metadata is inconsistent.",
+        );
+      }
+      return toEncryptedChatMessage(existing[0]);
+    }
+    const result = await this.database
+      .insert(schema.chatMessages)
+      .values({
+        id: message.id,
+        chatId,
+        worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
+        executionLaneId: activeLanes[0]?.id ?? null,
+        role: message.classification.role,
+        mode: message.classification.mode,
+        content: null,
+        protectedContent: message.protectedContent,
+        attachmentIds: message.classification.attachmentIds,
+        taskProtectedContent: null,
+        reasoningEffort: message.reasoningEffort,
+        idempotencyKey: message.idempotencyKey,
+      })
+      .returning();
+    await this.database
+      .update(schema.chats)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.chats.id, chatId));
+    return toEncryptedChatMessage(
+      firstOrThrow(result, "appending an encrypted chat message"),
+    );
+  }
+
+  async upsertEncryptedMessage(
+    ownerId: string,
+    chatId: string,
+    input: ChatMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    const message = chatMessageOpaqueContentSchema.parse(input);
+    const existing = await this.getEncryptedMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      message.idempotencyKey,
+    );
+    if (!existing) {
+      return this.appendEncryptedMessage(ownerId, chatId, message, attribution);
+    }
+    if (existing.id !== message.id) {
+      throw new Error("Encrypted chat message update targets another row.");
+    }
+    const result = await this.database
+      .update(schema.chatMessages)
+      .set({
+        role: message.classification.role,
+        mode: message.classification.mode,
+        protectedContent: message.protectedContent,
+        attachmentIds: message.classification.attachmentIds,
+        reasoningEffort: message.reasoningEffort,
+      })
+      .where(eq(schema.chatMessages.id, message.id))
+      .returning();
+    await this.database
+      .update(schema.chats)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.chats.id, chatId));
+    return toEncryptedChatMessage(
+      firstOrThrow(result, "updating an encrypted chat message"),
+    );
+  }
+
+  async getEncryptedMessageByIdempotencyKey(
+    ownerId: string,
+    chatId: string,
+    idempotencyKey: string,
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "agent"),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          eq(schema.chatMessages.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toEncryptedChatMessage(rows[0].message) : null;
+  }
+
+  async setEncryptedMessageModelRoute(
+    ownerId: string,
+    messageId: string,
+    modelId: string,
+    runtime: ModelRuntime,
+    reasoning: {
+      appliedReasoningEffort: ReasoningEffort | null;
+      reasoningAdjusted: boolean;
+    } = { appliedReasoningEffort: null, reasoningAdjusted: false },
+  ): Promise<ChatMessageOpaqueSummary | null> {
+    const rows = await this.database
+      .update(schema.chatMessages)
+      .set({
+        modelId,
+        modelRouteId: runtime.routeId,
+        providerId: runtime.provider.id,
+        providerName: runtime.provider.name,
+        providerModelName: runtime.model.name,
+        appliedReasoningEffort: reasoning.appliedReasoningEffort,
+        reasoningAdjusted: reasoning.reasoningAdjusted,
+      })
+      .where(
+        and(
+          eq(schema.chatMessages.id, messageId),
+          isNotNull(schema.chatMessages.protectedContent),
+          exists(
+            this.database
+              .select({ id: schema.chats.id })
+              .from(schema.chats)
+              .innerJoin(
+                schema.projects,
+                and(
+                  eq(schema.projects.id, schema.chats.projectId),
+                  eq(schema.projects.ownerId, ownerId),
+                ),
+              )
+              .where(eq(schema.chats.id, schema.chatMessages.chatId)),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toEncryptedChatMessage(rows[0]) : null;
   }
 
   async appendTaskMessage(
