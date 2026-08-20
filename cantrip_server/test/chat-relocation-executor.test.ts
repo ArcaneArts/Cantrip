@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   unprobedCodexRuntimeReport,
+  type ChatMessageCreate,
   type ChatRelocationJobSummary,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -95,6 +96,38 @@ function worktreeStatus(worktreePath: string, revision: string) {
       branches: [],
     },
   };
+}
+
+async function appendEncryptedChatMessage(
+  chatId: string,
+  input: ChatMessageCreate & { idempotencyKey: string },
+) {
+  const attachmentIds = input.content.flatMap((item) =>
+    item.type === "attachment" ? [item.attachment.id] : [],
+  );
+  return database.repository.appendEncryptedMessage(LOCAL_USER_ID, chatId, {
+    id: randomUUID(),
+    classification: {
+      role: input.role,
+      mode: input.mode ?? "default",
+      attachmentIds,
+    },
+    protectedContent: {
+      formatVersion: 1,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: Buffer.from(
+          JSON.stringify(input.content).padEnd(16, "."),
+        ).toString("base64url"),
+      },
+    },
+    reasoningEffort: input.reasoningEffort ?? null,
+    idempotencyKey: input.idempotencyKey,
+  });
 }
 
 describe.sequential("chat relocation executor", () => {
@@ -253,7 +286,7 @@ describe.sequential("chat relocation executor", () => {
         sha256: attachmentSha256,
       },
     );
-    await database.repository.appendMessage(LOCAL_USER_ID, chat!.id, {
+    await appendEncryptedChatMessage(chat!.id, {
       role: "user",
       content: [
         { type: "text", text: "Remember the complete transcript." },
@@ -261,7 +294,7 @@ describe.sequential("chat relocation executor", () => {
       ],
       idempotencyKey: "executor-message-one",
     });
-    await database.repository.appendMessage(LOCAL_USER_ID, chat!.id, {
+    await appendEncryptedChatMessage(chat!.id, {
       role: "assistant",
       content: [{ type: "text", text: "I will." }],
       idempotencyKey: "executor-message-two",
@@ -394,7 +427,8 @@ describe.sequential("chat relocation executor", () => {
     });
     const hydratedPayload = JSON.parse(
       Buffer.concat(hydrationChunks).toString("utf8"),
-    ) as { messages: unknown[] };
+    ) as { kind: string; messages: unknown[] };
+    expect(hydratedPayload.kind).toBe("chat-encrypted");
     expect(hydratedPayload.messages).toHaveLength(2);
     expect(Buffer.concat(attachmentChunks)).toEqual(attachmentBytes);
     expect(

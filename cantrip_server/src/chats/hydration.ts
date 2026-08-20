@@ -48,7 +48,7 @@ export function encodeCanonicalChatPayload(
 export function requiredSkillsForCanonicalPayload(
   payload: ChatRelocationContextPayload,
 ): string[] {
-  if (payload.kind === "task-encrypted") return [];
+  if (payload.kind !== "visible") return [];
   const names = new Set<string>();
   for (const message of payload.messages) {
     for (const item of message.content) {

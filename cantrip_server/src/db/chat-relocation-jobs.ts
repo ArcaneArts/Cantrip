@@ -97,7 +97,9 @@ async function relocationAttachmentIds(
       ...messages.flatMap((message) =>
         message.taskProtectedContent
           ? message.taskAttachmentIds
-          : attachmentIds(message.content),
+          : message.protectedContent
+            ? message.attachmentIds
+            : attachmentIds(message.content),
       ),
       ...(taskRows[0]?.draftAttachmentIds ?? []),
     ]),
@@ -144,17 +146,34 @@ function relocationMessages(
     );
   }
   return messages.map((message) => {
-    if (!message.content || message.taskProtectedContent) {
+    if (
+      !message.protectedContent ||
+      message.content ||
+      message.taskProtectedContent
+    ) {
       throw new ChatRelocationJobConflictError(
-        "The visible chat transcript contains an invalid message.",
+        "The encrypted chat transcript contains an invalid message.",
       );
     }
     return {
+      id: message.id,
+      chatId: message.chatId,
+      worktreeId: message.worktreeId,
+      executionLaneId: message.executionLaneId,
       sequence: message.sequence,
       role: message.role,
       mode: message.mode,
+      attachmentIds: message.attachmentIds,
+      protectedContent: message.protectedContent,
+      modelId: message.modelId,
+      modelRouteId: message.modelRouteId,
+      providerId: message.providerId,
+      providerName: message.providerName,
+      providerModelName: message.providerModelName,
       reasoningEffort: message.reasoningEffort,
-      content: message.content,
+      appliedReasoningEffort: message.appliedReasoningEffort,
+      reasoningAdjusted: message.reasoningAdjusted,
+      idempotencyKey: message.idempotencyKey,
       createdAt: toISOString(message.createdAt),
     };
   });
@@ -549,7 +568,9 @@ export class ChatRelocationJobRepository {
         const payload = chatRelocationContextPayloadSchema.parse({
           version: 1,
           kind:
-            context.chat.experience === "task" ? "task-encrypted" : "visible",
+            context.chat.experience === "task"
+              ? "task-encrypted"
+              : "chat-encrypted",
           messages: relocationMessages(context.chat.experience, messages),
           attachments: referencedAttachmentIds.map((attachmentId) => {
             const availability = attachmentById.get(attachmentId)!;
@@ -831,7 +852,10 @@ export class ChatRelocationJobRepository {
       }
       const payload = chatRelocationContextPayloadSchema.parse({
         version: 1,
-        kind: context.chat.experience === "task" ? "task-encrypted" : "visible",
+        kind:
+          context.chat.experience === "task"
+            ? "task-encrypted"
+            : "chat-encrypted",
         messages: relocationMessages(context.chat.experience, messages),
         attachments: referencedAttachmentIds.map((attachmentId) => {
           const availability = attachmentById.get(attachmentId)!;

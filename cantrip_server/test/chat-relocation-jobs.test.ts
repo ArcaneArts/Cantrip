@@ -3,7 +3,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  unprobedCodexRuntimeReport,
+  type ChatMessageCreate,
+} from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import type { ServerConfig } from "../src/config.js";
@@ -55,6 +58,40 @@ async function createChat(_title: string) {
     () => true,
   );
   return chat!;
+}
+
+async function appendEncryptedChatMessage(
+  chatId: string,
+  input: ChatMessageCreate & { idempotencyKey: string },
+) {
+  const id = randomUUID();
+  const attachmentIds = input.content.flatMap((item) =>
+    item.type === "attachment" ? [item.attachment.id] : [],
+  );
+  const classification = {
+    role: input.role,
+    mode: input.mode ?? "default",
+    attachmentIds,
+  };
+  return database.repository.appendEncryptedMessage(LOCAL_USER_ID, chatId, {
+    id,
+    classification,
+    protectedContent: {
+      formatVersion: 1,
+      keyRevision: 1,
+      envelope: {
+        version: 1,
+        algorithm: "AES-256-GCM",
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: Buffer.from(
+          JSON.stringify(input.content).padEnd(16, "."),
+        ).toString("base64url"),
+      },
+    },
+    reasoningEffort: input.reasoningEffort ?? null,
+    idempotencyKey: input.idempotencyKey,
+  });
 }
 
 async function createTask(_title: string) {
@@ -219,7 +256,7 @@ describe.sequential("durable chat relocation jobs", () => {
       },
     );
     expect(attachment).not.toBeNull();
-    await database.repository.appendMessage(LOCAL_USER_ID, chat.id, {
+    await appendEncryptedChatMessage(chat.id, {
       role: "user",
       content: [
         { type: "text", text: "Use this context." },
@@ -227,7 +264,7 @@ describe.sequential("durable chat relocation jobs", () => {
       ],
       idempotencyKey: "relocation-message-user",
     });
-    await database.repository.appendMessage(LOCAL_USER_ID, chat.id, {
+    await appendEncryptedChatMessage(chat.id, {
       role: "assistant",
       content: [{ type: "text", text: "Context received." }],
       idempotencyKey: "relocation-message-assistant",
@@ -283,6 +320,7 @@ describe.sequential("durable chat relocation jobs", () => {
       },
       payload: {
         version: 1,
+        kind: "chat-encrypted",
         messages: [
           expect.objectContaining({ sequence: 1, role: "user" }),
           expect.objectContaining({ sequence: 2, role: "assistant" }),
@@ -460,15 +498,11 @@ describe.sequential("durable chat relocation jobs", () => {
     );
     expect(waitingJob.state).toBe("waiting-for-idle");
     expect(await database.repository.chatRelocationJobs.claimNext()).toBeNull();
-    const completedMessage = await database.repository.appendMessage(
-      LOCAL_USER_ID,
-      waitingChat.id,
-      {
-        role: "assistant",
-        content: [{ type: "text", text: "The active turn completed." }],
-        idempotencyKey: "relocation-waiting-completion",
-      },
-    );
+    const completedMessage = await appendEncryptedChatMessage(waitingChat.id, {
+      role: "assistant",
+      content: [{ type: "text", text: "The active turn completed." }],
+      idempotencyKey: "relocation-waiting-completion",
+    });
     await database.repository.setChatStatus(waitingChat.id, "idle");
     await expect(
       database.repository.startChatExecutionLane(
@@ -490,7 +524,7 @@ describe.sequential("durable chat relocation jobs", () => {
         messages: [
           expect.objectContaining({
             role: "assistant",
-            content: [{ type: "text", text: "The active turn completed." }],
+            protectedContent: expect.any(Object),
           }),
         ],
       },
@@ -559,7 +593,7 @@ describe.sequential("durable chat relocation jobs", () => {
 
   it("recovers interrupted attempts with the same immutable snapshot", async () => {
     const chat = await createChat("Recover relocation");
-    await database.repository.appendMessage(LOCAL_USER_ID, chat.id, {
+    await appendEncryptedChatMessage(chat.id, {
       role: "user",
       content: [{ type: "text", text: "Preserve all of this context." }],
       idempotencyKey: "relocation-recovery-message",

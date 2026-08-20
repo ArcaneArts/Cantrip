@@ -6189,6 +6189,12 @@ export const chatRelocationContextPayloadSchema = z.union([
     messages: z.array(taskRelocationContextMessageSchema).max(100_000),
     attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
   }),
+  z.object({
+    version: z.literal(1),
+    kind: z.literal("chat-encrypted"),
+    messages: z.array(chatMessageOpaqueSummarySchema).max(100_000),
+    attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
+  }),
 ]);
 
 export const chatRelocationSnapshotSummarySchema = z.object({
@@ -6759,7 +6765,7 @@ export const workerCliCommandCallSchema = cantripCliCommandRequestSchema
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
-export const chatMessageWireListSchema = z.union([
+export const chatMessageWireListSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("task-encrypted"),
@@ -6772,15 +6778,6 @@ export const chatMessageWireListSchema = z.union([
       messages: z.array(chatMessageOpaqueSummarySchema).max(100_000),
     })
     .strict(),
-  z
-    .object({
-      kind: z.literal("chat-mixed"),
-      messages: z
-        .array(z.union([chatMessageOpaqueSummarySchema, chatMessageSchema]))
-        .max(100_000),
-    })
-    .strict(),
-  chatMessageListSchema,
 ]);
 
 export const encryptedQueuedPromptSchema = queuedPromptOpaqueContentSchema
@@ -10804,6 +10801,52 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("model.provider.test"),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.message.protect"),
+    message: chatMessageCreateSchema
+      .extend({
+        id: z.string().uuid(),
+        idempotencyKey: z.string().min(1).max(200),
+      })
+      .strict(),
+  }),
+  z.object({
+    type: z.literal("chat.messages.protect"),
+    messages: z
+      .array(
+        chatMessageCreateSchema
+          .extend({
+            id: z.string().uuid(),
+            idempotencyKey: z.string().min(1).max(200),
+          })
+          .strict(),
+      )
+      .max(100_000),
+  }),
+  z.object({
+    type: z.literal("chat.messages.reprotect"),
+    messages: z
+      .array(
+        z
+          .object({
+            source: chatMessageOpaqueSummarySchema,
+            id: z.string().uuid(),
+            idempotencyKey: z.string().min(1).max(200),
+          })
+          .strict(),
+      )
+      .max(100_000),
+  }),
+  z.object({
+    type: z.literal("chat.turn.protect"),
+    promptId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    text: z.string().trim().min(1).max(100_000),
+    mode: chatTurnModeSchema,
+    modelId: z.string().min(1).max(200),
+    reasoningEffort: reasoningEffortSchema.nullable(),
+    idempotencyKey: z.string().min(1).max(200),
   }),
   z
     .object({

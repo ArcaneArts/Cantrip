@@ -35,6 +35,7 @@ import {
   retryChatImport,
 } from "@/lib/api";
 import { useAppLiveStatus } from "@/lib/app-live-react";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { ensurePrivateLabelWorkerEncryption } from "@/lib/private-label-worker-encryption";
 import type { PrivateLabelWorkerEncryptionDescriptor } from "@/lib/private-label-worker-encryption";
 import { cn } from "@/lib/utils";
@@ -207,6 +208,22 @@ export function ExternalChatImportSettings({
           }),
         ),
       );
+      const possibleTargetWorkerIds =
+        directFolder || destinationWorktreeId === "automatic"
+          ? project.preferredWorkerId
+            ? [project.preferredWorkerId]
+            : []
+          : readyWorktrees
+              .filter(({ id }) => id === destinationWorktreeId)
+              .map(({ workerId }) => workerId);
+      await Promise.all(
+        [...new Set([...sourceWorkerIds, ...possibleTargetWorkerIds])].map(
+          (workerId) =>
+            ensureChatWorkerEncryption({
+              worker: encryptionWorker(workerId),
+            }),
+        ),
+      );
       const target =
         directFolder || destinationWorktreeId === "automatic"
           ? undefined
@@ -251,6 +268,12 @@ export function ExternalChatImportSettings({
     mutationFn: async (job: ChatImportJobSummary) => {
       await ensurePrivateLabelWorkerEncryption({
         worker: encryptionWorker(job.sourceWorkerId),
+      });
+      await ensureChatWorkerEncryption({
+        worker: encryptionWorker(job.sourceWorkerId),
+      });
+      await ensureChatWorkerEncryption({
+        worker: encryptionWorker(job.targetPlacement.workerId),
       });
       return retryChatImport(job.id, { stateRevision: job.stateRevision });
     },

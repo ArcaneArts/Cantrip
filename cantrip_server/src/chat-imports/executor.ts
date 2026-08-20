@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   agentThreadSyncSchema,
+  chatMessageOpaqueContentListSchema,
   externalChatAttachmentReadResultSchema,
   externalChatReadWorkerResultSchema,
   workerAttachmentUploadResultSchema,
@@ -370,6 +371,24 @@ export class ChatImportJobExecutor {
         claimed.job.attempt,
         result.transcript,
         importedAttachments,
+        async (messages) => {
+          const protectedMessages: unknown[] = [];
+          for (let offset = 0; offset < messages.length; offset += 100) {
+            protectedMessages.push(
+              ...chatMessageOpaqueContentListSchema.parse(
+                await this.bridge.request(
+                  claimed.job.targetPlacement.workerId,
+                  {
+                    type: "chat.messages.protect",
+                    messages: messages.slice(offset, offset + 100),
+                  },
+                  { timeoutMs: CHAT_IMPORT_READ_TIMEOUT_MS },
+                ),
+              ),
+            );
+          }
+          return chatMessageOpaqueContentListSchema.parse(protectedMessages);
+        },
       );
     this.onChanged({ ownerId: claimed.ownerId, job: completed });
     if (result.transcript.attachments.length) {

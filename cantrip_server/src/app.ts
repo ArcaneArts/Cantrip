@@ -108,6 +108,7 @@ import {
   encryptedChatForkSchema,
   chatWireListSchema,
   chatMessageCreateSchema,
+  chatMessageOpaqueContentListSchema,
   chatMessageOpaqueContentSchema,
   chatMessageListSchema,
   chatMessageWireListSchema,
@@ -1966,16 +1967,72 @@ export async function buildApp({
   };
   const appendLiveChatMessage = async (
     ...input: Parameters<typeof repository.appendMessage>
-  ): ReturnType<typeof repository.appendMessage> => {
-    const message = await repository.appendMessage(...input);
-    if (message) publishChatMessage(message);
+  ): Promise<ChatMessageOpaqueSummary | null> => {
+    const [ownerId, chatId, content, attribution] = input;
+    if (!content.idempotencyKey) {
+      throw new Error("Encrypted chat messages require an idempotency key.");
+    }
+    const existing = await repository.getEncryptedMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      content.idempotencyKey,
+    );
+    if (existing) return existing;
+    const context = await repository.getChatExecutionContext(ownerId, chatId);
+    if (!context || context.experience !== "agent") return null;
+    if (!bridge.isConnected(context.workerId)) {
+      throw new WorkerUnavailableError("Project worker is offline.");
+    }
+    const protectedMessage = chatMessageOpaqueContentSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "chat.message.protect",
+        message: {
+          ...content,
+          id: randomUUID(),
+          idempotencyKey: content.idempotencyKey,
+        },
+      }),
+    );
+    const message = await repository.appendEncryptedMessage(
+      ownerId,
+      chatId,
+      protectedMessage,
+      attribution,
+    );
+    if (message) publishEncryptedChatMessage(message);
     return message;
   };
   const upsertLiveChatMessage = async (
     ...input: Parameters<typeof repository.upsertMessage>
-  ): ReturnType<typeof repository.upsertMessage> => {
-    const message = await repository.upsertMessage(...input);
-    if (message) publishChatMessage(message);
+  ): Promise<ChatMessageOpaqueSummary | null> => {
+    const [ownerId, chatId, content, attribution] = input;
+    const existing = await repository.getEncryptedMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      content.idempotencyKey,
+    );
+    const context = await repository.getChatExecutionContext(ownerId, chatId);
+    if (!context || context.experience !== "agent") return null;
+    if (!bridge.isConnected(context.workerId)) {
+      throw new WorkerUnavailableError("Project worker is offline.");
+    }
+    const protectedMessage = chatMessageOpaqueContentSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "chat.message.protect",
+        message: {
+          ...content,
+          id: existing?.id ?? randomUUID(),
+          idempotencyKey: content.idempotencyKey,
+        },
+      }),
+    );
+    const message = await repository.upsertEncryptedMessage(
+      ownerId,
+      chatId,
+      protectedMessage,
+      attribution,
+    );
+    if (message) publishEncryptedChatMessage(message);
     return message;
   };
   const setLiveChatMessageModelRoute = async (
@@ -2233,20 +2290,6 @@ export async function buildApp({
     const result = await repository.setPendingPlanQuestion(...input);
     publishChatInvalidation(input[0], "chat-plan");
     return result;
-  };
-  const createLiveQueuedPrompt = async (
-    ...input: Parameters<typeof repository.createQueuedPrompt>
-  ): ReturnType<typeof repository.createQueuedPrompt> => {
-    const prompt = await repository.createQueuedPrompt(...input);
-    if (prompt) publishChatInvalidation(prompt.chatId, "chat-queue", prompt.id);
-    return prompt;
-  };
-  const updateLiveQueuedPrompt = async (
-    ...input: Parameters<typeof repository.updateQueuedPrompt>
-  ): ReturnType<typeof repository.updateQueuedPrompt> => {
-    const prompt = await repository.updateQueuedPrompt(...input);
-    if (prompt) publishChatInvalidation(prompt.chatId, "chat-queue", prompt.id);
-    return prompt;
   };
   const deleteLiveQueuedPrompt = async (
     ...input: Parameters<typeof repository.deleteQueuedPrompt>
@@ -6519,14 +6562,14 @@ export async function buildApp({
     const taskChat = laneContext.chat.experience === "task";
     const existingAssistant = taskChat
       ? null
-      : await repository.getMessageByIdempotencyKey(
+      : await repository.getEncryptedMessageByIdempotencyKey(
           ownerId,
           notification.chatId,
           assistantKey,
         );
     const existingError = taskChat
       ? null
-      : await repository.getMessageByIdempotencyKey(
+      : await repository.getEncryptedMessageByIdempotencyKey(
           ownerId,
           notification.chatId,
           errorKey,
@@ -6721,7 +6764,7 @@ export async function buildApp({
       ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
       : null;
     const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
-    const encryptedChatMessages = options.encryptedChatMessages ?? null;
+    let encryptedChatMessages = options.encryptedChatMessages ?? null;
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
     }
@@ -6743,6 +6786,40 @@ export async function buildApp({
     );
     const turnMode = input.mode ?? "default";
     const turnPlanMode = turnMode === "plan" ? "plan" : "default";
+    if (
+      context.experience === "agent" &&
+      !encryptedChatMessages &&
+      !options.structuredResult
+    ) {
+      const userMessage = chatMessageOpaqueContentSchema.parse(
+        await bridge.request(context.workerId, {
+          type: "chat.message.protect",
+          message: {
+            id: randomUUID(),
+            role: options.messageRole ?? "user",
+            mode: turnMode,
+            reasoningEffort: requestedReasoningEffort,
+            content: [
+              ...(input.text
+                ? [{ type: "text" as const, text: input.text }]
+                : []),
+              ...attachments.map((attachment) => ({
+                type: "attachment" as const,
+                attachment: chatAttachmentSummarySchema.parse(attachment),
+              })),
+            ],
+            idempotencyKey: input.idempotencyKey,
+          },
+        }),
+      );
+      encryptedChatMessages = {
+        userMessage,
+        response: {
+          id: randomUUID(),
+          idempotencyKey: `assistant:${userMessage.id}`,
+        },
+      };
+    }
     const effectivePolicies = await repository.policies.resolveEffective(
       ownerId,
       context.projectId,
@@ -6779,13 +6856,10 @@ export async function buildApp({
     let immediateCorrectiveFollowup = false;
     try {
       await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
-      const priorHeaders =
-        encryptedTaskMessages || encryptedChatMessages
-          ? await repository.listMessageHeaders(ownerId, execution.chatId)
-          : await repository.listMessages(ownerId, execution.chatId);
-      if (!encryptedTaskMessages && !encryptedChatMessages) {
-        priorMessages = priorHeaders as ChatMessage[];
-      }
+      const priorHeaders = await repository.listMessageHeaders(
+        ownerId,
+        execution.chatId,
+      );
       for (let index = priorHeaders.length - 1; index >= 0; index -= 1) {
         const message = priorHeaders[index]!;
         if (message.role !== "assistant") continue;
@@ -6837,38 +6911,7 @@ export async function buildApp({
           },
         );
       } else {
-        const appended = await repository.appendMessage(
-          ownerId,
-          execution.chatId,
-          {
-            role: options.messageRole ?? "user",
-            mode: options.messageRole === "system" ? undefined : turnMode,
-            reasoningEffort: requestedReasoningEffort,
-            content: [
-              ...(input.text
-                ? [{ type: "text" as const, text: input.text }]
-                : []),
-              ...attachments.map((attachment) => ({
-                type: "attachment" as const,
-                attachment: chatAttachmentSummarySchema.parse(attachment),
-              })),
-            ],
-            idempotencyKey: input.idempotencyKey,
-          },
-          attribution,
-        );
-        if (!appended) throw new Error("Chat not found.");
-        userMessage = appended;
-        await setLiveChatMessageModelRoute(
-          ownerId,
-          userMessage.id,
-          modelId,
-          runtimes[0]!,
-          {
-            appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
-            reasoningAdjusted: preparedRuntimes[0]!.adjusted,
-          },
-        );
+        throw new Error("Chat turn content was not encrypted.");
       }
       await repository.setChatModel(
         ownerId,
@@ -12878,13 +12921,13 @@ export async function buildApp({
             .code(409)
             .send({ error: "Choose a model before generating a workflow." });
         }
-        const messages =
-          input.data.sourceType === "chat"
-            ? await repository.listMessages(
-                applicationOwnerId(),
-                context.chatId,
-              )
-            : [];
+        if (input.data.sourceType === "chat") {
+          return reply.code(409).send({
+            error:
+              "Chat-sourced workflow generation requires the encrypted workflow execution path.",
+          });
+        }
+        const messages: ChatMessage[] = [];
         const transcript = workflowGenerationTranscript(messages);
         const prompt = [
           `Generate a ${input.data.scope} Cantrip workflow from this ${input.data.sourceType} source.`,
@@ -22157,11 +22200,34 @@ export async function buildApp({
             "Encrypted Task chats must be relocated rather than forked so message row bindings remain valid.",
         });
       }
+      if (source && !bridge.isConnected(source.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
       try {
         const chat = await repository.forkChat(
           applicationOwnerId(),
           request.params.chatId,
           input.data,
+          async (messages) => {
+            const protectedMessages: unknown[] = [];
+            for (let offset = 0; offset < messages.length; offset += 100) {
+              protectedMessages.push(
+                ...chatMessageOpaqueContentListSchema.parse(
+                  await bridge.request(source!.workerId, {
+                    type: "chat.messages.reprotect",
+                    messages: messages
+                      .slice(offset, offset + 100)
+                      .map((message) => ({
+                        source: message,
+                        id: randomUUID(),
+                        idempotencyKey: `fork:${message.id}`,
+                      })),
+                  }),
+                ),
+              );
+            }
+            return chatMessageOpaqueContentListSchema.parse(protectedMessages);
+          },
         );
         return chat
           ? reply.code(201).send(chatWireSummarySchema.parse(chat))
@@ -23052,7 +23118,7 @@ export async function buildApp({
             applicationOwnerId(),
             request.params.chatId,
           )
-        : await repository.listAgentMessageWire(
+        : await repository.listEncryptedMessages(
             applicationOwnerId(),
             request.params.chatId,
           );
@@ -23060,7 +23126,7 @@ export async function buildApp({
         chatMessageWireListSchema.parse(
           task
             ? { kind: "task-encrypted", messages }
-            : { kind: "chat-mixed", messages },
+            : { kind: "chat-encrypted", messages },
         ),
       );
     },
@@ -24734,22 +24800,26 @@ export async function buildApp({
           let status: "started" | "queued";
           if (context.automationPaused || chatIsExecuting(context.status)) {
             const modelId = await resolveModelId(context, undefined);
-            const prompt = await createLiveQueuedPrompt(
-              workerAuth.ownerId,
-              context.chatId,
-              {
+            const protectedTurn = encryptedChatTurnCreateSchema.parse(
+              await bridge.request(context.workerId, {
+                type: "chat.turn.protect",
+                promptId: randomUUID(),
+                messageId: randomUUID(),
                 text: automation.prompt,
-                attachmentIds: [],
                 mode: "default",
-                idempotencyKey,
                 modelId,
                 reasoningEffort: claim.reasoningEffort,
-                frozen: false,
-                worktreeId: null,
-              },
-              modelId,
+                idempotencyKey,
+              }),
+            );
+            const prompt = await repository.createEncryptedQueuedPrompt(
+              workerAuth.ownerId,
+              context.chatId,
+              protectedTurn.queuedPrompt,
+              [],
             );
             if (!prompt) throw new Error("The target chat is unavailable.");
+            publishChatInvalidation(prompt.chatId, "chat-queue", prompt.id);
             if (!context.automationPaused) {
               void dispatchNextQueuedPrompt(context.chatId);
             }

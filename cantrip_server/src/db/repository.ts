@@ -14324,6 +14324,9 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: EncryptedChatFork,
+    protectMessages: (
+      messages: ChatMessageOpaqueSummary[],
+    ) => Promise<ChatMessageOpaqueContent[]>,
   ): Promise<ChatWireSummary | null> {
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
@@ -14394,6 +14397,35 @@ export class ServerRepository {
               ),
         )
         .orderBy(asc(schema.chatMessages.sequence));
+      if (
+        sourceMessages.some(
+          (source) =>
+            !source.protectedContent ||
+            source.content !== null ||
+            source.taskProtectedContent !== null,
+        )
+      ) {
+        return null;
+      }
+      const protectedCopies = await protectMessages(
+        sourceMessages.map(toEncryptedChatMessage),
+      );
+      if (
+        protectedCopies.length !== sourceMessages.length ||
+        protectedCopies.some((copy, index) => {
+          const source = sourceMessages[index]!;
+          return (
+            copy.classification.role !== source.role ||
+            copy.classification.mode !== source.mode ||
+            JSON.stringify(copy.classification.attachmentIds) !==
+              JSON.stringify(source.attachmentIds)
+          );
+        })
+      ) {
+        throw new Error(
+          "The worker returned inconsistent encrypted fork messages.",
+        );
+      }
       const [
         lastChats,
         lastTerminals,
@@ -14489,24 +14521,30 @@ export class ServerRepository {
       });
       if (sourceMessages.length > 0) {
         await transaction.insert(schema.chatMessages).values(
-          sourceMessages.map((message) => ({
-            id: randomUUID(),
-            chatId: fork.id,
-            worktreeId: message.worktreeId,
-            executionLaneId: null,
-            role: message.role,
-            mode: message.mode,
-            content: message.content,
-            modelId: message.modelId,
-            modelRouteId: message.modelRouteId,
-            providerId: message.providerId,
-            providerName: message.providerName,
-            providerModelName: message.providerModelName,
-            reasoningEffort: message.reasoningEffort,
-            appliedReasoningEffort: message.appliedReasoningEffort,
-            reasoningAdjusted: message.reasoningAdjusted,
-            createdAt: message.createdAt,
-          })),
+          sourceMessages.map((source, index) => {
+            const message = protectedCopies[index]!;
+            return {
+              id: message.id,
+              chatId: fork.id,
+              worktreeId: target.id,
+              executionLaneId: null,
+              role: message.classification.role,
+              mode: message.classification.mode,
+              content: null,
+              protectedContent: message.protectedContent,
+              attachmentIds: message.classification.attachmentIds,
+              modelId: source.modelId,
+              modelRouteId: source.modelRouteId,
+              providerId: source.providerId,
+              providerName: source.providerName,
+              providerModelName: source.providerModelName,
+              reasoningEffort: message.reasoningEffort,
+              appliedReasoningEffort: source.appliedReasoningEffort,
+              reasoningAdjusted: source.reasoningAdjusted,
+              idempotencyKey: message.idempotencyKey,
+              createdAt: source.createdAt,
+            };
+          }),
         );
       }
       const forkBoundary = sourceMessages.at(-1)?.createdAt ?? new Date();

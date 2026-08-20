@@ -4106,17 +4106,13 @@ export async function getMessages(chatId: string) {
     await request(`/api/chats/${encodeURIComponent(chatId)}/messages`),
   );
   return chatMessageListSchema.parse(
-    Array.isArray(response)
-      ? response
-      : await Promise.all(
-          response.messages.map((message) =>
-            response.kind === "task-encrypted"
-              ? openTaskMessageOpaqueSummary(message)
-              : chatMessageSchema.safeParse(message).success
-                ? chatMessageSchema.parse(message)
-                : openChatMessageOpaqueSummary(message),
-          ),
-        ),
+    await Promise.all(
+      response.messages.map((message) =>
+        response.kind === "task-encrypted"
+          ? openTaskMessageOpaqueSummary(message)
+          : openChatMessageOpaqueSummary(message),
+      ),
+    ),
   );
 }
 

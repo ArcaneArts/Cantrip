@@ -75,6 +75,9 @@ import {
   EncryptedChatEventSealer,
   encryptChatTurnResult,
   openEncryptedChatTurn,
+  protectChatMessage,
+  protectChatTurn,
+  reprotectChatMessages,
 } from "./chat-message-encryption.js";
 import {
   openAgentInteractionResponse,
@@ -1898,6 +1901,29 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
         }
       }
+      case "chat.message.protect":
+        return protectChatMessage({
+          id: command.message.id,
+          message: command.message,
+          service: workerEncryption,
+        });
+      case "chat.messages.protect":
+        return Promise.all(
+          command.messages.map((message) =>
+            protectChatMessage({
+              id: message.id,
+              message,
+              service: workerEncryption,
+            }),
+          ),
+        );
+      case "chat.messages.reprotect":
+        return reprotectChatMessages({
+          messages: command.messages,
+          service: workerEncryption,
+        });
+      case "chat.turn.protect":
+        return protectChatTurn({ ...command, service: workerEncryption });
       case "chat.turn": {
         if (command.automationPaused) pausedChats.add(command.chatId);
         const runtime = runtimeFor(command);
@@ -2314,13 +2340,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             upload.command.provider,
           );
         }
-        const taskEncrypted = upload.payload.kind === "task-encrypted";
         const payload = await openTaskRelocationPayload({
-          getComponentKey: () => workerEncryption.componentKey("task-content"),
+          getComponentKey: (component) =>
+            workerEncryption.componentKey(component),
           ownerId: workerEncryption.ownerId(),
           payload: upload.payload,
         });
-        const requiredSkillNames = taskEncrypted
+        const encryptedPayload = upload.payload.kind !== "visible";
+        const requiredSkillNames = encryptedPayload
           ? [
               ...new Set(
                 payload.kind === "visible"

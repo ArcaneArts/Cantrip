@@ -4,19 +4,25 @@ import {
   clearSensitiveBytes,
   decryptChatMessageProtectedContent,
   encryptChatMessageProtectedContent,
+  encryptQueuedPromptProtectedContent,
 } from "@cantrip/crypto";
 import {
   agentTurnResultSchema,
   chatMessageContentSchema,
   chatMessageRelayResultSchema,
+  encryptedChatTurnCreateSchema,
   type AgentActivity,
   type AgentTurnResult,
   type ChatMessage,
+  type ChatMessageCreate,
+  type ChatTurnMode,
   type NormalizedAgentMessage,
+  type ReasoningEffort,
 } from "@cantrip/protocol";
 import {
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
+  queuedPromptOpaqueContentSchema,
   type ChatMessageOpaqueContent,
   type ChatMessageOpaqueSummary,
 } from "@cantrip/protocol/communication-content";
@@ -127,18 +133,23 @@ export async function openEncryptedChatTurn(input: {
   }
 }
 
-async function protectMessage(input: {
-  content: ReturnType<typeof chatMessageContentSchema.parse>;
+export async function protectChatMessage(input: {
   id: string;
-  idempotencyKey: string;
+  message: ChatMessageCreate & { idempotencyKey: string };
   service: WorkerEncryptionService;
 }): Promise<ChatMessageOpaqueContent> {
+  const message = {
+    ...input.message,
+    content: chatMessageContentSchema.parse(input.message.content),
+  };
   const component = input.service.componentKey("chat-content");
   const ownerId = input.service.ownerId();
   const classification = {
-    role: "assistant" as const,
-    mode: "default" as const,
-    attachmentIds: [] as string[],
+    role: message.role,
+    mode: message.mode ?? "default",
+    attachmentIds: message.content.flatMap((item) =>
+      item.type === "attachment" ? [item.attachment.id] : [],
+    ),
   };
   try {
     return chatMessageOpaqueContentSchema.parse({
@@ -149,10 +160,106 @@ async function protectMessage(input: {
         messageId: input.id,
         keyRevision: component.keyRevision,
         componentKey: component.key,
-        content: { version: 1, classification, content: input.content },
+        content: { version: 1, classification, content: message.content },
       }),
-      reasoningEffort: null,
+      reasoningEffort: message.reasoningEffort ?? null,
+      idempotencyKey: message.idempotencyKey,
+    });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
+export async function reprotectChatMessages(input: {
+  messages: Array<{
+    source: ChatMessageOpaqueSummary;
+    id: string;
+    idempotencyKey: string;
+  }>;
+  service: WorkerEncryptionService;
+}): Promise<ChatMessageOpaqueContent[]> {
+  const component = input.service.componentKey("chat-content");
+  const ownerId = input.service.ownerId();
+  try {
+    return await Promise.all(
+      input.messages.map(async ({ source: raw, id, idempotencyKey }) => {
+        const source = chatMessageOpaqueSummarySchema.parse(raw);
+        const classification = {
+          role: source.role,
+          mode: source.mode,
+          attachmentIds: source.attachmentIds,
+        };
+        const content = await openMessage({
+          componentKey: component.key,
+          message: source,
+          ownerId,
+        });
+        return chatMessageOpaqueContentSchema.parse({
+          id,
+          classification,
+          protectedContent: await encryptChatMessageProtectedContent({
+            ownerId,
+            messageId: id,
+            keyRevision: component.keyRevision,
+            componentKey: component.key,
+            content: { version: 1, classification, content },
+          }),
+          reasoningEffort: source.reasoningEffort,
+          idempotencyKey,
+        });
+      }),
+    );
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
+export async function protectChatTurn(input: {
+  idempotencyKey: string;
+  messageId: string;
+  mode: ChatTurnMode;
+  modelId: string;
+  promptId: string;
+  reasoningEffort: ReasoningEffort | null;
+  service: WorkerEncryptionService;
+  text: string;
+}) {
+  const pendingMessage = await protectChatMessage({
+    id: input.messageId,
+    message: {
+      role: "user",
+      mode: input.mode,
+      content: [{ type: "text", text: input.text }],
+      reasoningEffort: input.reasoningEffort,
       idempotencyKey: input.idempotencyKey,
+    },
+    service: input.service,
+  });
+  const component = input.service.componentKey("chat-content");
+  const ownerId = input.service.ownerId();
+  const classification = { mode: input.mode, attachmentIds: [] as string[] };
+  try {
+    const queuedPrompt = queuedPromptOpaqueContentSchema.parse({
+      id: input.promptId,
+      classification,
+      protectedContent: await encryptQueuedPromptProtectedContent({
+        ownerId,
+        promptId: input.promptId,
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: { version: 1, classification, text: input.text },
+      }),
+      modelId: input.modelId,
+      reasoningEffort: input.reasoningEffort,
+      worktreeId: null,
+      frozen: false,
+      idempotencyKey: input.idempotencyKey,
+      pendingMessage,
+    });
+    return encryptedChatTurnCreateSchema.parse({
+      message: pendingMessage,
+      queuedPrompt,
+      modelId: input.modelId,
     });
   } finally {
     clearSensitiveBytes(component.key);
@@ -180,17 +287,20 @@ export class EncryptedChatEventSealer {
     const key = `agent-message:${turnId ?? "turn"}:${message.id}`;
     return {
       type: "agent.protected-message" as const,
-      message: await protectMessage({
-        content: chatMessageContentSchema.parse([
-          {
-            type: "text",
-            text: message.text,
-            phase: message.phase,
-            correlation: message.correlation,
-          },
-        ]),
+      message: await protectChatMessage({
         id: this.#id(key),
-        idempotencyKey: key,
+        message: {
+          role: "assistant",
+          content: chatMessageContentSchema.parse([
+            {
+              type: "text",
+              text: message.text,
+              phase: message.phase,
+              correlation: message.correlation,
+            },
+          ]),
+          idempotencyKey: key,
+        },
         service: this.#service,
       }),
       telemetry: { kind: "message" as const, phase: message.phase, turnId },
@@ -205,12 +315,15 @@ export class EncryptedChatEventSealer {
         : `activity:${turnId ?? "turn"}:${activity.id}`;
     return {
       type: "agent.protected-message" as const,
-      message: await protectMessage({
-        content: chatMessageContentSchema.parse([
-          { type: "activity", activity },
-        ]),
+      message: await protectChatMessage({
         id: this.#id(key),
-        idempotencyKey: key,
+        message: {
+          role: "assistant",
+          content: chatMessageContentSchema.parse([
+            { type: "activity", activity },
+          ]),
+          idempotencyKey: key,
+        },
         service: this.#service,
       }),
       telemetry: {
@@ -225,12 +338,15 @@ export class EncryptedChatEventSealer {
     const key = `goal-checkpoint:${input.turnId}`;
     return {
       type: "agent.protected-message" as const,
-      message: await protectMessage({
-        content: chatMessageContentSchema.parse([
-          { type: "text", text: input.text, phase: "final_answer" },
-        ]),
+      message: await protectChatMessage({
         id: this.#id(key),
-        idempotencyKey: key,
+        message: {
+          role: "assistant",
+          content: chatMessageContentSchema.parse([
+            { type: "text", text: input.text, phase: "final_answer" },
+          ]),
+          idempotencyKey: key,
+        },
         service: this.#service,
       }),
       telemetry: { kind: "checkpoint" as const, turnId: input.turnId },
@@ -245,16 +361,19 @@ export async function encryptChatTurnResult(input: {
   service: WorkerEncryptionService;
 }): Promise<AgentTurnResult> {
   const result = agentTurnResultSchema.parse(input.result);
-  const message = await protectMessage({
-    content: chatMessageContentSchema.parse([
-      {
-        type: "text",
-        text: result.text || "The agent completed without a message.",
-        phase: "final_answer",
-      },
-    ]),
+  const message = await protectChatMessage({
     id: input.messageId,
-    idempotencyKey: input.idempotencyKey,
+    message: {
+      role: "assistant",
+      content: chatMessageContentSchema.parse([
+        {
+          type: "text",
+          text: result.text || "The agent completed without a message.",
+          phase: "final_answer",
+        },
+      ]),
+      idempotencyKey: input.idempotencyKey,
+    },
     service: input.service,
   });
   return agentTurnResultSchema.parse({
