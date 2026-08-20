@@ -18781,9 +18781,9 @@ export async function buildApp({
           try {
             await synchronizeTerminalServicesForWorker(context.workerId);
             status = input.data.enabled ? "running" : "idle";
-          } catch (error) {
+          } catch {
             app.log.warn(
-              { err: error, terminalId: terminal.id },
+              { terminalId: terminal.id },
               "Terminal service will reconcile when the worker reconnects",
             );
           }
@@ -20718,7 +20718,10 @@ export async function buildApp({
           });
         } catch (error) {
           cleanupRelay();
-          const message = errorMessage(error);
+          const message =
+            error instanceof WorkerUnavailableError
+              ? "Worker is offline."
+              : "Remote Surface could not be opened.";
           await updateRemoteSurfaceStatus(
             surfaceId,
             error instanceof WorkerUnavailableError ? "offline" : "error",
@@ -24915,11 +24918,8 @@ export async function buildApp({
           "Could not resume chat import jobs",
         );
       });
-      void synchronizeTerminalServicesForWorker(workerId).catch((error) => {
-        app.log.error(
-          { err: error, workerId },
-          "Could not reconcile terminal services",
-        );
+      void synchronizeTerminalServicesForWorker(workerId).catch(() => {
+        app.log.error({ workerId }, "Could not reconcile terminal services");
       });
       scheduleWorkerWorktreeObservation(workerId);
       void resumePendingWorktreeTransitionsForWorker(

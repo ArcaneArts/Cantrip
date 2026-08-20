@@ -197,7 +197,7 @@ export class RemoteSurfaceManager {
           });
         }
       }
-    } catch (error) {
+    } catch {
       managed.attachments.delete(command.attachmentId);
       if (managed.attachments.size === 0) {
         this.#sessions.delete(command.surfaceId);
@@ -217,9 +217,8 @@ export class RemoteSurfaceManager {
         attachmentId: command.attachmentId,
         surfaceKind: command.configuration.kind,
         durationMs: Date.now() - startedAtMs,
-        error: workerLogError(error),
       });
-      throw error;
+      throw new Error("Remote Surface attachment failed.");
     }
     const transport = managed.attachments.get(command.attachmentId)?.webrtc
       ? "webrtc"
@@ -268,10 +267,23 @@ export class RemoteSurfaceManager {
     if (managed.session.configuration.kind !== command.configuration.kind) {
       throw new Error("Remote Surface kind cannot change while it is live.");
     }
-    await managed.session.updateConfiguration?.(
-      command.configuration,
-      privateState(command),
-    );
+    try {
+      await managed.session.updateConfiguration?.(
+        command.configuration,
+        privateState(command),
+      );
+    } catch {
+      workerLogger.event("warn", "Remote surface configuration failed", {
+        event: "surface.lifecycle.configure-failed",
+        subsystem: "remote-surface",
+        operation: "configure",
+        reasonCode: "adapter-configure-failed",
+        status: "failed",
+        surfaceId: command.surfaceId,
+        surfaceKind: command.configuration.kind,
+      });
+      throw new Error("Remote Surface configuration could not be applied.");
+    }
   }
 
   async suspend(surfaceId: string): Promise<void> {
@@ -389,7 +401,7 @@ export class RemoteSurfaceManager {
         });
         return managed;
       })
-      .catch((error) => {
+      .catch(() => {
         workerLogger.event("error", "Remote surface failed to open", {
           event: "surface.lifecycle.open-failed",
           subsystem: "remote-surface",
@@ -399,9 +411,8 @@ export class RemoteSurfaceManager {
           surfaceId: command.surfaceId,
           surfaceKind: command.configuration.kind,
           durationMs: Date.now() - startedAtMs,
-          error: workerLogError(error),
         });
-        throw error;
+        throw new Error("Remote Surface could not be opened.");
       });
     this.#openingSessions.set(command.surfaceId, next);
     try {

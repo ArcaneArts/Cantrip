@@ -20,7 +20,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
-it("persists every private display label only as authenticated ciphertext", async () => {
+it("persists every app-facing private label and surface state only as authenticated ciphertext", async () => {
   const dataDirectory = await mkdtemp(
     path.join(tmpdir(), "cantrip-surface-title-persistence-"),
   );
@@ -37,7 +37,7 @@ it("persists every private display label only as authenticated ciphertext", asyn
     port: 4310,
     workerToken: "test-worker-token",
   };
-  const sentinel = "PRIVATE-LABEL-SENTINEL";
+  const sentinel = "PROTECTED-APP-STATE-SENTINEL";
   const accountMasterKey = generateAccountMasterKey();
   const componentKey = deriveComponentKey({
     accountMasterKey,
@@ -502,6 +502,24 @@ it("persists every private display label only as authenticated ciphertext", asyn
       protected_state: remoteDesktopStateProtection,
       state_revision: 1,
     });
+    await expect(
+      scan.query(
+        `UPDATE remote_surfaces
+         SET configuration = '{"kind":"desktop","target":{"kind":"monitor"}}'::jsonb
+         WHERE id = $1`,
+        [ids.desktop],
+      ),
+    ).rejects.toThrow(
+      /remote_surfaces_(?:public_configuration|desktop_private_state)_check/u,
+    );
+    await expect(
+      scan.query(
+        `UPDATE remote_surfaces
+         SET configuration = '{"kind":"browser","profileId":null,"initialUrl":"https://private.example"}'::jsonb
+         WHERE id = $1`,
+        [ids.browser],
+      ),
+    ).rejects.toThrow(/remote_surfaces_public_configuration_check/u);
 
     const canonicalLabels = await scan.query<{ protected_label: unknown }>(
       `SELECT protected_label FROM browsers WHERE id = $1

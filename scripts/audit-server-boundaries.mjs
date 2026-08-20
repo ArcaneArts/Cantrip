@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format } from "prettier";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
@@ -134,6 +135,72 @@ const prohibitedPrivateDisplayLabelProtocolSymbols = new Set([
   "terminalUpdateSchema",
 ]);
 
+const prohibitedSurfacePrivateStateProtocolSymbols = new Set([
+  "BrowserCreate",
+  "BrowserSummary",
+  "BrowserUpdate",
+  "ExplorerSummary",
+  "ExplorerViewStateUpdate",
+  "RemoteDesktopFleet",
+  "RemoteDesktopFleetWorker",
+  "RemoteDesktopSummary",
+  "RemoteDesktopTarget",
+  "RemoteDesktopTargetInventory",
+  "RemoteSurfaceSummary",
+  "TerminalCreate",
+  "TerminalServiceConfiguration",
+  "TerminalSummary",
+  "browserCreateSchema",
+  "browserListSchema",
+  "browserSummarySchema",
+  "browserUpdateSchema",
+  "explorerListSchema",
+  "explorerSummarySchema",
+  "explorerViewStateUpdateSchema",
+  "remoteBrowserClientMessageSchema",
+  "remoteBrowserServerMessageSchema",
+  "remoteDesktopFleetSchema",
+  "remoteDesktopFleetWorkerSchema",
+  "remoteDesktopListSchema",
+  "remoteDesktopServerMessageSchema",
+  "remoteDesktopSummarySchema",
+  "remoteDesktopTargetInventorySchema",
+  "remoteDesktopTargetSchema",
+  "remoteSurfaceListSchema",
+  "remoteSurfaceSummarySchema",
+  "terminalCreateSchema",
+  "terminalListSchema",
+  "terminalServiceConfigurationSchema",
+  "terminalSummarySchema",
+]);
+
+const prohibitedSurfacePrivateStateContentSymbols = new Set([
+  "BrowserPrivateStateProtectedContent",
+  "ExplorerPrivateStateProtectedContent",
+  "RemoteDesktopPrivateInventoryProtectedContent",
+  "RemoteDesktopPrivateStateProtectedContent",
+  "SurfacePrivateStateProtectedContent",
+  "TerminalPrivateStateProtectedContent",
+  "browserPrivateStateProtectedContentSchema",
+  "explorerPrivateStateProtectedContentSchema",
+  "remoteDesktopPrivateInventoryProtectedContentSchema",
+  "remoteDesktopPrivateStateProtectedContentSchema",
+  "surfacePrivateStateProtectedContentSchema",
+  "terminalPrivateStateProtectedContentSchema",
+]);
+
+const prohibitedSurfacePrivateStateFields = [
+  "directoryPath",
+  "serviceCommand",
+  "selectedPath",
+  "initialUrl",
+  "currentUrl",
+  "navigatedUrl",
+  "desktopTarget",
+  "targetInventory",
+  "launchingApplication",
+];
+
 const privateDisplayLabelTables = [
   ["projects", "name"],
   ["chats", "title"],
@@ -144,6 +211,13 @@ const privateDisplayLabelTables = [
   ["remoteSurfaces", "title"],
   ["projectViews", "title"],
   ["tabGroups", "title"],
+];
+
+const surfacePrivateStateTables = [
+  ["terminals", ["directoryPath", "serviceCommand"]],
+  ["explorers", ["selectedPath"]],
+  ["browsers", ["url"]],
+  ["remoteSurfaces", []],
 ];
 
 async function typescriptFiles(directory) {
@@ -277,6 +351,86 @@ async function privateDisplayLabelProductionDependencyAudit() {
   return {
     productionCryptoImports: 0,
     prohibitedTrustedLabelImports: 0,
+    opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
+  };
+}
+
+async function surfacePrivateStateProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  const opaqueProtocolSources = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const protocolImports = namedImportsFrom(sourceText, "@cantrip/protocol");
+    const contentImports = namedImportsFrom(
+      sourceText,
+      "@cantrip/protocol/surface-private-state",
+    );
+    if (
+      [...protocolImports, ...contentImports].some((symbol) =>
+        /(?:Encrypted|Opaque|Wire).*(?:Browser|Explorer|Remote|Surface|Terminal)|SurfacePrivateStateOpaque/u.test(
+          symbol,
+        ),
+      )
+    ) {
+      opaqueProtocolSources.push(relativeFile);
+    }
+    for (const symbol of protocolImports) {
+      if (prohibitedSurfacePrivateStateProtocolSymbols.has(symbol)) {
+        failures.push(
+          `${relativeFile}: prohibited trusted surface-state symbol ${symbol}`,
+        );
+      }
+    }
+    for (const symbol of contentImports) {
+      if (prohibitedSurfacePrivateStateContentSymbols.has(symbol)) {
+        failures.push(
+          `${relativeFile}: prohibited protected surface-state content symbol ${symbol}`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /(?:from\s*|import\s*\(\s*)["']([^"']+)["']/gu,
+    )) {
+      const target = match[1];
+      if (
+        target === "@cantrip/crypto" ||
+        target.startsWith("@cantrip/crypto/") ||
+        /(?:^|\/)packages\/crypto(?:\/|$)/u.test(target) ||
+        /(?:^|\/)cantrip_(?:app|worker)\/src\/.*(?:surface-private-state|browser-private-state|desktop-private-state|terminal-private-state)/u.test(
+          target,
+        )
+      ) {
+        failures.push(
+          `${relativeFile}:${lineForOffset(sourceText, match.index)} imports trusted surface-state endpoint code (${target})`,
+        );
+      }
+    }
+    for (const field of prohibitedSurfacePrivateStateFields) {
+      const expression = new RegExp(`\\b${field}\\b`, "gu");
+      for (const match of sourceText.matchAll(expression)) {
+        failures.push(
+          `${relativeFile}:${lineForOffset(sourceText, match.index)} references protected surface-state field ${field}`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\b(?:decodeSurfacePrivateStateForClient|decodeSurfacePrivateStateForWorker|decryptSurfacePrivateState|encodeSurfacePrivateStateForClient|encodeSurfacePrivateStateForWorker|encryptSurfacePrivateState|openBrowserPersistentPrivateState|openRemoteDesktopPersistentPrivateState|openTerminalPrivateState)\b/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references trusted surface-state endpoint code (${match[0]})`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the surface-private-state E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    productionCryptoImports: 0,
+    prohibitedTrustedSurfaceStateImports: 0,
     opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
   };
 }
@@ -765,6 +919,196 @@ function privateDisplayLabelRouteBoundaryAudit(routes) {
   );
 }
 
+function surfacePrivateStateRouteBoundaryAudit(routes) {
+  const requirements = [
+    [
+      "GET",
+      "/api/projects/:projectId/terminals",
+      "terminalWireListSchema",
+      "opaque-terminal-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/terminals",
+      "encryptedTerminalCreateSchema",
+      "encrypted-terminal-create",
+    ],
+    [
+      "PATCH",
+      "/api/terminals/:terminalId",
+      "encryptedTerminalUpdateSchema",
+      "opaque-terminal-update",
+    ],
+    [
+      "PUT",
+      "/api/terminals/:terminalId/service",
+      "encryptedTerminalServiceConfigurationSchema",
+      "encrypted-service-configuration",
+    ],
+    [
+      "GET",
+      "/api/terminals/:terminalId/script-commands",
+      "stateProtection: context.stateProtection",
+      "opaque-script-discovery",
+    ],
+    [
+      "POST",
+      "/api/terminals/:terminalId/direct",
+      "stateProtection: context.stateProtection",
+      "opaque-direct-open",
+    ],
+    [
+      "GET",
+      "/api/terminals/:terminalId/connect",
+      "stateProtection: context.stateProtection",
+      "opaque-terminal-open",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/explorers",
+      "explorerWireListSchema",
+      "opaque-explorer-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/explorers",
+      "encryptedExplorerCreateSchema",
+      "encrypted-explorer-create",
+    ],
+    [
+      "PATCH",
+      "/api/explorers/:explorerId",
+      "encryptedExplorerUpdateSchema",
+      "opaque-explorer-update",
+    ],
+    [
+      "PATCH",
+      "/api/explorers/:explorerId/worktree",
+      "encryptedExplorerWorktreeUpdateSchema",
+      "encrypted-selection-reset",
+    ],
+    [
+      "PATCH",
+      "/api/explorers/:explorerId/view-state",
+      "encryptedExplorerViewStateUpdateSchema",
+      "encrypted-selection-update",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/browsers",
+      "browserWireListSchema",
+      "opaque-browser-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/browsers",
+      "encryptedBrowserCreateSchema",
+      "encrypted-browser-create",
+    ],
+    [
+      "PATCH",
+      "/api/browsers/:browserId",
+      "encryptedBrowserUpdateSchema",
+      "encrypted-browser-update",
+    ],
+    [
+      "POST",
+      "/api/browsers/:browserId/tunnel",
+      "browserTunnelRequestSchema",
+      "routing-metadata-only",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/remote-desktops",
+      "remoteDesktopWireListSchema",
+      "opaque-desktop-list",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/remote-desktop-fleet",
+      "inventoryProtection: inventory.stateProtection",
+      "opaque-desktop-inventory",
+    ],
+    [
+      "GET",
+      "/api/remote-desktops/:desktopId",
+      "remoteDesktopWireSummarySchema",
+      "opaque-desktop-read",
+    ],
+    [
+      "PATCH",
+      "/api/remote-desktops/:desktopId",
+      "encryptedRemoteDesktopUpdateSchema",
+      "encrypted-desktop-update",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/remote-desktops",
+      "encryptedRemoteDesktopCreateSchema",
+      "encrypted-desktop-create",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/remote-surfaces",
+      "remoteSurfaceWireListSchema",
+      "opaque-surface-list",
+    ],
+    [
+      "POST",
+      "/api/projects/:projectId/remote-surfaces",
+      "encryptedRemoteSurfaceCreateSchema",
+      "encrypted-surface-create",
+    ],
+    [
+      "PATCH",
+      "/api/remote-surfaces/:surfaceId",
+      "encryptedRemoteSurfaceUpdateSchema",
+      "encrypted-surface-update",
+    ],
+    [
+      "GET",
+      "/api/remote-surfaces/:surfaceId/connect",
+      "stateProtection: context.surface.stateProtection",
+      "opaque-surface-attach",
+    ],
+    [
+      "GET",
+      "/api/remote-surfaces/:surfaceId/connect",
+      '"Remote Surface could not be opened."',
+      "generic-surface-bridge-errors",
+    ],
+    [
+      "GET",
+      "/api/projects/:projectId/execution-targets",
+      "executionTargetWireCatalogSchema",
+      "opaque-id-only-target-catalog",
+    ],
+    [
+      "POST",
+      "/api/internal/cli",
+      "executeCliCommand",
+      "worker-encrypted-browser-navigation",
+    ],
+  ];
+  const contracts = [];
+  for (const [method, path, marker, contract] of requirements) {
+    const route = routes.find(
+      (candidate) => candidate.method === method && candidate.path === path,
+    );
+    if (!route || !route.source.includes(marker)) {
+      throw new Error(
+        `Surface private-state E2EE route contract is missing ${method} ${path} (${marker}).`,
+      );
+    }
+    contracts.push({ contract, method, path });
+  }
+  return contracts.sort(
+    (left, right) =>
+      left.path.localeCompare(right.path) ||
+      left.method.localeCompare(right.method),
+  );
+}
+
 function methodBody(sourceText, methodName) {
   const expression = new RegExp(
     `^  (?:private\\s+)?async\\s+${methodName}\\s*\\(`,
@@ -953,6 +1297,203 @@ function enumValues(sourceText, declarationName) {
   ].map((match) => match[1]);
 }
 
+function declarationInitializer(sourceText, declarationName, opener) {
+  const declaration = sourceText.indexOf(`export const ${declarationName}`);
+  if (declaration < 0) throw new Error(`Missing ${declarationName}.`);
+  const start = sourceText.indexOf(opener, declaration);
+  if (start < 0) throw new Error(`Missing ${opener} for ${declarationName}.`);
+  const end = matchingDelimiter(
+    sourceText,
+    start,
+    opener,
+    opener === "[" ? "]" : ")",
+  );
+  return sourceText.slice(start, end + 1);
+}
+
+async function surfacePrivateStateRepositoryBoundaryAudit(protocolText) {
+  const schemaPath = resolve(serverSourcePath, "db/schema.ts");
+  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
+  const workerManagerPath = resolve(
+    repositoryRoot,
+    "cantrip_worker/src/remote-surface-manager.ts",
+  );
+  const [schemaText, repositoryText, workerManagerText] = await Promise.all([
+    readFile(schemaPath, "utf8"),
+    readFile(repositoryPath, "utf8"),
+    readFile(workerManagerPath, "utf8"),
+  ]);
+  const failures = [];
+  for (const [table, legacyFields] of surfacePrivateStateTables) {
+    const initializer = tableInitializer(schemaText, table);
+    if (
+      !/\bprotectedState\s*:\s*jsonb\(["']protected_state["']\)/u.test(
+        initializer,
+      )
+    ) {
+      failures.push(`${table}: missing protected_state JSONB storage`);
+    }
+    for (const field of legacyFields) {
+      if (new RegExp(`\\b${field}\\s*:`, "u").test(initializer)) {
+        failures.push(`${table}: legacy plaintext ${field} field returned`);
+      }
+    }
+  }
+  for (const table of ["browsers", "remoteSurfaces"]) {
+    if (
+      !/\bstateRevision\s*:\s*integer\(["']state_revision["']\)/u.test(
+        tableInitializer(schemaText, table),
+      )
+    ) {
+      failures.push(`${table}: missing public state revision`);
+    }
+  }
+  const remoteSurfaceInitializer = tableInitializer(
+    schemaText,
+    "remoteSurfaces",
+  );
+  for (const guard of [
+    "remote_surfaces_public_configuration_check",
+    "remote_surfaces_desktop_private_state_check",
+  ]) {
+    if (!remoteSurfaceInitializer.includes(guard)) {
+      failures.push(`remoteSurfaces: missing database guard ${guard}`);
+    }
+  }
+  for (const marker of [
+    "toTerminalWireSummary",
+    "toExplorerWireSummary",
+    "toBrowserWireSummary",
+    "toRemoteSurfaceWireSummary",
+    "toRemoteDesktopWireSummary",
+  ]) {
+    if (!repositoryText.includes(marker)) {
+      failures.push(`repository: missing opaque serializer ${marker}`);
+    }
+  }
+  for (const [method, marker] of [
+    ["createTerminal", "protectedState: input.stateProtection"],
+    ["updateTerminalService", "protectedState: input.stateProtection"],
+    ["createExplorer", "protectedState: input.stateProtection"],
+    ["updateExplorerViewState", "protectedState: input.stateProtection"],
+    ["createBrowser", "protectedState: input.stateProtection"],
+    ["updateBrowser", "protectedState: input.stateProtection"],
+    ["createRemoteSurface", "protectedState: input.stateProtection"],
+    ["createRemoteDesktop", "protectedState: stateProtection"],
+  ]) {
+    if (!methodBody(repositoryText, method).includes(marker)) {
+      failures.push(`${method}: missing opaque persistence (${marker})`);
+    }
+  }
+
+  const configuration = declarationInitializer(
+    protocolText,
+    "remoteSurfaceConfigurationSchema",
+    "[",
+  );
+  if (/\b(?:initialUrl|url|target)\s*:/u.test(configuration)) {
+    failures.push(
+      "remoteSurfaceConfigurationSchema: private browser or desktop configuration returned",
+    );
+  }
+  const browserMessages = declarationInitializer(
+    protocolText,
+    "remoteBrowserServerMessageSchema",
+    "[",
+  );
+  if (/\burl\s*:/u.test(browserMessages)) {
+    failures.push(
+      "remoteBrowserServerMessageSchema: plaintext browser URL returned",
+    );
+  }
+  const desktopMessages = declarationInitializer(
+    protocolText,
+    "remoteDesktopServerMessageSchema",
+    "[",
+  );
+  if (
+    /\b(?:inventory|requested|active|launchingApplication)\s*:/u.test(
+      desktopMessages,
+    )
+  ) {
+    failures.push(
+      "remoteDesktopServerMessageSchema: plaintext target inventory returned",
+    );
+  }
+
+  const workerCommandGuards = [
+    [
+      "project.script-commands",
+      /type:\s*z\.literal\(["']project\.script-commands["']\)[\s\S]{0,500}stateProtection:\s*terminalPrivateStateOpaqueSchema/u,
+    ],
+    [
+      "terminal.open",
+      /type:\s*z\.literal\(["']terminal\.open["']\)[\s\S]{0,1500}stateProtection:\s*terminalPrivateStateOpaqueSchema/u,
+    ],
+    [
+      "terminal.services.reconcile",
+      /type:\s*z\.literal\(["']terminal\.services\.reconcile["']\)[\s\S]{0,300}services:\s*z\.array\(terminalServiceRuntimeConfigurationSchema\)/u,
+    ],
+    [
+      "surface.attach",
+      /type:\s*z\.literal\(["']surface\.attach["']\)[\s\S]{0,1500}stateProtection:\s*z[\s\S]{0,300}browserPrivateStateOpaqueSchema[\s\S]{0,300}remoteDesktopPrivateStateOpaqueSchema/u,
+    ],
+    [
+      "surface.configure",
+      /type:\s*z\.literal\(["']surface\.configure["']\)[\s\S]{0,1000}stateProtection:\s*z[\s\S]{0,300}browserPrivateStateOpaqueSchema[\s\S]{0,300}remoteDesktopPrivateStateOpaqueSchema/u,
+    ],
+    [
+      "surface.desktop.targets",
+      /type:\s*z\.literal\(["']surface\.desktop\.targets["']\)[\s\S]{0,500}operationId:[\s\S]{0,300}resourceId:[\s\S]{0,300}limit:/u,
+    ],
+  ];
+  for (const [command, expression] of workerCommandGuards) {
+    if (!expression.test(protocolText)) {
+      failures.push(`worker command ${command}: opaque contract regressed`);
+    }
+  }
+  for (const [method, genericFailure] of [
+    ["attach", "Remote Surface attachment failed."],
+    ["configure", "Remote Surface configuration could not be applied."],
+    ["openSession", "Remote Surface could not be opened."],
+  ]) {
+    const body = methodBody(workerManagerText, method);
+    if (body.includes("workerLogError") || !body.includes(genericFailure)) {
+      failures.push(
+        `worker RemoteSurfaceManager.${method}: private adapter failures are not generic`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Surface private-state repository boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    auditedServerCopies: [
+      "routes",
+      "repository",
+      "schema",
+      "worker-commands",
+      "live-events",
+      "execution-targets",
+      "jobs-and-snapshots",
+      "notifications",
+      "errors-and-logs",
+      "caches-and-audit-metadata",
+    ],
+    coveredTables: surfacePrivateStateTables.map(([table]) => table),
+    guards: [
+      "covered-tables:protected-state-jsonb-only",
+      "repository:wire-only-state-serialization",
+      "remote-surfaces:public-configuration-only",
+      "browser-live-state:opaque-url",
+      "remote-desktop-live-state:opaque-inventory",
+    ],
+    workerCommandContracts: workerCommandGuards.map(([command]) => command),
+  };
+}
+
 async function repositoryMethodInventory() {
   const methods = [];
   for (const file of repositoryFiles) {
@@ -1002,6 +1543,7 @@ async function buildInventory() {
     taskRepositoryGuards,
     privateDisplayLabelDependencies,
     privateDisplayLabelRepository,
+    surfacePrivateStateDependencies,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
     readFile(protocolPath, "utf8"),
@@ -1011,11 +1553,16 @@ async function buildInventory() {
     taskRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
     privateDisplayLabelRepositoryBoundaryAudit(),
+    surfacePrivateStateProductionDependencyAudit(),
   ]);
+  const surfacePrivateStateRepository =
+    await surfacePrivateStateRepositoryBoundaryAudit(protocolText);
   const parsedRoutes = parseRoutes(sourceText);
   const taskRouteContracts = taskRouteBoundaryAudit(parsedRoutes);
   const privateDisplayLabelRouteContracts =
     privateDisplayLabelRouteBoundaryAudit(parsedRoutes);
+  const surfacePrivateStateRouteContracts =
+    surfacePrivateStateRouteBoundaryAudit(parsedRoutes);
   const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
   routes.sort(
     (left, right) =>
@@ -1058,7 +1605,7 @@ async function buildInventory() {
   );
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     sources: {
       applicationRoutes: "cantrip_server/src/app.ts",
       liveProtocol: "packages/protocol/src/live.ts",
@@ -1109,6 +1656,12 @@ async function buildInventory() {
       ...privateDisplayLabelRepository,
       routeContracts: privateDisplayLabelRouteContracts,
     },
+    surfacePrivateStateE2eeBoundary: {
+      status: "enforced",
+      ...surfacePrivateStateDependencies,
+      ...surfacePrivateStateRepository,
+      routeContracts: surfacePrivateStateRouteContracts,
+    },
     externalTransports: [
       {
         boundary: "capability-token",
@@ -1147,7 +1700,9 @@ async function buildInventory() {
   };
 }
 
-const expected = `${JSON.stringify(await buildInventory(), null, 2)}\n`;
+const expected = await format(JSON.stringify(await buildInventory()), {
+  parser: "json",
+});
 if (process.argv.includes("--write")) {
   await mkdir(dirname(inventoryPath), { recursive: true });
   await writeFile(inventoryPath, expected);
