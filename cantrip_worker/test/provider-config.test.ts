@@ -22,6 +22,19 @@ function provider(
 }
 
 describe("Codex provider configuration", () => {
+  it("disables Fast mode for every Cantrip-managed runtime", () => {
+    for (const kind of [
+      "chatgpt",
+      "ollama",
+      "openai-compatible",
+      "grok",
+    ] as const) {
+      const arguments_ = codexProviderConfiguration(provider(kind)).arguments;
+      expect(arguments_).toContain("features.fast_mode=false");
+      expect(arguments_.join(" ")).not.toContain("service_tier=");
+    }
+  });
+
   it("configures canonical Z.ai providers through an environment-backed Responses transport", () => {
     const configuration = codexProviderConfiguration(
       provider("openai-compatible", {

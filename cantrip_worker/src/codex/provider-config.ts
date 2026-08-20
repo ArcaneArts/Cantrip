@@ -13,6 +13,8 @@ export interface CodexProviderConfiguration {
   environment: Record<string, string>;
 }
 
+const CANTRIP_CODEX_RUNTIME_POLICY = ["features.fast_mode=false"] as const;
+
 export function isZaiRuntimeProvider(provider: CodexProvider): boolean {
   return (
     provider.kind === "openai-compatible" &&
@@ -34,13 +36,13 @@ export function codexProviderConfiguration(
   const modelProvider = codexModelProviderName(provider);
   if (modelProvider === "openai") {
     return {
-      arguments: ['model_provider="openai"'],
+      arguments: [...CANTRIP_CODEX_RUNTIME_POLICY, 'model_provider="openai"'],
       environment: {},
     };
   }
   if (modelProvider === "ollama") {
     return {
-      arguments: ['model_provider="ollama"'],
+      arguments: [...CANTRIP_CODEX_RUNTIME_POLICY, 'model_provider="ollama"'],
       environment: {
         CODEX_OSS_BASE_URL: normalizeResponsesBaseUrl(provider.baseUrl),
       },
@@ -51,6 +53,7 @@ export function codexProviderConfiguration(
     : provider.name;
   return {
     arguments: [
+      ...CANTRIP_CODEX_RUNTIME_POLICY,
       'model_provider="cantrip_runtime"',
       `model_providers.cantrip_runtime.name=${JSON.stringify(providerName)}`,
       `model_providers.cantrip_runtime.base_url=${JSON.stringify(normalizeResponsesBaseUrl(provider.baseUrl))}`,
