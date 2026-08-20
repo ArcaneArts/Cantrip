@@ -4,10 +4,10 @@ import type {
   ProjectTabKind,
   ProjectTabLayoutWireSummary,
   ProjectTabMemberWireSummary,
+  EncryptedTabGroupUpdate,
   TabGroupMemberMove,
   TabGroupMemberOrder,
   TabGroupOrder,
-  TabGroupUpdate,
 } from "@cantrip/protocol";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -191,7 +191,7 @@ export async function detachProjectTab(
         ...(selected.group.anchorTabKey === tabKey
           ? { anchorTabKey: remaining[0]!.tabKey }
           : {}),
-        ...(remaining.length === 1 ? { title: null } : {}),
+        ...(remaining.length === 1 ? { protectedLabel: null } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.tabGroups.id, selected.group.id));
@@ -403,7 +403,7 @@ export class ProjectTabLayoutRepository {
         return {
           id: group.id,
           projectId: group.projectId,
-          title: group.title,
+          titleProtection: group.protectedLabel,
           position: group.position,
           anchorTabKey: group.anchorTabKey,
           members: groupedMembers,
@@ -418,7 +418,7 @@ export class ProjectTabLayoutRepository {
     ownerId: string,
     projectId: string,
     groupId: string,
-    input: TabGroupUpdate,
+    input: EncryptedTabGroupUpdate,
   ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
@@ -450,7 +450,10 @@ export class ProjectTabLayoutRepository {
       }
       await transaction
         .update(schema.tabGroups)
-        .set({ title: input.title, updatedAt: new Date() })
+        .set({
+          protectedLabel: input.titleProtection,
+          updatedAt: new Date(),
+        })
         .where(eq(schema.tabGroups.id, groupId));
     });
     return this.get(ownerId, projectId);
@@ -619,14 +622,14 @@ export class ProjectTabLayoutRepository {
             .update(schema.tabGroups)
             .set({
               anchorTabKey: remainingSource[0]!.tabKey,
-              ...(remainingSource.length === 1 ? { title: null } : {}),
+              ...(remainingSource.length === 1 ? { protectedLabel: null } : {}),
               updatedAt: new Date(),
             })
             .where(eq(schema.tabGroups.id, selected.group.id));
         } else if (remainingSource.length === 1) {
           await transaction
             .update(schema.tabGroups)
-            .set({ title: null, updatedAt: new Date() })
+            .set({ protectedLabel: null, updatedAt: new Date() })
             .where(eq(schema.tabGroups.id, selected.group.id));
         }
       }

@@ -9,6 +9,7 @@ import {
   executionPlacementResolutionSchema,
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
+  projectTabLayoutWireSummarySchema,
   terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -1136,5 +1137,170 @@ describe.sequential("project execution placement API", () => {
     );
     expect(stale.statusCode).toBe(409);
     expect(stale.json().error).toContain("active chat lane");
+  });
+
+  it("keeps custom tab-group labels opaque through rename, reorder, split, and merge", async () => {
+    const terminal = terminalWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/terminals`,
+          payload: {
+            ...protectedDisplayLabelFields("terminal"),
+            target: {
+              kind: "worktree",
+              projectId,
+              worktreeId: alphaWorktreeId,
+            },
+          },
+        })
+      ).json(),
+    );
+    let layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    const groupId = layout.groups.find(({ members }) =>
+      members.some(({ tabId }) => tabId === terminal.id),
+    )!.id;
+    const explorer = explorerWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/projects/${projectId}/explorers`,
+          payload: {
+            ...protectedDisplayLabelFields("explorer"),
+            tabGroupId: groupId,
+            target: {
+              kind: "worktree",
+              projectId,
+              worktreeId: alphaWorktreeId,
+            },
+          },
+        })
+      ).json(),
+    );
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/projects/${projectId}/tab-groups`,
+        })
+      ).json(),
+    );
+    const renameRevision = layout.revision;
+    const titleProtection = protectedDisplayLabelFields(
+      "tab-group",
+      groupId,
+    ).titleProtection;
+    const renamed = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tab-groups/${groupId}`,
+      payload: { revision: renameRevision, titleProtection },
+    });
+    expect(renamed.statusCode).toBe(200);
+    expect(
+      (
+        renamed.json() as { groups: Array<Record<string, unknown>> }
+      ).groups.find(({ id }) => id === groupId),
+    ).not.toHaveProperty("title");
+    layout = projectTabLayoutWireSummarySchema.parse(renamed.json());
+    expect(JSON.stringify(renamed.json())).not.toContain(
+      "Cycle 5 private group",
+    );
+    expect(layout.groups.find(({ id }) => id === groupId)).toMatchObject({
+      titleProtection: {
+        classification: { recordKind: "tab-group" },
+      },
+      members: expect.arrayContaining([
+        expect.objectContaining({ tabId: terminal.id, tabKind: "terminal" }),
+        expect.objectContaining({ tabId: explorer.id, tabKind: "explorer" }),
+      ]),
+    });
+
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tab-groups/${groupId}`,
+      payload: { revision: renameRevision, titleProtection },
+    });
+    expect(stale.statusCode).toBe(409);
+
+    const memberKeys = layout.groups
+      .find(({ id }) => id === groupId)!
+      .members.map(({ tabKey }) => tabKey)
+      .reverse();
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${projectId}/tab-groups/${groupId}/members/order`,
+          payload: { revision: layout.revision, tabKeys: memberKeys },
+        })
+      ).json(),
+    );
+    expect(
+      layout.groups
+        .find(({ id }) => id === groupId)!
+        .members.map(({ tabKey }) => tabKey),
+    ).toEqual(memberKeys);
+
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${projectId}/tab-groups/member`,
+          payload: {
+            revision: layout.revision,
+            tabKey: `explorer:${explorer.id}`,
+            targetGroupId: null,
+            targetMemberPosition: 0,
+            targetGroupPosition: layout.groups.length,
+          },
+        })
+      ).json(),
+    );
+    expect(
+      layout.groups.find(({ id }) => id === groupId)?.titleProtection,
+    ).toBeNull();
+    const splitGroup = layout.groups.find(({ members }) =>
+      members.some(({ tabId }) => tabId === explorer.id),
+    )!;
+    expect(splitGroup.titleProtection).toBeNull();
+
+    layout = projectTabLayoutWireSummarySchema.parse(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/projects/${projectId}/tab-groups/member`,
+          payload: {
+            revision: layout.revision,
+            tabKey: `explorer:${explorer.id}`,
+            targetGroupId: groupId,
+            targetMemberPosition: 1,
+          },
+        })
+      ).json(),
+    );
+    expect(layout.groups.some(({ id }) => id === splitGroup.id)).toBe(false);
+    expect(
+      layout.groups.find(({ id }) => id === groupId)?.members,
+    ).toHaveLength(2);
+
+    const reversedGroups = layout.groups.map(({ id }) => id).reverse();
+    const reordered = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${projectId}/tab-groups/order`,
+      payload: { revision: layout.revision, groupIds: reversedGroups },
+    });
+    expect(reordered.statusCode).toBe(200);
+    expect(
+      projectTabLayoutWireSummarySchema
+        .parse(reordered.json())
+        .groups.map(({ id }) => id),
+    ).toEqual(reversedGroups);
   });
 });

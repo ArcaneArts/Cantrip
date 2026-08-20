@@ -393,7 +393,7 @@ database-compromise guarantee is described.
 | Interaction and approval request details and responses                           | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
 | Browser URLs, terminal and Explorer paths, remote-window selection               | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
 | Surface and project-view display labels                                          | AES-256-GCM E2EE; client-created row-bound labels; canonical browser/desktop copies only                  | E2EE complete                             | Implemented          | Medium      | Server retains routing and ordering but loses name-based search and synthesis                  |
-| Custom tab-group display labels                                                  | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain layout structure but cannot present custom labels                            |
+| Custom tab-group display labels                                                  | AES-256-GCM E2EE for custom labels; unnamed groups derive from decrypted members client-side              | E2EE complete                             | Implemented          | Medium      | Server retains layout structure but cannot present or synthesize group labels                  |
 | Policies and agent instructions                                                  | Plaintext                                                                                                 | Planned                                   | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
 | Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                            | Planned replacement                       | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
 | MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                                                                                 | Planned                                   | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
@@ -567,8 +567,8 @@ opaque label for these surfaces. The client authenticates and opens it before
 presentation, then derives an unnamed tab group's visible title from its
 decrypted anchor. The server can still route by opaque ID and surface kind,
 but its CLI can select protected surfaces only by full or unambiguous ID—not by
-display title. Custom multi-tab group titles remain plaintext until their own
-rollout cycle.
+display title. Custom multi-tab group titles use their own protected group-row
+envelope as described below.
 
 [Migration 0107](../cantrip_server/drizzle/0107_quick_switch.sql) adds the
 opaque columns and removes all six legacy `title` columns. It intentionally
@@ -588,6 +588,38 @@ copies, canonical managed-surface storage, and removal of plaintext title
 columns. Surface and project-view display labels therefore earn `E2EE
 complete`; the operational URL, path, target, and runtime fields named above
 do not.
+
+### Custom tab-group display labels
+
+Custom multi-tab group titles now use the same `private-surface-metadata`
+component with the `tab-group` record kind. The app encrypts a rename against
+the existing group ID before sending the revisioned update. The server stores
+only nullable `tab_groups.protected_label`; null means that the trusted client
+derives the visible title from the already-decrypted anchor member. A custom
+envelope is allowed only while the group has multiple members.
+
+Tab-layout wire summaries contain group IDs, project IDs, ordering, anchor
+keys, revisions, timestamps, nullable group ciphertext, and member
+ciphertext. They contain no plaintext member or group title. Reorder and move
+operations need only opaque IDs and positions. Split, detach, and merge paths
+clear a custom group envelope when the source becomes a single-tab group, so
+the server never needs to reconstruct or compare a display label.
+
+[Migration 0108](../cantrip_server/drizzle/0108_lowly_changeling.sql) adds the
+nullable opaque column and removes `tab_groups.title`. Like the preceding
+project-domain migrations, it intentionally has no plaintext conversion or
+compatibility reader and assumes the documented pre-release reset/fresh
+database.
+
+The focused
+[client title-adapter test](../cantrip_app/src/lib/chat-title-encryption.test.ts),
+[layout API test](../cantrip_server/test/project-placement-api.test.ts), and
+[temporary-database persistence test](../cantrip_server/test/tab-group-title-persistence.test.ts)
+cover client-side default derivation, encrypted custom renames, mixed member
+kinds, reorder, split, merge, stale revisions, restart restoration, wrong-row
+replay, swapped classifications, tampering, and absence of plaintext sentinel
+labels or a legacy title column. Custom tab-group display labels therefore earn
+`E2EE complete`.
 
 ### Private display-label contract foundation
 
@@ -618,11 +650,11 @@ The adapters fail closed with explicit locked, missing, revoked, stale,
 corrupt, and unsupported states. Focused protocol, shared-codec, client,
 worker, and readiness tests cover every record kind, classification agreement,
 associated-data swaps, tampering, bounds, intended-worker isolation, and
-restart recovery. Project names, ordinary-chat and Task titles, and surface
-and project-view titles now use this contract in production persistence.
-Custom tab-group titles are the only display-label kind in this contract whose
-production persistence remains plaintext. The ledger records that distinction
-rather than treating contract support alone as E2EE completion.
+restart recovery. Project names, ordinary-chat and Task titles, surface and
+project-view titles, and custom tab-group titles now use this contract in
+production persistence. The ledger keeps operational URLs, paths, selections,
+and content in separate rows rather than overstating the protected-label
+boundary.
 
 ### Task content contract foundation
 
@@ -892,22 +924,21 @@ counts, worker presence, model-route choices, and traffic patterns.
    scan contains zero Task sentinel prose. Ordinary chats, queued prompts, and
    general interaction payloads remain plaintext and planned; Task/chat titles
    are tracked separately and are now E2EE complete.
-8. **Private display-label contracts — complete; project and chat persistence
-   complete:** one bounded bundle, exact associated-data mapping, trusted
+8. **Private display labels — complete:** one bounded bundle, exact
+   associated-data mapping, trusted
    client and worker adapters, scoped worker readiness, and fail-closed label
    states cover projects, chats, surfaces, project views, and tab groups.
    Project display names now use opaque persistence after a deliberate
    project-domain reset. Ordinary chat and Task titles use opaque persistence,
    including archives, imports, forks, automations, execution targets, and tab
-   members; surface, project-view, and custom tab-group labels remain plaintext.
+   members. Surface, project-view, and custom tab-group labels now use opaque
+   persistence and client-only presentation as well.
 9. **Attachments and relayed streams:** encrypt metadata and add
    application-layer encryption when bytes traverse relays.
 10. **Secrets:** replace server-decryptable provider and MCP vault envelopes
     with client and worker decryptable envelopes.
-11. **Remaining private metadata persistence:** move surface, project-view, and
-    tab-group labels onto their shared opaque contract, then
-    encrypt browser URLs, paths, Git output, and policy bodies under their
-    appropriate components.
+11. **Remaining private metadata persistence:** encrypt browser URLs, paths,
+    Git output, and policy bodies under their appropriate components.
 12. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.

@@ -52,6 +52,19 @@ export class ChatTitleEncryptionAdapter {
     });
   }
 
+  protectTabGroup(
+    rowId: string,
+    title: string,
+  ): Promise<PrivateDisplayLabelOpaque> {
+    return encodePrivateDisplayLabelForClient({
+      identity: this.identity(),
+      label: title.trim(),
+      recordKind: "tab-group",
+      rowId,
+      service: this.service,
+    });
+  }
+
   async open(chat: ChatWireSummary): Promise<ChatSummary> {
     const { titleProtection, ...publicChat } = chat;
     return chatSummarySchema.parse({
@@ -116,7 +129,7 @@ export class ChatTitleEncryptionAdapter {
     return projectTabLayoutSummarySchema.parse({
       ...layout,
       groups: await Promise.all(
-        layout.groups.map(async (group) => {
+        layout.groups.map(async ({ titleProtection, ...group }) => {
           const members = await Promise.all(
             group.members.map(async ({ titleProtection, ...member }) => ({
               ...member,
@@ -137,7 +150,15 @@ export class ChatTitleEncryptionAdapter {
           }
           return {
             ...group,
-            title: group.title ?? anchor.title,
+            title: titleProtection
+              ? await decodePrivateDisplayLabelForClient({
+                  identity: this.identity(),
+                  opaque: titleProtection,
+                  recordKind: "tab-group",
+                  rowId: group.id,
+                  service: this.service,
+                })
+              : anchor.title,
             members,
           };
         }),

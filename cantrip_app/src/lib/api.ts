@@ -241,6 +241,7 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  encryptedTabGroupUpdateSchema,
   tabGroupUpdateSchema,
   taskWireCreateResultSchema,
   taskImplementationDashboardSchema,
@@ -2745,13 +2746,23 @@ export async function updateProjectTabGroup(
   revision: number,
   title: string,
 ) {
+  const input = tabGroupUpdateSchema.parse({ revision, title });
+  const titleProtection = await chatTitleEncryption.protectTabGroup(
+    groupId,
+    input.title,
+  );
   return chatTitleEncryption.openTabLayout(
     projectTabLayoutWireSummarySchema.parse(
       await request(
         `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}`,
         {
           method: "PATCH",
-          body: JSON.stringify(tabGroupUpdateSchema.parse({ revision, title })),
+          body: JSON.stringify(
+            encryptedTabGroupUpdateSchema.parse({
+              revision: input.revision,
+              titleProtection,
+            }),
+          ),
         },
       ),
     ),
