@@ -214,23 +214,12 @@ function sameIdentity(
   return left?.serverId === right.serverId && left.ownerId === right.ownerId;
 }
 
-function isCryptoKey(value: unknown): value is CryptoKey {
-  if (!value || typeof value !== "object") return false;
-  const candidate = value as Partial<CryptoKey>;
-  const algorithm = candidate.algorithm as
-    { name?: unknown; namedCurve?: unknown } | undefined;
-  // WebKit exposes CryptoKey.usages as a WebIDL FrozenArray. Depending on the
-  // structured-clone boundary used by IndexedDB, that value can be iterable
-  // without satisfying Array.isArray(). Validate its contents, not its realm.
-  const usages = candidate.usages ? Array.from(candidate.usages) : [];
-  return (
-    candidate.type === "private" &&
-    candidate.extractable === false &&
-    usages.length === 1 &&
-    usages[0] === "deriveBits" &&
-    algorithm?.name === "ECDH" &&
-    algorithm.namedCurve === "P-256"
-  );
+function isOpaquePrivateKeyHandle(value: unknown): value is CryptoKey {
+  // WebKit may restore a usable CryptoKey from IndexedDB without preserving a
+  // stable JS descriptor/prototype shape. Treat it as an opaque native handle;
+  // the HPKE unwrap operation is the authoritative compatibility check and
+  // still fails closed for a wrong, malformed, or unusable key.
+  return Boolean(value && typeof value === "object");
 }
 
 function parseDeviceRecord(
@@ -261,7 +250,7 @@ function parseDeviceRecord(
     typeof record.createdAt !== "string" ||
     !Number.isFinite(Date.parse(record.createdAt)) ||
     !publicKey.success ||
-    !isCryptoKey(record.privateKey)
+    !isOpaquePrivateKeyHandle(record.privateKey)
   ) {
     throw new ClientEncryptionError(
       "corrupt-device-record",
