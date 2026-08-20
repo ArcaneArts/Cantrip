@@ -38,6 +38,7 @@ import { AppLiveClient, appLiveWebSocketUrl } from "@/lib/app-live-client";
 import { AppLiveQueryBridge } from "@/lib/app-live-query";
 import { AppLiveProvider } from "@/lib/app-live-react";
 import {
+  authenticationRequiredAction,
   clearClientSession,
   notifyAuthenticationRequired,
   onAuthenticationRequired,
@@ -894,6 +895,20 @@ export function ApplicationSession() {
   useEffect(
     () =>
       onAuthenticationRequired((reason) => {
+        if (authenticationRequiredAction() === "refresh-encryption") {
+          clientLogger.warn(
+            "Local encryption authorization is required again",
+            {
+              event: "encryption.session.authorization-required",
+              operation: "recover-encryption-session",
+              reasonCode: "local-device-authorization-required",
+              status: "refreshing",
+              subsystem: "encryption",
+            },
+          );
+          refresh();
+          return;
+        }
         clientLogger.warn("Application session expired", {
           event: "session.expired",
           operation: "recover-session",
@@ -919,7 +934,7 @@ export function ApplicationSession() {
           return current;
         });
       }),
-    [],
+    [refresh],
   );
   if (state.kind === "loading") {
     return (

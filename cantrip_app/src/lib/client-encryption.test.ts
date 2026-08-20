@@ -17,6 +17,7 @@ import {
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
 } from "./client-encryption";
+import { clearClientLogs, readClientLogs } from "./client-log-relay";
 import { clearClientSession, setClientSession } from "./client-session";
 
 const timestamp = "2026-08-19T12:00:00.000Z";
@@ -91,6 +92,7 @@ function authorization(
 }
 
 afterEach(() => {
+  clearClientLogs();
   clearClientSession();
 });
 
@@ -313,10 +315,24 @@ describe("client encryption key custody", () => {
     ).rejects.toMatchObject({ code: "decryption-failed" });
     expect(service.getSnapshot().status).toBe("locked");
 
-    store.seed(identity, { version: 1 });
+    store.seed(identity, {
+      ownerId: identity.ownerId,
+      serverId: identity.serverId,
+      version: 1,
+    });
     await expect(service.loadDevice(identity)).rejects.toMatchObject({
       code: "corrupt-device-record",
     });
     expect(service.getSnapshot().status).toBe("corrupt");
+    expect(readClientLogs().records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          context: expect.objectContaining({
+            event: "encryption.device-record.rejected",
+            reasonCode: "client-id-invalid",
+          }),
+        }),
+      ]),
+    );
   });
 });
