@@ -1,11 +1,11 @@
 import type {
   ProjectCapability,
   ProjectCapabilityUnavailableError as ProjectCapabilityUnavailablePayload,
-  ProjectSummary,
+  ProjectWireSummary,
 } from "@cantrip/protocol";
 
 type ProjectCapabilityContext = Pick<
-  ProjectSummary,
+  ProjectWireSummary,
   "capabilities" | "id" | "originKind"
 >;
 

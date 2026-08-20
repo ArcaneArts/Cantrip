@@ -232,8 +232,10 @@ describe("workspace encryption adapter", () => {
 
   it("blocks mutations while the client is locked", async () => {
     const api = new MemoryWorkspaceApi();
+    const credentialRequired: string[] = [];
     const adapter = new ProjectWorkspaceEncryptionAdapter({
       api,
+      onCredentialRequired: (reason) => credentialRequired.push(reason),
       prepare: async () => ({
         credential: "password" as const,
         reason: "authorize-device" as const,
@@ -244,11 +246,16 @@ describe("workspace encryption adapter", () => {
     });
     await expect(adapter.create({ name: "Blocked" })).rejects.toMatchObject({
       code: "locked",
+      message: expect.stringMatching(/sign in once/iu),
     });
     await expect(
       adapter.update("workspace:default:owner-a", { name: "Blocked" }),
     ).rejects.toMatchObject({ code: "locked" });
     expect(api.writes).toBe(0);
+    expect(credentialRequired).toEqual([
+      "This device encryption key must be authorized again. Sign in once to continue.",
+      "This device encryption key must be authorized again. Sign in once to continue.",
+    ]);
   });
 
   it("recovers a dropped in-memory key through the authorized device", async () => {

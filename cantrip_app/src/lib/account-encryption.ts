@@ -383,7 +383,21 @@ export async function prepareClientEncryption(
 ): Promise<ClientEncryptionAccess> {
   const api = input.api ?? defaultApi;
   const service = input.service ?? clientEncryption;
-  const device = await service.ensureDevice(input.identity);
+  let device: ClientDeviceDescriptor;
+  try {
+    device = await service.ensureDevice(input.identity);
+  } catch (error) {
+    if (
+      !(error instanceof ClientEncryptionError) ||
+      error.code !== "corrupt-device-record"
+    ) {
+      throw error;
+    }
+    // A malformed nonextractable key cannot be repaired or exported. Replace
+    // only the local registration; the new key must still be authorized by the
+    // password/recovery wrapper before it can unwrap the Account Master Key.
+    device = await service.replaceDevice(input.identity);
+  }
   const profileState = await api.getProfile();
 
   if (profileState.status === "uninitialized") {

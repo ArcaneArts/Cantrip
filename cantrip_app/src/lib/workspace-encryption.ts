@@ -39,7 +39,10 @@ import {
   clientEncryption,
   type ClientEncryptionIdentity,
 } from "./client-encryption";
-import { getClientSession } from "./client-session";
+import {
+  getClientSession,
+  notifyAuthenticationRequired,
+} from "./client-session";
 import { prepareClientEncryption } from "./account-encryption";
 import {
   getAccountEncryptionProfile,
@@ -102,6 +105,7 @@ export class ProjectWorkspaceEncryptionAdapter {
   constructor(
     private readonly options: {
       api?: ProjectWorkspaceWireApi;
+      onCredentialRequired?: (reason: string) => void;
       prepare?: typeof prepareClientEncryption;
       service?: ClientEncryptionService;
       session?: typeof getClientSession;
@@ -144,10 +148,12 @@ export class ProjectWorkspaceEncryptionAdapter {
         service: this.service,
       });
       if (access.status !== "ready") {
-        throw new ClientEncryptionError(
-          "locked",
-          "Workspace encryption needs this device to be authorized again.",
+        const reason =
+          "This device encryption key must be authorized again. Sign in once to continue.";
+        (this.options.onCredentialRequired ?? notifyAuthenticationRequired)(
+          reason,
         );
+        throw new ClientEncryptionError("locked", reason);
       }
       snapshot = this.service.getSnapshot();
     }
