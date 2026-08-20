@@ -646,6 +646,7 @@ describe("GitHub project files", () => {
         `  *"/issues/42/comments --method POST"*) printf '%s' '${comment}' ;;`,
         `  *"/issues/42 --method PATCH"*) printf '%s' '${issue}' ;;`,
         `  *"/issues/42"*) printf '%s' '${issue}' ;;`,
+        `  *"/issues --method POST -f title=New issue -f body=Issue details"*) printf '%s' '${issue}' ;;`,
         `  *"/issues --method GET -f per_page=50 -f page=2"*) printf '%s' '${JSON.stringify([JSON.parse(issue), JSON.parse(pullRequest)])}' ;;`,
         "  *) exit 1 ;;",
         "esac",
@@ -676,6 +677,16 @@ describe("GitHub project files", () => {
     ).resolves.toMatchObject({
       body: "Issue body",
       comments: [{ author: "reviewer", body: "A comment" }],
+    });
+    await expect(
+      github.createIssue("ArcaneArts/Cantrip", {
+        title: "New issue",
+        body: "Issue details",
+      }),
+    ).resolves.toMatchObject({
+      number: 42,
+      body: "Issue body",
+      comments: [],
     });
     await expect(
       github.commentOnIssue("ArcaneArts/Cantrip", 42, "New comment"),

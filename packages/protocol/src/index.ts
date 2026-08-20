@@ -1852,6 +1852,11 @@ export const githubIssueDetailSchema = githubIssueSummarySchema.extend({
   comments: z.array(githubIssueCommentSchema),
 });
 
+export const githubIssueCreateSchema = z.object({
+  title: z.string().trim().min(1).max(256),
+  body: z.string().max(1_000_000).default(""),
+});
+
 export const githubIssueCommentCreateSchema = z.object({
   body: z.string().trim().min(1).max(65_536),
 });
@@ -8708,6 +8713,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     number: z.number().int().positive(),
   }),
   z.object({
+    type: z.literal("github.issue.create"),
+    repository: githubRepositorySchema.shape.nameWithOwner,
+    request: githubIssueCreateSchema,
+  }),
+  z.object({
     type: z.literal("github.issue.comment"),
     repository: githubRepositorySchema.shape.nameWithOwner,
     number: z.number().int().positive(),
@@ -10423,6 +10433,7 @@ export type GithubIssueList = z.infer<typeof githubIssueListSchema>;
 export type GithubPullRequestList = z.infer<typeof githubPullRequestListSchema>;
 export type GithubIssueComment = z.infer<typeof githubIssueCommentSchema>;
 export type GithubIssueDetail = z.infer<typeof githubIssueDetailSchema>;
+export type GithubIssueCreate = z.infer<typeof githubIssueCreateSchema>;
 export type GithubPullRequestCreate = z.infer<
   typeof githubPullRequestCreateSchema
 >;

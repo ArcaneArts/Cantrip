@@ -32,6 +32,7 @@ import {
   getGithubIssue,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { GithubIssueCreateDialog } from "./github-issue-create-dialog";
 import { GithubPullRequestCreateDialog } from "./github-pull-request-create-dialog";
 import { GithubPullRequestDialog } from "./github-pull-request-dialog";
 
@@ -315,18 +316,17 @@ export function GithubIssuesView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {kind === "pull-request" ? (
-        <div className="flex h-9 shrink-0 items-center justify-end px-3">
-          <Button
-            size="sm"
-            className="h-7 gap-1 text-xs"
-            disabled={!status?.branch}
-            onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="size-3.5" /> Pull request
-          </Button>
-        </div>
-      ) : null}
+      <div className="flex h-9 shrink-0 items-center justify-end px-3">
+        <Button
+          size="sm"
+          className="h-7 gap-1 text-xs"
+          disabled={kind === "pull-request" && !status?.branch}
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="size-3.5" />
+          {kind === "pull-request" ? "Pull request" : "Issue"}
+        </Button>
+      </div>
       <div ref={listRef} className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
           <div className="grid min-h-64 place-items-center text-muted-foreground">
@@ -444,7 +444,23 @@ export function GithubIssuesView({
           }}
         />
       )}
-      {status ? (
+      {kind === "issue" ? (
+        <GithubIssueCreateDialog
+          open={createOpen}
+          projectId={project.id}
+          onOpenChange={setCreateOpen}
+          onCreated={(issue) => {
+            queryClient.setQueryData(
+              ["github-issue", project.id, issue.number],
+              issue,
+            );
+            void queryClient.invalidateQueries({
+              queryKey: ["github-issues", project.id, "issue"],
+            });
+            setSelectedIssue(issue.number);
+          }}
+        />
+      ) : status ? (
         <GithubPullRequestCreateDialog
           open={createOpen}
           onOpenChange={setCreateOpen}

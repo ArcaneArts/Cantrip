@@ -15,6 +15,7 @@ import { promisify } from "node:util";
 
 import {
   githubAuthStatusSchema,
+  githubIssueCreateSchema,
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestListSchema,
@@ -35,6 +36,7 @@ import {
   projectReplicaSynchronizeResultSchema,
   worktreePolicySchema,
   type GithubAuthStatus,
+  type GithubIssueCreate,
   type GithubIssueDetail,
   type GithubIssueKind,
   type GithubIssueList,
@@ -1243,6 +1245,29 @@ export class GithubClient {
       ...parseIssue(rawIssue),
       body: typeof rawIssue.body === "string" ? rawIssue.body : null,
       comments: commentPages.flat().map(parseIssueComment),
+    });
+  }
+
+  async createIssue(
+    nameWithOwner: string,
+    input: GithubIssueCreate,
+  ): Promise<GithubIssueDetail> {
+    const request = githubIssueCreateSchema.parse(input);
+    const rawIssue = (await this.api(
+      `${this.repositoryApiPath(nameWithOwner)}/issues`,
+      [
+        "--method",
+        "POST",
+        "-f",
+        `title=${request.title}`,
+        "-f",
+        `body=${request.body}`,
+      ],
+    )) as GithubApiIssue;
+    return githubIssueDetailSchema.parse({
+      ...parseIssue(rawIssue),
+      body: typeof rawIssue.body === "string" ? rawIssue.body : null,
+      comments: [],
     });
   }
 

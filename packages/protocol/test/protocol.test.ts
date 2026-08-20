@@ -106,6 +106,7 @@ import {
   gitTagActionPreviewSchema,
   gitTagListSchema,
   githubReleaseCreateSchema,
+  githubIssueCreateSchema,
   githubPullRequestCreateResultSchema,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestDetailSchema,
@@ -2646,6 +2647,24 @@ describe("Cantrip protocol", () => {
   });
 
   it("bounds GitHub issue pagination to pages of at most 100", () => {
+    expect(githubIssueCreateSchema.parse({ title: "  New issue  " })).toEqual({
+      title: "New issue",
+      body: "",
+    });
+    expect(
+      workerCommandSchema.parse({
+        type: "github.issue.create",
+        repository: "ArcaneArts/Cantrip",
+        request: { title: "New issue", body: "Details" },
+      }),
+    ).toMatchObject({ request: { title: "New issue", body: "Details" } });
+    expect(
+      workerCommandSchema.safeParse({
+        type: "github.issue.create",
+        repository: "ArcaneArts/Cantrip",
+        request: { title: "   " },
+      }).success,
+    ).toBe(false);
     expect(
       workerCommandSchema.parse({
         type: "github.issues.list",
