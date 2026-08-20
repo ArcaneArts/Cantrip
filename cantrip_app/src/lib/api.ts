@@ -15,10 +15,10 @@ import {
   agentInteractionResolutionCreateSchema,
   archivedChatCleanupResultSchema,
   archivedChatWireListSchema,
-  browserListSchema,
+  browserWireListSchema,
   browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
-  browserSummarySchema,
+  browserWireSummarySchema,
   browserTunnelRequestSchema,
   agentThreadSyncSchema,
   chatWireListSchema,
@@ -62,8 +62,8 @@ import {
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
   codeSaveAllResultSchema,
-  codeTabListSchema,
-  codeTabSummarySchema,
+  codeTabWireListSchema,
+  codeTabWireSummarySchema,
   codexCustomizationInventorySchema,
   codexExternalImportApplySchema,
   codexExternalImportPreviewSchema,
@@ -82,8 +82,8 @@ import {
   explorerDirectorySchema,
   explorerFileSchema,
   explorerFileWriteSchema,
-  explorerListSchema,
-  explorerSummarySchema,
+  explorerWireListSchema,
+  explorerWireSummarySchema,
   explorerViewStateUpdateSchema,
   executionPlacementResolutionSchema,
   executionPlacementResolveRequestSchema,
@@ -216,16 +216,16 @@ import {
   projectWorktreeListSchema,
   serviceLogReadResultSchema,
   projectWorktreeSummarySchema,
-  projectViewListSchema,
-  projectViewSummarySchema,
+  projectViewWireListSchema,
+  projectViewWireSummarySchema,
   queuedPromptListSchema,
   queuedPromptSchema,
   directAttachmentTicketSchema,
   directTransportTelemetrySchema,
   directTunnelTicketSchema,
-  remoteDesktopListSchema,
-  remoteDesktopFleetSchema,
-  remoteDesktopSummarySchema,
+  remoteDesktopWireListSchema,
+  remoteDesktopFleetWireSchema,
+  remoteDesktopWireSummarySchema,
   serverBootstrapSchema,
   settingsBundleSchema,
   scriptCommandListSchema,
@@ -245,8 +245,8 @@ import {
   taskWireCreateResultSchema,
   taskImplementationDashboardSchema,
   taskImplementationOpaqueDashboardSchema,
-  terminalListSchema,
-  terminalSummarySchema,
+  terminalWireListSchema,
+  terminalWireSummarySchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelDirectActivationSchema,
@@ -387,6 +387,7 @@ import {
 } from "@/lib/api-client";
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
+import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
 import {
   createInitialTaskOpaqueContent,
   openTaskOpaqueSummary,
@@ -2982,8 +2983,11 @@ export async function retryTaskPlanning(
 }
 
 export async function getTerminals(projectId: string) {
-  return terminalListSchema.parse(
+  const terminals = terminalWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/terminals`),
+  );
+  return Promise.all(
+    terminals.map((terminal) => surfaceTitleEncryption.openTerminal(terminal)),
   );
 }
 
@@ -3003,14 +3007,23 @@ export async function createTerminal(
   target?: ExecutionTarget,
   directoryPath?: string,
 ) {
-  return terminalSummarySchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
-      title,
-      ...(worktreeId ? { worktreeId } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
-      ...(target ? { target } : {}),
-      ...(directoryPath ? { directoryPath } : {}),
-    }),
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    title,
+    "terminal",
+  );
+  return surfaceTitleEncryption.openTerminal(
+    terminalWireSummarySchema.parse(
+      await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
+        id,
+        titleProtection,
+        ...(worktreeId ? { worktreeId } : {}),
+        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(target ? { target } : {}),
+        ...(directoryPath ? { directoryPath } : {}),
+      }),
+    ),
   );
 }
 
@@ -3018,20 +3031,32 @@ export async function updateTerminalWorktree(
   terminalId: string,
   worktreeId: string,
 ) {
-  return terminalSummarySchema.parse(
-    await request(`/api/terminals/${encodeURIComponent(terminalId)}/worktree`, {
-      method: "PATCH",
-      body: JSON.stringify({ worktreeId }),
-    }),
+  return surfaceTitleEncryption.openTerminal(
+    terminalWireSummarySchema.parse(
+      await request(
+        `/api/terminals/${encodeURIComponent(terminalId)}/worktree`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ worktreeId }),
+        },
+      ),
+    ),
   );
 }
 
 export async function renameTerminal(terminalId: string, title: string) {
-  return terminalSummarySchema.parse(
-    await request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
+  const titleProtection = await surfaceTitleEncryption.protect(
+    terminalId,
+    title,
+    "terminal",
+  );
+  return surfaceTitleEncryption.openTerminal(
+    terminalWireSummarySchema.parse(
+      await request(`/api/terminals/${encodeURIComponent(terminalId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ titleProtection }),
+      }),
+    ),
   );
 }
 
@@ -3039,11 +3064,16 @@ export async function updateTerminalService(
   terminalId: string,
   service: TerminalServiceConfiguration,
 ) {
-  return terminalSummarySchema.parse(
-    await request(`/api/terminals/${encodeURIComponent(terminalId)}/service`, {
-      method: "PUT",
-      body: JSON.stringify(service),
-    }),
+  return surfaceTitleEncryption.openTerminal(
+    terminalWireSummarySchema.parse(
+      await request(
+        `/api/terminals/${encodeURIComponent(terminalId)}/service`,
+        {
+          method: "PUT",
+          body: JSON.stringify(service),
+        },
+      ),
+    ),
   );
 }
 
@@ -3061,8 +3091,11 @@ export async function deleteTerminal(terminalId: string) {
 }
 
 export async function getExplorers(projectId: string) {
-  return explorerListSchema.parse(
+  const explorers = explorerWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/explorers`),
+  );
+  return Promise.all(
+    explorers.map((explorer) => surfaceTitleEncryption.openExplorer(explorer)),
   );
 }
 
@@ -3073,13 +3106,22 @@ export async function createExplorer(
   tabGroupId?: string,
   target?: ExecutionTarget,
 ) {
-  return explorerSummarySchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
-      title,
-      ...(worktreeId ? { worktreeId } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
-      ...(target ? { target } : {}),
-    }),
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    title,
+    "explorer",
+  );
+  return surfaceTitleEncryption.openExplorer(
+    explorerWireSummarySchema.parse(
+      await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
+        id,
+        titleProtection,
+        ...(worktreeId ? { worktreeId } : {}),
+        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(target ? { target } : {}),
+      }),
+    ),
   );
 }
 
@@ -3087,20 +3129,32 @@ export async function updateExplorerWorktree(
   explorerId: string,
   worktreeId: string,
 ) {
-  return explorerSummarySchema.parse(
-    await request(`/api/explorers/${encodeURIComponent(explorerId)}/worktree`, {
-      method: "PATCH",
-      body: JSON.stringify({ worktreeId }),
-    }),
+  return surfaceTitleEncryption.openExplorer(
+    explorerWireSummarySchema.parse(
+      await request(
+        `/api/explorers/${encodeURIComponent(explorerId)}/worktree`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ worktreeId }),
+        },
+      ),
+    ),
   );
 }
 
 export async function renameExplorer(explorerId: string, title: string) {
-  return explorerSummarySchema.parse(
-    await request(`/api/explorers/${encodeURIComponent(explorerId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
+  const titleProtection = await surfaceTitleEncryption.protect(
+    explorerId,
+    title,
+    "explorer",
+  );
+  return surfaceTitleEncryption.openExplorer(
+    explorerWireSummarySchema.parse(
+      await request(`/api/explorers/${encodeURIComponent(explorerId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ titleProtection }),
+      }),
+    ),
   );
 }
 
@@ -3109,13 +3163,15 @@ export async function updateExplorerViewState(
   input: ExplorerViewStateUpdate,
 ) {
   const parsed = explorerViewStateUpdateSchema.parse(input);
-  return explorerSummarySchema.parse(
-    await request(
-      `/api/explorers/${encodeURIComponent(explorerId)}/view-state`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(parsed),
-      },
+  return surfaceTitleEncryption.openExplorer(
+    explorerWireSummarySchema.parse(
+      await request(
+        `/api/explorers/${encodeURIComponent(explorerId)}/view-state`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(parsed),
+        },
+      ),
     ),
   );
 }
@@ -3127,8 +3183,11 @@ export async function deleteExplorer(explorerId: string) {
 }
 
 export async function getBrowsers(projectId: string) {
-  return browserListSchema.parse(
+  const browsers = browserWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/browsers`),
+  );
+  return Promise.all(
+    browsers.map((browser) => surfaceTitleEncryption.openBrowser(browser)),
   );
 }
 
@@ -3165,13 +3224,22 @@ export async function createBrowser(
   target?: ExecutionTarget,
   url?: string,
 ) {
-  return browserSummarySchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
-      title,
-      ...(url ? { url } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
-      ...(target ? { target } : {}),
-    }),
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    title,
+    "browser",
+  );
+  return surfaceTitleEncryption.openBrowser(
+    browserWireSummarySchema.parse(
+      await post(`/api/projects/${encodeURIComponent(projectId)}/browsers`, {
+        id,
+        titleProtection,
+        ...(url ? { url } : {}),
+        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(target ? { target } : {}),
+      }),
+    ),
   );
 }
 
@@ -3179,11 +3247,19 @@ export async function updateBrowser(
   browserId: string,
   input: { title?: string; url?: string },
 ) {
-  return browserSummarySchema.parse(
-    await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }),
+  const titleProtection = input.title
+    ? await surfaceTitleEncryption.protect(browserId, input.title, "browser")
+    : undefined;
+  return surfaceTitleEncryption.openBrowser(
+    browserWireSummarySchema.parse(
+      await request(`/api/browsers/${encodeURIComponent(browserId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...(titleProtection ? { titleProtection } : {}),
+          ...(input.url ? { url: input.url } : {}),
+        }),
+      }),
+    ),
   );
 }
 
@@ -3194,24 +3270,33 @@ export async function deleteBrowser(browserId: string) {
 }
 
 export async function getRemoteDesktops(projectId: string) {
-  return remoteDesktopListSchema.parse(
+  const desktops = remoteDesktopWireListSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
+    ),
+  );
+  return Promise.all(
+    desktops.map((desktop) =>
+      surfaceTitleEncryption.openRemoteDesktop(desktop),
     ),
   );
 }
 
 export async function getRemoteDesktopFleet(projectId: string) {
-  return remoteDesktopFleetSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/remote-desktop-fleet`,
+  return surfaceTitleEncryption.openRemoteDesktopFleet(
+    remoteDesktopFleetWireSchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/remote-desktop-fleet`,
+      ),
     ),
   );
 }
 
 export async function getRemoteDesktop(desktopId: string) {
-  return remoteDesktopSummarySchema.parse(
-    await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`),
+  return surfaceTitleEncryption.openRemoteDesktop(
+    remoteDesktopWireSummarySchema.parse(
+      await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`),
+    ),
   );
 }
 
@@ -3221,14 +3306,24 @@ export async function createRemoteDesktop(
   target?: ExecutionTarget,
   desktopTarget?: RemoteDesktopTarget,
 ) {
-  return remoteDesktopSummarySchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
-      {
-        ...(tabGroupId ? { tabGroupId } : {}),
-        ...(target ? { target } : {}),
-        ...(desktopTarget ? { desktopTarget } : {}),
-      },
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    "Remote Desktop",
+    "project-view",
+  );
+  return surfaceTitleEncryption.openRemoteDesktop(
+    remoteDesktopWireSummarySchema.parse(
+      await post(
+        `/api/projects/${encodeURIComponent(projectId)}/remote-desktops`,
+        {
+          id,
+          titleProtection,
+          ...(tabGroupId ? { tabGroupId } : {}),
+          ...(target ? { target } : {}),
+          ...(desktopTarget ? { desktopTarget } : {}),
+        },
+      ),
     ),
   );
 }
@@ -3237,23 +3332,31 @@ export async function updateRemoteDesktopTarget(
   desktopId: string,
   target: RemoteDesktopTarget,
 ) {
-  return remoteDesktopSummarySchema.parse(
-    await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ target }),
-    }),
+  return surfaceTitleEncryption.openRemoteDesktop(
+    remoteDesktopWireSummarySchema.parse(
+      await request(`/api/remote-desktops/${encodeURIComponent(desktopId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ target }),
+      }),
+    ),
   );
 }
 
 export async function getProjectViews(projectId: string) {
-  return projectViewListSchema.parse(
+  const views = projectViewWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/views`),
+  );
+  return Promise.all(
+    views.map((view) => surfaceTitleEncryption.openProjectView(view)),
   );
 }
 
 export async function getCodeTabs(projectId: string) {
-  return codeTabListSchema.parse(
+  const codeTabs = codeTabWireListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`),
+  );
+  return Promise.all(
+    codeTabs.map((codeTab) => surfaceTitleEncryption.openCodeTab(codeTab)),
   );
 }
 
@@ -3264,13 +3367,22 @@ export async function createCodeTab(
   tabGroupId?: string,
   target?: ExecutionTarget,
 ) {
-  return codeTabSummarySchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`, {
-      title,
-      ...(worktreeId ? { worktreeId } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
-      ...(target ? { target } : {}),
-    }),
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    title,
+    "code-tab",
+  );
+  return surfaceTitleEncryption.openCodeTab(
+    codeTabWireSummarySchema.parse(
+      await post(`/api/projects/${encodeURIComponent(projectId)}/code-tabs`, {
+        id,
+        titleProtection,
+        ...(worktreeId ? { worktreeId } : {}),
+        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(target ? { target } : {}),
+      }),
+    ),
   );
 }
 
@@ -3278,11 +3390,19 @@ export async function updateCodeTab(
   codeTabId: string,
   input: { title?: string; themeMode?: CodeThemeMode },
 ) {
-  return codeTabSummarySchema.parse(
-    await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }),
+  const titleProtection = input.title
+    ? await surfaceTitleEncryption.protect(codeTabId, input.title, "code-tab")
+    : undefined;
+  return surfaceTitleEncryption.openCodeTab(
+    codeTabWireSummarySchema.parse(
+      await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...(titleProtection ? { titleProtection } : {}),
+          ...(input.themeMode ? { themeMode: input.themeMode } : {}),
+        }),
+      }),
+    ),
   );
 }
 
@@ -3290,11 +3410,16 @@ export async function updateCodeTabWorktree(
   codeTabId: string,
   worktreeId: string,
 ) {
-  return codeTabSummarySchema.parse(
-    await request(`/api/code-tabs/${encodeURIComponent(codeTabId)}/worktree`, {
-      method: "PATCH",
-      body: JSON.stringify({ worktreeId }),
-    }),
+  return surfaceTitleEncryption.openCodeTab(
+    codeTabWireSummarySchema.parse(
+      await request(
+        `/api/code-tabs/${encodeURIComponent(codeTabId)}/worktree`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ worktreeId }),
+        },
+      ),
+    ),
   );
 }
 
@@ -3361,11 +3486,13 @@ export async function setCodeTabTheme(
   themeMode: CodeThemeMode,
   appearance: CodeAppearance,
 ) {
-  return codeTabSummarySchema.parse(
-    await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/theme`, {
-      themeMode,
-      appearance,
-    }),
+  return surfaceTitleEncryption.openCodeTab(
+    codeTabWireSummarySchema.parse(
+      await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/theme`, {
+        themeMode,
+        appearance,
+      }),
+    ),
   );
 }
 
@@ -3376,13 +3503,22 @@ export async function createProjectView(
   worktreeId?: string,
   tabGroupId?: string,
 ) {
-  return projectViewSummarySchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/views`, {
-      kind,
-      title,
-      ...(worktreeId ? { worktreeId } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
-    }),
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    title,
+    "project-view",
+  );
+  return surfaceTitleEncryption.openProjectView(
+    projectViewWireSummarySchema.parse(
+      await post(`/api/projects/${encodeURIComponent(projectId)}/views`, {
+        id,
+        titleProtection,
+        kind,
+        ...(worktreeId ? { worktreeId } : {}),
+        ...(tabGroupId ? { tabGroupId } : {}),
+      }),
+    ),
   );
 }
 
@@ -3390,20 +3526,32 @@ export async function updateProjectViewWorktree(
   viewId: string,
   worktreeId: string,
 ) {
-  return projectViewSummarySchema.parse(
-    await request(`/api/project-views/${encodeURIComponent(viewId)}/worktree`, {
-      method: "PATCH",
-      body: JSON.stringify({ worktreeId }),
-    }),
+  return surfaceTitleEncryption.openProjectView(
+    projectViewWireSummarySchema.parse(
+      await request(
+        `/api/project-views/${encodeURIComponent(viewId)}/worktree`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ worktreeId }),
+        },
+      ),
+    ),
   );
 }
 
 export async function renameProjectView(viewId: string, title: string) {
-  return projectViewSummarySchema.parse(
-    await request(`/api/project-views/${encodeURIComponent(viewId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
+  const titleProtection = await surfaceTitleEncryption.protect(
+    viewId,
+    title,
+    "project-view",
+  );
+  return surfaceTitleEncryption.openProjectView(
+    projectViewWireSummarySchema.parse(
+      await request(`/api/project-views/${encodeURIComponent(viewId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ titleProtection }),
+      }),
+    ),
   );
 }
 
@@ -3632,8 +3780,19 @@ export async function syncChat(chatId: string) {
 }
 
 export async function createChatConsole(chatId: string) {
-  return terminalSummarySchema.parse(
-    await post(`/api/chats/${encodeURIComponent(chatId)}/console`, {}),
+  const id = crypto.randomUUID();
+  const titleProtection = await surfaceTitleEncryption.protect(
+    id,
+    "Console",
+    "terminal",
+  );
+  return surfaceTitleEncryption.openTerminal(
+    terminalWireSummarySchema.parse(
+      await post(`/api/chats/${encodeURIComponent(chatId)}/console`, {
+        id,
+        titleProtection,
+      }),
+    ),
   );
 }
 

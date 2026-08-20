@@ -29,9 +29,9 @@ import type {
   AuditEvent,
   AuditEventList,
   AuditEventQuery,
-  BrowserCreate,
-  BrowserSummary,
-  BrowserUpdate,
+  BrowserWireSummary,
+  EncryptedBrowserCreate,
+  EncryptedBrowserUpdate,
   ChatAttachmentKind,
   ChatAttachmentSource,
   ChatAttachmentSummary,
@@ -50,15 +50,15 @@ import type {
   CodeEditorBuild,
   CodeRuntimeStatus,
   CodeSessionSummary,
-  CodeTabCreate,
-  CodeTabSummary,
+  EncryptedCodeTabCreate,
+  CodeTabWireSummary,
   DetailedTokenUsageTotals,
-  CodeTabUpdate,
+  EncryptedCodeTabUpdate,
   DesktopUpdateActiveWorkSummary,
-  ExplorerCreate,
+  EncryptedExplorerCreate,
   ExplorerViewStateUpdate,
-  ExplorerSummary,
-  ExplorerUpdate,
+  ExplorerWireSummary,
+  EncryptedExplorerUpdate,
   ExecutionPlacement,
   ExecutionPlacementResolution,
   ExecutionSurfaceKind,
@@ -89,19 +89,20 @@ import type {
   PendingPlanQuestion,
   PlanMode,
   PlanStep,
+  PrivateDisplayLabelOpaque,
   OrderedIds,
   QueuedPrompt,
   QueuedPromptCreate,
   QueuedPromptOrder,
   QueuedPromptUpdate,
   ReasoningEffort,
-  RemoteDesktopSummary,
+  RemoteDesktopWireSummary,
   RemoteDesktopTarget,
   RemoteSurfaceCapabilities,
-  RemoteSurfaceCreate,
+  EncryptedRemoteSurfaceCreate,
   RemoteSurfaceStatus,
-  RemoteSurfaceSummary,
-  RemoteSurfaceUpdate,
+  RemoteSurfaceWireSummary,
+  EncryptedRemoteSurfaceUpdate,
   ProjectCloneResult,
   ProjectFolderSetupJobSummary,
   ProjectReplicaSummary,
@@ -119,15 +120,15 @@ import type {
   ProjectWorkspaceWireSummary,
   ProjectWorktreePolicyUpdate,
   ProjectWorktreeSummary,
-  ProjectViewCreate,
-  ProjectViewSummary,
-  ProjectViewUpdate,
+  EncryptedProjectViewCreate,
+  ProjectViewWireSummary,
+  EncryptedProjectViewUpdate,
   SettingsBundle,
-  TerminalCreate,
+  EncryptedTerminalCreate,
   TerminalServiceConfiguration,
   TerminalServiceRuntimeConfiguration,
-  TerminalSummary,
-  TerminalUpdate,
+  TerminalWireSummary,
+  EncryptedTerminalUpdate,
   EncryptedTaskCreate,
   TaskWireCreateResult,
   TaskOpaqueSummary,
@@ -446,7 +447,7 @@ export interface TerminalExecutionContext {
   projectId: string;
   rootKind: ProjectWorktreeSummary["rootKind"];
   service: TerminalServiceConfiguration;
-  status: TerminalSummary["status"];
+  status: TerminalWireSummary["status"];
   terminalId: string;
   workerId: string;
   worktreeId: string;
@@ -466,7 +467,7 @@ export interface ProjectRemovalContext {
     id: string;
     workerId: string;
   }>;
-  remoteSurfaces: RemoteSurfaceSummary[];
+  remoteSurfaces: Array<{ id: string; workerId: string }>;
   setupStatus: ProjectWireSummary["setupStatus"];
   terminals: Array<{
     id: string;
@@ -548,7 +549,7 @@ export interface ExplorerExecutionContext {
 
 export interface CodeTabExecutionContext {
   capabilities: CodeCapabilities;
-  codeTab: CodeTabSummary;
+  codeTab: CodeTabWireSummary;
   cwd: string;
   workerId: string;
   worktreeId: string;
@@ -557,7 +558,7 @@ export interface CodeTabExecutionContext {
 
 export interface RemoteSurfaceExecutionContext {
   remoteSurfaceCapabilities: RemoteSurfaceCapabilities;
-  surface: RemoteSurfaceSummary;
+  surface: RemoteSurfaceWireSummary;
   workerId: string;
 }
 
@@ -1481,15 +1482,15 @@ function toArchivedChatWireSummary(
   };
 }
 
-function toTerminalSummary(
+function toTerminalWireSummary(
   terminal: typeof schema.terminals.$inferSelect,
-): TerminalSummary {
+): TerminalWireSummary {
   return {
     id: terminal.id,
     projectId: terminal.projectId,
-    title: terminal.title,
+    titleProtection: terminal.protectedLabel,
     position: terminal.position,
-    status: terminal.status as TerminalSummary["status"],
+    status: terminal.status as TerminalWireSummary["status"],
     activeWorkerId: terminal.activeWorkerId,
     worktreeId: terminal.worktreeId,
     linkedChatId: terminal.linkedChatId,
@@ -1502,31 +1503,31 @@ function toTerminalSummary(
   };
 }
 
-function toExplorerSummary(
+function toExplorerWireSummary(
   explorer: typeof schema.explorers.$inferSelect,
-): ExplorerSummary {
+): ExplorerWireSummary {
   return {
     id: explorer.id,
     projectId: explorer.projectId,
-    title: explorer.title,
+    titleProtection: explorer.protectedLabel,
     position: explorer.position,
     activeWorkerId: explorer.activeWorkerId,
     worktreeId: explorer.worktreeId,
     selectedPath: explorer.selectedPath,
-    fileMode: explorer.fileMode as ExplorerSummary["fileMode"],
+    fileMode: explorer.fileMode as ExplorerWireSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
   };
 }
 
-function toBrowserSummary(
+function toBrowserWireSummary(
   browser: typeof schema.browsers.$inferSelect,
   workerId: string | null = null,
-): BrowserSummary {
+): BrowserWireSummary {
   return {
     id: browser.id,
     projectId: browser.projectId,
-    title: browser.title,
+    titleProtection: browser.protectedLabel,
     position: browser.position,
     url: browser.url,
     workerId,
@@ -1535,14 +1536,14 @@ function toBrowserSummary(
   };
 }
 
-function toProjectViewSummary(
+function toProjectViewWireSummary(
   view: typeof schema.projectViews.$inferSelect,
-): ProjectViewSummary {
+): ProjectViewWireSummary {
   return {
     id: view.id,
     projectId: view.projectId,
-    title: view.title,
-    kind: view.kind as ProjectViewSummary["kind"],
+    titleProtection: view.protectedLabel,
+    kind: view.kind as ProjectViewWireSummary["kind"],
     worktreeId: view.worktreeId,
     position: view.position,
     createdAt: toISOString(view.createdAt),
@@ -1550,19 +1551,19 @@ function toProjectViewSummary(
   };
 }
 
-function toCodeTabSummary(
+function toCodeTabWireSummary(
   codeTab: typeof schema.codeTabs.$inferSelect,
-): CodeTabSummary {
+): CodeTabWireSummary {
   return {
     id: codeTab.id,
     projectId: codeTab.projectId,
-    title: codeTab.title,
+    titleProtection: codeTab.protectedLabel,
     position: codeTab.position,
     activeWorkerId: codeTab.activeWorkerId,
     worktreeId: codeTab.worktreeId,
     profileId: codeTab.profileId,
-    themeMode: codeTab.themeMode as CodeTabSummary["themeMode"],
-    status: codeTab.status as CodeTabSummary["status"],
+    themeMode: codeTab.themeMode as CodeTabWireSummary["themeMode"],
+    status: codeTab.status as CodeTabWireSummary["status"],
     lastError: codeTab.lastError,
     createdAt: toISOString(codeTab.createdAt),
     updatedAt: toISOString(codeTab.updatedAt),
@@ -1768,18 +1769,22 @@ function jsonPermissionSubset(granted: unknown, requested: unknown): boolean {
   return Object.is(granted, requested);
 }
 
-function toRemoteSurfaceSummary(
+function toRemoteSurfaceWireSummary(
   surface: typeof schema.remoteSurfaces.$inferSelect,
-): RemoteSurfaceSummary {
+  titleProtection: PrivateDisplayLabelOpaque | null = surface.protectedLabel,
+): RemoteSurfaceWireSummary {
+  if (!titleProtection) {
+    throw new Error("Remote Surface is missing its canonical protected label.");
+  }
   return {
     id: surface.id,
     projectId: surface.projectId,
     workerId: surface.workerId,
-    kind: surface.kind as RemoteSurfaceSummary["kind"],
-    title: surface.title,
-    status: surface.status as RemoteSurfaceSummary["status"],
+    kind: surface.kind as RemoteSurfaceWireSummary["kind"],
+    titleProtection,
+    status: surface.status as RemoteSurfaceWireSummary["status"],
     preferredTransport:
-      surface.preferredTransport as RemoteSurfaceSummary["preferredTransport"],
+      surface.preferredTransport as RemoteSurfaceWireSummary["preferredTransport"],
     configuration: surface.configuration,
     lastError: surface.lastError,
     lastConnectedAt: surface.lastConnectedAt
@@ -1790,17 +1795,17 @@ function toRemoteSurfaceSummary(
   };
 }
 
-function toRemoteDesktopSummary(
+function toRemoteDesktopWireSummary(
   view: typeof schema.projectViews.$inferSelect,
   surface: typeof schema.remoteSurfaces.$inferSelect,
-): RemoteDesktopSummary {
+): RemoteDesktopWireSummary {
   if (surface.configuration.kind !== "desktop") {
     throw new Error("Remote Desktop is not backed by a desktop surface.");
   }
   return {
     id: view.id,
     projectId: view.projectId,
-    title: view.title,
+    titleProtection: view.protectedLabel,
     position: view.position,
     workerId: surface.workerId,
     target: surface.configuration.target ?? {
@@ -1808,7 +1813,7 @@ function toRemoteDesktopSummary(
       id: null,
       name: null,
     },
-    status: surface.status as RemoteDesktopSummary["status"],
+    status: surface.status as RemoteDesktopWireSummary["status"],
     lastError: surface.lastError,
     createdAt: toISOString(view.createdAt),
     updatedAt: toISOString(
@@ -11954,9 +11959,10 @@ export class ServerRepository {
       originKind: project.originKind,
       preferredWorkerId: project.preferredWorkerId,
       replicas,
-      remoteSurfaces: remoteSurfaces.map(({ surface }) =>
-        toRemoteSurfaceSummary(surface),
-      ),
+      remoteSurfaces: remoteSurfaces.map(({ surface }) => ({
+        id: surface.id,
+        workerId: surface.workerId,
+      })),
       setupStatus: project.setupStatus as ProjectWireSummary["setupStatus"],
       terminals,
     };
@@ -12225,7 +12231,7 @@ export class ServerRepository {
   async listTerminals(
     ownerId: string,
     projectId: string,
-  ): Promise<TerminalSummary[]> {
+  ): Promise<TerminalWireSummary[]> {
     const rows = await this.database
       .select({ terminal: schema.terminals })
       .from(schema.terminals)
@@ -12238,15 +12244,15 @@ export class ServerRepository {
       )
       .where(eq(schema.terminals.projectId, projectId))
       .orderBy(asc(schema.terminals.position), asc(schema.terminals.createdAt));
-    return rows.map(({ terminal }) => toTerminalSummary(terminal));
+    return rows.map(({ terminal }) => toTerminalWireSummary(terminal));
   }
 
   async createTerminal(
     ownerId: string,
     projectId: string,
-    input: TerminalCreate,
+    input: EncryptedTerminalCreate,
     isWorkerConnected?: (workerId: string) => boolean,
-  ): Promise<TerminalSummary | null> {
+  ): Promise<TerminalWireSummary | null> {
     const target =
       input.target ??
       (input.worktreeId
@@ -12271,9 +12277,9 @@ export class ServerRepository {
       const result = await transaction
         .insert(schema.terminals)
         .values({
-          id: randomUUID(),
+          id: input.id,
           projectId,
-          title: input.title,
+          protectedLabel: input.titleProtection,
           directoryPath: input.directoryPath ?? "",
           position,
           activeWorkerId: workerId,
@@ -12287,14 +12293,15 @@ export class ServerRepository {
         tabId: terminal.id,
         tabKind: "terminal",
       });
-      return toTerminalSummary(terminal);
+      return toTerminalWireSummary(terminal);
     });
   }
 
   async getOrCreateChatConsole(
     ownerId: string,
     chatId: string,
-  ): Promise<TerminalSummary | null> {
+    input: Pick<EncryptedTerminalCreate, "id" | "titleProtection">,
+  ): Promise<TerminalWireSummary | null> {
     const rows = await this.database
       .select({ chat: schema.chats, worktree: schema.projectWorktrees })
       .from(schema.chats)
@@ -12319,14 +12326,14 @@ export class ServerRepository {
       .from(schema.terminals)
       .where(eq(schema.terminals.linkedChatId, chatId))
       .limit(1);
-    if (existing[0]) return toTerminalSummary(existing[0]);
+    if (existing[0]) return toTerminalWireSummary(existing[0]);
 
     const result = await this.database
       .insert(schema.terminals)
       .values({
-        id: randomUUID(),
+        id: input.id,
         projectId: row.chat.projectId,
-        title: "Codex console",
+        protectedLabel: input.titleProtection,
         position: row.chat.position,
         status: "running",
         activeWorkerId: row.worktree.workerId,
@@ -12334,29 +12341,31 @@ export class ServerRepository {
         linkedChatId: row.chat.id,
       })
       .returning();
-    return toTerminalSummary(firstOrThrow(result, "creating a chat console"));
+    return toTerminalWireSummary(
+      firstOrThrow(result, "creating a chat console"),
+    );
   }
 
   async updateTerminal(
     ownerId: string,
     terminalId: string,
-    input: TerminalUpdate,
-  ): Promise<TerminalSummary | null> {
+    input: EncryptedTerminalUpdate,
+  ): Promise<TerminalWireSummary | null> {
     const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!owned) return null;
     const result = await this.database
       .update(schema.terminals)
-      .set({ title: input.title, updatedAt: new Date() })
+      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
       .where(eq(schema.terminals.id, terminalId))
       .returning();
-    return result[0] ? toTerminalSummary(result[0]) : null;
+    return result[0] ? toTerminalWireSummary(result[0]) : null;
   }
 
   async updateTerminalService(
     ownerId: string,
     terminalId: string,
     input: TerminalServiceConfiguration,
-  ): Promise<TerminalSummary | null> {
+  ): Promise<TerminalWireSummary | null> {
     const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!owned) return null;
     if (owned.linkedChatId) {
@@ -12371,7 +12380,7 @@ export class ServerRepository {
       })
       .where(eq(schema.terminals.id, terminalId))
       .returning();
-    return result[0] ? toTerminalSummary(result[0]) : null;
+    return result[0] ? toTerminalWireSummary(result[0]) : null;
   }
 
   async listTerminalServicesForWorker(
@@ -12407,7 +12416,7 @@ export class ServerRepository {
     ownerId: string,
     terminalId: string,
     input: WorktreeSelection,
-  ): Promise<TerminalSummary | null> {
+  ): Promise<TerminalWireSummary | null> {
     const rows = await this.database
       .select({ terminal: schema.terminals })
       .from(schema.terminals)
@@ -12445,13 +12454,13 @@ export class ServerRepository {
       })
       .where(eq(schema.terminals.id, terminalId))
       .returning();
-    return updated[0] ? toTerminalSummary(updated[0]) : null;
+    return updated[0] ? toTerminalWireSummary(updated[0]) : null;
   }
 
   async listExplorers(
     ownerId: string,
     projectId: string,
-  ): Promise<ExplorerSummary[]> {
+  ): Promise<ExplorerWireSummary[]> {
     const rows = await this.database
       .select({ explorer: schema.explorers })
       .from(schema.explorers)
@@ -12464,15 +12473,15 @@ export class ServerRepository {
       )
       .where(eq(schema.explorers.projectId, projectId))
       .orderBy(asc(schema.explorers.position), asc(schema.explorers.createdAt));
-    return rows.map(({ explorer }) => toExplorerSummary(explorer));
+    return rows.map(({ explorer }) => toExplorerWireSummary(explorer));
   }
 
   async createExplorer(
     ownerId: string,
     projectId: string,
-    input: ExplorerCreate,
+    input: EncryptedExplorerCreate,
     isWorkerConnected?: (workerId: string) => boolean,
-  ): Promise<ExplorerSummary | null> {
+  ): Promise<ExplorerWireSummary | null> {
     const target =
       input.target ??
       (input.worktreeId
@@ -12496,9 +12505,9 @@ export class ServerRepository {
       const result = await transaction
         .insert(schema.explorers)
         .values({
-          id: randomUUID(),
+          id: input.id,
           projectId,
-          title: input.title,
+          protectedLabel: input.titleProtection,
           position,
           activeWorkerId: workerId,
           worktreeId,
@@ -12511,7 +12520,7 @@ export class ServerRepository {
         tabId: explorer.id,
         tabKind: "explorer",
       });
-      return toExplorerSummary(explorer);
+      return toExplorerWireSummary(explorer);
     });
   }
 
@@ -12519,7 +12528,7 @@ export class ServerRepository {
     ownerId: string,
     explorerId: string,
     input: WorktreeSelection,
-  ): Promise<ExplorerSummary | null> {
+  ): Promise<ExplorerWireSummary | null> {
     const rows = await this.database
       .select({ explorer: schema.explorers })
       .from(schema.explorers)
@@ -12551,7 +12560,7 @@ export class ServerRepository {
       })
       .where(eq(schema.explorers.id, explorerId))
       .returning();
-    return updated[0] ? toExplorerSummary(updated[0]) : null;
+    return updated[0] ? toExplorerWireSummary(updated[0]) : null;
   }
 
   async getExplorerExecutionContext(
@@ -12592,23 +12601,23 @@ export class ServerRepository {
   async updateExplorer(
     ownerId: string,
     explorerId: string,
-    input: ExplorerUpdate,
-  ): Promise<ExplorerSummary | null> {
+    input: EncryptedExplorerUpdate,
+  ): Promise<ExplorerWireSummary | null> {
     if (!(await this.getExplorerExecutionContext(ownerId, explorerId)))
       return null;
     const result = await this.database
       .update(schema.explorers)
-      .set({ title: input.title, updatedAt: new Date() })
+      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
       .where(eq(schema.explorers.id, explorerId))
       .returning();
-    return result[0] ? toExplorerSummary(result[0]) : null;
+    return result[0] ? toExplorerWireSummary(result[0]) : null;
   }
 
   async updateExplorerViewState(
     ownerId: string,
     explorerId: string,
     input: ExplorerViewStateUpdate,
-  ): Promise<ExplorerSummary | null> {
+  ): Promise<ExplorerWireSummary | null> {
     if (!(await this.getExplorerExecutionContext(ownerId, explorerId))) {
       return null;
     }
@@ -12621,7 +12630,7 @@ export class ServerRepository {
       })
       .where(eq(schema.explorers.id, explorerId))
       .returning();
-    return result[0] ? toExplorerSummary(result[0]) : null;
+    return result[0] ? toExplorerWireSummary(result[0]) : null;
   }
 
   async deleteExplorer(ownerId: string, explorerId: string): Promise<boolean> {
@@ -12644,7 +12653,7 @@ export class ServerRepository {
   async listCodeTabs(
     ownerId: string,
     projectId: string,
-  ): Promise<CodeTabSummary[]> {
+  ): Promise<CodeTabWireSummary[]> {
     const rows = await this.database
       .select({ codeTab: schema.codeTabs })
       .from(schema.codeTabs)
@@ -12657,15 +12666,15 @@ export class ServerRepository {
       )
       .where(eq(schema.codeTabs.projectId, projectId))
       .orderBy(asc(schema.codeTabs.position), asc(schema.codeTabs.createdAt));
-    return rows.map(({ codeTab }) => toCodeTabSummary(codeTab));
+    return rows.map(({ codeTab }) => toCodeTabWireSummary(codeTab));
   }
 
   async createCodeTab(
     ownerId: string,
     projectId: string,
-    input: CodeTabCreate,
+    input: EncryptedCodeTabCreate,
     isWorkerConnected?: (workerId: string) => boolean,
-  ): Promise<CodeTabSummary | null> {
+  ): Promise<CodeTabWireSummary | null> {
     const target =
       input.target ??
       (input.worktreeId
@@ -12705,9 +12714,9 @@ export class ServerRepository {
       const result = await transaction
         .insert(schema.codeTabs)
         .values({
-          id: randomUUID(),
+          id: input.id,
           projectId,
-          title: input.title,
+          protectedLabel: input.titleProtection,
           position,
           activeWorkerId: workerId,
           worktreeId,
@@ -12722,7 +12731,7 @@ export class ServerRepository {
         tabId: codeTab.id,
         tabKind: "code",
       });
-      return toCodeTabSummary(codeTab);
+      return toCodeTabWireSummary(codeTab);
     });
   }
 
@@ -12758,7 +12767,7 @@ export class ServerRepository {
     return row
       ? {
           capabilities: row.codeCapabilities,
-          codeTab: toCodeTabSummary(row.codeTab),
+          codeTab: toCodeTabWireSummary(row.codeTab),
           cwd: row.worktree.absolutePath,
           workerId: row.codeTab.activeWorkerId,
           worktreeId: row.worktree.id,
@@ -12770,24 +12779,30 @@ export class ServerRepository {
   async updateCodeTab(
     ownerId: string,
     codeTabId: string,
-    input: CodeTabUpdate,
-  ): Promise<CodeTabSummary | null> {
+    input: EncryptedCodeTabUpdate,
+  ): Promise<CodeTabWireSummary | null> {
     if (!(await this.getCodeTabExecutionContext(ownerId, codeTabId))) {
       return null;
     }
     const result = await this.database
       .update(schema.codeTabs)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...(input.titleProtection
+          ? { protectedLabel: input.titleProtection }
+          : {}),
+        ...(input.themeMode ? { themeMode: input.themeMode } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.codeTabs.id, codeTabId))
       .returning();
-    return result[0] ? toCodeTabSummary(result[0]) : null;
+    return result[0] ? toCodeTabWireSummary(result[0]) : null;
   }
 
   async updateCodeTabWorktree(
     ownerId: string,
     codeTabId: string,
     input: WorktreeSelection,
-  ): Promise<CodeTabSummary | null> {
+  ): Promise<CodeTabWireSummary | null> {
     const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
     if (!context) return null;
     if (
@@ -12813,7 +12828,7 @@ export class ServerRepository {
       })
       .where(eq(schema.codeTabs.id, codeTabId))
       .returning();
-    return result[0] ? toCodeTabSummary(result[0]) : null;
+    return result[0] ? toCodeTabWireSummary(result[0]) : null;
   }
 
   async deleteCodeTab(
@@ -12917,7 +12932,7 @@ export class ServerRepository {
   ): Promise<CodeSessionSummary | null> {
     const context = await this.getCodeTabExecutionContext(ownerId, codeTabId);
     if (!context || runtime.sessionId !== sessionId) return null;
-    const tabStatus: CodeTabSummary["status"] =
+    const tabStatus: CodeTabWireSummary["status"] =
       runtime.status === "starting"
         ? "starting"
         : runtime.status === "running" || runtime.status === "idle"
@@ -12970,7 +12985,7 @@ export class ServerRepository {
   async listBrowsers(
     ownerId: string,
     projectId: string,
-  ): Promise<BrowserSummary[]> {
+  ): Promise<BrowserWireSummary[]> {
     const rows = await this.database
       .select({
         browser: schema.browsers,
@@ -12991,16 +13006,16 @@ export class ServerRepository {
       .where(eq(schema.browsers.projectId, projectId))
       .orderBy(asc(schema.browsers.position), asc(schema.browsers.createdAt));
     return rows.map(({ browser, workerId }) =>
-      toBrowserSummary(browser, workerId),
+      toBrowserWireSummary(browser, workerId),
     );
   }
 
   async createBrowser(
     ownerId: string,
     projectId: string,
-    input: BrowserCreate,
+    input: EncryptedBrowserCreate,
     isWorkerConnected?: (workerId: string) => boolean,
-  ): Promise<BrowserSummary | null> {
+  ): Promise<BrowserWireSummary | null> {
     const { placement } = await this.resolveProjectExecutionPlacement(
       ownerId,
       projectId,
@@ -13010,13 +13025,13 @@ export class ServerRepository {
     );
     const position = await this.nextProjectTabPosition(projectId);
     return this.database.transaction(async (transaction) => {
-      const browserId = randomUUID();
+      const browserId = input.id;
       const result = await transaction
         .insert(schema.browsers)
         .values({
           id: browserId,
           projectId,
-          title: input.title,
+          protectedLabel: input.titleProtection,
           position,
           ...(input.url ? { url: input.url } : {}),
         })
@@ -13027,7 +13042,6 @@ export class ServerRepository {
         projectId,
         workerId: placement.workerId,
         kind: "browser",
-        title: input.title,
         preferredTransport: "webrtc",
         configuration: {
           kind: "browser",
@@ -13041,15 +13055,15 @@ export class ServerRepository {
         tabId: browser.id,
         tabKind: "browser",
       });
-      return toBrowserSummary(browser, placement.workerId);
+      return toBrowserWireSummary(browser, placement.workerId);
     });
   }
 
   async updateBrowser(
     ownerId: string,
     browserId: string,
-    input: BrowserUpdate,
-  ): Promise<BrowserSummary | null> {
+    input: EncryptedBrowserUpdate,
+  ): Promise<BrowserWireSummary | null> {
     if (!(await this.browserIsOwnedBy(ownerId, browserId))) return null;
     const surface = await this.getRemoteSurfaceExecutionContext(
       ownerId,
@@ -13058,7 +13072,13 @@ export class ServerRepository {
     return this.database.transaction(async (transaction) => {
       const result = await transaction
         .update(schema.browsers)
-        .set({ ...input, updatedAt: new Date() })
+        .set({
+          ...(input.titleProtection
+            ? { protectedLabel: input.titleProtection }
+            : {}),
+          ...(input.url ? { url: input.url } : {}),
+          updatedAt: new Date(),
+        })
         .where(eq(schema.browsers.id, browserId))
         .returning();
       const browser = result[0];
@@ -13066,7 +13086,6 @@ export class ServerRepository {
       await transaction
         .update(schema.remoteSurfaces)
         .set({
-          ...(input.title === undefined ? {} : { title: input.title }),
           ...(input.url === undefined ||
           surface?.surface.configuration.kind !== "browser"
             ? {}
@@ -13079,7 +13098,7 @@ export class ServerRepository {
           updatedAt: new Date(),
         })
         .where(eq(schema.remoteSurfaces.id, browserId));
-      return toBrowserSummary(browser, surface?.workerId ?? null);
+      return toBrowserWireSummary(browser, surface?.workerId ?? null);
     });
   }
 
@@ -13145,7 +13164,6 @@ export class ServerRepository {
           projectId: browser.projectId,
           workerId,
           kind: "browser",
-          title: browser.title,
           preferredTransport: "webrtc",
           configuration: {
             kind: "browser" as const,
@@ -13160,9 +13178,13 @@ export class ServerRepository {
   async listRemoteSurfaces(
     ownerId: string,
     projectId: string,
-  ): Promise<RemoteSurfaceSummary[]> {
+  ): Promise<RemoteSurfaceWireSummary[]> {
     const rows = await this.database
-      .select({ surface: schema.remoteSurfaces })
+      .select({
+        surface: schema.remoteSurfaces,
+        browserLabel: schema.browsers.protectedLabel,
+        viewLabel: schema.projectViews.protectedLabel,
+      })
       .from(schema.remoteSurfaces)
       .innerJoin(
         schema.projects,
@@ -13171,19 +13193,32 @@ export class ServerRepository {
           eq(schema.projects.ownerId, ownerId),
         ),
       )
+      .leftJoin(
+        schema.browsers,
+        eq(schema.browsers.id, schema.remoteSurfaces.id),
+      )
+      .leftJoin(
+        schema.projectViews,
+        eq(schema.projectViews.id, schema.remoteSurfaces.id),
+      )
       .where(eq(schema.remoteSurfaces.projectId, projectId))
       .orderBy(
         asc(schema.remoteSurfaces.createdAt),
         asc(schema.remoteSurfaces.id),
       );
-    return rows.map(({ surface }) => toRemoteSurfaceSummary(surface));
+    return rows.map(({ surface, browserLabel, viewLabel }) =>
+      toRemoteSurfaceWireSummary(
+        surface,
+        surface.protectedLabel ?? browserLabel ?? viewLabel,
+      ),
+    );
   }
 
   async createRemoteSurface(
     ownerId: string,
     projectId: string,
-    input: RemoteSurfaceCreate,
-  ): Promise<RemoteSurfaceSummary | null> {
+    input: EncryptedRemoteSurfaceCreate,
+  ): Promise<RemoteSurfaceWireSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
         .select({ id: schema.projects.id })
@@ -13210,15 +13245,15 @@ export class ServerRepository {
     const result = await this.database
       .insert(schema.remoteSurfaces)
       .values({
-        id: randomUUID(),
+        id: input.id,
         projectId,
         workerId: input.workerId,
         kind: input.configuration.kind,
-        title: input.title,
+        protectedLabel: input.titleProtection,
         configuration: input.configuration,
       })
       .returning();
-    return toRemoteSurfaceSummary(
+    return toRemoteSurfaceWireSummary(
       firstOrThrow(result, "creating a Remote Surface"),
     );
   }
@@ -13231,6 +13266,8 @@ export class ServerRepository {
       .select({
         surface: schema.remoteSurfaces,
         remoteSurfaceCapabilities: schema.workers.remoteSurfaceCapabilities,
+        browserLabel: schema.browsers.protectedLabel,
+        viewLabel: schema.projectViews.protectedLabel,
       })
       .from(schema.remoteSurfaces)
       .innerJoin(
@@ -13239,6 +13276,14 @@ export class ServerRepository {
           eq(schema.projects.id, schema.remoteSurfaces.projectId),
           eq(schema.projects.ownerId, ownerId),
         ),
+      )
+      .leftJoin(
+        schema.browsers,
+        eq(schema.browsers.id, schema.remoteSurfaces.id),
+      )
+      .leftJoin(
+        schema.projectViews,
+        eq(schema.projectViews.id, schema.remoteSurfaces.id),
       )
       .innerJoin(
         schema.workers,
@@ -13253,7 +13298,12 @@ export class ServerRepository {
     return surface
       ? {
           remoteSurfaceCapabilities: rows[0]!.remoteSurfaceCapabilities,
-          surface: toRemoteSurfaceSummary(surface),
+          surface: toRemoteSurfaceWireSummary(
+            surface,
+            surface.protectedLabel ??
+              rows[0]!.browserLabel ??
+              rows[0]!.viewLabel,
+          ),
           workerId: surface.workerId,
         }
       : null;
@@ -13262,24 +13312,42 @@ export class ServerRepository {
   async updateRemoteSurface(
     ownerId: string,
     surfaceId: string,
-    input: RemoteSurfaceUpdate,
-  ): Promise<RemoteSurfaceSummary | null> {
+    input: EncryptedRemoteSurfaceUpdate,
+  ): Promise<RemoteSurfaceWireSummary | null> {
     const context = await this.getRemoteSurfaceExecutionContext(
       ownerId,
       surfaceId,
     );
     if (
       !context ||
-      (input.configuration && input.configuration.kind !== context.surface.kind)
+      (input.configuration &&
+        input.configuration.kind !== context.surface.kind) ||
+      (input.titleProtection &&
+        context.surface.titleProtection.classification.recordKind !==
+          "remote-surface")
     ) {
       return null;
     }
     const result = await this.database
       .update(schema.remoteSurfaces)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...(input.titleProtection
+          ? { protectedLabel: input.titleProtection }
+          : {}),
+        ...(input.configuration ? { configuration: input.configuration } : {}),
+        ...(input.preferredTransport
+          ? { preferredTransport: input.preferredTransport }
+          : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(schema.remoteSurfaces.id, surfaceId))
       .returning();
-    return result[0] ? toRemoteSurfaceSummary(result[0]) : null;
+    return result[0]
+      ? toRemoteSurfaceWireSummary(
+          result[0],
+          result[0].protectedLabel ?? context.surface.titleProtection,
+        )
+      : null;
   }
 
   async setRemoteSurfaceStatus(
@@ -13324,7 +13392,7 @@ export class ServerRepository {
   async listRemoteDesktops(
     ownerId: string,
     projectId: string,
-  ): Promise<RemoteDesktopSummary[]> {
+  ): Promise<RemoteDesktopWireSummary[]> {
     const rows = await this.database
       .select({ view: schema.projectViews, surface: schema.remoteSurfaces })
       .from(schema.projectViews)
@@ -13351,14 +13419,14 @@ export class ServerRepository {
         asc(schema.projectViews.createdAt),
       );
     return rows.map(({ view, surface }) =>
-      toRemoteDesktopSummary(view, surface),
+      toRemoteDesktopWireSummary(view, surface),
     );
   }
 
   async getRemoteDesktop(
     ownerId: string,
     desktopId: string,
-  ): Promise<RemoteDesktopSummary | null> {
+  ): Promise<RemoteDesktopWireSummary | null> {
     const rows = await this.database
       .select({ view: schema.projectViews, surface: schema.remoteSurfaces })
       .from(schema.projectViews)
@@ -13382,7 +13450,7 @@ export class ServerRepository {
       )
       .limit(1);
     return rows[0]
-      ? toRemoteDesktopSummary(rows[0].view, rows[0].surface)
+      ? toRemoteDesktopWireSummary(rows[0].view, rows[0].surface)
       : null;
   }
 
@@ -13390,10 +13458,11 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
     desktopId: string,
+    titleProtection: PrivateDisplayLabelOpaque,
     workerId: string,
     tabGroupId?: string,
     target: RemoteDesktopTarget = { kind: "monitor", id: null, name: null },
-  ): Promise<RemoteDesktopSummary | null> {
+  ): Promise<RemoteDesktopWireSummary | null> {
     const [projectRows, workerRows] = await Promise.all([
       this.database
         .select({ id: schema.projects.id })
@@ -13422,7 +13491,7 @@ export class ServerRepository {
       await transaction.insert(schema.projectViews).values({
         id: desktopId,
         projectId,
-        title: "Remote Desktop",
+        protectedLabel: titleProtection,
         kind: "remote-desktop",
         worktreeId: null,
         position,
@@ -13432,7 +13501,6 @@ export class ServerRepository {
         projectId,
         workerId,
         kind: "desktop",
-        title: "Remote Desktop",
         preferredTransport: "webrtc",
         configuration: {
           kind: "desktop",
@@ -13452,7 +13520,7 @@ export class ServerRepository {
   async listProjectViews(
     ownerId: string,
     projectId: string,
-  ): Promise<ProjectViewSummary[]> {
+  ): Promise<ProjectViewWireSummary[]> {
     const rows = await this.database
       .select({ view: schema.projectViews })
       .from(schema.projectViews)
@@ -13468,7 +13536,7 @@ export class ServerRepository {
         asc(schema.projectViews.position),
         asc(schema.projectViews.createdAt),
       );
-    return rows.map(({ view }) => toProjectViewSummary(view));
+    return rows.map(({ view }) => toProjectViewWireSummary(view));
   }
 
   async getProjectViewProjectId(
@@ -13493,8 +13561,8 @@ export class ServerRepository {
   async createProjectView(
     ownerId: string,
     projectId: string,
-    input: ProjectViewCreate,
-  ): Promise<ProjectViewSummary | null> {
+    input: EncryptedProjectViewCreate,
+  ): Promise<ProjectViewWireSummary | null> {
     const selected =
       input.kind === "history" && input.worktreeId
         ? await this.getProjectWorktreeContext(
@@ -13519,9 +13587,9 @@ export class ServerRepository {
       const result = await transaction
         .insert(schema.projectViews)
         .values({
-          id: randomUUID(),
+          id: input.id,
           projectId,
-          title: input.title,
+          protectedLabel: input.titleProtection,
           kind: input.kind,
           worktreeId: input.kind === "history" ? worktreeId : null,
           position,
@@ -13534,36 +13602,29 @@ export class ServerRepository {
         tabId: view.id,
         tabKind: input.kind,
       });
-      return toProjectViewSummary(view);
+      return toProjectViewWireSummary(view);
     });
   }
 
   async updateProjectView(
     ownerId: string,
     viewId: string,
-    input: ProjectViewUpdate,
-  ): Promise<ProjectViewSummary | null> {
+    input: EncryptedProjectViewUpdate,
+  ): Promise<ProjectViewWireSummary | null> {
     if (!(await this.projectViewIsOwnedBy(ownerId, viewId))) return null;
-    const result = await this.database.transaction(async (transaction) => {
-      const updated = await transaction
-        .update(schema.projectViews)
-        .set({ title: input.title, updatedAt: new Date() })
-        .where(eq(schema.projectViews.id, viewId))
-        .returning();
-      await transaction
-        .update(schema.remoteSurfaces)
-        .set({ title: input.title, updatedAt: new Date() })
-        .where(eq(schema.remoteSurfaces.id, viewId));
-      return updated;
-    });
-    return result[0] ? toProjectViewSummary(result[0]) : null;
+    const result = await this.database
+      .update(schema.projectViews)
+      .set({ protectedLabel: input.titleProtection, updatedAt: new Date() })
+      .where(eq(schema.projectViews.id, viewId))
+      .returning();
+    return result[0] ? toProjectViewWireSummary(result[0]) : null;
   }
 
   async updateProjectViewWorktree(
     ownerId: string,
     viewId: string,
     input: WorktreeSelection,
-  ): Promise<ProjectViewSummary | null> {
+  ): Promise<ProjectViewWireSummary | null> {
     const rows = await this.database
       .select({ view: schema.projectViews })
       .from(schema.projectViews)
@@ -13592,7 +13653,7 @@ export class ServerRepository {
       .set({ worktreeId: target.worktree.id, updatedAt: new Date() })
       .where(eq(schema.projectViews.id, viewId))
       .returning();
-    return updated[0] ? toProjectViewSummary(updated[0]) : null;
+    return updated[0] ? toProjectViewWireSummary(updated[0]) : null;
   }
 
   async deleteProjectView(ownerId: string, viewId: string): Promise<boolean> {
@@ -13614,7 +13675,7 @@ export class ServerRepository {
       await detachProjectTab(
         transaction,
         view.projectId,
-        projectTabKey(view.kind as ProjectViewSummary["kind"], viewId),
+        projectTabKey(view.kind as ProjectViewWireSummary["kind"], viewId),
       );
       await transaction
         .delete(schema.remoteSurfaces)
@@ -13724,14 +13785,14 @@ export class ServerRepository {
             enabled: row.terminal.serviceEnabled,
             command: row.terminal.serviceCommand,
           },
-          status: row.terminal.status as TerminalSummary["status"],
+          status: row.terminal.status as TerminalWireSummary["status"],
         }
       : null;
   }
 
   async setTerminalStatus(
     terminalId: string,
-    status: TerminalSummary["status"],
+    status: TerminalWireSummary["status"],
   ): Promise<void> {
     await this.database
       .update(schema.terminals)

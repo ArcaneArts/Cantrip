@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  browserSummarySchema,
+  browserWireSummarySchema,
   cantripCliCommandResultSchema,
-  explorerSummarySchema,
+  explorerWireSummarySchema,
   executionPlacementResolutionSchema,
   executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
-  terminalSummarySchema,
+  terminalWireSummarySchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -26,6 +26,7 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
   protectedChatFields,
+  protectedDisplayLabelFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
 
@@ -484,12 +485,12 @@ describe.sequential("project execution placement API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/browsers`,
       payload: {
-        title: "Placed browser",
+        ...protectedDisplayLabelFields("browser"),
         target: { kind: "worker", projectId, workerId: "worker-alpha" },
       },
     });
     expect(created.statusCode).toBe(201);
-    expect(browserSummarySchema.parse(created.json())).toMatchObject({
+    expect(browserWireSummarySchema.parse(created.json())).toMatchObject({
       workerId: "worker-alpha",
     });
 
@@ -497,7 +498,7 @@ describe.sequential("project execution placement API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/terminals`,
       payload: {
-        title: "Alpha shell",
+        ...protectedDisplayLabelFields("terminal"),
         target: {
           kind: "worktree",
           projectId,
@@ -506,7 +507,7 @@ describe.sequential("project execution placement API", () => {
       },
     });
     expect(terminalCreated.statusCode).toBe(201);
-    const terminal = terminalSummarySchema.parse(terminalCreated.json());
+    const terminal = terminalWireSummarySchema.parse(terminalCreated.json());
 
     const resolvedTarget = await app.inject({
       method: "POST",
@@ -544,12 +545,18 @@ describe.sequential("project execution placement API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           resourceKind: "terminal",
-          title: "Alpha shell",
+          title: null,
+          titleProtection: expect.objectContaining({
+            classification: { recordKind: "terminal" },
+          }),
           placement: expect.objectContaining({ workerId: "worker-alpha" }),
         }),
         expect.objectContaining({
           resourceKind: "browser",
-          title: "Placed browser",
+          title: null,
+          titleProtection: expect.objectContaining({
+            classification: { recordKind: "browser" },
+          }),
           placement: expect.objectContaining({ workerId: "worker-alpha" }),
         }),
         expect.objectContaining({
@@ -634,8 +641,8 @@ describe.sequential("project execution placement API", () => {
       LOCAL_USER_ID,
       projectId,
       {
+        ...protectedDisplayLabelFields("remote-surface"),
         workerId: "worker-beta",
-        title: "Unsupported browser",
         configuration: {
           kind: "browser",
           initialUrl: "https://example.com",
@@ -691,13 +698,13 @@ describe.sequential("project execution placement API", () => {
       },
       startedAt: new Date().toISOString(),
     });
-    const explorer = explorerSummarySchema.parse(
+    const explorer = explorerWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/explorers`,
           payload: {
-            title: "Beta Explorer",
+            ...protectedDisplayLabelFields("explorer"),
             target: {
               kind: "worktree",
               projectId,
@@ -707,13 +714,13 @@ describe.sequential("project execution placement API", () => {
         })
       ).json(),
     );
-    const terminal = terminalSummarySchema.parse(
+    const terminal = terminalWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/terminals`,
           payload: {
-            title: "Beta Terminal",
+            ...protectedDisplayLabelFields("terminal"),
             target: {
               kind: "worktree",
               projectId,
@@ -723,13 +730,13 @@ describe.sequential("project execution placement API", () => {
         })
       ).json(),
     );
-    const browser = browserSummarySchema.parse(
+    const browser = browserWireSummarySchema.parse(
       (
         await app.inject({
           method: "POST",
           url: `/api/projects/${projectId}/browsers`,
           payload: {
-            title: "Beta Browser",
+            ...protectedDisplayLabelFields("browser"),
             target: { kind: "worker", projectId, workerId: "worker-beta" },
           },
         })
@@ -913,11 +920,16 @@ describe.sequential("project execution placement API", () => {
       cantripCliCommandResultSchema.parse(cliTargets.json()).data,
     ).toMatchObject({
       targets: expect.arrayContaining([
-        expect.objectContaining({ title: "Beta Terminal" }),
+        expect.objectContaining({
+          title: null,
+          titleProtection: expect.objectContaining({
+            classification: { recordKind: "terminal" },
+          }),
+        }),
       ]),
     });
     const cliTerminal = await cli("terminal.read", {
-      target: "Beta Terminal",
+      target: terminal.id,
     });
     expect(cliTerminal.statusCode).toBe(200);
     expect(
@@ -927,7 +939,7 @@ describe.sequential("project execution placement API", () => {
       data: "cross-worker terminal output",
     });
     const cliExplorerList = await cli("explorer.list", {
-      target: "Beta Explorer",
+      target: explorer.id,
       path: ".",
     });
     expect(cliExplorerList.statusCode).toBe(200);
@@ -935,7 +947,7 @@ describe.sequential("project execution placement API", () => {
       cantripCliCommandResultSchema.parse(cliExplorerList.json()).data,
     ).toMatchObject({ entries: [{ name: "README.md" }] });
     const cliExplorerRead = await cli("explorer.read", {
-      target: "Beta Explorer",
+      target: explorer.id,
       path: "README.md",
     });
     expect(cliExplorerRead.statusCode).toBe(200);
@@ -943,7 +955,7 @@ describe.sequential("project execution placement API", () => {
       cantripCliCommandResultSchema.parse(cliExplorerRead.json()).data,
     ).toMatchObject({ content: "cross-worker file content" });
     const cliBrowserServices = await cli("browser.services", {
-      target: "Beta Browser",
+      target: browser.id,
     });
     expect(cliBrowserServices.statusCode).toBe(200);
     expect(
@@ -995,7 +1007,7 @@ describe.sequential("project execution placement API", () => {
       { enabled: true, command: "pnpm dev" },
     );
     const cliWrite = await cli("explorer.write", {
-      target: "Beta Explorer",
+      target: explorer.id,
       path: "README.md",
       content: "updated cross-worker content",
     });
@@ -1013,7 +1025,7 @@ describe.sequential("project execution placement API", () => {
       "updated cross-worker content",
     );
     const cliInput = await cli("terminal.send", {
-      target: "Beta Terminal",
+      target: terminal.id,
       data: "status\r",
     });
     expect(cliInput.statusCode).toBe(200);
@@ -1021,11 +1033,11 @@ describe.sequential("project execution placement API", () => {
       true,
     );
     const cliRestart = await cli("terminal.restart", {
-      target: "Beta Terminal",
+      target: terminal.id,
     });
     expect(cliRestart.statusCode).toBe(200);
     const cliNavigate = await cli("browser.open", {
-      target: "Beta Browser",
+      target: browser.id,
       url: "https://example.com/from-cli",
     });
     expect(cliNavigate.statusCode).toBe(200);

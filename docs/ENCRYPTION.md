@@ -392,7 +392,7 @@ database-compromise guarantee is described.
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                             | Planned                                   | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
 | Browser URLs, terminal and Explorer paths, remote-window selection               | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
-| Surface and project-view display labels                                          | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
+| Surface and project-view display labels                                          | AES-256-GCM E2EE; client-created row-bound labels; canonical browser/desktop copies only                  | E2EE complete                             | Implemented          | Medium      | Server retains routing and ordering but loses name-based search and synthesis                  |
 | Custom tab-group display labels                                                  | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain layout structure but cannot present custom labels                            |
 | Policies and agent instructions                                                  | Plaintext                                                                                                 | Planned                                   | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
 | Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                            | Planned replacement                       | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
@@ -541,6 +541,54 @@ The main behavioral change is that search, compaction, and other content-aware
 operations require an online authorized endpoint. The server can no longer do
 them independently.
 
+### Surface and project-view display labels
+
+Terminal, Explorer, Code-tab, browser, standalone Remote Surface, managed
+Remote Desktop, History, and Issues display titles now use the shared
+`private-surface-metadata` component. The client allocates each UUID before
+create, encrypts the title with the matching record kind, and decrypts the
+opaque wire summary only after it reaches the trusted app boundary. Defaults
+such as `Terminal`, `Explorer`, `Code`, `Browser`, `Remote Desktop`, and a
+chat's linked `Console` are therefore created and encrypted by the client; the
+server has no default-title synthesis path.
+
+The canonical columns are `terminals.protected_label`,
+`explorers.protected_label`, `code_tabs.protected_label`,
+`browsers.protected_label`, and `project_views.protected_label`. A standalone
+row uses `remote_surfaces.protected_label`. Managed browser and desktop rows do
+not copy their titles into `remote_surfaces`: those wire summaries join the
+canonical browser or project-view ciphertext by the shared row ID. Browser
+URLs, terminal and Explorer paths, Code runtime state, remote target/window
+inventory, placement, status, and operational errors remain plaintext and are
+still tracked separately in the ledger.
+
+Execution-target catalogs and tab-layout members carry only the row-bound
+opaque label for these surfaces. The client authenticates and opens it before
+presentation, then derives an unnamed tab group's visible title from its
+decrypted anchor. The server can still route by opaque ID and surface kind,
+but its CLI can select protected surfaces only by full or unambiguous ID—not by
+display title. Custom multi-tab group titles remain plaintext until their own
+rollout cycle.
+
+[Migration 0107](../cantrip_server/drizzle/0107_quick_switch.sql) adds the
+opaque columns and removes all six legacy `title` columns. It intentionally
+has no plaintext conversion or compatibility reader: this pre-release rollout
+assumes disposable project-domain data and a fresh/reset database. It does not
+change the password wrapper, Account Master Key, client or worker principal,
+or scoped grants.
+
+The focused
+[client adapter test](../cantrip_app/src/lib/surface-title-encryption.test.ts),
+[execution placement API test](../cantrip_server/test/project-placement-api.test.ts),
+[Remote Desktop fleet test](../cantrip_server/test/remote-desktop-fleet-api.test.ts),
+and
+[temporary-database persistence test](../cantrip_server/test/surface-title-persistence.test.ts)
+cover every record kind, row-bound opening, replay rejection, opaque catalog
+copies, canonical managed-surface storage, and removal of plaintext title
+columns. Surface and project-view display labels therefore earn `E2EE
+complete`; the operational URL, path, target, and runtime fields named above
+do not.
+
 ### Private display-label contract foundation
 
 The shared `private-surface-metadata` foundation now defines one versioned,
@@ -570,12 +618,11 @@ The adapters fail closed with explicit locked, missing, revoked, stale,
 corrupt, and unsupported states. Focused protocol, shared-codec, client,
 worker, and readiness tests cover every record kind, classification agreement,
 associated-data swaps, tampering, bounds, intended-worker isolation, and
-restart recovery. Project display names and ordinary-chat/Task titles now use
-this contract in production persistence. The other listed display-label
-columns and their secondary copies remain plaintext until the following
-rollout cycles replace their write and read paths. The ledger therefore claims
-E2EE only for the project and chat-title rows above and records contract
-completion without claiming E2EE for the remaining labels.
+restart recovery. Project names, ordinary-chat and Task titles, and surface
+and project-view titles now use this contract in production persistence.
+Custom tab-group titles are the only display-label kind in this contract whose
+production persistence remains plaintext. The ledger records that distinction
+rather than treating contract support alone as E2EE completion.
 
 ### Task content contract foundation
 

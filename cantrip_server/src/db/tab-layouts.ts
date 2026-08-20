@@ -298,56 +298,68 @@ export class ProjectTabLayoutRepository {
         .from(schema.chats)
         .where(eq(schema.chats.projectId, projectId)),
       this.database
-        .select({ id: schema.terminals.id, title: schema.terminals.title })
+        .select({
+          id: schema.terminals.id,
+          titleProtection: schema.terminals.protectedLabel,
+        })
         .from(schema.terminals)
         .where(eq(schema.terminals.projectId, projectId)),
       this.database
-        .select({ id: schema.explorers.id, title: schema.explorers.title })
+        .select({
+          id: schema.explorers.id,
+          titleProtection: schema.explorers.protectedLabel,
+        })
         .from(schema.explorers)
         .where(eq(schema.explorers.projectId, projectId)),
       this.database
-        .select({ id: schema.browsers.id, title: schema.browsers.title })
+        .select({
+          id: schema.browsers.id,
+          titleProtection: schema.browsers.protectedLabel,
+        })
         .from(schema.browsers)
         .where(eq(schema.browsers.projectId, projectId)),
       this.database
-        .select({ id: schema.codeTabs.id, title: schema.codeTabs.title })
+        .select({
+          id: schema.codeTabs.id,
+          titleProtection: schema.codeTabs.protectedLabel,
+        })
         .from(schema.codeTabs)
         .where(eq(schema.codeTabs.projectId, projectId)),
       this.database
         .select({
           id: schema.projectViews.id,
-          title: schema.projectViews.title,
+          titleProtection: schema.projectViews.protectedLabel,
         })
         .from(schema.projectViews)
         .where(eq(schema.projectViews.projectId, projectId)),
     ]);
     const titles = new Map<
       string,
-      Pick<ProjectTabMemberWireSummary, "title" | "titleProtection">
+      Pick<ProjectTabMemberWireSummary, "titleProtection">
     >([
       ...chats.map(
         ({ id, titleProtection }) =>
-          [`chat:${id}`, { title: null, titleProtection }] as const,
+          [`chat:${id}`, { titleProtection }] as const,
       ),
       ...terminals.map(
-        ({ id, title }) =>
-          [`terminal:${id}`, { title, titleProtection: null }] as const,
+        ({ id, titleProtection }) =>
+          [`terminal:${id}`, { titleProtection }] as const,
       ),
       ...explorers.map(
-        ({ id, title }) =>
-          [`explorer:${id}`, { title, titleProtection: null }] as const,
+        ({ id, titleProtection }) =>
+          [`explorer:${id}`, { titleProtection }] as const,
       ),
       ...browsers.map(
-        ({ id, title }) =>
-          [`browser:${id}`, { title, titleProtection: null }] as const,
+        ({ id, titleProtection }) =>
+          [`browser:${id}`, { titleProtection }] as const,
       ),
       ...code.map(
-        ({ id, title }) =>
-          [`code:${id}`, { title, titleProtection: null }] as const,
+        ({ id, titleProtection }) =>
+          [`code:${id}`, { titleProtection }] as const,
       ),
       ...views.map(
-        ({ id, title }) =>
-          [`view:${id}`, { title, titleProtection: null }] as const,
+        ({ id, titleProtection }) =>
+          [`view:${id}`, { titleProtection }] as const,
       ),
     ]);
     const memberSummaries = new Map<string, ProjectTabMemberWireSummary[]>();

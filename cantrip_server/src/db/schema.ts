@@ -2305,7 +2305,9 @@ export const terminals = pgTable("terminals", {
   projectId: text("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
+  protectedLabel: jsonb("protected_label")
+    .$type<PrivateDisplayLabelOpaque>()
+    .notNull(),
   directoryPath: text("directory_path").notNull().default(""),
   position: integer("position").notNull().default(0),
   status: text("status").notNull().default("idle"),
@@ -2333,7 +2335,9 @@ export const explorers = pgTable("explorers", {
   projectId: text("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
+  protectedLabel: jsonb("protected_label")
+    .$type<PrivateDisplayLabelOpaque>()
+    .notNull(),
   position: integer("position").notNull().default(0),
   activeWorkerId: text("active_worker_id")
     .notNull()
@@ -2358,7 +2362,9 @@ export const codeTabs = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    title: text("title").notNull(),
+    protectedLabel: jsonb("protected_label")
+      .$type<PrivateDisplayLabelOpaque>()
+      .notNull(),
     position: integer("position").notNull().default(0),
     activeWorkerId: text("active_worker_id")
       .notNull()
@@ -2449,7 +2455,9 @@ export const browsers = pgTable("browsers", {
   projectId: text("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
+  protectedLabel: jsonb("protected_label")
+    .$type<PrivateDisplayLabelOpaque>()
+    .notNull(),
   position: integer("position").notNull().default(0),
   url: text("url").notNull().default("https://example.com/"),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -2469,7 +2477,7 @@ export const remoteSurfaces = pgTable("remote_surfaces", {
     .notNull()
     .references(() => workers.id, { onDelete: "cascade" }),
   kind: text("kind").notNull(),
-  title: text("title").notNull(),
+  protectedLabel: jsonb("protected_label").$type<PrivateDisplayLabelOpaque>(),
   status: text("status").notNull().default("idle"),
   preferredTransport: text("preferred_transport")
     .notNull()
@@ -2492,7 +2500,9 @@ export const projectViews = pgTable("project_views", {
   projectId: text("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
+  protectedLabel: jsonb("protected_label")
+    .$type<PrivateDisplayLabelOpaque>()
+    .notNull(),
   kind: text("kind").notNull(),
   worktreeId: text("worktree_id").references(() => projectWorktrees.id, {
     onDelete: "restrict",

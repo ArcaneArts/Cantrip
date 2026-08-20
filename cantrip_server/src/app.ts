@@ -29,13 +29,13 @@ import {
   mobileSignInGrantExchangeSchema,
   auditEventListSchema,
   auditEventQuerySchema,
-  browserCreateSchema,
+  encryptedBrowserCreateSchema,
   browserServiceFleetDiscoverySchema,
-  browserListSchema,
+  browserWireListSchema,
   browserServiceListSchema,
-  browserSummarySchema,
+  browserWireSummarySchema,
   browserTunnelRequestSchema,
-  browserUpdateSchema,
+  encryptedBrowserUpdateSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
   codeAttachmentCreateSchema,
@@ -48,10 +48,10 @@ import {
   codeGraphProjectStatusSchema,
   codeSaveAllResultSchema,
   codeSessionListSchema,
-  codeTabCreateSchema,
-  codeTabListSchema,
-  codeTabSummarySchema,
-  codeTabUpdateSchema,
+  encryptedCodeTabCreateSchema,
+  codeTabWireListSchema,
+  codeTabWireSummarySchema,
+  encryptedCodeTabUpdateSchema,
   codeThemeUpdateSchema,
   desktopUpdateActiveWorkSummarySchema,
   serviceLogReadResultSchema,
@@ -121,16 +121,16 @@ import {
   chatTurnCreateSchema,
   encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
-  explorerCreateSchema,
+  encryptedExplorerCreateSchema,
   explorerDirectoryCommitsSchema,
   explorerDirectorySchema,
   explorerFileSchema,
   explorerFileWriteSchema,
   explorerMediaFileChunkSchema,
   explorerMediaFileSchema,
-  explorerListSchema,
-  explorerSummarySchema,
-  explorerUpdateSchema,
+  explorerWireListSchema,
+  explorerWireSummarySchema,
+  encryptedExplorerUpdateSchema,
   explorerViewStateUpdateSchema,
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
@@ -315,10 +315,10 @@ import {
   projectWorktreePruneSchema,
   projectWorktreeRemoveSchema,
   projectWorktreeSummarySchema,
-  projectViewCreateSchema,
-  projectViewListSchema,
-  projectViewSummarySchema,
-  projectViewUpdateSchema,
+  encryptedProjectViewCreateSchema,
+  projectViewWireListSchema,
+  projectViewWireSummarySchema,
+  encryptedProjectViewUpdateSchema,
   configurablePermissionProfileIdSchema,
   DEFAULT_PERMISSION_PROFILE_ID,
   permissionProfileCapabilitySchema,
@@ -328,22 +328,22 @@ import {
   queuedPromptOrderSchema,
   queuedPromptSchema,
   queuedPromptUpdateSchema,
-  remoteDesktopCreateSchema,
+  encryptedRemoteDesktopCreateSchema,
   directAttachmentTicketSchema,
   directTransportTelemetrySchema,
   directTunnelTicketSchema,
-  remoteDesktopFleetSchema,
+  remoteDesktopFleetWireSchema,
   remoteDesktopProbeResultSchema,
-  remoteDesktopListSchema,
-  remoteDesktopSummarySchema,
+  remoteDesktopWireListSchema,
+  remoteDesktopWireSummarySchema,
   remoteDesktopTargetInventorySchema,
   remoteDesktopUpdateSchema,
   remoteSurfaceAttachResultSchema,
   remoteSurfaceConnectionMessageSchema,
-  remoteSurfaceCreateSchema,
-  remoteSurfaceListSchema,
-  remoteSurfaceSummarySchema,
-  remoteSurfaceUpdateSchema,
+  encryptedRemoteSurfaceCreateSchema,
+  remoteSurfaceWireListSchema,
+  remoteSurfaceWireSummarySchema,
+  encryptedRemoteSurfaceUpdateSchema,
   remoteSurfaceViewportSchema,
   serverBootstrapSchema,
   settingsBundleSchema,
@@ -362,14 +362,15 @@ import {
   tabGroupUpdateSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
-  terminalCreateSchema,
-  terminalListSchema,
+  encryptedTerminalCreateSchema,
+  encryptedLinkedConsoleCreateSchema,
+  terminalWireListSchema,
   terminalOpenResultSchema,
   terminalSnapshotResultSchema,
   terminalServiceConfigurationSchema,
   terminalServerMessageSchema,
-  terminalSummarySchema,
-  terminalUpdateSchema,
+  terminalWireSummarySchema,
+  encryptedTerminalUpdateSchema,
   tunnelListSchema,
   tunnelSummarySchema,
   tunnelAttachmentCreateResultSchema,
@@ -430,7 +431,7 @@ import type {
   AgentTurnResult,
   AppLiveResource,
   AppLiveScope,
-  BrowserUpdate,
+  EncryptedBrowserUpdate,
   ChatMessage,
   ChatReasoningState,
   ChatTurnCreate,
@@ -3386,7 +3387,7 @@ export async function buildApp({
   const applyBrowserUpdate = async (
     ownerId: string,
     browserId: string,
-    input: BrowserUpdate,
+    input: EncryptedBrowserUpdate,
     options: { expectedWorkerId?: string; requireOnline?: boolean } = {},
   ) => {
     const context = await repository.getRemoteSurfaceExecutionContext(
@@ -4452,7 +4453,7 @@ export async function buildApp({
         );
         if (!browser) throw new Error("Browser not found.");
         return cantripCliCommandResultSchema.parse({
-          summary: `Navigated ${browser.title} on ${resolution.worker.name}.`,
+          summary: `Navigated the browser on ${resolution.worker.name}.`,
           target,
           mutated: true,
           data: browser,
@@ -18554,6 +18555,10 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/console",
     async (request, reply) => {
+      const input = encryptedLinkedConsoleCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
       let context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
@@ -18621,9 +18626,10 @@ export async function buildApp({
       const terminal = await repository.getOrCreateChatConsole(
         applicationOwnerId(),
         context.chatId,
+        input.data,
       );
       return terminal
-        ? reply.code(201).send(terminalSummarySchema.parse(terminal))
+        ? reply.code(201).send(terminalWireSummarySchema.parse(terminal))
         : reply.code(404).send({ error: "Chat source not found." });
     },
   );
@@ -18635,14 +18641,14 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.projectId,
       );
-      return reply.send(terminalListSchema.parse(terminals));
+      return reply.send(terminalWireListSchema.parse(terminals));
     },
   );
 
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/terminals",
     async (request, reply) => {
-      const input = terminalCreateSchema.safeParse(request.body);
+      const input = encryptedTerminalCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18654,7 +18660,7 @@ export async function buildApp({
           (workerId) => bridge.isConnected(workerId),
         );
         return terminal
-          ? reply.code(201).send(terminalSummarySchema.parse(terminal))
+          ? reply.code(201).send(terminalWireSummarySchema.parse(terminal))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {
@@ -18696,7 +18702,7 @@ export async function buildApp({
   app.patch<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId",
     async (request, reply) => {
-      const input = terminalUpdateSchema.safeParse(request.body);
+      const input = encryptedTerminalUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18706,7 +18712,7 @@ export async function buildApp({
         input.data,
       );
       return terminal
-        ? reply.send(terminalSummarySchema.parse(terminal))
+        ? reply.send(terminalWireSummarySchema.parse(terminal))
         : reply.code(404).send({ error: "Terminal not found." });
     },
   );
@@ -18750,7 +18756,7 @@ export async function buildApp({
         }
         await updateTerminalStatus(terminal.id, status);
         return reply.send(
-          terminalSummarySchema.parse({
+          terminalWireSummarySchema.parse({
             ...terminal,
             status,
           }),
@@ -18821,7 +18827,7 @@ export async function buildApp({
           );
         }
         return terminal
-          ? reply.send(terminalSummarySchema.parse(terminal))
+          ? reply.send(terminalWireSummarySchema.parse(terminal))
           : reply.code(404).send({ error: "Terminal or worktree not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -18869,7 +18875,7 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.projectId,
       );
-      return reply.send(explorerListSchema.parse(explorers));
+      return reply.send(explorerWireListSchema.parse(explorers));
     },
   );
 
@@ -18877,7 +18883,7 @@ export async function buildApp({
     "/api/projects/:projectId/code-tabs",
     async (request, reply) =>
       reply.send(
-        codeTabListSchema.parse(
+        codeTabWireListSchema.parse(
           await repository.listCodeTabs(
             applicationOwnerId(),
             request.params.projectId,
@@ -18889,7 +18895,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/code-tabs",
     async (request, reply) => {
-      const input = codeTabCreateSchema.safeParse(request.body);
+      const input = encryptedCodeTabCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18901,7 +18907,7 @@ export async function buildApp({
           (workerId) => bridge.isConnected(workerId),
         );
         return codeTab
-          ? reply.code(201).send(codeTabSummarySchema.parse(codeTab))
+          ? reply.code(201).send(codeTabWireSummarySchema.parse(codeTab))
           : reply
               .code(404)
               .send({ error: "Project source or worktree not found." });
@@ -18922,7 +18928,7 @@ export async function buildApp({
   app.patch<{ Params: { codeTabId: string } }>(
     "/api/code-tabs/:codeTabId",
     async (request, reply) => {
-      const input = codeTabUpdateSchema.safeParse(request.body);
+      const input = encryptedCodeTabUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18932,7 +18938,7 @@ export async function buildApp({
         { ...input.data, themeMode: "follow-cantrip" },
       );
       return codeTab
-        ? reply.send(codeTabSummarySchema.parse(codeTab))
+        ? reply.send(codeTabWireSummarySchema.parse(codeTab))
         : reply.code(404).send({ error: "Code tab not found." });
     },
   );
@@ -18972,7 +18978,7 @@ export async function buildApp({
           );
         }
         return codeTab
-          ? reply.send(codeTabSummarySchema.parse(codeTab))
+          ? reply.send(codeTabWireSummarySchema.parse(codeTab))
           : reply.code(404).send({ error: "Code tab or worktree not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -19388,7 +19394,7 @@ export async function buildApp({
           return reply.code(502).send({ error: errorMessage(error) });
         }
       }
-      return reply.send(codeTabSummarySchema.parse(codeTab));
+      return reply.send(codeTabWireSummarySchema.parse(codeTab));
     },
   );
 
@@ -19438,7 +19444,7 @@ export async function buildApp({
     "/api/projects/:projectId/browsers",
     async (request, reply) =>
       reply.send(
-        browserListSchema.parse(
+        browserWireListSchema.parse(
           await repository.listBrowsers(
             applicationOwnerId(),
             request.params.projectId,
@@ -19856,7 +19862,7 @@ export async function buildApp({
         );
       }
       const tunnel = await repository.registerManagedTunnel(ownerId, {
-        name: `${context.surface.title} · ${target.label}`.slice(0, 120),
+        name: `Browser tunnel · ${target.label}`.slice(0, 120),
         description:
           "Temporary local access created by the owning Browser tab.",
         projectId: context.surface.projectId,
@@ -19885,7 +19891,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/browsers",
     async (request, reply) => {
-      const input = browserCreateSchema.safeParse(request.body);
+      const input = encryptedBrowserCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -19897,7 +19903,7 @@ export async function buildApp({
           (workerId) => bridge.isConnected(workerId),
         );
         return browser
-          ? reply.code(201).send(browserSummarySchema.parse(browser))
+          ? reply.code(201).send(browserWireSummarySchema.parse(browser))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {
@@ -19913,7 +19919,7 @@ export async function buildApp({
   app.patch<{ Params: { browserId: string } }>(
     "/api/browsers/:browserId",
     async (request, reply) => {
-      const input = browserUpdateSchema.safeParse(request.body);
+      const input = encryptedBrowserUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -19923,7 +19929,7 @@ export async function buildApp({
         input.data,
       );
       return browser
-        ? reply.send(browserSummarySchema.parse(browser))
+        ? reply.send(browserWireSummarySchema.parse(browser))
         : reply.code(404).send({ error: "Browser not found." });
     },
   );
@@ -19972,7 +19978,7 @@ export async function buildApp({
     "/api/projects/:projectId/remote-desktops",
     async (request, reply) =>
       reply.send(
-        remoteDesktopListSchema.parse(
+        remoteDesktopWireListSchema.parse(
           await repository.listRemoteDesktops(
             applicationOwnerId(),
             request.params.projectId,
@@ -20101,7 +20107,7 @@ export async function buildApp({
       });
       const truncated = fleetTruncated || targetTruncated || surfaceTruncated;
       return reply.send(
-        remoteDesktopFleetSchema.parse({
+        remoteDesktopFleetWireSchema.parse({
           projectId: request.params.projectId,
           observedAt: new Date().toISOString(),
           partial:
@@ -20122,7 +20128,7 @@ export async function buildApp({
         request.params.desktopId,
       );
       return desktop
-        ? reply.send(remoteDesktopSummarySchema.parse(desktop))
+        ? reply.send(remoteDesktopWireSummarySchema.parse(desktop))
         : reply.code(404).send({ error: "Remote Desktop not found." });
     },
   );
@@ -20183,7 +20189,7 @@ export async function buildApp({
         context.surface.id,
       );
       return desktop
-        ? reply.send(remoteDesktopSummarySchema.parse(desktop))
+        ? reply.send(remoteDesktopWireSummarySchema.parse(desktop))
         : reply.code(404).send({ error: "Remote Desktop not found." });
     },
   );
@@ -20191,7 +20197,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/remote-desktops",
     async (request, reply) => {
-      const input = remoteDesktopCreateSchema.safeParse(request.body);
+      const input = encryptedRemoteDesktopCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20221,7 +20227,6 @@ export async function buildApp({
         });
       }
 
-      const desktopId = randomUUID();
       try {
         const probe = remoteDesktopProbeResultSchema.parse(
           await bridge.request(
@@ -20240,7 +20245,8 @@ export async function buildApp({
         const desktop = await repository.createRemoteDesktop(
           applicationOwnerId(),
           request.params.projectId,
-          desktopId,
+          input.data.id,
+          input.data.titleProtection,
           workerId,
           input.data.tabGroupId,
           input.data.desktopTarget,
@@ -20250,7 +20256,9 @@ export async function buildApp({
             .code(404)
             .send({ error: "Project or worker not found." });
         }
-        return reply.code(201).send(remoteDesktopSummarySchema.parse(desktop));
+        return reply
+          .code(201)
+          .send(remoteDesktopWireSummarySchema.parse(desktop));
       } catch (error) {
         return reply.code(502).send({ error: errorMessage(error) });
       }
@@ -20261,7 +20269,7 @@ export async function buildApp({
     "/api/projects/:projectId/remote-surfaces",
     async (request, reply) =>
       reply.send(
-        remoteSurfaceListSchema.parse(
+        remoteSurfaceWireListSchema.parse(
           await repository.listRemoteSurfaces(
             applicationOwnerId(),
             request.params.projectId,
@@ -20273,7 +20281,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/remote-surfaces",
     async (request, reply) => {
-      const input = remoteSurfaceCreateSchema.safeParse(request.body);
+      const input = encryptedRemoteSurfaceCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20309,7 +20317,7 @@ export async function buildApp({
         input.data,
       );
       return surface
-        ? reply.code(201).send(remoteSurfaceSummarySchema.parse(surface))
+        ? reply.code(201).send(remoteSurfaceWireSummarySchema.parse(surface))
         : reply.code(404).send({ error: "Project or worker not found." });
     },
   );
@@ -20317,7 +20325,7 @@ export async function buildApp({
   app.patch<{ Params: { surfaceId: string } }>(
     "/api/remote-surfaces/:surfaceId",
     async (request, reply) => {
-      const input = remoteSurfaceUpdateSchema.safeParse(request.body);
+      const input = encryptedRemoteSurfaceUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20333,7 +20341,7 @@ export async function buildApp({
         input.data,
       );
       return surface
-        ? reply.send(remoteSurfaceSummarySchema.parse(surface))
+        ? reply.send(remoteSurfaceWireSummarySchema.parse(surface))
         : reply.code(404).send({ error: "Remote Surface not found." });
     },
   );
@@ -20371,7 +20379,7 @@ export async function buildApp({
             context.surface.id,
           );
           return updated
-            ? reply.send(remoteSurfaceSummarySchema.parse(updated.surface))
+            ? reply.send(remoteSurfaceWireSummarySchema.parse(updated.surface))
             : reply.code(404).send({
                 error: "Remote Surface was removed during the request.",
               });
@@ -20619,7 +20627,7 @@ export async function buildApp({
     "/api/projects/:projectId/views",
     async (request, reply) =>
       reply.send(
-        projectViewListSchema.parse(
+        projectViewWireListSchema.parse(
           await repository.listProjectViews(
             applicationOwnerId(),
             request.params.projectId,
@@ -20631,7 +20639,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/views",
     async (request, reply) => {
-      const input = projectViewCreateSchema.safeParse(request.body);
+      const input = encryptedProjectViewCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20657,7 +20665,7 @@ export async function buildApp({
         input.data,
       );
       return view
-        ? reply.code(201).send(projectViewSummarySchema.parse(view))
+        ? reply.code(201).send(projectViewWireSummarySchema.parse(view))
         : reply.code(404).send({ error: "Project source not found." });
     },
   );
@@ -20665,7 +20673,7 @@ export async function buildApp({
   app.patch<{ Params: { viewId: string } }>(
     "/api/project-views/:viewId",
     async (request, reply) => {
-      const input = projectViewUpdateSchema.safeParse(request.body);
+      const input = encryptedProjectViewUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20675,7 +20683,7 @@ export async function buildApp({
         input.data,
       );
       return view
-        ? reply.send(projectViewSummarySchema.parse(view))
+        ? reply.send(projectViewWireSummarySchema.parse(view))
         : reply.code(404).send({ error: "Project view not found." });
     },
   );
@@ -20699,7 +20707,7 @@ export async function buildApp({
           input.data,
         );
         return view
-          ? reply.send(projectViewSummarySchema.parse(view))
+          ? reply.send(projectViewWireSummarySchema.parse(view))
           : reply
               .code(404)
               .send({ error: "History view or worktree not found." });
@@ -20739,7 +20747,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/explorers",
     async (request, reply) => {
-      const input = explorerCreateSchema.safeParse(request.body);
+      const input = encryptedExplorerCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20751,7 +20759,7 @@ export async function buildApp({
           (workerId) => bridge.isConnected(workerId),
         );
         return explorer
-          ? reply.code(201).send(explorerSummarySchema.parse(explorer))
+          ? reply.code(201).send(explorerWireSummarySchema.parse(explorer))
           : reply.code(404).send({ error: "Project source not found." });
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {
@@ -20767,7 +20775,7 @@ export async function buildApp({
   app.patch<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId",
     async (request, reply) => {
-      const input = explorerUpdateSchema.safeParse(request.body);
+      const input = encryptedExplorerUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20777,7 +20785,7 @@ export async function buildApp({
         input.data,
       );
       return explorer
-        ? reply.send(explorerSummarySchema.parse(explorer))
+        ? reply.send(explorerWireSummarySchema.parse(explorer))
         : reply.code(404).send({ error: "Explorer not found." });
     },
   );
@@ -20800,7 +20808,7 @@ export async function buildApp({
         input.data,
       );
       return explorer
-        ? reply.send(explorerSummarySchema.parse(explorer))
+        ? reply.send(explorerWireSummarySchema.parse(explorer))
         : reply.code(404).send({ error: "Explorer or worktree not found." });
     },
   );
@@ -20818,7 +20826,7 @@ export async function buildApp({
         input.data,
       );
       return explorer
-        ? reply.send(explorerSummarySchema.parse(explorer))
+        ? reply.send(explorerWireSummarySchema.parse(explorer))
         : reply.code(404).send({ error: "Explorer not found." });
     },
   );

@@ -88,25 +88,24 @@ export class ChatTitleEncryptionAdapter {
     return executionTargetCatalogSchema.parse({
       ...catalog,
       targets: await Promise.all(
-        catalog.targets.map(async ({ titleProtection, ...target }) => ({
-          ...target,
-          title:
-            target.title ??
-            (await decodePrivateDisplayLabelForClient({
+        catalog.targets.map(async ({ titleProtection, ...target }) => {
+          if (target.title !== null) return { ...target, title: target.title };
+          if (!titleProtection || target.target.kind !== "surface") {
+            throw new Error(
+              "A protected execution target must identify a protected surface.",
+            );
+          }
+          return {
+            ...target,
+            title: await decodePrivateDisplayLabelForClient({
               identity: this.identity(),
               opaque: titleProtection,
-              recordKind: "chat",
-              rowId:
-                target.target.kind === "surface"
-                  ? target.target.surfaceId
-                  : (() => {
-                      throw new Error(
-                        "A protected chat execution target must identify a surface.",
-                      );
-                    })(),
+              recordKind: titleProtection.classification.recordKind,
+              rowId: target.target.surfaceId,
               service: this.service,
-            })),
-        })),
+            }),
+          };
+        }),
       ),
     });
   }
@@ -121,15 +120,13 @@ export class ChatTitleEncryptionAdapter {
           const members = await Promise.all(
             group.members.map(async ({ titleProtection, ...member }) => ({
               ...member,
-              title:
-                member.title ??
-                (await decodePrivateDisplayLabelForClient({
-                  identity: this.identity(),
-                  opaque: titleProtection,
-                  recordKind: "chat",
-                  rowId: member.tabId,
-                  service: this.service,
-                })),
+              title: await decodePrivateDisplayLabelForClient({
+                identity: this.identity(),
+                opaque: titleProtection,
+                recordKind: titleProtection.classification.recordKind,
+                rowId: member.tabId,
+                service: this.service,
+              }),
             })),
           );
           const anchor = members.find(
