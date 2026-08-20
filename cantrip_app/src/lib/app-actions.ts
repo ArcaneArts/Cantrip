@@ -1,4 +1,5 @@
 export const APP_ACTION_IDS = {
+  newProject: "navigation.new-project",
   newAgentChat: "project.new-agent-chat",
   newTerminal: "project.new-terminal",
 } as const;
@@ -6,12 +7,12 @@ export const APP_ACTION_IDS = {
 export type AppActionId = (typeof APP_ACTION_IDS)[keyof typeof APP_ACTION_IDS];
 
 export type AppActionDescriptor = {
-  category: "Project";
+  category: "Navigation" | "Project";
   id: AppActionId;
   keywords: readonly string[];
   label: string;
-  requiresProject: true;
-  shortcut: {
+  requiresProject: boolean;
+  shortcut?: {
     key: "n" | "t";
     label: "⌘N" | "⌘T";
   };
@@ -22,6 +23,13 @@ export type AppActionDescriptor = {
  * and the Shift-Shift command bar all consume this same collection.
  */
 export const APP_ACTIONS = [
+  {
+    category: "Navigation",
+    id: APP_ACTION_IDS.newProject,
+    keywords: ["folder", "github", "new", "open", "project", "switch"],
+    label: "New Project",
+    requiresProject: false,
+  },
   {
     category: "Project",
     id: APP_ACTION_IDS.newAgentChat,
@@ -88,7 +96,7 @@ export function appActionForKeyboardInput(
   }
   const key = input.key.toLowerCase();
   return (
-    availableAppActions(context).find((action) => action.shortcut.key === key)
+    availableAppActions(context).find((action) => action.shortcut?.key === key)
       ?.id ?? null
   );
 }

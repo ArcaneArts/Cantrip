@@ -183,7 +183,10 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
-import { FolderProjectDialog } from "@/components/projects/folder-project-dialog";
+import {
+  FolderProjectDialog,
+  type FolderSourceMode,
+} from "@/components/projects/folder-project-dialog";
 import {
   ProjectCreateMenu,
   type ProjectCreateSource,
@@ -2891,6 +2894,8 @@ export function App() {
   );
   const [showImporter, setShowImporter] = useState(false);
   const [folderProjectDialogOpen, setFolderProjectDialogOpen] = useState(false);
+  const [folderProjectDialogMode, setFolderProjectDialogMode] =
+    useState<FolderSourceMode>("create");
   const [showSettings, setShowSettings] = useState(false);
   const [showServerAdmin, setShowServerAdmin] = useState(false);
   const [settingsSection, setSettingsSection] =
@@ -3050,6 +3055,7 @@ export function App() {
       setChatConsoleChatId(null);
     }
     setShowImporter(source === "github");
+    if (source === "folder") setFolderProjectDialogMode("create");
     setFolderProjectDialogOpen(source === "folder");
     setShowSettings(false);
     setShowServerAdmin(false);
@@ -7249,6 +7255,7 @@ export function App() {
       <FolderProjectDialog
         activeWorkspaceId={activeProjectWorkspace?.id ?? null}
         defaultWorkerId={onlineWorker?.workerId ?? null}
+        initialMode={folderProjectDialogMode}
         onCreatedProject={openCreatedProject}
         onOpenChange={setFolderProjectDialogOpen}
         open={folderProjectDialogOpen}
@@ -7318,13 +7325,21 @@ export function App() {
 
       {!isPopout ? (
         <AppCommandBar
+          activeWorkspaceId={activeProjectWorkspace?.id ?? null}
           context={appActionContext}
           currentProjectId={selectedProjectId}
+          defaultWorkerId={onlineWorker?.workerId ?? null}
           onAction={executeAppAction}
+          onCreatedProject={openCreatedProject}
           onOpenChange={setCommandBarOpen}
+          onOpenFolder={() => {
+            setFolderProjectDialogMode("existing");
+            setFolderProjectDialogOpen(true);
+          }}
           onSelectProject={selectProjectFromCommandBar}
           open={commandBarOpen}
           projects={projects.data ?? []}
+          workers={workers.data ?? []}
           workspaces={projectWorkspaces.data ?? []}
         />
       ) : null}

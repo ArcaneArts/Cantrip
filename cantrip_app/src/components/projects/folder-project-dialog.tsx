@@ -25,7 +25,7 @@ import { pickLocalFolder } from "@/lib/desktop-folder-picker";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
-type FolderSourceMode = "create" | "existing";
+export type FolderSourceMode = "create" | "existing";
 
 export function folderNameFromPath(value: string): string {
   return (
@@ -40,6 +40,7 @@ export function folderNameFromPath(value: string): string {
 export function FolderProjectDialog({
   activeWorkspaceId,
   defaultWorkerId,
+  initialMode = "create",
   onCreatedProject,
   onOpenChange,
   open,
@@ -48,6 +49,7 @@ export function FolderProjectDialog({
 }: {
   activeWorkspaceId: string | null;
   defaultWorkerId: string | null;
+  initialMode?: FolderSourceMode;
   onCreatedProject(project: ProjectSummary): void;
   onOpenChange(open: boolean): void;
   open: boolean;
@@ -55,7 +57,7 @@ export function FolderProjectDialog({
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<FolderSourceMode>("create");
+  const [mode, setMode] = useState<FolderSourceMode>(initialMode);
   const [name, setName] = useState("");
   const [existingPath, setExistingPath] = useState("");
   const [workerId, setWorkerId] = useState(defaultWorkerId ?? "");
@@ -90,10 +92,11 @@ export function FolderProjectDialog({
 
   useEffect(() => {
     if (!open) return;
+    setMode(initialMode);
     setSelectedWorkspaceIds(
       new Set(activeWorkspaceId ? [activeWorkspaceId] : []),
     );
-  }, [activeWorkspaceId, open]);
+  }, [activeWorkspaceId, initialMode, open]);
 
   useEffect(() => {
     if (eligibleWorkers.some((worker) => worker.workerId === workerId)) return;
@@ -107,7 +110,7 @@ export function FolderProjectDialog({
   }, [defaultWorkerId, eligibleWorkers, workerId]);
 
   const reset = () => {
-    setMode("create");
+    setMode(initialMode);
     setName("");
     setExistingPath("");
     setError(null);

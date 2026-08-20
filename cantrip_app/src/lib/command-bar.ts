@@ -13,6 +13,8 @@ export type DoubleShiftKeyResult = {
   triggered: boolean;
 };
 
+export type CommandBarScope = "folder" | "github" | "new-project";
+
 /**
  * Advances the app command-bar gesture. Any intervening key cancels the
  * sequence, so ordinary capitalization does not count as a double Shift.
@@ -39,4 +41,11 @@ export function advanceDoubleShiftGesture(
     lastShiftAt: triggered ? null : now,
     triggered,
   };
+}
+
+export function commandBarScopesAfterBackspace(
+  scopes: readonly CommandBarScope[],
+  query: string,
+): readonly CommandBarScope[] {
+  return query.length === 0 && scopes.length > 0 ? scopes.slice(0, -1) : scopes;
 }

@@ -38,9 +38,14 @@ describe("application actions", () => {
       availableAppActions(projectContext).map(({ id, label, shortcut }) => ({
         id,
         label,
-        shortcut: shortcut.label,
+        shortcut: shortcut?.label,
       })),
     ).toEqual([
+      {
+        id: APP_ACTION_IDS.newProject,
+        label: "New Project",
+        shortcut: undefined,
+      },
       {
         id: APP_ACTION_IDS.newAgentChat,
         label: "New Agent Chat",
@@ -55,7 +60,9 @@ describe("application actions", () => {
   });
 
   it("does not expose project actions without an active project", () => {
-    expect(availableAppActions({ projectId: null })).toEqual([]);
+    expect(
+      availableAppActions({ projectId: null }).map(({ id }) => id),
+    ).toEqual([APP_ACTION_IDS.newProject]);
     expect(
       appActionForKeyboardInput(keyboard("n"), { projectId: null }),
     ).toBeNull();
@@ -100,7 +107,7 @@ describe("application actions", () => {
         pendingActionIds: new Set([APP_ACTION_IDS.newAgentChat]),
         projectId: "project-1",
       }).map(({ id }) => id),
-    ).toEqual([APP_ACTION_IDS.newTerminal]);
+    ).toEqual([APP_ACTION_IDS.newProject, APP_ACTION_IDS.newTerminal]);
     expect(isAppActionId(APP_ACTION_IDS.newTerminal)).toBe(true);
     expect(isAppActionId("project.delete")).toBe(false);
   });
