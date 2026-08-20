@@ -42,7 +42,7 @@ const identity = {
   serverId: "server-private-label-lifecycle",
 } as const;
 const timestamp = "2026-08-20T12:00:00.000Z";
-const sentinel = "PRIVATE-LABEL-LIFECYCLE-SENTINEL";
+const sentinel = "PROTECTED-APP-LIFECYCLE-SENTINEL";
 
 class MemoryDeviceKeyStore implements ClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
@@ -216,7 +216,7 @@ function chatWire(
   };
 }
 
-describe("private display-label lifecycle", () => {
+describe("protected app-facing label and surface-state lifecycle", () => {
   it("reopens every app-facing record through the same authorized device after restart", async () => {
     const store = new MemoryDeviceKeyStore();
     const first = new ClientEncryptionService(store);
@@ -287,8 +287,8 @@ describe("private display-label lifecycle", () => {
       linkedChatId: null,
       stateProtection: await surfaces.protectTerminalState(
         ids.terminal,
-        null,
-        "",
+        `${sentinel}/terminal-directory`,
+        `${sentinel}-service-command`,
       ),
       serviceEnabled: false,
     };
@@ -302,7 +302,10 @@ describe("private display-label lifecycle", () => {
       ),
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
-      stateProtection: await surfaces.protectExplorerState(ids.explorer, null),
+      stateProtection: await surfaces.protectExplorerState(
+        ids.explorer,
+        `${sentinel}/selected-file.ts`,
+      ),
       fileMode: "preview",
     };
     const code: CodeTabWireSummary = {
@@ -330,7 +333,7 @@ describe("private display-label lifecycle", () => {
       ),
       stateProtection: await surfaces.protectBrowserState(
         ids.browser,
-        "https://example.com",
+        `https://example.com/${sentinel}/browser`,
         1,
       ),
       stateRevision: 1,
@@ -347,7 +350,12 @@ describe("private display-label lifecycle", () => {
       workerId: "worker-a",
       stateProtection: await surfaces.protectRemoteDesktopState(
         ids.desktop,
-        { kind: "monitor", id: null, name: null },
+        {
+          kind: "window",
+          id: "private-window",
+          application: `${sentinel}-application`,
+          title: `${sentinel}-window-title`,
+        },
         1,
       ),
       stateRevision: 1,
@@ -372,7 +380,7 @@ describe("private display-label lifecycle", () => {
       },
       stateProtection: await surfaces.protectBrowserRemoteSurfaceState(
         ids.surface,
-        "https://example.com",
+        `https://example.com/${sentinel}/surface`,
         1,
       ),
       stateRevision: 1,
@@ -484,12 +492,31 @@ describe("private display-label lifecycle", () => {
         reopenedSurfaces.openProjectView(view),
       ]),
     ).resolves.toMatchObject([
-      { title: `${sentinel}-terminal` },
-      { title: `${sentinel}-explorer` },
+      {
+        title: `${sentinel}-terminal`,
+        directoryPath: `${sentinel}/terminal-directory`,
+        service: { command: `${sentinel}-service-command` },
+      },
+      {
+        title: `${sentinel}-explorer`,
+        selectedPath: `${sentinel}/selected-file.ts`,
+      },
       { title: `${sentinel}-code` },
-      { title: `${sentinel}-browser` },
-      { title: `${sentinel}-desktop` },
-      { title: `${sentinel}-surface` },
+      {
+        title: `${sentinel}-browser`,
+        url: `https://example.com/${sentinel}/browser`,
+      },
+      {
+        title: `${sentinel}-desktop`,
+        target: {
+          application: `${sentinel}-application`,
+          title: `${sentinel}-window-title`,
+        },
+      },
+      {
+        title: `${sentinel}-surface`,
+        url: `https://example.com/${sentinel}/surface`,
+      },
       { title: `${sentinel}-view` },
     ]);
     await expect(reopenedChats.openTabLayout(layout)).resolves.toMatchObject({

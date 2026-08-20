@@ -207,6 +207,25 @@ describe("RemoteSurfaceManager", () => {
     expect(detach).toHaveBeenCalledWith("attachment-1");
   });
 
+  it("does not expose private adapter failures to logs or bridge callers", async () => {
+    const sentinel = "SURFACE-PRIVATE-ERROR-SENTINEL";
+    const cursor = readWorkerLogs({}).nextCursor;
+    const manager = new RemoteSurfaceManager({
+      browser: {
+        open: async () => {
+          throw new Error(`${sentinel}: https://private.example/path`);
+        },
+      },
+    });
+
+    await expect(manager.attach(attachCommand)).rejects.toThrow(
+      "Remote Surface could not be opened.",
+    );
+    expect(
+      JSON.stringify(readWorkerLogs({ afterCursor: cursor }).records),
+    ).not.toContain(sentinel);
+  });
+
   it("serializes concurrent attachments while a surface is opening", async () => {
     const attach = vi.fn();
     const session = {

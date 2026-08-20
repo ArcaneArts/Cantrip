@@ -2507,6 +2507,10 @@ export const remoteSurfaces = pgTable(
   },
   (table) => [
     check(
+      "remote_surfaces_public_configuration_check",
+      sql`(${table.kind} = 'browser' AND jsonb_typeof(${table.configuration}) = 'object' AND (${table.configuration}->>'kind') = 'browser' AND ${table.configuration} ? 'profileId' AND ${table.configuration} - 'kind' - 'profileId' = '{}'::jsonb AND jsonb_typeof(${table.configuration}->'profileId') IN ('string', 'null')) OR (${table.kind} = 'desktop' AND ${table.configuration} = '{"kind":"desktop"}'::jsonb)`,
+    ),
+    check(
       "remote_surfaces_desktop_private_state_check",
       sql`${table.kind} <> 'desktop' OR (${table.protectedState} IS NOT NULL AND ${table.stateRevision} IS NOT NULL AND ${table.configuration} = '{"kind":"desktop"}'::jsonb)`,
     ),
