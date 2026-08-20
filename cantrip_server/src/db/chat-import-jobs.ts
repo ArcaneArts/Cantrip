@@ -3,9 +3,13 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   chatImportJobListSchema,
   chatImportJobSummarySchema,
+  chatMessageOpaqueContentListSchema,
+  chatMessageOpaqueSummarySchema,
   chatRelocationContextPayloadSchema,
   externalChatImportReferenceSchema,
   type ChatAttachmentSummary,
+  type ChatMessageCreate,
+  type ChatMessageOpaqueContent,
   type ExternalChatImportReference,
   type ChatImportError,
   type ChatImportJobSummary,
@@ -764,7 +768,12 @@ export class ChatImportJobRepository {
     commandId: string,
     attempt: number,
     transcript: ExternalChatTranscript,
-    importedAttachments: ImportedChatAttachment[] = [],
+    importedAttachments: ImportedChatAttachment[],
+    protectMessages: (
+      messages: Array<
+        ChatMessageCreate & { id: string; idempotencyKey: string }
+      >,
+    ) => Promise<ChatMessageOpaqueContent[]>,
   ): Promise<ChatImportJobSummary> {
     const now = new Date();
     const completed = await this.database.transaction(async (transaction) => {
@@ -961,15 +970,38 @@ export class ChatImportJobRepository {
         failedMessage: "The imported Codex turn failed.",
         externalAttachments: attachmentByExternalId,
       });
-      for (const { message } of messages) {
+      const protectedMessages = chatMessageOpaqueContentListSchema.parse(
+        await protectMessages(
+          messages.map(({ message }) => ({
+            ...message,
+            id: randomUUID(),
+            idempotencyKey: message.idempotencyKey!,
+          })),
+        ),
+      );
+      if (
+        protectedMessages.length !== messages.length ||
+        protectedMessages.some(
+          (message, index) =>
+            message.idempotencyKey !== messages[index]?.message.idempotencyKey,
+        )
+      ) {
+        throw new ChatImportJobConflictError(
+          "The destination worker returned an inconsistent encrypted transcript.",
+        );
+      }
+      for (const message of protectedMessages) {
         await transaction.insert(schema.chatMessages).values({
-          id: randomUUID(),
+          id: message.id,
           chatId,
           worktreeId: worktree.id,
           executionLaneId,
-          role: message.role,
-          mode: "default",
-          content: message.content,
+          role: message.classification.role,
+          mode: message.classification.mode,
+          content: null,
+          protectedContent: message.protectedContent,
+          attachmentIds: message.classification.attachmentIds,
+          reasoningEffort: message.reasoningEffort,
           idempotencyKey: message.idempotencyKey,
           createdAt: now,
         });
@@ -982,7 +1014,7 @@ export class ChatImportJobRepository {
           stateRevision: job.stateRevision + 1,
           commandId: null,
           leaseExpiresAt: null,
-          sourceMetadata: transcript.metadata,
+          sourceMetadata: null,
           attachmentCount: importedAttachments.length,
           attachmentWarningCount: importedAttachments.filter(
             ({ descriptor }) => descriptor.status !== "available",
@@ -1044,14 +1076,16 @@ export class ChatImportJobRepository {
     const referencedAttachmentIds = [
       ...new Set(
         messages.flatMap((message) => {
-          if (!message.content || message.taskProtectedContent) {
+          if (
+            !message.protectedContent ||
+            message.content ||
+            message.taskProtectedContent
+          ) {
             throw new ChatImportJobConflictError(
               "The imported transcript contains an invalid encrypted message.",
             );
           }
-          return message.content.flatMap((item) =>
-            item.type === "attachment" ? [item.attachment.id] : [],
-          );
+          return message.attachmentIds;
         }),
       ),
     ];
@@ -1101,14 +1135,30 @@ export class ChatImportJobRepository {
     return {
       payload: chatRelocationContextPayloadSchema.parse({
         version: 1,
-        messages: messages.map((message) => ({
-          sequence: message.sequence,
-          role: message.role,
-          mode: message.mode,
-          reasoningEffort: message.reasoningEffort,
-          content: message.content,
-          createdAt: toISOString(message.createdAt),
-        })),
+        kind: "chat-encrypted",
+        messages: messages.map((message) =>
+          chatMessageOpaqueSummarySchema.parse({
+            id: message.id,
+            chatId: message.chatId,
+            worktreeId: message.worktreeId,
+            executionLaneId: message.executionLaneId,
+            sequence: message.sequence,
+            role: message.role,
+            mode: message.mode,
+            attachmentIds: message.attachmentIds,
+            protectedContent: message.protectedContent,
+            modelId: message.modelId,
+            modelRouteId: message.modelRouteId,
+            providerId: message.providerId,
+            providerName: message.providerName,
+            providerModelName: message.providerModelName,
+            reasoningEffort: message.reasoningEffort,
+            appliedReasoningEffort: message.appliedReasoningEffort,
+            reasoningAdjusted: message.reasoningAdjusted,
+            idempotencyKey: message.idempotencyKey,
+            createdAt: toISOString(message.createdAt),
+          }),
+        ),
         attachments: referencedAttachmentIds.map((attachmentId) => {
           const availability = attachmentsById.get(attachmentId)!;
           const attachment = availability[0]!.attachment;

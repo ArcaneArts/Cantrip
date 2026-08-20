@@ -178,6 +178,31 @@ describe.sequential("chat import job durability", () => {
             ],
           },
         }),
+        [],
+        async (messages) =>
+          messages.map((message) => ({
+            id: message.id,
+            classification: {
+              role: message.role,
+              mode: message.mode ?? "default",
+              attachmentIds: message.content.flatMap((item) =>
+                item.type === "attachment" ? [item.attachment.id] : [],
+              ),
+            },
+            protectedContent: {
+              formatVersion: 1,
+              keyRevision: 1,
+              envelope: {
+                version: 1,
+                algorithm: "AES-256-GCM" as const,
+                keyRevision: 1,
+                nonce: "AAAAAAAAAAAAAAAA",
+                ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+              },
+            },
+            reasoningEffort: message.reasoningEffort ?? null,
+            idempotencyKey: message.idempotencyKey,
+          })),
       );
     expect(canonical).toMatchObject({
       state: "awaiting-hydration",

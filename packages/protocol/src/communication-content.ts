@@ -141,6 +141,10 @@ export const chatMessageOpaqueSummarySchema =
     })
     .strict();
 
+export const chatMessageOpaqueContentListSchema = z
+  .array(chatMessageOpaqueContentSchema)
+  .max(100_000);
+
 export const queuedPromptProtectedClassificationSchema = z
   .object({
     mode: communicationTurnModeSchema,

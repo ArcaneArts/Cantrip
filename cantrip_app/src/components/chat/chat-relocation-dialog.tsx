@@ -35,6 +35,7 @@ import {
   createChatRelocation,
   retryChatRelocation,
 } from "@/lib/api";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { errorMessage } from "@/lib/error-message";
 import { cn } from "@/lib/utils";
 
@@ -371,7 +372,9 @@ export function ChatRelocationDialog({
     );
   };
   const create = useMutation({
-    mutationFn: (worktreeId: string) => {
+    mutationFn: async (worktreeId: string) => {
+      await ensureChatWorkerEncryption({ worker: sourceWorker });
+      await ensureChatWorkerEncryption({ worker: selectedTarget?.worker });
       requestKey.current ??= crypto.randomUUID();
       return createChatRelocation(chat.id, {
         approved: true,
@@ -386,8 +389,17 @@ export function ChatRelocationDialog({
     },
   });
   const retry = useMutation({
-    mutationFn: (job: ChatRelocationJobSummary) =>
-      retryChatRelocation(job.id, { stateRevision: job.stateRevision }),
+    mutationFn: async (job: ChatRelocationJobSummary) => {
+      await ensureChatWorkerEncryption({ worker: sourceWorker });
+      await ensureChatWorkerEncryption({
+        worker: placement.workers.find(
+          ({ workerId }) => workerId === job.targetPlacement.workerId,
+        ),
+      });
+      return retryChatRelocation(job.id, {
+        stateRevision: job.stateRevision,
+      });
+    },
     onSuccess: async (job) => {
       remember(job);
       await refresh();

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   clearSensitiveBytes,
   createTaskOperationRelayResult,
+  decryptChatMessageProtectedContent,
   decryptTaskMessageProtectedContent,
   decryptTaskProtectedContent,
   decryptTaskGoalObjective,
@@ -414,31 +415,47 @@ export async function protectTaskGoalResult(input: {
 }
 
 export async function openTaskRelocationPayload(input: {
-  getComponentKey(): { key: Uint8Array; keyRevision: number };
+  getComponentKey(component: "chat-content" | "task-content"): {
+    key: Uint8Array;
+    keyRevision: number;
+  };
   ownerId: string;
   payload: ChatRelocationContextPayload;
 }): Promise<ChatRelocationContextPayload> {
   const payload = chatRelocationContextPayloadSchema.parse(input.payload);
-  if (payload.kind !== "task-encrypted") return payload;
-  const component = input.getComponentKey();
+  if (payload.kind === "visible") return payload;
+  const component = input.getComponentKey(
+    payload.kind === "task-encrypted" ? "task-content" : "chat-content",
+  );
   try {
     const messages = await Promise.all(
       payload.messages.map(async (message) => {
         if (message.protectedContent.keyRevision !== component.keyRevision) {
-          throw new Error("The Task encryption key revision is unavailable.");
+          throw new Error("The chat encryption key revision is unavailable.");
         }
-        const opened = await decryptTaskMessageProtectedContent({
-          ownerId: input.ownerId,
-          messageId: message.id,
-          keyRevision: component.keyRevision,
-          componentKey: component.key,
-          encrypted: message.protectedContent,
-          publicClassification: {
-            role: message.role,
-            mode: message.mode,
-            attachmentIds: message.attachmentIds,
-          },
-        });
+        const publicClassification = {
+          role: message.role,
+          mode: message.mode,
+          attachmentIds: message.attachmentIds,
+        };
+        const opened =
+          payload.kind === "task-encrypted"
+            ? await decryptTaskMessageProtectedContent({
+                ownerId: input.ownerId,
+                messageId: message.id,
+                keyRevision: component.keyRevision,
+                componentKey: component.key,
+                encrypted: message.protectedContent,
+                publicClassification,
+              })
+            : await decryptChatMessageProtectedContent({
+                ownerId: input.ownerId,
+                messageId: message.id,
+                keyRevision: component.keyRevision,
+                componentKey: component.key,
+                encrypted: message.protectedContent,
+                publicClassification,
+              });
         return {
           sequence: message.sequence,
           role: message.role,
