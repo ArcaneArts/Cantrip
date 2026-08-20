@@ -97,6 +97,37 @@ describe("rich Codex activity", () => {
     ).toBe("Used 1,234 tokens");
   });
 
+  it("presents CodeGraph queries and results without runtime diagnostics", () => {
+    const activity: AgentActivity = {
+      type: "mcpToolCall",
+      id: "codegraph-1",
+      status: "completed",
+      server: "codegraph",
+      tool: "codegraph_explore",
+      query: "Explain what this project does from the code architecture.",
+      resultText:
+        "**Exploration:** Project architecture\n\nFound 54 symbols across 1 file.",
+      error: null,
+      durationMs: 233,
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: "session-1:403",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "codegraph-1",
+      },
+    };
+
+    const markup = renderToStaticMarkup(<Activity activity={activity} />);
+    expect(activityLabel(activity)).toBe(
+      "CodeGraph · Explain what this project does from the code architecture.",
+    );
+    expect(markup).toContain("CodeGraph");
+    expect(markup).toContain("Found 54 symbols across 1 file.");
+    expect(markup).not.toContain("Runtime source");
+    expect(markup).not.toContain("session-1:403");
+  });
+
   it("hides completed turn work behind the elapsed-time disclosure", () => {
     const completed = renderToStaticMarkup(
       <ActivityGroup

@@ -21,6 +21,7 @@ import {
   Search,
   ShieldCheck,
   Terminal,
+  Workflow,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -28,7 +29,22 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 import { displayCommand } from "./command-display";
+import { Markdown } from "./markdown";
 import { formatElapsedTime } from "./timeline";
+
+function isCodeGraphActivity(activity: AgentActivity) {
+  return (
+    activity.type === "mcpToolCall" &&
+    activity.server.toLowerCase() === "codegraph"
+  );
+}
+
+function codeGraphQuery(activity: AgentActivity) {
+  if (activity.type !== "mcpToolCall" || !activity.query) return null;
+  const query = activity.query.replace(/\s+/g, " ").trim();
+  if (!query) return null;
+  return query.length > 110 ? `${query.slice(0, 109).trimEnd()}…` : query;
+}
 
 function ActivityState({ activity }: { activity: AgentActivity }) {
   if (activity.status === "running") {
@@ -88,7 +104,11 @@ function RichActivityIcon({ activity }: { activity: AgentActivity }) {
     case "reasoning":
       return <BrainCircuit className={className} />;
     case "mcpToolCall":
-      return <Network className={className} />;
+      return isCodeGraphActivity(activity) ? (
+        <Workflow className="size-4 shrink-0 text-cyan-500" />
+      ) : (
+        <Network className={className} />
+      );
     case "dynamicToolCall":
       return <Combine className={className} />;
     case "collabToolCall":
@@ -125,6 +145,10 @@ export function activityLabel(activity: AgentActivity): string {
     case "reasoning":
       return activity.status === "running" ? "Reasoning" : "Reasoned";
     case "mcpToolCall":
+      if (isCodeGraphActivity(activity)) {
+        const query = codeGraphQuery(activity);
+        return `CodeGraph${query ? ` · ${query}` : ""}`;
+      }
       return `MCP · ${activity.server}/${activity.tool}`;
     case "dynamicToolCall":
       return `Tool · ${activity.namespace ? `${activity.namespace}/` : ""}${activity.tool}`;
@@ -206,6 +230,27 @@ function RichActivityDetails({ activity }: { activity: AgentActivity }) {
         </div>
       ) : null;
     case "mcpToolCall":
+      if (isCodeGraphActivity(activity)) {
+        return (
+          <div className="space-y-2">
+            {activity.error ? (
+              <p className="text-destructive">{activity.error}</p>
+            ) : null}
+            {activity.resultText ? (
+              <div className="max-h-96 overflow-auto rounded-lg bg-muted/40 p-3 text-foreground">
+                <Markdown>{activity.resultText}</Markdown>
+              </div>
+            ) : activity.status === "running" ? (
+              <p>Exploring the project graph…</p>
+            ) : (
+              <p>No result details were returned.</p>
+            )}
+            {formatDuration(activity.durationMs) ? (
+              <p>Duration {formatDuration(activity.durationMs)}</p>
+            ) : null}
+          </div>
+        );
+      }
       return (
         <div className="space-y-1">
           {activity.error ? (
@@ -404,13 +449,19 @@ export function Activity({ activity }: { activity: AgentActivity }) {
 
   if (activity.type !== "command") {
     const details = <RichActivityDetails activity={activity} />;
+    const showCorrelation =
+      Boolean(activity.correlation) && !isCodeGraphActivity(activity);
     const hasDetails =
       activity.type === "plan"
         ? Boolean(
             activity.text || activity.explanation || activity.steps.length,
           )
         : activity.type === "mcpToolCall"
-          ? Boolean(activity.error || activity.durationMs !== null)
+          ? Boolean(
+              activity.error ||
+              activity.resultText ||
+              activity.durationMs !== null,
+            )
           : activity.type === "dynamicToolCall"
             ? activity.success !== null || activity.durationMs !== null
             : activity.type === "collabToolCall"
@@ -436,7 +487,7 @@ export function Activity({ activity }: { activity: AgentActivity }) {
         <summary
           className={cn(
             "flex min-w-0 list-none items-center gap-2",
-            (hasDetails || activity.correlation) && "cursor-pointer",
+            (hasDetails || showCorrelation) && "cursor-pointer",
           )}
         >
           <RichActivityIcon activity={activity} />
@@ -451,14 +502,16 @@ export function Activity({ activity }: { activity: AgentActivity }) {
             {activityLabel(activity)}
           </span>
           <ActivityState activity={activity} />
-          {hasDetails || activity.correlation ? (
+          {hasDetails || showCorrelation ? (
             <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
           ) : null}
         </summary>
-        {hasDetails || activity.correlation ? (
+        {hasDetails || showCorrelation ? (
           <div className="mt-2 min-w-0 space-y-2 pl-6 text-xs leading-5 text-muted-foreground">
             {details}
-            <CorrelationDetails activity={activity} />
+            {showCorrelation ? (
+              <CorrelationDetails activity={activity} />
+            ) : null}
           </div>
         ) : null}
       </details>

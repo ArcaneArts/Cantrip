@@ -5137,6 +5137,8 @@ export const agentActivitySchema = z.discriminatedUnion("type", [
     type: z.literal("mcpToolCall"),
     server: z.string().min(1),
     tool: z.string().min(1),
+    query: z.string().max(4_000).nullable().optional(),
+    resultText: z.string().max(20_000).nullable().optional(),
     error: z.string().nullable(),
     durationMs: z.number().int().nonnegative().nullable(),
   }),

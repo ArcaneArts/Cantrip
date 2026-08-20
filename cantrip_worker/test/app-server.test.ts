@@ -231,9 +231,14 @@ describe("Codex rich event normalization", () => {
       {
         type: "mcpToolCall" as const,
         id: "mcp-1",
-        server: "github",
-        tool: "search_issues",
+        server: "codegraph",
+        tool: "codegraph_explore",
         status: "completed" as const,
+        arguments: { query: "worker timeout" },
+        result: {
+          content: [{ type: "text", text: "Found two matching issues." }],
+          structuredContent: null,
+        },
         error: null,
         durationMs: 125,
       },
@@ -309,6 +314,16 @@ describe("Codex rich event normalization", () => {
         itemId: "collab-1",
       }),
     ).toMatchObject({ type: "collabToolCall", prompt: null });
+    expect(
+      normalizeCodexThreadItem(items[0]!, "/workspace", "completed", {
+        ...correlation,
+        itemId: "mcp-1",
+      }),
+    ).toMatchObject({
+      type: "mcpToolCall",
+      query: "worker timeout",
+      resultText: "Found two matching issues.",
+    });
     expect(
       normalizeCodexThreadItem(
         {
