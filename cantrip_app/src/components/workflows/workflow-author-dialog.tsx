@@ -20,6 +20,7 @@ import { Loader2, Save, WandSparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -347,8 +348,8 @@ export function WorkflowAuthorDialog({
             </label>
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium">Scope</span>
-              <select
-                className="h-10 rounded-md border bg-background px-3 text-sm"
+              <NativeSelect
+                size="lg"
                 disabled={editing}
                 value={values.scope}
                 onChange={(event) =>
@@ -357,12 +358,12 @@ export function WorkflowAuthorDialog({
               >
                 <option value="project">Project</option>
                 <option value="personal">Personal</option>
-              </select>
+              </NativeSelect>
             </label>
             <label className="grid gap-1.5 text-sm">
               <span className="font-medium">Trust state</span>
-              <select
-                className="h-10 rounded-md border bg-background px-3 text-sm"
+              <NativeSelect
+                size="lg"
                 value={values.trustState}
                 onChange={(event) =>
                   set("trustState", event.target.value as WorkflowTrustState)
@@ -372,7 +373,7 @@ export function WorkflowAuthorDialog({
                 <option value="modified">Modified</option>
                 <option value="trusted">Trusted</option>
                 <option value="blocked">Blocked</option>
-              </select>
+              </NativeSelect>
             </label>
           </div>
           <label className="grid gap-1.5 text-sm">
@@ -410,8 +411,8 @@ export function WorkflowAuthorDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Source</span>
-                <select
-                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
+                  size="lg"
                   value={generationSource}
                   onChange={(event) =>
                     setGenerationSource(
@@ -423,12 +424,12 @@ export function WorkflowAuthorDialog({
                   <option value="chat">Selected agent</option>
                   <option value="runbook">Runbook</option>
                   <option value="demonstration">Demonstrated process</option>
-                </select>
+                </NativeSelect>
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Codex runtime</span>
-                <select
-                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
+                  size="lg"
                   value={generationChatId}
                   onChange={(event) => setGenerationChatId(event.target.value)}
                 >
@@ -437,7 +438,7 @@ export function WorkflowAuthorDialog({
                       {chat.title}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
             </div>
             <label className="grid gap-1.5 text-sm">

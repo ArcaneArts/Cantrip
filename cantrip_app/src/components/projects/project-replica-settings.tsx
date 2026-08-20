@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -243,7 +244,7 @@ export function ProjectReplicaSettings({
               set. Existing surfaces are not moved.
             </span>
           </span>
-          <select
+          <NativeSelect
             className={selectClass}
             value={project.preferredWorkerId ?? ""}
             disabled={preferredWorker.isPending}
@@ -257,7 +258,7 @@ export function ProjectReplicaSettings({
                 {worker.name} ({worker.online ? "online" : "offline"})
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
       </section>
 
@@ -276,9 +277,9 @@ export function ProjectReplicaSettings({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <select
+            <NativeSelect
               aria-label="Replica synchronization policy"
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+              size="sm"
               value={synchronizationPolicy}
               onChange={(event) =>
                 setSynchronizationPolicy(
@@ -288,7 +289,7 @@ export function ProjectReplicaSettings({
             >
               <option value="verify-only">Verify only</option>
               <option value="fast-forward-primary">Fast-forward Primary</option>
-            </select>
+            </NativeSelect>
             <Button
               size="sm"
               variant="outline"

@@ -20,6 +20,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -321,7 +322,7 @@ export function ProjectGithubConversion({
               <div className="flex items-end gap-2">
                 <label className="grid min-w-0 flex-1 gap-1.5 text-sm font-medium">
                   GitHub repository
-                  <select
+                  <NativeSelect
                     className="h-10 w-full rounded-md border bg-background px-3 font-normal outline-none ring-ring focus:ring-2"
                     disabled={runPreflight.isPending || start.isPending}
                     value={selectedRepositoryId}
@@ -335,7 +336,7 @@ export function ProjectGithubConversion({
                         {repository.nameWithOwner}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <Button
                   disabled={runPreflight.isPending || start.isPending}

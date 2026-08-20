@@ -23,6 +23,7 @@ import {
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -579,7 +580,7 @@ export function GitOperationPanel({
                       <input
                         autoFocus
                         list="git-operation-refs"
-                        className="h-9 rounded-md border bg-background px-3 text-sm"
+
                         placeholder="Tag, branch, or commit"
                         value={editor.goodRef}
                         onChange={(event) =>
@@ -591,7 +592,7 @@ export function GitOperationPanel({
                       <span>Known-bad revision</span>
                       <input
                         list="git-operation-refs"
-                        className="h-9 rounded-md border bg-background px-3 text-sm"
+
                         placeholder="HEAD"
                         value={editor.badRef}
                         onChange={(event) =>
@@ -612,10 +613,10 @@ export function GitOperationPanel({
                   </>
                 ) : (
                   <>
-                    <select
+                    <NativeSelect
                       autoFocus
                       aria-label="Operation source ref"
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
+
                       value={gitOperationEditorRef(editor)}
                       onChange={(event) =>
                         editor &&
@@ -633,9 +634,8 @@ export function GitOperationPanel({
                           {candidate.name} · {candidate.shortHash}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                     <input
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
                       placeholder="Or enter a revision"
                       value={gitOperationEditorRef(editor)}
                       onChange={(event) =>
@@ -785,7 +785,7 @@ export function GitOperationPanel({
                               <span className="sr-only">Move commit down</span>
                             </Button>
                           </div>
-                          <select
+                          <NativeSelect
                             aria-label={`Action for ${commit?.shortHash ?? item.revision.slice(0, 10)}`}
                             className="h-7 rounded border bg-background px-2 text-xs"
                             value={item.action}
@@ -816,7 +816,7 @@ export function GitOperationPanel({
                                 {action}
                               </option>
                             ))}
-                          </select>
+                          </NativeSelect>
                           <div className="min-w-0">
                             <p className="truncate text-xs">
                               {commit?.subject ?? item.revision}

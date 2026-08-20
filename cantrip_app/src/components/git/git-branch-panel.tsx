@@ -23,6 +23,7 @@ import {
 import { type FormEvent, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -587,9 +588,9 @@ export function GitBranchPanel({
                       setEditor({ ...editor, name: event.target.value })
                     }
                   />
-                  <select
+                  <NativeSelect
                     aria-label="Branch start point"
-                    className="h-9 rounded-md border bg-background px-3 text-sm"
+
                     value={editor.startPoint}
                     onChange={(event) =>
                       setEditor({ ...editor, startPoint: event.target.value })
@@ -601,7 +602,7 @@ export function GitBranchPanel({
                         {branch.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -622,8 +623,7 @@ export function GitBranchPanel({
                   }
                 />
               ) : editor?.type === "publish" ? (
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={editor.remote}
                   onChange={(event) =>
                     setEditor({ ...editor, remote: event.target.value })
@@ -632,10 +632,9 @@ export function GitBranchPanel({
                   {branches.data?.remotes.map((remote) => (
                     <option key={remote}>{remote}</option>
                   ))}
-                </select>
+                </NativeSelect>
               ) : editor?.type === "upstream" ? (
-                <select
-                  className="h-9 rounded-md border bg-background px-3 text-sm"
+                <NativeSelect
                   value={editor.upstream}
                   onChange={(event) =>
                     setEditor({ ...editor, upstream: event.target.value })
@@ -649,7 +648,7 @@ export function GitBranchPanel({
                         {branch.name}
                       </option>
                     ))}
-                </select>
+                </NativeSelect>
               ) : editor?.type === "deleteLocal" ? (
                 <>
                   <p className="text-sm">

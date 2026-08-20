@@ -30,6 +30,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   getServerBootstrap,
   getWorkerServiceLogs,
@@ -580,7 +581,7 @@ export function LogSettings() {
     <div className="flex h-full min-h-0 w-full flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {compact ? (
-          <select
+          <NativeSelect
             aria-label="Log source"
             className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm"
             value={selectedSource.id}
@@ -591,7 +592,7 @@ export function LogSettings() {
                 {source.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         ) : null}
         <div className="relative min-w-40 flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -603,7 +604,7 @@ export function LogSettings() {
             onChange={(event) => setSearch(event.target.value)}
           />
         </div>
-        <select
+        <NativeSelect
           aria-label="Minimum log level"
           className="h-9 rounded-md border bg-background px-2 text-xs"
           value={minimumLevel}
@@ -616,7 +617,7 @@ export function LogSettings() {
               {level === "trace" ? "All levels" : `${level}+`}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <Button
           type="button"
           size="sm"

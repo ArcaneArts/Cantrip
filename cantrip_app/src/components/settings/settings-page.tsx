@@ -55,6 +55,7 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   BUILTIN_PERMISSION_PROFILES,
   permissionProfileLabel,
@@ -1189,8 +1190,8 @@ export function SettingsPage({
                         <span className="text-muted-foreground">
                           Frame rate
                         </span>
-                        <select
-                          className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                        <NativeSelect
+                          size="sm"
                           aria-label="Remote Desktop frame rate"
                           value={
                             settings.data?.preferences.desktopFrameRate ?? 30
@@ -1206,12 +1207,12 @@ export function SettingsPage({
                           <option value={15}>15 FPS</option>
                           <option value={30}>30 FPS</option>
                           <option value={60}>60 FPS max</option>
-                        </select>
+                        </NativeSelect>
                       </label>
                       <label className="flex items-center gap-2 text-xs">
                         <span className="text-muted-foreground">Quality</span>
-                        <select
-                          className="h-8 rounded-md border bg-background px-2 text-xs outline-none ring-ring focus:ring-2"
+                        <NativeSelect
+                          size="sm"
                           aria-label="Remote Desktop stream quality"
                           value={
                             settings.data?.preferences.desktopStreamQuality ??
@@ -1229,7 +1230,7 @@ export function SettingsPage({
                           <option value="data-saver">Data saver</option>
                           <option value="balanced">Balanced</option>
                           <option value="sharp">Sharp</option>
-                        </select>
+                        </NativeSelect>
                       </label>
                     </div>
                   </div>
@@ -1342,7 +1343,7 @@ export function SettingsPage({
 
                   <label className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5 text-xs">
                     <span className="font-medium">Default for new agents</span>
-                    <select
+                    <NativeSelect
                       value={settings.data?.preferences.defaultModelId ?? ""}
                       onChange={(event) =>
                         preferences.mutate({
@@ -1357,7 +1358,7 @@ export function SettingsPage({
                           {model.name}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </label>
 
                   <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_40px] gap-3 border-y px-3 py-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:grid">
@@ -1635,7 +1636,7 @@ export function SettingsPage({
                 />
               </Field>
               <Field label="Provider type">
-                <select
+                <NativeSelect
                   value={providerSetup}
                   onChange={(event) => {
                     const setup = event.target.value as ProviderSetupKind;
@@ -1672,7 +1673,7 @@ export function SettingsPage({
                   </option>
                   <option value="chatgpt">ChatGPT Account</option>
                   <option value="grok">Grok / SuperGrok Account</option>
-                </select>
+                </NativeSelect>
               </Field>
               {!isAccountProviderKind(providerKind) &&
               providerSetup !== "zai" ? (
@@ -2208,7 +2209,7 @@ export function SettingsPage({
                         <span className="font-medium text-muted-foreground sm:sr-only">
                           Provider
                         </span>
-                        <select
+                        <NativeSelect
                           required
                           value={route.providerId}
                           onChange={(event) =>
@@ -2231,7 +2232,7 @@ export function SettingsPage({
                               {providerRouteLabel(provider)}
                             </option>
                           ))}
-                        </select>
+                        </NativeSelect>
                       </label>
                       <label className="grid min-w-0 gap-1 text-xs">
                         <span className="font-medium text-muted-foreground sm:sr-only">

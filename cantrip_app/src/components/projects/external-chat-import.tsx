@@ -17,6 +17,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -590,8 +591,8 @@ export function ExternalChatImportSettings({
                 ) : (
                   <label className="grid gap-1.5 text-xs font-medium">
                     Destination
-                    <select
-                      className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                    <NativeSelect
+                      className="bg-transparent"
                       value={destinationWorktreeId}
                       onChange={(event) =>
                         setDestinationWorktreeId(event.target.value)
@@ -603,13 +604,13 @@ export function ExternalChatImportSettings({
                           {externalChatWorktreeLabel(worktree, workersById)}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                   </label>
                 )}
                 <label className="grid gap-1.5 text-xs font-medium">
                   Model for future messages
-                  <select
-                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                  <NativeSelect
+                    className="bg-transparent"
                     value={modelId}
                     onChange={(event) => {
                       setModelId(event.target.value);
@@ -625,12 +626,12 @@ export function ExternalChatImportSettings({
                         {model.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="grid gap-1.5 text-xs font-medium">
                   Provider route
-                  <select
-                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                  <NativeSelect
+                    className="bg-transparent"
                     value={routeId}
                     disabled={!selectedModel}
                     onChange={(event) => {
@@ -644,12 +645,12 @@ export function ExternalChatImportSettings({
                         {route.providerName} · {route.modelName}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="grid gap-1.5 text-xs font-medium">
                   Provider account
-                  <select
-                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                  <NativeSelect
+                    className="bg-transparent"
                     value={accountId}
                     disabled={!selectedRoute || !accounts.length}
                     onChange={(event) => setAccountId(event.target.value)}
@@ -661,12 +662,12 @@ export function ExternalChatImportSettings({
                         {account.email ? ` · ${account.email}` : ""}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="grid gap-1.5 text-xs font-medium">
                   Permissions
-                  <select
-                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                  <NativeSelect
+                    className="bg-transparent"
                     value={permissionProfileId}
                     onChange={(event) =>
                       setPermissionProfileId(event.target.value)
@@ -674,12 +675,12 @@ export function ExternalChatImportSettings({
                   >
                     <option value=":workspace">Workspace access</option>
                     <option value=":read-only">Read only</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="grid gap-1.5 text-xs font-medium">
                   Conversation mode
-                  <select
-                    className="h-9 rounded-md border bg-transparent px-3 text-sm"
+                  <NativeSelect
+                    className="bg-transparent"
                     value={planMode}
                     onChange={(event) =>
                       setPlanMode(event.target.value as "default" | "plan")
@@ -687,7 +688,7 @@ export function ExternalChatImportSettings({
                   >
                     <option value="default">Default</option>
                     <option value="plan">Plan mode</option>
-                  </select>
+                  </NativeSelect>
                 </label>
               </div>
 

@@ -29,6 +29,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogClose,
@@ -905,7 +906,7 @@ export function WorkerSettings() {
                 Preferred machine when a project does not override placement.
               </span>
             </span>
-            <select
+            <NativeSelect
               className={inputClass}
               disabled={settings.isLoading || updatePlacementPolicy.isPending}
               value={settings.data?.preferences.defaultWorkerId ?? ""}
@@ -921,7 +922,7 @@ export function WorkerSettings() {
                   {worker.name} ({worker.online ? "online" : "offline"})
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <label className="flex cursor-pointer items-center justify-between gap-4 px-3 py-3">
             <span className="flex min-w-0 items-start gap-2.5">
@@ -963,7 +964,7 @@ export function WorkerSettings() {
                 </span>
               </span>
             </span>
-            <select
+            <NativeSelect
               className={inputClass}
               disabled={settings.isLoading || updatePlacementPolicy.isPending}
               value={
@@ -982,7 +983,7 @@ export function WorkerSettings() {
               <option value="fast-forward-primary">
                 Fast-forward clean Primary
               </option>
-            </select>
+            </NativeSelect>
           </label>
         </div>
         {settings.isError || updatePlacementPolicy.isError ? (
@@ -1153,7 +1154,7 @@ export function WorkerSettings() {
               </label>
               <label className="grid gap-1.5 text-sm">
                 <span className="font-medium">Code expires in</span>
-                <select
+                <NativeSelect
                   className={inputClass}
                   value={pairExpiry}
                   onChange={(event) =>
@@ -1163,7 +1164,7 @@ export function WorkerSettings() {
                   <option value={300}>5 minutes</option>
                   <option value={600}>10 minutes</option>
                   <option value={1800}>30 minutes</option>
-                </select>
+                </NativeSelect>
               </label>
               {pairing.isError ? (
                 <p className="text-sm text-destructive">

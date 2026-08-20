@@ -23,6 +23,7 @@ import { useMemo, useState } from "react";
 
 import { formatTokenCount } from "@/components/projects/token-usage-analytics";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -626,8 +627,8 @@ export function ProviderTelemetryDialog({
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <select
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+            <NativeSelect
+              size="sm"
               value={accountId}
               onChange={(event) => setAccountId(event.target.value)}
             >
@@ -637,8 +638,8 @@ export function ProviderTelemetryDialog({
                   {account.label}
                 </option>
               ))}
-            </select>
-            <select
+            </NativeSelect>
+            <NativeSelect
               className="h-8 max-w-64 rounded-md border bg-background px-2 text-xs"
               value={modelId}
               onChange={(event) => setModelId(event.target.value)}
@@ -649,9 +650,9 @@ export function ProviderTelemetryDialog({
                   {model.name}
                 </option>
               ))}
-            </select>
-            <select
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+            </NativeSelect>
+            <NativeSelect
+              size="sm"
               value={reasoningEffort}
               onChange={(event) => setReasoningEffort(event.target.value)}
             >
@@ -663,16 +664,16 @@ export function ProviderTelemetryDialog({
                   </option>
                 ),
               )}
-            </select>
-            <select
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+            </NativeSelect>
+            <NativeSelect
+              size="sm"
               value={days}
               onChange={(event) => setDays(Number(event.target.value))}
             >
               <option value={30}>30 days</option>
               <option value={90}>90 days</option>
               <option value={365}>1 year</option>
-            </select>
+            </NativeSelect>
           </div>
           {actionError ? (
             <p className="mt-2 text-xs text-destructive">{actionError}</p>

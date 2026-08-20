@@ -8,6 +8,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -142,8 +143,8 @@ export function GithubPullRequestLifecycleDialog({
               <>
                 <label className="block text-xs font-medium">
                   Merge method
-                  <select
-                    className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  <NativeSelect
+                    className="mt-1 w-full px-2"
                     value={method}
                     onChange={(event) =>
                       setMethod(
@@ -154,12 +155,12 @@ export function GithubPullRequestLifecycleDialog({
                     <option value="merge">Merge commit</option>
                     <option value="squash">Squash and merge</option>
                     <option value="rebase">Rebase and merge</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="block text-xs font-medium">
                   Commit title (optional)
                   <input
-                    className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    className="mt-1 w-full"
                     value={commitTitle}
                     onChange={(event) => setCommitTitle(event.target.value)}
                   />

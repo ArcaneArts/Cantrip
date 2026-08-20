@@ -7,6 +7,7 @@ import { Building2, Globe2, Loader2, Lock, User } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -111,7 +112,7 @@ export function GithubRepositoryCreateDialog({
             Owner
             <div className="relative">
               <Building2 className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <select
+              <NativeSelect
                 aria-label="Repository owner"
                 className="h-9 w-full appearance-none rounded-md border border-input bg-transparent pl-10 pr-8 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
                 disabled={owners.isLoading || createRepository.isPending}
@@ -128,7 +129,7 @@ export function GithubRepositoryCreateDialog({
                     </option>
                   ),
                 )}
-              </select>
+              </NativeSelect>
             </div>
             {owners.isError ? (
               <span className="font-normal text-destructive">

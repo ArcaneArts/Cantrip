@@ -26,6 +26,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -1209,7 +1210,7 @@ function SelectRemote({
   return (
     <label className="grid gap-1 text-xs text-muted-foreground">
       {label}
-      <select
+      <NativeSelect
         className="h-9 rounded-md border bg-background px-3 text-sm text-foreground"
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -1218,7 +1219,7 @@ function SelectRemote({
         {remotes.map((remote) => (
           <option key={remote.name}>{remote.name}</option>
         ))}
-      </select>
+      </NativeSelect>
     </label>
   );
 }
