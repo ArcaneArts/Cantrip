@@ -285,7 +285,12 @@ describe("private display-label lifecycle", () => {
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
       linkedChatId: null,
-      service: { enabled: false, command: "" },
+      stateProtection: await surfaces.protectTerminalState(
+        ids.terminal,
+        null,
+        "",
+      ),
+      serviceEnabled: false,
     };
     const explorer: ExplorerWireSummary = {
       ...common,

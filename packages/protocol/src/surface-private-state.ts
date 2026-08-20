@@ -40,7 +40,18 @@ export const terminalPrivateDirectorySchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("relative-path"),
-      path: z.string().min(1).max(8_192),
+      path: z
+        .string()
+        .min(1)
+        .max(4_096)
+        .refine(
+          (value) =>
+            !value.startsWith("/") &&
+            !/^[A-Za-z]:[\\/]/u.test(value) &&
+            !value.split(/[\\/]/u).includes("..") &&
+            !value.includes("\0"),
+          "Expected a safe repository-relative path.",
+        ),
     })
     .strict(),
 ]);

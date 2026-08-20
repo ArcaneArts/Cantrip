@@ -27,6 +27,7 @@ import type {
   PendingPlanQuestion,
   PlanStep,
   PrivateDisplayLabelOpaque,
+  SurfacePrivateStateOpaque,
   ProjectFolderManagement,
   ProjectOriginKind,
   ProjectFolderSetupJobError,
@@ -2308,7 +2309,9 @@ export const terminals = pgTable("terminals", {
   protectedLabel: jsonb("protected_label")
     .$type<PrivateDisplayLabelOpaque>()
     .notNull(),
-  directoryPath: text("directory_path").notNull().default(""),
+  protectedState: jsonb("protected_state")
+    .$type<SurfacePrivateStateOpaque>()
+    .notNull(),
   position: integer("position").notNull().default(0),
   status: text("status").notNull().default("idle"),
   activeWorkerId: text("active_worker_id")
@@ -2321,7 +2324,6 @@ export const terminals = pgTable("terminals", {
     .unique()
     .references(() => chats.id, { onDelete: "cascade" }),
   serviceEnabled: boolean("service_enabled").notNull().default(false),
-  serviceCommand: text("service_command").notNull().default(""),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

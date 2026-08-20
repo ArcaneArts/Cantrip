@@ -160,6 +160,7 @@ describe("project settings", () => {
       activeWorkerId: "worker-1",
       worktreeId: worktree.id,
       linkedChatId: null,
+      directoryPath: null,
       service: { enabled: false, command: "" },
       createdAt: now,
       updatedAt: now,

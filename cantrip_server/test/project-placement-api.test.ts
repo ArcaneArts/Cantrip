@@ -29,6 +29,7 @@ import {
   protectedChatFields,
   protectedDisplayLabelFields,
   protectedProjectFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
@@ -499,7 +500,7 @@ describe.sequential("project execution placement API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/terminals`,
       payload: {
-        ...protectedDisplayLabelFields("terminal"),
+        ...protectedTerminalFields(),
         target: {
           kind: "worktree",
           projectId,
@@ -721,7 +722,7 @@ describe.sequential("project execution placement API", () => {
           method: "POST",
           url: `/api/projects/${projectId}/terminals`,
           payload: {
-            ...protectedDisplayLabelFields("terminal"),
+            ...protectedTerminalFields(),
             target: {
               kind: "worktree",
               projectId,
@@ -1005,7 +1006,10 @@ describe.sequential("project execution placement API", () => {
     await database.repository.updateTerminalService(
       LOCAL_USER_ID,
       terminal.id,
-      { enabled: true, command: "pnpm dev" },
+      {
+        enabled: true,
+        stateProtection: protectedTerminalFields(terminal.id).stateProtection,
+      },
     );
     const cliWrite = await cli("explorer.write", {
       target: explorer.id,
@@ -1146,7 +1150,7 @@ describe.sequential("project execution placement API", () => {
           method: "POST",
           url: `/api/projects/${projectId}/terminals`,
           payload: {
-            ...protectedDisplayLabelFields("terminal"),
+            ...protectedTerminalFields(),
             target: {
               kind: "worktree",
               projectId,

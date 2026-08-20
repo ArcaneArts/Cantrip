@@ -155,6 +155,7 @@ import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { TerminalManager } from "./terminal-manager.js";
+import { openTerminalPrivateState } from "./terminal-private-state.js";
 import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
@@ -1146,7 +1147,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "project.files.delete":
         return github.deleteRepository(command.path);
       case "project.script-commands":
-        return discoverScriptCommands(command.cwd);
+        try {
+          return await discoverScriptCommands(
+            (
+              await openTerminalPrivateState({
+                serverId: command.serverId,
+                terminalId: command.terminalId,
+                worktreePath: command.worktreePath,
+                stateProtection: command.stateProtection,
+                service: workerEncryption,
+              })
+            ).cwd,
+          );
+        } catch {
+          throw new Error("Could not discover terminal script commands.");
+        }
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
       case "project.folder-stats":
@@ -1702,58 +1717,70 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "attachment.delete":
         await attachments.remove(command.chatId, command.attachmentId);
         return { accepted: true };
-      case "terminal.open":
-        if (command.launch.type === "codex") {
-          const runtime = runtimeFor(command.launch);
-          if (
-            command.launch.threadId &&
-            !terminals.hasLiveSession(command.terminalId)
-          ) {
-            const mcpServers = command.launch.mcpServers
-              ? await agentMcpServers(command.cwd, command.launch.mcpServers)
-              : undefined;
-            await runtime.prepareExternalSync({
-              cwd: command.cwd,
-              mcpServers,
-              model: command.launch.model,
-              permissionProfileId:
-                command.launch.permissionProfileId ?? ":workspace",
-              provider: command.launch.provider,
-              threadId: command.launch.threadId,
-            });
+      case "terminal.open": {
+        try {
+          const { cwd } = await openTerminalPrivateState({
+            serverId: command.serverId,
+            terminalId: command.terminalId,
+            worktreePath: command.worktreePath,
+            stateProtection: command.stateProtection,
+            service: workerEncryption,
+          });
+          if (command.launch.type === "codex") {
+            const runtime = runtimeFor(command.launch);
+            if (
+              command.launch.threadId &&
+              !terminals.hasLiveSession(command.terminalId)
+            ) {
+              const mcpServers = command.launch.mcpServers
+                ? await agentMcpServers(cwd, command.launch.mcpServers)
+                : undefined;
+              await runtime.prepareExternalSync({
+                cwd,
+                mcpServers,
+                model: command.launch.model,
+                permissionProfileId:
+                  command.launch.permissionProfileId ?? ":workspace",
+                provider: command.launch.provider,
+                threadId: command.launch.threadId,
+              });
+            }
+            return await terminals.open(
+              command.terminalId,
+              command.attachmentId,
+              cwd,
+              command.cols,
+              command.rows,
+              {
+                ...command.launch,
+                binary: config.codexBinary,
+                codexHome: accountBackedProvider(command.launch.provider.kind)
+                  ? accountHomeFor(
+                      command.launch.provider.credentialHomeKey ??
+                        command.launch.provider.id,
+                    )
+                  : codexHome,
+                remoteUrl: await runtime.remoteEndpoint(
+                  command.launch.model,
+                  command.launch.provider,
+                ),
+              },
+              emit,
+            );
           }
-          return terminals.open(
+          return await terminals.open(
             command.terminalId,
             command.attachmentId,
-            command.cwd,
+            cwd,
             command.cols,
             command.rows,
-            {
-              ...command.launch,
-              binary: config.codexBinary,
-              codexHome: accountBackedProvider(command.launch.provider.kind)
-                ? accountHomeFor(
-                    command.launch.provider.credentialHomeKey ??
-                      command.launch.provider.id,
-                  )
-                : codexHome,
-              remoteUrl: await runtime.remoteEndpoint(
-                command.launch.model,
-                command.launch.provider,
-              ),
-            },
+            command.launch,
             emit,
           );
+        } catch {
+          throw new Error("The terminal could not be opened.");
         }
-        return terminals.open(
-          command.terminalId,
-          command.attachmentId,
-          command.cwd,
-          command.cols,
-          command.rows,
-          command.launch,
-          emit,
-        );
+      }
       case "terminal.detach":
         return terminals.detach(command.terminalId, command.attachmentId);
       case "terminal.input":
@@ -1768,8 +1795,31 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "terminal.snapshot":
         return terminals.snapshot(command.terminalId, command.maxChars);
       case "terminal.services.reconcile":
-        terminals.reconcileServices(command.services);
-        return { accepted: true };
+        try {
+          terminals.reconcileServices(
+            await Promise.all(
+              command.services.map(async (service) => {
+                const state = await openTerminalPrivateState({
+                  ...service,
+                  service: workerEncryption,
+                });
+                if (state.serviceCommand.trim().length === 0) {
+                  throw new Error(
+                    "An enabled terminal service needs a command.",
+                  );
+                }
+                return {
+                  terminalId: service.terminalId,
+                  cwd: state.cwd,
+                  command: state.serviceCommand,
+                };
+              }),
+            ),
+          );
+          return { accepted: true };
+        } catch {
+          throw new Error("Terminal services could not be reconciled.");
+        }
       case "terminal.service.restart":
         terminals.restartService(command.terminalId);
         return { accepted: true };

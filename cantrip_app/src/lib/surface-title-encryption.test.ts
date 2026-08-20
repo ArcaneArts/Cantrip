@@ -73,7 +73,12 @@ describe("surface title encryption adapter", () => {
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
       linkedChatId: null,
-      service: { enabled: false, command: "" },
+      stateProtection: await adapter.protectTerminalState(
+        ids.terminal,
+        "packages/app",
+        "pnpm dev",
+      ),
+      serviceEnabled: true,
     };
     const explorer: ExplorerWireSummary = {
       ...common,
@@ -163,6 +168,8 @@ describe("surface title encryption adapter", () => {
 
     await expect(adapter.openTerminal(terminal)).resolves.toMatchObject({
       title: "Private terminal",
+      directoryPath: "packages/app",
+      service: { enabled: true, command: "pnpm dev" },
     });
     await expect(adapter.openExplorer(explorer)).resolves.toMatchObject({
       title: "Private explorer",
@@ -201,7 +208,8 @@ describe("surface title encryption adapter", () => {
       activeWorkerId: "worker-a",
       worktreeId: "worktree-a",
       linkedChatId: null,
-      service: { enabled: false, command: "" },
+      stateProtection: await adapter.protectTerminalState(replayedId, null, ""),
+      serviceEnabled: false,
       createdAt: timestamp,
       updatedAt: timestamp,
     };

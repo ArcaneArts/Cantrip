@@ -54,6 +54,7 @@ import {
   workerEncryptionStatusSchema,
 } from "./encryption.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
+import { terminalPrivateStateOpaqueSchema } from "./surface-private-state.js";
 
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
@@ -3863,9 +3864,8 @@ export const repositoryRelativePathSchema = z
     "Expected a safe repository-relative path.",
   );
 
-const terminalCreateBaseSchema = z
+const terminalPlacementSchema = z
   .object({
-    directoryPath: repositoryRelativePathSchema.optional(),
     worktreeId: z.string().min(1).optional(),
     tabGroupId: z.string().min(1).optional(),
     target: executionTargetSchema.optional(),
@@ -3874,15 +3874,18 @@ const terminalCreateBaseSchema = z
     message: "Choose either a legacy worktreeId or an execution target.",
   });
 
-export const terminalCreateSchema = terminalCreateBaseSchema.safeExtend({
+export const terminalCreateSchema = terminalPlacementSchema.safeExtend({
+  directoryPath: repositoryRelativePathSchema.optional(),
   title: z.string().trim().min(1).max(200).default("Terminal"),
 });
 
-export const encryptedTerminalCreateSchema = terminalCreateBaseSchema
+export const encryptedTerminalCreateSchema = terminalPlacementSchema
   .safeExtend({
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: terminalPrivateStateOpaqueSchema,
   })
+  .strict()
   .refine(
     (input) => input.titleProtection.classification.recordKind === "terminal",
     {
@@ -3895,6 +3898,7 @@ export const encryptedLinkedConsoleCreateSchema = z
   .object({
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: terminalPrivateStateOpaqueSchema,
   })
   .strict()
   .refine(
@@ -3935,17 +3939,21 @@ export const terminalServiceConfigurationSchema = z
     }
   });
 
-export const terminalServiceRuntimeConfigurationSchema = z.object({
-  terminalId: z.string().min(1),
-  cwd: z.string().min(1).max(8_192),
-  command: z
-    .string()
-    .min(1)
-    .max(100_000)
-    .refine((command) => command.trim().length > 0, {
-      message: "Terminal service command is required.",
-    }),
-});
+export const encryptedTerminalServiceConfigurationSchema = z
+  .object({
+    enabled: z.boolean(),
+    stateProtection: terminalPrivateStateOpaqueSchema,
+  })
+  .strict();
+
+export const terminalServiceRuntimeConfigurationSchema = z
+  .object({
+    terminalId: z.string().min(1),
+    serverId: z.string().min(1).max(255),
+    worktreePath: z.string().min(1).max(8_192),
+    stateProtection: terminalPrivateStateOpaqueSchema,
+  })
+  .strict();
 
 const terminalSummaryBaseSchema = z.object({
   id: z.string().min(1),
@@ -3955,20 +3963,23 @@ const terminalSummaryBaseSchema = z.object({
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
   linkedChatId: z.string().min(1).nullable(),
-  service: terminalServiceConfigurationSchema.default({
-    enabled: false,
-    command: "",
-  }),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
 
 export const terminalSummarySchema = terminalSummaryBaseSchema.extend({
   title: z.string().min(1).max(200),
+  directoryPath: repositoryRelativePathSchema.nullable(),
+  service: terminalServiceConfigurationSchema,
 });
 
 export const terminalWireSummarySchema = terminalSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: terminalPrivateStateOpaqueSchema,
+    serviceEnabled: z.boolean(),
+  })
+  .strict()
   .refine(
     (terminal) =>
       terminal.titleProtection.classification.recordKind === "terminal",
@@ -9558,10 +9569,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.files.delete"),
     path: z.string().min(1),
   }),
-  z.object({
-    type: z.literal("project.script-commands"),
-    cwd: z.string().min(1).max(8_192),
-  }),
+  z
+    .object({
+      type: z.literal("project.script-commands"),
+      terminalId: z.string().min(1).max(200),
+      serverId: z.string().min(1).max(255),
+      worktreePath: z.string().min(1).max(8_192),
+      stateProtection: terminalPrivateStateOpaqueSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("project.repository-stats"),
     cwd: z.string().min(1).max(8_192),
@@ -10238,25 +10254,29 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     chatId: z.string().min(1).max(200),
     attachmentId: z.string().min(1).max(200),
   }),
-  z.object({
-    type: z.literal("terminal.open"),
-    terminalId: z.string().min(1),
-    attachmentId: z.string().min(1),
-    cwd: z.string().min(1),
-    cols: z.number().int().min(1).max(1_000),
-    rows: z.number().int().min(1).max(1_000),
-    launch: z.discriminatedUnion("type", [
-      z.object({ type: z.literal("shell") }),
-      z.object({
-        type: z.literal("codex"),
-        threadId: z.string().min(1).nullable(),
-        model: workerRuntimeModelSchema,
-        provider: workerRuntimeProviderSchema,
-        permissionProfileId: permissionProfileIdSchema.optional(),
-        mcpServers: z.array(mcpServerConfigurationSchema).max(200).optional(),
-      }),
-    ]),
-  }),
+  z
+    .object({
+      type: z.literal("terminal.open"),
+      terminalId: z.string().min(1),
+      attachmentId: z.string().min(1),
+      serverId: z.string().min(1).max(255),
+      worktreePath: z.string().min(1).max(8_192),
+      stateProtection: terminalPrivateStateOpaqueSchema,
+      cols: z.number().int().min(1).max(1_000),
+      rows: z.number().int().min(1).max(1_000),
+      launch: z.discriminatedUnion("type", [
+        z.object({ type: z.literal("shell") }),
+        z.object({
+          type: z.literal("codex"),
+          threadId: z.string().min(1).nullable(),
+          model: workerRuntimeModelSchema,
+          provider: workerRuntimeProviderSchema,
+          permissionProfileId: permissionProfileIdSchema.optional(),
+          mcpServers: z.array(mcpServerConfigurationSchema).max(200).optional(),
+        }),
+      ]),
+    })
+    .strict(),
   z.object({
     type: z.literal("terminal.detach"),
     terminalId: z.string().min(1),
@@ -11539,6 +11559,9 @@ export type EncryptedTerminalUpdate = z.infer<
 >;
 export type TerminalServiceConfiguration = z.infer<
   typeof terminalServiceConfigurationSchema
+>;
+export type EncryptedTerminalServiceConfiguration = z.infer<
+  typeof encryptedTerminalServiceConfigurationSchema
 >;
 export type TerminalServiceRuntimeConfiguration = z.infer<
   typeof terminalServiceRuntimeConfigurationSchema

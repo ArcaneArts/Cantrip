@@ -11,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
-import { terminalWebSocketUrl } from "@/lib/api";
+import { getWorkers, terminalWebSocketUrl } from "@/lib/api";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
 import {
@@ -19,6 +19,7 @@ import {
   stopDirectDesktopTerminal,
   type DesktopTerminalConnection,
 } from "@/lib/desktop-terminal";
+import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import { cn } from "@/lib/utils";
 
 import { terminalCommandInput } from "./terminal-command-palette";
@@ -351,36 +352,64 @@ export function TerminalView({
       nextSocket.addEventListener("close", fail);
       nextSocket.addEventListener("error", fail);
     };
-    void startDirectDesktopTerminal(terminal.id)
-      .then((connection) => {
-        if (disposed) {
-          if (connection) void stopDirectDesktopTerminal(connection);
-          return;
-        }
-        directConnection = connection;
-        clientLogger.debug("Terminal surface transport selected", {
-          event: "surface.terminal.transport-selected",
-          operation: "select-transport",
-          subsystem: "terminal",
-          surfaceId: terminal.id,
-          transport: connection ? "direct" : "relay",
+    const startTransport = () => {
+      void startDirectDesktopTerminal(terminal.id)
+        .then((connection) => {
+          if (disposed) {
+            if (connection) void stopDirectDesktopTerminal(connection);
+            return;
+          }
+          directConnection = connection;
+          clientLogger.debug("Terminal surface transport selected", {
+            event: "surface.terminal.transport-selected",
+            operation: "select-transport",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+            transport: connection ? "direct" : "relay",
+          });
+          connectSocket(
+            connection?.url ?? terminalWebSocketUrl(terminal.id),
+            Boolean(connection),
+          );
+        })
+        .catch((error: unknown) => {
+          clientLogger.warn("Terminal direct transport discovery failed", {
+            ...operationalErrorMetadata(error),
+            event: "surface.terminal.direct-discovery.failed",
+            operation: "discover-direct",
+            reasonCode: "discovery-failed",
+            status: "fallback",
+            subsystem: "terminal",
+            surfaceId: terminal.id,
+          });
+          if (!disposed)
+            connectSocket(terminalWebSocketUrl(terminal.id), false);
         });
-        connectSocket(
-          connection?.url ?? terminalWebSocketUrl(terminal.id),
-          Boolean(connection),
-        );
+    };
+    void getWorkers()
+      .then((workers) =>
+        ensureSurfacePrivateStateWorkerEncryption({
+          worker: workers.find(
+            (worker) => worker.workerId === terminal.activeWorkerId,
+          ),
+        }),
+      )
+      .then(() => {
+        if (!disposed) startTransport();
       })
       .catch((error: unknown) => {
-        clientLogger.warn("Terminal direct transport discovery failed", {
+        if (disposed) return;
+        setError("Terminal encryption is unavailable for this worker.");
+        clientLogger.warn("Terminal encryption preparation failed", {
           ...operationalErrorMetadata(error),
-          event: "surface.terminal.direct-discovery.failed",
-          operation: "discover-direct",
-          reasonCode: "discovery-failed",
-          status: "fallback",
+          event: "surface.terminal.encryption.failed",
+          operation: "prepare-encryption",
+          reasonCode: "encryption-unavailable",
+          status: "failed",
           subsystem: "terminal",
           surfaceId: terminal.id,
         });
-        if (!disposed) connectSocket(terminalWebSocketUrl(terminal.id), false);
+        scheduleReconnect();
       });
 
     return () => {
@@ -403,7 +432,7 @@ export function TerminalView({
       releaseDirect();
       xterm.dispose();
     };
-  }, [connectionKey, terminal.id]);
+  }, [connectionKey, terminal.activeWorkerId, terminal.id]);
 
   const setCommandPaletteOpen = (open: boolean) => {
     onCommandPaletteOpenChange?.(open);

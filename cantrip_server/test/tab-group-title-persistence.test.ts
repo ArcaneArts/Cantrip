@@ -19,6 +19,7 @@ import { LOCAL_USER_ID } from "../src/db/repository.js";
 import {
   protectedDisplayLabelFields,
   protectedProjectFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 it("persists custom tab-group titles only as authenticated ciphertext", async () => {
@@ -85,7 +86,7 @@ it("persists custom tab-group titles only as authenticated ciphertext", async ()
     const terminal = await database.repository.createTerminal(
       LOCAL_USER_ID,
       project.id,
-      protectedDisplayLabelFields("terminal"),
+      protectedTerminalFields(),
     );
     expect(terminal).not.toBeNull();
     let layout = await database.repository.tabLayouts.get(

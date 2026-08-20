@@ -125,7 +125,7 @@ import type {
   EncryptedProjectViewUpdate,
   SettingsBundle,
   EncryptedTerminalCreate,
-  TerminalServiceConfiguration,
+  EncryptedTerminalServiceConfiguration,
   TerminalServiceRuntimeConfiguration,
   TerminalWireSummary,
   EncryptedTerminalUpdate,
@@ -247,15 +247,6 @@ import {
   projectTabKey,
   ProjectTabLayoutRepository,
 } from "./tab-layouts.js";
-
-function terminalWorkingDirectory(
-  sourceRoot: string,
-  directoryPath: string,
-): string {
-  if (!directoryPath) return sourceRoot;
-  const root = sourceRoot.replace(/[\\/]+$/u, "") || sourceRoot;
-  return `${root}/${directoryPath.replaceAll("\\", "/")}`;
-}
 
 export const LOCAL_USER_ID = "00000000-0000-0000-0000-000000000001";
 export const DEFAULT_OLLAMA_PROVIDER_ID =
@@ -442,14 +433,15 @@ export interface TunnelAttachmentAuthorization {
 }
 
 export interface TerminalExecutionContext {
-  cwd: string;
   linkedChatId: string | null;
   projectId: string;
   rootKind: ProjectWorktreeSummary["rootKind"];
-  service: TerminalServiceConfiguration;
+  serviceEnabled: boolean;
+  stateProtection: TerminalWireSummary["stateProtection"];
   status: TerminalWireSummary["status"];
   terminalId: string;
   workerId: string;
+  worktreePath: string;
   worktreeId: string;
 }
 
@@ -1494,10 +1486,8 @@ function toTerminalWireSummary(
     activeWorkerId: terminal.activeWorkerId,
     worktreeId: terminal.worktreeId,
     linkedChatId: terminal.linkedChatId,
-    service: {
-      enabled: terminal.serviceEnabled,
-      command: terminal.serviceCommand,
-    },
+    serviceEnabled: terminal.serviceEnabled,
+    stateProtection: terminal.protectedState,
     createdAt: toISOString(terminal.createdAt),
     updatedAt: toISOString(terminal.updatedAt),
   };
@@ -12280,7 +12270,7 @@ export class ServerRepository {
           id: input.id,
           projectId,
           protectedLabel: input.titleProtection,
-          directoryPath: input.directoryPath ?? "",
+          protectedState: input.stateProtection,
           position,
           activeWorkerId: workerId,
           worktreeId,
@@ -12300,7 +12290,10 @@ export class ServerRepository {
   async getOrCreateChatConsole(
     ownerId: string,
     chatId: string,
-    input: Pick<EncryptedTerminalCreate, "id" | "titleProtection">,
+    input: Pick<
+      EncryptedTerminalCreate,
+      "id" | "titleProtection" | "stateProtection"
+    >,
   ): Promise<TerminalWireSummary | null> {
     const rows = await this.database
       .select({ chat: schema.chats, worktree: schema.projectWorktrees })
@@ -12334,6 +12327,7 @@ export class ServerRepository {
         id: input.id,
         projectId: row.chat.projectId,
         protectedLabel: input.titleProtection,
+        protectedState: input.stateProtection,
         position: row.chat.position,
         status: "running",
         activeWorkerId: row.worktree.workerId,
@@ -12364,7 +12358,7 @@ export class ServerRepository {
   async updateTerminalService(
     ownerId: string,
     terminalId: string,
-    input: TerminalServiceConfiguration,
+    input: EncryptedTerminalServiceConfiguration,
   ): Promise<TerminalWireSummary | null> {
     const owned = await this.getTerminalExecutionContext(ownerId, terminalId);
     if (!owned) return null;
@@ -12375,7 +12369,7 @@ export class ServerRepository {
       .update(schema.terminals)
       .set({
         serviceEnabled: input.enabled,
-        serviceCommand: input.command,
+        protectedState: input.stateProtection,
         updatedAt: new Date(),
       })
       .where(eq(schema.terminals.id, terminalId))
@@ -12385,6 +12379,7 @@ export class ServerRepository {
 
   async listTerminalServicesForWorker(
     workerId: string,
+    serverId: string,
   ): Promise<TerminalServiceRuntimeConfiguration[]> {
     const rows = await this.database
       .select({
@@ -12404,11 +12399,9 @@ export class ServerRepository {
       );
     return rows.map(({ terminal, worktree }) => ({
       terminalId: terminal.id,
-      cwd: terminalWorkingDirectory(
-        worktree.absolutePath,
-        terminal.directoryPath,
-      ),
-      command: terminal.serviceCommand,
+      serverId,
+      worktreePath: worktree.absolutePath,
+      stateProtection: terminal.protectedState,
     }));
   }
 
@@ -13776,15 +13769,10 @@ export class ServerRepository {
           rootKind: row.worktree.rootKind,
           workerId: row.terminal.activeWorkerId,
           worktreeId: row.worktree.id,
-          cwd: terminalWorkingDirectory(
-            row.worktree.absolutePath,
-            row.terminal.directoryPath,
-          ),
+          worktreePath: row.worktree.absolutePath,
           linkedChatId: row.terminal.linkedChatId,
-          service: {
-            enabled: row.terminal.serviceEnabled,
-            command: row.terminal.serviceCommand,
-          },
+          serviceEnabled: row.terminal.serviceEnabled,
+          stateProtection: row.terminal.protectedState,
           status: row.terminal.status as TerminalWireSummary["status"],
         }
       : null;
