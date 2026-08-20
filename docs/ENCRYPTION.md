@@ -196,8 +196,9 @@ also verifies that switching servers locks in-memory encryption keys.
 
 An irreparably malformed local device record is different from an unknown
 future format. The client deletes and replaces only a malformed local
-nonextractable key, then requires the normal password or recovery wrapper once
-to authorize the replacement key. Unknown versions remain untouched and fail
+nonextractable key, then requires the normal login password once to authorize
+the replacement key in account mode, or an existing authorized endpoint in
+anonymous local mode. Unknown versions remain untouched and fail
 closed so a newer client may still recover them. If this condition is found
 while the application is already mounted (for example after a development hot
 reload), a protected workspace mutation returns the application to sign-in
@@ -206,9 +207,10 @@ can authorize the replacement without that credential step.
 
 Nonextractable browser keys are still usable by JavaScript running in the same
 origin, so they do not protect against a malicious server that changes the
-served application. Clearing site data also deletes the device key and
-requires another recovery or authorization path. Account initialization and
-the workspace-name adapter consume this custody boundary as described below.
+served application. Clearing site data also deletes the device key and requires
+normal sign-in or authorization from an existing endpoint. Account
+initialization and the workspace-name adapter consume this custody boundary as
+described below.
 
 ### Account initialization and unlock
 
@@ -219,7 +221,8 @@ gate in
 now initialize or unlock encryption before the application router mounts.
 Registration and interactive sign-in reuse the password already present in
 the form for that one operation. An existing cookie session with no profile,
-or a new device with no wrapper, receives a focused reauthentication prompt.
+or a new device with no wrapper, returns to the normal sign-in flow once so
+the same login password is available to the encryption operation.
 The password is passed directly to the encryption operation, never stored, and
 is not requested again after that device has an active wrapper.
 
@@ -233,12 +236,12 @@ authorizes its device against that existing key. Missing, conflicting,
 revoked, malformed, or unknown-version state never opens the application or
 permits protected-data mutations.
 
-Anonymous local mode generates a random recovery secret, uses it to wrap the
-Account Master Key, and displays it once. The server stores only the
-independently salted wrapper; the secret is neither persisted by the client nor
-sent as a server-readable convenience key. A later local device must present
-that recovery secret. Losing it and every authorized endpoint makes the data
-unrecoverable.
+Anonymous local mode never invents a user-managed credential. Its random
+Account Master Key is wrapped only to the local client's nonextractable device
+key, with separately scoped grants for workers. A later local client must be
+authorized by an existing endpoint or the local encrypted data must be reset.
+Losing every authorized endpoint makes the data unrecoverable, while a server
+database copy alone still cannot decrypt it.
 
 Password rewraps are locally opened and compared with the in-memory Account
 Master Key before submission. For account password changes,
@@ -247,16 +250,15 @@ verifies the current password and transactionally updates both the
 authentication verifier and the new opaque password wrapper under an
 optimistic profile revision. The Account Master Key, payload ciphertext, and
 device or worker grants do not change. A forgotten-password reset still
-requires an already authorized client or separately held recovery material;
-there is intentionally no server-only reset path that replaces the encryption
-root.
+requires an already authorized client; there is intentionally no recovery
+secret or server-only reset path that replaces the encryption root.
 
 The focused
 [client initialization test](../cantrip_app/src/lib/account-encryption.test.ts)
-covers first initialization, existing-session prompting, new-device and
-restart unlock, incorrect passwords, concurrent initialization, anonymous
-recovery, locked mutation behavior, and password rewrap continuity. The
-[registry integration test](../cantrip_server/test/encryption-registry-api.test.ts)
+coverage includes first initialization, existing-session sign-in, new-device
+and restart unlock, incorrect passwords, concurrent initialization, local
+device-only custody, locked mutation behavior, and password rewrap continuity.
+The [registry integration test](../cantrip_server/test/encryption-registry-api.test.ts)
 also verifies server reauthentication and atomic password/verifier-wrapper
 replacement.
 
@@ -351,7 +353,7 @@ compromise of that worker host exposes every component granted to it. Scoped
 worker grants limit that blast radius and should be preferred over giving every
 worker the Account Master Key.
 
-### Password changes and recovery
+### Password changes and device loss
 
 Changing the login password must not require re-encrypting user data or
 reissuing worker grants:
@@ -367,13 +369,12 @@ reissuing worker grants:
    remain unchanged.
 
 A password reset cannot silently replace the encryption root. If the old
-password is unavailable, an authorized client or a separately generated
-recovery key must recover the Account Master Key and create a new password
-wrapper. If the password, recovery key, and all authorized client keys are
-lost, unrecoverability is an expected E2EE property rather than an
-implementation defect. Existing workers may continue using component keys
-already granted to them, but they must not automatically authorize a new
-client or replace the account recovery wrapper.
+password is unavailable, an already authorized client must retain the Account
+Master Key long enough to create a new password wrapper. If the password and
+all authorized client keys are lost, unrecoverability is an expected E2EE
+property rather than an implementation defect. Existing workers may continue
+using component keys already granted to them, but they must not automatically
+authorize a new client or replace the account password wrapper.
 
 ### Database-compromise property
 
@@ -393,9 +394,9 @@ database-compromise guarantee is described.
 | Data class                                                                       | Current protection                                                                                                          | Rollout status                                | E2EE feasibility     | Complexity  | What the server loses                                                                          |
 | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
 | Shared encryption formats and cryptographic primitives                           | Versioned endpoint-only primitives                                                                                          | Foundation complete                           | Required             | Medium      | No server decryption capability is introduced                                                  |
-| Account profiles, client wrappers, and scoped worker grants                      | Opaque versioned registry; no server key access                                                                             | Registry foundation complete                  | Required             | High        | Password-based server recovery and direct inspection of key material                           |
+| Account profiles, client wrappers, and scoped worker grants                      | Opaque versioned registry; no server key access                                                                             | Registry foundation complete                  | Required             | High        | Password-based server decryption and direct inspection of key material                         |
 | Client device-key custody and in-memory key handling                             | Nonextractable IndexedDB key; memory-only AMK                                                                               | Client custody complete                       | Required             | Medium      | No server decryption capability is introduced                                                  |
-| Account initialization, device authorization, and password lifecycle             | Client-only initialization and unlock                                                                                       | Client initialization complete                | Required             | High        | Server-only password reset and plaintext recovery                                              |
+| Account initialization, device authorization, and password lifecycle             | Login-password initialization plus device-key unlock; device-only anonymous local custody                                   | Client initialization complete                | Required             | High        | Server-only password reset and plaintext key recovery                                          |
 | Worker key custody, public registration, and scoped component grants             | Protected local private key; opaque server grants; Task operations require exact scoped readiness                           | Worker grants and Task readiness complete     | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                 |
 | Workspace display names                                                          | AES-256-GCM E2EE; client-only key                                                                                           | E2EE complete; lazy migration                 | Implemented          | Low-Medium  | Name-based server search and validation                                                        |
 | Project display names                                                            | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                                         | E2EE complete                                 | Implemented          | Medium      | Independent label search and presentation; repository identity remains queryable               |
@@ -1096,7 +1097,7 @@ worker creates encrypted planner/finalizer and Goal-turn assistant messages,
 encrypts Goal status responses, and opens Task relocation history only after it
 has the active `task-content` grant. Restart and relocation therefore reuse the
 worker's persistent private key and scoped server-held grant, not a password or
-server-readable recovery key.
+server-readable fallback key.
 
 Cantrip Server stores and publishes only opaque Task message summaries. It
 maintains message order, role, mode, attachment IDs, idempotency keys, model
@@ -1215,23 +1216,23 @@ counts, worker presence, model-route choices, and traffic patterns.
 
 1. **Envelope and key formats — complete:** versioned authenticated payload,
    password-wrapper, device-wrapper, and worker-grant formats plus shared
-   endpoint primitives are implemented. Recovery registration remains part of
-   client initialization.
+   endpoint primitives are implemented.
 2. **Opaque server key registry — complete:** public keys, independent password
    KDF metadata, wrapped keys, approval and revocation state, grant revisions,
    and migration state are persisted without server-side decryption.
 3. **Client key custody — complete:** generate a nonextractable device key,
    persist it behind a replaceable local-store adapter, keep unwrapped key
    material in memory, and lock it on identity or server lifecycle changes.
-4. **Client initialization and recovery — complete:** generate the Account
-   Master Key, create the independent password or anonymous recovery wrapper,
-   authorize client devices, unlock later sessions with the device key, and
-   keep password changes on the same encryption root.
-5. **Persistent worker grants — complete:** generate worker keypairs, authorize scoped
-   component keys once, and prove workers can restart and decrypt their granted
-   components without a client or password. Worker heartbeat status now reports
-   whether its endpoint key is pending, ready, or unavailable and which scoped
-   revisions are in memory.
+4. **Client initialization and authorization — complete:** generate the
+   Account Master Key, wrap it with the login password in account mode or only
+   to the initial device in anonymous local mode, authorize client devices,
+   unlock later sessions with the device key, and keep password changes on the
+   same encryption root.
+5. **Persistent worker grants — complete:** generate worker keypairs, authorize
+   scoped component keys once, and prove workers can restart and decrypt their
+   granted components without a client or password. Worker heartbeat status now
+   reports whether its endpoint key is pending, ready, or unavailable and which
+   scoped revisions are in memory.
 6. **First narrow payload — complete:** workspace display names use row-bound
    authenticated encryption and blind uniqueness tags. Unlocked clients lazily
    migrate legacy plaintext with explicit remaining counts and revision checks;
@@ -1276,8 +1277,8 @@ counts, worker presence, model-route choices, and traffic patterns.
     analytics according to the selected privacy mode.
 
 A usable first encrypted component is moderate in scope. A robust system with
-multi-device enrollment, unattended workers, recovery, rotation, migration,
-encrypted search, sharing, and revocation is a substantial security project.
-The strongest practical target is not “encrypt every column.” It is an opaque
-server control plane with encrypted user payloads, where authorized clients and
-workers are the only decryption principals.
+multi-device enrollment, unattended workers, device replacement, rotation,
+migration, encrypted search, sharing, and revocation is a substantial security
+project. The strongest practical target is not “encrypt every column.” It is an
+opaque server control plane with encrypted user payloads, where authorized
+clients and workers are the only decryption principals.

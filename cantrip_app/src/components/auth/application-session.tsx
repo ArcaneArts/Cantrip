@@ -7,11 +7,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import {
   AlertCircle,
-  KeyRound,
   Loader2,
   LockKeyhole,
   Server,
-  ShieldCheck,
   WandSparkles,
 } from "lucide-react";
 import {
@@ -45,10 +43,7 @@ import {
   setClientSession,
 } from "@/lib/client-session";
 import { errorMessage } from "@/lib/error-message";
-import {
-  prepareClientEncryption,
-  type ClientEncryptionCredential,
-} from "@/lib/account-encryption";
+import { prepareClientEncryption } from "@/lib/account-encryption";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 import {
@@ -80,15 +75,6 @@ type ApplicationSessionState =
       notice: string | null;
     }
   | ({ kind: "authenticated" } & AuthenticatedSessionContext)
-  | ({
-      credential: ClientEncryptionCredential;
-      kind: "encryption-required";
-      reason: "authorize-device" | "initialize";
-    } & AuthenticatedSessionContext)
-  | ({
-      kind: "encryption-recovery";
-      recoverySecret: string;
-    } & AuthenticatedSessionContext)
   | ({
       kind: "encryption-error";
       message: string;
@@ -268,18 +254,14 @@ async function encryptionSessionState(
   if (access.status === "ready") {
     return { kind: "authenticated", ...context };
   }
-  if (access.status === "recovery-created") {
-    return {
-      ...context,
-      kind: "encryption-recovery",
-      recoverySecret: access.recoverySecret,
-    };
-  }
+  clearClientSession();
   return {
-    ...context,
-    kind: "encryption-required",
-    credential: access.credential,
-    reason: access.reason,
+    kind: "signed-out",
+    bootstrap: context.bootstrap,
+    notice:
+      access.reason === "initialize"
+        ? "Sign in again once to finish setting up private data encryption."
+        : "Sign in again once to authorize this device for private data.",
   };
 }
 
@@ -610,124 +592,6 @@ function AuthenticationScreen({
   );
 }
 
-function EncryptionUnlockScreen({
-  credential,
-  onUnlock,
-  reason,
-}: Extract<ApplicationSessionState, { kind: "encryption-required" }> & {
-  onUnlock(value: string): Promise<void>;
-}) {
-  const [value, setValue] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const recovery = credential === "recovery-secret";
-  const initializing = reason === "initialize";
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      await onUnlock(value);
-      setValue("");
-    } catch (submitError) {
-      setError(errorMessage(submitError));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <SessionFrame>
-      <div className="rounded-2xl border bg-card p-6 shadow-sm">
-        <div className="mb-6 flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-            <KeyRound className="size-4" />
-          </span>
-          <div>
-            <h1 className="font-semibold">
-              {initializing
-                ? "Set up private data encryption"
-                : "Authorize this device"}
-            </h1>
-            <p className="mt-1 text-sm leading-5 text-muted-foreground">
-              {recovery
-                ? "Enter the recovery secret created on the first local device. It is used once to authorize this device."
-                : initializing
-                  ? "Confirm your password once to create your encryption keys. This device will unlock itself on later sessions."
-                  : "Enter your password once to authorize this device. It will not be saved or requested on later sessions."}
-            </p>
-          </div>
-        </div>
-        <form className="space-y-4" onSubmit={submit}>
-          <label className="grid gap-1.5 text-sm">
-            {recovery ? "Recovery secret" : "Current password"}
-            <Input
-              autoComplete={recovery ? "off" : "current-password"}
-              autoFocus
-              onChange={(event) => setValue(event.target.value)}
-              required
-              type="password"
-              value={value}
-            />
-          </label>
-          {error ? <p className="text-sm text-destructive">{error}</p> : null}
-          <Button className="w-full" disabled={submitting} type="submit">
-            {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-            {initializing ? "Enable encryption" : "Authorize device"}
-          </Button>
-        </form>
-        <div className="mt-4 min-w-0">
-          <ServerSwitcher
-            currentUserName="Switch server"
-            workerName="Encryption locked"
-          />
-        </div>
-      </div>
-    </SessionFrame>
-  );
-}
-
-function EncryptionRecoveryScreen({
-  onAcknowledged,
-  recoverySecret,
-}: Extract<ApplicationSessionState, { kind: "encryption-recovery" }> & {
-  onAcknowledged(): void;
-}) {
-  return (
-    <SessionFrame>
-      <div className="space-y-5 rounded-2xl border bg-card p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted">
-            <ShieldCheck className="size-4" />
-          </span>
-          <div>
-            <h1 className="font-semibold">Save your recovery secret</h1>
-            <p className="mt-1 text-sm leading-5 text-muted-foreground">
-              Local mode has no account password. Store this secret somewhere
-              safe so another device can recover your encrypted data. Cantrip
-              will not save or show it again.
-            </p>
-          </div>
-        </div>
-        <Input
-          aria-label="Recovery secret"
-          autoComplete="off"
-          readOnly
-          value={recoverySecret}
-        />
-        <p className="text-xs leading-5 text-muted-foreground">
-          Losing every authorized device, worker, and this secret permanently
-          loses access. The server cannot recover it.
-        </p>
-        <Button className="w-full" onClick={onAcknowledged}>
-          I saved the recovery secret
-        </Button>
-      </div>
-    </SessionFrame>
-  );
-}
-
 function EncryptionErrorScreen({
   message,
   onRetry,
@@ -920,8 +784,6 @@ export function ApplicationSession() {
         setState((current) => {
           if (
             (current.kind === "authenticated" ||
-              current.kind === "encryption-required" ||
-              current.kind === "encryption-recovery" ||
               current.kind === "encryption-error") &&
             current.bootstrap.auth.mode !== "none"
           ) {
@@ -972,32 +834,6 @@ export function ApplicationSession() {
             });
           }
         }}
-      />
-    );
-  }
-  if (state.kind === "encryption-required") {
-    return (
-      <EncryptionUnlockScreen
-        {...state}
-        onUnlock={async (password) => {
-          setState(await encryptionSessionState(state, password));
-        }}
-      />
-    );
-  }
-  if (state.kind === "encryption-recovery") {
-    return (
-      <EncryptionRecoveryScreen
-        {...state}
-        onAcknowledged={() =>
-          setState({
-            kind: "authenticated",
-            bootstrap: state.bootstrap,
-            csrfToken: state.csrfToken,
-            expiresAt: state.expiresAt,
-            user: state.user,
-          })
-        }
       />
     );
   }

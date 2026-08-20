@@ -474,14 +474,17 @@ describe("account encryption initialization", () => {
 
     expect(results).toHaveLength(2);
     expect(results[0]).toEqual(results[1]);
-    expect(results[0]).toMatchObject({ status: "recovery-created" });
+    expect(results[0]).toEqual({ status: "ready" });
     expect(api.principals.size).toBe(1);
+    expect(api.profile?.passwordKdf).toBeNull();
+    expect(api.profile?.passwordWrappedMasterKey).toBeNull();
     expect(service.getSnapshot().status).toBe("ready");
   });
 
-  it("bootstraps anonymous mode with a one-time recovery secret unknown to the server", async () => {
+  it("bootstraps anonymous mode with device-only custody and no user credential", async () => {
     const api = new MemoryAccountEncryptionApi("unused");
-    const first = new ClientEncryptionService(new MemoryDeviceKeyStore());
+    const store = new MemoryDeviceKeyStore();
+    const first = new ClientEncryptionService(store);
     const result = await prepareClientEncryption({
       api,
       authMode: "none",
@@ -490,12 +493,22 @@ describe("account encryption initialization", () => {
       service: first,
     });
 
-    expect(result.status).toBe("recovery-created");
-    if (result.status !== "recovery-created") throw new Error("No recovery.");
-    expect(result.recoverySecret).toMatch(/^ctr1_[A-Za-z0-9_-]{43}$/u);
-    expect(JSON.stringify(api.profile)).not.toContain(result.recoverySecret);
+    expect(result).toEqual({ status: "ready" });
+    expect(api.profile?.passwordKdf).toBeNull();
+    expect(api.profile?.passwordWrappedMasterKey).toBeNull();
     expect(api.reauthenticationAttempts).toBe(0);
     expect(first.getSnapshot().status).toBe("ready");
+
+    first.lock();
+    const restarted = new ClientEncryptionService(store);
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        identity,
+        service: restarted,
+      }),
+    ).resolves.toEqual({ status: "ready" });
 
     const second = new ClientEncryptionService(new MemoryDeviceKeyStore());
     await expect(
@@ -505,19 +518,7 @@ describe("account encryption initialization", () => {
         identity,
         service: second,
       }),
-    ).resolves.toMatchObject({
-      credential: "recovery-secret",
-      status: "credential-required",
-    });
-    await expect(
-      prepareClientEncryption({
-        api,
-        authMode: "none",
-        identity,
-        password: result.recoverySecret,
-        service: second,
-      }),
-    ).resolves.toEqual({ status: "ready" });
+    ).rejects.toThrow(/existing local device|reset the local encrypted data/iu);
   });
 
   it("rewraps the same Account Master Key while changing the account password", async () => {
