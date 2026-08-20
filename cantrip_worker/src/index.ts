@@ -80,6 +80,7 @@ import {
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
 import { openChatPlanState } from "./chat-plan-encryption.js";
+import { buildEncryptedAgentPolicyContext } from "./policy-encryption.js";
 import {
   openAgentInteractionResponse,
   protectAgentInteractionRequest,
@@ -438,6 +439,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     .refresh({ credential: config.token })
     .catch(() => undefined);
   cliBroker.setSurfacePrivateStateService(workerEncryption);
+  cliBroker.setPolicyEncryptionService(workerEncryption);
   browserAdapter.setSurfacePrivateStateService(workerEncryption);
   desktopAdapter.setSurfacePrivateStateService(
     workerEncryption,
@@ -1947,6 +1949,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               }),
             )
           : null;
+        const policyContext = await buildEncryptedAgentPolicyContext({
+          policies: command.policies,
+          projectId: command.policyProjectId,
+          service: workerEncryption,
+        });
         let protectedEventQueue = Promise.resolve();
         let protectedEventFailure: unknown = null;
         const emitProtected = (create: () => Promise<WorkerEvent>): void => {
@@ -1982,7 +1989,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             permissionProfileId: command.permissionProfileId,
             provider: command.provider,
             planMode: command.planMode,
-            policyContext: command.policyContext,
+            policyContext,
             resultMode,
             prompt,
             rootKind: command.rootKind,

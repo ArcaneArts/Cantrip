@@ -520,22 +520,20 @@ import {
 } from "@cantrip/protocol/workflows";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
 import {
-  effectivePolicyListSchema,
-  policyCliListResultSchema,
-  policyCliReadResultSchema,
-  policyAssignmentListSchema,
+  effectivePolicyWireListSchema,
+  encryptedPolicyBootstrapSchema,
+  encryptedPolicyCreateSchema,
+  encryptedPolicyUpdateSchema,
+  policyCliWireListResultSchema,
+  policyCliWireReadResultSchema,
+  policyAssignmentWireListSchema,
   policyAssignmentUpdateSchema,
-  policyCreateSchema,
   policyDeleteSchema,
-  policyDetailSchema,
-  policyFromTemplateCreateSchema,
-  policyKeySchema,
-  policyListSchema,
   policyOrderUpdateSchema,
   policyTemplateDetailSchema,
   policyTemplateListSchema,
-  policyTemplateResetSchema,
-  policyUpdateSchema,
+  policyWireDetailSchema,
+  policyWireListSchema,
 } from "@cantrip/protocol/policies";
 import {
   taskEncryptedOperationStartSchema,
@@ -558,7 +556,6 @@ import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
 import { parseHttpByteRange } from "./http-byte-range.js";
-import { buildAgentPolicyContext } from "./policies/agent-context.js";
 import {
   associateTaskPullRequests,
   taskAdvisoryWarnings,
@@ -5306,52 +5303,40 @@ export async function buildApp({
             "The current project no longer exists.",
           );
         }
-        const data = policyCliListResultSchema.parse(effective);
+        const data = policyCliWireListResultSchema.parse(effective);
         return cantripCliCommandResultSchema.parse({
-          summary: `Found ${data.policies.length} effective polic${data.policies.length === 1 ? "y" : "ies"}.`,
+          summary: "Returned opaque effective policy metadata.",
           worktreeId: context.worktreeId,
           data,
         });
       }
       case "policy.read": {
-        const key = policyKeySchema.parse(
-          requiredToolString(call.arguments, "key"),
-        );
+        const policyId = requiredToolString(call.arguments, "policyId");
         const effective = await repository.policies.resolveEffective(
           applicationOwnerId(),
           context.projectId,
         );
-        const summary = effective?.policies.find(
-          (policy) => policy.key === key,
-        );
-        if (!summary) {
+        if (!effective?.policies.some((policy) => policy.id === policyId)) {
           throw new CliCommandRequestError(
             "not-found",
             404,
-            `Policy ${key} is not effective for the current project.`,
+            "That policy is not effective for the current project.",
           );
         }
-        const current = await repository.policies.getByKey(
+        const current = await repository.policies.get(
           applicationOwnerId(),
-          key,
+          policyId,
         );
         if (!current?.enabled) {
           throw new CliCommandRequestError(
             "not-found",
             404,
-            `Policy ${key} is not effective for the current project.`,
+            "That policy is not effective for the current project.",
           );
         }
-        const data = policyCliReadResultSchema.parse({
-          policy: {
-            key: current.key,
-            name: current.name,
-            summary: current.summary,
-            bodyMarkdown: current.bodyMarkdown,
-          },
-        });
+        const data = policyCliWireReadResultSchema.parse({ policy: current });
         return cantripCliCommandResultSchema.parse({
-          summary: `Read policy ${key}.`,
+          summary: "Returned opaque policy content.",
           worktreeId: context.worktreeId,
           data,
         });
@@ -6818,10 +6803,6 @@ export async function buildApp({
     if (!effectivePolicies) {
       throw new Error("The chat project is no longer available.");
     }
-    const policyContext = buildAgentPolicyContext(
-      effectivePolicies,
-      context.projectId,
-    );
     if (!options.structuredResult) await prepareCodeEditorsForTurn(context);
     const mcpServers = options.structuredResult
       ? []
@@ -7099,7 +7080,8 @@ export async function buildApp({
                 isPrimary: execution.isPrimary,
                 worktreeMode: execution.worktreeMode,
                 worktreePolicy: execution.worktreePolicy,
-                policyContext,
+                policyProjectId: execution.projectId,
+                policies: effectivePolicies,
                 ...(encryptedChatMessages
                   ? {
                       protectedPrompt: encryptedChatMessages.userMessage,
@@ -25437,14 +25419,31 @@ export async function buildApp({
 
   app.get("/api/policies", async (_request, reply) =>
     reply.send(
-      policyListSchema.parse(
+      policyWireListSchema.parse(
         await repository.policies.list(applicationOwnerId()),
       ),
     ),
   );
 
+  app.post("/api/policies/bootstrap", async (request, reply) => {
+    const input = encryptedPolicyBootstrapSchema.safeParse(request.body);
+    if (!input.success) {
+      return reply.code(400).send(invalidBody(input.error.issues));
+    }
+    try {
+      return reply.send(
+        policyWireListSchema.parse(
+          await repository.policies.bootstrap(applicationOwnerId(), input.data),
+        ),
+      );
+    } catch (error) {
+      const status = error instanceof PolicyConflictError ? 409 : 500;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
+
   app.post("/api/policies", async (request, reply) => {
-    const input = policyCreateSchema.safeParse(request.body);
+    const input = encryptedPolicyCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -25453,7 +25452,7 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
-      return reply.code(201).send(policyDetailSchema.parse(policy));
+      return reply.code(201).send(policyWireDetailSchema.parse(policy));
     } catch (error) {
       const status = error instanceof PolicyConflictError ? 409 : 500;
       return reply.code(status).send({ error: errorMessage(error) });
@@ -25470,38 +25469,12 @@ export async function buildApp({
         applicationOwnerId(),
         input.data,
       );
-      return reply.send(policyListSchema.parse(policies));
+      return reply.send(policyWireListSchema.parse(policies));
     } catch (error) {
       const status = error instanceof PolicyConflictError ? 409 : 500;
       return reply.code(status).send({ error: errorMessage(error) });
     }
   });
-
-  app.post<{ Params: { templateKey: string } }>(
-    "/api/policies/from-template/:templateKey",
-    async (request, reply) => {
-      const input = policyFromTemplateCreateSchema.safeParse(
-        request.body ?? {},
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      if (!repository.policies.getTemplate(request.params.templateKey)) {
-        return reply.code(404).send({ error: "Policy template not found." });
-      }
-      try {
-        const policy = await repository.policies.createFromTemplate(
-          applicationOwnerId(),
-          request.params.templateKey,
-          input.data,
-        );
-        return reply.code(201).send(policyDetailSchema.parse(policy));
-      } catch (error) {
-        const status = error instanceof PolicyConflictError ? 409 : 500;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
 
   app.get<{ Params: { policyId: string } }>(
     "/api/policies/:policyId",
@@ -25511,7 +25484,7 @@ export async function buildApp({
         request.params.policyId,
       );
       return policy
-        ? reply.send(policyDetailSchema.parse(policy))
+        ? reply.send(policyWireDetailSchema.parse(policy))
         : reply.code(404).send({ error: "Policy not found." });
     },
   );
@@ -25519,7 +25492,7 @@ export async function buildApp({
   app.patch<{ Params: { policyId: string } }>(
     "/api/policies/:policyId",
     async (request, reply) => {
-      const input = policyUpdateSchema.safeParse(request.body);
+      const input = encryptedPolicyUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -25530,38 +25503,10 @@ export async function buildApp({
           input.data,
         );
         return policy
-          ? reply.send(policyDetailSchema.parse(policy))
+          ? reply.send(policyWireDetailSchema.parse(policy))
           : reply.code(404).send({ error: "Policy not found." });
       } catch (error) {
         const status = error instanceof PolicyConflictError ? 409 : 500;
-        return reply.code(status).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { policyId: string } }>(
-    "/api/policies/:policyId/reset-template",
-    async (request, reply) => {
-      const input = policyTemplateResetSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        const policy = await repository.policies.resetFromTemplate(
-          applicationOwnerId(),
-          request.params.policyId,
-          input.data,
-        );
-        return policy
-          ? reply.send(policyDetailSchema.parse(policy))
-          : reply.code(404).send({ error: "Policy not found." });
-      } catch (error) {
-        const status =
-          error instanceof PolicyConflictError
-            ? 409
-            : error instanceof PolicyScopeNotFoundError
-              ? 404
-              : 500;
         return reply.code(status).send({ error: errorMessage(error) });
       }
     },
@@ -25597,7 +25542,7 @@ export async function buildApp({
         request.params.workspaceId,
       );
       return assignments
-        ? reply.send(policyAssignmentListSchema.parse(assignments))
+        ? reply.send(policyAssignmentWireListSchema.parse(assignments))
         : reply.code(404).send({ error: "Workspace not found." });
     },
   );
@@ -25620,7 +25565,7 @@ export async function buildApp({
           request.params.workspaceId,
         );
         return assignments
-          ? reply.send(policyAssignmentListSchema.parse(assignments))
+          ? reply.send(policyAssignmentWireListSchema.parse(assignments))
           : reply.code(404).send({ error: "Workspace not found." });
       } catch (error) {
         const status =
@@ -25642,7 +25587,7 @@ export async function buildApp({
         request.params.projectId,
       );
       return assignments
-        ? reply.send(policyAssignmentListSchema.parse(assignments))
+        ? reply.send(policyAssignmentWireListSchema.parse(assignments))
         : reply.code(404).send({ error: "Project not found." });
     },
   );
@@ -25665,7 +25610,7 @@ export async function buildApp({
           request.params.projectId,
         );
         return assignments
-          ? reply.send(policyAssignmentListSchema.parse(assignments))
+          ? reply.send(policyAssignmentWireListSchema.parse(assignments))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         const status =
@@ -25687,7 +25632,7 @@ export async function buildApp({
         request.params.projectId,
       );
       return effective
-        ? reply.send(effectivePolicyListSchema.parse(effective))
+        ? reply.send(effectivePolicyWireListSchema.parse(effective))
         : reply.code(404).send({ error: "Project not found." });
     },
   );

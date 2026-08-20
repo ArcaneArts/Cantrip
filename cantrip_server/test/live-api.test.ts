@@ -23,6 +23,7 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
 import {
   protectedChatFields,
   protectedProjectFields,
@@ -307,14 +308,7 @@ describe.sequential("application live WebSocket", () => {
     const policyResponse = await app.inject({
       method: "POST",
       url: "/api/policies",
-      payload: {
-        key: "live-policy",
-        name: "Live policy",
-        summary: "Verify live invalidation across Settings windows.",
-        bodyMarkdown: "# Live policy",
-        enabled: true,
-        mandatory: false,
-      },
+      payload: opaquePolicyCreate("live-policy"),
     });
     expect(policyResponse.statusCode).toBe(201);
     await vi.waitFor(() =>

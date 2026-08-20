@@ -1125,7 +1125,7 @@ export interface RunAgentTurnOptions {
     { type: "chat.turn" }
   >["automationPaused"];
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
-  policyContext: Extract<WorkerCommand, { type: "chat.turn" }>["policyContext"];
+  policyContext: string | null;
   resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
   provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
   permissionProfileId: Extract<

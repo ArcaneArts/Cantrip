@@ -420,7 +420,7 @@ database-compromise guarantee is described.
 | Surface and project-view display labels                                          | AES-256-GCM E2EE; client-created row-bound labels; canonical browser/desktop copies only                                              | E2EE complete                                    | Implemented          | Medium      | Server retains routing and ordering but loses name-based search and synthesis                  |
 | Custom tab-group display labels                                                  | AES-256-GCM E2EE for custom labels; unnamed groups derive from decrypted members client-side                                          | E2EE complete                                    | Implemented          | Medium      | Server retains layout structure but cannot present or synthesize group labels                  |
 | Private display-label server boundary and lifecycle audit                        | Generated route inventory, repository/schema guards, endpoint restart proof, full temporary-DB sentinel scan                          | Closure audit complete                           | Required             | Medium      | Server builds and persists only opaque label contracts                                         |
-| Policies and agent instructions                                                  | Plaintext                                                                                                                             | Planned                                          | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
+| Cantrip policy content and effective agent policy context                        | AES-256-GCM E2EE for policy keys, names, summaries, bodies, prompt context, and CLI presentation; keyed blind uniqueness              | E2EE complete                                    | Implemented          | Medium-High | Server cannot inspect policy semantics, compose policy prompts, or resolve CLI keys            |
 | Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                                                        | Planned replacement                              | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
 | MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                                                                                                             | Planned                                          | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
 | Workflow prompts, definitions, structured inputs, and results                    | Plaintext                                                                                                                             | Planned                                          | Good when split      | Very high   | Scheduler can route opaque jobs, but conditions and content evaluation must happen on a worker |
@@ -1239,6 +1239,47 @@ earns `E2EE complete` for Task content. There is no plaintext compatibility
 fallback. Ordinary agent chats and their queued prompts remain plaintext and
 planned; Task and chat titles are now separately E2EE complete.
 
+## Policies and effective agent instructions
+
+Cantrip policy keys, names, summaries, and Markdown bodies use the independently
+scoped `policy-content` component. Each policy row has a small protected summary
+envelope and a separate protected body envelope, both bound to the owner, policy
+ID, table, field, format version, and key revision. A keyed blind index derived
+from the component key preserves per-account key uniqueness without disclosing
+the key. The server retains only policy IDs, enablement, mandatory state,
+ordering, packaged-template identity, assignments, revisions, and timestamps.
+
+Packaged defaults remain public application assets, but the unlocked client
+allocates policy IDs and encrypts the selected defaults before bootstrapping an
+account. Policy create, edit, template-copy, and template-reset operations also
+encrypt before leaving the client. Assignment and effective-policy routes carry
+opaque summaries plus public source IDs; the client decrypts these for settings
+presentation. There is no plaintext compatibility fallback.
+
+For agent execution, the server resolves only public enablement, assignment,
+mandatory, and ordering metadata. It relays the row-bound summary envelopes to
+an authorized worker, which decrypts them and constructs the effective policy
+prompt inside the worker runtime. The internal `cantrip policy list` and
+`cantrip policy read` flow follows the same boundary: the server selects rows by
+opaque policy ID and the worker resolves the requested semantic key and renders
+the decrypted result locally. The server therefore never receives the policy
+key used by the CLI and never constructs policy prompt text.
+
+[Migration 0118](../cantrip_server/drizzle/0118_encrypted_policy_content.sql)
+performs the allowed pre-release cutover by deleting legacy policy rows,
+resetting owner bootstrap state, dropping plaintext semantic columns, and
+adding required opaque envelopes and blind indexes. Clients recreate packaged
+defaults in encrypted form after unlock. This migration does not reset any
+other domain and must never be treated as authority to wipe production or a
+remote database.
+
+The generated [server boundary inventory](security/server-route-inventory.json)
+also enforces this split. It rejects trusted policy schemas or decryption and
+prompt-composition helpers in production server code, verifies the policy table
+has only opaque semantic storage, and guards encrypted ingress, wire egress,
+opaque CLI selection, and removal of the former plaintext template-mutation
+routes.
+
 ## Credentials and provider configuration
 
 Credentials are high-value but architecturally harder. Provider records
@@ -1352,15 +1393,21 @@ counts, worker presence, model-route choices, and traffic patterns.
     ordinary chat approval and elicitation requests before relay and decrypt
     client-encrypted responses at execution time. The server stores only
     bounded opaque envelopes plus routing and lifecycle metadata.
-12. **Attachments and relayed streams:** encrypt metadata and add
+12. **Policies and effective agent instructions — complete:** clients encrypt
+    policy keys, names, summaries, and bodies under `policy-content`; the
+    server routes only opaque summaries and public assignment metadata; and
+    authorized workers decrypt effective summaries for prompt composition and
+    local CLI list/read presentation. A pre-release policy-only cutover removes
+    the legacy plaintext rows and reboots packaged defaults through the client.
+13. **Attachments and relayed streams:** encrypt metadata and add
     application-layer encryption when bytes traverse relays.
-13. **Secrets:** replace server-decryptable provider and MCP vault envelopes
+14. **Secrets:** replace server-decryptable provider and MCP vault envelopes
     with client and worker decryptable envelopes.
-14. **Private surface metadata persistence — complete:** Remote Desktop
+15. **Private surface metadata persistence — complete:** Remote Desktop
     selection/inventory and Browser URL persistence/navigation now use the
-    independently scoped component. Git output and policy bodies stay under
-    their appropriate future components.
-15. **Workflows and optional private analytics:** split scheduling metadata
+    independently scoped component. Git output stays under its appropriate
+    future component; policy bodies are complete under `policy-content`.
+16. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.
 

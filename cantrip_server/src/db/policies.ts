@@ -1,29 +1,28 @@
-import { randomUUID } from "node:crypto";
-
 import {
   EFFECTIVE_POLICY_LIMIT,
+  POLICY_BOOTSTRAP_VERSION,
   POLICY_LIMIT,
-  effectivePolicyListSchema,
-  policyAssignmentListSchema,
+  effectivePolicyWireListSchema,
+  encryptedPolicyBootstrapSchema,
+  encryptedPolicyCreateSchema,
+  encryptedPolicyUpdateSchema,
+  policyAssignmentWireListSchema,
   policyAssignmentUpdateSchema,
-  policyCreateSchema,
-  policyDetailSchema,
-  policyListSchema,
   policyOrderUpdateSchema,
-  policySummarySchema,
-  policyTemplateResetSchema,
-  policyUpdateSchema,
-  type EffectivePolicyList,
+  policyWireDetailSchema,
+  policyWireListSchema,
+  policyWireSummarySchema,
+  type EffectivePolicyWireList,
   type EffectivePolicySource,
-  type PolicyAssignmentList,
+  type EncryptedPolicyBootstrap,
+  type EncryptedPolicyCreate,
+  type EncryptedPolicyUpdate,
+  type PolicyAssignmentWireList,
   type PolicyAssignmentUpdate,
-  type PolicyCreate,
-  type PolicyDetail,
-  type PolicyList,
   type PolicyOrderUpdate,
-  type PolicySummary,
-  type PolicyTemplateReset,
-  type PolicyUpdate,
+  type PolicyWireDetail,
+  type PolicyWireList,
+  type PolicyWireSummary,
 } from "@cantrip/protocol/policies";
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -32,11 +31,8 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import {
   getPackagedPolicyTemplate,
   listPackagedPolicyTemplates,
-  requirePackagedPolicyTemplate,
 } from "../policies/templates.js";
 import * as schema from "./schema.js";
-
-const POLICY_BOOTSTRAP_VERSION = 2;
 
 type PolicyDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type PolicyTransaction = Parameters<
@@ -86,12 +82,13 @@ function toPolicySummary(
   row: PolicyRow,
   workspaceAssignmentCount: number,
   projectAssignmentCount: number,
-): PolicySummary {
-  return policySummarySchema.parse({
+): PolicyWireSummary {
+  return policyWireSummarySchema.parse({
     id: row.id,
-    key: row.key,
-    name: row.name,
-    summary: row.summary,
+    content: {
+      keyBlindIndex: row.keyBlindIndex,
+      protectedSummary: row.protectedSummary,
+    },
     enabled: row.enabled,
     mandatory: row.mandatory,
     position: row.position,
@@ -108,10 +105,14 @@ function toPolicyDetail(
   row: PolicyRow,
   workspaceAssignmentCount: number,
   projectAssignmentCount: number,
-): PolicyDetail {
-  return policyDetailSchema.parse({
+): PolicyWireDetail {
+  return policyWireDetailSchema.parse({
     ...toPolicySummary(row, workspaceAssignmentCount, projectAssignmentCount),
-    bodyMarkdown: row.bodyMarkdown,
+    content: {
+      keyBlindIndex: row.keyBlindIndex,
+      protectedSummary: row.protectedSummary,
+      protectedBody: row.protectedBody,
+    },
   });
 }
 
@@ -126,138 +127,81 @@ export class PolicyRepository {
     return getPackagedPolicyTemplate(templateKey);
   }
 
-  async ensureBootstrap(ownerId: string): Promise<boolean> {
-    const current = await this.database
-      .select({ bootstrapVersion: schema.policyOwnerStates.bootstrapVersion })
-      .from(schema.policyOwnerStates)
-      .where(eq(schema.policyOwnerStates.ownerId, ownerId))
-      .limit(1);
-    if (current[0] && current[0].bootstrapVersion >= POLICY_BOOTSTRAP_VERSION) {
-      return false;
+  async ensureOwnerState(ownerId: string): Promise<void> {
+    await this.database
+      .insert(schema.policyOwnerStates)
+      .values({ ownerId })
+      .onConflictDoNothing();
+  }
+
+  async bootstrap(
+    ownerId: string,
+    rawInput: EncryptedPolicyBootstrap,
+  ): Promise<PolicyWireList> {
+    const input = encryptedPolicyBootstrapSchema.parse(rawInput);
+    const templateKeys = new Set(
+      listPackagedPolicyTemplates().map(({ templateKey }) => templateKey),
+    );
+    if (
+      input.policies.length !== templateKeys.size ||
+      input.policies.some(
+        ({ templateKey }) => !templateKey || !templateKeys.delete(templateKey),
+      ) ||
+      templateKeys.size
+    ) {
+      throw new PolicyConflictError(
+        "Policy bootstrap must contain each packaged template exactly once.",
+        "invalid-order",
+      );
     }
-    return this.database.transaction(async (transaction) => {
-      await transaction
-        .insert(schema.policyOwnerStates)
-        .values({ ownerId })
-        .onConflictDoNothing();
-      const now = new Date();
-      let bootstrapped = false;
-
-      const manualProtocolClaim = await transaction
-        .update(schema.policyOwnerStates)
-        .set({ bootstrapVersion: 1, updatedAt: now })
-        .where(
-          and(
-            eq(schema.policyOwnerStates.ownerId, ownerId),
-            eq(schema.policyOwnerStates.bootstrapVersion, 0),
-          ),
-        )
-        .returning({ ownerId: schema.policyOwnerStates.ownerId });
-      if (manualProtocolClaim[0]) {
-        const template = requirePackagedPolicyTemplate(
-          "manual-change-protocol",
-        );
-        await transaction
-          .insert(schema.policies)
-          .values({
-            id: randomUUID(),
-            ownerId,
-            key: template.suggestedPolicyKey,
-            name: template.name,
-            summary: template.summary,
-            bodyMarkdown: template.bodyMarkdown,
-            enabled: template.suggestedEnabled,
-            mandatory: template.suggestedMandatory,
-            position: 0,
-            templateKey: template.templateKey,
-            rowVersion: 1,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .onConflictDoNothing({
-            target: [schema.policies.ownerId, schema.policies.key],
-          });
-        bootstrapped = true;
-      }
-
-      const codegraphClaim = await transaction
+    await this.ensureOwnerState(ownerId);
+    await this.database.transaction(async (transaction) => {
+      const claimed = await transaction
         .update(schema.policyOwnerStates)
         .set({
-          bootstrapVersion: 2,
+          bootstrapVersion: POLICY_BOOTSTRAP_VERSION,
           collectionVersion: sql`${schema.policyOwnerStates.collectionVersion} + 1`,
-          updatedAt: now,
+          updatedAt: new Date(),
         })
         .where(
           and(
             eq(schema.policyOwnerStates.ownerId, ownerId),
-            eq(schema.policyOwnerStates.bootstrapVersion, 1),
+            eq(
+              schema.policyOwnerStates.bootstrapVersion,
+              input.expectedBootstrapVersion,
+            ),
           ),
         )
         .returning({ ownerId: schema.policyOwnerStates.ownerId });
-      if (codegraphClaim[0]) {
-        const template = requirePackagedPolicyTemplate("codegraph");
-        const positions = await transaction
-          .select({ position: schema.policies.position })
-          .from(schema.policies)
-          .where(eq(schema.policies.ownerId, ownerId))
-          .orderBy(sql`${schema.policies.position} DESC`)
-          .limit(1);
-        await transaction
-          .insert(schema.policies)
-          .values({
-            id: randomUUID(),
-            ownerId,
-            key: template.suggestedPolicyKey,
-            name: template.name,
-            summary: template.summary,
-            bodyMarkdown: template.bodyMarkdown,
-            enabled: template.suggestedEnabled,
-            mandatory: template.suggestedMandatory,
-            position: (positions[0]?.position ?? -1) + 1,
-            templateKey: template.templateKey,
-            rowVersion: 1,
-            createdAt: now,
-            updatedAt: now,
-          })
-          .onConflictDoNothing({
-            target: [schema.policies.ownerId, schema.policies.key],
-          });
-        bootstrapped = true;
-      }
-
-      return bootstrapped;
+      if (!claimed[0]) return;
+      const now = new Date();
+      await transaction.insert(schema.policies).values(
+        input.policies.map((policy, position) => ({
+          id: policy.id,
+          ownerId,
+          keyBlindIndex: policy.content.keyBlindIndex,
+          protectedSummary: policy.content.protectedSummary,
+          protectedBody: policy.content.protectedBody,
+          enabled: policy.enabled,
+          mandatory: policy.mandatory,
+          position,
+          templateKey: policy.templateKey,
+          rowVersion: 1,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
     });
+    return this.list(ownerId);
   }
 
-  async ensureAllOwnersBootstrapped(): Promise<number> {
-    const [owners, states] = await Promise.all([
-      this.database.select({ id: schema.users.id }).from(schema.users),
-      this.database
-        .select({
-          ownerId: schema.policyOwnerStates.ownerId,
-          bootstrapVersion: schema.policyOwnerStates.bootstrapVersion,
-        })
-        .from(schema.policyOwnerStates),
-    ]);
-    const bootstrappedOwners = new Set(
-      states.flatMap(({ bootstrapVersion, ownerId }) =>
-        bootstrapVersion >= POLICY_BOOTSTRAP_VERSION ? [ownerId] : [],
-      ),
-    );
-    let bootstrapped = 0;
-    for (const owner of owners) {
-      if (bootstrappedOwners.has(owner.id)) continue;
-      if (await this.ensureBootstrap(owner.id)) bootstrapped += 1;
-    }
-    return bootstrapped;
-  }
-
-  async list(ownerId: string): Promise<PolicyList> {
-    await this.ensureBootstrap(ownerId);
+  async list(ownerId: string): Promise<PolicyWireList> {
+    await this.ensureOwnerState(ownerId);
     const [stateRows, policyRows, workspaceCounts, projectCounts] =
       await Promise.all([
         this.database
           .select({
+            bootstrapVersion: schema.policyOwnerStates.bootstrapVersion,
             collectionVersion: schema.policyOwnerStates.collectionVersion,
           })
           .from(schema.policyOwnerStates)
@@ -267,7 +211,7 @@ export class PolicyRepository {
           .select()
           .from(schema.policies)
           .where(eq(schema.policies.ownerId, ownerId))
-          .orderBy(asc(schema.policies.position), asc(schema.policies.key)),
+          .orderBy(asc(schema.policies.position), asc(schema.policies.id)),
         this.database
           .select({
             policyId: schema.workspacePolicyAssignments.policyId,
@@ -306,7 +250,8 @@ export class PolicyRepository {
     const projectCountByPolicy = new Map(
       projectCounts.map(({ policyId, value }) => [policyId, value]),
     );
-    return policyListSchema.parse({
+    return policyWireListSchema.parse({
+      bootstrapVersion: stateRows[0]?.bootstrapVersion ?? 0,
       collectionVersion: stateRows[0]?.collectionVersion ?? 1,
       policies: policyRows.map((row) =>
         toPolicySummary(
@@ -318,8 +263,11 @@ export class PolicyRepository {
     });
   }
 
-  async get(ownerId: string, policyId: string): Promise<PolicyDetail | null> {
-    await this.ensureBootstrap(ownerId);
+  async get(
+    ownerId: string,
+    policyId: string,
+  ): Promise<PolicyWireDetail | null> {
+    await this.ensureOwnerState(ownerId);
     const rows = await this.database
       .select()
       .from(schema.policies)
@@ -333,31 +281,12 @@ export class PolicyRepository {
     return rows[0] ? this.detail(rows[0]) : null;
   }
 
-  async getByKey(
-    ownerId: string,
-    policyKey: string,
-  ): Promise<PolicyDetail | null> {
-    await this.ensureBootstrap(ownerId);
-    const rows = await this.database
-      .select()
-      .from(schema.policies)
-      .where(
-        and(
-          eq(schema.policies.key, policyKey),
-          eq(schema.policies.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    return rows[0] ? this.detail(rows[0]) : null;
-  }
-
   async create(
     ownerId: string,
-    rawInput: PolicyCreate,
-    templateKey: string | null = null,
-  ): Promise<PolicyDetail> {
-    const input = policyCreateSchema.parse(rawInput);
-    await this.ensureBootstrap(ownerId);
+    rawInput: EncryptedPolicyCreate,
+  ): Promise<PolicyWireDetail> {
+    const input = encryptedPolicyCreateSchema.parse(rawInput);
+    await this.ensureOwnerState(ownerId);
     try {
       const row = await this.database.transaction(async (transaction) => {
         await this.incrementCollectionVersion(transaction, ownerId);
@@ -381,11 +310,15 @@ export class PolicyRepository {
         const rows = await transaction
           .insert(schema.policies)
           .values({
-            id: randomUUID(),
+            id: input.id,
             ownerId,
-            ...input,
+            keyBlindIndex: input.content.keyBlindIndex,
+            protectedSummary: input.content.protectedSummary,
+            protectedBody: input.content.protectedBody,
+            enabled: input.enabled,
+            mandatory: input.mandatory,
             position: (positions[0]?.position ?? -1) + 1,
-            templateKey,
+            templateKey: input.templateKey,
             rowVersion: 1,
             createdAt: now,
             updatedAt: now,
@@ -398,7 +331,7 @@ export class PolicyRepository {
       if (error instanceof PolicyConflictError) throw error;
       if (isUniqueViolation(error)) {
         throw new PolicyConflictError(
-          `Policy key ${input.key} is already in use.`,
+          "That policy key is already in use.",
           "duplicate-key",
         );
       }
@@ -406,94 +339,26 @@ export class PolicyRepository {
     }
   }
 
-  async createFromTemplate(
-    ownerId: string,
-    templateKey: string,
-    overrides: Partial<PolicyCreate> = {},
-  ): Promise<PolicyDetail> {
-    const template = requirePackagedPolicyTemplate(templateKey);
-    return this.create(
-      ownerId,
-      policyCreateSchema.parse({
-        key: template.suggestedPolicyKey,
-        name: template.name,
-        summary: template.summary,
-        bodyMarkdown: template.bodyMarkdown,
-        enabled: template.suggestedEnabled,
-        mandatory: template.suggestedMandatory,
-        ...overrides,
-      }),
-      template.templateKey,
-    );
-  }
-
-  async resetFromTemplate(
-    ownerId: string,
-    policyId: string,
-    rawInput: PolicyTemplateReset,
-  ): Promise<PolicyDetail | null> {
-    const input = policyTemplateResetSchema.parse(rawInput);
-    const current = await this.database
-      .select()
-      .from(schema.policies)
-      .where(
-        and(
-          eq(schema.policies.id, policyId),
-          eq(schema.policies.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    const policy = current[0];
-    if (!policy) return null;
-    if (!policy.templateKey) {
-      throw new PolicyScopeNotFoundError(
-        "This policy was not created from a packaged template.",
-      );
-    }
-    const template = getPackagedPolicyTemplate(policy.templateKey);
-    if (!template) {
-      throw new PolicyScopeNotFoundError("Policy template not found.");
-    }
-    const rows = await this.database
-      .update(schema.policies)
-      .set({
-        name: template.name,
-        summary: template.summary,
-        bodyMarkdown: template.bodyMarkdown,
-        ...(input.restoreDefaults
-          ? {
-              enabled: template.suggestedEnabled,
-              mandatory: template.suggestedMandatory,
-            }
-          : {}),
-        rowVersion: input.rowVersion + 1,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(schema.policies.id, policyId),
-          eq(schema.policies.ownerId, ownerId),
-          eq(schema.policies.rowVersion, input.rowVersion),
-        ),
-      )
-      .returning();
-    if (rows[0]) return this.detail(rows[0]);
-    throw new PolicyConflictError(
-      "The policy changed in another session.",
-      "stale-version",
-    );
-  }
-
   async update(
     ownerId: string,
     policyId: string,
-    rawInput: PolicyUpdate,
-  ): Promise<PolicyDetail | null> {
-    const input = policyUpdateSchema.parse(rawInput);
-    const { rowVersion, ...changes } = input;
+    rawInput: EncryptedPolicyUpdate,
+  ): Promise<PolicyWireDetail | null> {
+    const input = encryptedPolicyUpdateSchema.parse(rawInput);
+    const { rowVersion, content, ...changes } = input;
     const rows = await this.database
       .update(schema.policies)
-      .set({ ...changes, rowVersion: rowVersion + 1, updatedAt: new Date() })
+      .set({
+        ...changes,
+        ...(content
+          ? {
+              protectedSummary: content.protectedSummary,
+              protectedBody: content.protectedBody,
+            }
+          : {}),
+        rowVersion: rowVersion + 1,
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(schema.policies.id, policyId),
@@ -561,7 +426,7 @@ export class PolicyRepository {
   async reorder(
     ownerId: string,
     rawInput: PolicyOrderUpdate,
-  ): Promise<PolicyList> {
+  ): Promise<PolicyWireList> {
     const input = policyOrderUpdateSchema.parse(rawInput);
     await this.database.transaction(async (transaction) => {
       await this.claimCollectionVersion(
@@ -610,7 +475,7 @@ export class PolicyRepository {
   async listProjectAssignments(
     ownerId: string,
     projectId: string,
-  ): Promise<PolicyAssignmentList | null> {
+  ): Promise<PolicyAssignmentWireList | null> {
     return this.listAssignments(ownerId, "project", projectId);
   }
 
@@ -626,15 +491,15 @@ export class PolicyRepository {
   async listWorkspaceAssignments(
     ownerId: string,
     workspaceId: string,
-  ): Promise<PolicyAssignmentList | null> {
+  ): Promise<PolicyAssignmentWireList | null> {
     return this.listAssignments(ownerId, "workspace", workspaceId);
   }
 
   async resolveEffective(
     ownerId: string,
     projectId: string,
-  ): Promise<EffectivePolicyList | null> {
-    await this.ensureBootstrap(ownerId);
+  ): Promise<EffectivePolicyWireList | null> {
+    await this.ensureOwnerState(ownerId);
     const projects = await this.database
       .select({ id: schema.projects.id })
       .from(schema.projects)
@@ -657,7 +522,7 @@ export class PolicyRepository {
             eq(schema.policies.enabled, true),
           ),
         )
-        .orderBy(asc(schema.policies.position), asc(schema.policies.key)),
+        .orderBy(asc(schema.policies.position), asc(schema.policies.id)),
       this.database
         .select({ policyId: schema.projectPolicyAssignments.policyId })
         .from(schema.projectPolicyAssignments)
@@ -720,9 +585,8 @@ export class PolicyRepository {
       return sources.length
         ? [
             {
-              key: policy.key,
-              name: policy.name,
-              summary: policy.summary,
+              id: policy.id,
+              protectedSummary: policy.protectedSummary,
               mandatory: policy.mandatory,
               sources,
             },
@@ -735,10 +599,10 @@ export class PolicyRepository {
         "limit-exceeded",
       );
     }
-    return effectivePolicyListSchema.parse({ policies: effective });
+    return effectivePolicyWireListSchema.parse({ policies: effective });
   }
 
-  private async detail(row: PolicyRow): Promise<PolicyDetail> {
+  private async detail(row: PolicyRow): Promise<PolicyWireDetail> {
     const [workspaceCounts, projectCounts] = await Promise.all([
       this.database
         .select({ value: count() })
@@ -806,7 +670,7 @@ export class PolicyRepository {
     scopeId: string,
     input: PolicyAssignmentUpdate,
   ): Promise<number> {
-    await this.ensureBootstrap(ownerId);
+    await this.ensureOwnerState(ownerId);
     return this.database.transaction(async (transaction) => {
       const collectionVersion = await this.claimCollectionVersion(
         transaction,
@@ -887,8 +751,8 @@ export class PolicyRepository {
     ownerId: string,
     scope: "project" | "workspace",
     scopeId: string,
-  ): Promise<PolicyAssignmentList | null> {
-    await this.ensureBootstrap(ownerId);
+  ): Promise<PolicyAssignmentWireList | null> {
+    await this.ensureOwnerState(ownerId);
     const scopeRows =
       scope === "project"
         ? await this.database
@@ -946,7 +810,7 @@ export class PolicyRepository {
             .where(eq(schema.workspacePolicyAssignments.workspaceId, scopeId)),
     ]);
     const assigned = new Set(assignmentRows.map(({ policyId }) => policyId));
-    return policyAssignmentListSchema.parse({
+    return policyAssignmentWireListSchema.parse({
       collectionVersion: list.collectionVersion,
       policies: list.policies,
       directPolicyIds: list.policies.flatMap(({ id }) =>

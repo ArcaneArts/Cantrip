@@ -14,7 +14,9 @@ import {
   clearSensitiveBytes,
   decryptSurfacePrivateState,
   deriveComponentKey,
+  encryptPolicyContent,
   generateAccountMasterKey,
+  randomBytes,
   wrapComponentKeyForWorker,
 } from "@cantrip/crypto";
 import type {
@@ -199,6 +201,22 @@ describe("Cantrip CLI worker broker", () => {
     await writeFile(binary, "stub");
     if (process.platform !== "win32") await chmod(binary, 0o755);
     const calls: unknown[] = [];
+    const ownerId = "policy-cli-owner";
+    const policyId = "00000000-0000-4000-8000-000000000201";
+    const policyKey = randomBytes(32);
+    const protectedPolicy = await encryptPolicyContent({
+      ownerId,
+      policyId,
+      keyRevision: 1,
+      componentKey: policyKey,
+      summary: {
+        version: 1,
+        key: "manual-change-protocol",
+        name: "Manual Change Protocol",
+        summary: "Read the current policy before making manual changes.",
+      },
+      body: { version: 1, bodyMarkdown: "# Manual Change Protocol" },
+    });
     const broker = new CantripCliBroker(
       {
         dataDirectory: path.join(directory, "worker-data"),
@@ -216,10 +234,41 @@ describe("Cantrip CLI worker broker", () => {
             worktreeId: "worktree-one",
             continuationScheduled: false,
             mutated: false,
+            data:
+              request.command === "policy.list"
+                ? {
+                    policies: [
+                      {
+                        id: policyId,
+                        protectedSummary: protectedPolicy.protectedSummary,
+                        mandatory: true,
+                        sources: [{ type: "mandatory" }],
+                      },
+                    ],
+                  }
+                : {
+                    policy: {
+                      id: policyId,
+                      content: protectedPolicy,
+                      enabled: true,
+                      mandatory: true,
+                      position: 0,
+                      templateKey: "manual-change-protocol",
+                      rowVersion: 1,
+                      workspaceAssignmentCount: 0,
+                      projectAssignmentCount: 0,
+                      createdAt: "2026-08-20T12:00:00.000Z",
+                      updatedAt: "2026-08-20T12:00:00.000Z",
+                    },
+                  },
           };
         },
       },
     );
+    broker.setPolicyEncryptionService({
+      ownerId: () => ownerId,
+      componentKey: () => ({ key: new Uint8Array(policyKey), keyRevision: 1 }),
+    } as unknown as WorkerEncryptionService);
     broker.bindCodexThread("thread-one", {
       chatId: "chat-one",
       executionLaneId: "lane-one",
@@ -245,8 +294,14 @@ describe("Cantrip CLI worker broker", () => {
       });
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toMatchObject({
-        summary: "Read the current policy.",
+        summary: "Read policy manual-change-protocol.",
         worktreeId: "worktree-one",
+        data: {
+          policy: {
+            key: "manual-change-protocol",
+            bodyMarkdown: "# Manual Change Protocol",
+          },
+        },
       });
       expect(calls).toEqual([
         {
@@ -255,11 +310,22 @@ describe("Cantrip CLI worker broker", () => {
             executionLaneId: "lane-one",
           },
           request: expect.objectContaining({
-            command: "policy.read",
+            command: "policy.list",
             context: expect.objectContaining({ codexThreadId: "thread-one" }),
-            arguments: { key: "manual-change-protocol" },
+            arguments: {},
           }),
-          requestId: expect.any(String),
+          requestId: expect.stringContaining(":policy-list"),
+        },
+        {
+          chatContext: {
+            chatId: "chat-one",
+            executionLaneId: "lane-one",
+          },
+          request: expect.objectContaining({
+            command: "policy.read",
+            arguments: { policyId },
+          }),
+          requestId: expect.stringContaining(":policy-read"),
         },
       ]);
 

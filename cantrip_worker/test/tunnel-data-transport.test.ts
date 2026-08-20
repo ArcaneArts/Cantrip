@@ -109,6 +109,8 @@ describe("worker generic tunnel data transport", () => {
       clientMessageId: "message-1",
       executionLaneId: "lane-1",
       worktreeId: "worktree-1",
+      policyProjectId: "project-1",
+      policies: { policies: [] },
       cwd: "/workspace",
       isPrimary: true,
       worktreeMode: "pinned",

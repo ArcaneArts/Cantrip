@@ -179,19 +179,21 @@ import {
   mcpServerListSchema,
   mcpServerSummarySchema,
   orderedIdsSchema,
-  effectivePolicyListSchema,
-  policyAssignmentListSchema,
+  effectivePolicyWireListSchema,
+  encryptedPolicyBootstrapSchema,
+  policyAssignmentWireListSchema,
   policyAssignmentUpdateSchema,
   policyCreateSchema,
   policyDeleteSchema,
-  policyDetailSchema,
   policyFromTemplateCreateSchema,
-  policyListSchema,
   policyOrderUpdateSchema,
+  policyWireDetailSchema,
+  policyWireListSchema,
   policyTemplateDetailSchema,
   policyTemplateListSchema,
   policyTemplateResetSchema,
   policyUpdateSchema,
+  POLICY_BOOTSTRAP_VERSION,
   projectWireListSchema,
   projectExternalChatDiscoverySchema,
   projectFolderSetupJobSummarySchema,
@@ -423,6 +425,14 @@ import {
   openEncryptedAgentInteractionRequest,
 } from "@/lib/interaction-encryption";
 import { openEncryptedChatPlanWireState } from "@/lib/chat-plan-encryption";
+import {
+  openEffectivePolicyWireList,
+  openPolicyAssignmentWireList,
+  openPolicyWireDetail,
+  openPolicyWireList,
+  protectPolicyCreate,
+  protectPolicyUpdate,
+} from "@/lib/policy-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -811,18 +821,55 @@ export async function getPolicyTemplate(templateKey: string) {
 }
 
 export async function getPolicies() {
-  return policyListSchema.parse(await request("/api/policies"));
+  let wire = policyWireListSchema.parse(await request("/api/policies"));
+  if (wire.bootstrapVersion < POLICY_BOOTSTRAP_VERSION) {
+    const templates = await Promise.all(
+      (await getPolicyTemplates()).map(({ templateKey }) =>
+        getPolicyTemplate(templateKey),
+      ),
+    );
+    const policies = await Promise.all(
+      templates.map((template) =>
+        protectPolicyCreate(
+          {
+            key: template.suggestedPolicyKey,
+            name: template.name,
+            summary: template.summary,
+            bodyMarkdown: template.bodyMarkdown,
+            enabled: template.suggestedEnabled,
+            mandatory: template.suggestedMandatory,
+          },
+          template.templateKey,
+        ),
+      ),
+    );
+    wire = policyWireListSchema.parse(
+      await post(
+        "/api/policies/bootstrap",
+        encryptedPolicyBootstrapSchema.parse({
+          expectedBootstrapVersion: wire.bootstrapVersion,
+          policies,
+        }),
+      ),
+    );
+  }
+  return openPolicyWireList(wire);
 }
 
 export async function getPolicy(policyId: string) {
-  return policyDetailSchema.parse(
+  return openPolicyWireDetail(
     await request(`/api/policies/${encodeURIComponent(policyId)}`),
   );
 }
 
 export async function createPolicy(input: PolicyCreate) {
-  return policyDetailSchema.parse(
-    await post("/api/policies", policyCreateSchema.parse(input)),
+  return openPolicyWireDetail(
+    policyWireDetailSchema.parse(
+      await post(
+        "/api/policies",
+        await protectPolicyCreate(policyCreateSchema.parse(input)),
+      ),
+    ),
   );
 }
 
@@ -830,20 +877,40 @@ export async function createPolicyFromTemplate(
   templateKey: string,
   input: PolicyFromTemplateCreate = {},
 ) {
-  return policyDetailSchema.parse(
-    await post(
-      `/api/policies/from-template/${encodeURIComponent(templateKey)}`,
-      policyFromTemplateCreateSchema.parse(input),
+  const overrides = policyFromTemplateCreateSchema.parse(input);
+  const template = await getPolicyTemplate(templateKey);
+  return openPolicyWireDetail(
+    policyWireDetailSchema.parse(
+      await post(
+        "/api/policies",
+        await protectPolicyCreate(
+          policyCreateSchema.parse({
+            key: overrides.key ?? template.suggestedPolicyKey,
+            name: overrides.name ?? template.name,
+            summary: overrides.summary ?? template.summary,
+            bodyMarkdown: overrides.bodyMarkdown ?? template.bodyMarkdown,
+            enabled: overrides.enabled ?? template.suggestedEnabled,
+            mandatory: overrides.mandatory ?? template.suggestedMandatory,
+          }),
+          templateKey,
+        ),
+      ),
     ),
   );
 }
 
 export async function updatePolicy(policyId: string, input: PolicyUpdate) {
-  return policyDetailSchema.parse(
-    await request(`/api/policies/${encodeURIComponent(policyId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(policyUpdateSchema.parse(input)),
-    }),
+  const parsed = policyUpdateSchema.parse(input);
+  const current = await getPolicy(policyId);
+  return openPolicyWireDetail(
+    policyWireDetailSchema.parse(
+      await request(`/api/policies/${encodeURIComponent(policyId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(
+          await protectPolicyUpdate(policyId, current, parsed),
+        ),
+      }),
+    ),
   );
 }
 
@@ -855,7 +922,7 @@ export async function deletePolicy(policyId: string, rowVersion: number) {
 }
 
 export async function reorderPolicies(input: PolicyOrderUpdate) {
-  return policyListSchema.parse(
+  return openPolicyWireList(
     await request("/api/policies/order", {
       method: "PATCH",
       body: JSON.stringify(policyOrderUpdateSchema.parse(input)),
@@ -867,16 +934,28 @@ export async function resetPolicyFromTemplate(
   policyId: string,
   input: PolicyTemplateReset,
 ) {
-  return policyDetailSchema.parse(
-    await post(
-      `/api/policies/${encodeURIComponent(policyId)}/reset-template`,
-      policyTemplateResetSchema.parse(input),
-    ),
-  );
+  const reset = policyTemplateResetSchema.parse(input);
+  const current = await getPolicy(policyId);
+  if (!current.templateKey) {
+    throw new Error("This policy was not created from a packaged template.");
+  }
+  const template = await getPolicyTemplate(current.templateKey);
+  return updatePolicy(policyId, {
+    rowVersion: reset.rowVersion,
+    name: template.name,
+    summary: template.summary,
+    bodyMarkdown: template.bodyMarkdown,
+    ...(reset.restoreDefaults
+      ? {
+          enabled: template.suggestedEnabled,
+          mandatory: template.suggestedMandatory,
+        }
+      : {}),
+  });
 }
 
 export async function getWorkspacePolicyAssignments(workspaceId: string) {
-  return policyAssignmentListSchema.parse(
+  return openPolicyAssignmentWireList(
     await request(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/policies`,
     ),
@@ -887,7 +966,7 @@ export async function updateWorkspacePolicyAssignments(
   workspaceId: string,
   input: PolicyAssignmentUpdate,
 ) {
-  return policyAssignmentListSchema.parse(
+  return openPolicyAssignmentWireList(
     await request(
       `/api/workspaces/${encodeURIComponent(workspaceId)}/policies`,
       {
@@ -899,7 +978,7 @@ export async function updateWorkspacePolicyAssignments(
 }
 
 export async function getProjectPolicyAssignments(projectId: string) {
-  return policyAssignmentListSchema.parse(
+  return openPolicyAssignmentWireList(
     await request(`/api/projects/${encodeURIComponent(projectId)}/policies`),
   );
 }
@@ -908,7 +987,7 @@ export async function updateProjectPolicyAssignments(
   projectId: string,
   input: PolicyAssignmentUpdate,
 ) {
-  return policyAssignmentListSchema.parse(
+  return openPolicyAssignmentWireList(
     await request(`/api/projects/${encodeURIComponent(projectId)}/policies`, {
       method: "PATCH",
       body: JSON.stringify(policyAssignmentUpdateSchema.parse(input)),
@@ -917,9 +996,11 @@ export async function updateProjectPolicyAssignments(
 }
 
 export async function getProjectEffectivePolicies(projectId: string) {
-  return effectivePolicyListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/effective-policies`,
+  return openEffectivePolicyWireList(
+    effectivePolicyWireListSchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/effective-policies`,
+      ),
     ),
   );
 }
@@ -2939,6 +3020,7 @@ async function sendEncryptedTaskOperation(
   input: TaskOperationStart | TaskContinuationStart,
   kind: "initial-plan" | "continue-plan" | "finalize",
 ) {
+  await getPolicies();
   const current = await getTask(chatId);
   assertCurrentTaskVersion(current.rowVersion, input.rowVersion);
   const operation = await prepareTaskEncryptedOperation(current, {
@@ -4354,6 +4436,7 @@ export async function startTurn(
   mode: ChatTurnMode = "default",
   reasoningEffort: ReasoningEffort | null = null,
 ) {
+  await getPolicies();
   const idempotencyKey = crypto.randomUUID();
   const input = await createEncryptedChatTurn({
     attachments,

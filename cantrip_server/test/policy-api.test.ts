@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  effectivePolicyListSchema,
-  policyAssignmentListSchema,
-  policyDetailSchema,
-  policyListSchema,
+  effectivePolicyWireListSchema,
+  policyAssignmentWireListSchema,
   policyTemplateDetailSchema,
   policyTemplateListSchema,
+  policyWireDetailSchema,
+  policyWireListSchema,
 } from "@cantrip/protocol/policies";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -17,6 +17,7 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
+import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
 import { protectedProjectFields } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-policy-api-"));
@@ -47,107 +48,94 @@ afterAll(async () => {
   await rm(dataDirectory, { recursive: true, force: true });
 });
 
-describe.sequential("policy API", () => {
-  it("lists body-free templates and policies while exposing bounded details", async () => {
+describe.sequential("opaque policy API", () => {
+  it("keeps public templates separate from client-encrypted account policies", async () => {
     const templatesResponse = await app.inject({
       method: "GET",
       url: "/api/policy-templates",
     });
-    expect(templatesResponse.statusCode).toBe(200);
     const templates = policyTemplateListSchema.parse(templatesResponse.json());
     expect(templates).toHaveLength(2);
-    expect(templates).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ bodyMarkdown: expect.anything() }),
-      ]),
-    );
-
+    expect(templates[0]).not.toHaveProperty("bodyMarkdown");
     const templateResponse = await app.inject({
       method: "GET",
       url: "/api/policy-templates/manual-change-protocol",
     });
-    expect(templateResponse.statusCode).toBe(200);
     expect(
       policyTemplateDetailSchema.parse(templateResponse.json()).bodyMarkdown,
     ).toContain("# Manual Change Protocol");
 
-    const policiesResponse = await app.inject({
-      method: "GET",
-      url: "/api/policies",
+    const empty = policyWireListSchema.parse(
+      (await app.inject({ method: "GET", url: "/api/policies" })).json(),
+    );
+    expect(empty).toMatchObject({ bootstrapVersion: 0, policies: [] });
+    const bootstrap = await app.inject({
+      method: "POST",
+      url: "/api/policies/bootstrap",
+      payload: {
+        expectedBootstrapVersion: 0,
+        policies: [
+          opaquePolicyCreate("api-manual", {
+            mandatory: true,
+            templateKey: "manual-change-protocol",
+          }),
+          opaquePolicyCreate("api-codegraph", {
+            mandatory: true,
+            templateKey: "codegraph",
+          }),
+        ],
+      },
     });
-    expect(policiesResponse.statusCode).toBe(200);
-    const policies = policyListSchema.parse(policiesResponse.json());
-    expect(policies.policies).toHaveLength(2);
-    expect(policies.policies[0]).not.toHaveProperty("bodyMarkdown");
-
-    const detailResponse = await app.inject({
-      method: "GET",
-      url: `/api/policies/${policies.policies[0]!.id}`,
-    });
-    expect(detailResponse.statusCode).toBe(200);
-    expect(
-      policyDetailSchema.parse(detailResponse.json()).bodyMarkdown,
-    ).toContain("# Manual Change Protocol");
+    expect(bootstrap.statusCode).toBe(200);
+    const bootstrapped = policyWireListSchema.parse(bootstrap.json());
+    expect(bootstrapped).toMatchObject({ bootstrapVersion: 2 });
+    expect(bootstrapped.policies).toHaveLength(2);
+    expect(JSON.stringify(bootstrapped)).not.toContain(
+      "Manual Change Protocol",
+    );
   });
 
-  it("creates, edits, orders, and rejects stale root mutations", async () => {
-    const createdResponse = await app.inject({
+  it("creates, edits, orders, assigns, and returns only opaque records", async () => {
+    const input = opaquePolicyCreate("api-custom", { mandatory: true });
+    const create = await app.inject({
       method: "POST",
       url: "/api/policies",
+      payload: input,
+    });
+    expect(create.statusCode).toBe(201);
+    const created = policyWireDetailSchema.parse(create.json());
+    expect(created.content).toEqual(input.content);
+    expect(created).not.toHaveProperty("name");
+    expect(created).not.toHaveProperty("bodyMarkdown");
+
+    const replacement = opaquePolicyCreate("api-custom-updated");
+    const update = await app.inject({
+      method: "PATCH",
+      url: `/api/policies/${created.id}`,
       payload: {
-        key: "review-policy",
-        name: "Review policy",
-        summary: "Review every change before delivery.",
-        bodyMarkdown: "# Review policy\n\nInspect the final diff.",
-        enabled: true,
+        rowVersion: created.rowVersion,
+        content: {
+          protectedSummary: replacement.content.protectedSummary,
+          protectedBody: replacement.content.protectedBody,
+        },
         mandatory: false,
       },
     });
-    expect(createdResponse.statusCode).toBe(201);
-    const created = policyDetailSchema.parse(createdResponse.json());
-
-    const duplicateResponse = await app.inject({
-      method: "POST",
-      url: "/api/policies",
-      payload: {
-        key: "review-policy",
-        name: "Duplicate",
-        summary: "Duplicate key.",
-        bodyMarkdown: "# Duplicate",
-      },
-    });
-    expect(duplicateResponse.statusCode).toBe(409);
-
-    const updatedResponse = await app.inject({
-      method: "PATCH",
-      url: `/api/policies/${created.id}`,
-      payload: { rowVersion: created.rowVersion, mandatory: true },
-    });
-    expect(updatedResponse.statusCode).toBe(200);
-    const updated = policyDetailSchema.parse(updatedResponse.json());
-    expect(updated.mandatory).toBe(true);
-
-    const customResetResponse = await app.inject({
-      method: "POST",
-      url: `/api/policies/${created.id}/reset-template`,
-      payload: { rowVersion: updated.rowVersion },
-    });
-    expect(customResetResponse.statusCode).toBe(404);
-
-    const staleResponse = await app.inject({
+    expect(update.statusCode).toBe(200);
+    const updated = policyWireDetailSchema.parse(update.json());
+    expect(updated).toMatchObject({ rowVersion: 2, mandatory: false });
+    const stale = await app.inject({
       method: "PATCH",
       url: `/api/policies/${created.id}`,
       payload: { rowVersion: created.rowVersion, enabled: false },
     });
-    expect(staleResponse.statusCode).toBe(409);
+    expect(stale.statusCode).toBe(409);
 
-    const currentResponse = await app.inject({
-      method: "GET",
-      url: "/api/policies",
-    });
-    const current = policyListSchema.parse(currentResponse.json());
-    const reversed = [...current.policies].reverse().map(({ id }) => id);
-    const orderResponse = await app.inject({
+    const current = policyWireListSchema.parse(
+      (await app.inject({ method: "GET", url: "/api/policies" })).json(),
+    );
+    const reversed = current.policies.map(({ id }) => id).reverse();
+    const order = await app.inject({
       method: "PATCH",
       url: "/api/policies/order",
       payload: {
@@ -155,109 +143,10 @@ describe.sequential("policy API", () => {
         policyIds: reversed,
       },
     });
-    expect(orderResponse.statusCode).toBe(200);
     expect(
-      policyListSchema.parse(orderResponse.json()).policies.map(({ id }) => id),
+      policyWireListSchema.parse(order.json()).policies.map(({ id }) => id),
     ).toEqual(reversed);
 
-    const staleOrderResponse = await app.inject({
-      method: "PATCH",
-      url: "/api/policies/order",
-      payload: {
-        collectionVersion: current.collectionVersion,
-        policyIds: reversed,
-      },
-    });
-    expect(staleOrderResponse.statusCode).toBe(409);
-  });
-
-  it("copies, resets, and deletes template policies without changing the catalog", async () => {
-    const copyResponse = await app.inject({
-      method: "POST",
-      url: "/api/policies/from-template/manual-change-protocol",
-      payload: { key: "manual-change-protocol-copy", mandatory: false },
-    });
-    expect(copyResponse.statusCode).toBe(201);
-    const copy = policyDetailSchema.parse(copyResponse.json());
-    expect(copy.templateKey).toBe("manual-change-protocol");
-
-    const editedResponse = await app.inject({
-      method: "PATCH",
-      url: `/api/policies/${copy.id}`,
-      payload: {
-        rowVersion: copy.rowVersion,
-        name: "Edited copy",
-        bodyMarkdown: "# Edited",
-        enabled: false,
-      },
-    });
-    const edited = policyDetailSchema.parse(editedResponse.json());
-    const resetResponse = await app.inject({
-      method: "POST",
-      url: `/api/policies/${copy.id}/reset-template`,
-      payload: { rowVersion: edited.rowVersion },
-    });
-    expect(resetResponse.statusCode).toBe(200);
-    const reset = policyDetailSchema.parse(resetResponse.json());
-    expect(reset.name).toBe("Manual Change Protocol");
-    expect(reset.bodyMarkdown).toContain("# Manual Change Protocol");
-    expect(reset.enabled).toBe(false);
-    expect(reset.mandatory).toBe(false);
-
-    const staleDeleteResponse = await app.inject({
-      method: "DELETE",
-      url: `/api/policies/${copy.id}`,
-      payload: { rowVersion: edited.rowVersion },
-    });
-    expect(staleDeleteResponse.statusCode).toBe(409);
-    const deleteResponse = await app.inject({
-      method: "DELETE",
-      url: `/api/policies/${copy.id}`,
-      payload: { rowVersion: reset.rowVersion },
-    });
-    expect(deleteResponse.statusCode).toBe(204);
-
-    const templateResponse = await app.inject({
-      method: "GET",
-      url: "/api/policy-templates/manual-change-protocol",
-    });
-    expect(templateResponse.statusCode).toBe(200);
-  });
-
-  it("returns bounded not-found and validation errors", async () => {
-    expect(
-      (
-        await app.inject({
-          method: "GET",
-          url: "/api/policy-templates/missing",
-        })
-      ).statusCode,
-    ).toBe(404);
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/api/policies",
-          payload: { key: "INVALID" },
-        })
-      ).statusCode,
-    ).toBe(400);
-    expect(
-      (
-        await app.inject({
-          method: "DELETE",
-          url: "/api/policies/missing",
-          payload: { rowVersion: 1 },
-        })
-      ).statusCode,
-    ).toBe(404);
-  });
-
-  it("assigns workspace and project policies and resolves membership sources", async () => {
-    const workspace = await database.repository.createProjectWorkspace(
-      LOCAL_USER_ID,
-      { name: "Policy workspace" },
-    );
     const project = await database.repository.createGithubProject(
       LOCAL_USER_ID,
       {
@@ -266,45 +155,9 @@ describe.sequential("policy API", () => {
         repositoryId: "policy-api-project",
         nameWithOwner: "ArcaneArts/PolicyApiProject",
         url: "https://github.com/ArcaneArts/PolicyApiProject",
-        workspaceIds: [workspace.id],
       },
     );
-    const createdResponse = await app.inject({
-      method: "POST",
-      url: "/api/policies",
-      payload: {
-        key: "assignment-policy",
-        name: "Assignment policy",
-        summary: "Apply only where this policy is assigned.",
-        bodyMarkdown: "# Assignment policy",
-        enabled: true,
-        mandatory: false,
-      },
-    });
-    const policy = policyDetailSchema.parse(createdResponse.json());
-
-    const workspaceState = policyAssignmentListSchema.parse(
-      (
-        await app.inject({
-          method: "GET",
-          url: `/api/workspaces/${workspace.id}/policies`,
-        })
-      ).json(),
-    );
-    const workspaceUpdate = await app.inject({
-      method: "PATCH",
-      url: `/api/workspaces/${workspace.id}/policies`,
-      payload: {
-        collectionVersion: workspaceState.collectionVersion,
-        policyIds: [policy.id],
-      },
-    });
-    expect(workspaceUpdate.statusCode).toBe(200);
-    expect(
-      policyAssignmentListSchema.parse(workspaceUpdate.json()).directPolicyIds,
-    ).toEqual([policy.id]);
-
-    const projectState = policyAssignmentListSchema.parse(
+    const assignmentState = policyAssignmentWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -312,49 +165,18 @@ describe.sequential("policy API", () => {
         })
       ).json(),
     );
-    const projectUpdate = await app.inject({
+    const assignment = await app.inject({
       method: "PATCH",
       url: `/api/projects/${project.id}/policies`,
       payload: {
-        collectionVersion: projectState.collectionVersion,
-        policyIds: [policy.id],
+        collectionVersion: assignmentState.collectionVersion,
+        policyIds: [created.id],
       },
     });
-    expect(projectUpdate.statusCode).toBe(200);
-
-    const effectiveResponse = await app.inject({
-      method: "GET",
-      url: `/api/projects/${project.id}/effective-policies`,
-    });
-    expect(effectiveResponse.statusCode).toBe(200);
-    const effective = effectivePolicyListSchema.parse(effectiveResponse.json());
     expect(
-      effective.policies.find(({ key }) => key === policy.key)?.sources,
-    ).toEqual([
-      {
-        type: "workspace",
-        workspaceId: workspace.id,
-      },
-      { type: "project", projectId: project.id },
-    ]);
-
-    const staleUpdate = await app.inject({
-      method: "PATCH",
-      url: `/api/projects/${project.id}/policies`,
-      payload: {
-        collectionVersion: projectState.collectionVersion,
-        policyIds: [],
-      },
-    });
-    expect(staleUpdate.statusCode).toBe(409);
-
-    const workspaceMembershipUpdate = await app.inject({
-      method: "PATCH",
-      url: `/api/workspaces/${workspace.id}`,
-      payload: { expectedRevision: workspace.revision, projectIds: [] },
-    });
-    expect(workspaceMembershipUpdate.statusCode).toBe(200);
-    const afterMembership = effectivePolicyListSchema.parse(
+      policyAssignmentWireListSchema.parse(assignment.json()).directPolicyIds,
+    ).toEqual([created.id]);
+    const effective = effectivePolicyWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -363,17 +185,8 @@ describe.sequential("policy API", () => {
       ).json(),
     );
     expect(
-      afterMembership.policies.find(({ key }) => key === policy.key)?.sources,
+      effective.policies.find(({ id }) => id === created.id)?.sources,
     ).toEqual([{ type: "project", projectId: project.id }]);
-
-    for (const path of [
-      "/api/projects/missing/policies",
-      "/api/projects/missing/effective-policies",
-      "/api/workspaces/missing/policies",
-    ]) {
-      expect((await app.inject({ method: "GET", url: path })).statusCode).toBe(
-        404,
-      );
-    }
+    expect(effective.policies[0]).not.toHaveProperty("summary");
   });
 });

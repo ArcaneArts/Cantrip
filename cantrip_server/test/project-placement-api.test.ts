@@ -25,6 +25,7 @@ import {
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
+import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
 import {
   protectedChatFields,
   protectedBrowserFields,
@@ -829,25 +830,11 @@ describe.sequential("project execution placement API", () => {
     });
     const hiddenPolicy = await database.repository.policies.create(
       LOCAL_USER_ID,
-      {
-        key: "hidden-project-policy",
-        name: "Hidden project policy",
-        summary: "This policy has not been assigned to the current project.",
-        bodyMarkdown: "# Hidden policy\n\nDo not expose this body.",
-        enabled: true,
-        mandatory: false,
-      },
+      opaquePolicyCreate("hidden-project-policy"),
     );
     const visiblePolicy = await database.repository.policies.create(
       LOCAL_USER_ID,
-      {
-        key: "visible-project-policy",
-        name: "Visible project policy",
-        summary: "This mandatory policy is effective in the current project.",
-        bodyMarkdown: "# Visible policy",
-        enabled: true,
-        mandatory: true,
-      },
+      opaquePolicyCreate("visible-project-policy", { mandatory: true }),
     );
     const policyOrder = await database.repository.policies.list(LOCAL_USER_ID);
     await database.repository.policies.reorder(LOCAL_USER_ID, {
@@ -864,65 +851,55 @@ describe.sequential("project execution placement API", () => {
     expect(cliPolicies.statusCode).toBe(200);
     const listedPolicies = cantripCliCommandResultSchema.parse(
       cliPolicies.json(),
-    ).data as { policies: Array<{ key: string }> };
-    expect(listedPolicies.policies.map(({ key }) => key)).toEqual([
-      visiblePolicy.key,
-      "manual-change-protocol",
-      "codegraph",
+    ).data as { policies: Array<{ id: string }> };
+    expect(listedPolicies.policies.map(({ id }) => id)).toEqual([
+      visiblePolicy.id,
     ]);
     expect(listedPolicies.policies[0]).toMatchObject({
       mandatory: true,
       sources: [{ type: "mandatory" }],
     });
-    expect(JSON.stringify(cliPolicies.json())).not.toContain(
-      "# Visible policy",
-    );
-    expect(JSON.stringify(cliPolicies.json())).not.toContain(
-      hiddenPolicy.bodyMarkdown,
-    );
+    expect(listedPolicies.policies[0]).toHaveProperty("protectedSummary");
+    expect(listedPolicies.policies[0]).not.toHaveProperty("summary");
     const cliPolicy = await cli("policy.read", {
-      key: "manual-change-protocol",
+      policyId: visiblePolicy.id,
     });
     expect(cliPolicy.statusCode).toBe(200);
     expect(
       cantripCliCommandResultSchema.parse(cliPolicy.json()).data,
     ).toMatchObject({
       policy: {
-        key: "manual-change-protocol",
-        bodyMarkdown: expect.stringContaining("# Manual Change Protocol"),
+        id: visiblePolicy.id,
+        content: {
+          protectedSummary: expect.any(Object),
+          protectedBody: expect.any(Object),
+        },
       },
     });
-    expect(JSON.stringify(cliPolicy.json())).not.toContain("rowVersion");
-    const defaultPolicy = await database.repository.policies.getByKey(
-      LOCAL_USER_ID,
-      "manual-change-protocol",
-    );
-    expect(defaultPolicy).not.toBeNull();
-    await database.repository.policies.update(
-      LOCAL_USER_ID,
-      defaultPolicy!.id,
-      {
-        rowVersion: defaultPolicy!.rowVersion,
-        bodyMarkdown: "# Updated instructions\n\nUse the current value.",
+    const replacement = opaquePolicyCreate("updated-visible-policy");
+    await database.repository.policies.update(LOCAL_USER_ID, visiblePolicy.id, {
+      rowVersion: visiblePolicy.rowVersion,
+      content: {
+        protectedSummary: replacement.content.protectedSummary,
+        protectedBody: replacement.content.protectedBody,
       },
-    );
+    });
     const updatedCliPolicy = await cli("policy.read", {
-      key: "manual-change-protocol",
+      policyId: visiblePolicy.id,
     });
     expect(
       cantripCliCommandResultSchema.parse(updatedCliPolicy.json()).data,
     ).toMatchObject({
       policy: {
-        bodyMarkdown: "# Updated instructions\n\nUse the current value.",
+        content: {
+          protectedBody: replacement.content.protectedBody,
+        },
       },
     });
     const hiddenPolicyRead = await cli("policy.read", {
-      key: hiddenPolicy.key,
+      policyId: hiddenPolicy.id,
     });
     expect(hiddenPolicyRead.statusCode).toBe(404);
-    expect(JSON.stringify(hiddenPolicyRead.json())).not.toContain(
-      hiddenPolicy.bodyMarkdown,
-    );
     const cliCurrentTarget = await cli("target.show");
     expect(cliCurrentTarget.statusCode).toBe(200);
     expect(

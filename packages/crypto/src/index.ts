@@ -4,6 +4,7 @@ export * from "./communication-content.js";
 export * from "./hpke.js";
 export * from "./kdf.js";
 export * from "./payload.js";
+export * from "./policy-content.js";
 export * from "./private-labels.js";
 export * from "./surface-private-state.js";
 export * from "./task-content.js";

@@ -3433,7 +3433,7 @@ describe("Cantrip protocol", () => {
     });
   });
 
-  it("carries project worktree and effective policy context into worker-backed turns", () => {
+  it("carries project worktree and opaque effective policies into worker-backed turns", () => {
     const turn = workerCommandSchema.parse({
       type: "chat.turn",
       chatId: "chat-1",
@@ -3444,8 +3444,8 @@ describe("Cantrip protocol", () => {
       isPrimary: true,
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
-      policyContext:
-        "Effective Cantrip policies apply.\n\n[review] Review\nRead the current policy.",
+      policyProjectId: "project-1",
+      policies: { policies: [] },
       threadId: null,
       prompt: "Implement this safely.",
       skillNames: [],
@@ -3471,7 +3471,8 @@ describe("Cantrip protocol", () => {
       rootKind: "git-worktree",
       worktreeMode: "agent-managed",
       worktreePolicy: "required-for-writes",
-      policyContext: expect.stringContaining("[review]"),
+      policyProjectId: "project-1",
+      policies: { policies: [] },
       planMode: "plan",
       automationPaused: true,
     });
@@ -5026,6 +5027,8 @@ describe("Cantrip protocol", () => {
         clientMessageId: "message-1",
         executionLaneId: "lane-1",
         worktreeId: "worktree-1",
+        policyProjectId: "project-1",
+        policies: { policies: [] },
         threadId: null,
         prompt: "Review the diagram.",
         attachments: [
