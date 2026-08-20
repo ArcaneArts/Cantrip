@@ -37,6 +37,12 @@ For every additional dependent milestone, begin again from the latest upstream
 state and repeat the complete worktree, pull request, merge-observation, and
 cleanup cycle.`;
 
+const codegraphBody = `# Codegraph
+
+\`codegraph\` is available for repository-aware discovery of files, symbols,
+and relationships such as imports, callers, callees, dependencies, affected
+code, and related tests.`;
+
 const packagedTemplates = [
   policyTemplateDetailSchema.parse({
     templateKey: "manual-change-protocol",
@@ -45,6 +51,17 @@ const packagedTemplates = [
     summary:
       "Use an isolated worktree and independently merged pull request for every manual repository change. Read the full policy before changing files or Git state with `cantrip policy read manual-change-protocol`.",
     bodyMarkdown: manualChangeProtocolBody,
+    version: 1,
+    suggestedEnabled: true,
+    suggestedMandatory: true,
+  }),
+  policyTemplateDetailSchema.parse({
+    templateKey: "codegraph",
+    name: "Codegraph",
+    suggestedPolicyKey: "codegraph",
+    summary:
+      "`codegraph` is available for repository-aware discovery of files, symbols, and relationships such as imports, callers, callees, dependencies, affected code, and related tests.",
+    bodyMarkdown: codegraphBody,
     version: 1,
     suggestedEnabled: true,
     suggestedMandatory: true,

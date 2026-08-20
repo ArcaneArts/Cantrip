@@ -36,7 +36,7 @@ import {
 } from "../policies/templates.js";
 import * as schema from "./schema.js";
 
-const POLICY_BOOTSTRAP_VERSION = 1;
+const POLICY_BOOTSTRAP_VERSION = 2;
 
 type PolicyDatabase = PgDatabase<PgQueryResultHKT, typeof schema>;
 type PolicyTransaction = Parameters<
@@ -135,16 +135,17 @@ export class PolicyRepository {
     if (current[0] && current[0].bootstrapVersion >= POLICY_BOOTSTRAP_VERSION) {
       return false;
     }
-    const template = requirePackagedPolicyTemplate("manual-change-protocol");
     return this.database.transaction(async (transaction) => {
       await transaction
         .insert(schema.policyOwnerStates)
         .values({ ownerId })
         .onConflictDoNothing();
       const now = new Date();
-      const claimed = await transaction
+      let bootstrapped = false;
+
+      const manualProtocolClaim = await transaction
         .update(schema.policyOwnerStates)
-        .set({ bootstrapVersion: POLICY_BOOTSTRAP_VERSION, updatedAt: now })
+        .set({ bootstrapVersion: 1, updatedAt: now })
         .where(
           and(
             eq(schema.policyOwnerStates.ownerId, ownerId),
@@ -152,29 +153,79 @@ export class PolicyRepository {
           ),
         )
         .returning({ ownerId: schema.policyOwnerStates.ownerId });
-      if (!claimed[0]) return false;
+      if (manualProtocolClaim[0]) {
+        const template = requirePackagedPolicyTemplate(
+          "manual-change-protocol",
+        );
+        await transaction
+          .insert(schema.policies)
+          .values({
+            id: randomUUID(),
+            ownerId,
+            key: template.suggestedPolicyKey,
+            name: template.name,
+            summary: template.summary,
+            bodyMarkdown: template.bodyMarkdown,
+            enabled: template.suggestedEnabled,
+            mandatory: template.suggestedMandatory,
+            position: 0,
+            templateKey: template.templateKey,
+            rowVersion: 1,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing({
+            target: [schema.policies.ownerId, schema.policies.key],
+          });
+        bootstrapped = true;
+      }
 
-      await transaction
-        .insert(schema.policies)
-        .values({
-          id: randomUUID(),
-          ownerId,
-          key: template.suggestedPolicyKey,
-          name: template.name,
-          summary: template.summary,
-          bodyMarkdown: template.bodyMarkdown,
-          enabled: template.suggestedEnabled,
-          mandatory: template.suggestedMandatory,
-          position: 0,
-          templateKey: template.templateKey,
-          rowVersion: 1,
-          createdAt: now,
+      const codegraphClaim = await transaction
+        .update(schema.policyOwnerStates)
+        .set({
+          bootstrapVersion: 2,
+          collectionVersion: sql`${schema.policyOwnerStates.collectionVersion} + 1`,
           updatedAt: now,
         })
-        .onConflictDoNothing({
-          target: [schema.policies.ownerId, schema.policies.key],
-        });
-      return true;
+        .where(
+          and(
+            eq(schema.policyOwnerStates.ownerId, ownerId),
+            eq(schema.policyOwnerStates.bootstrapVersion, 1),
+          ),
+        )
+        .returning({ ownerId: schema.policyOwnerStates.ownerId });
+      if (codegraphClaim[0]) {
+        const template = requirePackagedPolicyTemplate("codegraph");
+        const positions = await transaction
+          .select({ position: schema.policies.position })
+          .from(schema.policies)
+          .where(eq(schema.policies.ownerId, ownerId))
+          .orderBy(sql`${schema.policies.position} DESC`)
+          .limit(1);
+        await transaction
+          .insert(schema.policies)
+          .values({
+            id: randomUUID(),
+            ownerId,
+            key: template.suggestedPolicyKey,
+            name: template.name,
+            summary: template.summary,
+            bodyMarkdown: template.bodyMarkdown,
+            enabled: template.suggestedEnabled,
+            mandatory: template.suggestedMandatory,
+            position: (positions[0]?.position ?? -1) + 1,
+            templateKey: template.templateKey,
+            rowVersion: 1,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing({
+            target: [schema.policies.ownerId, schema.policies.key],
+          });
+        bootstrapped = true;
+      }
+
+      return bootstrapped;
     });
   }
 

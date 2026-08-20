@@ -16,11 +16,12 @@ system prompt:
 - a mandatory policy applies to every project owned by that user on the server.
 
 Policies provide reusable operational expectations without copying instruction
-files into every repository. The initial packaged policy is the Manual Change
-Protocol. Cantrip creates one editable policy from that template during account
-bootstrap and marks it mandatory by default. This is a convenience default from
-the user to their projects, not an administrator rule imposed by Cantrip. The
-user may edit, disable, unmark, reorder, or delete it.
+files into every repository. Cantrip initially packages the Manual Change
+Protocol and a compact Codegraph awareness policy. Cantrip creates editable
+policies from both templates during account bootstrap and marks them mandatory
+by default. These are convenience defaults from the user to their projects, not
+administrator rules imposed by Cantrip. The user may edit, disable, unmark,
+reorder, or delete them.
 
 This document defines the implemented first complete Policy system. It
 intentionally does not implement Task tabs; Tasks are designed separately in
@@ -127,26 +128,26 @@ The **+ Policy** flow offers:
 
 - Blank policy;
 - Manual Change Protocol;
+- Codegraph;
 - any future packaged templates.
 
 Selecting a template copies its current contents into a new independent policy.
 If the suggested key is already used, the UI requires another unique key or
 proposes a suffix.
 
-### Manual Change Protocol default
+### Default policies
 
-During one-time policy bootstrap for each user, Cantrip creates:
+During versioned one-time policy bootstrap for each user, Cantrip creates:
 
-- name: Manual Change Protocol;
-- key: manual-change-protocol;
-- enabled: true;
-- mandatory: true;
-- summary and body copied from the packaged Manual Change Protocol template.
+- **Manual Change Protocol** (`manual-change-protocol`), enabled and mandatory;
+- **Codegraph** (`codegraph`), enabled and mandatory, with a short capability
+  description that makes the Agent aware of repository-aware file, symbol, and
+  relationship discovery without requiring Codegraph for every task.
 
-Existing users receive the same one-time bootstrap when the feature migration is
-introduced. A durable bootstrap marker prevents the policy from being recreated
-after the user deletes it. Users can always create a fresh copy later through
-**+ Policy → Manual Change Protocol**.
+Existing users receive each newly introduced default once. Durable versioned
+bootstrap markers prevent older defaults from being recreated and prevent any
+default from being recreated after the user deletes it. Users can always create
+a fresh copy later through **+ Policy**.
 
 The packaged template should be based on
 docs/agents/MANUAL_CHANGE_PROTOCOL.md at build time, but the runtime policy is a
@@ -230,7 +231,7 @@ record. Bootstrap must be transactional and idempotent:
 - version absent: instantiate the current required defaults once;
 - version current: do nothing;
 - policy deleted after bootstrap: do not recreate it;
-- concurrent first requests: create at most one default policy.
+- concurrent first requests: create at most one copy of each default policy.
 
 ## Protocol contracts
 

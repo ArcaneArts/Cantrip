@@ -6,18 +6,32 @@ import {
 } from "../src/policies/templates.js";
 
 describe("packaged policy templates", () => {
-  it("packages a compact repository-agnostic Manual Change Protocol", () => {
+  it("packages the repository-agnostic default policies", () => {
     const templates = listPackagedPolicyTemplates();
-    expect(templates).toEqual([
-      expect.objectContaining({
-        templateKey: "manual-change-protocol",
-        suggestedPolicyKey: "manual-change-protocol",
-        suggestedEnabled: true,
-        suggestedMandatory: true,
-        version: 1,
-      }),
-    ]);
-    expect(templates[0]).not.toHaveProperty("bodyMarkdown");
+    expect(templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          templateKey: "manual-change-protocol",
+          suggestedPolicyKey: "manual-change-protocol",
+          suggestedEnabled: true,
+          suggestedMandatory: true,
+          version: 1,
+        }),
+        expect.objectContaining({
+          templateKey: "codegraph",
+          suggestedPolicyKey: "codegraph",
+          suggestedEnabled: true,
+          suggestedMandatory: true,
+          version: 1,
+        }),
+      ]),
+    );
+    expect(templates).toHaveLength(2);
+    expect(templates).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ bodyMarkdown: expect.anything() }),
+      ]),
+    );
 
     const detail = getPackagedPolicyTemplate("manual-change-protocol");
     expect(detail?.bodyMarkdown).toContain("isolated worktree");
@@ -25,6 +39,14 @@ describe("packaged policy templates", () => {
     expect(detail?.bodyMarkdown).toContain("squash auto-merge");
     expect(detail?.bodyMarkdown).not.toContain("pnpm");
     expect(detail?.bodyMarkdown).not.toContain("Cantrip's app/server");
+
+    const codegraph = getPackagedPolicyTemplate("codegraph");
+    expect(codegraph?.name).toBe("Codegraph");
+    expect(codegraph?.bodyMarkdown).toContain("repository-aware discovery");
+    expect(codegraph?.bodyMarkdown).toContain("callers, callees, dependencies");
+    expect(codegraph?.bodyMarkdown).not.toMatch(
+      /\b(?:always|must|required)\b/iu,
+    );
   });
 
   it("does not expose mutable template instances", () => {

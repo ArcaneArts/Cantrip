@@ -4203,6 +4203,10 @@ describe("local server foundation", () => {
     });
     expect(turnRequests).toBe(1);
     expect(turnPolicyContexts[0]).toContain("[manual-change-protocol]");
+    expect(turnPolicyContexts[0]).toContain("[codegraph]");
+    expect(turnPolicyContexts[0]).toContain(
+      "repository-aware discovery of files, symbols, and relationships",
+    );
     expect(turnPolicyContexts[0]).toContain("cantrip policy read");
     expect(turnPolicyContexts[0]).not.toContain("bodyMarkdown");
     expect(turnSkillNames[0]).toEqual(["skill-creator"]);
@@ -5947,8 +5951,10 @@ describe("local server foundation", () => {
     expect(turnPrompts.at(-1)).toContain("Continue working toward");
     expect(turnPolicyContexts).toHaveLength(turnRequests);
     expect(
-      turnPolicyContexts.every((context) =>
-        context?.includes("[manual-change-protocol]"),
+      turnPolicyContexts.every(
+        (context) =>
+          context?.includes("[manual-change-protocol]") &&
+          context.includes("[codegraph]"),
       ),
     ).toBe(true);
     expect(
