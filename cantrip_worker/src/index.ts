@@ -997,6 +997,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "github.issue.get":
         return github.getIssue(command.repository, command.number);
+      case "github.issue.create":
+        return github.createIssue(command.repository, command.request);
       case "github.issue.comment":
         return github.commentOnIssue(
           command.repository,

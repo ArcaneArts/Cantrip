@@ -143,6 +143,7 @@ import {
   githubAuthStatusSchema,
   githubIssueCloseSchema,
   githubIssueCommentCreateSchema,
+  githubIssueCreateSchema,
   githubIssueDetailSchema,
   githubIssueKindSchema,
   githubIssueListSchema,
@@ -17057,6 +17058,33 @@ export async function buildApp({
       return sendWorkerRequestFailure(reply, error);
     }
   });
+
+  app.post<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/github/issues",
+    async (request, reply) => {
+      const input = githubIssueCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getGithubProjectExecutionContext(
+        applicationOwnerId(),
+        request.params.projectId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "GitHub project not found." });
+      }
+      try {
+        const issue = await bridge.request(context.workerId, {
+          type: "github.issue.create",
+          repository: context.nameWithOwner,
+          request: input.data,
+        });
+        return reply.code(201).send(githubIssueDetailSchema.parse(issue));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
 
   app.get<{ Params: { issueNumber: string; projectId: string } }>(
     "/api/projects/:projectId/github/issues/:issueNumber",

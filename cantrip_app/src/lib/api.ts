@@ -315,6 +315,7 @@ import type {
   GitSubmoduleAction,
   GitTagAction,
   GithubIssueKind,
+  GithubIssueCreate,
   GithubIssueState,
   GithubPullRequestCreate,
   GithubPullRequestLifecycleAction,
@@ -2268,6 +2269,18 @@ export async function getGithubIssue(projectId: string, issueNumber: number) {
   return githubIssueDetailSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}`,
+    ),
+  );
+}
+
+export async function createGithubIssue(
+  projectId: string,
+  input: GithubIssueCreate,
+) {
+  return githubIssueDetailSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/github/issues`,
+      input,
     ),
   );
 }

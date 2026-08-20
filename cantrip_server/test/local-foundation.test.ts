@@ -193,6 +193,9 @@ let releasePlanQuestion: (() => void) | null = null;
 let releaseAgentInteraction: (() => void) | null = null;
 const deliveredAgentInteractionResponses: unknown[] = [];
 const issueComments: string[] = [];
+const createdIssues: Array<
+  Extract<WorkerCommand, { type: "github.issue.create" }>["request"]
+> = [];
 const issueListRequests: Array<{
   kind: "issue" | "pull-request";
   limit: number;
@@ -532,6 +535,22 @@ const workerBridge = {
           ],
         };
       }
+      case "github.issue.create":
+        createdIssues.push(command.request);
+        return {
+          number: 43,
+          title: command.request.title,
+          state: "open",
+          url: "https://github.com/ArcaneArts/Cantrip/issues/43",
+          author: "cantrip-test",
+          commentCount: 0,
+          labels: [],
+          createdAt: "2026-08-07T12:00:00.000Z",
+          updatedAt: "2026-08-07T12:00:00.000Z",
+          closedAt: null,
+          body: command.request.body || null,
+          comments: [],
+        };
       case "github.pull-request.create":
         pullRequestCreateCommands.push(command);
         return {
@@ -3003,6 +3022,33 @@ describe("local server foundation", () => {
       page: 3,
       limit: 25,
     });
+    const issueCreateResponse = await firstApp.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/github/issues`,
+      payload: {
+        title: "Issue created from Cantrip",
+        body: "Issue details from the Git tab.",
+      },
+    });
+    expect(issueCreateResponse.statusCode).toBe(201);
+    expect(
+      githubIssueDetailSchema.parse(issueCreateResponse.json()),
+    ).toMatchObject({
+      number: 43,
+      title: "Issue created from Cantrip",
+      body: "Issue details from the Git tab.",
+    });
+    expect(createdIssues).toContainEqual({
+      title: "Issue created from Cantrip",
+      body: "Issue details from the Git tab.",
+    });
+    expect(
+      await firstApp.inject({
+        method: "POST",
+        url: `/api/projects/${project.id}/github/issues`,
+        payload: { title: "   " },
+      }),
+    ).toMatchObject({ statusCode: 400 });
     expect(
       await firstApp.inject({
         method: "GET",
