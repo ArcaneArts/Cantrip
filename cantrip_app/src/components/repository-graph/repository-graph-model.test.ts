@@ -58,7 +58,7 @@ describe("repository graph model", () => {
     ).toContain("app");
   });
 
-  it("fans broad trees radially and lets larger nodes displace their neighbours", () => {
+  it("packs local clusters radially and lets larger nodes displace their neighbours", () => {
     const broadNodes: RepositoryGraphInputNode[] = [
       node("root", null, "directory"),
     ];
@@ -79,16 +79,49 @@ describe("repository graph model", () => {
     }
     const evenScene = buildRepositoryGraphScene(evenlySized);
     const enlargedScene = buildRepositoryGraphScene(enlarged);
-    const neighbourDistance = (
+    const maximumDistanceFromRoot = (
       scene: ReturnType<typeof buildRepositoryGraphScene>,
-    ) => {
-      const left = scene.nodesById.get("file-5")!;
-      const right = scene.nodesById.get("file-6")!;
-      return Math.hypot(left.x - right.x, left.y - right.y);
-    };
-    expect(neighbourDistance(enlargedScene)).toBeGreaterThan(
-      neighbourDistance(evenScene) * 1.25,
+    ) =>
+      Math.max(
+        ...scene.nodes
+          .filter((entry) => entry.parentId === "root")
+          .map((entry) => Math.hypot(entry.x, entry.y)),
+      );
+    expect(maximumDistanceFromRoot(enlargedScene)).toBeGreaterThan(
+      maximumDistanceFromRoot(evenScene) * 1.1,
     );
+  });
+
+  it("keeps files around their directory instead of one global depth ring", () => {
+    const nodes: RepositoryGraphInputNode[] = [
+      node("root", null, "directory"),
+      node("src", "root", "directory"),
+      node("docs", "root", "directory"),
+    ];
+    for (let index = 0; index < 14; index += 1) {
+      nodes.push(node(`src/file-${index}`, "src"));
+      nodes.push(node(`docs/file-${index}`, "docs"));
+    }
+
+    const scene = buildRepositoryGraphScene(nodes);
+    const src = scene.nodesById.get("src")!;
+    const docs = scene.nodesById.get("docs")!;
+    const srcFiles = scene.nodes.filter((entry) => entry.parentId === "src");
+    const docsFiles = scene.nodes.filter((entry) => entry.parentId === "docs");
+    const distance = (
+      left: { x: number; y: number },
+      right: { x: number; y: number },
+    ) => Math.hypot(left.x - right.x, left.y - right.y);
+
+    expect(
+      srcFiles.every((entry) => distance(entry, src) < distance(entry, docs)),
+    ).toBe(true);
+    expect(
+      docsFiles.every((entry) => distance(entry, docs) < distance(entry, src)),
+    ).toBe(true);
+    expect(
+      new Set(srcFiles.map((entry) => Math.round(distance(entry, src)))).size,
+    ).toBeGreaterThan(1);
   });
 
   it("bounds large hierarchies and reports aggregation without dropping the source count", () => {
