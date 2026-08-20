@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { defaultRepositoryGraphCamera } from "./repository-graph-camera";
 import {
@@ -60,5 +60,40 @@ describe("repository graph canvas render planning", () => {
       { maxLabels: 1, selectedNodeId: "beta" },
     );
     expect(plan.labels.map((entry) => entry.id)).toEqual(["beta"]);
+  });
+
+  it("preserves CSS layout sizing while updating the backing resolution", () => {
+    const context = {
+      clearRect: vi.fn(),
+      setTransform: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    const canvas = {
+      getContext: () => context,
+      height: 150,
+      style: { height: "100%", width: "100%" },
+      width: 300,
+    } as unknown as HTMLCanvasElement;
+
+    new Canvas2DRepositoryGraphAdapter().render(
+      canvas,
+      buildRepositoryGraphScene([]),
+      defaultRepositoryGraphCamera(),
+      { height: 600, width: 800 },
+      {
+        devicePixelRatio: 2,
+        theme: {
+          background: "transparent",
+          edge: "gray",
+          foreground: "white",
+          muted: "silver",
+          selection: "purple",
+        },
+      },
+    );
+
+    expect(canvas.width).toBe(1_600);
+    expect(canvas.height).toBe(1_200);
+    expect(canvas.style.width).toBe("100%");
+    expect(canvas.style.height).toBe("100%");
   });
 });

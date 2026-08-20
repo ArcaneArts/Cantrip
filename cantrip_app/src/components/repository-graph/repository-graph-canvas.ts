@@ -99,10 +99,10 @@ function setCanvasResolution(
 ): CanvasRenderingContext2D | null {
   const width = Math.max(1, Math.round(viewport.width * devicePixelRatio));
   const height = Math.max(1, Math.round(viewport.height * devicePixelRatio));
+  // CSS owns the display size. Writing the initial 1x1 measured viewport back
+  // into the style collapses the canvas and traps ResizeObserver at that size.
   if (canvas.width !== width) canvas.width = width;
   if (canvas.height !== height) canvas.height = height;
-  canvas.style.width = `${viewport.width}px`;
-  canvas.style.height = `${viewport.height}px`;
   const context = canvas.getContext("2d");
   context?.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   return context;
