@@ -131,7 +131,8 @@ import {
   explorerWireListSchema,
   explorerWireSummarySchema,
   encryptedExplorerUpdateSchema,
-  explorerViewStateUpdateSchema,
+  encryptedExplorerViewStateUpdateSchema,
+  encryptedExplorerWorktreeUpdateSchema,
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
   executionTargetWireCatalogSchema,
@@ -20806,7 +20807,9 @@ export async function buildApp({
   app.patch<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId/worktree",
     async (request, reply) => {
-      const input = worktreeSelectionSchema.safeParse(request.body);
+      const input = encryptedExplorerWorktreeUpdateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -20829,7 +20832,9 @@ export async function buildApp({
   app.patch<{ Params: { explorerId: string } }>(
     "/api/explorers/:explorerId/view-state",
     async (request, reply) => {
-      const input = explorerViewStateUpdateSchema.safeParse(request.body);
+      const input = encryptedExplorerViewStateUpdateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }

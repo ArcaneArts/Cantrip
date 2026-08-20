@@ -3139,11 +3139,16 @@ export async function createExplorer(
     title,
     "explorer",
   );
+  const stateProtection = await surfaceTitleEncryption.protectExplorerState(
+    id,
+    null,
+  );
   return surfaceTitleEncryption.openExplorer(
     explorerWireSummarySchema.parse(
       await post(`/api/projects/${encodeURIComponent(projectId)}/explorers`, {
         id,
         titleProtection,
+        stateProtection,
         ...(worktreeId ? { worktreeId } : {}),
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
@@ -3156,13 +3161,17 @@ export async function updateExplorerWorktree(
   explorerId: string,
   worktreeId: string,
 ) {
+  const stateProtection = await surfaceTitleEncryption.protectExplorerState(
+    explorerId,
+    null,
+  );
   return surfaceTitleEncryption.openExplorer(
     explorerWireSummarySchema.parse(
       await request(
         `/api/explorers/${encodeURIComponent(explorerId)}/worktree`,
         {
           method: "PATCH",
-          body: JSON.stringify({ worktreeId }),
+          body: JSON.stringify({ worktreeId, stateProtection }),
         },
       ),
     ),
@@ -3190,13 +3199,20 @@ export async function updateExplorerViewState(
   input: ExplorerViewStateUpdate,
 ) {
   const parsed = explorerViewStateUpdateSchema.parse(input);
+  const stateProtection = await surfaceTitleEncryption.protectExplorerState(
+    explorerId,
+    parsed.selectedPath,
+  );
   return surfaceTitleEncryption.openExplorer(
     explorerWireSummarySchema.parse(
       await request(
         `/api/explorers/${encodeURIComponent(explorerId)}/view-state`,
         {
           method: "PATCH",
-          body: JSON.stringify(parsed),
+          body: JSON.stringify({
+            fileMode: parsed.fileMode,
+            stateProtection,
+          }),
         },
       ),
     ),

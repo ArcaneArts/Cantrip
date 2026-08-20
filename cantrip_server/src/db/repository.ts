@@ -56,7 +56,8 @@ import type {
   EncryptedCodeTabUpdate,
   DesktopUpdateActiveWorkSummary,
   EncryptedExplorerCreate,
-  ExplorerViewStateUpdate,
+  EncryptedExplorerViewStateUpdate,
+  EncryptedExplorerWorktreeUpdate,
   ExplorerWireSummary,
   EncryptedExplorerUpdate,
   ExecutionPlacement,
@@ -1503,7 +1504,7 @@ function toExplorerWireSummary(
     position: explorer.position,
     activeWorkerId: explorer.activeWorkerId,
     worktreeId: explorer.worktreeId,
-    selectedPath: explorer.selectedPath,
+    stateProtection: explorer.protectedState,
     fileMode: explorer.fileMode as ExplorerWireSummary["fileMode"],
     createdAt: toISOString(explorer.createdAt),
     updatedAt: toISOString(explorer.updatedAt),
@@ -12501,6 +12502,7 @@ export class ServerRepository {
           id: input.id,
           projectId,
           protectedLabel: input.titleProtection,
+          protectedState: input.stateProtection,
           position,
           activeWorkerId: workerId,
           worktreeId,
@@ -12520,7 +12522,7 @@ export class ServerRepository {
   async updateExplorerWorktree(
     ownerId: string,
     explorerId: string,
-    input: WorktreeSelection,
+    input: EncryptedExplorerWorktreeUpdate,
   ): Promise<ExplorerWireSummary | null> {
     const rows = await this.database
       .select({ explorer: schema.explorers })
@@ -12547,7 +12549,7 @@ export class ServerRepository {
       .set({
         activeWorkerId: target.workerId,
         worktreeId: target.worktree.id,
-        selectedPath: null,
+        protectedState: input.stateProtection,
         fileMode: "preview",
         updatedAt: new Date(),
       })
@@ -12609,7 +12611,7 @@ export class ServerRepository {
   async updateExplorerViewState(
     ownerId: string,
     explorerId: string,
-    input: ExplorerViewStateUpdate,
+    input: EncryptedExplorerViewStateUpdate,
   ): Promise<ExplorerWireSummary | null> {
     if (!(await this.getExplorerExecutionContext(ownerId, explorerId))) {
       return null;
@@ -12617,7 +12619,7 @@ export class ServerRepository {
     const result = await this.database
       .update(schema.explorers)
       .set({
-        selectedPath: input.selectedPath,
+        protectedState: input.stateProtection,
         fileMode: input.fileMode,
         updatedAt: new Date(),
       })

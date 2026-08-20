@@ -54,7 +54,10 @@ import {
   workerEncryptionStatusSchema,
 } from "./encryption.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
-import { terminalPrivateStateOpaqueSchema } from "./surface-private-state.js";
+import {
+  explorerPrivateStateOpaqueSchema,
+  terminalPrivateStateOpaqueSchema,
+} from "./surface-private-state.js";
 
 import { projectAutomationConditionSchema } from "./automations.js";
 import {
@@ -4037,7 +4040,9 @@ export const encryptedExplorerCreateSchema = explorerCreateBaseSchema
   .safeExtend({
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: explorerPrivateStateOpaqueSchema,
   })
+  .strict()
   .refine(
     (input) => input.titleProtection.classification.recordKind === "explorer",
     {
@@ -4068,13 +4073,26 @@ export const explorerViewStateUpdateSchema = z.object({
   fileMode: explorerFileModeSchema,
 });
 
+export const encryptedExplorerViewStateUpdateSchema = z
+  .object({
+    stateProtection: explorerPrivateStateOpaqueSchema,
+    fileMode: explorerFileModeSchema,
+  })
+  .strict();
+
+export const encryptedExplorerWorktreeUpdateSchema = z
+  .object({
+    worktreeId: z.string().min(1),
+    stateProtection: explorerPrivateStateOpaqueSchema,
+  })
+  .strict();
+
 const explorerSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   position: z.number().int().nonnegative(),
   activeWorkerId: z.string().min(1),
   worktreeId: z.string().min(1),
-  selectedPath: explorerViewStateUpdateSchema.shape.selectedPath,
   fileMode: explorerFileModeSchema,
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -4082,10 +4100,15 @@ const explorerSummaryBaseSchema = z.object({
 
 export const explorerSummarySchema = explorerSummaryBaseSchema.extend({
   title: z.string().min(1).max(200),
+  selectedPath: explorerViewStateUpdateSchema.shape.selectedPath,
 });
 
 export const explorerWireSummarySchema = explorerSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: explorerPrivateStateOpaqueSchema,
+  })
+  .strict()
   .refine(
     (explorer) =>
       explorer.titleProtection.classification.recordKind === "explorer",
@@ -11581,6 +11604,12 @@ export type EncryptedExplorerUpdate = z.infer<
 export type ExplorerFileMode = z.infer<typeof explorerFileModeSchema>;
 export type ExplorerViewStateUpdate = z.infer<
   typeof explorerViewStateUpdateSchema
+>;
+export type EncryptedExplorerViewStateUpdate = z.infer<
+  typeof encryptedExplorerViewStateUpdateSchema
+>;
+export type EncryptedExplorerWorktreeUpdate = z.infer<
+  typeof encryptedExplorerWorktreeUpdateSchema
 >;
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
 export type ExplorerWireSummary = z.infer<typeof explorerWireSummarySchema>;

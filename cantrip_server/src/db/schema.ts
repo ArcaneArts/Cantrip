@@ -2340,6 +2340,9 @@ export const explorers = pgTable("explorers", {
   protectedLabel: jsonb("protected_label")
     .$type<PrivateDisplayLabelOpaque>()
     .notNull(),
+  protectedState: jsonb("protected_state")
+    .$type<SurfacePrivateStateOpaque>()
+    .notNull(),
   position: integer("position").notNull().default(0),
   activeWorkerId: text("active_worker_id")
     .notNull()
@@ -2347,7 +2350,6 @@ export const explorers = pgTable("explorers", {
   worktreeId: text("worktree_id")
     .notNull()
     .references(() => projectWorktrees.id, { onDelete: "restrict" }),
-  selectedPath: text("selected_path"),
   fileMode: text("file_mode").notNull().default("preview"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()

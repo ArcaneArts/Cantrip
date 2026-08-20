@@ -85,3 +85,27 @@ export function protectedTerminalFields(id = randomUUID()): {
     },
   };
 }
+
+export function protectedExplorerFields(id = randomUUID()): {
+  id: string;
+  titleProtection: PrivateDisplayLabelOpaque;
+  stateProtection: SurfacePrivateStateOpaque;
+} {
+  return {
+    ...protectedDisplayLabelFields("explorer", id),
+    stateProtection: {
+      classification: { recordKind: "explorer-state" },
+      protectedState: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: randomBytes(12).toString("base64url"),
+          ciphertext: randomBytes(32).toString("base64url"),
+        },
+      },
+    },
+  };
+}

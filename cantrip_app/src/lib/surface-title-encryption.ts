@@ -29,6 +29,7 @@ import type {
   PrivateDisplayLabelRecordKind,
 } from "@cantrip/protocol/private-labels";
 import {
+  explorerPrivateStateProtectedContentSchema,
   terminalPrivateStateProtectedContentSchema,
   type SurfacePrivateStateOpaque,
 } from "@cantrip/protocol/surface-private-state";
@@ -108,6 +109,29 @@ export class SurfaceTitleEncryptionAdapter {
     });
   }
 
+  protectExplorerState(
+    explorerId: string,
+    selectedPath: string | null,
+  ): Promise<SurfacePrivateStateOpaque> {
+    const identity = this.identity();
+    return encodeSurfacePrivateStateForClient({
+      identity,
+      context: {
+        serverId: identity.serverId,
+        resource: "explorer-row",
+        resourceId: explorerId,
+        operationId: null,
+        recordKind: "explorer-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "explorer-state" },
+        selectedPath,
+      },
+      service: this.service,
+    });
+  }
+
   private async openLabel(
     rowId: string,
     titleProtection: PrivateDisplayLabelOpaque,
@@ -157,10 +181,30 @@ export class SurfaceTitleEncryptionAdapter {
   }
 
   async openExplorer(explorer: ExplorerWireSummary): Promise<ExplorerSummary> {
-    const { titleProtection, ...publicExplorer } = explorer;
+    const identity = this.identity();
+    const state = explorerPrivateStateProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "explorer-row",
+          resourceId: explorer.id,
+          operationId: null,
+          recordKind: "explorer-state",
+        },
+        opaque: explorer.stateProtection,
+        service: this.service,
+      }),
+    );
+    const {
+      stateProtection: _stateProtection,
+      titleProtection,
+      ...publicExplorer
+    } = explorer;
     return explorerSummarySchema.parse({
       ...publicExplorer,
       title: await this.openLabel(explorer.id, titleProtection, "explorer"),
+      selectedPath: state.selectedPath,
     });
   }
 
