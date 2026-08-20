@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   ClientEncryptionService,
+  IndexedDbClientDeviceKeyStore,
   clientEncryption,
   clientEncryptionForRuntime,
   type ClientDeviceKeyStore,
@@ -22,6 +23,37 @@ import { clearClientSession, setClientSession } from "./client-session";
 
 const timestamp = "2026-08-19T12:00:00.000Z";
 const identity = { ownerId: "owner-a", serverId: "server-a" } as const;
+
+function missingRecordIndexedDbFactory(): IDBFactory {
+  const request = { result: undefined } as unknown as IDBRequest<unknown>;
+  let transaction: IDBTransaction;
+  const database = {
+    close() {},
+    transaction() {
+      transaction = {
+        objectStore() {
+          return {
+            get() {
+              queueMicrotask(() => {
+                request.onsuccess?.(new Event("success"));
+                transaction.oncomplete?.(new Event("complete"));
+              });
+              return request;
+            },
+          } as unknown as IDBObjectStore;
+        },
+      } as unknown as IDBTransaction;
+      return transaction;
+    },
+  } as unknown as IDBDatabase;
+  const openRequest = { result: database } as unknown as IDBOpenDBRequest;
+  return {
+    open() {
+      queueMicrotask(() => openRequest.onsuccess?.(new Event("success")));
+      return openRequest;
+    },
+  } as unknown as IDBFactory;
+}
 
 class MemoryDeviceKeyStore implements ClientDeviceKeyStore {
   private readonly records = new Map<string, unknown>();
@@ -97,6 +129,14 @@ afterEach(() => {
 });
 
 describe("client encryption key custody", () => {
+  it("normalizes IndexedDB's undefined missing-record result to null", async () => {
+    const store = new IndexedDbClientDeviceKeyStore(
+      missingRecordIndexedDbFactory(),
+    );
+
+    await expect(store.load(identity)).resolves.toBeNull();
+  });
+
   it("preserves an unlocked singleton across development hot reloads", () => {
     const hotState: Parameters<typeof clientEncryptionForRuntime>[0] = {};
     const first = clientEncryptionForRuntime(hotState);

@@ -111,8 +111,10 @@ export class IndexedDbClientDeviceKeyStore implements ClientDeviceKeyStore {
   async load(identity: ClientEncryptionIdentity): Promise<unknown | null> {
     const database = await this.open();
     try {
-      return await completeRequest(database, "readonly", (store) =>
-        store.get(deviceStorageKey(identity)),
+      return (
+        (await completeRequest(database, "readonly", (store) =>
+          store.get(deviceStorageKey(identity)),
+        )) ?? null
       );
     } finally {
       database.close();
