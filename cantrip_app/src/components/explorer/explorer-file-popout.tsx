@@ -1,12 +1,11 @@
 import type { ExplorerSummary, GitStatus } from "@cantrip/protocol";
-import { Loader2, X } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   ExplorerView,
   type ExplorerHeaderState,
 } from "@/components/explorer/explorer-view";
-import { Button } from "@/components/ui/button";
 import { ContentHeaderActions } from "@/components/workspace/content-header-actions";
 import {
   closeCurrentDesktopWindow,
@@ -79,16 +78,6 @@ export function ExplorerFilePopout({
           paddingLeft: desktopPopoutTitlebarLeftInset(true, overlayTitlebar),
         }}
       >
-        <Button
-          className={overlayTitlebar ? "size-6 shrink-0" : "size-8 shrink-0"}
-          onClick={() => (header ? header.back() : close())}
-          size="icon"
-          title="Close file"
-          variant="ghost"
-        >
-          <X className={overlayTitlebar ? "size-3" : "size-4"} />
-          <span className="sr-only">Close file</span>
-        </Button>
         <div
           className="min-w-0 flex-1"
           data-tauri-drag-region={overlayTitlebar ? "" : undefined}
