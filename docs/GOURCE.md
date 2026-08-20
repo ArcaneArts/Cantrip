@@ -91,13 +91,21 @@ replace it later without changing the worker protocol.
 
 ## Graph layout
 
-The recommended initial presentation is a zoomable hierarchical node-link
-tree:
+The initial presentation is a zoomable, deterministic radial hierarchy. It
+borrows Gource's space-filling tree idea without running a continuous physics
+simulation: the repository root is centered, child subtrees receive angular
+sectors, and deeper levels occupy collision-aware rings.
+
+Layout behavior includes:
 
 - directories are structural hubs;
 - files are leaf nodes;
 - links represent containment, not imports or runtime dependencies;
 - node radius represents the selected size dimension;
+- each node's radius contributes to its subtree footprint, so larger nodes
+  push neighbouring nodes and rings outward instead of overlapping them;
+- directory branches use stable curved radial links and do not drift between
+  refreshes;
 - node color represents the selected color dimension;
 - collapsed directories aggregate their descendants;
 - expanding or focusing a directory reveals progressively more detail; and

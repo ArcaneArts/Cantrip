@@ -15,7 +15,7 @@ export type RepositoryGraphCamera = {
   scale: number;
 };
 
-export const REPOSITORY_GRAPH_MIN_SCALE = 0.08;
+export const REPOSITORY_GRAPH_MIN_SCALE = 0.005;
 export const REPOSITORY_GRAPH_MAX_SCALE = 8;
 
 export function defaultRepositoryGraphCamera(): RepositoryGraphCamera {

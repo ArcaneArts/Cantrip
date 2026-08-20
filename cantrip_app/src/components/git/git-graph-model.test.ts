@@ -109,6 +109,7 @@ describe("Git graph display model", () => {
     const app = model.nodes.find(({ id }) => id === "file:src/app.ts")!;
     const readme = model.nodes.find(({ id }) => id === "file:README.md")!;
     expect(app.radius).toBeGreaterThan(readme.radius);
+    expect(app.radius).toBe(30);
     expect(app.color).not.toBe(readme.color);
     expect(app.accessibleDescription).toContain("100 lines");
     expect(app.accessibleDescription).toContain("6 commits");
@@ -120,6 +121,16 @@ describe("Git graph display model", () => {
       label: "Commit touches",
       unavailable: false,
     });
+
+    const equal = buildGitGraphDisplayModel(
+      snapshot,
+      metrics,
+      "equal",
+      "language",
+    );
+    expect(new Set(equal.nodes.map((node) => node.radius))).toEqual(
+      new Set([7]),
+    );
   });
 
   it("renders the structural dimensions before progressive metrics arrive", () => {

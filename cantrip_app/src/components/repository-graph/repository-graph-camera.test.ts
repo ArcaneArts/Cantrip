@@ -62,4 +62,14 @@ describe("repository graph camera", () => {
       rotation: 0,
     });
   });
+
+  it("fits broad repository layouts below the old overview zoom floor", () => {
+    const fitted = fitRepositoryGraphCamera(
+      { maxX: 5_000, maxY: 5_000, minX: -5_000, minY: -5_000 },
+      viewport,
+      { padding: 50 },
+    );
+    expect(fitted.scale).toBeCloseTo(0.05);
+    expect(fitted.scale).toBeLessThan(0.08);
+  });
 });
