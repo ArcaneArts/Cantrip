@@ -9,6 +9,7 @@ import {
   normalizeTarget,
 } from "./cantrip-code/build-lib.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { serviceWorkspaceBuilds } from "./package-workspace-runtime.mjs";
 
 const scriptRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -55,21 +56,13 @@ export async function bundleNativeArtifacts({
   const output = path.join(root, "artifacts", "bundles", target.id);
   await rm(output, { force: true, recursive: true });
 
-  const versionBuild = pnpmCommand(["--filter", "@cantrip/version", "build"]);
-  await run(versionBuild.command, versionBuild.arguments, {
-    cwd: root,
-    label: "Version build",
-  });
-  const loggingBuild = pnpmCommand(["--filter", "@cantrip/logging", "build"]);
-  await run(loggingBuild.command, loggingBuild.arguments, {
-    cwd: root,
-    label: "Logging build",
-  });
-  const protocolBuild = pnpmCommand(["--filter", "@cantrip/protocol", "build"]);
-  await run(protocolBuild.command, protocolBuild.arguments, {
-    cwd: root,
-    label: "Protocol build",
-  });
+  for (const packageName of serviceWorkspaceBuilds) {
+    const build = pnpmCommand(["--filter", packageName, "build"]);
+    await run(build.command, build.arguments, {
+      cwd: root,
+      label: `${packageName} build`,
+    });
+  }
   await Promise.all(
     ["server", "worker"].map((service) =>
       run(
