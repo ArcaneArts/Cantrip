@@ -170,6 +170,10 @@
     console[level] = (...values) => {
       const sanitized = format(values);
       originalConsole[level](sanitized);
+      // Deliberate clientLogger records use the typed Tauri bridge directly so
+      // their structured context reaches disk reliably. Do not relay the
+      // matching console rendering a second time.
+      if (sanitized.startsWith("[client]")) return;
       relayClientLog(level, [sanitized], callerSource());
     };
   }

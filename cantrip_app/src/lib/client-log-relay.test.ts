@@ -162,6 +162,11 @@ describe("client log relay", () => {
       context.String,
       context.Error,
     );
+    await Promise.resolve();
+    const connectedInvocationCount = invocations.length;
+    context.console.info("[client] deliberate event");
+    await Promise.resolve();
+    expect(invocations).toHaveLength(connectedInvocationCount);
     context.console.error("client exploded");
     context.console.error("apiKey=sk-abcdefghijk");
     context.console.error(

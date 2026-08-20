@@ -450,6 +450,35 @@ describe("account encryption initialization", () => {
     expect(second.getSnapshot().status).toBe("ready");
   });
 
+  it("shares one local initialization across concurrent session refreshes", async () => {
+    const api = new MemoryAccountEncryptionApi("unused");
+    const store = new MemoryDeviceKeyStore();
+    const service = new ClientEncryptionService(store);
+
+    const results = await Promise.all([
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        identity,
+        passwordKdf: testKdf(),
+        service,
+      }),
+      prepareClientEncryption({
+        api,
+        authMode: "none",
+        identity,
+        passwordKdf: testKdf(),
+        service,
+      }),
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]).toMatchObject({ status: "recovery-created" });
+    expect(api.principals.size).toBe(1);
+    expect(service.getSnapshot().status).toBe("ready");
+  });
+
   it("bootstraps anonymous mode with a one-time recovery secret unknown to the server", async () => {
     const api = new MemoryAccountEncryptionApi("unused");
     const first = new ClientEncryptionService(new MemoryDeviceKeyStore());

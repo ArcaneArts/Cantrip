@@ -270,14 +270,14 @@ async function encryptionSessionState(
   }
   if (access.status === "recovery-created") {
     return {
-      kind: "encryption-recovery",
       ...context,
+      kind: "encryption-recovery",
       recoverySecret: access.recoverySecret,
     };
   }
   return {
-    kind: "encryption-required",
     ...context,
+    kind: "encryption-required",
     credential: access.credential,
     reason: access.reason,
   };
@@ -856,8 +856,8 @@ export function ApplicationSession() {
               subsystem: "encryption",
             });
             next = {
-              kind: "encryption-error",
               ...context,
+              kind: "encryption-error",
               message: errorMessage(error),
             };
           }
@@ -966,8 +966,8 @@ export function ApplicationSession() {
             setState(await encryptionSessionState(context, password));
           } catch (encryptionError) {
             setState({
-              kind: "encryption-error",
               ...context,
+              kind: "encryption-error",
               message: errorMessage(encryptionError),
             });
           }
