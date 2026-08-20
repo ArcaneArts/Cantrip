@@ -3,6 +3,7 @@ import {
   sanitizeLogText,
   ServiceLogBuffer,
   type ServiceLogLevel,
+  type ServiceLogRecordInput,
   type ServiceLogReadOptions,
   type ServiceLogReadResult,
 } from "@cantrip/logging/records";
@@ -10,6 +11,7 @@ import {
   createServiceLogEmitter,
   type OperationalLogContext,
 } from "@cantrip/logging/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
 type ClientConsoleLevel = "debug" | "error" | "info" | "log" | "trace" | "warn";
 
@@ -108,9 +110,22 @@ function safeClientSource(source: string): string {
   }
 }
 
+function relayDeliberateClientRecord(record: ServiceLogRecordInput): void {
+  if (!isTauri()) return;
+  void invoke("relay_client_log", {
+    level: record.level,
+    message: clientConsoleLine(record.level, record.message, record.context),
+  }).catch(() => {
+    // Diagnostics must never interrupt the operation being recorded.
+  });
+}
+
 /** Deliberate operational logger. Its sanitized record feeds console and Logs. */
 export const clientLogger = createServiceLogEmitter("client", {
-  onRecord: (record) => state().buffer.append(record),
+  onRecord: (record) => {
+    state().buffer.append(record);
+    relayDeliberateClientRecord(record);
+  },
   output: (record) => {
     const level = consoleLevel(record.level);
     const writer = state().originalConsole?.[level] ?? console[level];

@@ -96,6 +96,29 @@ type PrepareClientEncryptionInput = {
   service?: ClientEncryptionService;
 };
 
+type PrepareClientEncryptionRuntime = WeakMap<
+  ClientEncryptionService,
+  WeakMap<AccountEncryptionApi, Map<string, Promise<ClientEncryptionAccess>>>
+>;
+
+type AccountEncryptionHotState = {
+  prepareClientEncryptionRuntime?: PrepareClientEncryptionRuntime;
+};
+
+function prepareClientEncryptionRuntime(
+  hotState?: AccountEncryptionHotState,
+): PrepareClientEncryptionRuntime {
+  if (!hotState) return new WeakMap();
+  return (hotState.prepareClientEncryptionRuntime ??= new WeakMap());
+}
+
+// React deliberately replays effects in development. Keep passwordless
+// session preparation single-flight so two refreshes cannot generate competing
+// device keys or Account Master Keys for the same account.
+const preparationFlights = prepareClientEncryptionRuntime(
+  import.meta.hot?.data as AccountEncryptionHotState | undefined,
+);
+
 type AuthorizeDeviceInput = {
   api: AccountEncryptionApi;
   device: ClientDeviceDescriptor;
@@ -378,7 +401,7 @@ async function initializeProfile(input: {
   }
 }
 
-export async function prepareClientEncryption(
+async function prepareClientEncryptionOnce(
   input: PrepareClientEncryptionInput,
 ): Promise<ClientEncryptionAccess> {
   const api = input.api ?? defaultApi;
@@ -464,6 +487,41 @@ export async function prepareClientEncryption(
     principals,
     service,
   });
+}
+
+export function prepareClientEncryption(
+  input: PrepareClientEncryptionInput,
+): Promise<ClientEncryptionAccess> {
+  const api = input.api ?? defaultApi;
+  const service = input.service ?? clientEncryption;
+  const resolvedInput = { ...input, api, service };
+  if (input.password !== undefined) {
+    return prepareClientEncryptionOnce(resolvedInput);
+  }
+
+  let apiFlights = preparationFlights.get(service);
+  if (!apiFlights) {
+    apiFlights = new WeakMap();
+    preparationFlights.set(service, apiFlights);
+  }
+  let identityFlights = apiFlights.get(api);
+  if (!identityFlights) {
+    identityFlights = new Map();
+    apiFlights.set(api, identityFlights);
+  }
+  const key = JSON.stringify([
+    input.authMode,
+    input.identity.serverId,
+    input.identity.ownerId,
+  ]);
+  const existing = identityFlights.get(key);
+  if (existing) return existing;
+
+  const pending = prepareClientEncryptionOnce(resolvedInput).finally(() => {
+    if (identityFlights.get(key) === pending) identityFlights.delete(key);
+  });
+  identityFlights.set(key, pending);
+  return pending;
 }
 
 export async function changeAccountEncryptionPassword(input: {
