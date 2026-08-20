@@ -8,6 +8,7 @@ import {
 
 export const CHAT_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT = 2 * 1_024 * 1_024;
 export const QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT = 512 * 1_024;
+export const CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT = 1 * 1_024 * 1_024;
 export const INTERACTION_PROTECTED_CONTENT_BYTES_LIMIT = 1 * 1_024 * 1_024;
 
 const communicationMessageRoleSchema = z.enum(["user", "assistant", "system"]);
@@ -75,6 +76,8 @@ export const encryptedQueuedPromptProtectedContentSchema =
   boundedCommunicationEnvelopeSchema(
     QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT,
   );
+export const encryptedChatPlanProtectedContentSchema =
+  boundedCommunicationEnvelopeSchema(CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT);
 export const encryptedInteractionRequestContentSchema =
   boundedCommunicationEnvelopeSchema(INTERACTION_PROTECTED_CONTENT_BYTES_LIMIT);
 export const encryptedInteractionResponseContentSchema =
@@ -144,6 +147,75 @@ export const chatMessageOpaqueSummarySchema =
 export const chatMessageOpaqueContentListSchema = z
   .array(chatMessageOpaqueContentSchema)
   .max(100_000);
+
+export const chatPlanProtectedClassificationSchema = z
+  .object({ hasQuestion: z.boolean() })
+  .strict();
+
+const protectedPlanStepSchema = z
+  .object({
+    step: z.string().min(1).max(10_000),
+    status: z.enum(["pending", "inProgress", "completed"]),
+  })
+  .strict();
+
+const protectedPlanQuestionSchema = z
+  .object({
+    id: z.string().min(1).max(200),
+    header: z.string().min(1).max(1_000),
+    question: z.string().min(1).max(10_000),
+    isOther: z.boolean(),
+    isSecret: z.boolean(),
+    options: z
+      .array(
+        z
+          .object({
+            label: z.string().min(1).max(1_000),
+            description: z.string().max(10_000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100)
+      .nullable(),
+  })
+  .strict();
+
+const protectedPendingPlanQuestionSchema = z
+  .object({
+    id: z.string().min(1).max(200),
+    threadId: z.string().min(1).max(200),
+    turnId: z.string().min(1).max(200),
+    itemId: z.string().min(1).max(200),
+    questions: z.array(protectedPlanQuestionSchema).min(1).max(3),
+    createdAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const chatPlanProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    classification: chatPlanProtectedClassificationSchema,
+    explanation: z.string().max(100_000).nullable(),
+    steps: z.array(protectedPlanStepSchema).max(1_000),
+    question: protectedPendingPlanQuestionSchema.nullable(),
+  })
+  .strict()
+  .refine(
+    ({ classification, question }) =>
+      classification.hasQuestion === Boolean(question),
+    {
+      message: "Protected plan question classification does not match content.",
+      path: ["classification", "hasQuestion"],
+    },
+  );
+
+export const chatPlanOpaqueStateSchema = z
+  .object({
+    classification: chatPlanProtectedClassificationSchema,
+    protectedContent: encryptedChatPlanProtectedContentSchema,
+  })
+  .strict();
 
 export const queuedPromptProtectedClassificationSchema = z
   .object({
@@ -234,6 +306,9 @@ export type EncryptedChatMessageProtectedContent = z.infer<
 export type EncryptedQueuedPromptProtectedContent = z.infer<
   typeof encryptedQueuedPromptProtectedContentSchema
 >;
+export type EncryptedChatPlanProtectedContent = z.infer<
+  typeof encryptedChatPlanProtectedContentSchema
+>;
 export type EncryptedInteractionRequestContent = z.infer<
   typeof encryptedInteractionRequestContentSchema
 >;
@@ -252,6 +327,13 @@ export type ChatMessageOpaqueContent = z.infer<
 export type ChatMessageOpaqueSummary = z.infer<
   typeof chatMessageOpaqueSummarySchema
 >;
+export type ChatPlanProtectedClassification = z.infer<
+  typeof chatPlanProtectedClassificationSchema
+>;
+export type ChatPlanProtectedContent = z.infer<
+  typeof chatPlanProtectedContentSchema
+>;
+export type ChatPlanOpaqueState = z.infer<typeof chatPlanOpaqueStateSchema>;
 export type QueuedPromptProtectedClassification = z.infer<
   typeof queuedPromptProtectedClassificationSchema
 >;

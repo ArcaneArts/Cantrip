@@ -263,7 +263,7 @@ function toChatWireSummary(
     reasoningEffort: chat.reasoningEffort,
     permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode,
-    hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
+    hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
     automationPaused: chat.automationPaused,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),

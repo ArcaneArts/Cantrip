@@ -404,7 +404,7 @@ database-compromise guarantee is described.
 | Task briefs, plans, questions, answers, directions, errors, messages, and Goals  | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation                             | E2EE complete                                    | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                |
 | Ordinary chat and Task display titles                                            | AES-256-GCM E2EE; client-created labels and scoped worker-created import labels                                                       | E2EE complete                                    | Implemented          | Medium      | Title search, concatenation, automation copies, and execution-target presentation              |
 | Queued prompts                                                                   | Client- or worker-sealed `chat-content`, including the future row-bound message; worker opens only when dispatching or steering       | E2EE complete                                    | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
-| Ordinary chat plan snapshots and questions                                       | Plaintext chat plan columns and live events                                                                                           | Planned                                          | Excellent            | Medium      | Server cannot inspect plan prose or compose plan-question state                                |
+| Ordinary chat plan snapshots and questions                                       | Worker-sealed `chat-content` state; client-only presentation; answers use encrypted interaction responses                             | E2EE complete                                    | Implemented          | Medium      | Server cannot inspect plan prose, questions, or answers                                        |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                                                         | Planned                                          | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Ordinary chat requests/responses use row-bound `interaction-content`; workflow-node interactions retain a temporary plaintext path    | Ordinary chat E2EE; workflow closure pending     | Excellent            | Medium      | Server can route ordinary approvals but cannot display or validate their semantics             |
 | Surface private-state contracts, endpoint codecs, and scoped worker grants       | Bounded `surface-private-state` envelopes; independently grantable from display labels                                                | E2EE closure complete and statically enforced    | Required             | Medium      | No server decryption capability is introduced                                                  |
@@ -577,9 +577,20 @@ The message API now returns only the strict `chat-encrypted` or
 `task-encrypted` wire shapes; the temporary mixed and visible ordinary-chat
 reader is removed. Chat-sourced workflow generation is fail-closed until the
 workflow execution path can consume encrypted chat content at a trusted
-endpoint. Ordinary plan snapshots and questions remain plaintext and are now
-tracked in their own ledger row instead of holding the completed message and
-queue rows open.
+endpoint.
+
+Ordinary Plan Mode state now uses the same independently scoped `chat-content`
+key without exposing its semantics to the server. The worker receives the
+prior opaque plan alongside encrypted chat history, opens it only while
+executing the turn, and seals updated explanations, steps, questions, and
+question resolution before emitting them. The authenticated public
+classification exposes only whether a question is pending, which is required
+for routing and UI invalidation. The client opens the row-bound plan state for
+presentation. Plan answers no longer use a semantic `/plan/answer` endpoint;
+the client validates the decrypted question locally and answers its matching
+pending `userInput` interaction through the existing encrypted
+`interaction-content` response path. Plaintext plan events fail closed at the
+server boundary.
 
 [Migration 0116](../cantrip_server/drizzle/0116_ordinary_chat_ciphertext_cutover.sql)
 is a narrow pre-release cutover. It deletes only legacy plaintext ordinary
@@ -588,6 +599,12 @@ encrypted ordinary messages, encrypted queues, Task messages, chats, projects,
 workers, encryption custody, and unrelated data. It does not attempt a
 server-side decrypt-and-rewrite migration and does not reset a development or
 production database.
+
+[Migration 0117](../cantrip_server/drizzle/0117_encrypted_chat_plan_state.sql)
+is the corresponding pre-release plan cutover. It removes the plaintext plan
+explanation, step, and question columns, adds the opaque protected plan plus a
+minimal pending-question flag, and deliberately does not migrate legacy plan
+content. It does not reset any database.
 
 Ordinary agent chats now have a dedicated `chat_messages.protected_content`
 shape for the primary turn path, while routing and ordering remain separate
@@ -1328,7 +1345,9 @@ counts, worker presence, model-route choices, and traffic patterns.
     endpoints encrypt primary turns, streams, server-authored notices,
     automations, queues, sync reconstruction, imports, forks, and relocation;
     the server stores and returns only opaque ordinary message and queue
-    payloads. Plan state remains a distinct pending row.
+    payloads. Plan snapshots and questions are also worker-sealed under
+    `chat-content`, client-opened, and answered through encrypted interaction
+    responses.
 11. **Ordinary interactions — primary path complete:** workers encrypt
     ordinary chat approval and elicitation requests before relay and decrypt
     client-encrypted responses at execution time. The server stores only

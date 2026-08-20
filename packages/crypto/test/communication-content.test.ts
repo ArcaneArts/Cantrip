@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   decryptChatMessageProtectedContent,
+  decryptChatPlanProtectedContent,
   decryptInteractionRequestContent,
   decryptInteractionResponseContent,
   decryptQueuedPromptProtectedContent,
   encryptChatMessageProtectedContent,
+  encryptChatPlanProtectedContent,
   encryptInteractionRequestContent,
   encryptInteractionResponseContent,
   encryptQueuedPromptProtectedContent,
@@ -156,6 +158,62 @@ describe("communication trusted-endpoint encryption codecs", () => {
       decryptChatMessageProtectedContent({
         ownerId,
         messageId: "message-2",
+        keyRevision,
+        componentKey,
+        encrypted,
+        publicClassification: classification,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("round-trips Plan Mode state and binds it to the chat", async () => {
+    const componentKey = randomBytes(32);
+    const classification = { hasQuestion: true };
+    const content = {
+      version: 1 as const,
+      classification,
+      explanation: "SENTINEL private plan explanation",
+      steps: [{ step: "Protect the plan", status: "inProgress" as const }],
+      question: {
+        id: "plan-question",
+        threadId: "thread-one",
+        turnId: "turn-one",
+        itemId: "item-one",
+        questions: [
+          {
+            id: "scope",
+            header: "Scope",
+            question: "Encrypt this?",
+            isOther: false,
+            isSecret: false,
+            options: [{ label: "Yes", description: "Encrypt it." }],
+          },
+        ],
+        createdAt: "2026-08-20T12:00:00.000Z",
+      },
+    };
+    const encrypted = await encryptChatPlanProtectedContent({
+      ownerId,
+      chatId: "chat-one",
+      keyRevision,
+      componentKey,
+      content,
+    });
+
+    await expect(
+      decryptChatPlanProtectedContent({
+        ownerId,
+        chatId: "chat-one",
+        keyRevision,
+        componentKey,
+        encrypted,
+        publicClassification: classification,
+      }),
+    ).resolves.toEqual(content);
+    await expect(
+      decryptChatPlanProtectedContent({
+        ownerId,
+        chatId: "chat-two",
         keyRevision,
         componentKey,
         encrypted,

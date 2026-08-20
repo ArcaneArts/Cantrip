@@ -3,7 +3,6 @@ import type {
   AgentThreadSync,
   AgentTurnResult,
   ChatGoalResponse,
-  ChatPlanAnswer,
   CodexCustomizationInventory,
   CodexExternalImportPreview,
   CodexExternalImportStatus,
@@ -164,10 +163,6 @@ export interface CodexRuntime {
   setPlanMode(
     options: GoalRuntimeOptions & { mode: PlanMode },
   ): Promise<{ mode: PlanMode; threadId: string }>;
-  answerPlanQuestion(
-    questionId: string,
-    answers: ChatPlanAnswer["answers"],
-  ): Promise<{ accepted: true; requestKey?: string }>;
   answerAgentInteraction(
     requestKey: string,
     response: AgentInteractionResponse,

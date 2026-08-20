@@ -79,6 +79,7 @@ import {
   protectChatTurn,
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
+import { openChatPlanState } from "./chat-plan-encryption.js";
 import {
   openAgentInteractionResponse,
   protectAgentInteractionRequest,
@@ -1936,7 +1937,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const encryptedChat =
           command.resultMode.kind === "chat-message-encrypted";
         const encryptedChatSealer = encryptedChat
-          ? new EncryptedChatEventSealer(workerEncryption)
+          ? new EncryptedChatEventSealer(
+              workerEncryption,
+              command.chatId,
+              await openChatPlanState({
+                chatId: command.chatId,
+                protectedState: command.protectedPlan,
+                service: workerEncryption,
+              }),
+            )
           : null;
         let protectedEventQueue = Promise.resolve();
         let protectedEventFailure: unknown = null;
@@ -2029,19 +2038,23 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                               encryptedChatSealer.checkpoint({ text, turnId }),
                             ),
                           onPlan: ({ explanation, steps, turnId }) =>
-                            emit({
-                              type: "agent.plan.updated",
-                              explanation,
-                              steps,
-                              turnId,
-                            }),
+                            emitProtected(() =>
+                              encryptedChatSealer.plan({
+                                explanation,
+                                steps,
+                                turnId,
+                              }),
+                            ),
                           onPlanQuestion: (question) =>
-                            emit({ type: "agent.plan.question", question }),
+                            emitProtected(() =>
+                              encryptedChatSealer.planQuestion(question),
+                            ),
                           onPlanQuestionResolved: (questionId) =>
-                            emit({
-                              type: "agent.plan.question-resolved",
-                              questionId,
-                            }),
+                            emitProtected(() =>
+                              encryptedChatSealer.planQuestionResolved(
+                                questionId,
+                              ),
+                            ),
                         }
                       : {
                           onActivity: (activity) =>
@@ -2425,11 +2438,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           provider: command.provider,
           threadId: command.threadId,
         });
-      case "chat.plan.answer":
-        return runtimeFor(command).answerPlanQuestion(
-          command.questionId,
-          command.answers,
-        );
       case "agent.interaction.respond":
         return runtimeFor(command).answerAgentInteraction(
           command.requestKey,

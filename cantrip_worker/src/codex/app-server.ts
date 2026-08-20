@@ -21,7 +21,6 @@ import {
   chatGptModelInventorySchema,
   chatGoalClearSchema,
   chatGoalResponseSchema,
-  chatPlanAcceptedSchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
@@ -53,7 +52,6 @@ import {
   type CodexMcpResourceRead,
   type CodexSkillConfigResult,
   type CodexSkillRootsResult,
-  type ChatPlanAnswer,
   type NormalizedAgentMessage,
   type PendingPlanQuestion,
   type PermissionProfileCapability,
@@ -3828,29 +3826,6 @@ export class CodexAppServer implements CodexRuntime {
     }
     await this.updatePlanModeOnThread(threadId, options.mode, options.model);
     return { mode: options.mode, threadId };
-  }
-
-  async answerPlanQuestion(
-    questionId: string,
-    answers: ChatPlanAnswer["answers"],
-  ): Promise<{ accepted: true; requestKey?: string }> {
-    const pending = this.#pendingPlanQuestions.get(questionId);
-    if (!pending) {
-      throw new Error("The Plan Mode question is no longer pending.");
-    }
-    await this.answerAgentInteraction(pending.requestKey, {
-      kind: "userInput",
-      answers: Object.fromEntries(
-        Object.entries(answers).map(([id, values]) => [
-          id,
-          { answers: values },
-        ]),
-      ),
-    });
-    return chatPlanAcceptedSchema.parse({
-      accepted: true,
-      requestKey: pending.requestKey,
-    });
   }
 
   async answerAgentInteraction(
