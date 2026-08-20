@@ -805,7 +805,25 @@ export class ClientEncryptionService {
   }
 }
 
-export const clientEncryption = new ClientEncryptionService();
+type ClientEncryptionHotState = {
+  clientEncryption?: ClientEncryptionService;
+};
+
+export function clientEncryptionForRuntime(
+  hotState?: ClientEncryptionHotState,
+): ClientEncryptionService {
+  if (!hotState) return new ClientEncryptionService();
+  hotState.clientEncryption ??= new ClientEncryptionService();
+  return hotState.clientEncryption;
+}
+
+// Vite can replace this module without remounting the authenticated session.
+// Preserve the unlocked service across that development-only replacement so
+// encrypted workspace and Task actions do not suddenly observe a new, locked
+// singleton. Explicit session/server lifecycle calls still lock this instance.
+export const clientEncryption = clientEncryptionForRuntime(
+  import.meta.hot?.data as ClientEncryptionHotState | undefined,
+);
 
 export function clearClientEncryptionMemory(): void {
   clientEncryption.lock();
