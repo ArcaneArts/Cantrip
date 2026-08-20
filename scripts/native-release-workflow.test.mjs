@@ -57,14 +57,17 @@ test("builds mobile releases in parallel and gates publication on them", async (
     workflow.match(/pnpm --filter @cantrip\/logging build/gmu)?.length,
     3,
   );
-  assert.doesNotMatch(
-    workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "",
-    /^ {4}needs:/mu,
+  assert.equal(
+    workflow.match(/pnpm --filter @cantrip\/crypto build/gmu)?.length,
+    3,
   );
-  assert.doesNotMatch(
-    workflow.match(/^ {2}ios:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "",
-    /^ {4}needs:/mu,
-  );
+  const androidJob =
+    workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  const iosJob = workflow.match(/^ {2}ios:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  assert.match(androidJob, /pnpm --filter @cantrip\/crypto build/u);
+  assert.match(iosJob, /pnpm --filter @cantrip\/crypto build/u);
+  assert.doesNotMatch(androidJob, /^ {4}needs:/mu);
+  assert.doesNotMatch(iosJob, /^ {4}needs:/mu);
   assert.match(workflow, /needs: \[server, worker, client, android, ios\]/u);
 });
 
@@ -253,6 +256,10 @@ test("builds generated desktop dependencies before packaging installers", async 
   assert.match(
     workflow.slice(protocolBuild, macosPackage),
     /pnpm --filter @cantrip\/protocol build/u,
+  );
+  assert.match(
+    workflow.slice(protocolBuild, macosPackage),
+    /pnpm --filter @cantrip\/crypto build/u,
   );
   assert.ok(macosPackage > protocolBuild);
   assert.ok(windowsPackage > protocolBuild);

@@ -227,7 +227,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: pnpm install --frozen-lockfile
       - name: Build mobile workspace dependencies
-        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
+        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build
       - name: Synchronize Android project
         run: pnpm --filter @cantrip/app cap:sync android
       - name: Restore Android upload keystore
@@ -318,7 +318,7 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile
       - name: Build mobile workspace dependencies
-        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
+        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build
       - name: Synchronize iOS project
         run: pnpm --filter @cantrip/app cap:sync ios
       - name: Import iOS signing certificates
@@ -552,7 +552,7 @@ jobs:
           tar -xzf "artifacts/incoming/worker/cantrip-worker-${{ matrix.target }}.tar.gz" -C artifacts
       - run: pnpm install --frozen-lockfile
       - name: Build desktop workspace dependencies
-        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build
+        run: pnpm --filter @cantrip/logging build && pnpm --filter @cantrip/protocol build && pnpm --filter @cantrip/crypto build
       - name: Require updater signing material
         shell: bash
         env:
