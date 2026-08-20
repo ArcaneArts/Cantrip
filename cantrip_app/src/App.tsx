@@ -266,6 +266,7 @@ import {
   getChatReasoning,
   getChatRelocations,
   getBrowsers,
+  getCodeGraphWorktreeStatus,
   getCodeTabs,
   getCachedGithubRepositories,
   getExplorers,
@@ -1002,6 +1003,10 @@ function ChatTranscript({
   const relocationNeedsAttention =
     relocationJob?.state === "blocked" || relocationJob?.state === "failed";
   const inspectActive = agentInspectorActive(chat.status);
+  const codeGraphProbeDeadlineRef = useRef(
+    chat.status === "running" ? Date.now() + 5_000 : 0,
+  );
+  const previousChatStatusRef = useRef(chat.status);
   const chatRefreshInterval = chatResourceRefreshIntervalMs(
     chat.status,
     chatResourcesLive,
@@ -1086,6 +1091,36 @@ function ChatTranscript({
         providerCatalogQueries[index]?.isPending &&
         !providerCatalogQueries[index]?.data,
     );
+  useEffect(() => {
+    if (
+      chat.status === "running" &&
+      previousChatStatusRef.current !== "running"
+    ) {
+      codeGraphProbeDeadlineRef.current = Date.now() + 5_000;
+    } else if (chat.status !== "running") {
+      codeGraphProbeDeadlineRef.current = 0;
+    }
+    previousChatStatusRef.current = chat.status;
+  }, [chat.status]);
+  const codeGraphStatus = useQuery({
+    enabled: chat.status === "running",
+    queryFn: () =>
+      getCodeGraphWorktreeStatus(chat.projectId, chat.activeWorktreeId),
+    queryKey: ["codegraph", chat.projectId, chat.activeWorktreeId],
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      const active =
+        state === "indexing" || state === "queued" || state === "syncing";
+      return active || Date.now() < codeGraphProbeDeadlineRef.current
+        ? 500
+        : false;
+    },
+    retry: false,
+  });
+  const syncingCodeGraph =
+    codeGraphStatus.data?.state === "indexing" ||
+    codeGraphStatus.data?.state === "queued" ||
+    codeGraphStatus.data?.state === "syncing";
   const taskState = useQuery({
     enabled: inspectOnly && chat.experience === "task",
     queryFn: () => getTask(chat.id),
@@ -2039,6 +2074,7 @@ function ChatTranscript({
 
           <ChatRunStatus
             automationPaused={chat.automationPaused}
+            syncingCodeGraph={syncingCodeGraph}
             status={chat.status}
             waitingForPlanAnswer={Boolean(planState.data?.question)}
           />
