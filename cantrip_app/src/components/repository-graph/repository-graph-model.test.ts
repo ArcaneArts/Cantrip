@@ -11,6 +11,7 @@ function node(
   id: string,
   parentId: string | null,
   kind: RepositoryGraphInputNode["kind"] = "file",
+  radius = kind === "directory" ? 9 : 5,
 ): RepositoryGraphInputNode {
   return {
     color: kind === "directory" ? "blue" : "green",
@@ -19,7 +20,7 @@ function node(
     label: id,
     parentId,
     path: id === "root" ? "" : id,
-    radius: kind === "directory" ? 9 : 5,
+    radius,
   };
 }
 
@@ -43,6 +44,7 @@ describe("repository graph model", () => {
     expect(scene.edges).toHaveLength(4);
     expect(scene.nodesById.get("src")?.depth).toBe(1);
     expect(scene.nodesById.get("app")?.depth).toBe(2);
+    expect(scene.nodesById.get("root")?.x).toBe(0);
     expect(scene.nodesById.get("root")?.y).toBe(0);
     const app = scene.nodesById.get("app")!;
     expect(hitTestRepositoryGraph(scene, app)).toMatchObject({ id: "app" });
@@ -54,6 +56,39 @@ describe("repository graph model", () => {
         minY: app.y - 1,
       }).map((entry) => entry.id),
     ).toContain("app");
+  });
+
+  it("fans broad trees radially and lets larger nodes displace their neighbours", () => {
+    const broadNodes: RepositoryGraphInputNode[] = [
+      node("root", null, "directory"),
+    ];
+    for (let index = 0; index < 80; index += 1)
+      broadNodes.push(node(`file-${index}`, "root"));
+    const broad = buildRepositoryGraphScene(broadNodes);
+    const width = broad.bounds.maxX - broad.bounds.minX;
+    const height = broad.bounds.maxY - broad.bounds.minY;
+    expect(width / height).toBeGreaterThan(0.9);
+    expect(width / height).toBeLessThan(1.1);
+
+    const evenlySized = [node("root", null, "directory", 7)];
+    const enlarged = [node("root", null, "directory", 7)];
+    for (let index = 0; index < 12; index += 1) {
+      const id = `file-${index}`;
+      evenlySized.push(node(id, "root", "file", 4));
+      enlarged.push(node(id, "root", "file", index === 5 ? 30 : 4));
+    }
+    const evenScene = buildRepositoryGraphScene(evenlySized);
+    const enlargedScene = buildRepositoryGraphScene(enlarged);
+    const neighbourDistance = (
+      scene: ReturnType<typeof buildRepositoryGraphScene>,
+    ) => {
+      const left = scene.nodesById.get("file-5")!;
+      const right = scene.nodesById.get("file-6")!;
+      return Math.hypot(left.x - right.x, left.y - right.y);
+    };
+    expect(neighbourDistance(enlargedScene)).toBeGreaterThan(
+      neighbourDistance(evenScene) * 1.25,
+    );
   });
 
   it("bounds large hierarchies and reports aggregation without dropping the source count", () => {

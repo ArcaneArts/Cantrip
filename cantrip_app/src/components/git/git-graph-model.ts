@@ -58,6 +58,10 @@ const COMMIT_STATUS_COLORS: Record<
   unknown: "#94a3b8",
 };
 
+const EQUAL_NODE_RADIUS = 7;
+const MIN_METRIC_NODE_RADIUS = 4;
+const MAX_METRIC_NODE_RADIUS = 30;
+
 function stableColor(category: string): string {
   let hash = 0;
   for (let index = 0; index < category.length; index += 1)
@@ -260,11 +264,15 @@ export function buildGitGraphDisplayModel(
       parentId: node.parentId,
       path: node.path ?? "",
       radius:
-        size === null
-          ? node.kind === "directory"
-            ? 9
-            : 5
-          : 4 + Math.sqrt(Math.min(1, size / sizeMaximum)) * 16,
+        sizeDimension === "equal"
+          ? EQUAL_NODE_RADIUS
+          : size === null
+            ? node.kind === "directory"
+              ? 9
+              : 5
+            : MIN_METRIC_NODE_RADIUS +
+              Math.sqrt(Math.min(1, Math.max(0, size / sizeMaximum))) *
+                (MAX_METRIC_NODE_RADIUS - MIN_METRIC_NODE_RADIUS),
     } satisfies RepositoryGraphInputNode;
   });
   const availableSizes = sizeValues.filter(
