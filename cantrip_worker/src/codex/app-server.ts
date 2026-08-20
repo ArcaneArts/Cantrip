@@ -57,6 +57,7 @@ import {
   type PermissionProfileCapability,
   type PlanMode,
   type PlanStep,
+  type McpServerConfiguration,
   type ProviderAccessTokenLease,
   type ProviderQuotaSnapshot,
   type ThreadGoal,
@@ -1121,7 +1122,7 @@ export interface RunAgentTurnOptions {
   cwd: string;
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
   model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-  mcpServers?: Extract<WorkerCommand, { type: "chat.turn" }>["mcpServers"];
+  mcpServers?: McpServerConfiguration[];
   automationPaused: Extract<
     WorkerCommand,
     { type: "chat.turn" }
@@ -1129,7 +1130,7 @@ export interface RunAgentTurnOptions {
   planMode: Extract<WorkerCommand, { type: "chat.turn" }>["planMode"];
   policyContext: string | null;
   resultMode?: Extract<WorkerCommand, { type: "chat.turn" }>["resultMode"];
-  provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
+  provider: RuntimeProvider;
   permissionProfileId: Extract<
     WorkerCommand,
     { type: "chat.turn" }
@@ -1162,8 +1163,10 @@ type WorkflowNodeExecuteCommand = Extract<
 
 export interface RunWorkflowNodeOptions extends Omit<
   WorkflowNodeExecuteCommand,
-  "rootKind" | "type"
+  "mcpServers" | "provider" | "rootKind" | "type"
 > {
+  mcpServers: McpServerConfiguration[];
+  provider: RuntimeProvider;
   rootKind?: WorkflowNodeExecuteCommand["rootKind"];
   onActivity?: ActiveTurn["onActivity"];
   onMessage?: ActiveTurn["onMessage"];
@@ -2697,10 +2700,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async listChatGptModels(
-    provider: Extract<
-      WorkerCommand,
-      { type: "model.chatgpt.catalog" }
-    >["provider"],
+    provider: RuntimeProvider & { kind: "chatgpt" },
   ): Promise<ChatGptModelInventory> {
     const startedAtMs = Date.now();
     workerLogger.event("debug", "ChatGPT model catalog refresh started", {
@@ -2789,10 +2789,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   async readQuotaSnapshot(
-    provider: Extract<
-      WorkerCommand,
-      { type: "provider.quota.read" }
-    >["provider"] & { kind: "chatgpt" },
+    provider: RuntimeProvider & { kind: "chatgpt" },
   ): Promise<ProviderQuotaSnapshot> {
     const startedAtMs = Date.now();
     try {
@@ -4108,10 +4105,7 @@ export class CodexAppServer implements CodexRuntime {
   }
 
   private async ensureCatalogStarted(
-    provider: Extract<
-      WorkerCommand,
-      { type: "model.chatgpt.catalog" }
-    >["provider"],
+    provider: RuntimeProvider & { kind: "chatgpt" },
   ): Promise<void> {
     if (
       this.compatibility.compatibility === "missing" ||
@@ -4925,9 +4919,7 @@ export class CodexAppServer implements CodexRuntime {
         chatGptExternalLoginParams(runtimeProvider, externalChatGptLease),
       )) as { type?: unknown };
       if (result.type !== "chatgptAuthTokens") {
-        throw new Error(
-          "Codex rejected server-managed ChatGPT authentication.",
-        );
+        throw new Error("Codex rejected portable ChatGPT authentication.");
       }
       this.#externalChatGptAuth = chatGptExternalAuthSession(
         runtimeProvider,
@@ -4973,7 +4965,7 @@ export class CodexAppServer implements CodexRuntime {
       }
       if (error instanceof ProviderAccessTokenRequestError) throw error;
       throw new Error(
-        "Server-managed ChatGPT authentication could not obtain an access lease.",
+        "Portable ChatGPT authentication could not obtain an access lease.",
       );
     }
     const capabilityError = chatGptExternalAuthCapabilityError(
@@ -6243,7 +6235,7 @@ export class CodexAppServer implements CodexRuntime {
   ): Promise<Record<string, unknown>> {
     const session = this.#externalChatGptAuth;
     if (!session || !this.providerAccessTokens) {
-      throw new Error("Server-managed ChatGPT authentication is not active.");
+      throw new Error("Portable ChatGPT authentication is not active.");
     }
     const refreshed = await refreshExternalChatGptAuthSession(
       session,

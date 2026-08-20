@@ -207,7 +207,7 @@ describe("Ollama catalog", () => {
       expect(commands).toHaveLength(4);
       expect(commands[0]).toMatchObject({
         type: "model.ollama.catalog",
-        baseUrl: "http://127.0.0.1:11434/v1",
+        provider: { baseUrl: "http://127.0.0.1:11434/v1" },
       });
     } finally {
       await client.close();

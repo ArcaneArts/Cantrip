@@ -168,16 +168,11 @@ import {
   modelProviderAccountListSchema,
   modelProviderAccountSummarySchema,
   modelProviderAccountUpdateSchema,
-  modelProviderCreateSchema,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
   modelProviderSummarySchema,
-  modelProviderUpdateSchema,
   encryptedManagedFolderProjectCreateSchema,
-  mcpServerConfigurationSchema,
   mcpServerCopySchema,
-  mcpServerListSchema,
-  mcpServerSummarySchema,
   orderedIdsSchema,
   effectivePolicyWireListSchema,
   encryptedPolicyBootstrapSchema,
@@ -433,6 +428,17 @@ import {
   protectPolicyCreate,
   protectPolicyUpdate,
 } from "@/lib/policy-encryption";
+import {
+  openMcpServerWireList,
+  openMcpServerWireSummary,
+  protectMcpServerCreate,
+  protectMcpServerUpdate,
+  protectModelProviderCreate,
+  protectModelProviderUpdate,
+} from "@/lib/protected-secrets";
+import { getClientSession } from "@/lib/client-session";
+import { clientEncryption } from "@/lib/client-encryption";
+import { authorizeWorkerEncryption } from "@/lib/worker-encryption-grants";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -780,6 +786,27 @@ export async function startCodexDeviceLogin(
   providerId: string,
   accountId?: string,
 ) {
+  const session = getClientSession();
+  const snapshot = clientEncryption.getSnapshot();
+  if (
+    !session ||
+    snapshot.status !== "ready" ||
+    !snapshot.masterKeyRevision ||
+    snapshot.identity?.ownerId !== session.user.id ||
+    snapshot.identity.serverId !== session.serverId
+  ) {
+    throw new Error("Encryption must be unlocked before provider sign-in.");
+  }
+  await authorizeWorkerEncryption({
+    components: ["provider-credential", "mcp-secret"],
+    identity: snapshot.identity,
+    keyRevision: snapshot.masterKeyRevision,
+    workerId,
+  });
+  await refreshWorkerEncryption(workerId, {
+    component: "provider-credential",
+    keyRevision: snapshot.masterKeyRevision,
+  });
   return codexDeviceLoginSchema.parse(
     await post("/api/codex/auth/device-login", {
       workerId,
@@ -1006,14 +1033,14 @@ export async function getProjectEffectivePolicies(projectId: string) {
 }
 
 export async function getGlobalMcpServers() {
-  return mcpServerListSchema.parse(await request("/api/settings/mcp-servers"));
+  return openMcpServerWireList(await request("/api/settings/mcp-servers"));
 }
 
 export async function createGlobalMcpServer(input: McpServerConfiguration) {
-  return mcpServerSummarySchema.parse(
+  return openMcpServerWireSummary(
     await post(
       "/api/settings/mcp-servers",
-      mcpServerConfigurationSchema.parse(input),
+      await protectMcpServerCreate(input),
     ),
   );
 }
@@ -1022,10 +1049,10 @@ export async function updateGlobalMcpServer(
   serverId: string,
   input: McpServerConfiguration,
 ) {
-  return mcpServerSummarySchema.parse(
+  return openMcpServerWireSummary(
     await request(`/api/settings/mcp-servers/${encodeURIComponent(serverId)}`, {
       method: "PUT",
-      body: JSON.stringify(mcpServerConfigurationSchema.parse(input)),
+      body: JSON.stringify(await protectMcpServerUpdate(serverId, input)),
     }),
   );
 }
@@ -1040,7 +1067,7 @@ export async function createModelProvider(input: ModelProviderCreate) {
   return modelProviderSummarySchema.parse(
     await post(
       "/api/settings/providers",
-      modelProviderCreateSchema.parse(input),
+      await protectModelProviderCreate(input),
     ),
   );
 }
@@ -1155,7 +1182,7 @@ export async function updateModelProvider(
   return modelProviderSummarySchema.parse(
     await request(`/api/settings/providers/${encodeURIComponent(providerId)}`, {
       method: "PATCH",
-      body: JSON.stringify(modelProviderUpdateSchema.parse(input)),
+      body: JSON.stringify(await protectModelProviderUpdate(providerId, input)),
     }),
   );
 }
@@ -1236,7 +1263,7 @@ export async function getProjectWireList() {
 }
 
 export async function getProjectMcpServers(projectId: string) {
-  return mcpServerListSchema.parse(
+  return openMcpServerWireList(
     await request(`/api/projects/${encodeURIComponent(projectId)}/mcp-servers`),
   );
 }
@@ -1245,10 +1272,10 @@ export async function createProjectMcpServer(
   projectId: string,
   input: McpServerConfiguration,
 ) {
-  return mcpServerSummarySchema.parse(
+  return openMcpServerWireSummary(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/mcp-servers`,
-      mcpServerConfigurationSchema.parse(input),
+      await protectMcpServerCreate(input),
     ),
   );
 }
@@ -1258,12 +1285,12 @@ export async function updateProjectMcpServer(
   serverId: string,
   input: McpServerConfiguration,
 ) {
-  return mcpServerSummarySchema.parse(
+  return openMcpServerWireSummary(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}`,
       {
         method: "PUT",
-        body: JSON.stringify(mcpServerConfigurationSchema.parse(input)),
+        body: JSON.stringify(await protectMcpServerUpdate(serverId, input)),
       },
     ),
   );
@@ -1283,12 +1310,20 @@ export async function copyProjectMcpServer(
   projectId: string,
   input: McpServerCopy,
 ) {
-  return mcpServerSummarySchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/mcp-servers/copy`,
-      mcpServerCopySchema.parse(input),
-    ),
+  const copy = mcpServerCopySchema.parse(input);
+  const source = (await getProjectMcpServers(copy.sourceProjectId)).find(
+    ({ id }) => id === copy.sourceServerId,
   );
+  if (!source) throw new Error("Source MCP server was not found.");
+  const {
+    id: _id,
+    scope: _scope,
+    projectId: _projectId,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...configuration
+  } = source;
+  return createProjectMcpServer(projectId, configuration);
 }
 
 export async function createProjectNetworkShare(projectId: string) {

@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
-  MCP_SECRET_MASK,
   encryptedAgentInteractionRequestSchema,
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
@@ -11,7 +10,6 @@ import {
   encryptedChatPlanWireStateSchema,
   encryptedQueuedPromptSchema,
   queuedPromptOpaqueContentSchema,
-  isManagedCodeGraphMcpName,
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
   projectWireSummarySchema,
@@ -85,18 +83,20 @@ import type {
   ModelProfileCreate,
   ModelProfileSummary,
   ModelProfileUpdate,
-  McpServerConfiguration,
-  McpServerSummary,
+  EncryptedMcpServerCreate,
+  EncryptedMcpServerUpdate,
+  McpServerOpaqueRuntime,
+  McpServerWireSummary,
   ModelProviderAccountCreate,
   ModelProviderAccountSummary,
   ModelProviderAccountUpdate,
-  ModelProviderCreate,
+  EncryptedModelProviderCreate,
   ProviderCatalogSyncState,
   ProviderModelAvailability,
   ProviderModelCatalogEntry,
   ProviderModelCatalogResult,
   ModelProviderSummary,
-  ModelProviderUpdate,
+  EncryptedModelProviderUpdate,
   ModelRouteSummary,
   EncryptedChatPlanWireState,
   PlanMode,
@@ -173,6 +173,11 @@ import type {
   WorktreeSelection,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
+import type {
+  ProtectedProviderCredential,
+  ProtectedSecretEnvelope,
+  ProviderCredentialPublicMetadata,
+} from "@cantrip/protocol/protected-secrets";
 import {
   and,
   asc,
@@ -219,21 +224,8 @@ import {
   defaultAccountLabel,
   isAccountProviderKind,
 } from "../models/account-provider.js";
-import {
-  parseProviderCredential,
-  providerCredentialSubject,
-  redactProviderCredential,
-  serializeProviderCredential,
-  type ProviderCredential,
-  type RedactedProviderCredential,
-} from "../models/provider-credentials.js";
 import { sampleProviderTelemetryQuotaHistory } from "../models/provider-telemetry.js";
-import {
-  mcpServerSecretContext,
-  modelProviderAccountSecretContext,
-  modelProviderSecretContext,
-  type SecretVault,
-} from "../security/secret-vault.js";
+import type { SecretVault } from "../security/secret-vault.js";
 import * as schema from "./schema.js";
 import { ChatImportJobRepository } from "./chat-import-jobs.js";
 import { ChatRelocationJobRepository } from "./chat-relocation-jobs.js";
@@ -277,7 +269,7 @@ export interface ModelProviderCatalogRuntime {
   ownerId: string;
   kind: ModelProviderSummary["kind"];
   baseUrl: string;
-  apiKey: string | null;
+  protectedApiKey: ProtectedSecretEnvelope | null;
 }
 
 export interface ProviderModelCatalogWrite {
@@ -429,14 +421,6 @@ export class WorkerEnrollmentError extends Error {}
 export class TunnelManagementError extends Error {}
 export class ManagedMcpServerInvariantError extends Error {}
 
-function assertUserManagedMcpServerName(name: string): void {
-  if (isManagedCodeGraphMcpName(name)) {
-    throw new ManagedMcpServerInvariantError(
-      "CodeGraph is managed by Cantrip and cannot be configured or removed.",
-    );
-  }
-}
-
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
   clientId: string;
@@ -585,7 +569,7 @@ export interface ModelRuntime {
     name: string;
     kind: ModelProviderSummary["kind"];
     baseUrl: string;
-    apiKey: string | null;
+    protectedApiKey: ProtectedSecretEnvelope | null;
     accountId: string | null;
     credentialHomeKey: string | null;
     weeklyUsageReservePercent: number;
@@ -611,16 +595,11 @@ export type ProviderAccountCredentialState =
   | "reauth-required"
   | "conflict";
 
-export type ProviderCredentialRefreshFailure =
-  | "Provider credential refresh failed."
-  | "Provider credential requires sign-in."
-  | "Provider credential identity changed during refresh.";
-
-/** Internal secret-bearing record. Never return this object from an API. */
 export interface ProviderAccountCredentialRecord {
   accountId: string;
-  credential: ProviderCredential;
-  metadata: RedactedProviderCredential;
+  credential: ProtectedProviderCredential;
+  metadata: ProviderCredentialPublicMetadata;
+  providerKind: "chatgpt" | "grok";
   providerId: string;
   revision: number;
   state: ProviderAccountCredentialState;
@@ -628,7 +607,6 @@ export interface ProviderAccountCredentialRecord {
 }
 
 export interface ProviderAccountCredentialSignOutRecord {
-  credential: ProviderCredential | null;
   revision: number;
 }
 
@@ -639,7 +617,7 @@ export interface ProviderAccountCredentialMigrationRecord {
   providerKind: "chatgpt" | "grok";
   revision: number;
   state: ProviderAccountCredentialState;
-  subject: string | null;
+  subjectBlindIndex: string | null;
 }
 
 export class ProviderCredentialIdentityConflictError extends Error {
@@ -1090,207 +1068,27 @@ function toProjectReplicaSummary(
   };
 }
 
-function parseMcpSecretMap(
-  secretVault: SecretVault,
-  server: McpServerRow,
-  field: "environment" | "headers",
-): Record<string, string> {
-  const envelope =
-    field === "environment"
-      ? server.environmentEnvelope
-      : server.headersEnvelope;
-  const legacy = field === "environment" ? server.environment : server.headers;
-  const encrypted = envelope
-    ? JSON.parse(
-        secretVault.decrypt(
-          envelope,
-          mcpServerSecretContext(server.ownerId, server.id, field),
-        ),
-      )
-    : {};
-  if (
-    !encrypted ||
-    typeof encrypted !== "object" ||
-    Array.isArray(encrypted) ||
-    Object.keys(encrypted).length > 100 ||
-    Object.entries(encrypted).some(
-      ([key, value]) =>
-        !key ||
-        key.length > 256 ||
-        typeof value !== "string" ||
-        value.length > 65_536,
-    )
-  ) {
-    throw new Error("Encrypted MCP server configuration is malformed.");
-  }
+function toMcpServerWireSummary(server: McpServerRow): McpServerWireSummary {
   return {
-    ...(encrypted as Record<string, string>),
-    ...legacy,
-  };
-}
-
-function maskMcpSecretMap(
-  values: Record<string, string>,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.keys(values).map((key) => [key, MCP_SECRET_MASK]),
-  );
-}
-
-function toMcpServerSummary(
-  server: McpServerRow,
-  secretVault: SecretVault,
-): McpServerSummary {
-  const metadata = {
     id: server.id,
-    scope: server.projectId ? ("project" as const) : ("global" as const),
+    scope: server.projectId ? "project" : "global",
     projectId: server.projectId,
+    enabled: server.enabled,
+    nameBlindIndex: server.nameBlindIndex,
+    protectedConfiguration: server.protectedConfiguration,
     createdAt: toISOString(server.createdAt),
     updatedAt: toISOString(server.updatedAt),
   };
-  if (server.transport === "stdio") {
-    return {
-      ...metadata,
-      name: server.name,
-      transport: "stdio",
-      command: server.command!,
-      args: server.args,
-      environment: maskMcpSecretMap(
-        parseMcpSecretMap(secretVault, server, "environment"),
-      ),
-      enabled: server.enabled,
-    };
-  }
-  return {
-    ...metadata,
-    name: server.name,
-    transport: "http",
-    url: server.url!,
-    bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable,
-    headers: maskMcpSecretMap(
-      parseMcpSecretMap(secretVault, server, "headers"),
-    ),
-    environmentHeaders: server.environmentHeaders,
-    enabled: server.enabled,
-  };
 }
 
-function toMcpServerRuntimeConfiguration(
+function toMcpServerOpaqueRuntime(
   server: McpServerRow,
-  secretVault: SecretVault,
-): McpServerConfiguration {
-  if (server.transport === "stdio") {
-    return {
-      name: server.name,
-      transport: "stdio",
-      command: server.command!,
-      args: server.args,
-      environment: parseMcpSecretMap(secretVault, server, "environment"),
-      enabled: server.enabled,
-    };
-  }
+): McpServerOpaqueRuntime {
   return {
-    name: server.name,
-    transport: "http",
-    url: server.url!,
-    bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable,
-    headers: parseMcpSecretMap(secretVault, server, "headers"),
-    environmentHeaders: server.environmentHeaders,
+    id: server.id,
     enabled: server.enabled,
-  };
-}
-
-function resolveMcpSecretInput(
-  input: Record<string, string>,
-  existing: Record<string, string>,
-): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(input).map(([key, value]) => {
-      if (value !== MCP_SECRET_MASK) return [key, value];
-      if (!(key in existing)) {
-        throw new Error(
-          `MCP secret placeholder for ${key} does not reference an existing value.`,
-        );
-      }
-      return [key, existing[key]!];
-    }),
-  );
-}
-
-function encryptMcpSecretMap(
-  secretVault: SecretVault,
-  ownerId: string,
-  serverId: string,
-  field: "environment" | "headers",
-  values: Record<string, string>,
-): string | null {
-  return Object.keys(values).length === 0
-    ? null
-    : secretVault.encrypt(
-        JSON.stringify(values),
-        mcpServerSecretContext(ownerId, serverId, field),
-      );
-}
-
-function mcpServerValues(
-  input: McpServerConfiguration,
-  ownerId: string,
-  serverId: string,
-  secretVault: SecretVault,
-  existing: McpServerRow | null = null,
-) {
-  const existingEnvironment = existing
-    ? parseMcpSecretMap(secretVault, existing, "environment")
-    : {};
-  const existingHeaders = existing
-    ? parseMcpSecretMap(secretVault, existing, "headers")
-    : {};
-  if (input.transport === "stdio") {
-    const environment = resolveMcpSecretInput(
-      input.environment,
-      existingEnvironment,
-    );
-    return {
-      name: input.name,
-      transport: input.transport,
-      command: input.command,
-      args: input.args,
-      url: null,
-      environment: {},
-      environmentEnvelope: encryptMcpSecretMap(
-        secretVault,
-        ownerId,
-        serverId,
-        "environment",
-        environment,
-      ),
-      headers: {},
-      headersEnvelope: null,
-      environmentHeaders: {},
-      bearerTokenEnvironmentVariable: null,
-      enabled: input.enabled,
-    };
-  }
-  const headers = resolveMcpSecretInput(input.headers, existingHeaders);
-  return {
-    name: input.name,
-    transport: input.transport,
-    command: null,
-    args: [],
-    url: input.url,
-    environment: {},
-    environmentEnvelope: null,
-    headers: {},
-    headersEnvelope: encryptMcpSecretMap(
-      secretVault,
-      ownerId,
-      serverId,
-      "headers",
-      headers,
-    ),
-    environmentHeaders: input.environmentHeaders,
-    bearerTokenEnvironmentVariable: input.bearerTokenEnvironmentVariable,
-    enabled: input.enabled,
+    nameBlindIndex: server.nameBlindIndex,
+    protectedConfiguration: server.protectedConfiguration,
   };
 }
 
@@ -1884,7 +1682,7 @@ function toProviderSummary(
     name: provider.name,
     kind: provider.kind as ModelProviderSummary["kind"],
     baseUrl: provider.baseUrl,
-    hasApiKey: provider.apiKeyEnvelope !== null || provider.apiKey !== null,
+    hasApiKey: provider.protectedApiKey !== null,
     weeklyUsageReservePercent: provider.weeklyUsageReservePercent,
     accounts,
     tokenUsage,
@@ -2214,8 +2012,12 @@ export class ServerRepository {
 
   constructor(
     private readonly database: RepositoryDatabase,
-    private readonly secretVault: SecretVault,
+    secretVault: SecretVault,
   ) {
+    // Retained in the constructor while unrelated server-owned credentials
+    // finish moving out of this repository. Provider and MCP payloads never
+    // use this server key.
+    void secretVault;
     this.chatImportJobs = new ChatImportJobRepository(database);
     this.chatRelocationJobs = new ChatRelocationJobRepository(database);
     this.encryptionRegistry = new EncryptionRegistryRepository(database);
@@ -2234,162 +2036,15 @@ export class ServerRepository {
   }
 
   async migrateProviderSecrets(): Promise<void> {
-    const providers = await this.database.select().from(schema.modelProviders);
-    for (const provider of providers) {
-      const context = modelProviderSecretContext(provider.ownerId, provider.id);
-      if (provider.apiKeyEnvelope) {
-        const plaintext = this.secretVault.decrypt(
-          provider.apiKeyEnvelope,
-          context,
-        );
-        const needsRotation = this.secretVault.needsRotation(
-          provider.apiKeyEnvelope,
-        );
-        if (!provider.apiKey && !needsRotation) continue;
-        await this.database
-          .update(schema.modelProviders)
-          .set({
-            apiKey: null,
-            updatedAt: new Date(),
-            ...(needsRotation
-              ? {
-                  apiKeyEnvelope: this.secretVault.encrypt(plaintext, context),
-                }
-              : {}),
-          })
-          .where(eq(schema.modelProviders.id, provider.id));
-        continue;
-      }
-      if (provider.apiKey) {
-        await this.database
-          .update(schema.modelProviders)
-          .set({
-            apiKey: null,
-            apiKeyEnvelope: this.secretVault.encrypt(provider.apiKey, context),
-            updatedAt: new Date(),
-          })
-          .where(eq(schema.modelProviders.id, provider.id));
-      }
-    }
+    // Pre-release migration 0119 removes every server-readable predecessor.
   }
 
   async migrateProviderAccountCredentialSecrets(): Promise<void> {
-    const rows = await this.database
-      .select({
-        account: schema.modelProviderAccounts,
-        kind: schema.modelProviders.kind,
-        ownerId: schema.modelProviders.ownerId,
-      })
-      .from(schema.modelProviderAccounts)
-      .innerJoin(
-        schema.modelProviders,
-        eq(schema.modelProviders.id, schema.modelProviderAccounts.providerId),
-      )
-      .where(isNotNull(schema.modelProviderAccounts.credentialEnvelope));
-
-    for (const { account, kind, ownerId } of rows) {
-      if (!isAccountProviderKind(kind) || !account.credentialEnvelope) {
-        throw new Error(
-          "Stored provider account credential has an invalid provider kind.",
-        );
-      }
-      const context = modelProviderAccountSecretContext(
-        ownerId,
-        account.providerId,
-        account.id,
-        kind,
-      );
-      const credential = parseProviderCredential(
-        this.secretVault.decrypt(account.credentialEnvelope, context),
-        kind,
-      );
-      const subject = providerCredentialSubject(credential);
-      if (account.credentialSubject && account.credentialSubject !== subject) {
-        throw new ProviderCredentialIdentityConflictError();
-      }
-      const needsRotation = this.secretVault.needsRotation(
-        account.credentialEnvelope,
-      );
-      if (
-        !needsRotation &&
-        account.credentialSubject === subject &&
-        account.email === credential.email &&
-        account.planType === credential.planType &&
-        (account.credentialExpiresAt?.getTime() ?? null) ===
-          credential.expiresAt
-      ) {
-        continue;
-      }
-      await this.database
-        .update(schema.modelProviderAccounts)
-        .set({
-          credentialSubject: subject,
-          credentialExpiresAt: credential.expiresAt
-            ? new Date(credential.expiresAt)
-            : null,
-          email: credential.email,
-          planType: credential.planType,
-          ...(needsRotation
-            ? {
-                credentialEnvelope: this.secretVault.encrypt(
-                  serializeProviderCredential(credential),
-                  context,
-                ),
-              }
-            : {}),
-        })
-        .where(eq(schema.modelProviderAccounts.id, account.id));
-    }
+    // Pre-release migration 0119 signs legacy accounts out.
   }
 
   async migrateMcpServerSecrets(): Promise<void> {
-    const servers = await this.database.select().from(schema.mcpServers);
-    for (const server of servers) {
-      const environment = parseMcpSecretMap(
-        this.secretVault,
-        server,
-        "environment",
-      );
-      const headers = parseMcpSecretMap(this.secretVault, server, "headers");
-      const environmentNeedsRotation = Boolean(
-        server.environmentEnvelope &&
-        this.secretVault.needsRotation(server.environmentEnvelope),
-      );
-      const headersNeedRotation = Boolean(
-        server.headersEnvelope &&
-        this.secretVault.needsRotation(server.headersEnvelope),
-      );
-      if (
-        Object.keys(server.environment).length === 0 &&
-        Object.keys(server.headers).length === 0 &&
-        !environmentNeedsRotation &&
-        !headersNeedRotation
-      ) {
-        continue;
-      }
-      await this.database
-        .update(schema.mcpServers)
-        .set({
-          environment: {},
-          environmentEnvelope: encryptMcpSecretMap(
-            this.secretVault,
-            server.ownerId,
-            server.id,
-            "environment",
-            environment,
-          ),
-          headers: {},
-          headersEnvelope: encryptMcpSecretMap(
-            this.secretVault,
-            server.ownerId,
-            server.id,
-            "headers",
-            headers,
-          ),
-          updatedAt: new Date(),
-        })
-        .where(eq(schema.mcpServers.id, server.id));
-    }
+    // Pre-release migration 0119 deletes legacy MCP rows.
   }
 
   async ensureLocalIdentity(): Promise<UserSummary> {
@@ -3730,9 +3385,11 @@ export class ServerRepository {
 
   async createModelProvider(
     ownerId: string,
-    input: ModelProviderCreate,
+    input: EncryptedModelProviderCreate,
   ): Promise<ModelProviderSummary> {
-    const id = randomUUID();
+    // Endpoint callers allocate IDs before sealing an API key. The fallback is
+    // limited to internal callers creating providers with no protected key.
+    const id = input.id ?? randomUUID();
     return this.database.transaction(async (transaction) => {
       if (isAccountProviderKind(input.kind)) {
         const existing = await transaction
@@ -3760,13 +3417,7 @@ export class ServerRepository {
           kind: input.kind,
           baseUrl: normalizeResponsesBaseUrl(input.baseUrl),
           weeklyUsageReservePercent: input.weeklyUsageReservePercent ?? 3,
-          apiKey: null,
-          apiKeyEnvelope: input.apiKey
-            ? this.secretVault.encrypt(
-                input.apiKey,
-                modelProviderSecretContext(ownerId, id),
-              )
-            : null,
+          protectedApiKey: input.protectedApiKey,
         })
         .returning();
       const provider = firstOrThrow(result, "creating a model provider");
@@ -3884,33 +3535,20 @@ export class ServerRepository {
       )
       .limit(1);
     const row = rows[0];
-    if (!row?.account.credentialEnvelope || !isAccountProviderKind(row.kind)) {
+    if (!row?.account.protectedCredential || !isAccountProviderKind(row.kind)) {
       return null;
-    }
-    const credential = parseProviderCredential(
-      this.secretVault.decrypt(
-        row.account.credentialEnvelope,
-        modelProviderAccountSecretContext(
-          row.ownerId,
-          providerId,
-          accountId,
-          row.kind,
-        ),
-      ),
-      row.kind,
-    );
-    const subject = providerCredentialSubject(credential);
-    if (
-      row.account.credentialSubject &&
-      row.account.credentialSubject !== subject
-    ) {
-      throw new ProviderCredentialIdentityConflictError();
     }
     return {
       accountId,
-      credential,
-      metadata: redactProviderCredential(credential),
+      credential: {
+        subjectBlindIndex: row.account.credentialSubjectBlindIndex!,
+        protectedCredential: row.account.protectedCredential,
+      },
+      metadata: {
+        expiresAt: row.account.credentialExpiresAt?.toISOString() ?? null,
+      },
       providerId,
+      providerKind: row.kind,
       revision: row.account.credentialRevision,
       state: row.account.credentialState as ProviderAccountCredentialState,
       updatedAt: row.account.credentialUpdatedAt
@@ -3930,7 +3568,8 @@ export class ServerRepository {
         providerKind: schema.modelProviders.kind,
         revision: schema.modelProviderAccounts.credentialRevision,
         state: schema.modelProviderAccounts.credentialState,
-        subject: schema.modelProviderAccounts.credentialSubject,
+        subjectBlindIndex:
+          schema.modelProviderAccounts.credentialSubjectBlindIndex,
       })
       .from(schema.modelProviderAccounts)
       .innerJoin(
@@ -3978,7 +3617,8 @@ export class ServerRepository {
         providerKind: schema.modelProviders.kind,
         revision: schema.modelProviderAccounts.credentialRevision,
         state: schema.modelProviderAccounts.credentialState,
-        subject: schema.modelProviderAccounts.credentialSubject,
+        subjectBlindIndex:
+          schema.modelProviderAccounts.credentialSubjectBlindIndex,
       })
       .from(schema.modelProviderAccounts)
       .innerJoin(
@@ -4007,15 +3647,10 @@ export class ServerRepository {
     ownerId: string,
     providerId: string,
     accountId: string,
-    input: ProviderCredential,
+    input: ProtectedProviderCredential,
+    metadata: ProviderCredentialPublicMetadata,
     expectedRevision?: number,
-    refreshLeaseId?: string,
   ): Promise<ProviderAccountCredentialRecord | null> {
-    if (refreshLeaseId && expectedRevision === undefined) {
-      throw new Error("A credential revision is required for refresh writes.");
-    }
-    const credential = parseProviderCredential(input, input.kind);
-    const subject = providerCredentialSubject(credential);
     return this.database.transaction(async (transaction) => {
       const rows = await transaction
         .select({
@@ -4038,12 +3673,9 @@ export class ServerRepository {
         .limit(1);
       const row = rows[0];
       if (!row || !isAccountProviderKind(row.kind)) return null;
-      if (row.kind !== credential.kind) {
-        throw new ProviderCredentialIdentityConflictError();
-      }
       if (
-        row.account.credentialSubject &&
-        row.account.credentialSubject !== subject
+        row.account.credentialSubjectBlindIndex &&
+        row.account.credentialSubjectBlindIndex !== input.subjectBlindIndex
       ) {
         throw new ProviderCredentialIdentityConflictError();
       }
@@ -4059,32 +3691,19 @@ export class ServerRepository {
       const updated = await transaction
         .update(schema.modelProviderAccounts)
         .set({
-          credentialEnvelope: this.secretVault.encrypt(
-            serializeProviderCredential(credential),
-            modelProviderAccountSecretContext(
-              ownerId,
-              providerId,
-              accountId,
-              row.kind,
-            ),
-          ),
+          protectedCredential: input.protectedCredential,
           credentialRevision: revision,
           credentialState: "signed-in",
-          credentialSubject: subject,
-          credentialExpiresAt: credential.expiresAt
-            ? new Date(credential.expiresAt)
+          credentialSubjectBlindIndex: input.subjectBlindIndex,
+          credentialExpiresAt: metadata.expiresAt
+            ? new Date(metadata.expiresAt)
             : null,
           credentialUpdatedAt: updatedAt,
           credentialLastRefreshError: null,
-          ...(refreshLeaseId
-            ? {
-                credentialLastRefreshAt: updatedAt,
-                credentialRefreshLeaseId: null,
-                credentialRefreshLeaseExpiresAt: null,
-              }
-            : {}),
-          email: credential.email,
-          planType: credential.planType,
+          credentialLastRefreshAt: updatedAt,
+          credentialRefreshLeaseId: null,
+          credentialRefreshLeaseExpiresAt: null,
+          email: null,
           authLastSyncedAt: updatedAt,
           updatedAt,
         })
@@ -4096,14 +3715,6 @@ export class ServerRepository {
               schema.modelProviderAccounts.credentialRevision,
               row.account.credentialRevision,
             ),
-            ...(refreshLeaseId
-              ? [
-                  eq(
-                    schema.modelProviderAccounts.credentialRefreshLeaseId,
-                    refreshLeaseId,
-                  ),
-                ]
-              : []),
           ),
         )
         .returning({
@@ -4112,111 +3723,15 @@ export class ServerRepository {
       if (!updated[0]) throw new ProviderCredentialRevisionConflictError();
       return {
         accountId,
-        credential,
-        metadata: redactProviderCredential(credential),
+        credential: input,
+        metadata,
         providerId,
+        providerKind: row.kind,
         revision,
         state: "signed-in",
         updatedAt: toISOString(updatedAt),
       };
     });
-  }
-
-  async tryAcquireModelProviderAccountRefreshLease(input: {
-    accountId: string;
-    expectedRevision: number;
-    leaseExpiresAt: Date;
-    leaseId: string;
-    now: Date;
-    ownerId: string;
-    providerId: string;
-  }): Promise<boolean> {
-    const rows = await this.database
-      .update(schema.modelProviderAccounts)
-      .set({
-        credentialRefreshLeaseId: input.leaseId,
-        credentialRefreshLeaseExpiresAt: input.leaseExpiresAt,
-      })
-      .where(
-        and(
-          eq(schema.modelProviderAccounts.id, input.accountId),
-          eq(schema.modelProviderAccounts.providerId, input.providerId),
-          eq(
-            schema.modelProviderAccounts.credentialRevision,
-            input.expectedRevision,
-          ),
-          eq(schema.modelProviderAccounts.credentialState, "signed-in"),
-          isNotNull(schema.modelProviderAccounts.credentialEnvelope),
-          or(
-            isNull(schema.modelProviderAccounts.credentialRefreshLeaseId),
-            lte(
-              schema.modelProviderAccounts.credentialRefreshLeaseExpiresAt,
-              input.now,
-            ),
-          ),
-          exists(
-            this.database
-              .select({ id: schema.modelProviders.id })
-              .from(schema.modelProviders)
-              .where(
-                and(
-                  eq(schema.modelProviders.id, input.providerId),
-                  eq(schema.modelProviders.ownerId, input.ownerId),
-                  inArray(schema.modelProviders.kind, ["chatgpt", "grok"]),
-                ),
-              ),
-          ),
-        ),
-      )
-      .returning({ id: schema.modelProviderAccounts.id });
-    return Boolean(rows[0]);
-  }
-
-  async releaseModelProviderAccountRefreshLease(input: {
-    accountId: string;
-    error: ProviderCredentialRefreshFailure;
-    leaseId: string;
-    ownerId: string;
-    providerId: string;
-    state?: Extract<
-      ProviderAccountCredentialState,
-      "signed-in" | "reauth-required" | "conflict"
-    >;
-  }): Promise<boolean> {
-    const now = new Date();
-    const rows = await this.database
-      .update(schema.modelProviderAccounts)
-      .set({
-        credentialLastRefreshAt: now,
-        credentialLastRefreshError: input.error,
-        credentialRefreshLeaseId: null,
-        credentialRefreshLeaseExpiresAt: null,
-        ...(input.state ? { credentialState: input.state } : {}),
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(schema.modelProviderAccounts.id, input.accountId),
-          eq(schema.modelProviderAccounts.providerId, input.providerId),
-          eq(
-            schema.modelProviderAccounts.credentialRefreshLeaseId,
-            input.leaseId,
-          ),
-          exists(
-            this.database
-              .select({ id: schema.modelProviders.id })
-              .from(schema.modelProviders)
-              .where(
-                and(
-                  eq(schema.modelProviders.id, input.providerId),
-                  eq(schema.modelProviders.ownerId, input.ownerId),
-                ),
-              ),
-          ),
-        ),
-      )
-      .returning({ id: schema.modelProviderAccounts.id });
-    return Boolean(rows[0]);
   }
 
   async updateModelProviderAccountCredentialState(input: {
@@ -4309,39 +3824,14 @@ export class ServerRepository {
       ) {
         throw new ProviderCredentialRevisionConflictError();
       }
-      let credential: ProviderCredential | null = null;
-      if (row.account.credentialEnvelope) {
-        try {
-          const parsed = parseProviderCredential(
-            this.secretVault.decrypt(
-              row.account.credentialEnvelope,
-              modelProviderAccountSecretContext(
-                row.ownerId,
-                providerId,
-                accountId,
-                row.kind,
-              ),
-            ),
-            row.kind,
-          );
-          if (
-            !row.account.credentialSubject ||
-            row.account.credentialSubject === providerCredentialSubject(parsed)
-          ) {
-            credential = parsed;
-          }
-        } catch {
-          // Sign-out still clears an unreadable envelope; it just cannot revoke it.
-        }
-      }
       const now = new Date();
       const updated = await transaction
         .update(schema.modelProviderAccounts)
         .set({
-          credentialEnvelope: null,
+          protectedCredential: null,
           credentialRevision: row.account.credentialRevision + 1,
           credentialState: "signed-out",
-          credentialSubject: null,
+          credentialSubjectBlindIndex: null,
           credentialExpiresAt: null,
           credentialUpdatedAt: now,
           credentialRefreshLeaseId: null,
@@ -4376,7 +3866,7 @@ export class ServerRepository {
           updatedAt: now,
         })
         .where(eq(schema.modelProviderAccountWorkers.accountId, accountId));
-      return { credential, revision: row.account.credentialRevision + 1 };
+      return { revision: row.account.credentialRevision + 1 };
     });
   }
 
@@ -4593,11 +4083,9 @@ export class ServerRepository {
       await transaction
         .update(schema.modelProviderAccounts)
         .set({
-          ...(status.authenticated
-            ? { email: status.email, planType: status.planType }
-            : {}),
           ...(status.weeklyUsage
             ? {
+                ...(status.planType ? { planType: status.planType } : {}),
                 weeklyUsageUsedBasisPoints: Math.round(
                   status.weeklyUsage.usedPercent * 100,
                 ),
@@ -5575,7 +5063,7 @@ export class ServerRepository {
   async updateModelProvider(
     ownerId: string,
     providerId: string,
-    input: ModelProviderUpdate,
+    input: EncryptedModelProviderUpdate,
   ): Promise<ModelProviderSummary | null> {
     const current = await this.getModelProvider(ownerId, providerId);
     if (!current) return null;
@@ -5595,17 +5083,9 @@ export class ServerRepository {
           : {
               weeklyUsageReservePercent: input.weeklyUsageReservePercent,
             }),
-        ...(input.apiKey === undefined
+        ...(input.protectedApiKey === undefined
           ? {}
-          : input.apiKey === null
-            ? { apiKey: null, apiKeyEnvelope: null }
-            : {
-                apiKey: null,
-                apiKeyEnvelope: this.secretVault.encrypt(
-                  input.apiKey,
-                  modelProviderSecretContext(ownerId, providerId),
-                ),
-              }),
+          : { protectedApiKey: input.protectedApiKey }),
         updatedAt: new Date(),
       })
       .where(
@@ -5656,12 +5136,7 @@ export class ServerRepository {
       ownerId: provider.ownerId,
       kind: provider.kind as ModelProviderSummary["kind"],
       baseUrl: provider.baseUrl,
-      apiKey: provider.apiKeyEnvelope
-        ? this.secretVault.decrypt(
-            provider.apiKeyEnvelope,
-            modelProviderSecretContext(provider.ownerId, provider.id),
-          )
-        : provider.apiKey,
+      protectedApiKey: provider.protectedApiKey,
     };
   }
 
@@ -6397,12 +5872,7 @@ export class ServerRepository {
         name: row.provider.name,
         kind: row.provider.kind as ModelProviderSummary["kind"],
         baseUrl: row.provider.baseUrl,
-        apiKey: row.provider.apiKeyEnvelope
-          ? this.secretVault.decrypt(
-              row.provider.apiKeyEnvelope,
-              modelProviderSecretContext(row.provider.ownerId, row.provider.id),
-            )
-          : null,
+        protectedApiKey: row.provider.protectedApiKey,
         accountId: null,
         credentialHomeKey: null,
         weeklyUsageReservePercent: row.provider.weeklyUsageReservePercent,
@@ -8330,7 +7800,7 @@ export class ServerRepository {
   async listMcpServers(
     ownerId: string,
     projectId: string | null,
-  ): Promise<McpServerSummary[] | null> {
+  ): Promise<McpServerWireSummary[] | null> {
     if (projectId) {
       const project = await this.database
         .select({ id: schema.projects.id })
@@ -8355,16 +7825,17 @@ export class ServerRepository {
             : isNull(schema.mcpServers.projectId),
         ),
       )
-      .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
-    return rows
-      .filter((row) => !isManagedCodeGraphMcpName(row.name))
-      .map((row) => toMcpServerSummary(row, this.secretVault));
+      .orderBy(
+        asc(schema.mcpServers.nameBlindIndex),
+        asc(schema.mcpServers.createdAt),
+      );
+    return rows.map(toMcpServerWireSummary);
   }
 
   async listEffectiveMcpServers(
     ownerId: string,
     projectId: string | null,
-  ): Promise<McpServerConfiguration[]> {
+  ): Promise<McpServerOpaqueRuntime[]> {
     const rows = await this.database
       .select()
       .from(schema.mcpServers)
@@ -8377,26 +7848,25 @@ export class ServerRepository {
           ),
         ),
       )
-      .orderBy(asc(schema.mcpServers.name), asc(schema.mcpServers.createdAt));
+      .orderBy(
+        asc(schema.mcpServers.nameBlindIndex),
+        asc(schema.mcpServers.createdAt),
+      );
     const effective = new Map<string, McpServerRow>();
     for (const row of rows) {
-      if (isManagedCodeGraphMcpName(row.name)) continue;
-      const current = effective.get(row.name);
+      const current = effective.get(row.nameBlindIndex);
       if (!current || (projectId && row.projectId === projectId)) {
-        effective.set(row.name, row);
+        effective.set(row.nameBlindIndex, row);
       }
     }
-    return [...effective.values()].map((row) =>
-      toMcpServerRuntimeConfiguration(row, this.secretVault),
-    );
+    return [...effective.values()].map(toMcpServerOpaqueRuntime);
   }
 
   async createMcpServer(
     ownerId: string,
     projectId: string | null,
-    input: McpServerConfiguration,
-  ): Promise<McpServerSummary | null> {
-    assertUserManagedMcpServerName(input.name);
+    input: EncryptedMcpServerCreate,
+  ): Promise<McpServerWireSummary | null> {
     if (projectId) {
       const project = await this.database
         .select({ id: schema.projects.id })
@@ -8410,55 +7880,32 @@ export class ServerRepository {
         .limit(1);
       if (!project[0]) return null;
     }
-    const id = randomUUID();
     const rows = await this.database
       .insert(schema.mcpServers)
       .values({
-        id,
+        id: input.id,
         ownerId,
         projectId,
-        ...mcpServerValues(input, ownerId, id, this.secretVault),
+        enabled: input.enabled,
+        nameBlindIndex: input.nameBlindIndex,
+        protectedConfiguration: input.protectedConfiguration,
       })
       .returning();
-    return toMcpServerSummary(
-      firstOrThrow(rows, "creating an MCP server"),
-      this.secretVault,
-    );
+    return toMcpServerWireSummary(firstOrThrow(rows, "creating an MCP server"));
   }
 
   async updateMcpServer(
     ownerId: string,
     projectId: string | null,
     serverId: string,
-    input: McpServerConfiguration,
-  ): Promise<McpServerSummary | null> {
-    assertUserManagedMcpServerName(input.name);
-    const existingRows = await this.database
-      .select()
-      .from(schema.mcpServers)
-      .where(
-        and(
-          eq(schema.mcpServers.id, serverId),
-          eq(schema.mcpServers.ownerId, ownerId),
-          projectId
-            ? eq(schema.mcpServers.projectId, projectId)
-            : isNull(schema.mcpServers.projectId),
-        ),
-      )
-      .limit(1);
-    const existing = existingRows[0];
-    if (!existing) return null;
-    assertUserManagedMcpServerName(existing.name);
+    input: EncryptedMcpServerUpdate,
+  ): Promise<McpServerWireSummary | null> {
     const rows = await this.database
       .update(schema.mcpServers)
       .set({
-        ...mcpServerValues(
-          input,
-          ownerId,
-          serverId,
-          this.secretVault,
-          existing,
-        ),
+        enabled: input.enabled,
+        nameBlindIndex: input.nameBlindIndex,
+        protectedConfiguration: input.protectedConfiguration,
         updatedAt: new Date(),
       })
       .where(
@@ -8471,7 +7918,7 @@ export class ServerRepository {
         ),
       )
       .returning();
-    return rows[0] ? toMcpServerSummary(rows[0], this.secretVault) : null;
+    return rows[0] ? toMcpServerWireSummary(rows[0]) : null;
   }
 
   async deleteMcpServer(
@@ -8479,22 +7926,6 @@ export class ServerRepository {
     projectId: string | null,
     serverId: string,
   ): Promise<boolean> {
-    const existingRows = await this.database
-      .select({ name: schema.mcpServers.name })
-      .from(schema.mcpServers)
-      .where(
-        and(
-          eq(schema.mcpServers.id, serverId),
-          eq(schema.mcpServers.ownerId, ownerId),
-          projectId
-            ? eq(schema.mcpServers.projectId, projectId)
-            : isNull(schema.mcpServers.projectId),
-        ),
-      )
-      .limit(1);
-    const existing = existingRows[0];
-    if (!existing) return false;
-    assertUserManagedMcpServerName(existing.name);
     const rows = await this.database
       .delete(schema.mcpServers)
       .where(
@@ -8508,49 +7939,6 @@ export class ServerRepository {
       )
       .returning({ id: schema.mcpServers.id });
     return rows.length > 0;
-  }
-
-  async copyProjectMcpServer(
-    ownerId: string,
-    targetProjectId: string,
-    sourceProjectId: string,
-    sourceServerId: string,
-  ): Promise<McpServerSummary | null> {
-    const [target, source] = await Promise.all([
-      this.database
-        .select({ id: schema.projects.id })
-        .from(schema.projects)
-        .where(
-          and(
-            eq(schema.projects.id, targetProjectId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .limit(1),
-      this.database
-        .select({ server: schema.mcpServers })
-        .from(schema.mcpServers)
-        .innerJoin(
-          schema.projects,
-          eq(schema.projects.id, schema.mcpServers.projectId),
-        )
-        .where(
-          and(
-            eq(schema.mcpServers.id, sourceServerId),
-            eq(schema.mcpServers.projectId, sourceProjectId),
-            eq(schema.mcpServers.ownerId, ownerId),
-            eq(schema.projects.ownerId, ownerId),
-          ),
-        )
-        .limit(1),
-    ]);
-    if (!target[0] || !source[0]) return null;
-    assertUserManagedMcpServerName(source[0].server.name);
-    const configuration = toMcpServerRuntimeConfiguration(
-      source[0].server,
-      this.secretVault,
-    );
-    return this.createMcpServer(ownerId, targetProjectId, configuration);
   }
 
   async ensureDefaultProjectWorkspace(

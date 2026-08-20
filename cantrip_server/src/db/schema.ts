@@ -81,6 +81,7 @@ import type {
   WorkerComponentKeyGrant,
   WorkerEncryptionStatus,
 } from "@cantrip/protocol/encryption";
+import type { ProtectedSecretEnvelope } from "@cantrip/protocol/protected-secrets";
 import type {
   ChatPlanOpaqueState,
   EncryptedInteractionRequestContent,
@@ -373,9 +374,8 @@ export const modelProviders = pgTable(
     name: text("name").notNull(),
     kind: text("kind").notNull(),
     baseUrl: text("base_url").notNull(),
-    /** @deprecated Read only during the encrypted-secret data migration. */
-    apiKey: text("api_key"),
-    apiKeyEnvelope: text("api_key_envelope"),
+    protectedApiKey:
+      jsonb("protected_api_key").$type<ProtectedSecretEnvelope>(),
     weeklyUsageReservePercent: integer("weekly_usage_reserve_percent")
       .notNull()
       .default(3),
@@ -421,10 +421,12 @@ export const modelProviderAccounts = pgTable(
      * while the pooled-account migration moves them without losing auth.
      */
     credentialHomeKey: text("credential_home_key").notNull(),
-    credentialEnvelope: text("credential_envelope"),
+    protectedCredential: jsonb(
+      "protected_credential",
+    ).$type<ProtectedSecretEnvelope>(),
     credentialRevision: integer("credential_revision").notNull().default(0),
     credentialState: text("credential_state").notNull().default("signed-out"),
-    credentialSubject: text("credential_subject"),
+    credentialSubjectBlindIndex: text("credential_subject_blind_index"),
     credentialExpiresAt: timestamp("credential_expires_at", {
       withTimezone: true,
     }),
@@ -1503,26 +1505,10 @@ export const mcpServers = pgTable(
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "cascade",
     }),
-    name: text("name").notNull(),
-    transport: text("transport").notNull(),
-    command: text("command"),
-    args: jsonb("args").$type<string[]>().notNull().default([]),
-    url: text("url"),
-    environment: jsonb("environment")
-      .$type<Record<string, string>>()
-      .notNull()
-      .default({}),
-    environmentEnvelope: text("environment_envelope"),
-    headers: jsonb("headers")
-      .$type<Record<string, string>>()
-      .notNull()
-      .default({}),
-    headersEnvelope: text("headers_envelope"),
-    environmentHeaders: jsonb("environment_headers")
-      .$type<Record<string, string>>()
-      .notNull()
-      .default({}),
-    bearerTokenEnvironmentVariable: text("bearer_token_environment_variable"),
+    nameBlindIndex: text("name_blind_index").notNull(),
+    protectedConfiguration: jsonb("protected_configuration")
+      .$type<ProtectedSecretEnvelope>()
+      .notNull(),
     enabled: boolean("enabled").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1532,20 +1518,16 @@ export const mcpServers = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("mcp_servers_owner_global_name_unique")
-      .on(table.ownerId, table.name)
+    uniqueIndex("mcp_servers_owner_global_name_blind_unique")
+      .on(table.ownerId, table.nameBlindIndex)
       .where(sql`${table.projectId} IS NULL`),
-    uniqueIndex("mcp_servers_project_name_unique")
-      .on(table.projectId, table.name)
+    uniqueIndex("mcp_servers_project_name_blind_unique")
+      .on(table.projectId, table.nameBlindIndex)
       .where(sql`${table.projectId} IS NOT NULL`),
     index("mcp_servers_owner_scope_index").on(table.ownerId, table.projectId),
     check(
-      "mcp_servers_transport_check",
-      sql`${table.transport} IN ('stdio', 'http')`,
-    ),
-    check(
-      "mcp_servers_transport_configuration_check",
-      sql`(${table.transport} = 'stdio' AND ${table.command} IS NOT NULL AND ${table.url} IS NULL) OR (${table.transport} = 'http' AND ${table.command} IS NULL AND ${table.url} IS NOT NULL)`,
+      "mcp_servers_name_blind_index_length_check",
+      sql`length(${table.nameBlindIndex}) = 43`,
     ),
   ],
 );

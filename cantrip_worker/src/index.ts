@@ -11,6 +11,7 @@ import {
   workerRestartAcknowledgementSchema,
   type AgentTurnResultMode,
   type McpServerConfiguration,
+  type McpServerOpaqueRuntime,
   type WorktreeObservationTarget,
   type WorkerCommand,
   type WorkerEvent,
@@ -68,7 +69,6 @@ import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
   captureLegacyProviderCredential,
   discardLegacyProviderCredential,
-  purgeLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
 import { readWorkerLogs, workerLogError, workerLogger } from "./logger.js";
 import {
@@ -98,6 +98,13 @@ import {
   ProviderAccessTokenRequestError,
 } from "./provider-access-tokens.js";
 import { createServerManagedGrokClient } from "./server-managed-grok.js";
+import {
+  openMcpServers,
+  openRuntimeProvider,
+  protectProviderCredential,
+  providerCredentialSubjectBlindIndex,
+} from "./protected-secrets.js";
+import type { RuntimeProvider } from "./protected-secrets.js";
 import {
   buildGitAgentPrompt,
   failedPullRequestChecksEvidence,
@@ -463,7 +470,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const projectGithubConverter = new ProjectGithubConverter(managedFolders);
   const codexAuthClients = new Map<string, CodexAuthClient>();
   const grokAuthClients = new Map<string, GrokAuthClient>();
-  const providerAccessTokens = new ProviderAccessTokenClient(config);
+  const providerAccessTokens = new ProviderAccessTokenClient(
+    config,
+    workerEncryption,
+  );
   const serverManagedGrokClients = new Map<string, GrokSubscriptionClient>();
   const codexRuntimes = new Map<string, CodexRuntime>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
@@ -542,7 +552,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   }
   const agentMcpServers = async (
     cwd: string,
-    configured: McpServerConfiguration[],
+    configured: McpServerOpaqueRuntime[],
   ): Promise<McpServerConfiguration[]> => {
     let managed: McpServerConfiguration | null = null;
     if (codegraphProjects && codegraphInvocation) {
@@ -583,7 +593,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     }
-    return mergeManagedCodeGraphMcpServer(configured, managed);
+    return mergeManagedCodeGraphMcpServer(
+      await openMcpServers({ servers: configured, service: workerEncryption }),
+      managed,
+    );
   };
   const automationScheduler = new ProjectAutomationScheduler({
     serverUrl: config.serverUrl,
@@ -707,7 +720,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
 
   const runtimeFor = (command: {
     model: Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-    provider: Extract<WorkerCommand, { type: "chat.turn" }>["provider"];
+    provider: RuntimeProvider;
   }) => {
     const runtimeId = codexRuntimeId(command.model, command.provider);
     let runtime = codexRuntimes.get(runtimeId);
@@ -804,6 +817,24 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     command: WorkerCommand,
     emit: (event: WorkerEvent) => void,
   ): Promise<unknown> => {
+    const protectedRuntimeProvider =
+      "provider" in command
+        ? command["provider"]
+        : command.type === "terminal.open" && command.launch.type === "codex"
+          ? command.launch.provider
+          : null;
+    const runtimeProvider = protectedRuntimeProvider
+      ? await openRuntimeProvider({
+          provider: protectedRuntimeProvider,
+          service: workerEncryption,
+        })
+      : null;
+    const provider = (): RuntimeProvider => {
+      if (!runtimeProvider) {
+        throw new Error("Worker command does not contain a runtime provider.");
+      }
+      return runtimeProvider;
+    };
     switch (command.type) {
       case "direct.capability.prepare":
         if (command.binding.workerId !== config.workerId) {
@@ -850,14 +881,18 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         config.tokenSource = "persisted";
         return { accepted: true };
       case "model.ollama.catalog":
-        return discoverOllamaModels(command.baseUrl, command.apiKey);
+        return discoverOllamaModels(provider().baseUrl, provider().apiKey);
       case "model.chatgpt.catalog":
         return catalogRuntimeFor(
-          command.provider.credentialHomeKey,
-        ).listChatGptModels(command.provider);
+          provider().credentialHomeKey!,
+        ).listChatGptModels({ ...provider(), kind: "chatgpt" });
       case "model.grok.catalog":
         return withGrokSubscription(
-          command.provider,
+          {
+            accountId: provider().accountId!,
+            credentialHomeKey: provider().credentialHomeKey!,
+            id: provider().id,
+          },
           "refresh-model-catalog",
           async (client) => {
             const startedAtMs = Date.now();
@@ -904,7 +939,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "provider.quota.read":
         if (command.provider.kind === "grok") {
           return withGrokSubscription(
-            command.provider,
+            {
+              accountId: provider().accountId!,
+              credentialHomeKey: provider().credentialHomeKey!,
+              id: provider().id,
+            },
             "refresh-quota",
             async (client) => {
               const snapshot = await grokQuotaSnapshot(client, true);
@@ -924,8 +963,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           throw new Error("Quota snapshots require an account provider.");
         }
         return catalogRuntimeFor(
-          command.provider.credentialHomeKey,
-        ).readQuotaSnapshot({ ...command.provider, kind: "chatgpt" });
+          provider().credentialHomeKey!,
+        ).readQuotaSnapshot({ ...provider(), kind: "chatgpt" });
       case "codex.auth.status":
         return command.providerKind === "grok"
           ? grokFor(command.credentialHomeKey ?? command.providerId).status()
@@ -955,26 +994,49 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           accountHomeFor(command.credentialHomeKey),
           command.providerKind,
         );
-        return captured.status === "available"
-          ? {
-              ...captured,
-              serverManagedAuth:
-                command.providerKind === "grok"
-                  ? true
-                  : chatGptExternalAuthCapabilityError(codexRuntime) === null,
-            }
-          : captured;
+        if (captured.status !== "available") return captured;
+        return {
+          status: "available",
+          ...(await protectProviderCredential({
+            accountId: command.providerAccountId,
+            credential: captured.credential,
+            service: workerEncryption,
+          })),
+          portableAuth:
+            command.providerKind === "grok"
+              ? true
+              : chatGptExternalAuthCapabilityError(codexRuntime) === null,
+        };
       }
       case "provider.auth.legacy.purge": {
         closeProviderAccountRuntime(command);
-        // Deliberately stop and remove the local file without account/logout;
-        // Codex logout revokes the shared OAuth credential on the provider.
-        return purgeLegacyProviderCredential(
+        const captured = await captureLegacyProviderCredential(
           accountHomeFor(command.credentialHomeKey),
           command.providerKind,
-          command.expectedSubject,
-          command.serverCredentialRevision,
         );
+        if (captured.status !== "available") {
+          return {
+            purged: false,
+            serverCredentialRevision: command.serverCredentialRevision,
+            subjectBlindIndex: command.expectedSubjectBlindIndex,
+          };
+        }
+        const subjectBlindIndex = providerCredentialSubjectBlindIndex({
+          credential: captured.credential,
+          service: workerEncryption,
+        });
+        if (subjectBlindIndex !== command.expectedSubjectBlindIndex) {
+          throw new Error("Worker provider identity changed before purge.");
+        }
+        await discardLegacyProviderCredential(
+          accountHomeFor(command.credentialHomeKey),
+          command.providerKind,
+        );
+        return {
+          purged: true,
+          serverCredentialRevision: command.serverCredentialRevision,
+          subjectBlindIndex,
+        };
       }
       case "provider.auth.account.clear":
         closeProviderAccountRuntime(command);
@@ -1434,7 +1496,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ),
               )
             : null;
-        return runtimeFor(command).runWorkflowNode({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).runWorkflowNode({
           workflowRunId: `git-agent:${command.generationId}`,
           runNodeId: command.task,
           attemptId: command.generationId,
@@ -1462,7 +1527,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           permissionProfileId: null,
           timeoutMs: command.timeoutMs,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
         });
       }
@@ -1616,10 +1681,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "code.agentTurnState":
         return code.agentTurnState(command.cwd, command.phase, command.paths);
       case "skills.list":
-        return runtimeFor(command).listSkills({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).listSkills({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
         });
       case "skills.settings.list":
         return skillManager.list(command);
@@ -1635,73 +1703,106 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       case "skills.settings.delete":
         return skillManager.delete(command, command.skillId);
       case "customization.inventory.read":
-        return runtimeFor(command).readCustomizationInventory(
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).readCustomizationInventory(
           {
             cwd: command.cwd,
             threadId: command.threadId,
             model: command.model,
-            provider: command.provider,
+            provider: provider(),
           },
           command.forceReload,
         );
       case "customization.external.preview":
-        return runtimeFor(command).previewExternalAgentConfig({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).previewExternalAgentConfig({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
         });
       case "customization.mcp.resource.read":
-        return runtimeFor(command).readMcpResource({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).readMcpResource({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           server: command.server,
           uri: command.uri,
         });
       case "customization.skill.configure":
-        return runtimeFor(command).configureSkill({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).configureSkill({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           path: command.path,
           enabled: command.enabled,
         });
       case "customization.skill-roots.set":
-        return runtimeFor(command).setSkillRoots({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).setSkillRoots({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           roots: command.roots,
         });
       case "customization.mcp.oauth.start":
-        return runtimeFor(command).startMcpOauth({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).startMcpOauth({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           server: command.server,
         });
       case "customization.mcp.oauth.status":
-        return runtimeFor(command).mcpOauthStatus(command.server);
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).mcpOauthStatus(command.server);
       case "customization.mcp.reload":
-        return runtimeFor(command).reloadMcpServers({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).reloadMcpServers({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
         });
       case "customization.external.apply":
-        return runtimeFor(command).applyExternalAgentConfig({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).applyExternalAgentConfig({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           itemIds: command.itemIds,
         });
       case "customization.external.status":
-        return runtimeFor(command).externalImportStatus(command.importId);
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).externalImportStatus(command.importId);
       case "permission-profiles.list":
-        return runtimeFor(command).listPermissionProfiles({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).listPermissionProfiles({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
         });
       case "attachment.upload.begin":
         await attachments.begin(
@@ -1748,7 +1849,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             service: workerEncryption,
           });
           if (command.launch.type === "codex") {
-            const runtime = runtimeFor(command.launch);
+            const runtime = runtimeFor({
+              model: command.launch.model,
+              provider: provider(),
+            });
             if (
               command.launch.threadId &&
               !terminals.hasLiveSession(command.terminalId)
@@ -1762,7 +1866,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 model: command.launch.model,
                 permissionProfileId:
                   command.launch.permissionProfileId ?? ":workspace",
-                provider: command.launch.provider,
+                provider: provider(),
                 threadId: command.launch.threadId,
               });
             }
@@ -1775,15 +1879,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               {
                 ...command.launch,
                 binary: config.codexBinary,
-                codexHome: accountBackedProvider(command.launch.provider.kind)
+                codexHome: accountBackedProvider(provider().kind)
                   ? accountHomeFor(
-                      command.launch.provider.credentialHomeKey ??
-                        command.launch.provider.id,
+                      provider().credentialHomeKey ?? provider().id,
                     )
                   : codexHome,
+                provider: provider(),
                 remoteUrl: await runtime.remoteEndpoint(
                   command.launch.model,
-                  command.launch.provider,
+                  provider(),
                 ),
               },
               emit,
@@ -1872,7 +1976,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           path.join(os.tmpdir(), "cantrip-provider-test-"),
         );
         try {
-          await runtimeFor(command).runWorkflowNode({
+          await runtimeFor({
+            model: command.model,
+            provider: provider(),
+          }).runWorkflowNode({
             workflowRunId: `provider-test:${testId}`,
             runNodeId: "connection",
             attemptId: testId,
@@ -1891,7 +1998,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             permissionProfileId: null,
             timeoutMs: 90_000,
             model: command.model,
-            provider: command.provider,
+            provider: provider(),
             mcpServers: [],
           });
           return workerProviderConnectionTestResultSchema.parse({
@@ -1929,7 +2036,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return protectChatTurn({ ...command, service: workerEncryption });
       case "chat.turn": {
         if (command.automationPaused) pausedChats.add(command.chatId);
-        const runtime = runtimeFor(command);
+        const runtime = runtimeFor({
+          model: command.model,
+          provider: provider(),
+        });
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
         const encryptedTask =
           command.resultMode.kind === "task-encrypted" ||
@@ -1987,7 +2097,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             mcpServers: resolvedMcpServers,
             model: command.model,
             permissionProfileId: command.permissionProfileId,
-            provider: command.provider,
+            provider: provider(),
             planMode: command.planMode,
             policyContext,
             resultMode,
@@ -2134,7 +2244,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return runTurn(command.prompt!, command.resultMode);
       }
       case "workflow.node.execute":
-        return runtimeFor(command).runWorkflowNode({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).runWorkflowNode({
           workflowRunId: command.workflowRunId,
           runNodeId: command.runNodeId,
           attemptId: command.attemptId,
@@ -2153,7 +2266,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           permissionProfileId: command.permissionProfileId,
           timeoutMs: command.timeoutMs,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
           onActivity: (activity) =>
             emit({
@@ -2195,7 +2308,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }),
         });
       case "workflow.definition.generate":
-        return runtimeFor(command).runWorkflowNode({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).runWorkflowNode({
           workflowRunId: `generation:${command.generationId}`,
           runNodeId: "definition",
           attemptId: command.generationId,
@@ -2213,7 +2329,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           permissionProfileId: null,
           timeoutMs: command.timeoutMs,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
         });
       case "workflow.repository.scan":
@@ -2225,7 +2341,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.overwrite,
         );
       case "workflow.node.interrupt":
-        return runtimeFor(command).interruptThread(command.threadId);
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).interruptThread(command.threadId);
       case "chat.pause.set":
         if (command.paused) {
           pausedChats.add(command.chatId);
@@ -2239,24 +2358,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
         return { paused: command.paused };
       case "chat.compact":
-        return runtimeFor(command).compactThread({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).compactThread({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
       case "chat.interrupt":
-        return runtimeFor(command).interruptChat(
-          command.chatId,
-          command.threadId,
-        );
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).interruptChat(command.chatId, command.threadId);
       case "chat.goal.get": {
-        const result = await runtimeFor(command).getGoal({
+        const result = await runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).getGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
         return command.taskContext
@@ -2283,12 +2408,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 ownerId: workerEncryption.ownerId(),
                 threadId: command.threadId,
               });
-        const result = await runtimeFor(command).createGoal({
+        const result = await runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).createGoal({
           cwd: command.cwd,
           model: command.model,
           objective,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
           tokenBudget: command.tokenBudget,
         });
@@ -2304,11 +2432,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : result;
       }
       case "chat.goal.update": {
-        const result = await runtimeFor(command).updateGoal({
+        const result = await runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).updateGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           status: command.status,
           threadId: command.threadId,
         });
@@ -2324,21 +2455,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           : result;
       }
       case "chat.goal.clear":
-        return runtimeFor(command).clearGoal({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).clearGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
       case "chat.thread.ensure":
-        return runtimeFor(command).ensureThread({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).ensureThread({
           cwd: command.cwd,
           mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           planMode: command.planMode,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
       case "chat.relocation.hydration.begin":
@@ -2352,12 +2489,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return { accepted: true };
       case "chat.relocation.hydration.complete": {
         const upload = await chatRelocations.completeUpload(command.snapshotId);
-        const runtime = runtimeFor(upload.command);
+        const relocationProvider = await openRuntimeProvider({
+          provider: upload.command.provider,
+          service: workerEncryption,
+        });
+        const runtime = runtimeFor({
+          model: upload.command.model,
+          provider: relocationProvider,
+        });
         if (upload.abandonedThreadId) {
           await runtime.discardRelocationThread(
             upload.abandonedThreadId,
             upload.command.model,
-            upload.command.provider,
+            relocationProvider,
           );
         }
         const payload = await openTaskRelocationPayload({
@@ -2397,7 +2541,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           payload,
           permissionProfileId: upload.command.permissionProfileId,
           planMode: upload.command.planMode,
-          provider: upload.command.provider,
+          provider: relocationProvider,
           requiredSkillNames,
           threadId: null,
           onThreadStarted: (threadId) =>
@@ -2415,43 +2559,54 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }
       case "chat.relocation.thread.release":
         if (command.discard && command.threadId) {
-          await runtimeFor(command).discardRelocationThread(
+          await runtimeFor({
+            model: command.model,
+            provider: provider(),
+          }).discardRelocationThread(
             command.threadId,
             command.model,
-            command.provider,
+            provider(),
           );
           return { released: true };
         }
-        return runtimeFor(command).releaseRelocationThread(
-          command.threadId,
-          command.model,
-          command.provider,
-        );
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).releaseRelocationThread(command.threadId, command.model, provider());
       case "chat.plan.get":
-        return runtimeFor(command).getPlanMode({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).getPlanMode({
           cwd: command.cwd,
           fallbackMode: command.fallbackMode,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
       case "chat.plan.set":
-        return runtimeFor(command).setPlanMode({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).setPlanMode({
           cwd: command.cwd,
           mode: command.mode,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
       case "agent.interaction.respond":
-        return runtimeFor(command).answerAgentInteraction(
-          command.requestKey,
-          command.response,
-        );
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).answerAgentInteraction(command.requestKey, command.response);
       case "agent.interaction.respond.protected":
-        return runtimeFor(command).answerAgentInteraction(
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).answerAgentInteraction(
           command.requestKey,
           await openAgentInteractionResponse({
             requestKey: command.requestKey,
@@ -2460,10 +2615,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           }),
         );
       case "agent.interaction.cancel":
-        return runtimeFor(command).cancelAgentInteraction(
-          command.requestKey,
-          command.reason,
-        );
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).cancelAgentInteraction(command.requestKey, command.reason);
       case "chat.steer": {
         const prompt = command.protectedPrompt
           ? await openEncryptedChatTurn({
@@ -2473,7 +2628,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               threadId: command.threadId,
             })
           : command.prompt!;
-        return runtimeFor(command).steerThread(
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).steerThread(
           command.chatId,
           command.threadId,
           prompt,
@@ -2486,14 +2644,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             ),
           })),
           command.model,
-          command.provider,
+          provider(),
         );
       }
       case "chat.sync":
-        return runtimeFor(command).syncThread({
+        return runtimeFor({
+          model: command.model,
+          provider: provider(),
+        }).syncThread({
           cwd: command.cwd,
           model: command.model,
-          provider: command.provider,
+          provider: provider(),
           threadId: command.threadId,
         });
     }

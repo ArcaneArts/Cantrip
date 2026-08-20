@@ -11,11 +11,7 @@ import {
   type ServerRepository,
 } from "../db/repository.js";
 import type { WorkerCommandBus } from "../workers/bridge.js";
-import {
-  parseProviderCredential,
-  providerCredentialSubject,
-  type ProviderCredentialKind,
-} from "./provider-credentials.js";
+import type { AccountProviderKind } from "./account-provider.js";
 
 export interface ProviderCredentialMigrationSummary {
   alreadyCaptured: number;
@@ -33,7 +29,7 @@ export interface ProviderCredentialAccountCaptureSummary extends ProviderCredent
 }
 
 export interface ProviderCredentialMigrationOptions {
-  purgeEnabledKinds?: ReadonlySet<ProviderCredentialKind>;
+  purgeEnabledKinds?: ReadonlySet<AccountProviderKind>;
 }
 
 function emptySummary(): ProviderCredentialMigrationSummary {
@@ -50,7 +46,7 @@ function emptySummary(): ProviderCredentialMigrationSummary {
 }
 
 export class ProviderCredentialMigrationCoordinator {
-  readonly #purgeEnabledKinds: ReadonlySet<ProviderCredentialKind>;
+  readonly #purgeEnabledKinds: ReadonlySet<AccountProviderKind>;
 
   constructor(
     private readonly repository: ServerRepository,
@@ -102,7 +98,7 @@ export class ProviderCredentialMigrationCoordinator {
     }
     summary.checked = 1;
     try {
-      const serverManagedAuth = await this.#migrateCandidate(
+      const portableAuth = await this.#migrateCandidate(
         ownerId,
         workerId,
         candidate,
@@ -110,7 +106,7 @@ export class ProviderCredentialMigrationCoordinator {
       );
       return {
         ...summary,
-        workerLogoutRequired: serverManagedAuth === false,
+        workerLogoutRequired: portableAuth === false,
       };
     } catch {
       // Worker OAuth payloads remain deliberately absent from outward errors.
@@ -147,11 +143,7 @@ export class ProviderCredentialMigrationCoordinator {
       return null;
     }
 
-    const credential = parseProviderCredential(
-      captured.credential,
-      candidate.providerKind,
-    );
-    const subject = providerCredentialSubject(credential);
+    const subjectBlindIndex = captured.credential.subjectBlindIndex;
     let stored: ProviderAccountCredentialRecord | null = null;
     if (candidate.state === "signed-in") {
       stored = await this.repository.getModelProviderAccountCredential(
@@ -162,7 +154,7 @@ export class ProviderCredentialMigrationCoordinator {
       if (!stored) {
         throw new Error("Provider account migration target vanished.");
       }
-      if (stored.metadata.subject !== subject) {
+      if (stored.credential.subjectBlindIndex !== subjectBlindIndex) {
         await this.#markConflict(ownerId, candidate, stored?.revision);
         summary.conflicts += 1;
         return null;
@@ -177,7 +169,8 @@ export class ProviderCredentialMigrationCoordinator {
           ownerId,
           candidate.providerId,
           candidate.accountId,
-          credential,
+          captured.credential,
+          captured.metadata,
           candidate.revision,
         );
       } catch (error) {
@@ -195,7 +188,7 @@ export class ProviderCredentialMigrationCoordinator {
         if (!stored) {
           throw new Error("Provider account migration target vanished.");
         }
-        if (stored.metadata.subject !== subject) {
+        if (stored.credential.subjectBlindIndex !== subjectBlindIndex) {
           await this.#markConflict(ownerId, candidate, stored?.revision);
           summary.conflicts += 1;
           return null;
@@ -210,10 +203,10 @@ export class ProviderCredentialMigrationCoordinator {
     }
 
     if (
-      !captured.serverManagedAuth ||
+      !captured.portableAuth ||
       !this.#purgeEnabledKinds.has(candidate.providerKind)
     ) {
-      return captured.serverManagedAuth;
+      return captured.portableAuth;
     }
     const purged = providerLegacyCredentialPurgeResultSchema.parse(
       await this.workers.request(
@@ -224,14 +217,14 @@ export class ProviderCredentialMigrationCoordinator {
           providerKind: candidate.providerKind,
           providerAccountId: candidate.accountId,
           credentialHomeKey: candidate.credentialHomeKey,
-          expectedSubject: subject,
+          expectedSubjectBlindIndex: subjectBlindIndex,
           serverCredentialRevision: stored.revision,
         },
         { ownerId, timeoutMs: 15_000 },
       ),
     );
     if (
-      purged.subject !== subject ||
+      purged.subjectBlindIndex !== subjectBlindIndex ||
       purged.serverCredentialRevision !== stored.revision
     ) {
       throw new Error(
@@ -239,7 +232,7 @@ export class ProviderCredentialMigrationCoordinator {
       );
     }
     if (purged.purged) summary.purged += 1;
-    return captured.serverManagedAuth;
+    return captured.portableAuth;
   }
 
   async #markConflict(

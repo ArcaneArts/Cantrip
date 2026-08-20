@@ -64,11 +64,8 @@ export function availableCatalogModelIds(
   workerId: string | null,
 ) {
   const scoped = catalogAvailabilityForWorker(catalog.availability, workerId);
-  const accountScoped = scoped.filter(
-    ({ scopeKey }) => scopeKey === "openrouter:user",
-  );
   return new Set(
-    (accountScoped.length > 0 ? accountScoped : scoped)
+    scoped
       .filter(({ state }) => state === "available")
       .map(({ providerModelId }) => providerModelId),
   );

@@ -117,11 +117,9 @@ export class GrokCatalogService {
   ): Promise<ProviderModelCatalogWrite[]> {
     try {
       const read = await this.#openRouterCache.read({
-        apiKey: null,
         baseUrl: OPENROUTER_PUBLIC_BASE_URL,
         cacheKey: OPENROUTER_PUBLIC_CACHE_KEY,
         force,
-        userScoped: false,
       });
       return read.snapshot.models.map(normalizeOpenRouterModel);
     } catch (error) {
@@ -255,7 +253,7 @@ export class GrokCatalogService {
                 name: "Grok",
                 kind: "grok",
                 baseUrl: provider.baseUrl,
-                apiKey: null,
+                protectedApiKey: null,
                 accountId: account.id,
                 credentialHomeKey: runtime.credentialHomeKey,
               },

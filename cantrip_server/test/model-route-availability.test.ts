@@ -12,7 +12,10 @@ import {
 
 function runtime(
   kind: ModelRuntime["provider"]["kind"],
-  options: { apiKey?: string | null; baseUrl?: string } = {},
+  options: {
+    protectedApiKey?: ModelRuntime["provider"]["protectedApiKey"];
+    baseUrl?: string;
+  } = {},
 ): ModelRuntime {
   return {
     routeId: "route-1",
@@ -30,7 +33,7 @@ function runtime(
       name: "Provider",
       kind,
       baseUrl: options.baseUrl ?? "http://127.0.0.1:11434/v1",
-      apiKey: options.apiKey ?? null,
+      protectedApiKey: options.protectedApiKey ?? null,
       accountId: null,
       credentialHomeKey: null,
       weeklyUsageReservePercent: 3,
@@ -72,20 +75,27 @@ describe("model route availability", () => {
     ).toBe(false);
   });
 
-  it("uses account-specific OpenRouter availability when an API key exists", () => {
-    const entries = [
-      availability("openrouter:global", null),
-      availability("openrouter:user", null, "unavailable"),
-    ];
+  it("uses the public OpenRouter inventory when an API key is protected", () => {
+    const entries = [availability("openrouter:global", null)];
     const result = evaluateModelRouteAvailability(
       runtime("openai-compatible", {
-        apiKey: "secret",
+        protectedApiKey: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
         baseUrl: "https://openrouter.ai/api/v1",
       }),
       entries,
       "worker-1",
     );
-    expect(result.available).toBe(false);
+    expect(result.available).toBe(true);
   });
 
   it("retains custom IDs for providers without authoritative inventory", () => {

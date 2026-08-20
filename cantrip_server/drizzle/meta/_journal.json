@@ -841,6 +841,13 @@
       "when": 1787257645704,
       "tag": "0119_careful_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1787269706193,
+      "tag": "0120_protected_provider_mcp_secrets",
+      "breakpoints": true
     }
   ]
 }

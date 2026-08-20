@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 
+import type { ProtectedSecretEnvelope } from "@cantrip/protocol/protected-secrets";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -12,244 +13,156 @@ import {
   ServerRepository,
 } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
-import {
-  parseProviderCredential,
-  redactProviderCredential,
-  type ChatGptProviderCredential,
-} from "../src/models/provider-credentials.js";
-import {
-  modelProviderAccountSecretContext,
-  SecretVault,
-} from "../src/security/secret-vault.js";
+import { SecretVault } from "../src/security/secret-vault.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
-const key = (fill: number) => Buffer.alloc(32, fill);
+const providerId = "00000000-0000-4000-8000-000000000921";
+const mcpId = "00000000-0000-4000-8000-000000000922";
 
-function credential(
-  overrides: Partial<ChatGptProviderCredential> = {},
-): ChatGptProviderCredential {
+function envelope(ciphertext: string): ProtectedSecretEnvelope {
   return {
-    accessToken: "access-never-log-or-store-plainly",
-    accountId: "account-one",
-    email: "person@example.test",
-    expiresAt: Date.UTC(2026, 7, 20),
-    idToken: "identity-never-log-or-store-plainly",
-    kind: "chatgpt",
-    planType: "pro",
-    refreshToken: "refresh-never-log-or-store-plainly",
-    userId: "user-one",
-    version: 1,
-    ...overrides,
+    formatVersion: 1,
+    keyRevision: 1,
+    envelope: {
+      version: 1,
+      algorithm: "AES-256-GCM",
+      keyRevision: 1,
+      nonce: "AAAAAAAAAAAAAAAA",
+      ciphertext: Buffer.from(ciphertext.padEnd(32, "x")).toString("base64url"),
+    },
   };
 }
 
-describe("provider account credential persistence", () => {
-  it("encrypts, scopes, rotates, revises, and clears account credentials", async () => {
+describe("opaque provider and MCP persistence", () => {
+  it("stores only endpoint-created envelopes and enforces opaque revisions", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
     try {
       await migrate(database, { migrationsFolder });
-      const oldVault = new SecretVault({
-        activeKeyId: "old",
-        keys: [{ id: "old", key: key(6) }],
-      });
-      const repository = new ServerRepository(database, oldVault);
+      const repository = new ServerRepository(
+        database,
+        new SecretVault({
+          activeKeyId: "unrelated-server-vault",
+          keys: [{ id: "unrelated-server-vault", key: Buffer.alloc(32, 9) }],
+        }),
+      );
       await repository.ensureLocalIdentity();
+
+      const protectedApiKey = envelope("provider-ciphertext-sentinel");
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+        id: providerId,
         baseUrl: "https://chatgpt.com/backend-api/codex",
         kind: "chatgpt",
         name: "ChatGPT",
+        protectedApiKey,
       });
       const accountId = provider.accounts[0]!.id;
-      const secret = credential();
-
-      const stored = await repository.storeModelProviderAccountCredential(
-        LOCAL_USER_ID,
-        provider.id,
-        accountId,
-        secret,
-        0,
-      );
-      expect(stored).toMatchObject({
-        accountId,
-        revision: 1,
-        state: "signed-in",
-        metadata: {
-          hasRefreshToken: true,
-          kind: "chatgpt",
-          subject: "chatgpt:account-one",
-        },
-      });
-      expect(
-        await repository.getModelProviderAccountCredential(
-          LOCAL_USER_ID,
-          provider.id,
-          accountId,
-        ),
-      ).toMatchObject({ credential: secret, revision: 1 });
-      expect(
-        await repository.getModelProviderAccountCredential(
-          "different-owner",
-          provider.id,
-          accountId,
-        ),
-      ).toBeNull();
-
-      let raw = await client.query<{
-        credential_envelope: string;
-        credential_revision: number;
-        credential_state: string;
-        credential_subject: string;
-      }>(`
-        SELECT credential_envelope, credential_revision, credential_state,
-               credential_subject
-        FROM model_provider_accounts
-        WHERE id = '${accountId}'
-      `);
-      const envelope = raw.rows[0]!.credential_envelope;
-      expect(envelope).not.toContain(secret.accessToken);
-      expect(envelope).not.toContain(secret.refreshToken!);
-      expect(envelope).not.toContain(secret.idToken!);
-      expect(raw.rows[0]).toMatchObject({
-        credential_revision: 1,
-        credential_state: "signed-in",
-        credential_subject: "chatgpt:account-one",
-      });
-      expect(
-        oldVault.decrypt(
-          envelope,
-          modelProviderAccountSecretContext(
-            LOCAL_USER_ID,
-            provider.id,
-            accountId,
-            "chatgpt",
-          ),
-        ),
-      ).toContain(secret.accessToken);
-      expect(() =>
-        oldVault.decrypt(
-          envelope,
-          modelProviderAccountSecretContext(
-            LOCAL_USER_ID,
-            provider.id,
-            "different-account",
-            "chatgpt",
-          ),
-        ),
-      ).toThrow();
-      expect(JSON.stringify(provider)).not.toContain(secret.accessToken);
-      expect(JSON.stringify(provider)).not.toContain("credentialEnvelope");
-
+      const protectedCredential = {
+        subjectBlindIndex: "A".repeat(43),
+        protectedCredential: envelope("oauth-ciphertext-sentinel"),
+      };
       await expect(
         repository.storeModelProviderAccountCredential(
           LOCAL_USER_ID,
-          provider.id,
+          providerId,
           accountId,
-          credential({ accountId: "account-two" }),
+          protectedCredential,
+          {
+            expiresAt: "2026-08-21T00:00:00.000Z",
+          },
+          0,
+        ),
+      ).resolves.toMatchObject({
+        accountId,
+        credential: protectedCredential,
+        revision: 1,
+        state: "signed-in",
+      });
+      await expect(
+        repository.getModelProviderAccountCredential(
+          "another-owner",
+          providerId,
+          accountId,
+        ),
+      ).resolves.toBeNull();
+      await expect(
+        repository.storeModelProviderAccountCredential(
+          LOCAL_USER_ID,
+          providerId,
+          accountId,
+          { ...protectedCredential, subjectBlindIndex: "B".repeat(43) },
+          { expiresAt: null },
           1,
         ),
       ).rejects.toBeInstanceOf(ProviderCredentialIdentityConflictError);
       await expect(
         repository.storeModelProviderAccountCredential(
           LOCAL_USER_ID,
-          provider.id,
+          providerId,
           accountId,
-          credential({ accessToken: "replacement" }),
+          protectedCredential,
+          { expiresAt: null },
           0,
         ),
       ).rejects.toBeInstanceOf(ProviderCredentialRevisionConflictError);
 
-      const rotatingRepository = new ServerRepository(
-        database,
-        new SecretVault({
-          activeKeyId: "new",
-          keys: [
-            { id: "new", key: key(7) },
-            { id: "old", key: key(6) },
-          ],
+      const protectedConfiguration = envelope("mcp-ciphertext-sentinel");
+      await expect(
+        repository.createMcpServer(LOCAL_USER_ID, null, {
+          id: mcpId,
+          enabled: true,
+          nameBlindIndex: "C".repeat(43),
+          protectedConfiguration,
         }),
-      );
-      await rotatingRepository.migrateProviderAccountCredentialSecrets();
-      raw = await client.query(`
-        SELECT credential_envelope, credential_revision, credential_state,
-               credential_subject
-        FROM model_provider_accounts
-        WHERE id = '${accountId}'
-      `);
-      expect(JSON.parse(raw.rows[0]!.credential_envelope)).toMatchObject({
-        keyId: "new",
-        version: 1,
+      ).resolves.toMatchObject({
+        id: mcpId,
+        nameBlindIndex: "C".repeat(43),
+        protectedConfiguration,
       });
-      expect(raw.rows[0]!.credential_revision).toBe(1);
-      expect(
-        await rotatingRepository.clearModelProviderAccountCredential(
-          LOCAL_USER_ID,
-          provider.id,
-          accountId,
-          1,
-        ),
-      ).toBe(true);
-      expect(
-        await rotatingRepository.getModelProviderAccountCredential(
-          LOCAL_USER_ID,
-          provider.id,
-          accountId,
-        ),
-      ).toBeNull();
-      const cleared = await client.query<{
-        credential_envelope: string | null;
-        credential_revision: number;
-        credential_state: string;
-        credential_subject: string | null;
+
+      const raw = await client.query<{
+        email: string | null;
+        plan_type: string | null;
+        protected_api_key: unknown;
+        protected_credential: unknown;
+        protected_configuration: unknown;
       }>(`
-        SELECT credential_envelope, credential_revision, credential_state,
-               credential_subject
-        FROM model_provider_accounts
-        WHERE id = '${accountId}'
+        SELECT a.email, a.plan_type, p.protected_api_key, a.protected_credential,
+               m.protected_configuration
+        FROM model_providers p
+        JOIN model_provider_accounts a ON a.provider_id = p.id
+        JOIN mcp_servers m ON m.owner_id = p.owner_id
+        WHERE p.id = '${providerId}' AND m.id = '${mcpId}'
       `);
-      expect(cleared.rows[0]).toMatchObject({
-        credential_envelope: null,
-        credential_revision: 2,
-        credential_state: "signed-out",
-        credential_subject: null,
+      expect(raw.rows[0]).toMatchObject({
+        email: null,
+        plan_type: null,
+        protected_api_key: protectedApiKey,
+        protected_credential: protectedCredential.protectedCredential,
+        protected_configuration: protectedConfiguration,
       });
+      expect(JSON.stringify(raw.rows[0])).not.toContain("usable-provider-key");
+      expect(JSON.stringify(raw.rows[0])).not.toContain("usable-oauth-token");
+      expect(JSON.stringify(raw.rows[0])).not.toContain("usable-mcp-secret");
+
+      const legacyColumns = await client.query<{ column_name: string }>(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE
+          (table_name = 'model_providers'
+            AND column_name IN ('api_key', 'api_key_envelope'))
+          OR (table_name = 'model_provider_accounts'
+            AND column_name IN ('credential_envelope', 'credential_subject'))
+          OR (table_name = 'mcp_servers'
+            AND column_name IN (
+              'name', 'command', 'url', 'environment',
+              'environment_envelope', 'headers', 'headers_envelope',
+              'environment_headers', 'bearer_token_environment_variable'
+            ))
+      `);
+      expect(legacyColumns.rows).toEqual([]);
     } finally {
       await client.close();
     }
-  });
-
-  it("redacts tokens and rejects malformed credentials without echoing them", () => {
-    const secret = credential();
-    const redacted = redactProviderCredential(secret);
-    expect(redacted).toEqual({
-      email: "person@example.test",
-      expiresAt: Date.UTC(2026, 7, 20),
-      hasRefreshToken: true,
-      kind: "chatgpt",
-      planType: "pro",
-      subject: "chatgpt:account-one",
-      version: 1,
-    });
-    expect(JSON.stringify(redacted)).not.toContain(secret.accessToken);
-    expect(JSON.stringify(redacted)).not.toContain(secret.refreshToken!);
-    expect(JSON.stringify(redacted)).not.toContain(secret.idToken!);
-
-    const leakedCandidate = "a-secret-that-must-not-appear";
-    expect(() =>
-      parseProviderCredential({
-        ...secret,
-        accessToken: leakedCandidate,
-        version: 2,
-      }),
-    ).toThrowError(/version/u);
-    try {
-      parseProviderCredential({
-        ...secret,
-        accessToken: leakedCandidate,
-        version: 2,
-      });
-    } catch (error) {
-      expect(String(error)).not.toContain(leakedCandidate);
-    }
-  });
+  }, 20_000);
 });

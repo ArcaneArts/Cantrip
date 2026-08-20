@@ -62,7 +62,9 @@ export function chatWorkerEncryptionReadiness(
   const requiredComponents = [
     "chat-content",
     "interaction-content",
+    "mcp-secret",
     "policy-content",
+    "provider-credential",
   ] as const;
   if (
     !requiredComponents.every((component) =>
@@ -128,7 +130,13 @@ export async function ensureChatWorkerEncryption(input: {
   if (readiness !== "ready") {
     await authorizeWorkerEncryption({
       api: input.api,
-      components: ["chat-content", "interaction-content", "policy-content"],
+      components: [
+        "chat-content",
+        "interaction-content",
+        "mcp-secret",
+        "policy-content",
+        "provider-credential",
+      ],
       identity,
       keyRevision: snapshot.masterKeyRevision,
       service,

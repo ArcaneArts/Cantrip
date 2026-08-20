@@ -1,102 +1,115 @@
 # Portable provider authentication
 
-- Status: implemented for ChatGPT and Grok/SuperGrok
+- Status: endpoint-encrypted for static API keys and ChatGPT/Grok OAuth
 - Last updated: 2026-08-20
 - Codex boundary: packaged `codex-cli 0.148.0`
-- Related: [runtime compatibility](CODEX_RUNTIME_COMPATIBILITY.md),
-  [hosted security](HOSTED_SECURITY_ARCHITECTURE.md), and
+- Related: [encryption](ENCRYPTION.md),
+  [runtime compatibility](CODEX_RUNTIME_COMPATIBILITY.md), and
   [multi-worker placement](MULTI_WORKER_ARCHITECTURE.md)
 
-## Outcome and ownership
+## Security outcome
 
-A ChatGPT or Grok/SuperGrok sign-in belongs to the Cantrip server account, not
-to the worker that happened to run OAuth. After one successful enrollment, a
-new compatible worker can list the account's models and run the same logical
-model profiles without signing in to either provider again.
+Provider secrets are protected by account encryption keys that the server
+cannot unwrap. A PostgreSQL dump, server-side envelope keyring, or copied row is
+not sufficient to recover a static API key, OAuth access token, refresh token,
+or ID token. The authorized app and workers are the only decryption endpoints.
 
-| Data or action                        | App                            | Server                                             | Worker                                  |
-| ------------------------------------- | ------------------------------ | -------------------------------------------------- | --------------------------------------- |
-| Account label, status, quota, catalog | Redacted display and mutations | Authoritative                                      | Reports login observations              |
-| Access token                          | Never receives                 | Decrypts and leases                                | In memory until lease cache expiry      |
-| Refresh and ID tokens                 | Never receives                 | Encrypted durable credential and refresh authority | Never receives in server-managed mode   |
-| Provider identity                     | Redacted display               | Validates and binds to account record              | Receives minimum runtime metadata       |
-| Device/browser OAuth                  | Starts or cancels              | Coordinates and imports result                     | Any selected online worker may run it   |
-| Runtime and provider proxy            | Never hosts                    | Routes and owns lifecycle                          | Hosts Codex and the Grok loopback proxy |
+The user has one password. Login derives the independent authentication value
+used by the server and a password key-encryption key used by the app to unwrap
+the random account master key. The encryption key is not derived from the
+server's password verifier. There is no recovery secret, local encryption
+password, or second password for the user to retain.
 
-The server encrypts the complete credential with the existing `SecretVault` and
-this authenticated context:
+Workers have app-managed public/private encryption identities. The unlocked app
+wraps scoped component keys to approved worker public keys. The server stores
+the public keys and opaque grants, but cannot unwrap them. An authorized worker
+persists its private identity so it can run unattended after approval without
+asking the user or app for the password again. Revoking the worker principal or
+its grants removes future Cantrip authorization.
 
-```text
-cantrip:model-provider-account:<kind>:<ownerId>:<providerId>:<accountId>
-```
+| Data or action                                                                                    | App                                                           | Server                                              | Authorized worker                                                                 |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Static provider API key                                                                           | Encrypts on create/update; decrypts only for explicit app use | Stores an opaque `protectedApiKey` envelope         | Decrypts only while constructing a provider runtime                               |
+| OAuth access, refresh, and ID tokens                                                              | Never stores or displays                                      | Stores one opaque account-bound envelope            | Obtains through OAuth, encrypts, decrypts for runtime use, refreshes, and reseals |
+| OAuth subject identity                                                                            | Never receives                                                | Stores and enforces only a keyed blind index        | Computes the blind index and sees identity while authenticating or refreshing     |
+| Provider name, kind, URL, account label, auth state, expiry, coarse quota/plan data, and catalogs | Displays and mutates                                          | Retains as documented routing/presentation metadata | Uses the minimum runtime subset                                                   |
+| OAuth email and detailed plan/identity claims                                                     | Never stores or displays                                      | Does not persist                                    | Keeps inside the protected credential bundle                                      |
 
-Changing the owner, provider, account, or kind causes AES-256-GCM
-authentication to fail. The app and normal worker events receive no credential
-envelope or OAuth payload.
+## Protected credential contexts
 
-## Lease and refresh flow
+Static API keys use component `provider-credential` and bind authenticated
+encryption to the owner, provider row, field, and key revision. OAuth bundles
+use component `provider-credential` and bind to the owner, provider row,
+provider-account row, field, and key revision. Moving ciphertext between rows,
+owners, or components fails AES-256-GCM authentication.
+
+An OAuth envelope contains the complete provider-specific credential bundle.
+The server receives only the protected envelope, a keyed subject blind index,
+an optimistic revision, and bounded expiry metadata. The server cannot
+exchange or refresh the credential itself.
+
+## OAuth capture and refresh flow
 
 ```mermaid
 sequenceDiagram
-    participant W as "Authenticated worker"
-    participant S as "Cantrip Server"
-    participant D as "PostgreSQL / SecretVault"
-    participant P as "OpenAI or xAI OAuth"
+    participant A as "Unlocked app"
+    participant S as "Cantrip server"
+    participant W as "Authorized worker"
+    participant P as "Provider OAuth"
 
-    W->>S: "Access lease (provider ID, account ID, revision)"
-    S->>S: "Derive owner and worker from machine credential"
-    S->>D: "Load owner-bound encrypted account credential"
-    alt "Token is sufficiently valid"
-        S-->>W: "Access token + bounded identity metadata"
-    else "Refresh required"
-        S->>D: "Acquire revision-fenced refresh lease"
-        S->>P: "Refresh once"
-        P-->>S: "Replacement access/refresh token"
-        S->>D: "Validate identity, encrypt replacement, advance revision"
-        S-->>W: "New access lease"
-    end
+    A->>S: "Approve worker and upload wrapped provider-credential key"
+    S-->>W: "Opaque component-key grant"
+    W->>W: "Unwrap grant with persisted worker private key"
+    W->>P: "Run ChatGPT or Grok OAuth"
+    P-->>W: "Access/refresh credential"
+    W->>W: "Encrypt row-bound bundle and derive subject blind index"
+    W->>S: "Opaque envelope + blind index + public metadata"
+    S->>S: "Persist ciphertext and advance revision"
+    W->>S: "Later: fetch opaque credential by provider/account ID"
+    S-->>W: "Opaque envelope + revision"
+    W->>W: "Decrypt; refresh provider-side if needed"
+    W->>S: "Resealed replacement + expected revision"
 ```
 
-The internal access-lease route accepts only an individually enrolled worker
-credential. That credential fixes the owner and immutable worker ID; path and
-body IDs cannot select another owner's account. The lease response contains an
-access token, credential revision, upstream expiry, lease expiry, provider and
-account IDs, email/plan display metadata, and the provider identity required by
-the runtime. It never contains a refresh token, ID token, or encrypted envelope.
+The internal credential GET and PUT routes require an individually enrolled
+worker credential and an active `provider-credential` grant. The credential
+fixes the owner and immutable worker ID; route parameters cannot select another
+owner's account. The server uses optimistic revisions to reject stale refresh
+writes and a keyed subject blind index to reject an identity change.
 
-The worker caches a response only in memory and for at most five minutes, never
-past the upstream token expiry. The OAuth bearer token itself remains valid
-until its upstream expiry or revocation; the lease boundary is a Cantrip cache
-and revalidation boundary, not a cryptographic shortening of that token.
+The worker keeps decrypted tokens only in memory for runtime use. ChatGPT is
+injected into the supported Codex authentication interface without creating a
+normal server-owned credential. Grok uses its worker-local loopback adapter.
+Refresh runs on the authorized worker, and a successful replacement bundle is
+encrypted before upload. Secret values and complete OAuth responses must never
+be added to application events, logs, or diagnostics.
 
-Refresh coordination has two fences:
+## Static API keys and provider catalogs
 
-1. An in-process single-flight promise prevents duplicate work on one server.
-2. A database refresh lease plus expected credential revision serializes work
-   across server replicas.
+The app allocates the provider UUID before encryption so the API-key envelope
+is bound to its final row. Provider create/update requests contain ciphertext,
+never an `apiKey` field. A worker opens that envelope immediately before
+creating its internal runtime provider and does not persist the plaintext.
 
-Every successful refresh persists the complete replacement credential before
-advancing its revision, so rotating or single-use refresh tokens are not lost.
-A stale worker revision receives the already-refreshed credential instead of
-refreshing again. An invalid grant becomes `reauth-required`; a changed
-provider subject becomes `conflict`; transient failure leaves the previous
-credential and returns a bounded error.
+Server-side catalog discovery uses only public, anonymous endpoints. In
+particular, the OpenRouter server catalog requests `/models` without an
+authorization header; it does not fetch the private `/models/user` catalog.
+Actual access is enforced when the authorized worker invokes the provider with
+the decrypted key.
 
 ## ChatGPT through Codex 0.148
 
-Server-managed ChatGPT requires Codex 0.148.x, experimental API negotiation,
-and the `account/login/start` method. Before the runtime starts, the worker:
-
-1. obtains a server lease;
-2. calls `account/login/start` with `type: "chatgptAuthTokens"`, the access
-   token, ChatGPT account/workspace ID, and plan type; and
-3. retains only the account binding and credential revision in memory.
+Portable ChatGPT requires Codex 0.148.x, experimental API negotiation, and the
+`account/login/start` method. The worker opens the account-bound envelope,
+injects the access token, ChatGPT workspace ID, and plan type into Codex, and
+keeps only the short-lived usable view in memory.
 
 When Codex sends `account/chatgptAuthTokens/refresh`, the worker validates the
-request, forces a lease newer than its current revision, verifies the provider
-account and upstream workspace identity are unchanged, and returns the new
-access token. Unsupported Codex versions or capabilities fail before the
-server-managed runtime starts. Normal operation does not create `auth.json`.
+request, refreshes the protected credential provider-side, reseals it with an
+expected revision, verifies the account and upstream workspace are unchanged,
+and returns the new access token. Unsupported Codex versions or capabilities
+fail before the portable runtime starts. Normal operation does not retain an
+`auth.json` credential.
 
 This interface is experimental in Codex 0.148. Cantrip does not patch it, but a
 future Codex release may change its method names, payloads, result type, or
@@ -107,166 +120,59 @@ the runtime compatibility procedure passes against the new source.
 
 The existing xAI subscription adapter remains worker-local because Codex must
 talk to a Responses-compatible endpoint on the machine running it. Its token
-source is now the server lease client rather than `grok-auth.json`.
+source is the authorized worker's opened credential rather than a durable
+`grok-auth.json` file.
 
 The adapter preserves the provider-specific authentication headers, forwards
 only to the configured xAI subscription origin, binds its randomized endpoint
 to `127.0.0.1`, rejects paths outside its private `/v1` prefix, strips incoming
 credential headers, limits request bodies to 64 MiB, and performs at most one
 forced-refresh retry after an upstream 401. Model discovery and turns use the
-same lease path. Normal server-managed operation does not create
-`grok-auth.json`.
+same in-memory access path. Normal portable operation does not retain a
+`grok-auth.json` credential.
 
-## Legacy credential migration
+## Relocation and lifecycle
 
-Existing worker-local accounts remain usable while the migration path is
-needed. On reconnect or after a device login, the server asks the selected
-worker to capture one bounded regular credential file. Capture responses are
-internal worker replies and must never be copied to an app response, event, or
-log.
+Chat and Task worker grants include `provider-credential`, so an approved
+target worker can reconstruct the same logical provider runtime after placement
+or relocation. No credential home, plaintext token, or private worker key is
+transferred between workers.
 
-The server parses the provider credential, derives its stable subject
-(`chatgpt:<workspace>` or `grok:<user>`), and stores it only if the provider
-kind, owner, account, expected revision, and any existing subject match. It
-then acknowledges the exact durable revision and subject. Only after that
-acknowledgement may the worker re-read the file, confirm the same subject, and
-delete it.
+Signing out clears the opaque account credential, advances its revision,
+invalidates Cantrip catalog/auth state, and commands connected workers to close
+matching runtimes and remove captured local files. Because the server cannot
+decrypt the OAuth bundle, it cannot perform provider-side revocation. Use the
+provider's own security controls when upstream token revocation is required.
 
-ChatGPT migration deliberately stops the affected runtime and unlinks the file
-without calling ordinary Codex logout; ordinary logout would revoke the shared
-credential just imported into the server. A conflict is surfaced rather than
-silently choosing one identity. If the original worker is offline and no server
-credential exists, the account remains `migration-needed` and asks for that
-worker to reconnect. The legacy fallback remains intentional for older or
-temporarily incompatible workers; removing it now would strand existing users.
-
-## Routing, relocation, and lifecycle
-
-ChatGPT and Grok auth, quota, catalog sync, and model availability use stable
-provider-account scope. They do not require a worker binding. Ollama and other
-genuinely machine-local providers remain worker-scoped.
-
-A selected logical model preserves its profile ID, provider route, account,
-reasoning configuration, ordering, and fallback policy when a chat switches or
-relocates workers. The target worker recreates the runtime with its own lease;
-it does not receive the source worker's credential directory or opaque live
-Codex process state.
-
-Provider sign-out is global. The server denies new leases, changes the account
-generation to invalidate an in-flight refresh, atomically takes and removes the
-credential, attempts bounded upstream revocation, invalidates catalog state,
-and commands every connected worker to close matching runtimes and remove a
-legacy file. If an older legacy-only credential exists on an offline worker,
-the server refuses to imply global success and asks for that worker to reconnect.
+Migration `0120_protected_provider_mcp_secrets.sql` is intentionally
+destructive for pre-release data: existing OAuth credentials are signed out,
+old server-vault/plaintext credential columns are dropped, and users sign in
+again through an authorized worker. Static provider keys and MCP definitions
+must be recreated. No production or remote database reset is part of the
+migration.
 
 ## Threat model and operating rules
 
-| Threat                                  | Control and remaining exposure                                                                                                                                                                                     |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Database backup or row copied elsewhere | AES-256-GCM envelope needs the operator keyring and exact owner/provider/account/kind context.                                                                                                                     |
-| Cross-owner lease request               | Worker credential determines owner; repository query joins provider and account through that owner.                                                                                                                |
-| Concurrent or stale refresh             | In-process single flight, database lease, expected revision, and identity check.                                                                                                                                   |
-| Refresh-token rotation                  | Complete replacement credential is encrypted before revision commit.                                                                                                                                               |
-| Lost or stolen lease response           | Worker cache is bounded to five minutes, but the bearer token remains usable until upstream expiry or revocation. Protect worker memory and transport.                                                             |
-| Compromised worker                      | It can use access tokens leased to its owner's configured accounts while enrolled. Revoke the worker and globally sign out affected providers. It cannot request another owner's account or obtain refresh tokens. |
-| Compromised live server or keyring      | The control plane can decrypt and use every provider account it owns. This is an accepted trusted-server boundary; isolate, monitor, back up, and rotate it accordingly.                                           |
-| Diagnostics or support bundle leakage   | Token-shaped values, OAuth payloads, envelopes, and worker events are redacted or schema-stripped; never add raw request/response bodies to logging.                                                               |
-| Experimental Codex API drift            | Exact packaged pin, capability gate, explicit failure, and refresh compatibility fixture.                                                                                                                          |
+| Threat                                | Control and remaining exposure                                                                                                                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Database or server keyring compromise | Provider ciphertext still requires an account component key held by an unlocked app or approved worker. Retained routing, expiry, health, and coarse quota metadata remains visible. |
+| Cross-owner request                   | Session or worker credential determines the owner; repository queries bind provider and account through it.                                                                          |
+| Ciphertext moved to another row       | Authenticated context includes owner, component, table, row, field, and revision.                                                                                                    |
+| Concurrent refresh                    | Expected revisions reject stale reseals; the worker refetches before retrying.                                                                                                       |
+| Compromised approved worker           | It can use the provider components granted to it. Revoke that worker and revoke upstream provider sessions when compromise is suspected.                                             |
+| Live endpoint compromise              | An unlocked app or authorized worker necessarily sees plaintext while using it. Keep plaintext lifetimes short and logs redacted.                                                    |
+| Password change                       | The account master key is rewrapped with the new password-derived key; provider rows do not need re-encryption. Approved worker grants remain independently wrapped.                 |
 
-Back up PostgreSQL and the complete encryption keyring separately, then test
-restoring them together. Retain old keys until startup has successfully
-decrypted and rewrapped every envelope and a new verified backup exists. After
-a suspected control-plane compromise, upstream provider revocation is required;
-rotating only the envelope key does not invalidate already-issued OAuth tokens.
+## Focused regression evidence
 
-## Automated regression evidence
+The focused tests cover protected-secret authenticated context, app-side static
+API-key sealing, worker-side API-key/OAuth opening and resealing, opaque server
+persistence, revision and identity conflicts, worker authorization, and public
+catalog behavior. The generated server-boundary inventory also rejects legacy
+provider/MCP secret columns, plaintext request fields, and the former
+server-side access-lease route.
 
-The final portability regression is
-`cantrip_worker/test/provider-account-portability.test.ts`. It launches a fake
-Codex App Server through a platform-neutral Node process launcher and gives it
-brand-new empty credential homes. The test lists ChatGPT and Grok models,
-completes both turns, forces the ChatGPT refresh server request, routes the Grok
-turn through the randomized loopback proxy, and verifies that neither credential
-home gained an auth file. It also verifies lease revisions, xAI identity
-headers, bearer replacement, and secret-free request summaries.
-
-Server integration tests additionally cover owner authorization, encryption
-context isolation, concurrent/stale refresh requests, refresh-token rotation,
-permanent failure, identity conflict, acknowledgement-before-purge, account
-scope, model-route preservation, relocation, and global logout. Protocol tests
-reject secret fields added to worker events.
-
-From a source checkout, run the portable worker regression on any supported
-development host:
-
-```shell
-pnpm --filter @cantrip/worker exec vitest run test/provider-account-portability.test.ts
-```
-
-## Native Windows, macOS, and Linux verification
-
-Native packaging and upstream OAuth behavior still need release-candidate smoke
-testing on each operating system. Use a non-production provider account and a
-server with an already configured ChatGPT route, Grok route, and logical model
-profile. Create a one-time worker link code in **Settings → Workers**.
-
-### Windows PowerShell
-
-In an extracted Windows Worker archive:
-
-```powershell
-$env:CANTRIP_SERVER_URL = "https://cantrip.example.test"
-$env:CANTRIP_WORKER_ENROLLMENT_CODE = "ctwl_replace_with_one_time_code"
-$env:CANTRIP_WORKER_DATA_DIR = Join-Path $env:TEMP "cantrip-portable-$([guid]::NewGuid())"
-New-Item -ItemType Directory -Force $env:CANTRIP_WORKER_DATA_DIR | Out-Null
-.\start.cmd
-```
-
-After enrollment, remove `CANTRIP_WORKER_ENROLLMENT_CODE` before restarting the
-worker; its individual worker credential is already stored in the fresh data
-directory.
-
-### macOS or Linux shell
-
-In an extracted native Worker archive:
-
-```shell
-export CANTRIP_SERVER_URL="https://cantrip.example.test"
-export CANTRIP_WORKER_ENROLLMENT_CODE="ctwl_replace_with_one_time_code"
-export CANTRIP_WORKER_DATA_DIR="$(mktemp -d -t cantrip-portable.XXXXXX)"
-./start.sh
-```
-
-Unset `CANTRIP_WORKER_ENROLLMENT_CODE` after enrollment and retain the data
-directory for the rest of the smoke test.
-
-### Required observations on every platform
-
-1. Confirm the new worker is online and its data directory was empty before
-   startup.
-2. Open model settings. Both existing provider accounts must show one global
-   signed-in status and their catalogs without offering a worker-specific
-   sign-in.
-3. Create a chat on the new worker, select the existing ChatGPT logical model,
-   and complete a turn. Repeat with the Grok logical model.
-4. Relocate or switch an idle chat from another worker to the new worker. The
-   selected logical model, route/account, and reasoning effort must remain
-   unchanged, and the next turn must complete.
-5. Recursively inspect `CANTRIP_WORKER_DATA_DIR`. No `auth.json` or
-   `grok-auth.json` should exist under `codex-accounts` after server-managed
-   turns. `worker-credential.json` is expected.
-6. Exercise a naturally expired/401 provider token when practical. The next
-   ChatGPT turn or Grok request must refresh once and continue without sign-in;
-   the automated fixture supplies deterministic coverage when inducing a real
-   expiry is impractical.
-7. Globally sign out one test provider account. Existing matching runtimes must
-   close, the catalog/status must update, and a new turn on every worker must be
-   denied until one new global sign-in completes.
-8. Review server and worker logs plus any diagnostic/support output. Search for
-   the test access token, refresh token, OAuth payload, and credential envelope;
-   none may appear.
-
-Record the operating system, architecture, packaged Cantrip revision, packaged
-Codex version, server deployment mode, provider plan, and pass/fail result. A
-macOS source test is not evidence that the Windows NSIS or Linux native package
-has completed this smoke test.
+Use targeted package tests plus the normal package typechecks. Platform OAuth
+smoke tests remain manual QA: sign in once, complete ChatGPT and Grok turns,
+restart an approved worker, exercise a refresh, relocate a chat, and confirm
+that neither server storage nor logs contain the test tokens.

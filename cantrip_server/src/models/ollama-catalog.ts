@@ -159,8 +159,13 @@ export class OllamaCatalogService {
           workerId,
           {
             type: "model.ollama.catalog",
-            baseUrl: provider.baseUrl,
-            apiKey: provider.apiKey,
+            provider: {
+              ...provider,
+              kind: "ollama",
+              name: "Ollama",
+              accountId: null,
+              credentialHomeKey: null,
+            },
           },
           { ownerId, timeoutMs: DISCOVERY_TIMEOUT_MS },
         ),

@@ -5,7 +5,6 @@ import path from "node:path";
 import {
   unavailableCodeCapabilities,
   unprobedCodexRuntimeReport,
-  providerAccessTokenLeaseSchema,
   workerCredentialListSchema,
   workerEnrollmentCodeResultSchema,
   workerEnrollmentCodeStatusSchema,
@@ -23,6 +22,10 @@ import { connectDatabase } from "../src/db/index.js";
 import { WorkerBridge, WorkerUnavailableError } from "../src/workers/bridge.js";
 
 import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedProviderCredentialFixture,
+  providerCredentialMetadataFixture,
+} from "./protected-provider-credential-fixture.js";
 
 const origin = "https://app.cantrip.test";
 const bootstrapToken = "worker-enrollment-bootstrap-token-123456";
@@ -293,62 +296,43 @@ describe("per-worker enrollment credentials", () => {
         name: "ChatGPT",
       });
       const providerAccountId = provider.accounts[0]!.id;
+      const protectedCredential = protectedProviderCredentialFixture("E");
       await database.repository.storeModelProviderAccountCredential(
         ownerId,
         provider.id,
         providerAccountId,
-        {
-          accessToken: "leased-worker-access-token",
-          accountId: "upstream-account",
-          email: "owner@example.com",
-          expiresAt: Date.now() + 60 * 60_000,
-          idToken: "server-only-identity-token",
-          kind: "chatgpt",
-          planType: "pro",
-          refreshToken: "server-only-refresh-token",
-          userId: "upstream-user",
-          version: 1,
-        },
-        0,
+        protectedCredential,
+        providerCredentialMetadataFixture(),
       );
-      const leaseUrl = `/api/internal/workers/providers/${provider.id}/accounts/${providerAccountId}/access-lease`;
+      const credentialUrl = `/api/internal/workers/providers/${provider.id}/accounts/${providerAccountId}/credential`;
       expect(
         (
           await app.inject({
-            method: "POST",
-            url: `${leaseUrl}?workerId=worker-one`,
-            payload: {},
+            method: "GET",
+            url: `${credentialUrl}?workerId=worker-one`,
           })
         ).statusCode,
       ).toBe(401);
       expect(
         (
           await app.inject({
-            method: "POST",
-            url: `${leaseUrl}?workerId=worker-two`,
+            method: "GET",
+            url: `${credentialUrl}?workerId=worker-two`,
             headers: {
               authorization: `Bearer ${enrolled.credential}`,
             },
-            payload: {},
           })
         ).statusCode,
       ).toBe(401);
-      const leaseResponse = await app.inject({
-        method: "POST",
-        url: `${leaseUrl}?workerId=worker-one`,
+      const credentialResponse = await app.inject({
+        method: "GET",
+        url: `${credentialUrl}?workerId=worker-one`,
         headers: { authorization: `Bearer ${enrolled.credential}` },
-        payload: {},
       });
-      expect(leaseResponse.statusCode).toBe(200);
-      expect(
-        providerAccessTokenLeaseSchema.parse(leaseResponse.json()),
-      ).toMatchObject({
-        accessToken: "leased-worker-access-token",
-        providerAccountId,
-        providerId: provider.id,
-        providerKind: "chatgpt",
-      });
-      expect(leaseResponse.body).not.toContain("server-only");
+      expect(credentialResponse.statusCode).toBe(403);
+      expect(credentialResponse.body).not.toContain(
+        protectedCredential.protectedCredential.envelope.ciphertext,
+      );
       expect(
         workerEnrollmentCodeStatusSchema.parse(
           (

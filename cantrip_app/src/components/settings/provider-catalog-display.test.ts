@@ -175,7 +175,7 @@ describe("provider catalog presentation", () => {
     expect(catalogScopeLabel(provider, catalog, "a")).toBe("2 workers");
   });
 
-  it("prefers OpenRouter account availability over the public manifest", () => {
+  it("uses the server-readable public OpenRouter manifest", () => {
     expect([
       ...availableCatalogModelIds(
         {
@@ -188,18 +188,11 @@ describe("provider catalog presentation", () => {
               scopeKey: "openrouter:global",
               workerId: null,
             },
-            {
-              ...catalog.availability[0]!,
-              id: "user",
-              providerModelId: "account-model",
-              scopeKey: "openrouter:user",
-              workerId: null,
-            },
           ],
         },
         "a",
       ),
-    ]).toEqual(["account-model"]);
+    ]).toEqual(["public-model"]);
   });
 
   it("summarizes freshness without hiding partial failures", () => {

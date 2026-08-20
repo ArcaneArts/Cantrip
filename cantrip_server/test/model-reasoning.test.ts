@@ -59,7 +59,7 @@ function runtime(
       name: routeId,
       kind: "chatgpt",
       baseUrl: "https://chatgpt.com/backend-api/codex",
-      apiKey: null,
+      protectedApiKey: null,
       accountId: `account-${routeId}`,
       credentialHomeKey: `home-${routeId}`,
       weeklyUsageReservePercent: 3,

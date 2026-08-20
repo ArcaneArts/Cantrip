@@ -23,7 +23,7 @@ const runtime: ModelRuntime = {
     name: "ChatGPT",
     kind: "chatgpt",
     baseUrl: "https://chatgpt.com/backend-api/codex",
-    apiKey: null,
+    protectedApiKey: null,
     accountId: null,
     credentialHomeKey: null,
     weeklyUsageReservePercent: 3,
@@ -72,7 +72,7 @@ describe("account-scoped provider routing", () => {
     ]);
   });
 
-  it("routes a server-owned account on a worker with no local sign-in", async () => {
+  it("routes an endpoint-encrypted account on a worker with no local sign-in", async () => {
     const input = fixture([
       account("primary", { position: 0 }),
       account("preferred", { position: 1 }),

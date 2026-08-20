@@ -22,6 +22,7 @@ import {
   protectedChatFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
+import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -111,7 +112,7 @@ describe("Z.ai Coding Plan catalog", () => {
         name: "Existing Z.ai",
         kind: "openai-compatible",
         baseUrl: "https://api.z.ai/api/v1/responses",
-        apiKey: "secret-coding-plan-key",
+        protectedApiKey: protectedSecretEnvelopeFixture("G"),
       });
       const service = new ZaiCatalogService(repository);
       const first = await service.getProviderCatalog(
@@ -164,25 +165,24 @@ describe("Z.ai Coding Plan catalog", () => {
 
   it("migrates existing providers without changing mixed routes or resumed chats", async () => {
     const { client, database, repository } = await setup();
-    const secret = "existing-zai-coding-plan-secret";
     try {
       const fallback = await repository.createModelProvider(LOCAL_USER_ID, {
         name: "Compatible fallback",
         kind: "openai-compatible",
         baseUrl: "https://models.example.test/v1",
-        apiKey: "fallback-secret",
+        protectedApiKey: protectedSecretEnvelopeFixture("H"),
       });
       const zaiPrimary = await repository.createModelProvider(LOCAL_USER_ID, {
         name: "Existing Z.ai primary",
         kind: "openai-compatible",
         baseUrl: "https://api.z.ai/api/v1/responses",
-        apiKey: secret,
+        protectedApiKey: protectedSecretEnvelopeFixture("I"),
       });
       const zaiSecondary = await repository.createModelProvider(LOCAL_USER_ID, {
         name: "Existing Z.ai secondary",
         kind: "openai-compatible",
         baseUrl: "https://api.z.ai/api/v1",
-        apiKey: "secondary-secret",
+        protectedApiKey: protectedSecretEnvelopeFixture("J"),
       });
       const logicalModel = await repository.createModelProfile(LOCAL_USER_ID, {
         name: "Portable GLM",
@@ -277,14 +277,13 @@ describe("Z.ai Coding Plan catalog", () => {
       expect(settings.providers.map(({ id }) => id)).toEqual(
         expect.arrayContaining([zaiPrimary.id, zaiSecondary.id]),
       );
-      expect(JSON.stringify(settings)).not.toContain(secret);
+      expect(JSON.stringify(settings)).not.toContain("usable-api-key");
       const storedProvider = await database
         .select()
         .from(schema.modelProviders)
         .where(eq(schema.modelProviders.id, zaiPrimary.id));
-      expect(storedProvider[0]?.apiKeyEnvelope).toBeTruthy();
-      expect(JSON.stringify(storedProvider[0]?.apiKeyEnvelope)).not.toContain(
-        secret,
+      expect(storedProvider[0]?.protectedApiKey).toEqual(
+        protectedSecretEnvelopeFixture("I"),
       );
 
       const preserved = settings.models.find(

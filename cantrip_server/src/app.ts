@@ -267,9 +267,9 @@ import {
   modelProviderAccountListSchema,
   modelProviderAccountSummarySchema,
   modelProviderAccountUpdateSchema,
-  modelProviderCreateSchema,
-  providerAccessTokenLeaseRequestSchema,
-  providerAccessTokenLeaseSchema,
+  encryptedModelProviderCreateSchema,
+  providerCredentialUploadSchema,
+  providerCredentialWireRecordSchema,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
   providerTelemetryAnalyticsSchema,
@@ -277,11 +277,11 @@ import {
   workerProviderConnectionTestResultSchema,
   providerTelemetryExportSchema,
   modelProviderSummarySchema,
-  modelProviderUpdateSchema,
-  mcpServerConfigurationSchema,
-  mcpServerCopySchema,
-  mcpServerListSchema,
-  mcpServerSummarySchema,
+  encryptedModelProviderUpdateSchema,
+  encryptedMcpServerCreateSchema,
+  encryptedMcpServerUpdateSchema,
+  mcpServerWireListSchema,
+  mcpServerWireSummarySchema,
   mentionedSkillNames,
   managedFolderDeleteResultSchema,
   encryptedManagedFolderProjectCreateSchema,
@@ -645,6 +645,7 @@ import {
   ARCHIVED_CHAT_RETENTION_MS,
   LOCAL_USER_ID,
   ProjectWorkspaceInvariantError,
+  ProviderCredentialRevisionConflictError,
   TunnelManagementError,
   WorkerEnrollmentError,
   WORKER_ONLINE_WINDOW_MS,
@@ -758,18 +759,8 @@ import {
   providerConnectionFailureMessage,
   providerConnectionFailureStage,
 } from "./models/provider-connection-test.js";
-import {
-  ProviderAccessTokenError,
-  ProviderAccessTokenService,
-} from "./models/provider-access-tokens.js";
-import { ChatGptCredentialRefresher } from "./models/chatgpt-credential-refresher.js";
-import { GrokCredentialRefresher } from "./models/grok-credential-refresher.js";
 import { ProviderCredentialMigrationCoordinator } from "./models/provider-credential-migrations.js";
 import { ProviderAccountLifecycleService } from "./models/provider-account-lifecycle.js";
-import {
-  OAuthProviderCredentialRevoker,
-  type ProviderCredentialRevoker,
-} from "./models/provider-credential-revocation.js";
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
   accountProviderLabel,
@@ -792,9 +783,7 @@ export interface BuildAppOptions {
   relayQuotas?: RelayQuotaManager;
   coordinator?: RelayCoordinator;
   providerCatalogService?: OpenRouterCatalogService;
-  providerAccessTokens?: ProviderAccessTokenService;
   providerCredentialMigrations?: ProviderCredentialMigrationCoordinator;
-  providerCredentialRevoker?: ProviderCredentialRevoker;
 }
 
 class SkillSettingsRequestError extends Error {
@@ -1105,9 +1094,7 @@ export async function buildApp({
   logger = true,
   projectShareTunnel: providedProjectShareTunnel,
   providerCatalogService: providedProviderCatalogService,
-  providerAccessTokens: providedProviderAccessTokens,
   providerCredentialMigrations: providedProviderCredentialMigrations,
-  providerCredentialRevoker: providedProviderCredentialRevoker,
   relayQuotas: providedRelayQuotas,
   coordinator,
   workerBridge,
@@ -1235,35 +1222,21 @@ export async function buildApp({
   const chatGptCatalogService = new ChatGptCatalogService(repository, bridge);
   const grokCatalogService = new GrokCatalogService(repository, bridge);
   const zaiCatalogService = new ZaiCatalogService(repository);
-  const providerAccessTokens =
-    providedProviderAccessTokens ??
-    new ProviderAccessTokenService(repository, {
-      refreshLeaseDurationMs: 7_500,
-      refreshWaitMs: 8_500,
-      refreshers: {
-        chatgpt: new ChatGptCredentialRefresher(),
-        grok: new GrokCredentialRefresher(),
-      },
-    });
   const providerCredentialMigrations =
     providedProviderCredentialMigrations ??
     new ProviderCredentialMigrationCoordinator(repository, bridge, {
       purgeEnabledKinds: new Set(["chatgpt", "grok"]),
     });
-  const providerCredentialRevoker =
-    providedProviderCredentialRevoker ?? new OAuthProviderCredentialRevoker();
   const providerAccountLifecycle = new ProviderAccountLifecycleService(
     repository,
     bridge,
     {
-      accessTokens: providerAccessTokens,
       invalidateCatalog: ({ accountId, kind, ownerId, providerId }) =>
         (kind === "grok"
           ? grokCatalogService
           : chatGptCatalogService
         ).markAccountUnavailable(ownerId, providerId, accountId),
       logger: app.log,
-      revoker: providerCredentialRevoker,
     },
   );
   const directAttachments = new DirectAttachmentCoordinator(bridge);
@@ -2960,7 +2933,6 @@ export async function buildApp({
   const websocketRateLimiter = new SlidingWindowRateLimiter(
     config.websocketHandshakeRatePerMinute ?? 120,
   );
-  const providerAccessLeaseRateLimiter = new SlidingWindowRateLimiter(120);
   const accountWebsockets = new ActiveLimit(config.accountWebsocketLimit ?? 32);
   const accountUploads = new ActiveLimit(config.accountUploadConcurrency ?? 4);
   const uploadReleases = new WeakMap<FastifyRequest, () => void>();
@@ -8276,6 +8248,118 @@ export async function buildApp({
     }
   };
 
+  app.get<{
+    Params: { accountId: string; providerId: string };
+    Querystring: { workerId?: string };
+  }>(
+    "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
+        return reply.code(400).send({ error: "workerId is required." });
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        workerId,
+        "worker:connect",
+      );
+      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
+      const worker = await repository.getWorker(workerAuth.ownerId, workerId);
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      if (
+        !worker.encryption.grants.some(
+          ({ component }) => component === "provider-credential",
+        )
+      ) {
+        return reply
+          .code(403)
+          .send({ error: "Worker lacks provider credential authorization." });
+      }
+      const record = await repository.getModelProviderAccountCredential(
+        workerAuth.ownerId,
+        request.params.providerId,
+        request.params.accountId,
+      );
+      return record
+        ? reply.send(
+            providerCredentialWireRecordSchema.parse({
+              accountId: record.accountId,
+              credential: record.credential,
+              credentialRevision: record.revision,
+              providerId: record.providerId,
+              providerKind: record.providerKind,
+            }),
+          )
+        : reply.code(404).send({ error: "Provider credential not found." });
+    },
+  );
+
+  app.put<{
+    Body: unknown;
+    Params: { accountId: string; providerId: string };
+    Querystring: { workerId?: string };
+  }>(
+    "/api/internal/workers/providers/:providerId/accounts/:accountId/credential",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const workerId = request.query.workerId;
+      if (!workerId) {
+        return reply.code(400).send({ error: "workerId is required." });
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        workerId,
+        "worker:connect",
+      );
+      if (!workerAuth) return reply.code(401).send({ error: "Unauthorized" });
+      const worker = await repository.getWorker(workerAuth.ownerId, workerId);
+      if (
+        !worker?.encryption.grants.some(
+          ({ component }) => component === "provider-credential",
+        )
+      ) {
+        return reply
+          .code(403)
+          .send({ error: "Worker lacks provider credential authorization." });
+      }
+      const input = providerCredentialUploadSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const stored = await repository.storeModelProviderAccountCredential(
+          workerAuth.ownerId,
+          request.params.providerId,
+          request.params.accountId,
+          input.data.credential,
+          input.data.metadata,
+          input.data.expectedRevision,
+        );
+        return stored
+          ? reply.send(
+              providerCredentialWireRecordSchema.parse({
+                accountId: stored.accountId,
+                credential: stored.credential,
+                credentialRevision: stored.revision,
+                providerId: stored.providerId,
+                providerKind: stored.providerKind,
+              }),
+            )
+          : reply.code(404).send({ error: "Provider account not found." });
+      } catch (error) {
+        if (error instanceof ProviderCredentialRevisionConflictError) {
+          return reply.code(409).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
   app.post<{
     Headers: { "x-cantrip-bootstrap-token"?: string };
   }>("/api/auth/register", async (request, reply) => {
@@ -10728,8 +10812,9 @@ export async function buildApp({
       return;
     }
 
-    // Older workers cannot hand server-managed auth back cleanly. Their normal
-    // logout is the only available upstream revocation and local purge path.
+    // Older workers cannot capture portable auth into an endpoint-encrypted
+    // envelope. Their normal logout is the only available upstream revocation
+    // and local purge path.
     await logoutWorker(runnerId);
   }
 
@@ -10773,7 +10858,7 @@ export async function buildApp({
             "The worker's provider credential is invalid. Sign in again to replace it.";
         } else if (capture.failed > 0) {
           captureError =
-            "The worker could not transfer provider authentication to the server. Reconnect or update the worker, then try again.";
+            "The worker could not protect and save provider authentication. Reconnect or update the worker, then try again.";
         }
         const refreshed = await repository.listModelProviderAccounts(
           applicationOwnerId(),
@@ -10824,11 +10909,6 @@ export async function buildApp({
         repository.getWorker(applicationOwnerId(), workerId),
       ]);
       if (!worker) throw new Error("Worker not found.");
-      providerAccessTokens.allowAccount(
-        applicationOwnerId(),
-        providerId,
-        account.accountId,
-      );
       const login = codexDeviceLoginSchema.parse(
         await bridge.request(workerId, {
           type: "codex.auth.login.start",
@@ -11033,11 +11113,11 @@ export async function buildApp({
 
   app.get("/api/settings/mcp-servers", async (_request, reply) => {
     const servers = await repository.listMcpServers(applicationOwnerId(), null);
-    return reply.send(mcpServerListSchema.parse(servers ?? []));
+    return reply.send(mcpServerWireListSchema.parse(servers ?? []));
   });
 
   app.post("/api/settings/mcp-servers", async (request, reply) => {
-    const input = mcpServerConfigurationSchema.safeParse(request.body);
+    const input = encryptedMcpServerCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -11047,7 +11127,7 @@ export async function buildApp({
         null,
         input.data,
       );
-      return reply.code(201).send(mcpServerSummarySchema.parse(server));
+      return reply.code(201).send(mcpServerWireSummarySchema.parse(server));
     } catch (error) {
       return reply.code(409).send({ error: errorMessage(error) });
     }
@@ -11056,7 +11136,7 @@ export async function buildApp({
   app.put<{ Params: { serverId: string } }>(
     "/api/settings/mcp-servers/:serverId",
     async (request, reply) => {
-      const input = mcpServerConfigurationSchema.safeParse(request.body);
+      const input = encryptedMcpServerUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -11068,7 +11148,7 @@ export async function buildApp({
           input.data,
         );
         return server
-          ? reply.send(mcpServerSummarySchema.parse(server))
+          ? reply.send(mcpServerWireSummarySchema.parse(server))
           : reply.code(404).send({ error: "MCP server not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -11111,7 +11191,7 @@ export async function buildApp({
   });
 
   app.post("/api/settings/providers", async (request, reply) => {
-    const input = modelProviderCreateSchema.safeParse(request.body);
+    const input = encryptedModelProviderCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -11209,7 +11289,7 @@ export async function buildApp({
   app.patch<{ Params: { providerId: string } }>(
     "/api/settings/providers/:providerId",
     async (request, reply) => {
-      const input = modelProviderUpdateSchema.safeParse(request.body);
+      const input = encryptedModelProviderUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -11598,10 +11678,7 @@ export async function buildApp({
         }),
       );
     } catch (error) {
-      const rawDetail = errorMessage(error);
-      const detail = runtime.provider.apiKey
-        ? rawDetail.replaceAll(runtime.provider.apiKey, "[REDACTED]")
-        : rawDetail;
+      const detail = errorMessage(error);
       const stage = providerConnectionFailureStage(detail);
       return reply.send(
         providerConnectionTestResultSchema.parse({
@@ -12403,7 +12480,7 @@ export async function buildApp({
         request.params.projectId,
       );
       return servers
-        ? reply.send(mcpServerListSchema.parse(servers))
+        ? reply.send(mcpServerWireListSchema.parse(servers))
         : reply.code(404).send({ error: "Project not found." });
     },
   );
@@ -12411,7 +12488,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/mcp-servers",
     async (request, reply) => {
-      const input = mcpServerConfigurationSchema.safeParse(request.body);
+      const input = encryptedMcpServerCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -12422,7 +12499,7 @@ export async function buildApp({
           input.data,
         );
         return server
-          ? reply.code(201).send(mcpServerSummarySchema.parse(server))
+          ? reply.code(201).send(mcpServerWireSummarySchema.parse(server))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -12433,7 +12510,7 @@ export async function buildApp({
   app.put<{ Params: { projectId: string; serverId: string } }>(
     "/api/projects/:projectId/mcp-servers/:serverId",
     async (request, reply) => {
-      const input = mcpServerConfigurationSchema.safeParse(request.body);
+      const input = encryptedMcpServerUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -12445,7 +12522,7 @@ export async function buildApp({
           input.data,
         );
         return server
-          ? reply.send(mcpServerSummarySchema.parse(server))
+          ? reply.send(mcpServerWireSummarySchema.parse(server))
           : reply.code(404).send({ error: "MCP server not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -12464,36 +12541,6 @@ export async function buildApp({
         ))
           ? reply.code(204).send()
           : reply.code(404).send({ error: "MCP server not found." });
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { projectId: string } }>(
-    "/api/projects/:projectId/mcp-servers/copy",
-    async (request, reply) => {
-      const input = mcpServerCopySchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      if (input.data.sourceProjectId === request.params.projectId) {
-        return reply
-          .code(400)
-          .send({ error: "Choose a different source project." });
-      }
-      try {
-        const server = await repository.copyProjectMcpServer(
-          applicationOwnerId(),
-          request.params.projectId,
-          input.data.sourceProjectId,
-          input.data.sourceServerId,
-        );
-        return server
-          ? reply.code(201).send(mcpServerSummarySchema.parse(server))
-          : reply
-              .code(404)
-              .send({ error: "Source server or project not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -24316,69 +24363,6 @@ export async function buildApp({
             ? 409
             : 400;
         return reply.code(status).send({ error: message });
-      }
-    },
-  );
-
-  app.post<{
-    Body: unknown;
-    Params: { accountId: string; providerId: string };
-    Querystring: { workerId?: string };
-  }>(
-    "/api/internal/workers/providers/:providerId/accounts/:accountId/access-lease",
-    { logLevel: "warn" },
-    async (request, reply) => {
-      const workerId = request.query.workerId;
-      if (!workerId) {
-        return reply.code(400).send({ error: "workerId is required." });
-      }
-      const workerAuth = await authenticateWorkerRequest(
-        repository,
-        config,
-        request,
-        workerId,
-        "worker:connect",
-      );
-      if (!workerAuth) {
-        return reply.code(401).send({ error: "Unauthorized" });
-      }
-      const retryAfter = providerAccessLeaseRateLimiter.consume(
-        `${workerAuth.ownerId}:${workerId}`,
-      );
-      if (retryAfter !== null) {
-        return reply
-          .header("retry-after", String(retryAfter))
-          .code(429)
-          .send({ error: "Provider access lease rate limit reached." });
-      }
-      if (!(await repository.getWorker(workerAuth.ownerId, workerId))) {
-        return reply.code(404).send({ error: "Worker not found." });
-      }
-      const input = providerAccessTokenLeaseRequestSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      try {
-        return reply.send(
-          providerAccessTokenLeaseSchema.parse(
-            await providerAccessTokens.issue({
-              accountId: request.params.accountId,
-              credentialRevision: input.data.credentialRevision,
-              forceRefresh: input.data.forceRefresh,
-              minimumValidityMs: input.data.minimumValiditySeconds * 1_000,
-              ownerId: workerAuth.ownerId,
-              providerId: request.params.providerId,
-            }),
-          ),
-        );
-      } catch (error) {
-        if (!(error instanceof ProviderAccessTokenError)) throw error;
-        const status = error.code.startsWith("refresh-") ? 503 : 409;
-        return reply
-          .code(status)
-          .send({ code: error.code, error: error.message });
       }
     },
   );

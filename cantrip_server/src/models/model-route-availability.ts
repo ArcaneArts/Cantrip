@@ -54,11 +54,8 @@ export function evaluateModelRouteAvailability(
   }
 
   if (isOpenRouterRuntime(runtime)) {
-    const scopeKey = runtime.provider.apiKey
-      ? "openrouter:user"
-      : "openrouter:global";
     const state = availability.find(
-      (entry) => entry.scopeKey === scopeKey,
+      (entry) => entry.scopeKey === "openrouter:global",
     )?.state;
     return state === "available"
       ? { available: true, reason: null }

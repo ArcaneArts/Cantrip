@@ -3,12 +3,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { WorkerCommand } from "@cantrip/protocol";
+import type { RuntimeProvider } from "../protected-secrets.js";
 
 type RuntimeModel = Extract<WorkerCommand, { type: "chat.turn" }>["model"];
-type RuntimeProvider = Extract<
-  WorkerCommand,
-  { type: "chat.turn" }
->["provider"];
 
 const SUPPORTED_INPUT_MODALITIES = new Set(["text", "image", "audio"]);
 
