@@ -405,8 +405,15 @@ export class ClientEncryptionService {
         error instanceof Error ? error.message : "Device key is corrupt.",
       );
     }
-    if (!sameIdentity(this.snapshot.identity, identity))
-      this.clearKeyMaterial();
+    const preservesReadyKey =
+      sameIdentity(this.snapshot.identity, identity) &&
+      this.snapshot.status === "ready" &&
+      this.snapshot.clientId === record.clientId &&
+      this.accountMasterKey !== null;
+    if (preservesReadyKey) {
+      return descriptor(record);
+    }
+    this.clearKeyMaterial();
     this.publish({
       clientId: record.clientId,
       identity: { ...identity },

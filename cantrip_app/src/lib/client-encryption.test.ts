@@ -147,6 +147,15 @@ describe("client encryption key custody", () => {
       identity,
       keyRevision: 1,
     });
+    await expect(firstRun.loadDevice(identity)).resolves.toEqual(device);
+    expect(firstRun.getSnapshot().status).toBe("ready");
+    expect(
+      firstRun.componentKey({
+        component: "workspace-display-name",
+        identity,
+        keyRevision: 1,
+      }),
+    ).toEqual(expectedComponentKey);
     firstRun.lock();
 
     const restarted = new ClientEncryptionService(store);

@@ -40,6 +40,7 @@ import {
   type ClientEncryptionIdentity,
 } from "./client-encryption";
 import { getClientSession } from "./client-session";
+import { prepareClientEncryption } from "./account-encryption";
 import {
   getAccountEncryptionProfile,
   updateAccountEncryptionMigration,
@@ -101,6 +102,7 @@ export class ProjectWorkspaceEncryptionAdapter {
   constructor(
     private readonly options: {
       api?: ProjectWorkspaceWireApi;
+      prepare?: typeof prepareClientEncryption;
       service?: ClientEncryptionService;
       session?: typeof getClientSession;
     } = {},
@@ -114,14 +116,42 @@ export class ProjectWorkspaceEncryptionAdapter {
     return this.options.service ?? clientEncryption;
   }
 
-  private identity(): {
+  private async identity(): Promise<{
     identity: ClientEncryptionIdentity;
     keyRevision: number;
-  } {
+  }> {
     const session = (this.options.session ?? getClientSession)();
-    const snapshot = this.service.getSnapshot();
+    if (!session) {
+      throw new ClientEncryptionError(
+        "locked",
+        "Workspace encryption is locked for this account.",
+      );
+    }
+    let snapshot = this.service.getSnapshot();
     if (
-      !session ||
+      snapshot.status !== "ready" ||
+      !snapshot.identity ||
+      snapshot.masterKeyRevision === null ||
+      snapshot.identity.ownerId !== session.user.id ||
+      snapshot.identity.serverId !== session.serverId
+    ) {
+      const access = await (this.options.prepare ?? prepareClientEncryption)({
+        authMode: session.authMode,
+        identity: {
+          ownerId: session.user.id,
+          serverId: session.serverId,
+        },
+        service: this.service,
+      });
+      if (access.status !== "ready") {
+        throw new ClientEncryptionError(
+          "locked",
+          "Workspace encryption needs this device to be authorized again.",
+        );
+      }
+      snapshot = this.service.getSnapshot();
+    }
+    if (
       snapshot.status !== "ready" ||
       !snapshot.identity ||
       snapshot.masterKeyRevision === null ||
@@ -143,7 +173,7 @@ export class ProjectWorkspaceEncryptionAdapter {
     rowId: string,
     name: string,
   ): Promise<EncryptedProjectWorkspaceName> {
-    const { identity, keyRevision } = this.identity();
+    const { identity, keyRevision } = await this.identity();
     const componentKey = this.service.componentKey({
       component,
       identity,
@@ -198,7 +228,7 @@ export class ProjectWorkspaceEncryptionAdapter {
         "A legacy workspace name was not migrated before use.",
       );
     }
-    const { identity } = this.identity();
+    const { identity } = await this.identity();
     const keyRevision = workspace.nameProtection.keyRevision;
     const componentKey = this.service.componentKey({
       component,
@@ -312,7 +342,7 @@ export class ProjectWorkspaceEncryptionAdapter {
   }
 
   async list(): Promise<ProjectWorkspaceSummary[]> {
-    this.identity();
+    await this.identity();
     const wire = await this.migrateLegacy(await this.api.list());
     return Promise.all(
       wire.workspaces.map((workspace) => this.decrypt(workspace)),
@@ -323,7 +353,7 @@ export class ProjectWorkspaceEncryptionAdapter {
     input: ProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceSummary> {
     const parsed = projectWorkspaceCreateSchema.parse(input);
-    this.identity();
+    await this.identity();
     const id = globalThis.crypto.randomUUID();
     return this.decrypt(
       await this.api.create({
@@ -338,7 +368,7 @@ export class ProjectWorkspaceEncryptionAdapter {
     input: ProjectWorkspaceUpdate,
   ): Promise<ProjectWorkspaceSummary> {
     const parsed = projectWorkspaceUpdateSchema.parse(input);
-    this.identity();
+    await this.identity();
     const current = (
       await this.migrateLegacy(await this.api.list())
     ).workspaces.find(({ id }) => id === workspaceId);
@@ -360,7 +390,7 @@ export class ProjectWorkspaceEncryptionAdapter {
   }
 
   async delete(workspaceId: string): Promise<void> {
-    this.identity();
+    await this.identity();
     await this.api.delete(workspaceId);
   }
 }

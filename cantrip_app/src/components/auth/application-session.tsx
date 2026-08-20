@@ -122,8 +122,8 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     operation: "load-session",
     subsystem: "authentication",
   });
-  clearClientSession();
   if (!getActiveServerConnection()) {
+    clearClientSession();
     clientLogger.info("Application session requires a server", {
       durationMs: Math.round(performance.now() - startedAt),
       event: "session.load.completed",
@@ -168,6 +168,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     return state;
   }
   if (clearedConflictingSession) {
+    clearClientSession();
     return {
       kind: "signed-out",
       bootstrap,
@@ -183,6 +184,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
         ? Number(error.status)
         : null;
     if (status === 401) {
+      clearClientSession();
       return {
         kind: "signed-out",
         bootstrap,
@@ -192,6 +194,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     throw error;
   }
   if (!session.currentUser || !session.csrfToken) {
+    clearClientSession();
     clientLogger.info("Application session requires sign-in", {
       durationMs: Math.round(performance.now() - startedAt),
       event: "session.load.completed",
@@ -203,6 +206,7 @@ async function loadApplicationSession(): Promise<ApplicationSessionState> {
     return { kind: "signed-out", bootstrap, notice: null };
   }
   if (!(await rememberActiveServerAccount(session.currentUser.id))) {
+    clearClientSession();
     return {
       kind: "signed-out",
       bootstrap,
