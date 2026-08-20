@@ -1,7 +1,10 @@
 import {
   chatMessageProtectedClassificationSchema,
   chatMessageProtectedContentSchema,
+  chatPlanProtectedClassificationSchema,
+  chatPlanProtectedContentSchema,
   encryptedChatMessageProtectedContentSchema,
+  encryptedChatPlanProtectedContentSchema,
   encryptedInteractionRequestContentSchema,
   encryptedInteractionResponseContentSchema,
   encryptedQueuedPromptProtectedContentSchema,
@@ -11,11 +14,15 @@ import {
   queuedPromptProtectedClassificationSchema,
   queuedPromptProtectedContentSchema,
   CHAT_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT,
+  CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT,
   INTERACTION_PROTECTED_CONTENT_BYTES_LIMIT,
   QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT,
   type ChatMessageProtectedClassification,
   type ChatMessageProtectedContent,
+  type ChatPlanProtectedClassification,
+  type ChatPlanProtectedContent,
   type EncryptedChatMessageProtectedContent,
+  type EncryptedChatPlanProtectedContent,
   type EncryptedInteractionRequestContent,
   type EncryptedInteractionResponseContent,
   type EncryptedQueuedPromptProtectedContent,
@@ -104,6 +111,21 @@ export function queuedPromptContentAssociatedData(input: {
     table: "queued_prompts",
     rowId: input.promptId,
     field: "protected_content",
+    keyRevision: input.keyRevision,
+  });
+}
+
+export function chatPlanContentAssociatedData(input: {
+  ownerId: string;
+  chatId: string;
+  keyRevision: number;
+}): EncryptionAssociatedData {
+  return associatedData({
+    ownerId: input.ownerId,
+    component: "chat-content",
+    table: "chats",
+    rowId: input.chatId,
+    field: "protected_plan",
     keyRevision: input.keyRevision,
   });
 }
@@ -296,6 +318,47 @@ export async function decryptChatMessageProtectedContent(input: {
   });
   requireMatchingClassification(
     chatMessageProtectedClassificationSchema,
+    content.classification,
+    input.publicClassification,
+  );
+  return content;
+}
+
+export async function encryptChatPlanProtectedContent(input: {
+  ownerId: string;
+  chatId: string;
+  keyRevision: number;
+  componentKey: Uint8Array;
+  content: ChatPlanProtectedContent;
+}): Promise<EncryptedChatPlanProtectedContent> {
+  return encryptProtectedContent({
+    componentKey: input.componentKey,
+    content: input.content,
+    contentSchema: chatPlanProtectedContentSchema,
+    envelopeSchema: encryptedChatPlanProtectedContentSchema,
+    associatedData: chatPlanContentAssociatedData(input),
+    maximumBytes: CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT,
+  });
+}
+
+export async function decryptChatPlanProtectedContent(input: {
+  ownerId: string;
+  chatId: string;
+  keyRevision: number;
+  componentKey: Uint8Array;
+  encrypted: EncryptedChatPlanProtectedContent;
+  publicClassification: ChatPlanProtectedClassification;
+}): Promise<ChatPlanProtectedContent> {
+  const content = await decryptProtectedContent({
+    componentKey: input.componentKey,
+    encrypted: input.encrypted,
+    envelopeSchema: encryptedChatPlanProtectedContentSchema,
+    contentSchema: chatPlanProtectedContentSchema,
+    associatedData: chatPlanContentAssociatedData(input),
+    maximumBytes: CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT,
+  });
+  requireMatchingClassification(
+    chatPlanProtectedClassificationSchema,
     content.classification,
     input.publicClassification,
   );

@@ -25,8 +25,6 @@ import type {
   ManagedFolderCapabilities,
   MobileProjectTabConfigurations,
   ModelReasoningEffortOption,
-  PendingPlanQuestion,
-  PlanStep,
   PrivateDisplayLabelOpaque,
   SurfacePrivateStateOpaque,
   ProjectFolderManagement,
@@ -80,6 +78,7 @@ import type {
   WorkerEncryptionStatus,
 } from "@cantrip/protocol/encryption";
 import type {
+  ChatPlanOpaqueState,
   EncryptedInteractionRequestContent,
   EncryptedInteractionResponseContent,
   QueuedPromptOpaqueContent,
@@ -2144,11 +2143,10 @@ export const chats = pgTable(
     permissionProfileId: text("permission_profile_id"),
     automationPaused: boolean("automation_paused").notNull().default(false),
     planMode: text("plan_mode").notNull().default("default"),
-    planExplanation: text("plan_explanation"),
-    planSteps: jsonb("plan_steps").$type<PlanStep[]>().notNull().default([]),
-    pendingPlanQuestion: jsonb(
-      "pending_plan_question",
-    ).$type<PendingPlanQuestion | null>(),
+    protectedPlan: jsonb("protected_plan").$type<ChatPlanOpaqueState>(),
+    hasPendingPlanQuestion: boolean("has_pending_plan_question")
+      .notNull()
+      .default(false),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -2162,6 +2160,10 @@ export const chats = pgTable(
     check(
       "chats_experience_check",
       sql`${table.experience} IN ('agent', 'task')`,
+    ),
+    check(
+      "chats_protected_plan_question_check",
+      sql`NOT ${table.hasPendingPlanQuestion} OR ${table.protectedPlan} IS NOT NULL`,
     ),
   ],
 );

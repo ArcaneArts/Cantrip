@@ -17,6 +17,8 @@ import {
   type ChatMessageCreate,
   type ChatTurnMode,
   type NormalizedAgentMessage,
+  type PendingPlanQuestion,
+  type PlanStep,
   type ReasoningEffort,
 } from "@cantrip/protocol";
 import {
@@ -28,6 +30,10 @@ import {
 } from "@cantrip/protocol/communication-content";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
+import {
+  protectChatPlanState,
+  type PrivateChatPlanState,
+} from "./chat-plan-encryption.js";
 
 function activitySummary(activity: AgentActivity): string {
   if (activity.type === "usage") {
@@ -267,11 +273,56 @@ export async function protectChatTurn(input: {
 }
 
 export class EncryptedChatEventSealer {
+  readonly #chatId: string;
   readonly #ids = new Map<string, string>();
   readonly #service: WorkerEncryptionService;
+  #plan: PrivateChatPlanState;
 
-  constructor(service: WorkerEncryptionService) {
+  constructor(
+    service: WorkerEncryptionService,
+    chatId: string,
+    plan: PrivateChatPlanState,
+  ) {
     this.#service = service;
+    this.#chatId = chatId;
+    this.#plan = plan;
+  }
+
+  async plan(input: {
+    explanation: string | null;
+    steps: PlanStep[];
+    turnId: string;
+  }) {
+    this.#plan = {
+      ...this.#plan,
+      explanation: input.explanation,
+      steps: input.steps,
+    };
+    return this.#protectedPlan(input.turnId);
+  }
+
+  async planQuestion(question: PendingPlanQuestion) {
+    this.#plan = { ...this.#plan, question };
+    return this.#protectedPlan(question.turnId);
+  }
+
+  async planQuestionResolved(questionId: string) {
+    if (this.#plan.question?.id === questionId) {
+      this.#plan = { ...this.#plan, question: null };
+    }
+    return this.#protectedPlan(null);
+  }
+
+  async #protectedPlan(turnId: string | null) {
+    return {
+      type: "agent.plan.protected" as const,
+      turnId,
+      state: await protectChatPlanState({
+        chatId: this.#chatId,
+        service: this.#service,
+        state: this.#plan,
+      }),
+    };
   }
 
   #id(key: string): string {

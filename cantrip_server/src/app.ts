@@ -89,9 +89,7 @@ import {
   chatImportJobRetrySchema,
   chatImportJobSummarySchema,
   chatInterruptAcceptedSchema,
-  chatPlanAcceptedSchema,
-  chatPlanAnswerSchema,
-  chatPlanStateSchema,
+  encryptedChatPlanWireStateSchema,
   chatPlanUpdateSchema,
   chatRelocationCreateSchema,
   chatRelocationJobCancelSchema,
@@ -2277,17 +2275,10 @@ export async function buildApp({
     if (state) publishChatInvalidation(input[1], "chat-plan");
     return state;
   };
-  const updateLiveChatPlanSnapshot = async (
-    ...input: Parameters<typeof repository.updateChatPlanSnapshot>
-  ): ReturnType<typeof repository.updateChatPlanSnapshot> => {
-    const result = await repository.updateChatPlanSnapshot(...input);
-    publishChatInvalidation(input[0], "chat-plan");
-    return result;
-  };
-  const setLivePendingPlanQuestion = async (
-    ...input: Parameters<typeof repository.setPendingPlanQuestion>
-  ): ReturnType<typeof repository.setPendingPlanQuestion> => {
-    const result = await repository.setPendingPlanQuestion(...input);
+  const updateLiveEncryptedChatPlanState = async (
+    ...input: Parameters<typeof repository.updateEncryptedChatPlanState>
+  ): ReturnType<typeof repository.updateEncryptedChatPlanState> => {
+    const result = await repository.updateEncryptedChatPlanState(...input);
     publishChatInvalidation(input[0], "chat-plan");
     return result;
   };
@@ -6852,6 +6843,7 @@ export async function buildApp({
     };
     let priorMessages: ChatMessage[] = [];
     let protectedHistory: ChatMessageOpaqueSummary[] = [];
+    let protectedPlan = null;
     let userMessage: ChatMessage;
     let immediateCorrectiveFollowup = false;
     try {
@@ -6870,6 +6862,10 @@ export async function buildApp({
       }
       if (encryptedChatMessages) {
         protectedHistory = await repository.listEncryptedMessages(
+          ownerId,
+          execution.chatId,
+        );
+        protectedPlan = await repository.getEncryptedChatPlanState(
           ownerId,
           execution.chatId,
         );
@@ -7108,8 +7104,13 @@ export async function buildApp({
                   ? {
                       protectedPrompt: encryptedChatMessages.userMessage,
                       protectedHistory,
+                      protectedPlan,
                     }
-                  : { prompt: workerPrompt, protectedHistory: [] }),
+                  : {
+                      prompt: workerPrompt,
+                      protectedHistory: [],
+                      protectedPlan: null,
+                    }),
                 attachments: attachments.map((attachment) => ({
                   id: attachment.id,
                   fileName: attachment.fileName,
@@ -7367,33 +7368,32 @@ export async function buildApp({
                       );
                       return;
                     }
-                    if (event.type === "agent.plan.updated") {
-                      await updateLiveChatPlanSnapshot(
-                        execution.chatId,
-                        event.explanation,
-                        event.steps,
-                      );
-                      return;
-                    }
-                    if (event.type === "agent.plan.question") {
-                      await setLivePendingPlanQuestion(
-                        execution.chatId,
-                        event.question,
-                      );
-                      return;
-                    }
-                    if (event.type === "agent.plan.question-resolved") {
-                      const state = await repository.getChatPlanState(
-                        ownerId,
-                        execution.chatId,
-                      );
-                      if (state?.question?.id === event.questionId) {
-                        await setLivePendingPlanQuestion(
-                          execution.chatId,
-                          null,
+                    if (event.type === "agent.plan.protected") {
+                      if (!encryptedChatMessages) {
+                        throw new Error(
+                          "Received protected Plan Mode state for a non-chat-encrypted turn.",
                         );
                       }
+                      await updateLiveEncryptedChatPlanState(
+                        execution.chatId,
+                        event.state,
+                      );
                       return;
+                    }
+                    if (event.type === "agent.plan.updated") {
+                      throw new Error(
+                        "Worker emitted plaintext Plan Mode state.",
+                      );
+                    }
+                    if (event.type === "agent.plan.question") {
+                      throw new Error(
+                        "Worker emitted a plaintext Plan Mode question.",
+                      );
+                    }
+                    if (event.type === "agent.plan.question-resolved") {
+                      throw new Error(
+                        "Worker emitted a plaintext Plan Mode resolution.",
+                      );
                     }
                     if (event.type !== "agent.activity") return;
                     behaviorTurnId =
@@ -22519,11 +22519,11 @@ export async function buildApp({
           );
         }
       }
-      const state = await repository.getChatPlanState(
+      const state = await repository.getChatPlanWireState(
         applicationOwnerId(),
         context.chatId,
       );
-      return reply.send(chatPlanStateSchema.parse(state));
+      return reply.send(encryptedChatPlanWireStateSchema.parse(state));
     },
   );
 
@@ -22583,94 +22583,7 @@ export async function buildApp({
           context.chatId,
           nativeMode.mode,
         );
-        return reply.send(chatPlanStateSchema.parse(state));
-      } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
-      }
-    },
-  );
-
-  app.post<{ Params: { chatId: string } }>(
-    "/api/chats/:chatId/plan/answer",
-    async (request, reply) => {
-      const input = chatPlanAnswerSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      const state = await repository.getChatPlanState(
-        applicationOwnerId(),
-        context.chatId,
-      );
-      if (!state?.question) {
-        return reply
-          .code(409)
-          .send({ error: "This chat has no pending Plan Mode question." });
-      }
-      const expectedIds = new Set(
-        state.question.questions.map((question) => question.id),
-      );
-      const answerIds = Object.keys(input.data.answers);
-      if (
-        answerIds.length !== expectedIds.size ||
-        answerIds.some((id) => !expectedIds.has(id))
-      ) {
-        return reply
-          .code(400)
-          .send({ error: "Answer every pending Plan Mode question once." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      try {
-        const runtime = await runtimeForContext(context);
-        if (!runtime) throw new Error("Selected model was not found.");
-        const result = await bridge.request(context.workerId, {
-          type: "chat.plan.answer",
-          questionId: state.question.id,
-          answers: input.data.answers,
-          model: runtime.model,
-          provider: runtime.provider,
-        });
-        const accepted = chatPlanAcceptedSchema.parse(result);
-        if (accepted.requestKey) {
-          const interaction = await repository.getAgentInteractionRequestByKey(
-            applicationOwnerId(),
-            accepted.requestKey,
-          );
-          if (interaction?.status === "pending") {
-            await resolveLiveAgentInteractionRequest(
-              applicationOwnerId(),
-              interaction.id,
-              {
-                idempotencyKey: `plan-answer:${accepted.requestKey}`,
-                response: {
-                  kind: "userInput",
-                  answers: Object.fromEntries(
-                    Object.entries(input.data.answers).map(([id, answers]) => [
-                      id,
-                      { answers },
-                    ]),
-                  ),
-                },
-              },
-            );
-          }
-        }
-        const latest = await repository.getChatPlanState(
-          applicationOwnerId(),
-          context.chatId,
-        );
-        if (latest?.question?.id === state.question.id) {
-          await setLivePendingPlanQuestion(context.chatId, null);
-        }
-        return reply.send(chatPlanAcceptedSchema.parse({ accepted: true }));
+        return reply.send(encryptedChatPlanWireStateSchema.parse(state));
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }

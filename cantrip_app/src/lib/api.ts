@@ -43,7 +43,7 @@ import {
   chatInterruptAcceptedSchema,
   chatPlanAcceptedSchema,
   chatPlanAnswerSchema,
-  chatPlanStateSchema,
+  encryptedChatPlanWireStateSchema,
   chatPlanUpdateSchema,
   chatRelocationCreateSchema,
   chatRelocationJobCancelSchema,
@@ -422,6 +422,7 @@ import {
   createEncryptedAgentInteractionResponse,
   openEncryptedAgentInteractionRequest,
 } from "@/lib/interaction-encryption";
+import { openEncryptedChatPlanWireState } from "@/lib/chat-plan-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -3961,27 +3962,71 @@ export async function clearChatGoal(chatId: string) {
 }
 
 export async function getChatPlan(chatId: string) {
-  return chatPlanStateSchema.parse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/plan`),
+  return openEncryptedChatPlanWireState(
+    chatId,
+    encryptedChatPlanWireStateSchema.parse(
+      await request(`/api/chats/${encodeURIComponent(chatId)}/plan`),
+    ),
   );
 }
 
 export async function updateChatPlan(chatId: string, input: ChatPlanUpdate) {
-  return chatPlanStateSchema.parse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/plan`, {
-      method: "PATCH",
-      body: JSON.stringify(chatPlanUpdateSchema.parse(input)),
-    }),
+  return openEncryptedChatPlanWireState(
+    chatId,
+    encryptedChatPlanWireStateSchema.parse(
+      await request(`/api/chats/${encodeURIComponent(chatId)}/plan`, {
+        method: "PATCH",
+        body: JSON.stringify(chatPlanUpdateSchema.parse(input)),
+      }),
+    ),
   );
 }
 
 export async function answerChatPlan(chatId: string, input: ChatPlanAnswer) {
-  return chatPlanAcceptedSchema.parse(
-    await post(
-      `/api/chats/${encodeURIComponent(chatId)}/plan/answer`,
-      chatPlanAnswerSchema.parse(input),
-    ),
+  const answer = chatPlanAnswerSchema.parse(input);
+  const plan = await getChatPlan(chatId);
+  if (!plan.question) {
+    throw new Error("This chat has no pending Plan Mode question.");
+  }
+  const expectedIds = new Set(
+    plan.question.questions.map((question) => question.id),
   );
+  const answerIds = Object.keys(answer.answers);
+  if (
+    answerIds.length !== expectedIds.size ||
+    answerIds.some((id) => !expectedIds.has(id))
+  ) {
+    throw new Error("Answer every pending Plan Mode question once.");
+  }
+
+  const requests = await getAgentInteractionRequests({
+    chatId,
+    status: "pending",
+  });
+  const pending = requests.find(
+    (request) =>
+      request.requestKey === plan.question?.id &&
+      request.payload.kind === "userInput",
+  );
+  if (!pending) {
+    throw new Error("The pending Plan Mode question is no longer available.");
+  }
+  await respondToAgentInteractionRequest(pending.id, {
+    idempotencyKey: crypto.randomUUID(),
+    response: {
+      kind: "userInput",
+      answers: Object.fromEntries(
+        Object.entries(answer.answers).map(([id, answers]) => [
+          id,
+          { answers },
+        ]),
+      ),
+    },
+  });
+  return chatPlanAcceptedSchema.parse({
+    accepted: true,
+    requestKey: pending.requestKey,
+  });
 }
 
 export async function syncChat(chatId: string) {

@@ -7,6 +7,8 @@ import {
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
+  chatPlanOpaqueStateSchema,
+  encryptedChatPlanWireStateSchema,
   encryptedQueuedPromptSchema,
   queuedPromptOpaqueContentSchema,
   isManagedCodeGraphMcpName,
@@ -49,7 +51,7 @@ import type {
   ChatExecutionLaneSummary,
   EncryptedChatFork,
   ChatModelUpdate,
-  ChatPlanState,
+  ChatPlanOpaqueState,
   ChatMessage,
   ChatMessageCreate,
   ChatWireSummary,
@@ -96,9 +98,8 @@ import type {
   ModelProviderSummary,
   ModelProviderUpdate,
   ModelRouteSummary,
-  PendingPlanQuestion,
+  EncryptedChatPlanWireState,
   PlanMode,
-  PlanStep,
   PrivateDisplayLabelOpaque,
   OrderedIds,
   QueuedPrompt,
@@ -389,7 +390,6 @@ export interface ChatExecutionContext {
   providerAccountId: string | null;
   permissionProfileId: string | null;
   planMode: PlanMode;
-  pendingPlanQuestion: PendingPlanQuestion | null;
   projectId: string;
   rootKind: ProjectWorktreeSummary["rootKind"];
   threadId: string | null;
@@ -1460,7 +1460,7 @@ function toChatWireSummary(
     reasoningEffort: chat.reasoningEffort,
     permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode as ChatWireSummary["planMode"],
-    hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
+    hasPendingPlanQuestion: chat.hasPendingPlanQuestion,
     automationPaused: chat.automationPaused,
     createdAt: toISOString(chat.createdAt),
     updatedAt: toISOString(chat.updatedAt),
@@ -10985,7 +10985,6 @@ export class ServerRepository {
           providerAccountId: runtime.providerAccountId,
           permissionProfileId: row.chat.permissionProfileId,
           planMode: row.chat.planMode as PlanMode,
-          pendingPlanQuestion: row.chat.pendingPlanQuestion,
           projectId: row.chat.projectId,
           rootKind: row.worktree.rootKind,
           threadId: runtime.codexThreadId,
@@ -14750,10 +14749,32 @@ export class ServerRepository {
     return result[0] ? toChatWireSummary(result[0]) : null;
   }
 
-  async getChatPlanState(
+  async getEncryptedChatPlanState(
     ownerId: string,
     chatId: string,
-  ): Promise<ChatPlanState | null> {
+  ): Promise<ChatPlanOpaqueState | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chats.id, chatId))
+      .limit(1);
+    const chat = rows[0]?.chat;
+    return chat?.protectedPlan
+      ? chatPlanOpaqueStateSchema.parse(chat.protectedPlan)
+      : null;
+  }
+
+  async getChatPlanWireState(
+    ownerId: string,
+    chatId: string,
+  ): Promise<EncryptedChatPlanWireState | null> {
     const rows = await this.database
       .select({ chat: schema.chats })
       .from(schema.chats)
@@ -14768,12 +14789,13 @@ export class ServerRepository {
       .limit(1);
     const chat = rows[0]?.chat;
     return chat
-      ? {
-          mode: chat.planMode as PlanMode,
-          explanation: chat.planExplanation,
-          steps: chat.planSteps,
-          question: chat.pendingPlanQuestion,
-        }
+      ? encryptedChatPlanWireStateSchema.parse({
+          kind: "chat-encrypted",
+          chatId: chat.id,
+          mode: chat.planMode,
+          hasQuestion: chat.hasPendingPlanQuestion,
+          state: chat.protectedPlan,
+        })
       : null;
   }
 
@@ -14781,44 +14803,34 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     mode: PlanMode,
-  ): Promise<ChatPlanState | null> {
-    const current = await this.getChatPlanState(ownerId, chatId);
+  ): Promise<EncryptedChatPlanWireState | null> {
+    const current = await this.getChatPlanWireState(ownerId, chatId);
     if (!current) return null;
     await this.database
       .update(schema.chats)
       .set({
         planMode: mode,
         ...(mode === "default"
-          ? { planExplanation: null, planSteps: [], pendingPlanQuestion: null }
+          ? { protectedPlan: null, hasPendingPlanQuestion: false }
           : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.chats.id, chatId));
-    return this.getChatPlanState(ownerId, chatId);
+    return this.getChatPlanWireState(ownerId, chatId);
   }
 
-  async updateChatPlanSnapshot(
+  async updateEncryptedChatPlanState(
     chatId: string,
-    explanation: string | null,
-    steps: PlanStep[],
+    state: ChatPlanOpaqueState,
   ): Promise<void> {
+    const parsed = chatPlanOpaqueStateSchema.parse(state);
     await this.database
       .update(schema.chats)
       .set({
-        planExplanation: explanation,
-        planSteps: steps,
+        protectedPlan: parsed,
+        hasPendingPlanQuestion: parsed.classification.hasQuestion,
         updatedAt: new Date(),
       })
-      .where(eq(schema.chats.id, chatId));
-  }
-
-  async setPendingPlanQuestion(
-    chatId: string,
-    question: PendingPlanQuestion | null,
-  ): Promise<void> {
-    await this.database
-      .update(schema.chats)
-      .set({ pendingPlanQuestion: question, updatedAt: new Date() })
       .where(eq(schema.chats.id, chatId));
   }
 
@@ -14892,7 +14904,6 @@ export class ServerRepository {
       providerAccountId: row.runtime?.providerAccountId ?? null,
       permissionProfileId: row.chat.permissionProfileId,
       planMode: row.chat.planMode as PlanMode,
-      pendingPlanQuestion: row.chat.pendingPlanQuestion,
       projectId: row.chat.projectId,
       rootKind: row.worktree.rootKind,
       status: row.chat.status as ChatWireSummary["status"],

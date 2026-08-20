@@ -11,6 +11,7 @@ export * from "./json-message.js";
 export * from "./communication-content.js";
 
 import {
+  chatPlanOpaqueStateSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
   encryptedInteractionResponseContentSchema,
@@ -7048,6 +7049,35 @@ export const chatPlanStateSchema = z.object({
   question: pendingPlanQuestionSchema.nullable(),
 });
 
+export const encryptedChatPlanWireStateSchema = z
+  .object({
+    kind: z.literal("chat-encrypted"),
+    chatId: z.string().min(1).max(200),
+    mode: planModeSchema,
+    hasQuestion: z.boolean(),
+    state: chatPlanOpaqueStateSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.state &&
+      value.state.classification.hasQuestion !== value.hasQuestion
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted plan question metadata is inconsistent.",
+        path: ["state", "classification", "hasQuestion"],
+      });
+    }
+    if (!value.state && value.hasQuestion) {
+      context.addIssue({
+        code: "custom",
+        message: "Pending encrypted plans require protected state.",
+        path: ["state"],
+      });
+    }
+  });
+
 export const chatPlanUpdateSchema = z.object({ mode: planModeSchema });
 
 export const chatPlanAnswerSchema = z.object({
@@ -10868,6 +10898,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
         .array(chatMessageOpaqueSummarySchema)
         .max(100_000)
         .default([]),
+      protectedPlan: chatPlanOpaqueStateSchema.nullable().default(null),
       attachments: z.array(workerChatAttachmentSchema).max(20).default([]),
       skillNames: z.array(z.string().min(1)).max(64).default([]),
       model: workerRuntimeModelSchema,
@@ -11069,13 +11100,6 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
-    type: z.literal("chat.plan.answer"),
-    questionId: z.string().min(1),
-    answers: chatPlanAnswerSchema.shape.answers,
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-  }),
-  z.object({
     type: z.literal("agent.interaction.respond"),
     requestKey: z.string().min(1).max(200),
     response: agentInteractionResponseSchema,
@@ -11205,6 +11229,13 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("agent.plan.question-resolved"),
     questionId: z.string().min(1),
   }),
+  z
+    .object({
+      type: z.literal("agent.plan.protected"),
+      turnId: z.string().min(1).nullable(),
+      state: chatPlanOpaqueStateSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("agent.interaction.requested"),
     request: agentInteractionRuntimeRequestSchema,
@@ -12491,6 +12522,9 @@ export type PlanQuestionOption = z.infer<typeof planQuestionOptionSchema>;
 export type PlanQuestion = z.infer<typeof planQuestionSchema>;
 export type PendingPlanQuestion = z.infer<typeof pendingPlanQuestionSchema>;
 export type ChatPlanState = z.infer<typeof chatPlanStateSchema>;
+export type EncryptedChatPlanWireState = z.infer<
+  typeof encryptedChatPlanWireStateSchema
+>;
 export type ChatPlanUpdate = z.infer<typeof chatPlanUpdateSchema>;
 export type ChatPlanAnswer = z.infer<typeof chatPlanAnswerSchema>;
 export type ChatPlanAccepted = z.infer<typeof chatPlanAcceptedSchema>;

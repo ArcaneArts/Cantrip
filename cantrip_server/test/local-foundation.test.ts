@@ -1614,14 +1614,18 @@ const workerBridge = {
           mode: codexPlanMode,
           threadId: command.threadId ?? "codex-plan-thread-1",
         };
-      case "chat.plan.answer":
-        releasePlanQuestion?.();
-        releasePlanQuestion = null;
-        return { accepted: true, requestKey: command.questionId };
       case "agent.interaction.respond":
         deliveredAgentInteractionResponses.push(command.response);
         releaseAgentInteraction?.();
         releaseAgentInteraction = null;
+        releasePlanQuestion?.();
+        releasePlanQuestion = null;
+        return { accepted: true };
+      case "agent.interaction.respond.protected":
+        releaseAgentInteraction?.();
+        releaseAgentInteraction = null;
+        releasePlanQuestion?.();
+        releasePlanQuestion = null;
         return { accepted: true };
       case "agent.interaction.cancel":
         releaseAgentInteraction?.();
