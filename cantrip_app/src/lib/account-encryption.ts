@@ -408,6 +408,16 @@ export async function prepareClientEncryption(
     });
   }
 
+  const snapshot = service.getSnapshot();
+  if (
+    snapshot.status === "ready" &&
+    snapshot.identity?.ownerId === input.identity.ownerId &&
+    snapshot.identity.serverId === input.identity.serverId &&
+    snapshot.masterKeyRevision === profileState.profile.activeMasterKeyRevision
+  ) {
+    return { status: "ready" };
+  }
+
   const principals = await api.listPrincipals();
   if (
     await tryDeviceUnlock({

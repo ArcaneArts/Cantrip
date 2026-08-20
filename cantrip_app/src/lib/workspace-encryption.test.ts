@@ -234,6 +234,11 @@ describe("workspace encryption adapter", () => {
     const api = new MemoryWorkspaceApi();
     const adapter = new ProjectWorkspaceEncryptionAdapter({
       api,
+      prepare: async () => ({
+        credential: "password" as const,
+        reason: "authorize-device" as const,
+        status: "credential-required" as const,
+      }),
       service: new ClientEncryptionService(),
       session,
     });
@@ -244,5 +249,31 @@ describe("workspace encryption adapter", () => {
       adapter.update("workspace:default:owner-a", { name: "Blocked" }),
     ).rejects.toMatchObject({ code: "locked" });
     expect(api.writes).toBe(0);
+  });
+
+  it("recovers a dropped in-memory key through the authorized device", async () => {
+    const api = new MemoryWorkspaceApi();
+    const service = new ClientEncryptionService();
+    let preparations = 0;
+    const adapter = new ProjectWorkspaceEncryptionAdapter({
+      api,
+      prepare: async (input) => {
+        preparations += 1;
+        input.service?.setAccountMasterKey({
+          accountMasterKey: new Uint8Array(32).fill(17),
+          identity,
+          masterKeyRevision: 1,
+        });
+        return { status: "ready" };
+      },
+      service,
+      session,
+    });
+
+    await expect(adapter.create({ name: "Recovered" })).resolves.toMatchObject({
+      name: "Recovered",
+    });
+    expect(preparations).toBe(1);
+    expect(service.getSnapshot()).toMatchObject({ status: "ready", identity });
   });
 });

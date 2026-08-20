@@ -283,6 +283,21 @@ describe("account encryption initialization", () => {
     expect(api.profile?.passwordWrappedMasterKey).not.toBeNull();
     expect(api.reauthenticationAttempts).toBe(1);
 
+    const refreshStatuses: string[] = [];
+    const unsubscribe = firstRun.subscribe(() => {
+      refreshStatuses.push(firstRun.getSnapshot().status);
+    });
+    await expect(
+      prepareClientEncryption({
+        api,
+        authMode: "accounts",
+        identity,
+        service: firstRun,
+      }),
+    ).resolves.toEqual({ status: "ready" });
+    unsubscribe();
+    expect(refreshStatuses).toEqual([]);
+
     firstRun.lock();
     const restarted = new ClientEncryptionService(store);
     await expect(
