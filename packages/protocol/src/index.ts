@@ -55,6 +55,7 @@ import {
 } from "./encryption.js";
 import { privateDisplayLabelOpaqueSchema } from "./private-labels.js";
 import {
+  browserPrivateStateOpaqueSchema,
   explorerPrivateStateOpaqueSchema,
   terminalPrivateStateOpaqueSchema,
 } from "./surface-private-state.js";
@@ -4540,27 +4541,31 @@ export const CODE_ADAPTER_TUNNEL_INITIAL_CREDIT_BYTES =
 export const CODE_ADAPTER_WEBSOCKET_TEXT_RECORD = 0;
 export const CODE_ADAPTER_WEBSOCKET_BINARY_RECORD = 1;
 export const CODE_ADAPTER_WEBSOCKET_CLOSE_RECORD = 2;
+const browserHttpUrlSchema = z
+  .string()
+  .url()
+  .max(4_096)
+  .refine((value) => /^https?:\/\//u.test(value), {
+    message: "Browser URLs must use HTTP or HTTPS.",
+  });
+
 const browserCreateBaseSchema = z.object({
-  url: z
-    .string()
-    .url()
-    .max(4_096)
-    .refine((value) => /^https?:\/\//u.test(value), {
-      message: "Browser URLs must use HTTP or HTTPS.",
-    })
-    .optional(),
   tabGroupId: z.string().min(1).optional(),
   target: executionTargetSchema.optional(),
 });
 
-export const browserCreateSchema = browserCreateBaseSchema.extend({
-  title: z.string().trim().min(1).max(200).default("Browser"),
-});
+export const browserCreateSchema = browserCreateBaseSchema
+  .extend({
+    title: z.string().trim().min(1).max(200).default("Browser"),
+    url: browserHttpUrlSchema.optional(),
+  })
+  .strict();
 
 export const encryptedBrowserCreateSchema = browserCreateBaseSchema
   .extend({
     id: z.string().uuid(),
     titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: browserPrivateStateOpaqueSchema,
   })
   .strict()
   .refine(
@@ -4574,14 +4579,7 @@ export const encryptedBrowserCreateSchema = browserCreateBaseSchema
 export const browserUpdateSchema = z
   .object({
     title: z.string().trim().min(1).max(200).optional(),
-    url: z
-      .string()
-      .url()
-      .max(4_096)
-      .refine((value) => /^https?:\/\//u.test(value), {
-        message: "Browser URLs must use HTTP or HTTPS.",
-      })
-      .optional(),
+    url: browserHttpUrlSchema.optional(),
   })
   .refine((input) => input.title !== undefined || input.url !== undefined, {
     message: "At least one browser field is required.",
@@ -4590,14 +4588,28 @@ export const browserUpdateSchema = z
 export const encryptedBrowserUpdateSchema = z
   .object({
     titleProtection: privateDisplayLabelOpaqueSchema.optional(),
-    url: browserUpdateSchema.shape.url,
+    expectedStateRevision: z.number().int().positive().safe().optional(),
+    stateProtection: browserPrivateStateOpaqueSchema.optional(),
   })
   .strict()
   .superRefine((input, context) => {
-    if (input.titleProtection === undefined && input.url === undefined) {
+    if (
+      input.titleProtection === undefined &&
+      input.stateProtection === undefined
+    ) {
       context.addIssue({
         code: "custom",
         message: "At least one browser field is required.",
+      });
+    }
+    if (
+      (input.stateProtection === undefined) !==
+      (input.expectedStateRevision === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Browser state updates require an expected revision.",
+        path: ["expectedStateRevision"],
       });
     }
     if (
@@ -4616,7 +4628,7 @@ const browserSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
   position: z.number().int().nonnegative(),
-  url: z.string().url(),
+  stateRevision: z.number().int().positive().safe(),
   workerId: z.string().min(1).nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -4624,10 +4636,14 @@ const browserSummaryBaseSchema = z.object({
 
 export const browserSummarySchema = browserSummaryBaseSchema.extend({
   title: z.string().min(1).max(200),
+  url: browserHttpUrlSchema,
 });
 
 export const browserWireSummarySchema = browserSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: browserPrivateStateOpaqueSchema,
+  })
   .refine(
     (browser) =>
       browser.titleProtection.classification.recordKind === "browser",
@@ -4697,13 +4713,9 @@ export const browserServiceFleetDiscoverySchema = z.object({
 
 export const browserTunnelRequestSchema = z
   .object({
-    url: z
-      .string()
-      .url()
-      .max(4_096)
-      .refine((value) => /^https?:\/\//u.test(value), {
-        message: "Browser tunnels require an HTTP or HTTPS URL.",
-      }),
+    protocol: z.enum(["http", "https"]),
+    host: z.enum(["127.0.0.1", "localhost", "::1"]),
+    port: z.number().int().min(1).max(65_535),
     workerId: z.string().min(1).max(200).optional(),
   })
   .strict();
@@ -4865,7 +4877,6 @@ export const remoteDesktopFleetWireSchema = remoteDesktopFleetSchema.extend({
 export const remoteSurfaceConfigurationSchema = z.discriminatedUnion("kind", [
   z.object({
     kind: z.literal("browser"),
-    initialUrl: z.url().max(4_096),
     profileId: z.string().trim().min(1).max(200).nullable().default(null),
   }),
   z.object({
@@ -4888,17 +4899,29 @@ export const encryptedRemoteSurfaceCreateSchema = remoteSurfaceCreateSchema
   .omit({ title: true })
   .extend({
     id: z.string().uuid(),
+    stateProtection: browserPrivateStateOpaqueSchema.optional(),
     titleProtection: privateDisplayLabelOpaqueSchema,
   })
   .strict()
-  .refine(
-    (input) =>
-      input.titleProtection.classification.recordKind === "remote-surface",
-    {
-      message: "Remote Surface title classification must be remote-surface.",
-      path: ["titleProtection", "classification", "recordKind"],
-    },
-  );
+  .superRefine((input, context) => {
+    if (input.titleProtection.classification.recordKind !== "remote-surface") {
+      context.addIssue({
+        code: "custom",
+        message: "Remote Surface title classification must be remote-surface.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+    if (
+      (input.configuration.kind === "browser") !==
+      (input.stateProtection !== undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only browser Remote Surfaces require protected state.",
+        path: ["stateProtection"],
+      });
+    }
+  });
 
 export const remoteSurfaceUpdateSchema = z
   .object({
@@ -4916,20 +4939,33 @@ export const remoteSurfaceUpdateSchema = z
 
 export const encryptedRemoteSurfaceUpdateSchema = z
   .object({
+    expectedStateRevision: z.number().int().positive().safe().optional(),
     titleProtection: privateDisplayLabelOpaqueSchema.optional(),
     configuration: remoteSurfaceConfigurationSchema.optional(),
     preferredTransport: remoteSurfaceTransportSchema.optional(),
+    stateProtection: browserPrivateStateOpaqueSchema.optional(),
   })
   .strict()
   .superRefine((input, context) => {
     if (
       input.titleProtection === undefined &&
       input.configuration === undefined &&
-      input.preferredTransport === undefined
+      input.preferredTransport === undefined &&
+      input.stateProtection === undefined
     ) {
       context.addIssue({
         code: "custom",
         message: "At least one remote surface field is required.",
+      });
+    }
+    if (
+      (input.stateProtection === undefined) !==
+      (input.expectedStateRevision === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Remote Surface state updates require an expected revision.",
+        path: ["expectedStateRevision"],
       });
     }
     if (
@@ -4952,6 +4988,7 @@ const remoteSurfaceSummaryBaseSchema = z.object({
   status: remoteSurfaceStatusSchema,
   preferredTransport: remoteSurfaceTransportSchema,
   configuration: remoteSurfaceConfigurationSchema,
+  stateRevision: z.number().int().positive().safe().nullable(),
   lastError: z.string().nullable(),
   lastConnectedAt: z.string().datetime().nullable(),
   createdAt: z.string().datetime(),
@@ -4959,11 +4996,17 @@ const remoteSurfaceSummaryBaseSchema = z.object({
 });
 
 export const remoteSurfaceSummarySchema = remoteSurfaceSummaryBaseSchema.extend(
-  { title: z.string().min(1).max(200) },
+  {
+    title: z.string().min(1).max(200),
+    url: browserHttpUrlSchema.nullable(),
+  },
 );
 
 export const remoteSurfaceWireSummarySchema = remoteSurfaceSummaryBaseSchema
-  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    titleProtection: privateDisplayLabelOpaqueSchema,
+    stateProtection: browserPrivateStateOpaqueSchema.nullable(),
+  })
   .superRefine((surface, context) => {
     const recordKind = surface.titleProtection.classification.recordKind;
     if (
@@ -4976,6 +5019,17 @@ export const remoteSurfaceWireSummarySchema = remoteSurfaceSummaryBaseSchema
         message:
           "Remote Surface title classification must match its canonical owner.",
         path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+    const browser = surface.kind === "browser";
+    if (
+      browser !== (surface.stateProtection !== null) ||
+      browser !== (surface.stateRevision !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Browser Remote Surfaces require protected state.",
+        path: ["stateProtection"],
       });
     }
   });
@@ -5126,7 +5180,8 @@ export const remoteDesktopServerMessageSchema = z.discriminatedUnion("type", [
 export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("navigate"),
-    url: z.url().max(4_096),
+    operationId: z.string().uuid(),
+    stateProtection: browserPrivateStateOpaqueSchema,
   }),
   z.object({
     type: z.literal("history"),
@@ -5188,7 +5243,8 @@ export const remoteBrowserClientMessageSchema = z.discriminatedUnion("type", [
 export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("browser-state"),
-    url: z.string().max(4_096),
+    operationId: z.string().uuid(),
+    stateProtection: browserPrivateStateOpaqueSchema,
     title: z.string().max(2_000),
     canGoBack: z.boolean(),
     canGoForward: z.boolean(),
@@ -6479,6 +6535,7 @@ export const cantripCliCommandNameSchema = z.enum([
   "worktree.remove",
   "target.list",
   "target.show",
+  "target.resolve-browser",
   "explorer.list",
   "explorer.read",
   "explorer.write",
@@ -10333,27 +10390,71 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("terminal.service.restart"),
     terminalId: z.string().min(1),
   }),
-  z.object({
-    type: z.literal("surface.attach"),
-    surfaceId: z.string().min(1),
-    attachmentId: z.string().min(1),
-    projectId: z.string().min(1),
-    configuration: remoteSurfaceConfigurationSchema,
-    preferredTransport: remoteSurfaceTransportSchema,
-    webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
-    viewport: remoteSurfaceViewportSchema,
-    desktopStream: desktopStreamSettingsSchema.nullable().default(null),
-  }),
+  z
+    .object({
+      type: z.literal("surface.attach"),
+      surfaceId: z.string().min(1),
+      attachmentId: z.string().min(1),
+      projectId: z.string().min(1),
+      serverId: z.string().min(1).max(255),
+      configuration: remoteSurfaceConfigurationSchema,
+      stateResource: z
+        .enum(["browser-row", "browser-remote-surface"])
+        .nullable(),
+      stateRevision: z.number().int().positive().safe().nullable(),
+      stateProtection: browserPrivateStateOpaqueSchema.nullable(),
+      preferredTransport: remoteSurfaceTransportSchema,
+      webrtc: remoteSurfaceWebRtcConfigurationSchema.nullable().default(null),
+      viewport: remoteSurfaceViewportSchema,
+      desktopStream: desktopStreamSettingsSchema.nullable().default(null),
+    })
+    .strict()
+    .superRefine((command, context) => {
+      const browser = command.configuration.kind === "browser";
+      if (
+        browser !== (command.stateProtection !== null) ||
+        browser !== (command.stateRevision !== null) ||
+        browser !== (command.stateResource !== null)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Browser surface commands require protected state.",
+          path: ["stateProtection"],
+        });
+      }
+    }),
   z.object({
     type: z.literal("surface.detach"),
     surfaceId: z.string().min(1),
     attachmentId: z.string().min(1),
   }),
-  z.object({
-    type: z.literal("surface.configure"),
-    surfaceId: z.string().min(1),
-    configuration: remoteSurfaceConfigurationSchema,
-  }),
+  z
+    .object({
+      type: z.literal("surface.configure"),
+      surfaceId: z.string().min(1),
+      serverId: z.string().min(1).max(255),
+      configuration: remoteSurfaceConfigurationSchema,
+      stateResource: z
+        .enum(["browser-row", "browser-remote-surface"])
+        .nullable(),
+      stateRevision: z.number().int().positive().safe().nullable(),
+      stateProtection: browserPrivateStateOpaqueSchema.nullable(),
+    })
+    .strict()
+    .superRefine((command, context) => {
+      const browser = command.configuration.kind === "browser";
+      if (
+        browser !== (command.stateProtection !== null) ||
+        browser !== (command.stateRevision !== null) ||
+        browser !== (command.stateResource !== null)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Browser surface commands require protected state.",
+          path: ["stateProtection"],
+        });
+      }
+    }),
   z.object({
     type: z.literal("surface.suspend"),
     surfaceId: z.string().min(1),

@@ -25,6 +25,7 @@ const context = {
 const content = {
   version: 1 as const,
   classification: { recordKind: "browser-state" as const },
+  revision: 1,
   url: "https://private.example/path",
 };
 

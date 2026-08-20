@@ -29,6 +29,7 @@ import type {
   PrivateDisplayLabelRecordKind,
 } from "@cantrip/protocol/private-labels";
 import {
+  browserPrivateStateProtectedContentSchema,
   explorerPrivateStateProtectedContentSchema,
   terminalPrivateStateProtectedContentSchema,
   type SurfacePrivateStateOpaque,
@@ -132,6 +133,104 @@ export class SurfaceTitleEncryptionAdapter {
     });
   }
 
+  protectBrowserState(
+    browserId: string,
+    url: string,
+    revision: number,
+  ): Promise<SurfacePrivateStateOpaque> {
+    const identity = this.identity();
+    return encodeSurfacePrivateStateForClient({
+      identity,
+      context: {
+        serverId: identity.serverId,
+        resource: "browser-row",
+        resourceId: browserId,
+        operationId: null,
+        recordKind: "browser-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "browser-state" },
+        revision,
+        url,
+      },
+      service: this.service,
+    });
+  }
+
+  protectBrowserOperation(
+    browserId: string,
+    operationId: string,
+    url: string,
+    revision: number,
+  ): Promise<SurfacePrivateStateOpaque> {
+    const identity = this.identity();
+    return encodeSurfacePrivateStateForClient({
+      identity,
+      context: {
+        serverId: identity.serverId,
+        resource: "browser-operation",
+        resourceId: browserId,
+        operationId,
+        recordKind: "browser-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "browser-state" },
+        revision,
+        url,
+      },
+      service: this.service,
+    });
+  }
+
+  protectBrowserRemoteSurfaceState(
+    surfaceId: string,
+    url: string,
+    revision: number,
+  ): Promise<SurfacePrivateStateOpaque> {
+    const identity = this.identity();
+    return encodeSurfacePrivateStateForClient({
+      identity,
+      context: {
+        serverId: identity.serverId,
+        resource: "browser-remote-surface",
+        resourceId: surfaceId,
+        operationId: null,
+        recordKind: "browser-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "browser-state" },
+        revision,
+        url,
+      },
+      service: this.service,
+    });
+  }
+
+  async openBrowserOperation(input: {
+    browserId: string;
+    operationId: string;
+    stateProtection: SurfacePrivateStateOpaque;
+  }) {
+    const identity = this.identity();
+    return browserPrivateStateProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "browser-operation",
+          resourceId: input.browserId,
+          operationId: input.operationId,
+          recordKind: "browser-state",
+        },
+        opaque: input.stateProtection,
+        service: this.service,
+      }),
+    );
+  }
+
   private async openLabel(
     rowId: string,
     titleProtection: PrivateDisplayLabelOpaque,
@@ -217,10 +316,33 @@ export class SurfaceTitleEncryptionAdapter {
   }
 
   async openBrowser(browser: BrowserWireSummary): Promise<BrowserSummary> {
-    const { titleProtection, ...publicBrowser } = browser;
+    const identity = this.identity();
+    const state = browserPrivateStateProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "browser-row",
+          resourceId: browser.id,
+          operationId: null,
+          recordKind: "browser-state",
+        },
+        opaque: browser.stateProtection,
+        service: this.service,
+      }),
+    );
+    if (state.revision !== browser.stateRevision) {
+      throw new Error("Browser private state revision is stale.");
+    }
+    const {
+      stateProtection: _stateProtection,
+      titleProtection,
+      ...publicBrowser
+    } = browser;
     return browserSummarySchema.parse({
       ...publicBrowser,
       title: await this.openLabel(browser.id, titleProtection, "browser"),
+      url: state.url,
     });
   }
 
@@ -253,7 +375,39 @@ export class SurfaceTitleEncryptionAdapter {
   async openRemoteSurface(
     surface: RemoteSurfaceWireSummary,
   ): Promise<RemoteSurfaceSummary> {
-    const { titleProtection, ...publicSurface } = surface;
+    let url: string | null = null;
+    if (
+      surface.kind === "browser" &&
+      surface.stateProtection &&
+      surface.stateRevision
+    ) {
+      const identity = this.identity();
+      const managed =
+        surface.titleProtection.classification.recordKind === "browser";
+      const state = browserPrivateStateProtectedContentSchema.parse(
+        await decodeSurfacePrivateStateForClient({
+          identity,
+          context: {
+            serverId: identity.serverId,
+            resource: managed ? "browser-row" : "browser-remote-surface",
+            resourceId: surface.id,
+            operationId: null,
+            recordKind: "browser-state",
+          },
+          opaque: surface.stateProtection,
+          service: this.service,
+        }),
+      );
+      if (state.revision !== surface.stateRevision) {
+        throw new Error("Remote Surface private state revision is stale.");
+      }
+      url = state.url;
+    }
+    const {
+      stateProtection: _stateProtection,
+      titleProtection,
+      ...publicSurface
+    } = surface;
     return remoteSurfaceSummarySchema.parse({
       ...publicSurface,
       title: await this.openLabel(
@@ -261,6 +415,7 @@ export class SurfaceTitleEncryptionAdapter {
         titleProtection,
         titleProtection.classification.recordKind,
       ),
+      url,
     });
   }
 

@@ -17,15 +17,31 @@ describe("tunnel protocol", () => {
   it("carries an explicit discovered-service worker into Browser tunneling", () => {
     expect(
       browserTunnelRequestSchema.parse({
-        url: "http://127.0.0.1:5173/app",
+        protocol: "http",
+        host: "127.0.0.1",
+        port: 5173,
         workerId: "worker-b",
       }),
     ).toEqual({
-      url: "http://127.0.0.1:5173/app",
+      protocol: "http",
+      host: "127.0.0.1",
+      port: 5173,
       workerId: "worker-b",
     });
     expect(() =>
-      browserTunnelRequestSchema.parse({ url: "file:///tmp/index.html" }),
+      browserTunnelRequestSchema.parse({
+        protocol: "http",
+        host: "example.com",
+        port: 5173,
+      }),
+    ).toThrow();
+    expect(() =>
+      browserTunnelRequestSchema.parse({
+        protocol: "http",
+        host: "localhost",
+        port: 5173,
+        url: "http://localhost:5173/private",
+      }),
     ).toThrow();
   });
 

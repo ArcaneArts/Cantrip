@@ -14,10 +14,26 @@ const attachCommand = {
   surfaceId: "surface-1",
   attachmentId: "attachment-1",
   projectId: "project-1",
+  serverId: "server-1",
   configuration: {
     kind: "browser" as const,
-    initialUrl: "https://example.com/",
     profileId: null,
+  },
+  stateResource: "browser-row" as const,
+  stateRevision: 1,
+  stateProtection: {
+    classification: { recordKind: "browser-state" as const },
+    protectedState: {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
   },
   preferredTransport: "websocket" as const,
   viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
@@ -162,16 +178,19 @@ describe("RemoteSurfaceManager", () => {
     );
     expect(handleFrame).toHaveBeenCalledTimes(1);
 
-    await manager.configure("surface-1", {
-      kind: "browser",
-      initialUrl: "https://cantrip.art/",
-      profileId: null,
+    await manager.configure({
+      type: "surface.configure",
+      surfaceId: "surface-1",
+      serverId: attachCommand.serverId,
+      configuration: attachCommand.configuration,
+      stateResource: attachCommand.stateResource,
+      stateRevision: 2,
+      stateProtection: attachCommand.stateProtection,
     });
-    expect(updateConfiguration).toHaveBeenCalledWith({
-      kind: "browser",
-      initialUrl: "https://cantrip.art/",
-      profileId: null,
-    });
+    expect(updateConfiguration).toHaveBeenCalledWith(
+      attachCommand.configuration,
+      expect.objectContaining({ stateRevision: 2 }),
+    );
 
     emit?.("attachment-1", "frame", new Uint8Array([9, 8]));
     expect(outbound).toHaveBeenCalledWith(

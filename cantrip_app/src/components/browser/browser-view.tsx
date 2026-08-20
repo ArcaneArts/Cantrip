@@ -48,6 +48,7 @@ import {
   ensureBrowserTunnel,
   getBrowserServices,
   getProjectBrowserServices,
+  getWorkers,
   remoteSurfaceWebSocketUrl,
 } from "@/lib/api";
 import {
@@ -56,6 +57,8 @@ import {
   type DesktopTunnelForwardSummary,
 } from "@/lib/desktop-tunnel";
 import { errorMessage } from "@/lib/error-message";
+import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
+import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
   forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
@@ -225,7 +228,9 @@ export function BrowserView({
   const surfaceRef = useRef<HTMLDivElement>(null);
   const inputFocusedRef = useRef(false);
   const onPageStateRef = useRef(onPageState);
+  const browserStateRevisionRef = useRef(browser.stateRevision);
   const pageStateRef = useRef<{ title: string; url: string } | null>(null);
+  const seenStateOperationsRef = useRef(new Set<string>());
   const viewportRef = useRef({
     width: 1_280,
     height: 720,
@@ -253,6 +258,9 @@ export function BrowserView({
   const [renderedSurfaceId, setRenderedSurfaceId] = useState<string | null>(
     null,
   );
+  const [encryptionReady, setEncryptionReady] = useState(false);
+  const [encryptionError, setEncryptionError] = useState<string | null>(null);
+  const [encryptionAttempt, setEncryptionAttempt] = useState(0);
   const surfaceReady = renderedSurfaceId === browser.id;
   const servicesQuery = useQuery<
     BrowserService[] | BrowserServiceFleetDiscovery
@@ -283,6 +291,34 @@ export function BrowserView({
     fleetResult?.workers.filter((worker) => worker.status !== "ok") ?? [];
   const filteredServices = filterBrowserServices(services, serviceSearch);
   onPageStateRef.current = onPageState;
+  browserStateRevisionRef.current = browser.stateRevision;
+
+  useEffect(() => {
+    let disposed = false;
+    setEncryptionReady(false);
+    setEncryptionError(null);
+    void getWorkers()
+      .then((workers) =>
+        ensureSurfacePrivateStateWorkerEncryption({
+          worker: workers.find(
+            (worker) => worker.workerId === browser.workerId,
+          ),
+        }),
+      )
+      .then(() => {
+        if (!disposed) setEncryptionReady(true);
+      })
+      .catch(() => {
+        if (!disposed) {
+          setEncryptionError(
+            "Browser encryption is unavailable for this worker.",
+          );
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [browser.id, browser.workerId, encryptionAttempt]);
 
   const handleFrame = useCallback(
     (frame: RemoteSurfaceInboundFrame, context: RemoteSurfaceFrameContext) => {
@@ -297,29 +333,58 @@ export function BrowserView({
           setRuntimeMessage(state.message);
           if (state.status === "ready") context.reportError(null);
         } else {
-          const normalized = normalizeBrowserAddress(state.url);
-          if (normalized) {
-            setCurrentUrl(normalized);
-            if (!inputFocusedRef.current) setAddress(normalized);
-            const previous = pageStateRef.current;
-            if (
-              previous?.url !== normalized ||
-              previous?.title !== state.title
-            ) {
-              pageStateRef.current = {
-                title: state.title,
-                url: normalized,
-              };
-              onPageStateRef.current({
-                previousTitle: previous?.title ?? null,
-                title: state.title,
-                url: normalized,
-              });
-            }
+          if (seenStateOperationsRef.current.has(state.operationId)) return;
+          seenStateOperationsRef.current.add(state.operationId);
+          if (seenStateOperationsRef.current.size > 1_000) {
+            seenStateOperationsRef.current.delete(
+              seenStateOperationsRef.current.values().next().value!,
+            );
           }
-          setCanGoBack(state.canGoBack);
-          setCanGoForward(state.canGoForward);
-          setLoading(state.loading);
+          void surfaceTitleEncryption
+            .openBrowserOperation({
+              browserId: browser.id,
+              operationId: state.operationId,
+              stateProtection: state.stateProtection,
+            })
+            .then((privateState) => {
+              if (!context.isCurrent()) return;
+              if (privateState.revision !== browserStateRevisionRef.current) {
+                if (privateState.revision > browserStateRevisionRef.current) {
+                  context.reportError(
+                    "The worker returned invalid encrypted browser state.",
+                  );
+                }
+                return;
+              }
+              const normalized = normalizeBrowserAddress(privateState.url);
+              if (normalized) {
+                setCurrentUrl(normalized);
+                if (!inputFocusedRef.current) setAddress(normalized);
+                const previous = pageStateRef.current;
+                if (
+                  previous?.url !== normalized ||
+                  previous?.title !== state.title
+                ) {
+                  pageStateRef.current = {
+                    title: state.title,
+                    url: normalized,
+                  };
+                  onPageStateRef.current({
+                    previousTitle: previous?.title ?? null,
+                    title: state.title,
+                    url: normalized,
+                  });
+                }
+              }
+              setCanGoBack(state.canGoBack);
+              setCanGoForward(state.canGoForward);
+              setLoading(state.loading);
+            })
+            .catch(() =>
+              context.reportError(
+                "The worker returned invalid encrypted browser state.",
+              ),
+            );
         }
       } else if (frame.header.channel === "cursor") {
         const cursor = remoteBrowserCursorMessageSchema.parse(
@@ -355,6 +420,7 @@ export function BrowserView({
     sendFrame,
     setError,
   } = useRemoteSurfaceTransport({
+    enabled: encryptionReady,
     surfaceKind: "browser",
     surfaceId: browser.id,
     webSocketUrl: () =>
@@ -376,7 +442,7 @@ export function BrowserView({
   );
 
   const startupState = browserSurfaceStartupState({
-    error,
+    error: encryptionError ?? error,
     runtimeMessage,
     runtimeStatus,
     surfaceReady,
@@ -385,7 +451,8 @@ export function BrowserView({
     setRuntimeStatus("ready");
     setRuntimeMessage(null);
     setError(null);
-    retry();
+    setEncryptionAttempt((attempt) => attempt + 1);
+    if (encryptionReady) retry();
   };
 
   useEffect(() => {
@@ -393,6 +460,7 @@ export function BrowserView({
     setCurrentUrl(browser.url);
     setInvalidAddress(false);
     pageStateRef.current = null;
+    seenStateOperationsRef.current.clear();
     setRuntimeStatus("ready");
     setRuntimeMessage(null);
     setCurrentWorkerId(undefined);
@@ -447,7 +515,18 @@ export function BrowserView({
     setCurrentUrl(normalized);
     setCurrentWorkerId(workerId);
     setLoading(true);
-    send({ type: "navigate", url: normalized });
+    const operationId = crypto.randomUUID();
+    void surfaceTitleEncryption
+      .protectBrowserOperation(
+        browser.id,
+        operationId,
+        normalized,
+        browser.stateRevision,
+      )
+      .then((stateProtection) =>
+        send({ type: "navigate", operationId, stateProtection }),
+      )
+      .catch(() => setError("Browser encryption is locked or unavailable."));
     return true;
   };
 
@@ -515,8 +594,8 @@ export function BrowserView({
       }
       const target = new URL(currentUrl);
       const saved = await createTunnel({
-        name: `${browser.title} · ${target.host}`.slice(0, 120),
-        description: `Saved from Browser: ${currentUrl}`.slice(0, 1_000),
+        name: `Saved Browser route · ${target.host}`.slice(0, 120),
+        description: "Saved from an end-to-end encrypted Browser surface.",
         projectId: browser.projectId,
         protocolHint: managed.protocolHint,
         destination: managed.destination,

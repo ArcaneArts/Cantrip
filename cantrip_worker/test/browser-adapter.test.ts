@@ -5,30 +5,197 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  deriveComponentKey,
+  generateAccountMasterKey,
+  wrapComponentKeyForWorker,
+} from "@cantrip/crypto";
+import {
   remoteBrowserClipboardMessageSchema,
   remoteBrowserCursorMessageSchema,
   remoteBrowserServerMessageSchema,
   type RemoteSurfaceChannel,
 } from "@cantrip/protocol";
+import type {
+  EncryptionKeyGrant,
+  EncryptionPrincipal,
+} from "@cantrip/protocol/encryption";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { BrowserRemoteSurfaceAdapter } from "../src/browser/browser-adapter.js";
 import { findChromiumExecutable } from "../src/browser/chromium.js";
 import { readWorkerLogs } from "../src/logger.js";
+import {
+  decodeSurfacePrivateStateForWorker,
+  encodeSurfacePrivateStateForWorker,
+} from "../src/surface-private-state-encryption.js";
+import { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const temporaryDirectories: string[] = [];
 
 async function eventually(
-  predicate: () => boolean,
+  predicate: () => boolean | Promise<boolean>,
   timeoutMs = 15_000,
 ): Promise<void> {
   const started = Date.now();
-  while (!predicate()) {
+  while (!(await predicate())) {
     if (Date.now() - started > timeoutMs) {
       throw new Error("Timed out waiting for the worker browser.");
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
+}
+
+const ownerId = "browser-adapter-owner";
+const serverId = "https://browser-adapter.test";
+const workerId = "browser-adapter-worker";
+const timestamp = "2026-08-20T12:00:00.000Z";
+
+async function encryptionService(
+  dataDirectory: string,
+): Promise<WorkerEncryptionService> {
+  const service = await WorkerEncryptionService.open({
+    dataDirectory,
+    serverUrl: serverId,
+    workerId,
+  });
+  const registration = service.registration();
+  const principal: EncryptionPrincipal = {
+    id: registration.principalId,
+    ownerId,
+    kind: "worker",
+    workerId,
+    label: "Browser adapter worker",
+    publicKey: registration.publicKey,
+    state: "approved",
+    revision: 1,
+    approvedAt: timestamp,
+    revokedAt: null,
+    revokedReason: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const componentKey = deriveComponentKey({
+    accountMasterKey: generateAccountMasterKey(),
+    ownerId,
+    component: "surface-private-state",
+    keyRevision: 1,
+  });
+  const wrappedKey = await wrapComponentKeyForWorker({
+    ownerId,
+    workerId,
+    component: "surface-private-state",
+    componentKey,
+    keyRevision: 1,
+    workerPublicKey: principal.publicKey,
+  });
+  const grant: EncryptionKeyGrant = {
+    id: crypto.randomUUID(),
+    ownerId,
+    principalId: principal.id,
+    component: "surface-private-state",
+    keyRevision: 1,
+    wrappedKey,
+    state: "active",
+    revision: 1,
+    revokedAt: null,
+    revokedReason: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  await service.acceptBootstrap({ ownerId, principal, grants: [grant] });
+  return service;
+}
+
+function persistentBrowserState(input: {
+  revision: number;
+  service: WorkerEncryptionService;
+  surfaceId: string;
+  url: string;
+}) {
+  return encodeSurfacePrivateStateForWorker({
+    ownerId,
+    context: {
+      serverId,
+      resource: "browser-row",
+      resourceId: input.surfaceId,
+      operationId: null,
+      recordKind: "browser-state",
+    },
+    content: {
+      version: 1,
+      classification: { recordKind: "browser-state" },
+      revision: input.revision,
+      url: input.url,
+    },
+    service: input.service,
+  });
+}
+
+function navigationBrowserState(input: {
+  operationId: string;
+  revision: number;
+  service: WorkerEncryptionService;
+  surfaceId: string;
+  url: string;
+}) {
+  return encodeSurfacePrivateStateForWorker({
+    ownerId,
+    context: {
+      serverId,
+      resource: "browser-operation",
+      resourceId: input.surfaceId,
+      operationId: input.operationId,
+      recordKind: "browser-state",
+    },
+    content: {
+      version: 1,
+      classification: { recordKind: "browser-state" },
+      revision: input.revision,
+      url: input.url,
+    },
+    service: input.service,
+  });
+}
+
+async function hasBrowserState(input: {
+  emissions: Array<{ channel: RemoteSurfaceChannel; payload: Uint8Array }>;
+  revision: number;
+  service: WorkerEncryptionService;
+  surfaceId: string;
+  title?: string;
+  url: string;
+}): Promise<boolean> {
+  for (const { channel, payload } of input.emissions) {
+    if (channel !== "control") continue;
+    const state = remoteBrowserServerMessageSchema.parse(
+      JSON.parse(new TextDecoder().decode(payload)),
+    );
+    if (state.type !== "browser-state") continue;
+    try {
+      const opened = await decodeSurfacePrivateStateForWorker({
+        ownerId,
+        context: {
+          serverId,
+          resource: "browser-operation",
+          resourceId: input.surfaceId,
+          operationId: state.operationId,
+          recordKind: "browser-state",
+        },
+        opaque: state.stateProtection,
+        service: input.service,
+      });
+      if (
+        opened.revision === input.revision &&
+        opened.url === input.url &&
+        (input.title === undefined || state.title === input.title)
+      ) {
+        return true;
+      }
+    } catch {
+      // Ignore frames from another operation while waiting for the target state.
+    }
+  }
+  return false;
 }
 
 afterEach(async () => {
@@ -79,16 +246,28 @@ describe("BrowserRemoteSurfaceAdapter", () => {
         dataDirectory,
         onLaunch: (process) => adoptedLaunches.push(process),
       });
+      const surfacePrivateState = await encryptionService(dataDirectory);
+      firstAdapter.setSurfacePrivateStateService(surfacePrivateState);
+      adoptedAdapter.setSurfacePrivateStateService(surfacePrivateState);
+      const surfaceId = "browser-adoption-test";
       const command = {
         type: "surface.attach" as const,
-        surfaceId: "browser-adoption-test",
+        surfaceId,
         attachmentId: "first-attachment",
         projectId: "project-test",
+        serverId,
         configuration: {
           kind: "browser" as const,
-          initialUrl: root,
           profileId: null,
         },
+        stateResource: "browser-row" as const,
+        stateRevision: 1,
+        stateProtection: await persistentBrowserState({
+          revision: 1,
+          service: surfacePrivateState,
+          surfaceId,
+          url: root,
+        }),
         preferredTransport: "websocket" as const,
         viewport: { width: 640, height: 480, devicePixelRatio: 1 },
         desktopStream: null,
@@ -179,17 +358,28 @@ describe("BrowserRemoteSurfaceAdapter", () => {
         dataDirectory,
         onLaunch: (process) => launches.push(process),
       });
+      const surfacePrivateState = await encryptionService(dataDirectory);
+      adapter.setSurfacePrivateStateService(surfacePrivateState);
+      const surfaceId = "browser-test";
       const session = await adapter.open(
         {
           type: "surface.attach",
-          surfaceId: "browser-test",
+          surfaceId,
           attachmentId: "attachment-test",
           projectId: "project-test",
+          serverId,
           configuration: {
             kind: "browser",
-            initialUrl: root,
             profileId: null,
           },
+          stateResource: "browser-row",
+          stateRevision: 1,
+          stateProtection: await persistentBrowserState({
+            revision: 1,
+            service: surfacePrivateState,
+            surfaceId,
+            url: root,
+          }),
           preferredTransport: "websocket",
           viewport: { width: 640, height: 480, devicePixelRatio: 1 },
           desktopStream: null,
@@ -214,26 +404,33 @@ describe("BrowserRemoteSurfaceAdapter", () => {
           ({ channel }) => channel === "frame",
         ).length;
 
+        const navigationOperationId = crypto.randomUUID();
         await session.handleFrame(
           "attachment-test",
           "control",
           new TextEncoder().encode(
-            JSON.stringify({ type: "navigate", url: `${root}next` }),
+            JSON.stringify({
+              type: "navigate",
+              operationId: navigationOperationId,
+              stateProtection: await navigationBrowserState({
+                operationId: navigationOperationId,
+                revision: 1,
+                service: surfacePrivateState,
+                surfaceId,
+                url: `${root}next`,
+              }),
+            }),
           ),
         );
         await eventually(() =>
-          emissions
-            .filter(({ channel }) => channel === "control")
-            .some(({ payload }) => {
-              const state = remoteBrowserServerMessageSchema.parse(
-                JSON.parse(new TextDecoder().decode(payload)),
-              );
-              return (
-                state.type === "browser-state" &&
-                state.url === `${root}next` &&
-                state.title === "Next"
-              );
-            }),
+          hasBrowserState({
+            emissions,
+            revision: 1,
+            service: surfacePrivateState,
+            surfaceId,
+            title: "Next",
+            url: `${root}next`,
+          }),
         );
         await eventually(
           () =>
@@ -241,24 +438,29 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             framesBeforeNavigation,
         );
 
-        await session.updateConfiguration?.({
-          kind: "browser",
-          initialUrl: `${root}configured`,
-          profileId: null,
-        });
-        await eventually(() =>
-          emissions
-            .filter(({ channel }) => channel === "control")
-            .some(({ payload }) => {
-              const state = remoteBrowserServerMessageSchema.parse(
-                JSON.parse(new TextDecoder().decode(payload)),
-              );
-              return (
-                state.type === "browser-state" &&
-                state.url === `${root}configured` &&
-                state.title === "Configured"
-              );
+        await session.updateConfiguration?.(
+          { kind: "browser", profileId: null },
+          {
+            serverId,
+            stateResource: "browser-row",
+            stateRevision: 2,
+            stateProtection: await persistentBrowserState({
+              revision: 2,
+              service: surfacePrivateState,
+              surfaceId,
+              url: `${root}configured`,
             }),
+          },
+        );
+        await eventually(() =>
+          hasBrowserState({
+            emissions,
+            revision: 2,
+            service: surfacePrivateState,
+            surfaceId,
+            title: "Configured",
+            url: `${root}configured`,
+          }),
         );
 
         await session.handleFrame(
@@ -354,17 +556,13 @@ describe("BrowserRemoteSurfaceAdapter", () => {
           20_000,
         );
         await eventually(() =>
-          emissions
-            .filter(({ channel }) => channel === "control")
-            .some(({ payload }) => {
-              const state = remoteBrowserServerMessageSchema.parse(
-                JSON.parse(new TextDecoder().decode(payload)),
-              );
-              return (
-                state.type === "browser-state" &&
-                state.url === `${root}configured`
-              );
-            }),
+          hasBrowserState({
+            emissions,
+            revision: 2,
+            service: surfacePrivateState,
+            surfaceId,
+            url: `${root}configured`,
+          }),
         );
       } finally {
         await session.close();

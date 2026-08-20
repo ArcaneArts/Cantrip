@@ -90,6 +90,7 @@ export const browserPrivateStateProtectedContentSchema = z
     classification: z
       .object({ recordKind: z.literal("browser-state") })
       .strict(),
+    revision: z.number().int().positive().safe(),
     url: protectedHttpUrlSchema,
   })
   .strict();

@@ -119,7 +119,12 @@ describe("surface title encryption adapter", () => {
         "Private browser",
         "browser",
       ),
-      url: "https://example.com",
+      stateProtection: await adapter.protectBrowserState(
+        ids.browser,
+        "https://example.com",
+        1,
+      ),
+      stateRevision: 1,
       workerId: "worker-a",
     };
     const desktop: RemoteDesktopWireSummary = {
@@ -149,9 +154,14 @@ describe("surface title encryption adapter", () => {
       preferredTransport: "webrtc",
       configuration: {
         kind: "browser",
-        initialUrl: "https://example.com",
         profileId: null,
       },
+      stateProtection: await adapter.protectBrowserRemoteSurfaceState(
+        ids.surface,
+        "https://example.com",
+        1,
+      ),
+      stateRevision: 1,
       lastError: null,
       lastConnectedAt: null,
       createdAt: timestamp,

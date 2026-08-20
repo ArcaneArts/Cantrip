@@ -27,6 +27,8 @@ import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 import {
   protectedChatFields,
+  protectedBrowserFields,
+  protectedBrowserRemoteSurfaceFields,
   protectedDisplayLabelFields,
   protectedExplorerFields,
   protectedProjectFields,
@@ -488,14 +490,26 @@ describe.sequential("project execution placement API", () => {
       method: "POST",
       url: `/api/projects/${projectId}/browsers`,
       payload: {
-        ...protectedDisplayLabelFields("browser"),
+        ...protectedBrowserFields(),
         target: { kind: "worker", projectId, workerId: "worker-alpha" },
       },
     });
     expect(created.statusCode).toBe(201);
-    expect(browserWireSummarySchema.parse(created.json())).toMatchObject({
+    const createdBrowser = browserWireSummarySchema.parse(created.json());
+    expect(createdBrowser).toMatchObject({
       workerId: "worker-alpha",
     });
+    const staleBrowserUpdate = await app.inject({
+      method: "PATCH",
+      url: `/api/browsers/${createdBrowser.id}`,
+      payload: {
+        expectedStateRevision: createdBrowser.stateRevision + 1,
+        stateProtection: protectedBrowserFields(createdBrowser.id)
+          .stateProtection,
+      },
+    });
+    expect(staleBrowserUpdate.statusCode).toBe(409);
+    expect(staleBrowserUpdate.json()).toMatchObject({ code: "stale-state" });
 
     const terminalCreated = await app.inject({
       method: "POST",
@@ -644,11 +658,10 @@ describe.sequential("project execution placement API", () => {
       LOCAL_USER_ID,
       projectId,
       {
-        ...protectedDisplayLabelFields("remote-surface"),
+        ...protectedBrowserRemoteSurfaceFields(),
         workerId: "worker-beta",
         configuration: {
           kind: "browser",
-          initialUrl: "https://example.com",
           profileId: null,
         },
       },
@@ -739,7 +752,7 @@ describe.sequential("project execution placement API", () => {
           method: "POST",
           url: `/api/projects/${projectId}/browsers`,
           payload: {
-            ...protectedDisplayLabelFields("browser"),
+            ...protectedBrowserFields(),
             target: { kind: "worker", projectId, workerId: "worker-beta" },
           },
         })
@@ -1044,7 +1057,8 @@ describe.sequential("project execution placement API", () => {
     expect(cliRestart.statusCode).toBe(200);
     const cliNavigate = await cli("browser.open", {
       target: browser.id,
-      url: "https://example.com/from-cli",
+      expectedStateRevision: browser.stateRevision,
+      stateProtection: protectedBrowserFields(browser.id).stateProtection,
     });
     expect(cliNavigate.statusCode).toBe(200);
     expect(
@@ -1056,8 +1070,9 @@ describe.sequential("project execution placement API", () => {
         surfaceId: browser.id,
       },
       mutated: true,
-      data: { url: "https://example.com/from-cli" },
+      data: { stateRevision: browser.stateRevision + 1 },
     });
+    expect(JSON.stringify(cliNavigate.json())).not.toContain("from-cli");
     expect(routedCommands).toEqual(
       expect.arrayContaining([
         {
