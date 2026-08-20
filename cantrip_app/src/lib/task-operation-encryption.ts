@@ -19,6 +19,7 @@ import type { ClientSessionContext } from "./client-session";
 import { getClientSession } from "./client-session";
 import type { ClientEncryptionService } from "./client-encryption";
 import { ClientEncryptionError, clientEncryption } from "./client-encryption";
+import { createTaskMessageOpaqueContent } from "./task-message-encryption";
 
 function encryptionContext(input: {
   service?: ClientEncryptionService;
@@ -83,6 +84,41 @@ function runningTaskContent(input: {
   };
 }
 
+function operationMessageText(input: {
+  additionalDirection?: string;
+  answers?: TaskQuestionAnswer[];
+  kind: TaskOperationKind;
+  task: TaskDetail;
+}): string {
+  if (input.kind === "initial-plan") {
+    return `Plan this Task from the saved brief.\n\n${input.task.briefMarkdown}`;
+  }
+  const questions = new Map(
+    input.task.currentQuestions.map((question) => [question.id, question]),
+  );
+  const answers = (input.answers ?? input.task.currentAnswers)
+    .map((answer) => {
+      const question = questions.get(answer.questionId);
+      const option = question?.options.find(
+        (candidate) => candidate.id === answer.optionId,
+      );
+      return `- ${question?.header ?? answer.questionId}: ${[
+        option?.label,
+        answer.freeform,
+      ]
+        .filter(Boolean)
+        .join(" — ")}`;
+    })
+    .join("\n");
+  const action =
+    input.kind === "finalize"
+      ? "Finalize this Task plan for implementation."
+      : "Continue planning this Task.";
+  return `${action}\n\n${answers || "No answers were supplied."}\n\n${
+    input.additionalDirection?.trim() || "No additional direction was supplied."
+  }`;
+}
+
 export async function prepareTaskOperationRelay(input: {
   additionalDirection?: string;
   answers?: TaskQuestionAnswer[];
@@ -117,6 +153,16 @@ export async function prepareTaskOperationRelay(input: {
     error: null,
   };
   const taskContent = runningTaskContent(input);
+  const userMessage = await createTaskMessageOpaqueContent(
+    {
+      content: [{ type: "text", text: operationMessageText(input) }],
+      idempotencyKey: `task-operation:${input.operationId}`,
+      messageId: crypto.randomUUID(),
+      mode: "plan",
+      role: "user",
+    },
+    input,
+  );
   try {
     return await createTaskOperationRelayRequest({
       ownerId: context.identity.ownerId,
@@ -126,6 +172,7 @@ export async function prepareTaskOperationRelay(input: {
       componentKey,
       content,
       taskContent,
+      userMessage,
     });
   } finally {
     clearSensitiveBytes(componentKey);

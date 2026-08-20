@@ -7,6 +7,8 @@ import {
   isManagedCodeGraphMcpName,
   normalizeResponsesBaseUrl,
   projectCapabilitiesForOriginKind,
+  taskMessageOpaqueContentSchema,
+  taskMessageOpaqueSummarySchema,
   unavailableCodeCapabilities,
   unavailableCodeGraphWorkerStatus,
   unavailableManagedFolderCapabilities,
@@ -128,6 +130,8 @@ import type {
   TaskCreate,
   TaskCreateResult,
   TaskOpaqueSummary,
+  TaskMessageOpaqueContent,
+  TaskMessageOpaqueSummary,
   ThemePreference,
   TunnelAttachmentSummary,
   TunnelDestinationEndpoint,
@@ -1990,6 +1994,9 @@ function toModelSummary(
 function toChatMessage(
   message: typeof schema.chatMessages.$inferSelect,
 ): ChatMessage {
+  if (!message.content || message.taskProtectedContent) {
+    throw new Error("Encrypted Task messages require the opaque mapper.");
+  }
   return {
     id: message.id,
     chatId: message.chatId,
@@ -2009,6 +2016,35 @@ function toChatMessage(
     reasoningAdjusted: message.reasoningAdjusted,
     createdAt: toISOString(message.createdAt),
   };
+}
+
+function toTaskMessage(
+  message: typeof schema.chatMessages.$inferSelect,
+): TaskMessageOpaqueSummary {
+  if (!message.taskProtectedContent || message.content) {
+    throw new Error("Visible chat messages require the plaintext mapper.");
+  }
+  return taskMessageOpaqueSummarySchema.parse({
+    id: message.id,
+    chatId: message.chatId,
+    worktreeId: message.worktreeId,
+    executionLaneId: message.executionLaneId,
+    sequence: message.sequence,
+    role: message.role,
+    mode: message.mode,
+    attachmentIds: message.taskAttachmentIds,
+    protectedContent: message.taskProtectedContent,
+    modelId: message.modelId,
+    modelRouteId: message.modelRouteId,
+    providerId: message.providerId,
+    providerName: message.providerName,
+    providerModelName: message.providerModelName,
+    reasoningEffort: message.reasoningEffort,
+    appliedReasoningEffort: message.appliedReasoningEffort,
+    reasoningAdjusted: message.reasoningAdjusted,
+    idempotencyKey: message.idempotencyKey,
+    createdAt: toISOString(message.createdAt),
+  });
 }
 
 function toChatAttachment(
@@ -15122,7 +15158,13 @@ export class ServerRepository {
     const rows = await this.database
       .select({ message: schema.chatMessages })
       .from(schema.chatMessages)
-      .innerJoin(schema.chats, eq(schema.chats.id, schema.chatMessages.chatId))
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "agent"),
+        ),
+      )
       .innerJoin(
         schema.projects,
         and(
@@ -15133,6 +15175,58 @@ export class ServerRepository {
       .where(eq(schema.chatMessages.chatId, chatId))
       .orderBy(asc(schema.chatMessages.sequence));
     return rows.map(({ message }) => toChatMessage(message));
+  }
+
+  async listTaskMessages(
+    ownerId: string,
+    chatId: string,
+  ): Promise<TaskMessageOpaqueSummary[]> {
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "task"),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chatMessages.chatId, chatId))
+      .orderBy(asc(schema.chatMessages.sequence));
+    return rows.map(({ message }) => toTaskMessage(message));
+  }
+
+  async listMessageHeaders(ownerId: string, chatId: string) {
+    const rows = await this.database
+      .select({
+        id: schema.chatMessages.id,
+        executionLaneId: schema.chatMessages.executionLaneId,
+        role: schema.chatMessages.role,
+        createdAt: schema.chatMessages.createdAt,
+      })
+      .from(schema.chatMessages)
+      .innerJoin(schema.chats, eq(schema.chats.id, schema.chatMessages.chatId))
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(eq(schema.chatMessages.chatId, chatId))
+      .orderBy(asc(schema.chatMessages.sequence));
+    return rows.map((row) => ({
+      ...row,
+      role: row.role as "assistant" | "system" | "user",
+      createdAt: toISOString(row.createdAt),
+    }));
   }
 
   async listQueuedPrompts(
@@ -15379,6 +15473,7 @@ export class ServerRepository {
     const chat = await this.database
       .select({
         id: schema.chats.id,
+        experience: schema.chats.experience,
         worktreeId: schema.chats.activeWorktreeId,
       })
       .from(schema.chats)
@@ -15391,7 +15486,7 @@ export class ServerRepository {
       )
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .limit(1);
-    if (!chat[0]) {
+    if (!chat[0] || chat[0].experience !== "agent") {
       return null;
     }
 
@@ -15464,6 +15559,189 @@ export class ServerRepository {
     return toChatMessage(message);
   }
 
+  async appendTaskMessage(
+    ownerId: string,
+    chatId: string,
+    input: TaskMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+  ): Promise<TaskMessageOpaqueSummary | null> {
+    const message = taskMessageOpaqueContentSchema.parse(input);
+    const chat = await this.database
+      .select({
+        id: schema.chats.id,
+        experience: schema.chats.experience,
+        worktreeId: schema.chats.activeWorktreeId,
+      })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
+      .limit(1);
+    if (!chat[0] || chat[0].experience !== "task") return null;
+
+    const activeLanes = attribution
+      ? await this.database
+          .select({
+            id: schema.chatExecutionLanes.id,
+            worktreeId: schema.chatExecutionLanes.worktreeId,
+          })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.id, attribution.executionLaneId),
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, attribution.worktreeId),
+            ),
+          )
+          .limit(1)
+      : await this.database
+          .select({
+            id: schema.chatExecutionLanes.id,
+            worktreeId: schema.chatExecutionLanes.worktreeId,
+          })
+          .from(schema.chatExecutionLanes)
+          .where(
+            and(
+              eq(schema.chatExecutionLanes.chatId, chatId),
+              eq(schema.chatExecutionLanes.worktreeId, chat[0].worktreeId),
+              eq(schema.chatExecutionLanes.state, "active"),
+            ),
+          )
+          .limit(1);
+    if (attribution && !activeLanes[0]) return null;
+
+    const existing = await this.database
+      .select()
+      .from(schema.chatMessages)
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          eq(schema.chatMessages.idempotencyKey, message.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (existing[0]) {
+      if (
+        existing[0].id !== message.id ||
+        existing[0].role !== message.classification.role ||
+        existing[0].mode !== message.classification.mode ||
+        existing[0].reasoningEffort !== message.reasoningEffort ||
+        JSON.stringify(existing[0].taskAttachmentIds) !==
+          JSON.stringify(message.classification.attachmentIds) ||
+        JSON.stringify(existing[0].taskProtectedContent) !==
+          JSON.stringify(message.protectedContent)
+      ) {
+        throw new Error(
+          "Encrypted Task message idempotency metadata is inconsistent.",
+        );
+      }
+      return toTaskMessage(existing[0]);
+    }
+
+    const result = await this.database
+      .insert(schema.chatMessages)
+      .values({
+        id: message.id,
+        chatId,
+        worktreeId: attribution?.worktreeId ?? chat[0].worktreeId,
+        executionLaneId: activeLanes[0]?.id ?? null,
+        role: message.classification.role,
+        mode: message.classification.mode,
+        content: null,
+        taskProtectedContent: message.protectedContent,
+        taskAttachmentIds: message.classification.attachmentIds,
+        reasoningEffort: message.reasoningEffort,
+        idempotencyKey: message.idempotencyKey,
+      })
+      .returning();
+    await this.database
+      .update(schema.chats)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.chats.id, chatId));
+    return toTaskMessage(firstOrThrow(result, "appending a Task message"));
+  }
+
+  async setTaskMessageModelRoute(
+    ownerId: string,
+    messageId: string,
+    modelId: string,
+    runtime: ModelRuntime,
+    reasoning: {
+      appliedReasoningEffort: ReasoningEffort | null;
+      reasoningAdjusted: boolean;
+    } = { appliedReasoningEffort: null, reasoningAdjusted: false },
+  ): Promise<TaskMessageOpaqueSummary | null> {
+    const rows = await this.database
+      .update(schema.chatMessages)
+      .set({
+        modelId,
+        modelRouteId: runtime.routeId,
+        providerId: runtime.provider.id,
+        providerName: runtime.provider.name,
+        providerModelName: runtime.model.name,
+        appliedReasoningEffort: reasoning.appliedReasoningEffort,
+        reasoningAdjusted: reasoning.reasoningAdjusted,
+      })
+      .where(
+        and(
+          eq(schema.chatMessages.id, messageId),
+          isNotNull(schema.chatMessages.taskProtectedContent),
+          exists(
+            this.database
+              .select({ id: schema.chats.id })
+              .from(schema.chats)
+              .innerJoin(
+                schema.projects,
+                and(
+                  eq(schema.projects.id, schema.chats.projectId),
+                  eq(schema.projects.ownerId, ownerId),
+                ),
+              )
+              .where(eq(schema.chats.id, schema.chatMessages.chatId)),
+          ),
+        ),
+      )
+      .returning();
+    return rows[0] ? toTaskMessage(rows[0]) : null;
+  }
+
+  async getTaskMessageByIdempotencyKey(
+    ownerId: string,
+    chatId: string,
+    idempotencyKey: string,
+  ): Promise<TaskMessageOpaqueSummary | null> {
+    const rows = await this.database
+      .select({ message: schema.chatMessages })
+      .from(schema.chatMessages)
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "task"),
+        ),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatMessages.chatId, chatId),
+          eq(schema.chatMessages.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toTaskMessage(rows[0].message) : null;
+  }
+
   async setMessageModelRoute(
     ownerId: string,
     messageId: string,
@@ -15488,6 +15766,7 @@ export class ServerRepository {
       .where(
         and(
           eq(schema.chatMessages.id, messageId),
+          isNotNull(schema.chatMessages.content),
           exists(
             this.database
               .select({ id: schema.chats.id })
@@ -15550,7 +15829,13 @@ export class ServerRepository {
     const rows = await this.database
       .select({ message: schema.chatMessages })
       .from(schema.chatMessages)
-      .innerJoin(schema.chats, eq(schema.chats.id, schema.chatMessages.chatId))
+      .innerJoin(
+        schema.chats,
+        and(
+          eq(schema.chats.id, schema.chatMessages.chatId),
+          eq(schema.chats.experience, "agent"),
+        ),
+      )
       .innerJoin(
         schema.projects,
         and(

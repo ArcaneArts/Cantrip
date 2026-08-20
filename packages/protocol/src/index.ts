@@ -32,6 +32,12 @@ export * from "./encryption.js";
 
 import { agentPolicyContextSchema } from "./policies.js";
 import {
+  taskGoalSyncContextSchema,
+  taskGoalObjectiveOpaqueSnapshotSchema,
+  taskGoalWorkerResultSchema,
+  taskMessageOpaqueContentSchema,
+  taskMessageOpaqueSummarySchema,
+  taskMessageRelayResultSchema,
   taskOpaqueContentSchema,
   taskOpaqueSummarySchema,
   taskOperationRelayGoalSchema,
@@ -5320,6 +5326,9 @@ export const chatRelocationContextMessageSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+export const taskRelocationContextMessageSchema =
+  taskMessageOpaqueSummarySchema;
+
 export const chatRelocationAttachmentAvailabilitySchema = z.object({
   attachment: chatAttachmentSummarySchema,
   sha256: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -5327,11 +5336,20 @@ export const chatRelocationAttachmentAvailabilitySchema = z.object({
   availableWorkerIds: z.array(z.string().min(1).max(200)).max(1_000),
 });
 
-export const chatRelocationContextPayloadSchema = z.object({
-  version: z.literal(1),
-  messages: z.array(chatRelocationContextMessageSchema).max(100_000),
-  attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
-});
+export const chatRelocationContextPayloadSchema = z.union([
+  z.object({
+    version: z.literal(1),
+    kind: z.literal("visible").default("visible"),
+    messages: z.array(chatRelocationContextMessageSchema).max(100_000),
+    attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
+  }),
+  z.object({
+    version: z.literal(1),
+    kind: z.literal("task-encrypted"),
+    messages: z.array(taskRelocationContextMessageSchema).max(100_000),
+    attachments: z.array(chatRelocationAttachmentAvailabilitySchema).max(2_000),
+  }),
+]);
 
 export const chatRelocationSnapshotSummarySchema = z.object({
   id: z.string().uuid(),
@@ -5791,6 +5809,16 @@ export const workerCliCommandCallSchema = cantripCliCommandRequestSchema
 
 export const chatMessageListSchema = z.array(chatMessageSchema);
 
+export const chatMessageWireListSchema = z.union([
+  z
+    .object({
+      kind: z.literal("task-encrypted"),
+      messages: z.array(taskMessageOpaqueSummarySchema).max(100_000),
+    })
+    .strict(),
+  chatMessageListSchema,
+]);
+
 export const chatTurnCreateSchema = z
   .object({
     text: z.string().trim().max(100_000).default(""),
@@ -5924,6 +5952,16 @@ export const threadGoalSchema = z.object({
 export const chatGoalResponseSchema = z.object({
   goal: threadGoalSchema.nullable(),
 });
+
+export const chatGoalWireResponseSchema = z.union([
+  z
+    .object({
+      kind: z.literal("task-encrypted"),
+      goal: taskGoalObjectiveOpaqueSnapshotSchema.nullable(),
+    })
+    .strict(),
+  chatGoalResponseSchema,
+]);
 
 export const chatGoalCreateSchema = z.object({
   objective: z.string().trim().min(1).max(100_000),
@@ -7944,6 +7982,11 @@ export const agentTurnResultModeSchema = z.discriminatedUnion("kind", [
     kind: z.literal("task-encrypted"),
     operation: taskOperationRelayRequestSchema,
   }),
+  z.object({
+    kind: z.literal("task-message-encrypted"),
+    messageId: z.string().uuid(),
+    idempotencyKey: z.string().min(1).max(200),
+  }),
 ]);
 
 export const normalizedAgentMessageSchema = z.object({
@@ -9693,6 +9736,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
+    taskContext: taskGoalSyncContextSchema.optional(),
   }),
   z.object({
     type: z.literal("chat.goal.create"),
@@ -9707,6 +9751,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
+    taskContext: taskGoalSyncContextSchema.optional(),
   }),
   z.object({
     type: z.literal("chat.goal.update"),
@@ -9717,6 +9762,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
     permissionProfileId: permissionProfileIdSchema,
+    taskContext: taskGoalSyncContextSchema.optional(),
   }),
   z.object({
     type: z.literal("chat.goal.clear"),

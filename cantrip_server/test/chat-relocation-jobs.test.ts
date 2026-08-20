@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -52,11 +53,38 @@ async function createChat(title: string) {
 }
 
 async function createTask(title: string) {
+  const classification = {
+    state: "draft" as const,
+    stableStateBeforeFailure: null,
+    activeOperationKind: null,
+    planAuthorship: "agent" as const,
+    planningRound: 0,
+    hasPlan: false,
+    hasQuestions: false,
+    hasFinalPlan: false,
+    hasGoalPrompt: false,
+    lastError: null,
+  };
   const created = await database.repository.createTask(
     LOCAL_USER_ID,
     projectId,
     {
+      chatId: randomUUID(),
       title,
+      task: {
+        classification,
+        protectedContent: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+          },
+        },
+      },
       worktreeId: alphaWorktreeId,
       worktreeMode: "agent-managed",
     },
@@ -340,7 +368,21 @@ describe.sequential("durable chat relocation jobs", () => {
       created.chat.id,
       {
         rowVersion: created.task.rowVersion,
-        briefMarkdown: "Use the selected attachment while planning.",
+        task: {
+          classification: {
+            state: created.task.state,
+            stableStateBeforeFailure: created.task.stableStateBeforeFailure,
+            activeOperationKind: created.task.activeOperationKind,
+            planAuthorship: created.task.planAuthorship,
+            planningRound: created.task.planningRound,
+            hasPlan: created.task.hasPlan,
+            hasQuestions: created.task.hasQuestions,
+            hasFinalPlan: created.task.hasFinalPlan,
+            hasGoalPrompt: created.task.hasGoalPrompt,
+            lastError: created.task.lastError,
+          },
+          protectedContent: created.task.protectedContent,
+        },
         draftAttachmentIds: [attachment!.id],
       },
     );

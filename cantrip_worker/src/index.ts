@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   providerQuotaSnapshotSchema,
+  mentionedSkillNames,
   workerEncryptionRefreshResultSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
@@ -71,8 +72,11 @@ import {
 } from "./legacy-provider-credentials.js";
 import { readWorkerLogs, workerLogError, workerLogger } from "./logger.js";
 import {
+  encryptTaskTurnResult,
   executeEncryptedTaskOperation,
+  openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
+  protectTaskGoalResult,
 } from "./task-operation.js";
 import { discoverOllamaModels } from "./ollama.js";
 import {
@@ -1833,7 +1837,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (command.automationPaused) pausedChats.add(command.chatId);
         const runtime = runtimeFor(command);
         runtime.setChatPaused(command.chatId, pausedChats.has(command.chatId));
-        const encryptedTask = command.resultMode.kind === "task-encrypted";
+        const encryptedTask =
+          command.resultMode.kind === "task-encrypted" ||
+          command.resultMode.kind === "task-message-encrypted";
+        const encryptedTaskOperation =
+          command.resultMode.kind === "task-encrypted";
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
           command.mcpServers,
@@ -1862,39 +1870,43 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             resultMode,
             prompt,
             rootKind: command.rootKind,
-            skillNames: encryptedTask ? [] : command.skillNames,
+            skillNames: encryptedTaskOperation ? [] : command.skillNames,
             threadId: command.threadId,
             worktreeMode: command.worktreeMode,
             worktreePolicy: command.worktreePolicy,
-            ...(encryptedTask
+            ...(encryptedTaskOperation
               ? {}
               : {
-                  onActivity: (activity) =>
-                    emit({ type: "agent.activity", activity }),
-                  onMessage: (message) =>
-                    emit({ type: "agent.message", message }),
                   onInteractionRequest: (request) =>
                     emit({ type: "agent.interaction.requested", request }),
                   onInteractionCleared: (requestKey) =>
                     emit({ type: "agent.interaction.cleared", requestKey }),
                   onInteractionExpired: (requestKey) =>
                     emit({ type: "agent.interaction.expired", requestKey }),
-                  onCheckpoint: ({ text, turnId }) =>
-                    emit({ type: "agent.checkpoint", text, turnId }),
-                  onPlan: ({ explanation, steps, turnId }) =>
-                    emit({
-                      type: "agent.plan.updated",
-                      explanation,
-                      steps,
-                      turnId,
-                    }),
-                  onPlanQuestion: (question) =>
-                    emit({ type: "agent.plan.question", question }),
-                  onPlanQuestionResolved: (questionId) =>
-                    emit({
-                      type: "agent.plan.question-resolved",
-                      questionId,
-                    }),
+                  ...(encryptedTask
+                    ? {}
+                    : {
+                        onActivity: (activity) =>
+                          emit({ type: "agent.activity", activity }),
+                        onMessage: (message) =>
+                          emit({ type: "agent.message", message }),
+                        onCheckpoint: ({ text, turnId }) =>
+                          emit({ type: "agent.checkpoint", text, turnId }),
+                        onPlan: ({ explanation, steps, turnId }) =>
+                          emit({
+                            type: "agent.plan.updated",
+                            explanation,
+                            steps,
+                            turnId,
+                          }),
+                        onPlanQuestion: (question) =>
+                          emit({ type: "agent.plan.question", question }),
+                        onPlanQuestionResolved: (questionId) =>
+                          emit({
+                            type: "agent.plan.question-resolved",
+                            questionId,
+                          }),
+                      }),
                 }),
             onThreadLoaded: (threadId) => {
               cliBroker.bindCodexThread(threadId, {
@@ -1911,6 +1923,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             request: command.resultMode.operation,
             run: ({ outputSchema, prompt }) =>
               runTurn(prompt, { kind: "structured", outputSchema }),
+          });
+        }
+        if (command.resultMode.kind === "task-message-encrypted") {
+          const result = await runTurn(command.prompt, { kind: "visible" });
+          return encryptTaskTurnResult({
+            getComponentKey: () =>
+              workerEncryption.componentKey("task-content"),
+            idempotencyKey: command.resultMode.idempotencyKey,
+            messageId: command.resultMode.messageId,
+            ownerId: workerEncryption.ownerId(),
+            result,
           });
         }
         return runTurn(command.prompt, command.resultMode);
@@ -2033,14 +2056,25 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.chatId,
           command.threadId,
         );
-      case "chat.goal.get":
-        return runtimeFor(command).getGoal({
+      case "chat.goal.get": {
+        const result = await runtimeFor(command).getGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
           provider: command.provider,
           threadId: command.threadId,
         });
+        return command.taskContext
+          ? protectTaskGoalResult({
+              chatId: command.chatId,
+              context: command.taskContext,
+              getComponentKey: () =>
+                workerEncryption.componentKey("task-content"),
+              ownerId: workerEncryption.ownerId(),
+              rawResult: result,
+            })
+          : result;
+      }
       case "chat.goal.create": {
         const encryptedTaskGoal = typeof command.objective !== "string";
         const objective =
@@ -2063,17 +2097,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           threadId: command.threadId,
           tokenBudget: command.tokenBudget,
         });
-        return encryptedTaskGoal && result.goal
-          ? {
-              goal: {
-                ...result.goal,
-                objective: "Encrypted Task Goal",
-              },
-            }
+        return encryptedTaskGoal
+          ? protectTaskGoalResult({
+              chatId: command.chatId,
+              context: command.taskContext!,
+              getComponentKey: () =>
+                workerEncryption.componentKey("task-content"),
+              ownerId: workerEncryption.ownerId(),
+              rawResult: result,
+            })
           : result;
       }
-      case "chat.goal.update":
-        return runtimeFor(command).updateGoal({
+      case "chat.goal.update": {
+        const result = await runtimeFor(command).updateGoal({
           cwd: command.cwd,
           model: command.model,
           permissionProfileId: command.permissionProfileId,
@@ -2081,6 +2117,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           status: command.status,
           threadId: command.threadId,
         });
+        return command.taskContext
+          ? protectTaskGoalResult({
+              chatId: command.chatId,
+              context: command.taskContext,
+              getComponentKey: () =>
+                workerEncryption.componentKey("task-content"),
+              ownerId: workerEncryption.ownerId(),
+              rawResult: result,
+            })
+          : result;
+      }
       case "chat.goal.clear":
         return runtimeFor(command).clearGoal({
           cwd: command.cwd,
@@ -2118,6 +2165,32 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             upload.command.provider,
           );
         }
+        const taskEncrypted = upload.payload.kind === "task-encrypted";
+        const payload = await openTaskRelocationPayload({
+          getComponentKey: () => workerEncryption.componentKey("task-content"),
+          ownerId: workerEncryption.ownerId(),
+          payload: upload.payload,
+        });
+        const requiredSkillNames = taskEncrypted
+          ? [
+              ...new Set(
+                payload.kind === "visible"
+                  ? payload.messages.flatMap((message) =>
+                      message.content.flatMap((item) =>
+                        item.type === "text"
+                          ? mentionedSkillNames(item.text)
+                          : [],
+                      ),
+                    )
+                  : [],
+              ),
+            ].sort()
+          : upload.command.requiredSkillNames;
+        if (requiredSkillNames.length > 64) {
+          throw new Error(
+            "The encrypted Task transcript references too many skills.",
+          );
+        }
         const hydrated = await runtime.hydrateChatRelocation({
           cwd: upload.command.cwd,
           mcpServers: await agentMcpServers(
@@ -2125,11 +2198,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             upload.command.mcpServers,
           ),
           model: upload.command.model,
-          payload: upload.payload,
+          payload,
           permissionProfileId: upload.command.permissionProfileId,
           planMode: upload.command.planMode,
           provider: upload.command.provider,
-          requiredSkillNames: upload.command.requiredSkillNames,
+          requiredSkillNames,
           threadId: null,
           onThreadStarted: (threadId) =>
             chatRelocations.markHydrating(

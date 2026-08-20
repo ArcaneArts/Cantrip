@@ -96,32 +96,11 @@ export function projectTaskImplementationState(input: {
   }
 }
 
-function pullRequestNumbersInMessages(
-  messages: readonly ChatMessage[],
-  repository: string,
-): Set<number> {
-  const escaped = repository.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const pattern = new RegExp(
-    `https://github\\.com/${escaped}/pull/(\\d+)(?:\\b|/)`,
-    "giu",
-  );
-  const numbers = new Set<number>();
-  for (const message of messages) {
-    for (const match of messageText(message).matchAll(pattern)) {
-      const number = Number(match[1]);
-      if (Number.isInteger(number) && number > 0) numbers.add(number);
-    }
-  }
-  return numbers;
-}
-
 export function associateTaskPullRequests(input: {
   activeWorktreeId: string;
   implementationStartedAt: string | null;
   lanes: readonly ChatExecutionLaneSummary[];
-  messages: readonly ChatMessage[];
   pullRequests: readonly GithubPullRequestSummary[];
-  repository: string;
   worktrees: readonly TaskWorktreeObservation[];
 }): TaskAssociatedPullRequest[] {
   const worktreesById = new Map(
@@ -139,21 +118,16 @@ export function associateTaskPullRequests(input: {
       branchWorktrees.set(observation.worktree.branch, observation);
     }
   }
-  const explicitNumbers = pullRequestNumbersInMessages(
-    input.messages,
-    input.repository,
-  );
   const implementationStartedAt = input.implementationStartedAt
     ? Date.parse(input.implementationStartedAt)
     : 0;
 
   return input.pullRequests
     .flatMap((pullRequest): TaskAssociatedPullRequest[] => {
-      const explicit = explicitNumbers.has(pullRequest.number);
       const observation = branchWorktrees.get(pullRequest.headRef);
       const createdDuringImplementation =
         Date.parse(pullRequest.createdAt) >= implementationStartedAt;
-      if (!explicit && (!observation || !createdDuringImplementation)) {
+      if (!observation || !createdDuringImplementation) {
         return [];
       }
       const active = observation?.worktree.id === input.activeWorktreeId;
@@ -172,13 +146,9 @@ export function associateTaskPullRequests(input: {
           createdAt: pullRequest.createdAt,
           updatedAt: pullRequest.updatedAt,
           closedAt: pullRequest.closedAt,
-          associationKind: explicit ? "explicit" : "inferred",
-          associationSource: explicit
-            ? "message-url"
-            : active
-              ? "worktree"
-              : "lane-branch",
-          confidence: explicit || active ? "high" : "medium",
+          associationKind: "inferred",
+          associationSource: active ? "worktree" : "lane-branch",
+          confidence: active ? "high" : "medium",
           worktreeId: observation?.worktree.id ?? null,
           worktreeName: observation?.worktree.name ?? null,
         },

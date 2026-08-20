@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createTaskOperationRelayRequest,
   createTaskOperationRelayResult,
+  encryptTaskMessageProtectedContent,
   openTaskOperationRelayRequest,
   openTaskOperationRelayResult,
   randomBytes,
@@ -13,6 +14,40 @@ const ownerId = "owner-task-relay";
 const chatId = "chat-task-relay";
 const operationId = "11111111-1111-4111-8111-111111111111";
 const keyRevision = 4;
+
+async function opaqueMessage(input: {
+  componentKey: Uint8Array;
+  id: string;
+  role: "assistant" | "user";
+}) {
+  const classification = {
+    role: input.role,
+    mode: "plan" as const,
+    attachmentIds: [],
+  };
+  return {
+    id: input.id,
+    classification,
+    protectedContent: await encryptTaskMessageProtectedContent({
+      ownerId,
+      messageId: input.id,
+      keyRevision,
+      componentKey: input.componentKey,
+      content: {
+        version: 1,
+        classification,
+        content: [
+          {
+            type: "text",
+            text: `SENTINEL private ${input.role} message`,
+          },
+        ],
+      },
+    }),
+    reasoningEffort: null,
+    idempotencyKey: `task-${input.role}:${operationId}`,
+  };
+}
 
 const inputContent = {
   version: 1 as const,
@@ -58,6 +93,11 @@ const inputTaskContent = {
 describe("encrypted Task operation relay codecs", () => {
   it("binds an opaque keyed fingerprint to encrypted operation input", async () => {
     const componentKey = randomBytes(32);
+    const userMessage = await opaqueMessage({
+      componentKey,
+      id: "22222222-2222-4222-8222-222222222222",
+      role: "user",
+    });
     const first = await createTaskOperationRelayRequest({
       ownerId,
       chatId,
@@ -66,6 +106,7 @@ describe("encrypted Task operation relay codecs", () => {
       componentKey,
       content: inputContent,
       taskContent: inputTaskContent,
+      userMessage,
     });
     const retry = await createTaskOperationRelayRequest({
       ownerId,
@@ -75,6 +116,7 @@ describe("encrypted Task operation relay codecs", () => {
       componentKey,
       content: inputContent,
       taskContent: inputTaskContent,
+      userMessage,
     });
     expect(first.fingerprint).toBe(retry.fingerprint);
     expect(first.protectedInput.envelope.nonce).not.toBe(
@@ -88,7 +130,15 @@ describe("encrypted Task operation relay codecs", () => {
         componentKey,
         request: first,
       }),
-    ).resolves.toEqual({ round: inputContent, task: inputTaskContent });
+    ).resolves.toEqual({
+      round: inputContent,
+      task: inputTaskContent,
+      userMessage: {
+        version: 1,
+        classification: userMessage.classification,
+        content: [{ type: "text", text: "SENTINEL private user message" }],
+      },
+    });
     await expect(
       openTaskOperationRelayRequest({
         ownerId,
@@ -104,6 +154,11 @@ describe("encrypted Task operation relay codecs", () => {
 
   it("authenticates opaque results against the original operation", async () => {
     const componentKey = randomBytes(32);
+    const userMessage = await opaqueMessage({
+      componentKey,
+      id: "22222222-2222-4222-8222-222222222222",
+      role: "user",
+    });
     const request = await createTaskOperationRelayRequest({
       ownerId,
       chatId,
@@ -112,6 +167,7 @@ describe("encrypted Task operation relay codecs", () => {
       componentKey,
       content: inputContent,
       taskContent: inputTaskContent,
+      userMessage,
     });
     const content = {
       ...inputContent,
@@ -128,6 +184,11 @@ describe("encrypted Task operation relay codecs", () => {
       componentKey,
       request,
       content,
+      assistantMessage: await opaqueMessage({
+        componentKey,
+        id: "33333333-3333-4333-8333-333333333333",
+        role: "assistant",
+      }),
       taskContent: {
         ...inputTaskContent,
         classification: {
@@ -162,6 +223,11 @@ describe("encrypted Task operation relay codecs", () => {
           hasPlan: true,
         },
         planMarkdown: "SENTINEL private generated plan",
+      },
+      assistantMessage: {
+        version: 1,
+        classification: result.assistantMessage.classification,
+        content: [{ type: "text", text: "SENTINEL private assistant message" }],
       },
     });
     await expect(

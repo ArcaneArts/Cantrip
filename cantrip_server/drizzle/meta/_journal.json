@@ -729,6 +729,13 @@
       "when": 1787183342522,
       "tag": "0103_foamy_wolf_cub",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1787186067225,
+      "tag": "0104_short_mole_man",
+      "breakpoints": true
     }
   ]
 }

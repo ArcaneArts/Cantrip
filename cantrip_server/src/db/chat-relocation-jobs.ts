@@ -94,10 +94,70 @@ async function relocationAttachmentIds(
     .limit(1);
   return [
     ...new Set([
-      ...messages.flatMap((message) => attachmentIds(message.content)),
+      ...messages.flatMap((message) =>
+        message.taskProtectedContent
+          ? message.taskAttachmentIds
+          : attachmentIds(message.content),
+      ),
       ...(taskRows[0]?.draftAttachmentIds ?? []),
     ]),
   ];
+}
+
+function relocationMessages(
+  experience: string,
+  messages: readonly (typeof schema.chatMessages.$inferSelect)[],
+) {
+  if (experience === "task") {
+    return messages.map((message) => {
+      if (!message.taskProtectedContent || message.content) {
+        throw new ChatRelocationJobConflictError(
+          "The encrypted Task transcript contains an invalid message.",
+        );
+      }
+      return {
+        id: message.id,
+        chatId: message.chatId,
+        worktreeId: message.worktreeId,
+        executionLaneId: message.executionLaneId,
+        sequence: message.sequence,
+        role: message.role,
+        mode: message.mode,
+        attachmentIds: message.taskAttachmentIds,
+        protectedContent: message.taskProtectedContent,
+        modelId: message.modelId,
+        modelRouteId: message.modelRouteId,
+        providerId: message.providerId,
+        providerName: message.providerName,
+        providerModelName: message.providerModelName,
+        reasoningEffort: message.reasoningEffort,
+        appliedReasoningEffort: message.appliedReasoningEffort,
+        reasoningAdjusted: message.reasoningAdjusted,
+        idempotencyKey: message.idempotencyKey,
+        createdAt: toISOString(message.createdAt),
+      };
+    });
+  }
+  if (experience !== "agent") {
+    throw new ChatRelocationJobConflictError(
+      "The chat experience cannot be relocated.",
+    );
+  }
+  return messages.map((message) => {
+    if (!message.content || message.taskProtectedContent) {
+      throw new ChatRelocationJobConflictError(
+        "The visible chat transcript contains an invalid message.",
+      );
+    }
+    return {
+      sequence: message.sequence,
+      role: message.role,
+      mode: message.mode,
+      reasoningEffort: message.reasoningEffort,
+      content: message.content,
+      createdAt: toISOString(message.createdAt),
+    };
+  });
 }
 
 function progress(
@@ -484,14 +544,9 @@ export class ChatRelocationJobRepository {
         }
         const payload = chatRelocationContextPayloadSchema.parse({
           version: 1,
-          messages: messages.map((message) => ({
-            sequence: message.sequence,
-            role: message.role,
-            mode: message.mode,
-            reasoningEffort: message.reasoningEffort,
-            content: message.content,
-            createdAt: toISOString(message.createdAt),
-          })),
+          kind:
+            context.chat.experience === "task" ? "task-encrypted" : "visible",
+          messages: relocationMessages(context.chat.experience, messages),
           attachments: referencedAttachmentIds.map((attachmentId) => {
             const availability = attachmentById.get(attachmentId)!;
             const attachment = availability[0]!.attachment;
@@ -772,14 +827,8 @@ export class ChatRelocationJobRepository {
       }
       const payload = chatRelocationContextPayloadSchema.parse({
         version: 1,
-        messages: messages.map((message) => ({
-          sequence: message.sequence,
-          role: message.role,
-          mode: message.mode,
-          reasoningEffort: message.reasoningEffort,
-          content: message.content,
-          createdAt: toISOString(message.createdAt),
-        })),
+        kind: context.chat.experience === "task" ? "task-encrypted" : "visible",
+        messages: relocationMessages(context.chat.experience, messages),
         attachments: referencedAttachmentIds.map((attachmentId) => {
           const availability = attachmentById.get(attachmentId)!;
           const attachment = availability[0]!.attachment;

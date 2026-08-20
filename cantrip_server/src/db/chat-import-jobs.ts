@@ -1047,11 +1047,16 @@ export class ChatImportJobRepository {
     }
     const referencedAttachmentIds = [
       ...new Set(
-        messages.flatMap((message) =>
-          message.content.flatMap((item) =>
+        messages.flatMap((message) => {
+          if (!message.content || message.taskProtectedContent) {
+            throw new ChatImportJobConflictError(
+              "The imported transcript contains an invalid encrypted message.",
+            );
+          }
+          return message.content.flatMap((item) =>
             item.type === "attachment" ? [item.attachment.id] : [],
-          ),
-        ),
+          );
+        }),
       ),
     ];
     const attachmentRows = referencedAttachmentIds.length

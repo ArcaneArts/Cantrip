@@ -702,6 +702,16 @@ export const taskOpaqueContentSchema = z
   })
   .strict();
 
+export const taskMessageOpaqueContentSchema = z
+  .object({
+    id: z.string().uuid(),
+    classification: taskMessageProtectedClassificationSchema,
+    protectedContent: encryptedTaskMessageProtectedContentSchema,
+    reasoningEffort: z.string().min(1).max(100).nullable().default(null),
+    idempotencyKey: z.string().min(1).max(200),
+  })
+  .strict();
+
 export const taskPlanningRoundOpaqueContentSchema = z
   .object({
     classification: taskPlanningRoundProtectedClassificationSchema,
@@ -717,6 +727,7 @@ export const taskOperationRelayRequestSchema = z
     classification: taskPlanningRoundProtectedClassificationSchema,
     protectedInput: encryptedTaskPlanningRoundProtectedContentSchema,
     task: taskOpaqueContentSchema,
+    userMessage: taskMessageOpaqueContentSchema,
   })
   .strict()
   .superRefine((value, context) => {
@@ -725,7 +736,9 @@ export const taskOperationRelayRequestSchema = z
       value.classification.hasOutputPlan ||
       value.classification.hasOutputQuestions ||
       value.classification.hasOutputGoalPrompt ||
-      value.classification.error !== null
+      value.classification.error !== null ||
+      value.userMessage.classification.role !== "user" ||
+      value.userMessage.classification.mode !== "plan"
     ) {
       context.addIssue({
         code: "custom",
@@ -740,8 +753,21 @@ export const taskOperationRelayGoalSchema = z
   .object({
     classification: taskGoalObjectiveProtectedClassificationSchema,
     protectedObjective: encryptedTaskGoalObjectiveSchema,
+    startMessage: taskMessageOpaqueContentSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.startMessage.classification.role !== "user" ||
+      value.startMessage.classification.mode !== "goal"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "An encrypted Task Goal requires an encrypted user message.",
+        path: ["startMessage", "classification"],
+      });
+    }
+  });
 
 export const taskOperationRelayResultSchema = z
   .object({
@@ -751,6 +777,7 @@ export const taskOperationRelayResultSchema = z
     classification: taskPlanningRoundProtectedClassificationSchema,
     protectedResult: encryptedTaskPlanningRoundProtectedContentSchema,
     task: taskOpaqueContentSchema,
+    assistantMessage: taskMessageOpaqueContentSchema,
     goal: taskOperationRelayGoalSchema.nullable(),
   })
   .strict()
@@ -792,7 +819,9 @@ export const taskOperationRelayResultSchema = z
         value.classification.hasOutputQuestions ||
       value.task.classification.hasFinalPlan !== finalizing ||
       value.task.classification.hasGoalPrompt !== finalizing ||
-      value.task.classification.lastError !== null
+      value.task.classification.lastError !== null ||
+      value.assistantMessage.classification.role !== "assistant" ||
+      value.assistantMessage.classification.mode !== "plan"
     ) {
       context.addIssue({
         code: "custom",
@@ -801,6 +830,46 @@ export const taskOperationRelayResultSchema = z
       });
     }
   });
+
+export const taskMessageRelayResultSchema = z
+  .object({ message: taskMessageOpaqueContentSchema })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.message.classification.role !== "assistant" ||
+      value.message.classification.mode !== "goal"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "An encrypted Task turn must return an assistant Goal message.",
+        path: ["message", "classification"],
+      });
+    }
+  });
+
+export const taskGoalSyncContextSchema = z
+  .object({
+    task: taskOpaqueContentSchema,
+    automationPaused: z.boolean(),
+    chatStatus: z.enum([
+      "idle",
+      "running",
+      "waiting-for-approval",
+      "offline",
+      "failed",
+    ]),
+    message: z
+      .object({
+        id: z.string().uuid(),
+        idempotencyKey: z.string().min(1).max(200),
+        kind: z.enum(["start", "resume"]),
+      })
+      .strict()
+      .nullable()
+      .default(null),
+  })
+  .strict();
 
 export const taskOpaqueMutationSchema = z
   .object({
@@ -895,12 +964,6 @@ export const taskOpaqueSummarySchema = taskProtectedClassificationSchema
   })
   .strict();
 
-export const taskImplementationOpaqueDashboardSchema =
-  taskImplementationDashboardSchema
-    .omit({ task: true })
-    .extend({ task: taskOpaqueSummarySchema })
-    .strict();
-
 export const taskPlanningRoundOpaqueSummarySchema =
   taskPlanningRoundProtectedClassificationSchema
     .extend({
@@ -928,6 +991,8 @@ export const taskMessageOpaqueSummarySchema =
       modelId: z.string().min(1).max(200).nullable(),
       modelRouteId: z.string().min(1).max(200).nullable(),
       providerId: z.string().min(1).max(200).nullable(),
+      providerName: z.string().min(1).max(500).nullable(),
+      providerModelName: z.string().min(1).max(500).nullable(),
       reasoningEffort: z.string().min(1).max(100).nullable(),
       appliedReasoningEffort: z.string().min(1).max(100).nullable(),
       reasoningAdjusted: z.boolean(),
@@ -945,6 +1010,36 @@ export const taskGoalObjectiveOpaqueSnapshotSchema =
       timeUsedSeconds: z.number().int().nonnegative(),
       createdAt: z.number().int().nonnegative(),
       updatedAt: z.number().int().nonnegative(),
+    })
+    .strict();
+
+export const taskGoalWorkerResultSchema = z
+  .object({
+    goal: taskGoalObjectiveOpaqueSnapshotSchema.nullable(),
+    task: taskOpaqueContentSchema,
+    message: taskMessageOpaqueContentSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.message &&
+      (value.message.classification.role !== "user" ||
+        value.message.classification.mode !== "goal")
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Encrypted Task Goal control messages must be user messages.",
+        path: ["message", "classification"],
+      });
+    }
+  });
+
+export const taskImplementationOpaqueDashboardSchema =
+  taskImplementationDashboardSchema
+    .omit({ task: true, goal: true })
+    .extend({
+      task: taskOpaqueSummarySchema,
+      goal: taskGoalObjectiveOpaqueSnapshotSchema.nullable(),
     })
     .strict();
 
@@ -1029,6 +1124,9 @@ export type TaskOperationRelayResult = z.infer<
   typeof taskOperationRelayResultSchema
 >;
 export type TaskOpaqueContent = z.infer<typeof taskOpaqueContentSchema>;
+export type TaskMessageOpaqueContent = z.infer<
+  typeof taskMessageOpaqueContentSchema
+>;
 export type TaskPlanningRoundOpaqueContent = z.infer<
   typeof taskPlanningRoundOpaqueContentSchema
 >;
@@ -1036,6 +1134,10 @@ export type TaskOpaqueMutation = z.infer<typeof taskOpaqueMutationSchema>;
 export type TaskEncryptedOperationStart = z.infer<
   typeof taskEncryptedOperationStartSchema
 >;
+export type TaskMessageRelayResult = z.infer<
+  typeof taskMessageRelayResultSchema
+>;
+export type TaskGoalSyncContext = z.infer<typeof taskGoalSyncContextSchema>;
 export type TaskOpaqueSummary = z.infer<typeof taskOpaqueSummarySchema>;
 export type TaskImplementationOpaqueDashboard = z.infer<
   typeof taskImplementationOpaqueDashboardSchema
@@ -1049,3 +1151,4 @@ export type TaskMessageOpaqueSummary = z.infer<
 export type TaskGoalObjectiveOpaqueSnapshot = z.infer<
   typeof taskGoalObjectiveOpaqueSnapshotSchema
 >;
+export type TaskGoalWorkerResult = z.infer<typeof taskGoalWorkerResultSchema>;

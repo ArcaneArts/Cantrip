@@ -13,6 +13,7 @@ import {
   openTaskOperationResult,
   prepareTaskOperationRelay,
 } from "./task-operation-encryption";
+import { createTaskMessageOpaqueContent } from "./task-message-encryption";
 
 const ownerId = "owner-client-task-relay";
 const serverId = "server-client-task-relay";
@@ -88,6 +89,16 @@ describe("client Task operation encryption", () => {
         },
         outputPlanMarkdown: "# SENTINEL revised plan",
       };
+      const assistantMessage = await createTaskMessageOpaqueContent(
+        {
+          content: [{ type: "text", text: "# SENTINEL revised plan" }],
+          idempotencyKey: `task-result:${operationId}`,
+          messageId: "22222222-2222-4222-8222-222222222222",
+          mode: "plan",
+          role: "assistant",
+        },
+        { service, session },
+      );
       const result = await createTaskOperationRelayResult({
         ownerId,
         keyRevision: 1,
@@ -110,6 +121,7 @@ describe("client Task operation encryption", () => {
           currentQuestions: [],
           lastError: null,
         },
+        assistantMessage,
         goal: null,
       });
       await expect(
