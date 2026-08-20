@@ -15,6 +15,7 @@ export const encryptionComponentScopeSchema = z.enum([
   "attachment-content",
   "interaction-content",
   "private-surface-metadata",
+  "surface-private-state",
   "policy-content",
   "provider-credential",
   "mcp-secret",

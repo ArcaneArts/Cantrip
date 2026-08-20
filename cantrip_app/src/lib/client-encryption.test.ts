@@ -147,6 +147,11 @@ describe("client encryption key custody", () => {
       identity,
       keyRevision: 1,
     });
+    const expectedSurfaceStateKey = firstRun.componentKey({
+      component: "surface-private-state",
+      identity,
+      keyRevision: 1,
+    });
     await expect(firstRun.loadDevice(identity)).resolves.toEqual(device);
     expect(firstRun.getSnapshot().status).toBe("ready");
     expect(
@@ -176,6 +181,13 @@ describe("client encryption key custody", () => {
         keyRevision: 1,
       }),
     ).toEqual(expectedComponentKey);
+    expect(
+      restarted.componentKey({
+        component: "surface-private-state",
+        identity,
+        keyRevision: 1,
+      }),
+    ).toEqual(expectedSurfaceStateKey);
 
     restarted.lock();
     await restarted.unlockWithPassword({
@@ -187,7 +199,33 @@ describe("client encryption key custody", () => {
 
     clearSensitiveBytes(accountMasterKey);
     clearSensitiveBytes(expectedComponentKey);
+    clearSensitiveBytes(expectedSurfaceStateKey);
     restarted.lock();
+  });
+
+  it("accepts a structured-cloned WebKit FrozenArray for device-key usages", async () => {
+    const store = new MemoryDeviceKeyStore();
+    const service = new ClientEncryptionService(store);
+    const device = await service.ensureDevice(identity);
+    const stored = store.read(identity) as StoredClientDeviceRecord;
+    const usages = {
+      0: "deriveBits",
+      length: 1,
+      *[Symbol.iterator]() {
+        yield "deriveBits";
+      },
+    } as unknown as CryptoKey["usages"];
+    store.seed(identity, {
+      ...stored,
+      privateKey: {
+        algorithm: stored.privateKey.algorithm,
+        extractable: false,
+        type: "private",
+        usages,
+      },
+    });
+
+    await expect(service.loadDevice(identity)).resolves.toEqual(device);
   });
 
   it("isolates keys by server and account and clears the singleton on sign-out", async () => {

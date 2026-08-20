@@ -219,12 +219,15 @@ function isCryptoKey(value: unknown): value is CryptoKey {
   const candidate = value as Partial<CryptoKey>;
   const algorithm = candidate.algorithm as
     { name?: unknown; namedCurve?: unknown } | undefined;
+  // WebKit exposes CryptoKey.usages as a WebIDL FrozenArray. Depending on the
+  // structured-clone boundary used by IndexedDB, that value can be iterable
+  // without satisfying Array.isArray(). Validate its contents, not its realm.
+  const usages = candidate.usages ? Array.from(candidate.usages) : [];
   return (
     candidate.type === "private" &&
     candidate.extractable === false &&
-    Array.isArray(candidate.usages) &&
-    candidate.usages.length === 1 &&
-    candidate.usages[0] === "deriveBits" &&
+    usages.length === 1 &&
+    usages[0] === "deriveBits" &&
     algorithm?.name === "ECDH" &&
     algorithm.namedCurve === "P-256"
   );
