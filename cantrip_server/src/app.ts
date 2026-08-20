@@ -81,6 +81,7 @@ import {
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
+  chatGoalWireResponseSchema,
   chatGoalUpdateSchema,
   chatImportCreateSchema,
   chatImportJobListSchema,
@@ -107,6 +108,7 @@ import {
   chatListSchema,
   chatMessageCreateSchema,
   chatMessageListSchema,
+  chatMessageWireListSchema,
   chatMessageSchema,
   chatModelUpdateSchema,
   chatReasoningStateSchema,
@@ -528,6 +530,9 @@ import {
   taskEncryptedOperationStartSchema,
   taskFinalizerOutputJsonSchema,
   taskImplementationOpaqueDashboardSchema,
+  taskGoalWorkerResultSchema,
+  taskMessageOpaqueSummarySchema,
+  taskMessageRelayResultSchema,
   taskOpaqueMutationSchema,
   taskOpaqueSummarySchema,
   taskOperationStartSchema,
@@ -539,6 +544,10 @@ import {
   type TaskEncryptedOperationStart,
   type TaskOperationRelayGoal,
   type TaskOperationRelayRequest,
+  type TaskOperationRelayResult,
+  type TaskMessageOpaqueContent,
+  type TaskMessageOpaqueSummary,
+  type TaskOpaqueSummary,
 } from "@cantrip/protocol/tasks";
 import { cantripVersion } from "@cantrip/version";
 
@@ -547,8 +556,6 @@ import { parseHttpByteRange } from "./http-byte-range.js";
 import { buildAgentPolicyContext } from "./policies/agent-context.js";
 import {
   associateTaskPullRequests,
-  latestTaskImplementationReason,
-  projectTaskImplementationState,
   taskAdvisoryWarnings,
   type TaskWorktreeObservation,
 } from "./tasks/dashboard.js";
@@ -1917,6 +1924,27 @@ export async function buildApp({
       );
     }
   };
+  const publishTaskMessage = (message: TaskMessageOpaqueSummary): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "chat", chatId: message.chatId },
+        resource: "chat-message",
+        action: "updated",
+        entityId: message.id,
+        revision: message.sequence,
+        payload: appLiveEventPayloadSchema.parse(
+          taskMessageOpaqueSummarySchema.parse(message),
+        ),
+      });
+    } catch (error) {
+      app.log.error(
+        { chatId: message.chatId, err: error, messageId: message.id },
+        "Could not publish encrypted Task message",
+      );
+    }
+  };
   const appendLiveChatMessage = async (
     ...input: Parameters<typeof repository.appendMessage>
   ): ReturnType<typeof repository.appendMessage> => {
@@ -1938,6 +1966,49 @@ export async function buildApp({
     if (message) publishChatMessage(message);
     return message;
   };
+  const appendLiveTaskMessage = async (
+    ownerId: string,
+    chatId: string,
+    message: TaskMessageOpaqueContent,
+    attribution?: { executionLaneId: string; worktreeId: string },
+  ) => {
+    const saved = await repository.appendTaskMessage(
+      ownerId,
+      chatId,
+      message,
+      attribution,
+    );
+    if (saved) publishTaskMessage(saved);
+    return saved;
+  };
+  const setLiveTaskMessageModelRoute = async (
+    ...input: Parameters<typeof repository.setTaskMessageModelRoute>
+  ) => {
+    const message = await repository.setTaskMessageModelRoute(...input);
+    if (message) publishTaskMessage(message);
+    return message;
+  };
+  const taskMessageServerStub = (
+    message: TaskMessageOpaqueSummary,
+  ): ChatMessage => ({
+    id: message.id,
+    chatId: message.chatId,
+    worktreeId: message.worktreeId,
+    executionLaneId: message.executionLaneId,
+    sequence: message.sequence,
+    role: message.role,
+    mode: message.mode,
+    content: [],
+    modelId: message.modelId,
+    modelRouteId: message.modelRouteId,
+    providerId: message.providerId,
+    providerName: message.providerName,
+    providerModelName: message.providerModelName,
+    reasoningEffort: message.reasoningEffort,
+    appliedReasoningEffort: message.appliedReasoningEffort,
+    reasoningAdjusted: message.reasoningAdjusted,
+    createdAt: message.createdAt,
+  });
   const publishChatSummary = (chatId: string, projectId: string): void => {
     publishLiveInvalidation("chat", { entityId: chatId, projectId });
   };
@@ -6221,7 +6292,7 @@ export async function buildApp({
       return;
     }
 
-    const messages = await repository.listMessages(
+    const messages = await repository.listMessageHeaders(
       ownerId,
       notification.chatId,
     );
@@ -6275,26 +6346,10 @@ export async function buildApp({
           if (taskOperation.round.kind === "finalize") {
             recoveredFinalizationOperationId = taskOperation.round.id;
           }
-          const assistantMessage = await appendLiveChatMessage(
+          const assistantMessage = await appendLiveTaskMessage(
             ownerId,
             notification.chatId,
-            {
-              role: "assistant",
-              content: [
-                {
-                  type: "text",
-                  text:
-                    taskOperation.round.kind === "finalize"
-                      ? "Task finalization is ready."
-                      : "Task planning result is ready.",
-                  phase: "final_answer",
-                },
-              ],
-              idempotencyKey:
-                taskOperation.round.kind === "finalize"
-                  ? `task-finalization-result:${taskOperation.round.id}`
-                  : `task-plan-result:${taskOperation.round.id}`,
-            },
+            relayResult.assistantMessage,
             attribution,
           );
           if (!assistantMessage) {
@@ -6314,21 +6369,6 @@ export async function buildApp({
             notification.chatId,
             taskOperation.round.id,
           );
-          await appendLiveChatMessage(
-            ownerId,
-            notification.chatId,
-            {
-              role: "system",
-              content: [
-                {
-                  type: "text",
-                  text: "Task planning finished with an invalid structured result. Retry the planning round.",
-                },
-              ],
-              idempotencyKey: `task-plan-error:${taskOperation.round.id}`,
-            },
-            attribution,
-          );
           publishChatInvalidation(notification.chatId, "task");
         }
       } else {
@@ -6343,16 +6383,21 @@ export async function buildApp({
     }
     const assistantKey = `assistant:${notification.clientMessageId}`;
     const errorKey = `error:${notification.clientMessageId}`;
-    const existingAssistant = await repository.getMessageByIdempotencyKey(
-      ownerId,
-      notification.chatId,
-      assistantKey,
-    );
-    const existingError = await repository.getMessageByIdempotencyKey(
-      ownerId,
-      notification.chatId,
-      errorKey,
-    );
+    const taskChat = laneContext.chat.experience === "task";
+    const existingAssistant = taskChat
+      ? null
+      : await repository.getMessageByIdempotencyKey(
+          ownerId,
+          notification.chatId,
+          assistantKey,
+        );
+    const existingError = taskChat
+      ? null
+      : await repository.getMessageByIdempotencyKey(
+          ownerId,
+          notification.chatId,
+          errorKey,
+        );
 
     if (notification.outcome.ok) {
       await repository.updateChatExecutionLaneRuntime(
@@ -6361,7 +6406,21 @@ export async function buildApp({
         notification.outcome.result.threadId,
         "ready",
       );
-      if (!taskOperation && !existingAssistant) {
+      if (taskChat && !taskOperation) {
+        try {
+          const encrypted = taskMessageRelayResultSchema.parse(
+            notification.outcome.result.structuredResult,
+          );
+          await appendLiveTaskMessage(
+            ownerId,
+            notification.chatId,
+            encrypted.message,
+            attribution,
+          );
+        } catch {
+          recoveredOutcomeOk = false;
+        }
+      } else if (!taskOperation && !existingAssistant) {
         await upsertLiveChatMessage(
           ownerId,
           notification.chatId,
@@ -6381,7 +6440,7 @@ export async function buildApp({
           attribution,
         );
       }
-    } else if (!taskOperation && !existingAssistant) {
+    } else if (!taskChat && !taskOperation && !existingAssistant) {
       await repository.updateChatExecutionLaneRuntime(
         notification.chatId,
         notification.executionLaneId,
@@ -6481,6 +6540,10 @@ export async function buildApp({
     },
     options: {
       acquiringActor?: "agent" | "user";
+      encryptedTaskMessages?: {
+        userMessage: TaskMessageOpaqueContent;
+        response?: { id: string; idempotencyKey: string };
+      };
       messageRole?: "system" | "user";
       purpose?: string;
       runtimes?: ModelRuntime[];
@@ -6520,6 +6583,7 @@ export async function buildApp({
     const encryptedTaskRelay = options.structuredResult?.taskOperation
       ? taskOperationRelayTurnFields(options.structuredResult.taskOperation)
       : null;
+    const encryptedTaskMessages = options.encryptedTaskMessages ?? null;
     if (!bridge.isConnected(context.workerId)) {
       throw new Error("Project worker is offline.");
     }
@@ -6571,52 +6635,76 @@ export async function buildApp({
       executionLaneId,
       worktreeId: execution.worktreeId,
     };
-    let priorMessages: ChatMessage[];
+    let priorMessages: ChatMessage[] = [];
     let userMessage: ChatMessage;
     let immediateCorrectiveFollowup = false;
     try {
       await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
-      priorMessages = await repository.listMessages(ownerId, execution.chatId);
-      for (let index = priorMessages.length - 1; index >= 0; index -= 1) {
-        const message = priorMessages[index]!;
+      const priorHeaders = encryptedTaskMessages
+        ? await repository.listMessageHeaders(ownerId, execution.chatId)
+        : await repository.listMessages(ownerId, execution.chatId);
+      if (!encryptedTaskMessages) priorMessages = priorHeaders as ChatMessage[];
+      for (let index = priorHeaders.length - 1; index >= 0; index -= 1) {
+        const message = priorHeaders[index]!;
         if (message.role !== "assistant") continue;
         const elapsedMs = turnStartedAtMs - Date.parse(message.createdAt);
         immediateCorrectiveFollowup =
           Number.isFinite(elapsedMs) && elapsedMs >= 0 && elapsedMs <= 120_000;
         break;
       }
-      const appended = await repository.appendMessage(
-        ownerId,
-        execution.chatId,
-        {
-          role: options.messageRole ?? "user",
-          mode: options.messageRole === "system" ? undefined : turnMode,
-          reasoningEffort: requestedReasoningEffort,
-          content: [
-            ...(input.text
-              ? [{ type: "text" as const, text: input.text }]
-              : []),
-            ...attachments.map((attachment) => ({
-              type: "attachment" as const,
-              attachment: chatAttachmentSummarySchema.parse(attachment),
-            })),
-          ],
-          idempotencyKey: input.idempotencyKey,
-        },
-        attribution,
-      );
-      if (!appended) throw new Error("Chat not found.");
-      userMessage = appended;
-      await setLiveChatMessageModelRoute(
-        ownerId,
-        userMessage.id,
-        modelId,
-        runtimes[0]!,
-        {
-          appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
-          reasoningAdjusted: preparedRuntimes[0]!.adjusted,
-        },
-      );
+      if (encryptedTaskMessages) {
+        const appended = await appendLiveTaskMessage(
+          ownerId,
+          execution.chatId,
+          encryptedTaskMessages.userMessage,
+          attribution,
+        );
+        if (!appended) throw new Error("Encrypted Task Chat not found.");
+        userMessage = taskMessageServerStub(appended);
+        await setLiveTaskMessageModelRoute(
+          ownerId,
+          userMessage.id,
+          modelId,
+          runtimes[0]!,
+          {
+            appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
+            reasoningAdjusted: preparedRuntimes[0]!.adjusted,
+          },
+        );
+      } else {
+        const appended = await repository.appendMessage(
+          ownerId,
+          execution.chatId,
+          {
+            role: options.messageRole ?? "user",
+            mode: options.messageRole === "system" ? undefined : turnMode,
+            reasoningEffort: requestedReasoningEffort,
+            content: [
+              ...(input.text
+                ? [{ type: "text" as const, text: input.text }]
+                : []),
+              ...attachments.map((attachment) => ({
+                type: "attachment" as const,
+                attachment: chatAttachmentSummarySchema.parse(attachment),
+              })),
+            ],
+            idempotencyKey: input.idempotencyKey,
+          },
+          attribution,
+        );
+        if (!appended) throw new Error("Chat not found.");
+        userMessage = appended;
+        await setLiveChatMessageModelRoute(
+          ownerId,
+          userMessage.id,
+          modelId,
+          runtimes[0]!,
+          {
+            appliedReasoningEffort: preparedRuntimes[0]!.appliedReasoningEffort,
+            reasoningAdjusted: preparedRuntimes[0]!.adjusted,
+          },
+        );
+      }
       await repository.setChatModel(
         ownerId,
         execution.chatId,
@@ -6684,19 +6772,19 @@ export async function buildApp({
               ? requestedPrompt
               : continuationPrompt(priorMessages, requestedPrompt);
           if (index > 0) {
-            await setLiveChatMessageModelRoute(
-              ownerId,
-              userMessage.id,
-              modelId,
-              runtime,
-              {
-                appliedReasoningEffort:
-                  preparedReasoning.appliedReasoningEffort,
-                reasoningAdjusted: preparedReasoning.adjusted,
-              },
-            );
+            const setRoute = encryptedTaskMessages
+              ? setLiveTaskMessageModelRoute
+              : setLiveChatMessageModelRoute;
+            await setRoute(ownerId, userMessage.id, modelId, runtime, {
+              appliedReasoningEffort: preparedReasoning.appliedReasoningEffort,
+              reasoningAdjusted: preparedReasoning.adjusted,
+            });
           }
-          if (preparedReasoning.adjusted && requestedReasoningEffort) {
+          if (
+            !encryptedTaskMessages &&
+            preparedReasoning.adjusted &&
+            requestedReasoningEffort
+          ) {
             await appendLiveChatMessage(
               ownerId,
               execution.chatId,
@@ -6828,7 +6916,14 @@ export async function buildApp({
                       kind: "structured" as const,
                       outputSchema: options.structuredResult.outputSchema!,
                     })
-                  : { kind: "visible" },
+                  : encryptedTaskMessages?.response
+                    ? {
+                        kind: "task-message-encrypted" as const,
+                        messageId: encryptedTaskMessages.response.id,
+                        idempotencyKey:
+                          encryptedTaskMessages.response.idempotencyKey,
+                      }
+                    : { kind: "visible" },
               },
               {
                 timeoutMs: STREAMING_WORKER_COMMAND_TIMEOUT_MS,
@@ -7128,6 +7223,35 @@ export async function buildApp({
                 result,
                 userMessage,
               });
+            } else if (encryptedTaskMessages?.response) {
+              const encryptedResult = taskMessageRelayResultSchema.parse(
+                result.structuredResult,
+              );
+              if (
+                encryptedResult.message.id !==
+                  encryptedTaskMessages.response.id ||
+                encryptedResult.message.idempotencyKey !==
+                  encryptedTaskMessages.response.idempotencyKey
+              ) {
+                throw new Error(
+                  "The encrypted Task message result metadata is invalid.",
+                );
+              }
+              const assistant = await appendLiveTaskMessage(
+                ownerId,
+                execution.chatId,
+                encryptedResult.message,
+                attribution,
+              );
+              if (!assistant) {
+                throw new Error("Encrypted Task Chat not found.");
+              }
+              await setLiveTaskMessageModelRoute(
+                ownerId,
+                assistant.id,
+                modelId,
+                runtime,
+              );
             } else if (!hasFinal(finals, result.turnId, result.text)) {
               await appendLiveChatMessage(
                 ownerId,
@@ -7164,7 +7288,12 @@ export async function buildApp({
                 });
               } catch (error) {
                 app.log.error(
-                  { chatId: execution.chatId, err: error },
+                  {
+                    chatId: execution.chatId,
+                    err: encryptedTaskMessages
+                      ? new Error("Encrypted Task post-processing failed.")
+                      : error,
+                  },
                   "Task post-processing failed after its structured turn completed",
                 );
               }
@@ -7272,7 +7401,9 @@ export async function buildApp({
                 status: "retrying",
                 reasonCode: "route-failed-before-activity",
                 chatId: execution.chatId,
-                err: error,
+                err: encryptedTaskMessages
+                  ? new Error("Encrypted Task route failed.")
+                  : error,
                 providerId: runtime.provider.id,
                 providerAccountId: runtime.provider.accountId,
                 routeId: runtime.routeId,
@@ -7328,27 +7459,31 @@ export async function buildApp({
             requestId: userMessage.id,
             runId: executionLaneId,
             durationMs: Date.now() - turnStartedAtMs,
-            err: error,
+            err: encryptedTaskMessages
+              ? new Error("Encrypted Task turn failed.")
+              : error,
           },
           "Agent turn failed",
         );
-        await appendLiveChatMessage(
-          ownerId,
-          execution.chatId,
-          {
-            role: "system",
-            content: [
-              {
-                type: "text",
-                text: interrupted
-                  ? "Turn interrupted."
-                  : `Agent failed: ${errorMessage(error)}`,
-              },
-            ],
-            idempotencyKey: `error:${userMessage.id}`,
-          },
-          attribution,
-        );
+        if (!encryptedTaskMessages) {
+          await appendLiveChatMessage(
+            ownerId,
+            execution.chatId,
+            {
+              role: "system",
+              content: [
+                {
+                  type: "text",
+                  text: interrupted
+                    ? "Turn interrupted."
+                    : `Agent failed: ${errorMessage(error)}`,
+                },
+              ],
+              idempotencyKey: `error:${userMessage.id}`,
+            },
+            attribution,
+          );
+        }
         await interruptLiveAgentInteractionRequests(execution.chatId);
         const finished = await repository.finishChatExecutionLane(
           execution.chatId,
@@ -7556,6 +7691,7 @@ export async function buildApp({
   async function startEncryptedTaskGoal(
     context: ChatExecutionContext,
     objective: TaskOperationRelayGoal,
+    task: TaskOperationRelayResult["task"],
     idempotencyKey: string,
   ): Promise<void> {
     if (!bridge.isConnected(context.workerId)) {
@@ -7564,7 +7700,7 @@ export async function buildApp({
     const modelId = await resolveModelId(context);
     const runtime = await runtimeForContext(context);
     if (!runtime) throw new Error("Selected model was not found.");
-    const result = chatGoalResponseSchema.parse(
+    const result = taskGoalWorkerResultSchema.parse(
       await bridge.request(context.workerId, {
         type: "chat.goal.create",
         chatId: context.chatId,
@@ -7575,8 +7711,17 @@ export async function buildApp({
         model: runtime.model,
         provider: runtime.provider,
         permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        taskContext: {
+          task,
+          automationPaused: context.automationPaused,
+          chatStatus: context.status,
+          message: null,
+        },
       }),
     );
+    if (result.goal?.chatId !== context.chatId) {
+      throw new Error("The encrypted Goal belongs to another Task.");
+    }
     if (!result.goal) throw new Error("Codex did not create the Task Goal.");
     await repository.updateChatRuntime(
       context.chatId,
@@ -7602,6 +7747,13 @@ export async function buildApp({
       },
       {
         purpose: "Task implementation Goal",
+        encryptedTaskMessages: {
+          userMessage: objective.startMessage,
+          response: {
+            id: randomUUID(),
+            idempotencyKey: `assistant:${objective.startMessage.id}`,
+          },
+        },
         workerPrompt:
           "Begin the active Task Goal and follow its encrypted objective.",
       },
@@ -7627,7 +7779,7 @@ export async function buildApp({
     }
 
     const goalStartKey = `task-goal:${operationId}`;
-    const existingMessage = await repository.getMessageByIdempotencyKey(
+    const existingMessage = await repository.getTaskMessageByIdempotencyKey(
       ownerId,
       chatId,
       goalStartKey,
@@ -7640,6 +7792,7 @@ export async function buildApp({
       await startEncryptedTaskGoal(
         context,
         taskOperation.relayResult.goal,
+        taskOperation.relayResult.task,
         goalStartKey,
       );
     }
@@ -7921,41 +8074,79 @@ export async function buildApp({
       : beginTurn(context, input);
   }
 
-  const reconcileTaskImplementation = async (
+  const taskContentFromSummary = (task: TaskOpaqueSummary) => ({
+    classification: {
+      state: task.state,
+      stableStateBeforeFailure: task.stableStateBeforeFailure,
+      activeOperationKind: task.activeOperationKind,
+      planAuthorship: task.planAuthorship,
+      planningRound: task.planningRound,
+      hasPlan: task.hasPlan,
+      hasQuestions: task.hasQuestions,
+      hasFinalPlan: task.hasFinalPlan,
+      hasGoalPrompt: task.hasGoalPrompt,
+      lastError: task.lastError,
+    },
+    protectedContent: task.protectedContent,
+  });
+
+  const readEncryptedTaskGoal = async (
     context: ChatExecutionContext,
-    goal: Awaited<ReturnType<typeof chatGoalResponseSchema.parse>>["goal"],
-    cached?: { messages?: ChatMessage[]; task?: TaskDetail },
-  ): Promise<TaskDetail | null> => {
-    if (context.experience !== "task") return null;
-    const task =
-      cached?.task ??
-      (await repository.tasks.get(applicationOwnerId(), context.chatId));
-    if (!task?.implementationStartedAt || !task.finalPlanMarkdown) {
-      return task;
+    task: TaskOpaqueSummary,
+    message: {
+      id: string;
+      idempotencyKey: string;
+      kind: "resume" | "start";
+    } | null = null,
+  ) => {
+    if (!context.threadId) {
+      return { goal: null, message: null, task };
     }
-    const messages =
-      cached?.messages ??
-      (await repository.listMessages(applicationOwnerId(), context.chatId));
-    const projection = projectTaskImplementationState({
-      automationPaused: context.automationPaused,
-      chatStatus: context.status,
-      goal,
-      latestReason: latestTaskImplementationReason(
-        messages,
-        task.implementationStartedAt,
-      ),
-    });
-    if (!projection) return task;
-    const reconciled =
-      (await repository.tasks.syncImplementationState(
-        applicationOwnerId(),
-        context.chatId,
-        projection,
-      )) ?? task;
-    if (reconciled.rowVersion !== task.rowVersion) {
+    const runtime = await runtimeForContext(context);
+    if (!runtime) throw new Error("Selected model was not found.");
+    const result = taskGoalWorkerResultSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "chat.goal.get",
+        chatId: context.chatId,
+        cwd: context.cwd,
+        threadId: context.threadId,
+        model: runtime.model,
+        provider: runtime.provider,
+        permissionProfileId: effectivePermissionProfile(context).effectiveId,
+        taskContext: {
+          task: taskContentFromSummary(task),
+          automationPaused: context.automationPaused,
+          chatStatus: context.status,
+          message,
+        },
+      }),
+    );
+    if (
+      result.goal?.chatId !== context.chatId ||
+      (message &&
+        (result.message?.id !== message.id ||
+          result.message.idempotencyKey !== message.idempotencyKey))
+    ) {
+      throw new Error("Encrypted Goal metadata is invalid.");
+    }
+    const synchronized = await repository.tasks.syncImplementationState(
+      applicationOwnerId(),
+      context.chatId,
+      { rowVersion: task.rowVersion, task: result.task },
+    );
+    if (synchronized && synchronized.rowVersion !== task.rowVersion) {
       publishChatInvalidation(context.chatId, "task");
     }
-    return reconciled;
+    return { ...result, task: synchronized ?? task };
+  };
+
+  const reconcileTaskImplementation = async (
+    context: ChatExecutionContext,
+    _goal: Awaited<ReturnType<typeof chatGoalResponseSchema.parse>>["goal"],
+    _cached?: { messages?: ChatMessage[]; task?: TaskDetail },
+  ): Promise<TaskDetail | null> => {
+    if (context.experience !== "task") return null;
+    return null;
   };
 
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
@@ -7986,6 +8177,47 @@ export async function buildApp({
     if (context.threadId) {
       const runtime = await runtimeForContext(context);
       if (!runtime) throw new Error("Selected model was not found.");
+      if (context.experience === "task") {
+        const task = await repository.tasks.get(
+          applicationOwnerId(),
+          context.chatId,
+        );
+        if (!task) return;
+        const messageId = randomUUID();
+        const idempotencyKey = `task-goal-resume:${messageId}`;
+        const result = await readEncryptedTaskGoal(context, task, {
+          id: messageId,
+          idempotencyKey,
+          kind: "resume",
+        });
+        if (result.goal?.status === "active" && result.message) {
+          const modelId = await resolveModelId(context);
+          await beginTurn(
+            context,
+            {
+              text: "Resume the active encrypted Task Goal.",
+              mode: "goal",
+              modelId,
+              idempotencyKey,
+            },
+            {
+              acquiringActor: "agent",
+              encryptedTaskMessages: {
+                userMessage: result.message,
+                response: {
+                  id: randomUUID(),
+                  idempotencyKey: `assistant:${result.message.id}`,
+                },
+              },
+              purpose: "Resume encrypted Task Goal",
+              runtimes: [runtime],
+              workerPrompt: GOAL_RESUME_PROMPT,
+            },
+          );
+          return;
+        }
+        return;
+      }
       const result = chatGoalResponseSchema.parse(
         await bridge.request(context.workerId, {
           type: "chat.goal.get",
@@ -18121,6 +18353,7 @@ export async function buildApp({
         },
         {
           purpose: "Encrypted Task operation",
+          encryptedTaskMessages: { userMessage: request.userMessage },
           structuredResult: {
             taskOperation: request,
             async onCompleted({ attribution, result }) {
@@ -18138,23 +18371,10 @@ export async function buildApp({
               if (!completed) {
                 throw new Error("Encrypted Task operation was not found.");
               }
-              const assistantMessage = await appendLiveChatMessage(
+              const assistantMessage = await appendLiveTaskMessage(
                 ownerId,
                 context.chatId,
-                {
-                  role: "assistant",
-                  content: [
-                    {
-                      type: "text",
-                      text:
-                        request.classification.kind === "finalize"
-                          ? "Task finalization is ready."
-                          : "Task planning result is ready.",
-                      phase: "final_answer",
-                    },
-                  ],
-                  idempotencyKey: `task-result:${request.operationId}`,
-                },
+                relayResult.assistantMessage,
                 attribution,
               );
               if (!assistantMessage) {
@@ -18256,9 +18476,8 @@ export async function buildApp({
         return reply.code(404).send({ error: "Project not found." });
       }
       const directFolder = context.rootKind === "folder-root";
-      const [lanes, messages, worktrees, githubContext] = await Promise.all([
+      const [lanes, worktrees, githubContext] = await Promise.all([
         repository.listChatExecutionLanes(ownerId, context.chatId),
-        repository.listMessages(ownerId, context.chatId),
         directFolder
           ? Promise.resolve([])
           : repository.listProjectWorktrees(ownerId, context.projectId),
@@ -18300,38 +18519,16 @@ export async function buildApp({
         goalUnavailableReason = "The project worker is offline.";
       } else {
         try {
-          const runtime = await runtimeForContext(context);
-          if (!runtime) {
-            goalUnavailableReason =
-              "The selected model runtime is unavailable.";
-          } else {
-            const response = chatGoalResponseSchema.parse(
-              await bridge.request(context.workerId, {
-                type: "chat.goal.get",
-                chatId: context.chatId,
-                cwd: context.cwd,
-                threadId: context.threadId,
-                model: runtime.model,
-                provider: runtime.provider,
-                permissionProfileId:
-                  effectivePermissionProfile(context).effectiveId,
-              }),
-            );
-            goal = response.goal;
-            if (!goal) {
-              goalUnavailableReason = "Codex no longer reports an active Goal.";
-            }
+          const response = await readEncryptedTaskGoal(context, task);
+          goal = response.goal;
+          task = response.task;
+          if (!goal) {
+            goalUnavailableReason = "Codex no longer reports an active Goal.";
           }
-        } catch (error) {
-          goalUnavailableReason = errorMessage(error).slice(0, 2_000);
+        } catch {
+          goalUnavailableReason = "Encrypted Goal status is unavailable.";
         }
       }
-
-      task =
-        (await reconcileTaskImplementation(context, goal, {
-          messages,
-          task,
-        })) ?? task;
 
       let pullRequestsUnavailableReason: string | null = null;
       let pullRequests: TaskAssociatedPullRequest[] = [];
@@ -18363,9 +18560,7 @@ export async function buildApp({
             activeWorktreeId: context.worktreeId,
             implementationStartedAt: task.implementationStartedAt,
             lanes,
-            messages,
             pullRequests: [...open.pullRequests, ...closed.pullRequests],
-            repository: githubContext.nameWithOwner,
             worktrees: observations,
           });
         } catch (error) {
@@ -18699,6 +18894,11 @@ export async function buildApp({
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Encrypted Task console state stays on its authorized worker.",
+        });
       }
       const modelId = await resolveModelId(context);
       const runtime = await runtimeForContext(context);
@@ -21823,6 +22023,16 @@ export async function buildApp({
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
+      const source = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (source?.experience === "task") {
+        return reply.code(409).send({
+          error:
+            "Encrypted Task chats must be relocated rather than forked so message row bindings remain valid.",
+        });
+      }
       try {
         const chat = await repository.forkChat(
           applicationOwnerId(),
@@ -22288,12 +22498,34 @@ export async function buildApp({
         return reply.code(404).send({ error: "Chat source not found." });
       }
       if (!context.threadId) {
-        return reply.send(chatGoalResponseSchema.parse({ goal: null }));
+        return reply.send(
+          chatGoalWireResponseSchema.parse(
+            context.experience === "task"
+              ? { kind: "task-encrypted", goal: null }
+              : { goal: null },
+          ),
+        );
       }
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
       try {
+        if (context.experience === "task") {
+          const task = await repository.tasks.get(
+            applicationOwnerId(),
+            context.chatId,
+          );
+          if (!task) {
+            return reply.code(404).send({ error: "Task not found." });
+          }
+          const result = await readEncryptedTaskGoal(context, task);
+          return reply.send(
+            chatGoalWireResponseSchema.parse({
+              kind: "task-encrypted",
+              goal: result.goal,
+            }),
+          );
+        }
         const runtime = await runtimeForContext(context);
         if (!runtime) {
           return reply
@@ -22312,10 +22544,14 @@ export async function buildApp({
               effectivePermissionProfile(context).effectiveId,
           }),
         );
-        await reconcileTaskImplementation(context, result.goal);
-        return reply.send(result);
+        return reply.send(chatGoalWireResponseSchema.parse(result));
       } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
+        return reply.code(409).send({
+          error:
+            context.experience === "task"
+              ? "Encrypted Goal status is unavailable."
+              : errorMessage(error),
+        });
       }
     },
   );
@@ -22333,6 +22569,11 @@ export async function buildApp({
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Task Goals are created by encrypted Task finalization.",
+        });
       }
       if (chatIsExecuting(context.status)) {
         return reply
@@ -22358,7 +22599,9 @@ export async function buildApp({
           },
           { tokenBudget: input.data.tokenBudget ?? null },
         );
-        return reply.code(202).send(started.goal);
+        return reply
+          .code(202)
+          .send(chatGoalWireResponseSchema.parse(started.goal));
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
       }
@@ -22388,6 +22631,87 @@ export async function buildApp({
       try {
         const runtime = await runtimeForContext(context);
         if (!runtime) throw new Error("Selected model was not found.");
+        if (context.experience === "task") {
+          const task = await repository.tasks.get(
+            applicationOwnerId(),
+            context.chatId,
+          );
+          if (!task) {
+            return reply.code(404).send({ error: "Task not found." });
+          }
+          const message =
+            input.data.status === "active" &&
+            !context.automationPaused &&
+            !chatIsExecuting(context.status)
+              ? {
+                  id: randomUUID(),
+                  idempotencyKey: `task-goal-resume:${randomUUID()}`,
+                  kind: "resume" as const,
+                }
+              : null;
+          const result = taskGoalWorkerResultSchema.parse(
+            await bridge.request(context.workerId, {
+              type: "chat.goal.update",
+              chatId: context.chatId,
+              cwd: context.cwd,
+              threadId: context.threadId,
+              status: input.data.status,
+              model: runtime.model,
+              provider: runtime.provider,
+              permissionProfileId:
+                effectivePermissionProfile(context).effectiveId,
+              taskContext: {
+                task: taskContentFromSummary(task),
+                automationPaused: context.automationPaused,
+                chatStatus: context.status,
+                message,
+              },
+            }),
+          );
+          if (
+            result.goal?.chatId !== context.chatId ||
+            (message &&
+              (result.message?.id !== message.id ||
+                result.message.idempotencyKey !== message.idempotencyKey))
+          ) {
+            throw new Error("Encrypted Goal metadata is invalid.");
+          }
+          await repository.tasks.syncImplementationState(
+            applicationOwnerId(),
+            context.chatId,
+            { rowVersion: task.rowVersion, task: result.task },
+          );
+          if (result.goal?.status === "active" && result.message) {
+            const modelId = await resolveModelId(context);
+            await beginTurn(
+              context,
+              {
+                text: "Resume the active encrypted Task Goal.",
+                mode: "goal",
+                modelId,
+                idempotencyKey: result.message.idempotencyKey,
+              },
+              {
+                encryptedTaskMessages: {
+                  userMessage: result.message,
+                  response: {
+                    id: randomUUID(),
+                    idempotencyKey: `assistant:${result.message.id}`,
+                  },
+                },
+                purpose: "Resume encrypted Task Goal",
+                runtimes: [runtime],
+                workerPrompt: GOAL_RESUME_PROMPT,
+              },
+            );
+          }
+          return reply.send(
+            chatGoalWireResponseSchema.parse({
+              kind: "task-encrypted",
+              goal: result.goal,
+            }),
+          );
+        }
         const result = chatGoalResponseSchema.parse(
           await bridge.request(context.workerId, {
             type: "chat.goal.update",
@@ -22401,7 +22725,6 @@ export async function buildApp({
               effectivePermissionProfile(context).effectiveId,
           }),
         );
-        await reconcileTaskImplementation(context, result.goal);
         if (
           input.data.status === "active" &&
           !context.automationPaused &&
@@ -22424,9 +22747,14 @@ export async function buildApp({
             },
           );
         }
-        return reply.send(result);
+        return reply.send(chatGoalWireResponseSchema.parse(result));
       } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
+        return reply.code(409).send({
+          error:
+            context.experience === "task"
+              ? "Encrypted Goal update failed."
+              : errorMessage(error),
+        });
       }
     },
   );
@@ -22461,7 +22789,12 @@ export async function buildApp({
         });
         return reply.send(chatGoalClearSchema.parse(result));
       } catch (error) {
-        return reply.code(409).send({ error: errorMessage(error) });
+        return reply.code(409).send({
+          error:
+            context.experience === "task"
+              ? "Encrypted Goal removal failed."
+              : errorMessage(error),
+        });
       }
     },
   );
@@ -22475,6 +22808,11 @@ export async function buildApp({
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Encrypted Task reconstruction uses worker relocation.",
+        });
       }
       if (!context.threadId) {
         return reply.send(
@@ -22577,11 +22915,28 @@ export async function buildApp({
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/messages",
     async (request, reply) => {
-      const messages = await repository.listMessages(
+      const context = await repository.getChatExecutionContext(
         applicationOwnerId(),
         request.params.chatId,
       );
-      return reply.send(chatMessageListSchema.parse(messages));
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      const task = context.experience === "task";
+      const messages = task
+        ? await repository.listTaskMessages(
+            applicationOwnerId(),
+            request.params.chatId,
+          )
+        : await repository.listMessages(
+            applicationOwnerId(),
+            request.params.chatId,
+          );
+      return reply.send(
+        chatMessageWireListSchema.parse(
+          task ? { kind: "task-encrypted", messages } : messages,
+        ),
+      );
     },
   );
 
@@ -22992,6 +23347,18 @@ export async function buildApp({
       const input = chatMessageCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat not found" });
+      }
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Task messages must be encrypted by a trusted endpoint.",
+        });
       }
       const message = await appendLiveChatMessage(
         applicationOwnerId(),
@@ -23435,6 +23802,15 @@ export async function buildApp({
   app.get<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/queue",
     async (request, reply) => {
+      const context = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      if (context?.experience === "task") {
+        return reply.code(409).send({
+          error: "Queued prompts are unavailable for encrypted Tasks.",
+        });
+      }
       return reply.send(
         queuedPromptListSchema.parse(
           await repository.listQueuedPrompts(
@@ -23458,6 +23834,11 @@ export async function buildApp({
         request.params.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Queued prompts are unavailable for encrypted Tasks.",
+        });
+      }
       let modelId: string;
       let attachments: Awaited<ReturnType<typeof resolvePromptAttachments>>;
       try {
@@ -23534,6 +23915,15 @@ export async function buildApp({
       if (!current) {
         return reply.code(404).send({ error: "Queued prompt not found." });
       }
+      const promptContext = await repository.getChatExecutionContext(
+        applicationOwnerId(),
+        current.chatId,
+      );
+      if (promptContext?.experience === "task") {
+        return reply.code(409).send({
+          error: "Queued prompts are unavailable for encrypted Tasks.",
+        });
+      }
       let attachments:
         Awaited<ReturnType<typeof resolvePromptAttachments>> | undefined;
       if (input.data.attachmentIds !== undefined) {
@@ -23603,6 +23993,11 @@ export async function buildApp({
         queued.chatId,
       );
       if (!context) return reply.code(404).send({ error: "Chat not found." });
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Queued prompts are unavailable for encrypted Tasks.",
+        });
+      }
 
       try {
         let message: ChatMessage;
@@ -23732,6 +24127,11 @@ export async function buildApp({
       );
       if (!context) {
         return reply.code(404).send({ error: "Chat source not found" });
+      }
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Task turns must use the encrypted Task operation flow.",
+        });
       }
       const existing = await repository.getMessageByIdempotencyKey(
         applicationOwnerId(),
@@ -24117,6 +24517,11 @@ export async function buildApp({
           );
           if (!context || context.workerId !== request.query.workerId) {
             throw new Error("The automation target moved to another worker.");
+          }
+          if (context.experience === "task") {
+            throw new Error(
+              "Project automation prompts are unavailable for encrypted Tasks.",
+            );
           }
           const [existingMessage, existingPrompt] = await Promise.all([
             repository.getMessageByIdempotencyKey(

@@ -41,6 +41,7 @@ import {
   type ChatGptModelInventory,
   type ChatGoalResponse,
   type ChatRelocationContextPayload,
+  type ChatMessageContent,
   type CodexCustomizationInventory,
   type CodexExternalImportPreview,
   type CodexExternalImportStatus,
@@ -1194,9 +1195,7 @@ export interface HydrateChatRelocationOptions extends GoalRuntimeOptions {
   onThreadStarted(threadId: string): Promise<void>;
 }
 
-function relocationContentText(
-  content: ChatRelocationContextPayload["messages"][number]["content"],
-): string {
+function relocationContentText(content: ChatMessageContent): string {
   return content
     .map((item) => {
       if (item.type === "text") return item.text;
@@ -1212,6 +1211,11 @@ function relocationContentText(
 export function relocationResponseItems(
   payload: ChatRelocationContextPayload,
 ): Array<Record<string, unknown>> {
+  if (payload.kind !== "visible") {
+    throw new Error(
+      "Encrypted Task relocation content must be opened before hydration.",
+    );
+  }
   return payload.messages.map((message) => {
     const text = relocationContentText(message.content) || "[Empty message]";
     const annotated =

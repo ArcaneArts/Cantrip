@@ -1,6 +1,8 @@
 import {
   createTaskOperationRelayRequest,
   decryptTaskGoalObjective,
+  encryptTaskMessageProtectedContent,
+  encryptTaskProtectedContent,
   openTaskOperationRelayResult,
   randomBytes,
   taskOperationRunningClassification,
@@ -14,13 +16,41 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   executeEncryptedTaskOperation,
+  openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
+  protectTaskGoalResult,
 } from "./task-operation.js";
 
 const ownerId = "owner-worker-task-relay";
 const chatId = "chat-worker-task-relay";
 const operationId = "11111111-1111-4111-8111-111111111111";
 const keyRevision = 2;
+
+async function userMessage(componentKey: Uint8Array) {
+  const id = "22222222-2222-4222-8222-222222222222";
+  const classification = {
+    role: "user" as const,
+    mode: "plan" as const,
+    attachmentIds: [],
+  };
+  return {
+    id,
+    classification,
+    protectedContent: await encryptTaskMessageProtectedContent({
+      ownerId,
+      messageId: id,
+      keyRevision,
+      componentKey,
+      content: {
+        version: 1,
+        classification,
+        content: [{ type: "text", text: "SENTINEL user planning request" }],
+      },
+    }),
+    reasoningEffort: null,
+    idempotencyKey: `task-operation:${operationId}`,
+  };
+}
 
 function protectedInput(
   kind: "initial-plan" | "continue-plan" | "finalize",
@@ -81,6 +111,7 @@ describe("worker encrypted Task operations", () => {
       componentKey,
       content: protectedInput("initial-plan"),
       taskContent: taskContent("initial-plan"),
+      userMessage: await userMessage(componentKey),
     });
     const run = vi.fn(async ({ prompt }: { prompt: string }) => {
       expect(prompt).toContain("SENTINEL worker-only brief");
@@ -135,6 +166,7 @@ describe("worker encrypted Task operations", () => {
       componentKey,
       content: protectedInput("finalize"),
       taskContent: taskContent("finalize"),
+      userMessage: await userMessage(componentKey),
     });
     const result = await executeEncryptedTaskOperation({
       getComponentKey: () => ({
@@ -210,6 +242,7 @@ describe("worker encrypted Task operations", () => {
       componentKey,
       content: protectedInput("continue-plan"),
       taskContent: taskContent("continue-plan"),
+      userMessage: await userMessage(componentKey),
     });
     const run = vi.fn();
     await expect(
@@ -254,5 +287,135 @@ describe("worker encrypted Task operations", () => {
       }),
     ).rejects.toThrow(/Encrypted Task operation failed/u);
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it("protects Goal status responses and opens Task relocation history only on the worker", async () => {
+    const componentKey = randomBytes(32);
+    const current = {
+      ...taskContent("finalize"),
+      classification: {
+        ...taskContent("finalize").classification,
+        state: "implementing" as const,
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        hasPlan: true,
+        hasFinalPlan: true,
+        hasGoalPrompt: true,
+      },
+      finalPlanMarkdown: "# SENTINEL final plan",
+      goalPrompt: "SENTINEL saved Goal prompt",
+    };
+    const protectedTask = await encryptTaskProtectedContent({
+      ownerId,
+      chatId,
+      keyRevision,
+      componentKey,
+      content: current,
+    });
+    const protectedGoal = await protectTaskGoalResult({
+      chatId,
+      context: {
+        task: {
+          classification: current.classification,
+          protectedContent: protectedTask,
+        },
+        automationPaused: false,
+        chatStatus: "idle",
+        message: null,
+      },
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      ownerId,
+      rawResult: {
+        goal: {
+          threadId: "thread-protected-goal",
+          objective: "SENTINEL dashboard Goal objective",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 2,
+          timeUsedSeconds: 3,
+          createdAt: 4,
+          updatedAt: 5,
+        },
+      },
+    });
+    expect(JSON.stringify(protectedGoal)).not.toContain("SENTINEL");
+    if (!protectedGoal.goal) throw new Error("Expected a protected Goal.");
+    await expect(
+      decryptTaskGoalObjective({
+        ownerId,
+        chatId,
+        threadId: protectedGoal.goal.threadId,
+        keyRevision,
+        componentKey,
+        encrypted: protectedGoal.goal.protectedObjective,
+        publicClassification: {
+          chatId,
+          threadId: protectedGoal.goal.threadId,
+          status: protectedGoal.goal.status,
+        },
+      }),
+    ).resolves.toMatchObject({
+      objective: "SENTINEL dashboard Goal objective",
+    });
+
+    const message = await userMessage(componentKey);
+    const payload = await openTaskRelocationPayload({
+      getComponentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+      ownerId,
+      payload: {
+        version: 1,
+        kind: "task-encrypted",
+        messages: [
+          {
+            id: message.id,
+            chatId,
+            worktreeId: "worktree-one",
+            executionLaneId: "lane-one",
+            sequence: 1,
+            role: message.classification.role,
+            mode: message.classification.mode,
+            attachmentIds: message.classification.attachmentIds,
+            protectedContent: message.protectedContent,
+            modelId: null,
+            modelRouteId: null,
+            providerId: null,
+            providerName: null,
+            providerModelName: null,
+            reasoningEffort: null,
+            appliedReasoningEffort: null,
+            reasoningAdjusted: false,
+            idempotencyKey: message.idempotencyKey,
+            createdAt: "2026-08-19T12:00:00.000Z",
+          },
+        ],
+        attachments: [],
+      },
+    });
+    expect(payload.kind).toBe("visible");
+    if (payload.kind !== "visible")
+      throw new Error("Expected visible history.");
+    expect(payload.messages[0]?.content).toEqual([
+      { type: "text", text: "SENTINEL user planning request" },
+    ]);
+    await expect(
+      openTaskRelocationPayload({
+        getComponentKey: () => {
+          throw new Error("missing task-content grant");
+        },
+        ownerId,
+        payload: {
+          version: 1,
+          kind: "task-encrypted",
+          messages: [],
+          attachments: [],
+        },
+      }),
+    ).rejects.toThrow(/missing task-content grant/u);
   });
 });

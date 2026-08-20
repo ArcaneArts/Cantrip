@@ -1,11 +1,16 @@
 import { chatMessageSchema } from "@cantrip/protocol";
+import { generateAccountMasterKey } from "@cantrip/crypto";
 import type {
   AppLiveServerMessage,
   ChatMessage,
   GitStatus,
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { clientEncryption } from "./client-encryption";
+import { clearClientSession, setClientSession } from "./client-session";
+import { createTaskMessageOpaqueContent } from "./task-message-encryption";
 
 import {
   AppLiveQueryBridge,
@@ -28,6 +33,8 @@ const event = (
   occurredAt: "2026-08-09T12:00:00.000Z",
   ...input,
 });
+
+afterEach(() => clearClientSession());
 
 describe("application live query bridge", () => {
   it("maps typed resources to their scoped query families", () => {
@@ -340,6 +347,85 @@ describe("application live query bridge", () => {
     expect(
       queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"]),
     ).toEqual([first, streamed]);
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("decrypts encrypted Task live messages before updating the cache", async () => {
+    const ownerId = "owner-live-task";
+    const serverId = "server-live-task";
+    setClientSession({
+      authMode: "accounts",
+      csrfToken: "c".repeat(32),
+      expiresAt: "2026-08-20T12:00:00.000Z",
+      serverId,
+      user: {
+        id: ownerId,
+        kind: "account",
+        displayName: "Task Owner",
+        email: "task-owner@example.com",
+        role: "owner",
+      },
+    });
+    clientEncryption.setAccountMasterKey({
+      accountMasterKey: generateAccountMasterKey(),
+      identity: { ownerId, serverId },
+      masterKeyRevision: 1,
+    });
+    const opaque = await createTaskMessageOpaqueContent({
+      content: [{ type: "text", text: "SENTINEL live Task message" }],
+      idempotencyKey: "task-live:test",
+      messageId: "11111111-1111-4111-8111-111111111111",
+      mode: "goal",
+      role: "assistant",
+    });
+    const payload = {
+      id: opaque.id,
+      chatId: "chat-live-task",
+      worktreeId: "worktree-one",
+      executionLaneId: "lane-one",
+      sequence: 1,
+      role: opaque.classification.role,
+      mode: opaque.classification.mode,
+      attachmentIds: opaque.classification.attachmentIds,
+      protectedContent: opaque.protectedContent,
+      modelId: null,
+      modelRouteId: null,
+      providerId: null,
+      providerName: null,
+      providerModelName: null,
+      reasoningEffort: null,
+      appliedReasoningEffort: null,
+      reasoningAdjusted: false,
+      idempotencyKey: opaque.idempotencyKey,
+      createdAt: "2026-08-19T12:00:00.000Z",
+    };
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    queryClient.setQueryData<ChatMessage[]>(["messages", payload.chatId], []);
+
+    bridge.handleEvent({
+      ...event({
+        entityId: opaque.id,
+        resource: "chat-message",
+        scope: { kind: "chat", chatId: payload.chatId },
+      }),
+      payload,
+      revision: payload.sequence,
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        queryClient.getQueryData<ChatMessage[]>(["messages", payload.chatId]),
+      ).toMatchObject([
+        {
+          id: opaque.id,
+          content: [{ type: "text", text: "SENTINEL live Task message" }],
+        },
+      ]),
+    );
     expect(invalidate).not.toHaveBeenCalled();
   });
 

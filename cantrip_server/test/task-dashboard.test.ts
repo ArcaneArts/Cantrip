@@ -1,6 +1,5 @@
 import type {
   ChatExecutionLaneSummary,
-  ChatMessage,
   GithubPullRequestSummary,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
@@ -116,26 +115,6 @@ function pullRequest(
   };
 }
 
-function message(text: string): ChatMessage {
-  return {
-    id: "message",
-    chatId: "chat",
-    worktreeId: activeWorktree.id,
-    executionLaneId: "lane-new",
-    sequence: 1,
-    role: "assistant",
-    content: [{ type: "text", text }],
-    mode: "goal",
-    reasoningEffort: null,
-    modelId: "model",
-    modelRouteId: "route",
-    providerId: "provider",
-    providerName: "Provider",
-    providerModelName: "Model",
-    createdAt: now,
-  } as ChatMessage;
-}
-
 describe("Task implementation dashboard", () => {
   it("maps Goal, pause, limits, completion, and runtime failure to Task states", () => {
     const goal = {
@@ -194,24 +173,20 @@ describe("Task implementation dashboard", () => {
     ).toMatchObject({ state: "complete" });
   });
 
-  it("associates exact message URLs and branches without including unrelated PRs", () => {
+  it("associates Task branches without scanning encrypted messages", () => {
     const associated = associateTaskPullRequests({
       activeWorktreeId: activeWorktree.id,
       implementationStartedAt: "2026-08-17T12:00:00.000Z",
       lanes,
-      messages: [
-        message("Created https://github.com/ArcaneArts/Cantrip/pull/12"),
-      ],
       pullRequests: [
         pullRequest(10, activeWorktree.branch!),
         pullRequest(11, earlierWorktree.branch!),
         pullRequest(12, "external-branch"),
         pullRequest(13, "unrelated"),
       ],
-      repository: "ArcaneArts/Cantrip",
       worktrees: observations,
     });
-    expect(associated.map(({ number }) => number).sort()).toEqual([10, 11, 12]);
+    expect(associated.map(({ number }) => number).sort()).toEqual([10, 11]);
     expect(associated.find(({ number }) => number === 10)).toMatchObject({
       associationKind: "inferred",
       associationSource: "worktree",
@@ -221,10 +196,7 @@ describe("Task implementation dashboard", () => {
       associationSource: "lane-branch",
       confidence: "medium",
     });
-    expect(associated.find(({ number }) => number === 12)).toMatchObject({
-      associationKind: "explicit",
-      associationSource: "message-url",
-    });
+    expect(associated.find(({ number }) => number === 12)).toBeUndefined();
   });
 
   it("reports protocol deviations as nonblocking advisories", () => {

@@ -17,6 +17,7 @@ import type {
   CodeGraphWorkerStatus,
   CodexRuntimeReport,
   DirectBrokerAdvertisement,
+  EncryptedTaskMessageProtectedContent,
   GitManagedOperationState,
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
@@ -2657,7 +2658,14 @@ export const chatMessages = pgTable(
     sequence: bigserial("sequence", { mode: "number" }).notNull(),
     role: text("role").notNull(),
     mode: text("mode").$type<ChatTurnMode>().notNull().default("default"),
-    content: jsonb("content").$type<ChatMessageContent>().notNull(),
+    content: jsonb("content").$type<ChatMessageContent>(),
+    taskProtectedContent: jsonb(
+      "task_protected_content",
+    ).$type<EncryptedTaskMessageProtectedContent>(),
+    taskAttachmentIds: jsonb("task_attachment_ids")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     modelId: text("model_id").references(() => modelProfiles.id, {
       onDelete: "set null",
     }),
@@ -2681,6 +2689,10 @@ export const chatMessages = pgTable(
     uniqueIndex("chat_messages_chat_idempotency_unique").on(
       table.chatId,
       table.idempotencyKey,
+    ),
+    check(
+      "chat_messages_content_shape_check",
+      sql`(${table.content} IS NOT NULL AND ${table.taskProtectedContent} IS NULL) OR (${table.content} IS NULL AND ${table.taskProtectedContent} IS NOT NULL)`,
     ),
   ],
 );

@@ -1,10 +1,13 @@
 import {
   taskOperationRelayRequestSchema,
   taskOperationRelayResultSchema,
+  taskMessageOpaqueContentSchema,
   taskPlanningRoundProtectedContentSchema,
   taskProtectedContentSchema,
   type TaskOperationRelayRequest,
   type TaskOperationRelayResult,
+  type TaskMessageOpaqueContent,
+  type TaskMessageProtectedContent,
   type TaskPlanningRoundProtectedClassification,
   type TaskPlanningRoundProtectedContent,
   type TaskProtectedContent,
@@ -15,6 +18,7 @@ import { computeBlindLookupTag, deriveLookupKey } from "./kdf.js";
 import {
   decryptTaskProtectedContent,
   decryptTaskPlanningRoundProtectedContent,
+  decryptTaskMessageProtectedContent,
   encryptTaskProtectedContent,
   encryptTaskPlanningRoundProtectedContent,
 } from "./task-content.js";
@@ -27,9 +31,11 @@ function taskOperationFingerprint(input: {
   operationId: string;
   ownerId: string;
   taskContent: TaskProtectedContent;
+  userMessage: TaskMessageOpaqueContent;
 }): string {
   const content = taskPlanningRoundProtectedContentSchema.parse(input.content);
   const taskContent = taskProtectedContentSchema.parse(input.taskContent);
+  const userMessage = taskMessageOpaqueContentSchema.parse(input.userMessage);
   const lookupKey = deriveLookupKey({
     componentKey: input.componentKey,
     ownerId: input.ownerId,
@@ -47,6 +53,7 @@ function taskOperationFingerprint(input: {
         input.operationId,
         content,
         taskContent,
+        userMessage,
       ]),
     );
   } finally {
@@ -73,6 +80,7 @@ export async function createTaskOperationRelayRequest(input: {
   operationId: string;
   ownerId: string;
   taskContent: TaskProtectedContent;
+  userMessage: TaskMessageOpaqueContent;
 }): Promise<TaskOperationRelayRequest> {
   const content = taskPlanningRoundProtectedContentSchema.parse(input.content);
   return taskOperationRelayRequestSchema.parse({
@@ -82,6 +90,7 @@ export async function createTaskOperationRelayRequest(input: {
       ...input,
       content,
       taskContent: input.taskContent,
+      userMessage: input.userMessage,
     }),
     classification: content.classification,
     protectedInput: await encryptTaskPlanningRoundProtectedContent({
@@ -101,6 +110,7 @@ export async function createTaskOperationRelayRequest(input: {
         content: input.taskContent,
       }),
     },
+    userMessage: input.userMessage,
   });
 }
 
@@ -112,6 +122,7 @@ export async function openTaskOperationRelayRequest(input: {
 }): Promise<{
   round: TaskPlanningRoundProtectedContent;
   task: TaskProtectedContent;
+  userMessage: TaskMessageProtectedContent;
 }> {
   const request = taskOperationRelayRequestSchema.parse(input.request);
   const round = await decryptTaskPlanningRoundProtectedContent({
@@ -130,6 +141,14 @@ export async function openTaskOperationRelayRequest(input: {
     encrypted: request.task.protectedContent,
     publicClassification: request.task.classification,
   });
+  const userMessage = await decryptTaskMessageProtectedContent({
+    ownerId: input.ownerId,
+    messageId: request.userMessage.id,
+    keyRevision: input.keyRevision,
+    componentKey: input.componentKey,
+    encrypted: request.userMessage.protectedContent,
+    publicClassification: request.userMessage.classification,
+  });
   const expected = taskOperationFingerprint({
     ownerId: input.ownerId,
     chatId: request.chatId,
@@ -138,16 +157,18 @@ export async function openTaskOperationRelayRequest(input: {
     componentKey: input.componentKey,
     content: round,
     taskContent: task,
+    userMessage: request.userMessage,
   });
   if (!fingerprintsMatch(request.fingerprint, expected)) {
     throw new Error("Encrypted Task operation fingerprint is invalid.");
   }
-  return { round, task };
+  return { round, task, userMessage };
 }
 
 export async function createTaskOperationRelayResult(input: {
   componentKey: Uint8Array;
   content: TaskPlanningRoundProtectedContent;
+  assistantMessage: TaskMessageOpaqueContent;
   goal: TaskOperationRelayResult["goal"];
   keyRevision: number;
   ownerId: string;
@@ -178,6 +199,7 @@ export async function createTaskOperationRelayResult(input: {
         content: input.taskContent,
       }),
     },
+    assistantMessage: input.assistantMessage,
     goal: input.goal,
   });
 }
@@ -191,6 +213,7 @@ export async function openTaskOperationRelayResult(input: {
 }): Promise<{
   round: TaskPlanningRoundProtectedContent;
   task: TaskProtectedContent;
+  assistantMessage: TaskMessageProtectedContent;
 }> {
   const request = taskOperationRelayRequestSchema.parse(input.request);
   const result = taskOperationRelayResultSchema.parse(input.result);
@@ -219,7 +242,15 @@ export async function openTaskOperationRelayResult(input: {
     encrypted: result.task.protectedContent,
     publicClassification: result.task.classification,
   });
-  return { round, task };
+  const assistantMessage = await decryptTaskMessageProtectedContent({
+    ownerId: input.ownerId,
+    messageId: result.assistantMessage.id,
+    keyRevision: input.keyRevision,
+    componentKey: input.componentKey,
+    encrypted: result.assistantMessage.protectedContent,
+    publicClassification: result.assistantMessage.classification,
+  });
+  return { round, task, assistantMessage };
 }
 
 export function taskOperationRunningClassification(input: {

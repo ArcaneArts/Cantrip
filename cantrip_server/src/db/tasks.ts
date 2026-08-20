@@ -1,5 +1,6 @@
 import {
   taskEncryptedOperationStartSchema,
+  taskOpaqueContentSchema,
   taskOpaqueMutationSchema,
   taskOpaqueSummarySchema,
   taskOperationRelayResultSchema,
@@ -18,6 +19,7 @@ import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 
 import {
+  canTransitionTaskState,
   TaskStateTransitionError,
   validateTaskOperationStart,
 } from "../tasks/state.js";
@@ -802,15 +804,87 @@ export class TaskRepository {
     });
   }
 
-  /**
-   * Implementation Goal reconciliation remains public-only until the encrypted
-   * Goal snapshot cutover. It must never manufacture a protected Task bundle.
-   */
   async syncImplementationState(
     ownerId: string,
     chatId: string,
-    _input: unknown,
-  ): Promise<any> {
-    return this.get(ownerId, chatId);
+    input: { rowVersion: number; task: TaskOpaqueContent },
+  ): Promise<TaskOpaqueSummary | null> {
+    const next = taskOpaqueContentSchema.parse(input.task);
+    if (!(await this.get(ownerId, chatId))) return null;
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select()
+        .from(schema.tasks)
+        .where(eq(schema.tasks.chatId, chatId))
+        .for("update")
+        .limit(1);
+      const current = rows[0];
+      if (!current) return null;
+      if (current.rowVersion !== input.rowVersion) {
+        throw new TaskConflictError(
+          "The Task changed before its Goal status was synchronized.",
+          "stale-version",
+        );
+      }
+      if (
+        !["implementing", "paused", "blocked", "complete", "failed"].includes(
+          current.state,
+        ) ||
+        !["implementing", "paused", "blocked", "complete", "failed"].includes(
+          next.classification.state,
+        ) ||
+        next.classification.activeOperationKind !== null ||
+        next.classification.stableStateBeforeFailure !== null ||
+        next.classification.planningRound !== current.planningRound ||
+        next.classification.planAuthorship !== current.planAuthorship ||
+        next.classification.hasPlan !== current.hasPlan ||
+        next.classification.hasQuestions !== current.hasQuestions ||
+        next.classification.hasFinalPlan !== current.hasFinalPlan ||
+        next.classification.hasGoalPrompt !== current.hasGoalPrompt ||
+        next.protectedContent.keyRevision !==
+          current.protectedContent.keyRevision
+      ) {
+        throw new TaskConflictError(
+          "The encrypted Goal update changes protected planning metadata.",
+          "idempotency-conflict",
+        );
+      }
+      if (
+        current.state !== next.classification.state &&
+        !canTransitionTaskState(current.state, next.classification.state)
+      ) {
+        throw new TaskStateTransitionError(
+          current.state,
+          next.classification.state,
+        );
+      }
+      const unchanged =
+        JSON.stringify({
+          classification: {
+            state: current.state,
+            stableStateBeforeFailure: current.stableStateBeforeFailure,
+            activeOperationKind: current.activeOperationKind,
+            planAuthorship: current.planAuthorship,
+            planningRound: current.planningRound,
+            hasPlan: current.hasPlan,
+            hasQuestions: current.hasQuestions,
+            hasFinalPlan: current.hasFinalPlan,
+            hasGoalPrompt: current.hasGoalPrompt,
+            lastError: current.lastError,
+          },
+          protectedContent: current.protectedContent,
+        }) === JSON.stringify(next);
+      if (unchanged) return toTaskOpaqueSummary(current);
+      const updated = await transaction
+        .update(schema.tasks)
+        .set({
+          ...taskOpaqueColumns(next),
+          rowVersion: current.rowVersion + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.tasks.chatId, chatId))
+        .returning();
+      return toTaskOpaqueSummary(updated[0]!);
+    });
   }
 }

@@ -1,22 +1,39 @@
+import { randomUUID } from "node:crypto";
+
 import {
   clearSensitiveBytes,
   createTaskOperationRelayResult,
+  decryptTaskMessageProtectedContent,
+  decryptTaskProtectedContent,
   decryptTaskGoalObjective,
   encryptTaskGoalObjective,
+  encryptTaskMessageProtectedContent,
+  encryptTaskProtectedContent,
   openTaskOperationRelayRequest,
 } from "@cantrip/crypto";
-import { agentTurnResultSchema, type AgentTurnResult } from "@cantrip/protocol";
+import {
+  agentTurnResultSchema,
+  chatGoalResponseSchema,
+  chatRelocationContextPayloadSchema,
+  type AgentTurnResult,
+  type ChatRelocationContextPayload,
+} from "@cantrip/protocol";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
 import {
   taskFinalizerOutputJsonSchema,
   taskFinalizerResultSchema,
+  taskGoalSyncContextSchema,
+  taskGoalWorkerResultSchema,
+  taskMessageRelayResultSchema,
   taskOperationRelayRequestSchema,
   taskPlannerOutputJsonSchema,
   taskPlannerResultSchema,
   TASK_GOAL_PROMPT_LIMIT,
   type TaskFinalizerResult,
+  type TaskGoalSyncContext,
   type TaskOperationRelayRequest,
   type TaskOperationRelayGoal,
+  type TaskMessageProtectedClassification,
   type TaskPlanningRoundProtectedContent,
   type TaskProtectedContent,
 } from "@cantrip/protocol/tasks";
@@ -167,6 +184,282 @@ ${result.finalPlanMarkdown}`;
   return objective;
 }
 
+function plannerMessage(result: ReturnType<typeof parsePlannerResult>): string {
+  if (!result.questions.length) return result.planMarkdown;
+  const questions = result.questions
+    .map((question) => `- **${question.header}:** ${question.question}`)
+    .join("\n");
+  return `${result.planMarkdown}\n\n## Questions\n\n${questions}`;
+}
+
+async function encryptedMessage(input: {
+  componentKey: Uint8Array;
+  content: string;
+  idempotencyKey: string;
+  keyRevision: number;
+  mode: "goal" | "plan";
+  ownerId: string;
+  role: "assistant" | "user";
+  id?: string;
+}) {
+  const id = input.id ?? randomUUID();
+  const classification: TaskMessageProtectedClassification = {
+    role: input.role,
+    mode: input.mode,
+    attachmentIds: [],
+  };
+  return {
+    id,
+    classification,
+    protectedContent: await encryptTaskMessageProtectedContent({
+      ownerId: input.ownerId,
+      messageId: id,
+      keyRevision: input.keyRevision,
+      componentKey: input.componentKey,
+      content: {
+        version: 1,
+        classification,
+        content: [{ type: "text", text: input.content, phase: "final_answer" }],
+      },
+    }),
+    reasoningEffort: null,
+    idempotencyKey: input.idempotencyKey,
+  };
+}
+
+export async function encryptTaskTurnResult(input: {
+  getComponentKey(): { key: Uint8Array; keyRevision: number };
+  idempotencyKey: string;
+  messageId: string;
+  ownerId: string;
+  result: AgentTurnResult;
+}): Promise<AgentTurnResult> {
+  const result = agentTurnResultSchema.parse(input.result);
+  const component = input.getComponentKey();
+  try {
+    const message = await encryptedMessage({
+      componentKey: component.key,
+      content: result.text || "The Task Goal completed without a message.",
+      id: input.messageId,
+      idempotencyKey: input.idempotencyKey,
+      keyRevision: component.keyRevision,
+      mode: "goal",
+      ownerId: input.ownerId,
+      role: "assistant",
+    });
+    return agentTurnResultSchema.parse({
+      ...result,
+      text: "",
+      structuredResult: taskMessageRelayResultSchema.parse({ message }),
+    });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
+function implementationProjection(input: {
+  context: TaskGoalSyncContext;
+  goal: ReturnType<typeof chatGoalResponseSchema.parse>["goal"];
+}) {
+  if (input.context.chatStatus === "failed") {
+    return {
+      state: "failed" as const,
+      code: "implementation-runtime-failed",
+      message: "The implementation runtime failed.",
+    };
+  }
+  if (input.context.automationPaused) {
+    return { state: "paused" as const, code: null, message: null };
+  }
+  switch (input.goal?.status) {
+    case "active":
+      return { state: "implementing" as const, code: null, message: null };
+    case "paused":
+      return { state: "paused" as const, code: null, message: null };
+    case "complete":
+      return { state: "complete" as const, code: null, message: null };
+    case "blocked":
+      return {
+        state: "blocked" as const,
+        code: "goal-blocked",
+        message: "The Goal reported a blocker.",
+      };
+    case "usageLimited":
+      return {
+        state: "blocked" as const,
+        code: "goal-usage-limited",
+        message: "The Goal reached a provider usage limit.",
+      };
+    case "budgetLimited":
+      return {
+        state: "blocked" as const,
+        code: "goal-budget-limited",
+        message: "The Goal reached its token budget.",
+      };
+    default:
+      return null;
+  }
+}
+
+export async function protectTaskGoalResult(input: {
+  chatId: string;
+  context: TaskGoalSyncContext;
+  getComponentKey(): { key: Uint8Array; keyRevision: number };
+  ownerId: string;
+  rawResult: unknown;
+}) {
+  const context = taskGoalSyncContextSchema.parse(input.context);
+  const result = chatGoalResponseSchema.parse(input.rawResult);
+  const component = input.getComponentKey();
+  try {
+    if (component.keyRevision !== context.task.protectedContent.keyRevision) {
+      throw new Error("The Task encryption key revision is unavailable.");
+    }
+    const current = await decryptTaskProtectedContent({
+      ownerId: input.ownerId,
+      chatId: input.chatId,
+      keyRevision: component.keyRevision,
+      componentKey: component.key,
+      encrypted: context.task.protectedContent,
+      publicClassification: context.task.classification,
+    });
+    const projection = implementationProjection({ context, goal: result.goal });
+    let task = context.task;
+    if (projection) {
+      const keepError =
+        current.lastError?.code === projection.code &&
+        current.lastError.operationKind === "implementation";
+      const lastError = projection.code
+        ? keepError
+          ? current.lastError
+          : {
+              code: projection.code,
+              message: projection.message!,
+              operationKind: "implementation" as const,
+              occurredAt: new Date().toISOString(),
+            }
+        : null;
+      const classification = {
+        ...current.classification,
+        state: projection.state,
+        stableStateBeforeFailure: null,
+        activeOperationKind: null,
+        lastError: lastError
+          ? {
+              code: lastError.code,
+              operationKind: lastError.operationKind,
+              occurredAt: lastError.occurredAt,
+            }
+          : null,
+      };
+      const next = { ...current, classification, lastError };
+      if (JSON.stringify(next) !== JSON.stringify(current)) {
+        task = {
+          classification,
+          protectedContent: await encryptTaskProtectedContent({
+            ownerId: input.ownerId,
+            chatId: input.chatId,
+            keyRevision: component.keyRevision,
+            componentKey: component.key,
+            content: next,
+          }),
+        };
+      }
+    }
+    const goal = result.goal
+      ? {
+          chatId: input.chatId,
+          threadId: result.goal.threadId,
+          status: result.goal.status,
+          protectedObjective: await encryptTaskGoalObjective({
+            ownerId: input.ownerId,
+            chatId: input.chatId,
+            threadId: result.goal.threadId,
+            keyRevision: component.keyRevision,
+            componentKey: component.key,
+            content: {
+              version: 1,
+              classification: {
+                chatId: input.chatId,
+                threadId: result.goal.threadId,
+                status: result.goal.status,
+              },
+              objective: result.goal.objective,
+            },
+          }),
+          tokenBudget: result.goal.tokenBudget,
+          tokensUsed: result.goal.tokensUsed,
+          timeUsedSeconds: result.goal.timeUsedSeconds,
+          createdAt: result.goal.createdAt,
+          updatedAt: result.goal.updatedAt,
+        }
+      : null;
+    const message =
+      result.goal && context.message
+        ? await encryptedMessage({
+            componentKey: component.key,
+            content: `${context.message.kind === "resume" ? "Resume" : "Begin"} Task Goal:\n\n${result.goal.objective}`,
+            id: context.message.id,
+            idempotencyKey: context.message.idempotencyKey,
+            keyRevision: component.keyRevision,
+            mode: "goal",
+            ownerId: input.ownerId,
+            role: "user",
+          })
+        : null;
+    return taskGoalWorkerResultSchema.parse({ goal, task, message });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
+export async function openTaskRelocationPayload(input: {
+  getComponentKey(): { key: Uint8Array; keyRevision: number };
+  ownerId: string;
+  payload: ChatRelocationContextPayload;
+}): Promise<ChatRelocationContextPayload> {
+  const payload = chatRelocationContextPayloadSchema.parse(input.payload);
+  if (payload.kind !== "task-encrypted") return payload;
+  const component = input.getComponentKey();
+  try {
+    const messages = await Promise.all(
+      payload.messages.map(async (message) => {
+        if (message.protectedContent.keyRevision !== component.keyRevision) {
+          throw new Error("The Task encryption key revision is unavailable.");
+        }
+        const opened = await decryptTaskMessageProtectedContent({
+          ownerId: input.ownerId,
+          messageId: message.id,
+          keyRevision: component.keyRevision,
+          componentKey: component.key,
+          encrypted: message.protectedContent,
+          publicClassification: {
+            role: message.role,
+            mode: message.mode,
+            attachmentIds: message.attachmentIds,
+          },
+        });
+        return {
+          sequence: message.sequence,
+          role: message.role,
+          mode: message.mode,
+          reasoningEffort: message.reasoningEffort,
+          content: opened.content,
+          createdAt: message.createdAt,
+        };
+      }),
+    );
+    return chatRelocationContextPayloadSchema.parse({
+      version: 1,
+      kind: "visible",
+      messages,
+      attachments: payload.attachments,
+    });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
 export async function executeEncryptedTaskOperation(input: {
   getComponentKey(): { key: Uint8Array; keyRevision: number };
   ownerId: string;
@@ -271,6 +564,17 @@ export async function executeEncryptedTaskOperation(input: {
           status: "active" as const,
         }
       : null;
+    const assistantMessage = await encryptedMessage({
+      componentKey: component.key,
+      content: finalizerResult
+        ? finalizerResult.finalPlanMarkdown
+        : plannerMessage(plannerResult!),
+      idempotencyKey: `task-result:${request.operationId}`,
+      keyRevision: component.keyRevision,
+      mode: "plan",
+      ownerId: input.ownerId,
+      role: "assistant",
+    });
     const goal =
       objective && goalClassification
         ? {
@@ -287,6 +591,15 @@ export async function executeEncryptedTaskOperation(input: {
                 objective,
               },
             }),
+            startMessage: await encryptedMessage({
+              componentKey: component.key,
+              content: objective,
+              idempotencyKey: `task-goal:${request.operationId}`,
+              keyRevision: component.keyRevision,
+              mode: "goal",
+              ownerId: input.ownerId,
+              role: "user",
+            }),
           }
         : null;
     const relayResult = await createTaskOperationRelayResult({
@@ -296,6 +609,7 @@ export async function executeEncryptedTaskOperation(input: {
       request,
       content: protectedResult,
       taskContent: taskResult,
+      assistantMessage,
       goal,
     });
     return agentTurnResultSchema.parse({

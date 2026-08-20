@@ -27,10 +27,12 @@ import {
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
+  chatGoalWireResponseSchema,
   chatGoalUpdateSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   chatMessageListSchema,
+  chatMessageWireListSchema,
   chatSummarySchema,
   chatCompactAcceptedSchema,
   chatImportCreateSchema,
@@ -390,6 +392,10 @@ import {
   prepareTaskEncryptedOperation,
   prepareTaskPlanPersistence,
 } from "@/lib/task-persistence-encryption";
+import {
+  openTaskGoalOpaqueSnapshot,
+  openTaskMessageOpaqueSummary,
+} from "@/lib/task-message-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -2814,6 +2820,7 @@ export async function getTaskImplementationDashboard(chatId: string) {
   return taskImplementationDashboardSchema.parse({
     ...opaque,
     task: await openTaskOpaqueSummary(opaque.task),
+    goal: opaque.goal ? await openTaskGoalOpaqueSnapshot(opaque.goal) : null,
   });
 }
 
@@ -3488,14 +3495,24 @@ export async function compactChat(chatId: string) {
   );
 }
 
+async function openChatGoalWireResponse(raw: unknown) {
+  const response = chatGoalWireResponseSchema.parse(raw);
+  return chatGoalResponseSchema.parse({
+    goal:
+      "kind" in response && response.kind === "task-encrypted" && response.goal
+        ? await openTaskGoalOpaqueSnapshot(response.goal)
+        : response.goal,
+  });
+}
+
 export async function getChatGoal(chatId: string) {
-  return chatGoalResponseSchema.parse(
+  return openChatGoalWireResponse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/goal`),
   );
 }
 
 export async function createChatGoal(chatId: string, input: ChatGoalCreate) {
-  return chatGoalResponseSchema.parse(
+  return openChatGoalWireResponse(
     await post(
       `/api/chats/${encodeURIComponent(chatId)}/goal`,
       chatGoalCreateSchema.parse(input),
@@ -3504,7 +3521,7 @@ export async function createChatGoal(chatId: string, input: ChatGoalCreate) {
 }
 
 export async function updateChatGoal(chatId: string, input: ChatGoalUpdate) {
-  return chatGoalResponseSchema.parse(
+  return openChatGoalWireResponse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/goal`, {
       method: "PATCH",
       body: JSON.stringify(chatGoalUpdateSchema.parse(input)),
@@ -3631,8 +3648,17 @@ export async function reorderProjects(ids: string[]) {
 }
 
 export async function getMessages(chatId: string) {
-  return chatMessageListSchema.parse(
+  const response = chatMessageWireListSchema.parse(
     await request(`/api/chats/${encodeURIComponent(chatId)}/messages`),
+  );
+  return chatMessageListSchema.parse(
+    Array.isArray(response)
+      ? response
+      : await Promise.all(
+          response.messages.map((message) =>
+            openTaskMessageOpaqueSummary(message),
+          ),
+        ),
   );
 }
 

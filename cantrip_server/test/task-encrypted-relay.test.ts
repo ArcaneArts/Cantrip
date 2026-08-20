@@ -51,6 +51,13 @@ const request: TaskOperationRelayRequest = {
     },
     protectedContent: encrypted,
   },
+  userMessage: {
+    id: "22222222-2222-4222-8222-222222222222",
+    classification: { role: "user", mode: "plan", attachmentIds: [] },
+    protectedContent: encrypted,
+    reasoningEffort: null,
+    idempotencyKey: "task-operation:user",
+  },
 };
 
 const result: TaskOperationRelayResult = {
@@ -77,6 +84,13 @@ const result: TaskOperationRelayResult = {
       lastError: null,
     },
     protectedContent: encrypted,
+  },
+  assistantMessage: {
+    id: "33333333-3333-4333-8333-333333333333",
+    classification: { role: "assistant", mode: "plan", attachmentIds: [] },
+    protectedContent: encrypted,
+    reasoningEffort: null,
+    idempotencyKey: "task-operation:assistant",
   },
   goal: null,
 };

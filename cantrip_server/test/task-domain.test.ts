@@ -65,6 +65,20 @@ function taskContent(
   };
 }
 
+function taskMessage(
+  role: "assistant" | "user",
+  id: string,
+  idempotencyKey: string,
+) {
+  return {
+    id,
+    classification: { role, mode: "plan" as const, attachmentIds: [] },
+    protectedContent: encrypted,
+    reasoningEffort: null,
+    idempotencyKey,
+  };
+}
+
 function operation(chatId: string, rowVersion: number) {
   const operationId = "11111111-1111-4111-8111-111111111111";
   const request: TaskOperationRelayRequest = {
@@ -82,6 +96,11 @@ function operation(chatId: string, rowVersion: number) {
     },
     protectedInput: encrypted,
     task: taskContent("planning", 1, "initial-plan"),
+    userMessage: taskMessage(
+      "user",
+      "22222222-2222-4222-8222-222222222222",
+      `task-operation:${operationId}`,
+    ),
   };
   const error = {
     code: "task-operation-failed",
@@ -177,6 +196,11 @@ const workerBridge: WorkerCommandBus = {
           },
           protectedResult: encrypted,
           task: taskContent("review", 1, null),
+          assistantMessage: taskMessage(
+            "assistant",
+            "33333333-3333-4333-8333-333333333333",
+            `task-result:${request.operationId}`,
+          ),
           goal: null,
         },
         status: "completed",
@@ -310,12 +334,45 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const stored = {
       task: await database.repository.tasks.get(LOCAL_USER_ID, chatId),
       rounds: await database.repository.tasks.listRounds(LOCAL_USER_ID, chatId),
-      messages: await database.repository.listMessages(LOCAL_USER_ID, chatId),
+      messages: await database.repository.listTaskMessages(
+        LOCAL_USER_ID,
+        chatId,
+      ),
     };
     expect(JSON.stringify(stored)).not.toContain(sentinel);
     expect(JSON.stringify(stored)).not.toContain("private Task prose");
     expect(stored.rounds).toHaveLength(1);
     expect(stored.rounds[0]).toMatchObject({ status: "completed" });
+    expect(stored.messages).toHaveLength(2);
+    expect(
+      stored.messages.every((message) => "protectedContent" in message),
+    ).toBe(true);
+  });
+
+  it("keeps ordinary agent messages on the existing visible API shape", async () => {
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      { title: "Visible agent chat", worktreeMode: "agent-managed" },
+      () => true,
+    );
+    if (!chat) throw new Error("Expected an ordinary chat.");
+    await database.repository.appendMessage(LOCAL_USER_ID, chat.id, {
+      role: "user",
+      content: [{ type: "text", text: "Visible ordinary chat message" }],
+      idempotencyKey: "visible-agent-message",
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/chats/${chat.id}/messages`,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject([
+      {
+        chatId: chat.id,
+        content: [{ type: "text", text: "Visible ordinary chat message" }],
+      },
+    ]);
   });
 
   it("keeps the destructive reset narrowly scoped to Task chats", async () => {
@@ -330,5 +387,16 @@ describe.sequential("opaque encrypted Task persistence", () => {
       /DELETE FROM "users"|DELETE FROM "projects"/u,
     );
     expect(migration).not.toContain('brief_markdown" text');
+    const messageMigration = await readFile(
+      new URL("../drizzle/0104_short_mole_man.sql", import.meta.url),
+      "utf8",
+    );
+    expect(messageMigration).toContain(
+      `DELETE FROM "chats" WHERE "experience" = 'task'`,
+    );
+    expect(messageMigration).toContain("chat_messages_content_shape_check");
+    expect(messageMigration).not.toMatch(
+      /DELETE FROM "users"|DELETE FROM "projects"/u,
+    );
   });
 });
