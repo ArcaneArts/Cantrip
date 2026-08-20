@@ -2116,7 +2116,9 @@ export const chats = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    title: text("title").notNull(),
+    protectedLabel: jsonb("protected_label")
+      .$type<PrivateDisplayLabelOpaque>()
+      .notNull(),
     experience: text("experience").notNull().default("agent"),
     position: integer("position").notNull().default(0),
     status: text("status").notNull().default("idle"),

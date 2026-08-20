@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import type {
   ProjectTabKind,
-  ProjectTabLayoutSummary,
-  ProjectTabMemberSummary,
+  ProjectTabLayoutWireSummary,
+  ProjectTabMemberWireSummary,
   TabGroupMemberMove,
   TabGroupMemberOrder,
   TabGroupOrder,
@@ -35,92 +35,6 @@ export function projectTabKey(kind: ProjectTabKind, tabId: string): string {
       ? "view"
       : kind;
   return `${prefix}:${tabId}`;
-}
-
-async function tabTitle(
-  database: TabLayoutExecutor,
-  member: { tabId: string; tabKind: string },
-): Promise<string> {
-  let title: string | undefined;
-  if (member.tabKind === "chat") {
-    const rows = await database
-      .select({ title: schema.chats.title })
-      .from(schema.chats)
-      .where(eq(schema.chats.id, member.tabId))
-      .limit(1);
-    title = rows[0]?.title;
-  } else if (member.tabKind === "terminal") {
-    const rows = await database
-      .select({ title: schema.terminals.title })
-      .from(schema.terminals)
-      .where(eq(schema.terminals.id, member.tabId))
-      .limit(1);
-    title = rows[0]?.title;
-  } else if (member.tabKind === "explorer") {
-    const rows = await database
-      .select({ title: schema.explorers.title })
-      .from(schema.explorers)
-      .where(eq(schema.explorers.id, member.tabId))
-      .limit(1);
-    title = rows[0]?.title;
-  } else if (member.tabKind === "browser") {
-    const rows = await database
-      .select({ title: schema.browsers.title })
-      .from(schema.browsers)
-      .where(eq(schema.browsers.id, member.tabId))
-      .limit(1);
-    title = rows[0]?.title;
-  } else if (member.tabKind === "code") {
-    const rows = await database
-      .select({ title: schema.codeTabs.title })
-      .from(schema.codeTabs)
-      .where(eq(schema.codeTabs.id, member.tabId))
-      .limit(1);
-    title = rows[0]?.title;
-  } else {
-    const rows = await database
-      .select({ title: schema.projectViews.title })
-      .from(schema.projectViews)
-      .where(eq(schema.projectViews.id, member.tabId))
-      .limit(1);
-    title = rows[0]?.title;
-  }
-  if (!title) {
-    throw new TabLayoutInvariantError(
-      `Tab layout member ${member.tabKind}:${member.tabId} has no matching surface.`,
-    );
-  }
-  return title;
-}
-
-async function preserveSingletonGroupTitle(
-  database: TabLayoutExecutor,
-  groupId: string,
-): Promise<void> {
-  const groups = await database
-    .select({ title: schema.tabGroups.title })
-    .from(schema.tabGroups)
-    .where(eq(schema.tabGroups.id, groupId))
-    .limit(1);
-  if (!groups[0] || groups[0].title !== null) return;
-
-  const members = await database
-    .select({
-      tabId: schema.tabGroupMembers.tabId,
-      tabKind: schema.tabGroupMembers.tabKind,
-    })
-    .from(schema.tabGroupMembers)
-    .where(eq(schema.tabGroupMembers.groupId, groupId))
-    .limit(2);
-  if (members.length !== 1) return;
-
-  await database
-    .update(schema.tabGroups)
-    .set({
-      title: await tabTitle(database, members[0]!),
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.tabGroups.id, groupId));
 }
 
 async function bumpRevision(
@@ -198,9 +112,6 @@ export async function attachProjectTab(
       .where(eq(schema.tabGroupMembers.groupId, groupId))
       .orderBy(asc(schema.tabGroupMembers.position));
     memberPosition = positions.length;
-    if (positions.length === 1) {
-      await preserveSingletonGroupTitle(database, groupId);
-    }
   } else {
     groupId = randomUUID();
     const groups = await database
@@ -339,7 +250,7 @@ export class ProjectTabLayoutRepository {
   async get(
     ownerId: string,
     projectId: string,
-  ): Promise<ProjectTabLayoutSummary | null> {
+  ): Promise<ProjectTabLayoutWireSummary | null> {
     const projects = await this.database
       .select({
         id: schema.projects.id,
@@ -380,7 +291,10 @@ export class ProjectTabLayoutRepository {
           asc(schema.tabGroupMembers.tabKey),
         ),
       this.database
-        .select({ id: schema.chats.id, title: schema.chats.title })
+        .select({
+          id: schema.chats.id,
+          titleProtection: schema.chats.protectedLabel,
+        })
         .from(schema.chats)
         .where(eq(schema.chats.projectId, projectId)),
       this.database
@@ -407,29 +321,50 @@ export class ProjectTabLayoutRepository {
         .from(schema.projectViews)
         .where(eq(schema.projectViews.projectId, projectId)),
     ]);
-    const titles = new Map<string, string>([
-      ...chats.map(({ id, title }) => [`chat:${id}`, title] as const),
-      ...terminals.map(({ id, title }) => [`terminal:${id}`, title] as const),
-      ...explorers.map(({ id, title }) => [`explorer:${id}`, title] as const),
-      ...browsers.map(({ id, title }) => [`browser:${id}`, title] as const),
-      ...code.map(({ id, title }) => [`code:${id}`, title] as const),
-      ...views.map(({ id, title }) => [`view:${id}`, title] as const),
+    const titles = new Map<
+      string,
+      Pick<ProjectTabMemberWireSummary, "title" | "titleProtection">
+    >([
+      ...chats.map(
+        ({ id, titleProtection }) =>
+          [`chat:${id}`, { title: null, titleProtection }] as const,
+      ),
+      ...terminals.map(
+        ({ id, title }) =>
+          [`terminal:${id}`, { title, titleProtection: null }] as const,
+      ),
+      ...explorers.map(
+        ({ id, title }) =>
+          [`explorer:${id}`, { title, titleProtection: null }] as const,
+      ),
+      ...browsers.map(
+        ({ id, title }) =>
+          [`browser:${id}`, { title, titleProtection: null }] as const,
+      ),
+      ...code.map(
+        ({ id, title }) =>
+          [`code:${id}`, { title, titleProtection: null }] as const,
+      ),
+      ...views.map(
+        ({ id, title }) =>
+          [`view:${id}`, { title, titleProtection: null }] as const,
+      ),
     ]);
-    const memberSummaries = new Map<string, ProjectTabMemberSummary[]>();
+    const memberSummaries = new Map<string, ProjectTabMemberWireSummary[]>();
     for (const member of members) {
-      const title = titles.get(member.tabKey);
-      if (!title) {
+      const protectedTitle = titles.get(member.tabKey);
+      if (!protectedTitle) {
         throw new TabLayoutInvariantError(
           `Tab layout member ${member.tabKey} has no matching surface.`,
         );
       }
-      const summary: ProjectTabMemberSummary = {
+      const summary: ProjectTabMemberWireSummary = {
         tabKey: member.tabKey,
         groupId: member.groupId,
         projectId: member.projectId,
         tabKind: member.tabKind as ProjectTabKind,
         tabId: member.tabId,
-        title,
+        ...protectedTitle,
         position: member.position,
         createdAt: member.createdAt.toISOString(),
         updatedAt: member.updatedAt.toISOString(),
@@ -456,10 +391,7 @@ export class ProjectTabLayoutRepository {
         return {
           id: group.id,
           projectId: group.projectId,
-          title:
-            group.title ??
-            groupedMembers.find(({ tabKey }) => tabKey === group.anchorTabKey)!
-              .title,
+          title: group.title,
           position: group.position,
           anchorTabKey: group.anchorTabKey,
           members: groupedMembers,
@@ -475,7 +407,7 @@ export class ProjectTabLayoutRepository {
     projectId: string,
     groupId: string,
     input: TabGroupUpdate,
-  ): Promise<ProjectTabLayoutSummary | null> {
+  ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
       await claimRevision(transaction, ownerId, projectId, input.revision);
@@ -516,7 +448,7 @@ export class ProjectTabLayoutRepository {
     ownerId: string,
     projectId: string,
     input: TabGroupOrder,
-  ): Promise<ProjectTabLayoutSummary | null> {
+  ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
       await claimRevision(transaction, ownerId, projectId, input.revision);
@@ -543,7 +475,7 @@ export class ProjectTabLayoutRepository {
     projectId: string,
     groupId: string,
     input: TabGroupMemberOrder,
-  ): Promise<ProjectTabLayoutSummary | null> {
+  ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
       await claimRevision(transaction, ownerId, projectId, input.revision);
@@ -584,7 +516,7 @@ export class ProjectTabLayoutRepository {
     ownerId: string,
     projectId: string,
     input: TabGroupMemberMove,
-  ): Promise<ProjectTabLayoutSummary | null> {
+  ): Promise<ProjectTabLayoutWireSummary | null> {
     if (!(await this.get(ownerId, projectId))) return null;
     await this.database.transaction(async (transaction) => {
       await claimRevision(transaction, ownerId, projectId, input.revision);
@@ -722,9 +654,6 @@ export class ProjectTabLayoutRepository {
             asc(schema.tabGroupMembers.position),
             asc(schema.tabGroupMembers.tabKey),
           );
-        if (targetMembers.length === 1) {
-          await preserveSingletonGroupTitle(transaction, targetGroupId);
-        }
         await transaction.insert(schema.tabGroupMembers).values({
           ...selected.member,
           groupId: targetGroupId,

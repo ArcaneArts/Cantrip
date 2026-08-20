@@ -387,11 +387,13 @@ database-compromise guarantee is described.
 | Project display names                                                            | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                       | E2EE complete                             | Implemented          | Medium      | Independent label search and presentation; repository identity remains queryable               |
 | Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths | Plaintext                                                                                                 | Planned                                   | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, questions, answers, directions, errors, messages, and Goals  | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation | E2EE complete                             | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                |
+| Ordinary chat and Task display titles                                            | AES-256-GCM E2EE; client-created labels and scoped worker-created import labels                           | E2EE complete                             | Implemented          | Medium      | Title search, concatenation, automation copies, and execution-target presentation              |
 | Queued prompts                                                                   | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                             | Planned                                   | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
 | Browser URLs, terminal and Explorer paths, remote-window selection               | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
-| Chat, surface, project-view, and tab-group display labels                        | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
+| Surface and project-view display labels                                          | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
+| Custom tab-group display labels                                                  | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain layout structure but cannot present custom labels                            |
 | Policies and agent instructions                                                  | Plaintext                                                                                                 | Planned                                   | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
 | Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                            | Planned replacement                       | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
 | MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                                                                                 | Planned                                   | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
@@ -508,8 +510,25 @@ content stays in `chat_messages.content`, while routing and ordering are
 separate fields such as chat ID, sequence, role, worktree, model route, and
 timestamp. Task-experience chats now use a separate encrypted message shape;
 Task rows and planning rounds likewise separate public workflow state from
-encrypted sensitive prose. Task and chat titles remain plaintext private
-metadata in this phase.
+encrypted sensitive prose. Ordinary-chat and Task titles now use the shared
+`private-surface-metadata` protected-label contract. Clients allocate the chat
+ID before encrypting, while external-import workers use their scoped component
+grant to encrypt the source title for the already allocated import/job ID.
+
+Cantrip Server persists only `chats.protected_label`. It no longer appends
+`(fork)`, joins titles into automation records, copies imported titles into job
+metadata, or exposes a plaintext chat title through archives, relocation,
+execution-target catalogs, or tab-layout summaries. Fork labels are derived
+and encrypted by the client. Project automation presentation resolves the
+already-decrypted chat list, and default tab-group titles are derived from
+decrypted members in the client. Ordinary agent-chat message bodies remain
+plaintext and are tracked separately above.
+
+[Migration 0106](../cantrip_server/drizzle/0106_wandering_squadron_sinister.sql)
+adds the required opaque column and removes `chats.title`. It deliberately does
+not translate existing titles: the Cycle 2 project-domain reset already left
+project-owned chat rows empty, so no second database wipe or compatibility
+reader is required.
 
 The server can retain chat ID, project ID, message sequence, role, timestamp,
 running state, worker and worktree placement, model-route identifiers,
@@ -551,11 +570,12 @@ The adapters fail closed with explicit locked, missing, revoked, stale,
 corrupt, and unsupported states. Focused protocol, shared-codec, client,
 worker, and readiness tests cover every record kind, classification agreement,
 associated-data swaps, tampering, bounds, intended-worker isolation, and
-restart recovery. Project display names now use this contract in production
-persistence. The other listed display-label columns and their secondary copies
-remain plaintext until the following rollout cycles replace their write and
-read paths. The ledger therefore claims E2EE only for the project row above and
-records contract completion without claiming E2EE for the remaining labels.
+restart recovery. Project display names and ordinary-chat/Task titles now use
+this contract in production persistence. The other listed display-label
+columns and their secondary copies remain plaintext until the following
+rollout cycles replace their write and read paths. The ledger therefore claims
+E2EE only for the project and chat-title rows above and records contract
+completion without claiming E2EE for the remaining labels.
 
 ### Task content contract foundation
 
@@ -741,7 +761,7 @@ Together with the deliberately Task-only resets in
 [migration 0104](../cantrip_server/drizzle/0104_short_mole_man.sql), this
 earns `E2EE complete` for Task content. There is no plaintext compatibility
 fallback. Ordinary agent chats and their queued prompts remain plaintext and
-planned; Task and chat titles remain plaintext private metadata.
+planned; Task and chat titles are now separately E2EE complete.
 
 ## Credentials and provider configuration
 
@@ -824,19 +844,21 @@ counts, worker presence, model-route choices, and traffic patterns.
    enforce the trusted-endpoint boundary; and a reopened temporary-database
    scan contains zero Task sentinel prose. Ordinary chats, queued prompts, and
    general interaction payloads remain plaintext and planned; Task/chat titles
-   remain plaintext metadata.
-8. **Private display-label contracts — complete; project persistence
+   are tracked separately and are now E2EE complete.
+8. **Private display-label contracts — complete; project and chat persistence
    complete:** one bounded bundle, exact associated-data mapping, trusted
    client and worker adapters, scoped worker readiness, and fail-closed label
    states cover projects, chats, surfaces, project views, and tab groups.
    Project display names now use opaque persistence after a deliberate
-   project-domain reset; the other label classes remain plaintext.
+   project-domain reset. Ordinary chat and Task titles use opaque persistence,
+   including archives, imports, forks, automations, execution targets, and tab
+   members; surface, project-view, and custom tab-group labels remain plaintext.
 9. **Attachments and relayed streams:** encrypt metadata and add
    application-layer encryption when bytes traverse relays.
 10. **Secrets:** replace server-decryptable provider and MCP vault envelopes
     with client and worker decryptable envelopes.
-11. **Remaining private metadata persistence:** move chat, surface,
-    project-view, and tab-group labels onto their shared opaque contract, then
+11. **Remaining private metadata persistence:** move surface, project-view, and
+    tab-group labels onto their shared opaque contract, then
     encrypt browser URLs, paths, Git output, and policy bodies under their
     appropriate components.
 12. **Workflows and optional private analytics:** split scheduling metadata

@@ -1,12 +1,12 @@
 import type {
   BrowserSummary,
-  ChatSummary,
+  ChatWireSummary,
   CodeTabSummary,
   ExecutionPlacement,
   ExecutionTarget,
   ExecutionTargetAvailability,
-  ExecutionTargetCatalog,
-  ExecutionTargetDescriptor,
+  ExecutionTargetWireCatalog,
+  ExecutionTargetWireDescriptor,
   ExecutionTargetResourceKind,
   ExplorerSummary,
   ProjectReplicaSummary,
@@ -15,6 +15,7 @@ import type {
   RemoteSurfaceSummary,
   TerminalSummary,
   WorkerSummary,
+  PrivateDisplayLabelOpaque,
 } from "@cantrip/protocol";
 
 export type ExecutionTargetCapability = "browser" | "code" | "desktop" | null;
@@ -59,7 +60,7 @@ export function executionTargetAvailability(
 
 export function buildExecutionTargetCatalog(input: {
   browsers: readonly BrowserSummary[];
-  chats: readonly ChatSummary[];
+  chats: readonly ChatWireSummary[];
   codeTabs: readonly CodeTabSummary[];
   desktops: readonly RemoteDesktopSummary[];
   explorers: readonly ExplorerSummary[];
@@ -70,14 +71,14 @@ export function buildExecutionTargetCatalog(input: {
   terminals: readonly TerminalSummary[];
   workers: readonly WorkerSummary[];
   worktrees: readonly ProjectWorktreeSummary[];
-}): ExecutionTargetCatalog {
+}): ExecutionTargetWireCatalog {
   const workersById = new Map(
     input.workers.map((worker) => [worker.workerId, worker]),
   );
   const worktreesById = new Map(
     input.worktrees.map((worktree) => [worktree.id, worktree]),
   );
-  const descriptors: ExecutionTargetDescriptor[] = [];
+  const descriptors: ExecutionTargetWireDescriptor[] = [];
   const append = (candidate: {
     capability?: ExecutionTargetCapability;
     placement: ExecutionPlacement;
@@ -85,7 +86,8 @@ export function buildExecutionTargetCatalog(input: {
     resourceKind: ExecutionTargetResourceKind;
     status: string | null;
     target: ExecutionTarget;
-    title: string;
+    title?: string;
+    titleProtection?: PrivateDisplayLabelOpaque;
   }) => {
     const worker = workersById.get(candidate.placement.workerId);
     if (!worker) return;
@@ -108,7 +110,8 @@ export function buildExecutionTargetCatalog(input: {
       target: candidate.target,
       placement: candidate.placement,
       resourceKind: candidate.resourceKind,
-      title: candidate.title,
+      title: candidate.title ?? null,
+      titleProtection: candidate.titleProtection ?? null,
       status: candidate.status,
       worker: {
         workerId: worker.workerId,
@@ -127,7 +130,8 @@ export function buildExecutionTargetCatalog(input: {
       "chat" | "terminal" | "explorer" | "code"
     >;
     status: string | null;
-    title: string;
+    title?: string;
+    titleProtection?: PrivateDisplayLabelOpaque;
     worktreeId: string;
   }) => {
     const worktree = worktreesById.get(surface.worktreeId);
@@ -154,7 +158,10 @@ export function buildExecutionTargetCatalog(input: {
         surfaceKind: surface.resourceKind,
         surfaceId: surface.id,
       },
-      title: surface.title,
+      ...(surface.title ? { title: surface.title } : {}),
+      ...(surface.titleProtection
+        ? { titleProtection: surface.titleProtection }
+        : {}),
     });
   };
 
@@ -251,7 +258,7 @@ export function buildExecutionTargetCatalog(input: {
       id: chat.id,
       resourceKind: "chat",
       status: chat.status,
-      title: chat.title,
+      titleProtection: chat.titleProtection,
       worktreeId: chat.activeWorktreeId,
     });
   }
@@ -358,7 +365,6 @@ export function buildExecutionTargetCatalog(input: {
   descriptors.sort(
     (left, right) =>
       left.resourceKind.localeCompare(right.resourceKind) ||
-      left.title.localeCompare(right.title) ||
       JSON.stringify(left.target).localeCompare(JSON.stringify(right.target)),
   );
   return {

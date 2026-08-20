@@ -145,7 +145,6 @@ export const projectAutomationSchema = z.object({
   id: idSchema,
   projectId: idSchema,
   chatId: idSchema,
-  chatTitle: z.string().min(1),
   workerId: idSchema,
   name: z.string().min(1).max(200),
   prompt: z.string().min(1).max(100_000),

@@ -3,6 +3,7 @@ import type {
   ChatImportJobSummary,
   ProjectSummary,
   ProjectWorktreeSummary,
+  WorkerSummary,
 } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -33,6 +34,8 @@ import {
   retryChatImport,
 } from "@/lib/api";
 import { useAppLiveStatus } from "@/lib/app-live-react";
+import { ensurePrivateLabelWorkerEncryption } from "@/lib/private-label-worker-encryption";
+import type { PrivateLabelWorkerEncryptionDescriptor } from "@/lib/private-label-worker-encryption";
 import { cn } from "@/lib/utils";
 
 import {
@@ -61,7 +64,10 @@ export function ExternalChatImportSettings({
   desktopRuntime: boolean;
   onOpenChat(chatId: string): void;
   project: ProjectSummary;
-  workers: Array<{ name: string; workerId: string }>;
+  workers: Array<
+    Pick<WorkerSummary, "name" | "workerId"> &
+      Partial<Pick<WorkerSummary, "encryption" | "online">>
+  >;
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
@@ -122,6 +128,18 @@ export function ExternalChatImportSettings({
   const workersById = new Map(
     workers.map(({ name, workerId }) => [workerId, name]),
   );
+  const encryptionWorker = (
+    workerId: string,
+  ): PrivateLabelWorkerEncryptionDescriptor | null => {
+    const worker = workers.find((candidate) => candidate.workerId === workerId);
+    return worker?.encryption && worker.online !== undefined
+      ? {
+          encryption: worker.encryption,
+          online: worker.online,
+          workerId: worker.workerId,
+        }
+      : null;
+  };
   const models = readyChatImportModels(settings.data);
   const selectedModel = models.find(({ id }) => id === modelId) ?? null;
   const routes = selectedModel?.routes.filter(({ enabled }) => enabled) ?? [];
@@ -177,7 +195,17 @@ export function ExternalChatImportSettings({
   }, [project.id]);
 
   const createImports = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      const sourceWorkerIds = new Set(
+        selectedCandidates.map(({ sourceWorkerId }) => sourceWorkerId),
+      );
+      await Promise.all(
+        [...sourceWorkerIds].map((workerId) =>
+          ensurePrivateLabelWorkerEncryption({
+            worker: encryptionWorker(workerId),
+          }),
+        ),
+      );
       const target =
         directFolder || destinationWorktreeId === "automatic"
           ? undefined
@@ -219,8 +247,12 @@ export function ExternalChatImportSettings({
       }),
   });
   const retry = useMutation({
-    mutationFn: (job: ChatImportJobSummary) =>
-      retryChatImport(job.id, { stateRevision: job.stateRevision }),
+    mutationFn: async (job: ChatImportJobSummary) => {
+      await ensurePrivateLabelWorkerEncryption({
+        worker: encryptionWorker(job.sourceWorkerId),
+      });
+      return retryChatImport(job.id, { stateRevision: job.stateRevision });
+    },
     onSuccess: (updated) => {
       queryClient.setQueryData<ChatImportJobSummary[]>(
         ["chat-import-jobs", project.id],

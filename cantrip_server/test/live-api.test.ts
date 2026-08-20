@@ -23,7 +23,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-live-api-"));
 const config: ServerConfig = {
@@ -140,7 +143,7 @@ beforeAll(async () => {
     },
   );
   const chat = await database.repository.createChat(LOCAL_USER_ID, projectId, {
-    title: "Live test chat",
+    ...protectedChatFields(),
     worktreeMode: "agent-managed",
   });
   if (!chat) throw new Error("Could not create the live test chat.");

@@ -7,7 +7,7 @@ import {
   chatImportJobListSchema,
   chatImportJobSummarySchema,
   chatMessageListSchema,
-  chatListSchema,
+  chatWireListSchema,
   externalChatDiscoveryWorkerResultSchema,
   externalChatReadWorkerResultSchema,
   projectExternalChatDiscoverySchema,
@@ -25,7 +25,10 @@ import {
   LOCAL_USER_ID,
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-external-chat-history-api-"),
@@ -166,9 +169,9 @@ const workerBridge: WorkerCommandBus = {
         transcript: {
           sourceId: command.sourceId,
           sourceThreadId: command.sourceThreadId,
+          titleProtection: protectedChatFields(command.chatId).titleProtection,
           metadata: {
             sourceThreadId: command.sourceThreadId,
-            title: "Import this chat",
             preview: "Continue building the importer",
             cwd: target.path,
             createdAt: "2026-08-14T10:00:00.000Z",
@@ -518,7 +521,7 @@ describe.sequential("external Codex chat history discovery API", () => {
       chatId: expect.any(String),
       managedThreadId: expect.stringMatching(/^managed-/u),
       targetModelRouteId: DEFAULT_MODEL_ROUTE_ID,
-      sourceMetadata: { title: "Import this chat" },
+      sourceMetadata: expect.not.objectContaining({ title: expect.anything() }),
     });
     expect(
       requests.filter(
@@ -526,7 +529,7 @@ describe.sequential("external Codex chat history discovery API", () => {
       ),
     ).toHaveLength(1);
 
-    const chats = chatListSchema.parse(
+    const chats = chatWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -535,7 +538,7 @@ describe.sequential("external Codex chat history discovery API", () => {
       ).json(),
     );
     expect(chats.find(({ id }) => id === job.chatId)).toMatchObject({
-      title: "Import this chat",
+      titleProtection: expect.any(Object),
       status: "idle",
     });
     const messages = chatMessageListSchema.parse(

@@ -868,7 +868,7 @@ export class ChatImportJobRepository {
         .values({
           id: chatId,
           projectId: job.projectId,
-          title: transcript.metadata.title.slice(0, 200),
+          protectedLabel: transcript.titleProtection,
           position: (positions[0]?.position ?? -1) + 1,
           status: "idle",
           activeWorkerId: job.targetPlacement.workerId,

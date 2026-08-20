@@ -14,7 +14,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { DEFAULT_MODEL_ID, LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-desktop-update-active-work-"),
@@ -128,7 +131,7 @@ describe.sequential("desktop update active-work API", () => {
     const chat = await database.repository.createChat(
       LOCAL_USER_ID,
       projectId,
-      { title: "Updating agent", worktreeMode: "agent-managed" },
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
     );
     if (!chat) throw new Error("Could not create update test chat.");
     await database.repository.setChatStatus(chat.id, "running");

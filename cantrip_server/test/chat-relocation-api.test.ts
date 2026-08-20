@@ -16,7 +16,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-api-"),
@@ -164,7 +167,7 @@ beforeAll(async () => {
     LOCAL_USER_ID,
     projectId,
     {
-      title: "Move through API",
+      ...protectedChatFields(),
       worktreeId: source.id,
       worktreeMode: "agent-managed",
     },

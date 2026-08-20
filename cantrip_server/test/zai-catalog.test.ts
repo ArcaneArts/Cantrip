@@ -18,7 +18,10 @@ import {
 } from "../src/models/zai-catalog.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -243,7 +246,7 @@ describe("Z.ai Coding Plan catalog", () => {
         },
       );
       const chat = await repository.createChat(LOCAL_USER_ID, project.id, {
-        title: "Existing GLM chat",
+        ...protectedChatFields(),
         worktreeMode: "agent-managed",
       });
       if (!chat) throw new Error("Could not create chat.");

@@ -7,7 +7,7 @@ import {
   cantripCliCommandResultSchema,
   explorerSummarySchema,
   executionPlacementResolutionSchema,
-  executionTargetCatalogSchema,
+  executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   terminalSummarySchema,
   unprobedCodexRuntimeReport,
@@ -24,7 +24,10 @@ import {
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-project-placement-api-"),
@@ -290,7 +293,7 @@ describe.sequential("project execution placement API", () => {
       LOCAL_USER_ID,
       projectId,
       {
-        title: "Alpha branch owner",
+        ...protectedChatFields(),
         worktreeId: alphaWorktreeId,
         worktreeMode: "pinned",
       },
@@ -299,7 +302,7 @@ describe.sequential("project execution placement API", () => {
       LOCAL_USER_ID,
       projectId,
       {
-        title: "Beta branch contender",
+        ...protectedChatFields(),
         worktreeId: betaWorktreeId,
         worktreeMode: "pinned",
       },
@@ -534,7 +537,9 @@ describe.sequential("project execution placement API", () => {
       url: `/api/projects/${projectId}/execution-targets`,
     });
     expect(catalogResponse.statusCode).toBe(200);
-    const catalog = executionTargetCatalogSchema.parse(catalogResponse.json());
+    const catalog = executionTargetWireCatalogSchema.parse(
+      catalogResponse.json(),
+    );
     expect(catalog.targets).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -734,7 +739,7 @@ describe.sequential("project execution placement API", () => {
       LOCAL_USER_ID,
       projectId,
       {
-        title: "Alpha source chat",
+        ...protectedChatFields(),
         worktreeId: alphaWorktreeId,
         worktreeMode: "pinned",
       },

@@ -343,6 +343,8 @@ export class ChatImportJobExecutor {
         claimed.job.sourceWorkerId,
         {
           type: "external.chat-history.read",
+          ownerId: claimed.ownerId,
+          chatId: claimed.job.id,
           sourceKind: claimed.job.sourceKind,
           sourceId: claimed.job.sourceId,
           sourceThreadId: claimed.job.sourceThreadId,
