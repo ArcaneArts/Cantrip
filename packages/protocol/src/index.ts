@@ -8,6 +8,8 @@ import {
 
 export * from "./json-message.js";
 
+export * from "./communication-content.js";
+
 import {
   directBrokerAdvertisementSchema,
   directCapabilityPrepareCommandSchema,

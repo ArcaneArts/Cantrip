@@ -24,6 +24,10 @@
       "types": "./src/tasks.ts",
       "import": "./dist/tasks.js"
     },
+    "./communication-content": {
+      "types": "./src/communication-content.ts",
+      "import": "./dist/communication-content.js"
+    },
     "./encryption": {
       "types": "./src/encryption.ts",
       "import": "./dist/encryption.js"

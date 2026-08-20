@@ -400,12 +400,12 @@ database-compromise guarantee is described.
 | Worker key custody, public registration, and scoped component grants             | Protected local private key; opaque server grants; Task operations require exact scoped readiness                           | Worker grants and Task readiness complete     | Required             | High        | Server cannot create grants or run plaintext work without an authorized worker                 |
 | Workspace display names                                                          | AES-256-GCM E2EE; client-only key                                                                                           | E2EE complete; lazy migration                 | Implemented          | Low-Medium  | Name-based server search and validation                                                        |
 | Project display names                                                            | AES-256-GCM E2EE; client-only key; project-domain pre-release reset                                                         | E2EE complete                                 | Implemented          | Medium      | Independent label search and presentation; repository identity remains queryable               |
-| Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths | Plaintext                                                                                                                   | Planned                                       | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
+| Ordinary agent-chat message bodies, reasoning, command output, diffs, file paths | Versioned `chat-content` endpoint envelope contract; production rows remain plaintext                                       | Codec foundation complete; payload planned    | Excellent            | High        | Full-text search, previews, content notifications, server-side summarization                   |
 | Task briefs, plans, questions, answers, directions, errors, messages, and Goals  | AES-256-GCM E2EE across Task rows, planning rounds, Task messages, Goal APIs, live events, and relocation                   | E2EE complete                                 | Excellent            | Medium-High | Server cannot inspect, transform, reconstruct, or search protected Task content                |
 | Ordinary chat and Task display titles                                            | AES-256-GCM E2EE; client-created labels and scoped worker-created import labels                                             | E2EE complete                                 | Implemented          | Medium      | Title search, concatenation, automation copies, and execution-target presentation              |
-| Queued prompts                                                                   | Plaintext                                                                                                                   | Planned                                       | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
+| Queued prompts                                                                   | Versioned row-bound `chat-content` endpoint envelope contract; production rows remain plaintext                             | Codec foundation complete; payload planned    | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                                               | Planned                                       | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
-| Interaction and approval request details and responses                           | Plaintext                                                                                                                   | Planned                                       | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
+| Interaction and approval request details and responses                           | Separate request/response `interaction-content` endpoint envelope contracts; production rows remain plaintext               | Codec foundation complete; payload planned    | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
 | Surface private-state contracts, endpoint codecs, and scoped worker grants       | Bounded `surface-private-state` envelopes; independently grantable from display labels                                      | E2EE closure complete and statically enforced | Required             | Medium      | No server decryption capability is introduced                                                  |
 | Terminal working directories and service commands                                | AES-256-GCM E2EE; client-created row-bound state; worker-only execution                                                     | E2EE complete                                 | Excellent            | Medium      | Server cannot inspect or synthesize launch paths or service commands                           |
 | Explorer selected path                                                           | AES-256-GCM E2EE; client-created row-bound state                                                                            | E2EE complete                                 | Excellent            | Low-Medium  | Server cannot restore or inspect the selected entry                                            |
@@ -529,6 +529,20 @@ reset preservation. Project display names therefore earn `E2EE complete`;
 repository names, URLs, and paths do not.
 
 ## Chats and tasks
+
+The ordinary-communications rollout now has bounded endpoint-only contracts in
+[communication-content.ts](../packages/protocol/src/communication-content.ts)
+and matching trusted-endpoint codecs in
+[communication-content.ts](../packages/crypto/src/communication-content.ts).
+Ordinary messages and queued prompts use the independently scoped
+`chat-content` key, while interaction request and response bodies use
+`interaction-content`. Associated data binds every envelope to its owner,
+component, table, row or request key, field, format version, and key revision.
+The contracts authenticate the small public classifications needed for
+routing, reject row replay and tampering, and bound encoded plaintext before
+encryption. They do not by themselves make the existing production persistence
+paths E2EE; the rows above remain incomplete until those paths store and relay
+only these opaque contracts.
 
 Ordinary agent chats remain a high-value future E2EE candidate. Their message
 content stays in `chat_messages.content`, while routing and ordering are
