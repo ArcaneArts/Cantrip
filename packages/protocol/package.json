@@ -31,6 +31,10 @@
     "./private-labels": {
       "types": "./src/private-labels.ts",
       "import": "./dist/private-labels.js"
+    },
+    "./surface-private-state": {
+      "types": "./src/surface-private-state.ts",
+      "import": "./dist/surface-private-state.js"
     }
   },
   "files": [

@@ -31,6 +31,7 @@ export * from "./tasks.js";
 export * from "./encryption.js";
 
 export * from "./private-labels.js";
+export * from "./surface-private-state.js";
 
 import { agentPolicyContextSchema } from "./policies.js";
 import {

@@ -4,6 +4,7 @@ export * from "./hpke.js";
 export * from "./kdf.js";
 export * from "./payload.js";
 export * from "./private-labels.js";
+export * from "./surface-private-state.js";
 export * from "./task-content.js";
 export * from "./task-operation.js";
 export * from "./wrappers.js";
