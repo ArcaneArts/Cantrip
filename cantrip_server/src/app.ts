@@ -524,23 +524,14 @@ import {
   policyUpdateSchema,
 } from "@cantrip/protocol/policies";
 import {
-  taskContinuationStartSchema,
-  taskDetailSchema,
-  taskDraftUpdateSchema,
   taskEncryptedOperationStartSchema,
-  taskFinalizerOutputJsonSchema,
   taskImplementationOpaqueDashboardSchema,
   taskGoalWorkerResultSchema,
   taskMessageOpaqueSummarySchema,
   taskMessageRelayResultSchema,
   taskOpaqueMutationSchema,
   taskOpaqueSummarySchema,
-  taskOperationStartSchema,
-  taskPlannerOutputJsonSchema,
-  taskPlanUpdateSchema,
-  taskImplementationDashboardSchema,
   type TaskAssociatedPullRequest,
-  type TaskDetail,
   type TaskEncryptedOperationStart,
   type TaskOperationRelayGoal,
   type TaskOperationRelayRequest,
@@ -626,15 +617,6 @@ import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
 import { TaskConflictError } from "./db/tasks.js";
 import { TaskStateTransitionError } from "./tasks/state.js";
-import {
-  buildTaskFinalizerPrompt,
-  buildTaskGoalObjective,
-  buildTaskPlannerPrompt,
-  normalizedTaskFinalizationMessage,
-  normalizedTaskPlanMessage,
-  parseTaskFinalizerResult,
-  parseTaskPlannerResult,
-} from "./tasks/planner.js";
 import {
   parseTaskOperationRelayResult,
   taskOperationRelayTurnFields,
@@ -7519,175 +7501,6 @@ export async function buildApp({
     };
   }
 
-  async function beginTaskPlanningOperation(
-    context: ChatExecutionContext,
-    kind: "initial-plan" | "continue-plan",
-    input: {
-      operationId: string;
-      rowVersion: number;
-      answers?: Parameters<
-        typeof repository.tasks.beginOperation
-      >[2]["answers"];
-      additionalDirection?: string;
-    },
-  ) {
-    const prior = await repository.tasks.getOperationContext(
-      applicationOwnerId(),
-      context.chatId,
-      { operationId: input.operationId },
-    );
-    if (prior) {
-      if (prior.round.kind !== kind) {
-        throw new TaskConflictError(
-          "This Task operation ID was already used for a different operation.",
-          "idempotency-conflict",
-        );
-      }
-      if (
-        (input.answers !== undefined &&
-          JSON.stringify(input.answers) !==
-            JSON.stringify(prior.round.inputAnswers)) ||
-        (input.additionalDirection !== undefined &&
-          input.additionalDirection !== prior.round.additionalDirection)
-      ) {
-        throw new TaskConflictError(
-          "This Task operation ID was already used with different input.",
-          "idempotency-conflict",
-        );
-      }
-      return prior.task;
-    }
-    if (!bridge.isConnected(context.workerId)) {
-      throw new WorkerUnavailableError("Project worker is offline.");
-    }
-    if (chatIsExecuting(context.status)) {
-      throw new TaskConflictError(
-        "The Task already has an active Chat turn.",
-        "operation-active",
-      );
-    }
-    const started = await repository.tasks.beginOperation(
-      applicationOwnerId(),
-      context.chatId,
-      { ...input, kind },
-    );
-    if (!started) return null;
-    publishChatInvalidation(context.chatId, "task");
-    if (started.idempotent) return started.task;
-
-    const plannerPrompt = buildTaskPlannerPrompt(started.task, kind);
-    try {
-      const userMessage = await beginTurn(
-        context,
-        {
-          text:
-            kind === "initial-plan"
-              ? "Plan this Task from the saved brief."
-              : "Continue planning this Task with the saved answers and direction.",
-          attachmentIds: started.task.draftAttachmentIds,
-          idempotencyKey: `task-operation:${input.operationId}`,
-        },
-        {
-          purpose:
-            kind === "initial-plan"
-              ? "Task initial planning"
-              : "Task continued planning",
-          workerPrompt: plannerPrompt,
-          structuredResult: {
-            outputSchema: taskPlannerOutputJsonSchema,
-            async onCompleted({ attribution, result }) {
-              const plannerResult = parseTaskPlannerResult(
-                result.structuredResult,
-                started.round.inputPlanMarkdown?.trim()
-                  ? started.round.inputPlanMarkdown
-                  : started.round.inputBriefMarkdown,
-              );
-              const completed =
-                await repository.tasks.completePlanningOperation(
-                  applicationOwnerId(),
-                  context.chatId,
-                  input.operationId,
-                  plannerResult,
-                  result.turnId ?? null,
-                );
-              if (!completed) {
-                throw new Error("Task planning operation was not found.");
-              }
-              const assistantMessage = await appendLiveChatMessage(
-                applicationOwnerId(),
-                context.chatId,
-                {
-                  role: "assistant",
-                  content: [
-                    {
-                      type: "text",
-                      text: normalizedTaskPlanMessage(plannerResult),
-                      phase: "final_answer",
-                    },
-                  ],
-                  idempotencyKey: `task-plan-result:${input.operationId}`,
-                },
-                attribution,
-              );
-              if (!assistantMessage) {
-                throw new Error("Task planning Chat was not found.");
-              }
-              await repository.tasks.attachOperationAssistantMessage(
-                applicationOwnerId(),
-                context.chatId,
-                input.operationId,
-                assistantMessage.id,
-              );
-              publishChatInvalidation(context.chatId, "task");
-            },
-            async onFailed({ error }) {
-              await repository.tasks.failOperation(
-                applicationOwnerId(),
-                context.chatId,
-                input.operationId,
-                {
-                  code: "task-planning-failed",
-                  message: errorMessage(error),
-                  interrupted: /interrupt|cancel/i.test(errorMessage(error)),
-                },
-              );
-              publishChatInvalidation(context.chatId, "task");
-            },
-          },
-        },
-      );
-      if (!userMessage.executionLaneId) {
-        throw new Error("Task planning did not acquire an execution lane.");
-      }
-      await repository.tasks.attachOperationExecution(
-        applicationOwnerId(),
-        context.chatId,
-        input.operationId,
-        {
-          executionLaneId: userMessage.executionLaneId,
-          userMessageId: userMessage.id,
-        },
-      );
-      return (
-        (await repository.tasks.get(applicationOwnerId(), context.chatId)) ??
-        started.task
-      );
-    } catch (error) {
-      await repository.tasks.failOperation(
-        applicationOwnerId(),
-        context.chatId,
-        input.operationId,
-        {
-          code: "task-planning-start-failed",
-          message: errorMessage(error),
-          interrupted: /interrupt|cancel/i.test(errorMessage(error)),
-        },
-      );
-      publishChatInvalidation(context.chatId, "task");
-      throw error;
-    }
-  }
-
   async function startEncryptedTaskGoal(
     context: ChatExecutionContext,
     objective: TaskOperationRelayGoal,
@@ -7774,10 +7587,6 @@ export async function buildApp({
     ) {
       throw new Error("The finalized Task objective is not available.");
     }
-    if (taskOperation.round.status === "completed") {
-      return taskOperation.task;
-    }
-
     const goalStartKey = `task-goal:${operationId}`;
     const existingMessage = await repository.getTaskMessageByIdempotencyKey(
       ownerId,
@@ -7818,177 +7627,6 @@ export async function buildApp({
       operationId,
     );
     publishChatInvalidation(chatId, "task");
-  }
-
-  async function beginTaskFinalizationOperation(
-    context: ChatExecutionContext,
-    input: {
-      operationId: string;
-      rowVersion: number;
-      answers: Parameters<typeof repository.tasks.beginOperation>[2]["answers"];
-      additionalDirection: string;
-    },
-  ) {
-    const ownerId = applicationOwnerId();
-    const prior = await repository.tasks.getOperationContext(
-      ownerId,
-      context.chatId,
-      { operationId: input.operationId },
-    );
-    if (prior) {
-      if (prior.round.kind !== "finalize") {
-        throw new TaskConflictError(
-          "This Task operation ID was already used for a different operation.",
-          "idempotency-conflict",
-        );
-      }
-      if (
-        JSON.stringify(input.answers) !==
-          JSON.stringify(prior.round.inputAnswers) ||
-        input.additionalDirection !== prior.round.additionalDirection
-      ) {
-        throw new TaskConflictError(
-          "This Task operation ID was already used with different input.",
-          "idempotency-conflict",
-        );
-      }
-      return prior.task;
-    }
-    if (!bridge.isConnected(context.workerId)) {
-      throw new WorkerUnavailableError("Project worker is offline.");
-    }
-    if (chatIsExecuting(context.status)) {
-      throw new TaskConflictError(
-        "The Task already has an active Chat turn.",
-        "operation-active",
-      );
-    }
-    const started = await repository.tasks.beginOperation(
-      ownerId,
-      context.chatId,
-      { ...input, kind: "finalize" },
-    );
-    if (!started) return null;
-    publishChatInvalidation(context.chatId, "task");
-    if (started.idempotent) return started.task;
-
-    try {
-      const userMessage = await beginTurn(
-        context,
-        {
-          text: "Finalize this Task and prepare its implementation Goal.",
-          attachmentIds: started.task.draftAttachmentIds,
-          idempotencyKey: `task-operation:${input.operationId}`,
-        },
-        {
-          purpose: "Task finalization",
-          workerPrompt: buildTaskFinalizerPrompt(started.task),
-          structuredResult: {
-            outputSchema: taskFinalizerOutputJsonSchema,
-            async onCompleted({ attribution, result }) {
-              const finalizerResult = parseTaskFinalizerResult(
-                result.structuredResult,
-                started.round.inputPlanMarkdown?.trim()
-                  ? started.round.inputPlanMarkdown
-                  : started.round.inputBriefMarkdown,
-              );
-              const storedResult = {
-                finalPlanMarkdown: finalizerResult.finalPlanMarkdown,
-                goalPrompt: buildTaskGoalObjective(finalizerResult),
-              };
-              const staged = await repository.tasks.stageFinalizationResult(
-                ownerId,
-                context.chatId,
-                input.operationId,
-                storedResult,
-                result.turnId ?? null,
-              );
-              if (!staged) {
-                throw new Error("Task finalization was not found.");
-              }
-              const assistantMessage = await appendLiveChatMessage(
-                ownerId,
-                context.chatId,
-                {
-                  role: "assistant",
-                  content: [
-                    {
-                      type: "text",
-                      text: normalizedTaskFinalizationMessage(finalizerResult),
-                      phase: "final_answer",
-                    },
-                  ],
-                  idempotencyKey: `task-finalization-result:${input.operationId}`,
-                },
-                attribution,
-              );
-              if (!assistantMessage) {
-                throw new Error("Task finalization Chat was not found.");
-              }
-              await repository.tasks.attachOperationAssistantMessage(
-                ownerId,
-                context.chatId,
-                input.operationId,
-                assistantMessage.id,
-              );
-              publishChatInvalidation(context.chatId, "task");
-            },
-            async afterCompleted() {
-              try {
-                await launchPreparedTaskGoal(context.chatId, input.operationId);
-              } catch (error) {
-                await failTaskGoalLaunch(
-                  context.chatId,
-                  input.operationId,
-                  error,
-                );
-              }
-            },
-            async onFailed({ error }) {
-              await repository.tasks.failOperation(
-                ownerId,
-                context.chatId,
-                input.operationId,
-                {
-                  code: "task-finalization-failed",
-                  message: errorMessage(error),
-                  interrupted: /interrupt|cancel/i.test(errorMessage(error)),
-                },
-              );
-              publishChatInvalidation(context.chatId, "task");
-            },
-          },
-        },
-      );
-      if (!userMessage.executionLaneId) {
-        throw new Error("Task finalization did not acquire an execution lane.");
-      }
-      await repository.tasks.attachOperationExecution(
-        ownerId,
-        context.chatId,
-        input.operationId,
-        {
-          executionLaneId: userMessage.executionLaneId,
-          userMessageId: userMessage.id,
-        },
-      );
-      return (
-        (await repository.tasks.get(ownerId, context.chatId)) ?? started.task
-      );
-    } catch (error) {
-      await repository.tasks.failOperation(
-        ownerId,
-        context.chatId,
-        input.operationId,
-        {
-          code: "task-finalization-start-failed",
-          message: errorMessage(error),
-          interrupted: /interrupt|cancel/i.test(errorMessage(error)),
-        },
-      );
-      publishChatInvalidation(context.chatId, "task");
-      throw error;
-    }
   }
 
   async function startGoalTurn(
@@ -8140,15 +7778,6 @@ export async function buildApp({
     return { ...result, task: synchronized ?? task };
   };
 
-  const reconcileTaskImplementation = async (
-    context: ChatExecutionContext,
-    _goal: Awaited<ReturnType<typeof chatGoalResponseSchema.parse>>["goal"],
-    _cached?: { messages?: ChatMessage[]; task?: TaskDetail },
-  ): Promise<TaskDetail | null> => {
-    if (context.experience !== "task") return null;
-    return null;
-  };
-
   const resumeChatAutomation = async (chatId: string): Promise<void> => {
     let context = await repository.getChatExecutionContext(
       applicationOwnerId(),
@@ -8229,7 +7858,6 @@ export async function buildApp({
           permissionProfileId: effectivePermissionProfile(context).effectiveId,
         }),
       );
-      await reconcileTaskImplementation(context, result.goal);
       if (result.goal?.status === "active") {
         const modelId = await resolveModelId(context);
         await beginTurn(

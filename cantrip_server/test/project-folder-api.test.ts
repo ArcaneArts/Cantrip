@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +16,7 @@ import {
   projectAutomationDispatchResultSchema,
   projectAutomationSchema,
 } from "@cantrip/protocol/automations";
+import type { TaskOpaqueContent } from "@cantrip/protocol/tasks";
 import {
   workflowAutomationTriggerSchema,
   workflowDefinitionDetailSchema,
@@ -43,6 +45,36 @@ const config: ServerConfig = {
   port: 4310,
   workerToken: "test-worker-token",
 };
+
+const encryptedTaskFixture = {
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+};
+
+function opaqueTaskDraft(): TaskOpaqueContent {
+  return {
+    classification: {
+      state: "draft",
+      stableStateBeforeFailure: null,
+      activeOperationKind: null,
+      planAuthorship: "agent",
+      planningRound: 0,
+      hasPlan: false,
+      hasQuestions: false,
+      hasFinalPlan: false,
+      hasGoalPrompt: false,
+      lastError: null,
+    },
+    protectedContent: encryptedTaskFixture,
+  };
+}
 
 const connectedWorkers = new Set(["folder-worker"]);
 const commands: Array<{ command: WorkerCommand; workerId: string }> = [];
@@ -694,7 +726,14 @@ describe("managed folder project lifecycle", () => {
 
     for (const [suffix, payload] of [
       ["chats", { title: "Folder agent" }],
-      ["tasks", { title: "Folder task" }],
+      [
+        "tasks",
+        {
+          chatId: randomUUID(),
+          title: "Folder task",
+          task: opaqueTaskDraft(),
+        },
+      ],
       ["terminals", { title: "Folder terminal" }],
       ["explorers", { title: "Folder explorer" }],
       ["code-tabs", { title: "Folder code" }],

@@ -136,11 +136,18 @@ without refreshing the inventory.
 
 At this revision the inventory contains:
 
-- 384 HTTP and 5 WebSocket routes;
-- 197 worker command variants;
+- 406 HTTP and 5 WebSocket routes;
+- 207 worker command variants;
 - 35 application live resource variants;
-- 332 database repository entry points; and
+- 354 database repository entry points; and
 - the five non-route data planes listed below.
+
+The same audit enforces the Task E2EE trust boundary. Production server source
+cannot import `@cantrip/crypto`, Task decryption helpers, or trusted client and
+worker Task adapters; Task routes must expose an audited opaque or
+plaintext-rejection contract; and repositories must keep plaintext ordinary
+messages, queued prompts, and project automations out of Task-experience
+chats. The generated `taskE2eeBoundary` record makes these checks reviewable.
 
 The inventory's `ownerEvidence` field is not an authorization guarantee. It is
 a review ledger:
