@@ -1,9 +1,10 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const appPath = resolve(repositoryRoot, "cantrip_server/src/app.ts");
+const serverSourcePath = resolve(repositoryRoot, "cantrip_server/src");
+const appPath = resolve(serverSourcePath, "app.ts");
 const protocolPath = resolve(repositoryRoot, "packages/protocol/src/index.ts");
 const liveProtocolPath = resolve(
   repositoryRoot,
@@ -22,6 +23,137 @@ const inventoryPath = resolve(
   repositoryRoot,
   "docs/security/server-route-inventory.json",
 );
+
+const prohibitedTaskProtocolSymbols = new Set([
+  "TaskContinuationStart",
+  "TaskDetail",
+  "TaskDraftUpdate",
+  "TaskFinalizerResult",
+  "TaskGoalObjectiveProtectedContent",
+  "TaskGoalSnapshot",
+  "TaskImplementationDashboard",
+  "TaskMessageProtectedContent",
+  "TaskOperationStart",
+  "TaskPlanUpdate",
+  "TaskPlannerResult",
+  "TaskPlanningRound",
+  "TaskPlanningRoundProtectedContent",
+  "TaskProtectedContent",
+  "TaskQuestion",
+  "TaskQuestionAnswer",
+  "taskContinuationStartSchema",
+  "taskDetailSchema",
+  "taskDraftUpdateSchema",
+  "taskFinalizerOutputJsonSchema",
+  "taskFinalizerResultSchema",
+  "taskGoalObjectiveProtectedContentSchema",
+  "taskGoalSnapshotSchema",
+  "taskImplementationDashboardSchema",
+  "taskLastErrorSchema",
+  "taskMessageProtectedContentSchema",
+  "taskOperationStartSchema",
+  "taskPlanUpdateSchema",
+  "taskPlannerOutputJsonSchema",
+  "taskPlannerResultSchema",
+  "taskPlanningRoundListSchema",
+  "taskPlanningRoundProtectedContentSchema",
+  "taskPlanningRoundSchema",
+  "taskProtectedContentSchema",
+  "taskQuestionAnswerListSchema",
+  "taskQuestionAnswerSchema",
+  "taskQuestionListSchema",
+  "taskQuestionOptionSchema",
+  "taskQuestionSchema",
+]);
+
+async function typescriptFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) return typescriptFiles(path);
+      return entry.isFile() && entry.name.endsWith(".ts") ? [path] : [];
+    }),
+  );
+  return nested.flat().sort();
+}
+
+function lineForOffset(text, offset) {
+  return text.slice(0, offset).split("\n").length;
+}
+
+function namedImportsFrom(sourceText, moduleName) {
+  const escaped = moduleName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const expression = new RegExp(
+    `import\\s+(?:type\\s+)?\\{([\\s\\S]*?)\\}\\s+from\\s+["']${escaped}["']`,
+    "gu",
+  );
+  return [...sourceText.matchAll(expression)].flatMap((match) =>
+    match[1]
+      .split(",")
+      .map((entry) =>
+        entry
+          .trim()
+          .replace(/^type\s+/u, "")
+          .split(/\s+as\s+/u, 1)[0]
+          ?.trim(),
+      )
+      .filter(Boolean),
+  );
+}
+
+async function taskProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  const taskProtocolSources = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const taskImports = namedImportsFrom(sourceText, "@cantrip/protocol/tasks");
+    if (taskImports.length > 0) taskProtocolSources.push(relativeFile);
+    for (const symbol of taskImports) {
+      if (prohibitedTaskProtocolSymbols.has(symbol)) {
+        failures.push(
+          `${relativeFile}: prohibited trusted Task symbol ${symbol}`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /(?:from\s*|import\s*\(\s*)["']([^"']+)["']/gu,
+    )) {
+      const target = match[1];
+      if (
+        target === "@cantrip/crypto" ||
+        target.startsWith("@cantrip/crypto/") ||
+        /(?:^|\/)packages\/crypto(?:\/|$)/u.test(target) ||
+        /(?:^|\/)cantrip_(?:app|worker)\/src\/.*(?:encryption|task-operation)/u.test(
+          target,
+        )
+      ) {
+        failures.push(
+          `${relativeFile}:${lineForOffset(sourceText, match.index)} imports trusted endpoint code (${target})`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\bdecryptTask[A-Z][A-Za-z0-9_]*/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references ${match[0]}`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the Task E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    productionCryptoImports: 0,
+    prohibitedTrustedTaskImports: 0,
+    taskProtocolSources: [...new Set(taskProtocolSources)].sort(),
+  };
+}
 function routeBoundary(path) {
   if (path === "/api" || path === "/api/bootstrap" || path === "/version") {
     return "public-bootstrap";
@@ -166,6 +298,7 @@ function parseRoutes(sourceText) {
         method: method.toUpperCase(),
         ownerEvidence: ownerEvidence(path, text),
         path,
+        source: text,
         transport: /\bwebsocket\s*:\s*true\b/u.test(text)
           ? "websocket"
           : "http",
@@ -173,6 +306,175 @@ function parseRoutes(sourceText) {
     }
   }
   return routes;
+}
+
+function taskRouteBoundaryAudit(routes) {
+  const requirements = [
+    [
+      "POST",
+      "/api/projects/:projectId/tasks",
+      "taskCreateSchema",
+      "opaque-create",
+    ],
+    ["GET", "/api/tasks/:chatId", "taskOpaqueSummarySchema", "opaque-read"],
+    [
+      "GET",
+      "/api/tasks/:chatId/dashboard",
+      "taskImplementationOpaqueDashboardSchema",
+      "opaque-dashboard",
+    ],
+    [
+      "PATCH",
+      "/api/tasks/:chatId/draft",
+      "taskOpaqueMutationSchema",
+      "opaque-mutation",
+    ],
+    [
+      "PATCH",
+      "/api/tasks/:chatId/plan",
+      "taskOpaqueMutationSchema",
+      "opaque-mutation",
+    ],
+    [
+      "POST",
+      "/api/tasks/:chatId/plan",
+      "taskEncryptedOperationStartSchema",
+      "encrypted-operation",
+    ],
+    [
+      "POST",
+      "/api/tasks/:chatId/continue",
+      "taskEncryptedOperationStartSchema",
+      "encrypted-operation",
+    ],
+    [
+      "POST",
+      "/api/tasks/:chatId/begin-implementation",
+      "taskEncryptedOperationStartSchema",
+      "encrypted-operation",
+    ],
+    [
+      "POST",
+      "/api/tasks/:chatId/retry",
+      "taskEncryptedOperationStartSchema",
+      "encrypted-operation",
+    ],
+    [
+      "GET",
+      "/api/chats/:chatId/messages",
+      "listTaskMessages",
+      "opaque-task-history",
+    ],
+  ];
+  const plaintextGuardedRoutes = [
+    ["POST", "/api/chats/:chatId/console"],
+    ["POST", "/api/chats/:chatId/fork"],
+    ["POST", "/api/chats/:chatId/goal"],
+    ["POST", "/api/chats/:chatId/messages"],
+    ["GET", "/api/chats/:chatId/queue"],
+    ["POST", "/api/chats/:chatId/queue"],
+    ["POST", "/api/chats/:chatId/sync"],
+    ["POST", "/api/chats/:chatId/turns"],
+    ["PATCH", "/api/queued-prompts/:promptId"],
+    ["POST", "/api/queued-prompts/:promptId/steer"],
+  ];
+  const contracts = [];
+  for (const [method, path, marker, contract] of requirements) {
+    const route = routes.find(
+      (candidate) => candidate.method === method && candidate.path === path,
+    );
+    if (!route || !route.source.includes(marker)) {
+      throw new Error(
+        `Task E2EE route contract is missing ${method} ${path} (${marker}).`,
+      );
+    }
+    contracts.push({ contract, method, path });
+  }
+  for (const [method, path] of plaintextGuardedRoutes) {
+    const route = routes.find(
+      (candidate) => candidate.method === method && candidate.path === path,
+    );
+    if (!route || !/experience\s*===\s*"task"/u.test(route.source)) {
+      throw new Error(
+        `Plaintext Task ingress guard is missing from ${method} ${path}.`,
+      );
+    }
+    contracts.push({
+      contract: "rejects-plaintext-task-ingress",
+      method,
+      path,
+    });
+  }
+  return contracts.sort(
+    (left, right) =>
+      left.path.localeCompare(right.path) ||
+      left.method.localeCompare(right.method),
+  );
+}
+
+function methodBody(sourceText, methodName) {
+  const expression = new RegExp(
+    `^  (?:private\\s+)?async\\s+${methodName}\\s*\\(`,
+    "mu",
+  );
+  const match = expression.exec(sourceText);
+  if (!match)
+    throw new Error(`Missing audited repository method ${methodName}.`);
+  const searchStart = match.index + match[0].length;
+  const following = sourceText
+    .slice(searchStart)
+    .search(/^  (?:private\s+)?async\s+[A-Za-z][A-Za-z0-9_]*\s*\(/mu);
+  return sourceText.slice(
+    match.index,
+    following < 0 ? sourceText.length : searchStart + following,
+  );
+}
+
+async function taskRepositoryBoundaryAudit() {
+  const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
+  const automationPath = resolve(serverSourcePath, "db/project-automations.ts");
+  const [repositoryText, automationText] = await Promise.all([
+    readFile(repositoryPath, "utf8"),
+    readFile(automationPath, "utf8"),
+  ]);
+  const agentOnly = [
+    "appendMessage",
+    "createQueuedPrompt",
+    "updateQueuedPrompt",
+  ];
+  for (const method of agentOnly) {
+    if (
+      !/experience\s*!==\s*"agent"/u.test(methodBody(repositoryText, method))
+    ) {
+      throw new Error(`${method} no longer rejects encrypted Task chats.`);
+    }
+  }
+  const appendTaskMessage = methodBody(repositoryText, "appendTaskMessage");
+  if (
+    !/experience\s*!==\s*"task"/u.test(appendTaskMessage) ||
+    !/content:\s*null/u.test(appendTaskMessage) ||
+    !/taskProtectedContent:\s*message\.protectedContent/u.test(
+      appendTaskMessage,
+    )
+  ) {
+    throw new Error(
+      "appendTaskMessage no longer enforces opaque Task storage.",
+    );
+  }
+  if (
+    !/eq\(schema\.chats\.experience,\s*"agent"\)/u.test(
+      methodBody(automationText, "target"),
+    )
+  ) {
+    throw new Error("Project automations may target encrypted Task chats.");
+  }
+  return [
+    "appendMessage:agent-only",
+    "appendTaskMessage:opaque-task-only",
+    "createQueuedPrompt:agent-only",
+    "projectAutomation.target:agent-only",
+    "updateQueuedPrompt:agent-only",
+  ];
 }
 
 function literalValuesInInitializer(sourceText, declarationName, opener) {
@@ -244,14 +546,24 @@ async function repositoryMethodInventory() {
 }
 
 async function buildInventory() {
-  const [sourceText, protocolText, liveProtocolText, repositoryMethods] =
-    await Promise.all([
-      readFile(appPath, "utf8"),
-      readFile(protocolPath, "utf8"),
-      readFile(liveProtocolPath, "utf8"),
-      repositoryMethodInventory(),
-    ]);
-  const routes = parseRoutes(sourceText);
+  const [
+    sourceText,
+    protocolText,
+    liveProtocolText,
+    repositoryMethods,
+    taskDependencies,
+    taskRepositoryGuards,
+  ] = await Promise.all([
+    readFile(appPath, "utf8"),
+    readFile(protocolPath, "utf8"),
+    readFile(liveProtocolPath, "utf8"),
+    repositoryMethodInventory(),
+    taskProductionDependencyAudit(),
+    taskRepositoryBoundaryAudit(),
+  ]);
+  const parsedRoutes = parseRoutes(sourceText);
+  const taskRouteContracts = taskRouteBoundaryAudit(parsedRoutes);
+  const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
   routes.sort(
     (left, right) =>
       left.path.localeCompare(right.path) ||
@@ -332,6 +644,12 @@ async function buildInventory() {
     ).sort(),
     liveResources: enumValues(liveProtocolText, "appLiveResourceSchema").sort(),
     repositoryMethods,
+    taskE2eeBoundary: {
+      status: "enforced",
+      ...taskDependencies,
+      repositoryGuards: taskRepositoryGuards,
+      routeContracts: taskRouteContracts,
+    },
     externalTransports: [
       {
         boundary: "capability-token",

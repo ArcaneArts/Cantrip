@@ -98,7 +98,11 @@ export class ProjectAutomationRepository {
         eq(schema.projectWorktrees.id, schema.chats.activeWorktreeId),
       )
       .where(
-        and(eq(schema.chats.id, chatId), eq(schema.chats.projectId, projectId)),
+        and(
+          eq(schema.chats.id, chatId),
+          eq(schema.chats.projectId, projectId),
+          eq(schema.chats.experience, "agent"),
+        ),
       )
       .limit(1);
     return rows[0] ?? null;

@@ -1,13 +1,11 @@
 import type {
   ChatExecutionLaneSummary,
-  ChatMessage,
   GithubPullRequestSummary,
   ProjectWorktreeSummary,
 } from "@cantrip/protocol";
 import type {
   TaskAdvisoryWarning,
   TaskAssociatedPullRequest,
-  TaskGoalSnapshot,
   TaskState,
 } from "@cantrip/protocol/tasks";
 
@@ -15,85 +13,6 @@ export interface TaskWorktreeObservation {
   dirty: boolean;
   dirtyFileCount: number;
   worktree: ProjectWorktreeSummary;
-}
-
-export interface TaskImplementationStateProjection {
-  code: string | null;
-  reason: string | null;
-  state: Extract<
-    TaskState,
-    "implementing" | "paused" | "blocked" | "complete" | "failed"
-  >;
-}
-
-function messageText(message: ChatMessage): string {
-  return message.content
-    .flatMap((item) => (item.type === "text" ? [item.text] : []))
-    .join("\n\n")
-    .trim();
-}
-
-export function latestTaskImplementationReason(
-  messages: readonly ChatMessage[],
-  implementationStartedAt: string | null,
-): string | null {
-  const startedAt = implementationStartedAt
-    ? Date.parse(implementationStartedAt)
-    : 0;
-  for (const message of [...messages].reverse()) {
-    if (Date.parse(message.createdAt) < startedAt) continue;
-    if (message.role === "user") continue;
-    const text = messageText(message);
-    if (text) return text.slice(0, 4_000);
-  }
-  return null;
-}
-
-export function projectTaskImplementationState(input: {
-  automationPaused: boolean;
-  chatStatus:
-    "idle" | "running" | "waiting-for-approval" | "offline" | "failed";
-  goal: TaskGoalSnapshot | null;
-  latestReason: string | null;
-}): TaskImplementationStateProjection | null {
-  if (input.chatStatus === "failed") {
-    return {
-      code: "implementation-runtime-failed",
-      reason: input.latestReason ?? "The implementation runtime failed.",
-      state: "failed",
-    };
-  }
-  if (input.automationPaused) {
-    return { code: null, reason: null, state: "paused" };
-  }
-  if (!input.goal) return null;
-  switch (input.goal.status) {
-    case "active":
-      return { code: null, reason: null, state: "implementing" };
-    case "paused":
-      return { code: null, reason: null, state: "paused" };
-    case "complete":
-      return { code: null, reason: null, state: "complete" };
-    case "blocked":
-      return {
-        code: "goal-blocked",
-        reason: input.latestReason ?? "The Goal reported a blocker.",
-        state: "blocked",
-      };
-    case "usageLimited":
-      return {
-        code: "goal-usage-limited",
-        reason:
-          input.latestReason ?? "The Goal reached a provider usage limit.",
-        state: "blocked",
-      };
-    case "budgetLimited":
-      return {
-        code: "goal-budget-limited",
-        reason: input.latestReason ?? "The Goal reached its token budget.",
-        state: "blocked",
-      };
-  }
 }
 
 export function associateTaskPullRequests(input: {

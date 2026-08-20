@@ -7,7 +7,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   associateTaskPullRequests,
-  projectTaskImplementationState,
   taskAdvisoryWarnings,
   type TaskWorktreeObservation,
 } from "../src/tasks/dashboard.js";
@@ -116,63 +115,6 @@ function pullRequest(
 }
 
 describe("Task implementation dashboard", () => {
-  it("maps Goal, pause, limits, completion, and runtime failure to Task states", () => {
-    const goal = {
-      threadId: "thread",
-      objective: "Implement",
-      status: "active" as const,
-      tokenBudget: null,
-      tokensUsed: 10,
-      timeUsedSeconds: 3,
-      createdAt: 1,
-      updatedAt: 2,
-    };
-    expect(
-      projectTaskImplementationState({
-        automationPaused: false,
-        chatStatus: "running",
-        goal,
-        latestReason: null,
-      }),
-    ).toMatchObject({ state: "implementing" });
-    expect(
-      projectTaskImplementationState({
-        automationPaused: true,
-        chatStatus: "idle",
-        goal,
-        latestReason: null,
-      }),
-    ).toMatchObject({ state: "paused" });
-    expect(
-      projectTaskImplementationState({
-        automationPaused: false,
-        chatStatus: "idle",
-        goal: { ...goal, status: "usageLimited" },
-        latestReason: "Provider quota exhausted until tomorrow.",
-      }),
-    ).toMatchObject({
-      state: "blocked",
-      code: "goal-usage-limited",
-      reason: "Provider quota exhausted until tomorrow.",
-    });
-    expect(
-      projectTaskImplementationState({
-        automationPaused: false,
-        chatStatus: "failed",
-        goal,
-        latestReason: "Runtime disconnected.",
-      }),
-    ).toMatchObject({ state: "failed", reason: "Runtime disconnected." });
-    expect(
-      projectTaskImplementationState({
-        automationPaused: false,
-        chatStatus: "idle",
-        goal: { ...goal, status: "complete" },
-        latestReason: null,
-      }),
-    ).toMatchObject({ state: "complete" });
-  });
-
   it("associates Task branches without scanning encrypted messages", () => {
     const associated = associateTaskPullRequests({
       activeWorktreeId: activeWorktree.id,

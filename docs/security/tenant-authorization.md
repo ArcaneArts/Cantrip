@@ -76,4 +76,8 @@ remain mandatory for mutations.
 Tenant integration tests use two simultaneous accounts to prove settings,
 providers, projects, and project collections remain isolated and that foreign
 IDs are indistinguishable from missing IDs. Live-hub tests separately prove
-owner-private delivery/replay and session revocation.
+owner-private delivery/replay and session revocation. The same audit walks all
+production server source to prohibit Task decryption dependencies, assigns an
+opaque or plaintext-rejection contract to each Task-adjacent route, and checks
+the repository guards that prevent ordinary plaintext messages, queued
+prompts, and project automations from targeting Task-experience chats.

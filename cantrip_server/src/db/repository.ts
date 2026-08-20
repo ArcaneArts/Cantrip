@@ -15280,7 +15280,11 @@ export class ServerRepository {
     attachments: ChatAttachmentSummary[] = [],
   ): Promise<QueuedPrompt | null> {
     const chat = await this.database
-      .select({ id: schema.chats.id, projectId: schema.chats.projectId })
+      .select({
+        experience: schema.chats.experience,
+        id: schema.chats.id,
+        projectId: schema.chats.projectId,
+      })
       .from(schema.chats)
       .innerJoin(
         schema.projects,
@@ -15291,7 +15295,7 @@ export class ServerRepository {
       )
       .where(eq(schema.chats.id, chatId))
       .limit(1);
-    if (!chat[0]) return null;
+    if (!chat[0] || chat[0].experience !== "agent") return null;
     if (input.worktreeId) {
       const target = await this.database
         .select({ id: schema.projectWorktrees.id })
@@ -15361,7 +15365,10 @@ export class ServerRepository {
     attachments?: ChatAttachmentSummary[],
   ): Promise<QueuedPrompt | null> {
     const owned = await this.database
-      .select({ id: schema.queuedPrompts.id })
+      .select({
+        experience: schema.chats.experience,
+        id: schema.queuedPrompts.id,
+      })
       .from(schema.queuedPrompts)
       .innerJoin(schema.chats, eq(schema.chats.id, schema.queuedPrompts.chatId))
       .innerJoin(
@@ -15373,7 +15380,7 @@ export class ServerRepository {
       )
       .where(eq(schema.queuedPrompts.id, promptId))
       .limit(1);
-    if (!owned[0]) return null;
+    if (!owned[0] || owned[0].experience !== "agent") return null;
     const result = await this.database
       .update(schema.queuedPrompts)
       .set({
