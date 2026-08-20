@@ -389,8 +389,8 @@ database-compromise guarantee is described.
 | Queued prompts                                                                   | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot dispatch prompt content without an authorized endpoint                           |
 | Attachment bytes, filenames, MIME, previews                                      | Bytes are worker-local; metadata is plaintext                                                             | Planned                                   | Excellent            | Medium      | Server-side previews, malware scanning, content deduplication                                  |
 | Interaction and approval request details and responses                           | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server can route approvals but cannot display or validate their semantics                      |
-| Browser URLs, terminal titles and paths, Explorer paths, remote-window selection | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
-| Tab titles and project display names                                             | Plaintext                                                                                                 | Planned                                   | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
+| Browser URLs, terminal and Explorer paths, remote-window selection               | Plaintext                                                                                                 | Planned                                   | Excellent            | Medium      | Server cannot search or diagnose surface contents                                              |
+| Project, chat, surface, project-view, and tab-group display labels               | Plaintext; shared protected-label contracts and endpoint codecs exist                                     | Contracts complete; persistence plaintext | Very good            | Medium      | Server can retain ordering but loses name-based search                                         |
 | Policies and agent instructions                                                  | Plaintext                                                                                                 | Planned                                   | Very good            | Medium-High | Server cannot compose prompts; the worker must do it                                           |
 | Provider API keys, ChatGPT/Grok credentials, MCP secret headers and environment  | Server-decryptable AES-256-GCM                                                                            | Planned replacement                       | Very good            | High        | Credential refresh, provider testing, and catalog discovery must move to a worker or client    |
 | MCP commands, URLs, and nonsecret configuration                                  | Plaintext                                                                                                 | Planned                                   | Good                 | High        | Server cannot validate or describe configuration if fully encrypted                            |
@@ -474,6 +474,40 @@ password.
 The main behavioral change is that search, compaction, and other content-aware
 operations require an online authorized endpoint. The server can no longer do
 them independently.
+
+### Private display-label contract foundation
+
+The shared `private-surface-metadata` foundation now defines one versioned,
+bounded protected-label bundle for project names; ordinary-chat and Task
+titles; terminal, Explorer, code-tab, browser, and remote-surface titles; and
+project-view and tab-group titles. The opaque
+[wire contract](../packages/protocol/src/private-labels.ts) exposes only the
+record kind and encrypted envelope. The decrypted label is a separate trusted
+endpoint type, and the encrypted bundle repeats the record kind so decryption
+can reject disagreement between public and protected metadata.
+
+The shared [endpoint codec](../packages/crypto/src/private-labels.ts) binds the
+owner, `private-surface-metadata` component, exact table, row ID,
+`protected_label` field, format version, and key revision as authenticated
+associated data. Every record kind maps to one table and therefore cannot be
+replayed as another kind. The trusted
+[client adapter](../cantrip_app/src/lib/private-label-encryption.ts) derives
+the component key only while the account is unlocked. The trusted
+[worker adapter](../cantrip_worker/src/private-label-encryption.ts) uses only
+an active scoped grant. Worker readiness and authorization reuse the generic
+grant registry through
+[private-label-worker-encryption.ts](../cantrip_app/src/lib/private-label-worker-encryption.ts),
+so an approved worker can restore its wrapped component key after restart
+without receiving the password.
+
+The adapters fail closed with explicit locked, missing, revoked, stale,
+corrupt, and unsupported states. Focused protocol, shared-codec, client,
+worker, and readiness tests cover every record kind, classification agreement,
+associated-data swaps, tampering, bounds, intended-worker isolation, and
+restart recovery. This milestone does **not** change production persistence:
+all listed display-label columns and their secondary copies remain plaintext
+until the following rollout cycles replace their write and read paths. The
+ledger therefore records contract completion without claiming E2EE.
 
 ### Task content contract foundation
 
@@ -741,13 +775,18 @@ counts, worker presence, model-route choices, and traffic patterns.
    scan contains zero Task sentinel prose. Ordinary chats, queued prompts, and
    general interaction payloads remain plaintext and planned; Task/chat titles
    remain plaintext metadata.
-8. **Attachments and relayed streams:** encrypt metadata and add
+8. **Private display-label contracts — complete; persistence remains
+   plaintext:** one bounded bundle, exact associated-data mapping, trusted
+   client and worker adapters, scoped worker readiness, and fail-closed label
+   states cover projects, chats, surfaces, project views, and tab groups.
+9. **Attachments and relayed streams:** encrypt metadata and add
    application-layer encryption when bytes traverse relays.
-9. **Secrets:** replace server-decryptable provider and MCP vault envelopes
-   with client and worker decryptable envelopes.
-10. **Private metadata:** encrypt tab titles, browser URLs, project names,
-    paths, Git output, and policy bodies.
-11. **Workflows and optional private analytics:** split scheduling metadata
+10. **Secrets:** replace server-decryptable provider and MCP vault envelopes
+    with client and worker decryptable envelopes.
+11. **Private metadata persistence:** move the protected display labels above
+    onto their shared opaque contract, then encrypt browser URLs, paths, Git
+    output, and policy bodies under their appropriate components.
+12. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.
 

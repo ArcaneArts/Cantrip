@@ -30,6 +30,8 @@ export * from "./tasks.js";
 
 export * from "./encryption.js";
 
+export * from "./private-labels.js";
+
 import { agentPolicyContextSchema } from "./policies.js";
 import {
   taskGoalSyncContextSchema,

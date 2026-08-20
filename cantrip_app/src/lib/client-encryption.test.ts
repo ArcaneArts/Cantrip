@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ClientEncryptionService,
   clientEncryption,
+  clientEncryptionForRuntime,
   type ClientDeviceKeyStore,
   type ClientEncryptionIdentity,
   type StoredClientDeviceRecord,
@@ -94,6 +95,26 @@ afterEach(() => {
 });
 
 describe("client encryption key custody", () => {
+  it("preserves an unlocked singleton across development hot reloads", () => {
+    const hotState: Parameters<typeof clientEncryptionForRuntime>[0] = {};
+    const first = clientEncryptionForRuntime(hotState);
+    first.setAccountMasterKey({
+      accountMasterKey: new Uint8Array(32).fill(31),
+      identity,
+      masterKeyRevision: 1,
+    });
+
+    const reloaded = clientEncryptionForRuntime(hotState);
+    expect(reloaded).toBe(first);
+    expect(reloaded.getSnapshot()).toMatchObject({
+      identity,
+      masterKeyRevision: 1,
+      status: "ready",
+    });
+
+    reloaded.lock();
+  });
+
   it("persists a nonextractable device key and unlocks after a simulated restart", async () => {
     const store = new MemoryDeviceKeyStore();
     const firstRun = new ClientEncryptionService(store);
