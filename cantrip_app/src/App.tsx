@@ -108,6 +108,7 @@ import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
@@ -2239,6 +2240,12 @@ function ChatTranscript({
             <ChatRelocationStatus
               job={relocationJob}
               onOpen={onOpenRelocation}
+            />
+          ) : null}
+          {planState.data ? (
+            <ChatPlanProgress
+              explanation={planState.data.explanation}
+              steps={planState.data.steps}
             />
           ) : null}
           <GoalPanel
