@@ -428,7 +428,8 @@ Root **Settings → Policies** is the only policy-authoring surface. It supports
 
 - search and a flat, divider-based ordered list;
 - pointer and keyboard sorting;
-- blank creation or copying the packaged Manual Change Protocol template;
+- blank creation or copying the packaged Manual Change Protocol and Codegraph
+  templates;
 - Markdown edit/preview with bounded name, key, summary, and body fields;
 - enable/disable and user-controlled Mandatory scope;
 - assignment counts, template/custom provenance, reset confirmation, and
@@ -436,11 +437,12 @@ Root **Settings → Policies** is the only policy-authoring surface. It supports
 - optimistic conflict handling so another Settings window cannot silently
   overwrite a newer edit or order.
 
-The packaged template catalog is immutable server distribution data. On the
-first Policy bootstrap for an owner, Cantrip copies the Manual Change Protocol
-template into one independent editable policy, enables it, and marks it
-Mandatory. A durable bootstrap marker makes this exactly-once: deleting the
-copy does not recreate it, and the packaged template remains available.
+The packaged template catalog is immutable server distribution data. Versioned
+Policy bootstrap copies the Manual Change Protocol and compact Codegraph
+awareness templates into independent editable policies, enables them, and
+marks them Mandatory. Durable bootstrap markers make each default exactly-once:
+deleting a copy does not recreate it, and the packaged template remains
+available.
 
 Nonmandatory policies can be assigned to workspaces and projects. Effectiveness
 is:

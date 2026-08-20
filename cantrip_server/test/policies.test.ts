@@ -32,7 +32,7 @@ async function fixture() {
 }
 
 describe("policy persistence", () => {
-  it("bootstraps one editable default exactly once and keeps its template", async () => {
+  it("bootstraps editable defaults exactly once and keeps their templates", async () => {
     const { client, repository } = await fixture();
     try {
       const initial = await repository.policies.list(LOCAL_USER_ID);
@@ -45,6 +45,15 @@ describe("policy persistence", () => {
           position: 0,
           rowVersion: 1,
           templateKey: "manual-change-protocol",
+        }),
+        expect.objectContaining({
+          key: "codegraph",
+          name: "Codegraph",
+          enabled: true,
+          mandatory: true,
+          position: 1,
+          rowVersion: 1,
+          templateKey: "codegraph",
         }),
       ]);
       expect(await repository.policies.ensureBootstrap(LOCAL_USER_ID)).toBe(
@@ -59,9 +68,9 @@ describe("policy persistence", () => {
           defaultPolicy.rowVersion,
         ),
       ).toBe(true);
-      expect((await repository.policies.list(LOCAL_USER_ID)).policies).toEqual(
-        [],
-      );
+      expect((await repository.policies.list(LOCAL_USER_ID)).policies).toEqual([
+        expect.objectContaining({ key: "codegraph" }),
+      ]);
       expect(await repository.policies.ensureBootstrap(LOCAL_USER_ID)).toBe(
         false,
       );
@@ -75,7 +84,7 @@ describe("policy persistence", () => {
         mandatory: true,
         templateKey: "manual-change-protocol",
       });
-      expect(repository.policies.listTemplates()).toHaveLength(1);
+      expect(repository.policies.listTemplates()).toHaveLength(2);
       expect(
         repository.policies.getTemplate("manual-change-protocol")?.bodyMarkdown,
       ).toContain("independently reviewable and mergeable");
@@ -98,17 +107,64 @@ describe("policy persistence", () => {
       );
       expect(attempts.filter(Boolean)).toHaveLength(1);
       expect(
-        (await repository.policies.list("existing-owner")).policies,
-      ).toEqual([expect.objectContaining({ key: "manual-change-protocol" })]);
+        (await repository.policies.list("existing-owner")).policies.map(
+          ({ key }) => key,
+        ),
+      ).toEqual(["manual-change-protocol", "codegraph"]);
       expect(await repository.policies.ensureAllOwnersBootstrapped()).toBe(0);
 
       const raw = await client.query<{ count: number }>(`
         SELECT count(*)::int AS count
         FROM policies
         WHERE owner_id = 'existing-owner'
-          AND key = 'manual-change-protocol'
+          AND key IN ('manual-change-protocol', 'codegraph')
       `);
-      expect(raw.rows[0]?.count).toBe(1);
+      expect(raw.rows[0]?.count).toBe(2);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("adds Codegraph to version-one owners without recreating deleted defaults", async () => {
+    const { client, repository } = await fixture();
+    try {
+      await client.exec(`
+        INSERT INTO users (id, kind, display_name)
+        VALUES ('version-one-owner', 'anonymous', 'Version One Owner');
+        INSERT INTO policy_owner_states (
+          owner_id,
+          bootstrap_version,
+          collection_version
+        ) VALUES ('version-one-owner', 1, 7);
+      `);
+
+      expect(
+        await repository.policies.ensureBootstrap("version-one-owner"),
+      ).toBe(true);
+      const upgraded = await repository.policies.list("version-one-owner");
+      expect(upgraded.collectionVersion).toBe(8);
+      expect(upgraded.policies).toEqual([
+        expect.objectContaining({
+          key: "codegraph",
+          position: 0,
+          mandatory: true,
+        }),
+      ]);
+
+      const codegraph = upgraded.policies[0]!;
+      expect(
+        await repository.policies.delete(
+          "version-one-owner",
+          codegraph.id,
+          codegraph.rowVersion,
+        ),
+      ).toBe(true);
+      expect(
+        await repository.policies.ensureBootstrap("version-one-owner"),
+      ).toBe(false);
+      expect(
+        (await repository.policies.list("version-one-owner")).policies,
+      ).toEqual([]);
     } finally {
       await client.close();
     }
@@ -124,12 +180,13 @@ describe("policy persistence", () => {
         passwordHash: "test-password-hash",
         role: "owner",
       });
-      expect((await repository.policies.list(account.id)).policies).toEqual([
-        expect.objectContaining({
-          key: "manual-change-protocol",
-          enabled: true,
-          mandatory: true,
-        }),
+      expect(
+        (await repository.policies.list(account.id)).policies.map(
+          ({ key, enabled, mandatory }) => ({ key, enabled, mandatory }),
+        ),
+      ).toEqual([
+        { key: "manual-change-protocol", enabled: true, mandatory: true },
+        { key: "codegraph", enabled: true, mandatory: true },
       ]);
     } finally {
       await client.close();
@@ -384,6 +441,7 @@ describe("policy persistence", () => {
       );
       expect(effective?.policies.map(({ key }) => key)).toEqual([
         "manual-change-protocol",
+        "codegraph",
         "scoped-review",
       ]);
       expect(

@@ -837,6 +837,7 @@ describe.sequential("project execution placement API", () => {
     expect(listedPolicies.policies.map(({ key }) => key)).toEqual([
       visiblePolicy.key,
       "manual-change-protocol",
+      "codegraph",
     ]);
     expect(listedPolicies.policies[0]).toMatchObject({
       mandatory: true,

@@ -53,8 +53,12 @@ describe.sequential("policy API", () => {
     });
     expect(templatesResponse.statusCode).toBe(200);
     const templates = policyTemplateListSchema.parse(templatesResponse.json());
-    expect(templates).toHaveLength(1);
-    expect(templates[0]).not.toHaveProperty("bodyMarkdown");
+    expect(templates).toHaveLength(2);
+    expect(templates).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ bodyMarkdown: expect.anything() }),
+      ]),
+    );
 
     const templateResponse = await app.inject({
       method: "GET",
@@ -71,7 +75,7 @@ describe.sequential("policy API", () => {
     });
     expect(policiesResponse.statusCode).toBe(200);
     const policies = policyListSchema.parse(policiesResponse.json());
-    expect(policies.policies).toHaveLength(1);
+    expect(policies.policies).toHaveLength(2);
     expect(policies.policies[0]).not.toHaveProperty("bodyMarkdown");
 
     const detailResponse = await app.inject({

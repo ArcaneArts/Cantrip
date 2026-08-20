@@ -186,8 +186,8 @@ describe("hosted tenant authorization", () => {
       const secondPolicies = secondPoliciesResponse.json() as {
         policies: Array<{ id: string }>;
       };
-      expect(firstPolicies.policies).toHaveLength(1);
-      expect(secondPolicies.policies).toHaveLength(1);
+      expect(firstPolicies.policies).toHaveLength(2);
+      expect(secondPolicies.policies).toHaveLength(2);
       expect(secondPolicies.policies[0]!.id).not.toBe(
         firstPolicies.policies[0]!.id,
       );
