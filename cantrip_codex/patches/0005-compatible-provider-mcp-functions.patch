@@ -1,4 +1,5 @@
 diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/parallel.rs
+index 4f1d0b7..7e87c60 100644
 --- a/codex-rs/core/src/tools/parallel.rs
 +++ b/codex-rs/core/src/tools/parallel.rs
 @@ -75,6 +75,7 @@ impl ToolCallRuntime {
@@ -10,12 +11,13 @@ diff --git a/codex-rs/core/src/tools/parallel.rs b/codex-rs/core/src/tools/paral
          let source = call.direct_source();
          let future = self.handle_tool_call_with_source(call, source, cancellation_token);
 diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.rs
+index b3e60a5..bdcd7f4 100644
 --- a/codex-rs/core/src/tools/router.rs
 +++ b/codex-rs/core/src/tools/router.rs
 @@ -68,6 +68,7 @@ pub(crate) fn tool_log_payload<'a>(
  pub struct ToolRouter {
      registry: ToolRegistry,
-     model_visible_specs: Vec<ToolSpec>,
+     model_visible_specs: Arc<[ToolSpec]>,
 +    model_visible_aliases: BTreeMap<ToolName, ToolName>,
  }
  
@@ -28,7 +30,7 @@ diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.
      pub(crate) fn from_parts(registry: ToolRegistry, model_visible_specs: Vec<ToolSpec>) -> Self {
          Self {
              registry,
-             model_visible_specs,
+             model_visible_specs: model_visible_specs.into(),
 +            model_visible_aliases: BTreeMap::new(),
 +        }
 +    }
@@ -40,7 +42,7 @@ diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.
 +    ) -> Self {
 +        Self {
 +            registry,
-+            model_visible_specs,
++            model_visible_specs: model_visible_specs.into(),
 +            model_visible_aliases,
          }
      }
@@ -96,15 +98,22 @@ diff --git a/codex-rs/core/src/tools/router.rs b/codex-rs/core/src/tools/router.
      pub fn build_tool_call(item: ResponseItem) -> Result<Option<ToolCall>, FunctionCallError> {
          match item {
 diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index 3da01c0..40cc978 100644
 --- a/codex-rs/core/src/tools/spec_plan.rs
 +++ b/codex-rs/core/src/tools/spec_plan.rs
-@@ -392,9 +392,13 @@ pub(crate) fn finalize_tool_router(
+@@ -435,7 +435,7 @@ pub(crate) fn finalize_tool_router(
          }
      }
  
 -    let model_visible_specs =
 +    let (model_visible_specs, model_visible_aliases) =
          build_model_visible_specs(turn_context, &registry, &code_mode_tool_names, hosted_specs);
+     if include_tool_namespaces_info {
+         turn_context
+@@ -447,7 +447,11 @@ pub(crate) fn finalize_tool_router(
+             ));
+     }
+ 
 -    Ok(ToolRouter::from_parts(registry, model_visible_specs))
 +    Ok(ToolRouter::from_parts_with_aliases(
 +        registry,
@@ -114,7 +123,7 @@ diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec
  }
  
  fn apply_direct_model_only_namespace_overrides(
-@@ -427,31 +431,68 @@ fn build_model_visible_specs(
+@@ -489,8 +493,10 @@ fn build_model_visible_specs(
      registry: &ToolRegistry,
      code_mode_tool_names: &BTreeMap<String, ToolName>,
      hosted_specs: Vec<ToolSpec>,
@@ -124,29 +133,29 @@ diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec
 +    let mut model_visible_aliases = BTreeMap::new();
 +    let namespace_tools_enabled = namespace_tools_enabled(turn_context);
      for tool in registry.entries() {
-         let tool_name = tool.runtime.tool_name();
          let exposure = tool.exposure;
-         if exposure.is_direct() && !is_hidden_by_code_mode_only(turn_context, &tool_name, exposure)
-         {
-             let spec = tool.runtime.spec();
--            specs.push(spec_for_model_request(
-+            let spec = spec_for_model_request(
-                 turn_context,
-                 exposure,
-                 &tool_name,
-                 code_mode_tool_names,
-                 spec,
--            ));
-+            );
-+            if namespace_tools_enabled {
-+                specs.push(spec);
-+            } else if let Some((spec, alias)) = flatten_namespace_tool_spec(&tool_name, spec) {
-+                if let Some((alias, canonical)) = alias {
-+                    model_visible_aliases.insert(alias, canonical);
-+                }
-+                specs.push(spec);
-+            }
+         if !exposure.is_direct() {
+@@ -503,22 +509,57 @@ fn build_model_visible_specs(
          }
+ 
+         let spec = tool.runtime.spec();
+-        specs.push(spec_for_model_request(
++        let spec = spec_for_model_request(
+             turn_context,
+             exposure,
+             &tool_name,
+             code_mode_tool_names,
+             spec,
+-        ));
++        );
++        if namespace_tools_enabled {
++            specs.push(spec);
++        } else if let Some((spec, alias)) = flatten_namespace_tool_spec(&tool_name, spec) {
++            if let Some((alias, canonical)) = alias {
++                model_visible_aliases.insert(alias, canonical);
++            }
++            specs.push(spec);
++        }
      }
 -    specs.extend(hosted_specs);
 +    specs.extend(
@@ -194,9 +203,10 @@ diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec
  
  fn spec_for_model_request(
 diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tools/spec_plan_tests.rs
+index 87ab8df..ab1b441 100644
 --- a/codex-rs/core/src/tools/spec_plan_tests.rs
 +++ b/codex-rs/core/src/tools/spec_plan_tests.rs
-@@ -74,6 +74,7 @@ struct ToolPlanProbe {
+@@ -78,6 +78,7 @@ struct ToolPlanProbe {
      namespace_functions: BTreeMap<String, Vec<String>>,
      registered_names: Vec<String>,
      exposures: BTreeMap<String, ToolExposure>,
@@ -204,7 +214,7 @@ diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tool
  }
  
  impl ToolPlanProbe {
-@@ -103,6 +104,15 @@ impl ToolPlanProbe {
+@@ -107,6 +108,15 @@ impl ToolPlanProbe {
                  | ToolSpec::Freeform(_) => None,
              })
              .collect::<BTreeMap<_, _>>();
@@ -220,7 +230,7 @@ diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tool
          let registered_tool_names = router.registered_tool_names_for_test();
          let registered_names = registered_tool_names
              .iter()
-@@ -123,6 +133,7 @@ impl ToolPlanProbe {
+@@ -127,6 +137,7 @@ impl ToolPlanProbe {
              namespace_functions,
              registered_names,
              exposures,
@@ -228,7 +238,7 @@ diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tool
          }
      }
  
-@@ -190,6 +201,13 @@ impl ToolPlanProbe {
+@@ -194,6 +205,13 @@ impl ToolPlanProbe {
              .get(name)
              .unwrap_or_else(|| panic!("expected registered tool `{name}`"))
      }
@@ -242,7 +252,7 @@ diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tool
  }
  
  async fn probe_with(
-@@ -299,6 +317,19 @@ fn use_bedrock_provider(turn: &mut TurnContext) {
+@@ -303,6 +321,19 @@ fn use_bedrock_provider(turn: &mut TurnContext) {
      turn.provider = create_model_provider(provider_info, turn.auth_manager.clone());
  }
  
@@ -262,7 +272,7 @@ diff --git a/codex-rs/core/src/tools/spec_plan_tests.rs b/codex-rs/core/src/tool
  struct TestNamespaceExtensionTool {
      namespace: &'static str,
      tool_name: &'static str,
-@@ -1108,6 +1139,31 @@ async fn mcp_and_tool_search_follow_direct_and_deferred_tool_exposure() {
+@@ -1120,6 +1151,31 @@ async fn mcp_and_tool_search_follow_direct_and_deferred_tool_exposure() {
          &["lookup".to_string()]
      );
  

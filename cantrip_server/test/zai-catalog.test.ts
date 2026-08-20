@@ -217,7 +217,7 @@ describe("Z.ai Coding Plan catalog", () => {
         name: "Z.ai Worker",
         platform: "darwin",
         architecture: "arm64",
-        codexVersion: "0.147.0",
+        codexVersion: "0.148.0",
         codexRuntime: unprobedCodexRuntimeReport,
         remoteSurfaces: {
           browser: false,

@@ -35,7 +35,7 @@ import {
 
 const MCP_RESOURCE_CONTENT_LIMIT = 5_000_000;
 const PLUGIN_PRODUCT_REASON =
-  "Codex 0.147 exposes stable core plugin methods, but Cantrip has not yet implemented and validated plugin product operations for this protocol revision.";
+  "Codex 0.148 exposes stable core plugin methods, but Cantrip has not yet implemented and validated plugin product operations for this protocol revision.";
 
 type UnknownRecord = Record<string, unknown>;
 

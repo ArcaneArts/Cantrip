@@ -78,7 +78,7 @@ describe("Codex weekly rate limits", () => {
         snapshotId: "snapshot-1",
         now: () => Date.parse("2026-08-16T12:00:00.000Z"),
         workerVersion: "1.2.3",
-        codexVersion: "0.147.0",
+        codexVersion: "0.148.0",
       },
     );
 
@@ -86,7 +86,7 @@ describe("Codex weekly rate limits", () => {
       snapshotId: "snapshot-1",
       observedAt: "2026-08-16T12:00:00.000Z",
       workerVersion: "1.2.3",
-      codexVersion: "0.147.0",
+      codexVersion: "0.148.0",
     });
     expect(snapshot.windows).toHaveLength(3);
     expect(

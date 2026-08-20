@@ -136,7 +136,7 @@ const discovery = {
           homeLabel: "~/.codex",
           availability: "available",
           message: null,
-          runtimeVersion: "0.147.0",
+          runtimeVersion: "0.148.0",
           truncated: false,
           threads: [
             {
@@ -150,7 +150,7 @@ const discovery = {
               source: "vscode",
               status: "not-loaded",
               modelProvider: "openai",
-              cliVersion: "0.147.0",
+              cliVersion: "0.148.0",
               git: {
                 branch: "main",
                 sha: "a".repeat(40),
@@ -174,7 +174,7 @@ const discovery = {
               source: "cli",
               status: "not-loaded",
               modelProvider: "openai",
-              cliVersion: "0.147.0",
+              cliVersion: "0.148.0",
               git: null,
               match: {
                 kind: "git-origin",

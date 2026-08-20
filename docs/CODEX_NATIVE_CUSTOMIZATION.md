@@ -137,10 +137,10 @@ through import before Cantrip implements and validates them.
 
 - Native multi-agent activity uses Codex's `multi_agent` feature and App Server
   events. Cantrip does not synthesize custom subagent semantics.
-- Codex 0.147.0 does not expose a project/personal custom-agent discovery
+- Codex 0.148.0 does not expose a project/personal custom-agent discovery
   method. Cantrip reports that control as unsupported while keeping native
   subagents available.
-- Codex 0.147.0 stabilizes its core plugin list/read/install/uninstall methods,
+- Codex 0.148.0 stabilizes its core plugin list/read/install/uninstall methods,
   but Cantrip has not yet implemented or payload-validated those product
   operations. Cantrip therefore continues to report them as unavailable until
   plugin adoption is completed as a separate feature.

@@ -21,8 +21,8 @@ export interface ExternalChatGptAuthSession {
 export function chatGptExternalAuthCapabilityError(
   report: CodexRuntimeReport,
 ): string | null {
-  if (!report.version || !/^0\.147\.\d+$/u.test(report.version.semantic)) {
-    return "Server-managed ChatGPT accounts require Codex 0.147.x.";
+  if (!report.version || !/^0\.148\.\d+$/u.test(report.version.semantic)) {
+    return "Server-managed ChatGPT accounts require Codex 0.148.x.";
   }
   if (!report.initialize?.experimentalApi) {
     return "Server-managed ChatGPT accounts require Codex experimental API support.";

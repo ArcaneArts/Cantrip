@@ -30,7 +30,7 @@ const compatibility = {
     experimentalApi: true,
     platformFamily: "unix",
     platformOs: "macos",
-    userAgent: "codex_cli_rs/0.147.0",
+    userAgent: "codex_cli_rs/0.148.0",
   },
   methods: {
     ...unprobedCodexRuntimeReport.methods,
@@ -38,7 +38,7 @@ const compatibility = {
     "thread/goal/get": "available" as const,
     "thread/goal/set": "available" as const,
   },
-  version: { raw: "codex-cli 0.147.0", semantic: "0.147.0" },
+  version: { raw: "codex-cli 0.148.0", semantic: "0.148.0" },
 };
 
 const provider = {
