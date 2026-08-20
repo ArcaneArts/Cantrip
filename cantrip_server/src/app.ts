@@ -14,10 +14,10 @@ import {
   agentThreadSyncSchema,
   agentTurnResultSchema,
   agentInteractionAcceptedSchema,
-  agentInteractionRequestListSchema,
+  agentInteractionRequestWireListSchema,
   agentInteractionRequestQuerySchema,
-  agentInteractionRequestSchema,
-  agentInteractionResolutionCreateSchema,
+  agentInteractionRequestWireSchema,
+  agentInteractionResolutionWireCreateSchema,
   appLiveEventPayloadSchema,
   authLoginSchema,
   authLogoutAllResultSchema,
@@ -2090,6 +2090,24 @@ export async function buildApp({
     }
     return interaction;
   };
+  const recordLiveEncryptedAgentInteractionRequest = async (
+    ...input: Parameters<
+      typeof repository.recordEncryptedAgentInteractionRequest
+    >
+  ): ReturnType<typeof repository.recordEncryptedAgentInteractionRequest> => {
+    const interaction = await repository.recordEncryptedAgentInteractionRequest(
+      ...input,
+    );
+    if (interaction.provenance.chatId) {
+      publishChatInvalidation(
+        interaction.provenance.chatId,
+        "agent-interaction",
+        interaction.id,
+      );
+      publishChatSummary(interaction.provenance.chatId, interaction.projectId);
+    }
+    return interaction;
+  };
   const resolveLiveAgentInteractionRequest = async (
     ...input: Parameters<typeof repository.resolveAgentInteractionRequest>
   ): ReturnType<typeof repository.resolveAgentInteractionRequest> => {
@@ -2111,6 +2129,23 @@ export async function buildApp({
         revision: null,
         runId: interaction.provenance.workflowRunId,
       });
+    }
+    return interaction;
+  };
+  const resolveLiveEncryptedAgentInteractionRequest = async (
+    ...input: Parameters<
+      typeof repository.resolveEncryptedAgentInteractionRequest
+    >
+  ): ReturnType<typeof repository.resolveEncryptedAgentInteractionRequest> => {
+    const interaction =
+      await repository.resolveEncryptedAgentInteractionRequest(...input);
+    if (interaction?.provenance.chatId) {
+      publishChatInvalidation(
+        interaction.provenance.chatId,
+        "agent-interaction",
+        interaction.id,
+      );
+      publishChatSummary(interaction.provenance.chatId, interaction.projectId);
     }
     return interaction;
   };
@@ -7080,6 +7115,23 @@ export async function buildApp({
                     attemptActivity = true;
                     anyActivity = true;
                     if (event.type === "agent.interaction.requested") {
+                      if (encryptedChatMessages) {
+                        try {
+                          await bridge.request(execution.workerId, {
+                            type: "agent.interaction.cancel",
+                            requestKey: event.request.requestKey,
+                            reason:
+                              "Encrypted chat interactions must use the protected contract.",
+                            model: runtime.model,
+                            provider: runtime.provider,
+                          });
+                        } catch {
+                          // The turn failure below remains fail closed.
+                        }
+                        throw new Error(
+                          "The worker emitted a visible interaction for an encrypted chat turn.",
+                        );
+                      }
                       behaviorTurnId = event.request.turnId ?? behaviorTurnId;
                       behaviorTracker.markApproval(
                         event.request.requestKey,
@@ -7109,6 +7161,49 @@ export async function buildApp({
                             requestKey: event.request.requestKey,
                             reason:
                               "Cantrip could not persist the interaction safely.",
+                            model: runtime.model,
+                            provider: runtime.provider,
+                          });
+                        } catch {
+                          // The turn failure below remains fail closed.
+                        }
+                        throw error;
+                      }
+                      return;
+                    }
+                    if (
+                      event.type === "agent.interaction.requested.protected"
+                    ) {
+                      behaviorTurnId = event.request.turnId ?? behaviorTurnId;
+                      behaviorTracker.markApproval(
+                        event.request.requestKey,
+                        observedAt,
+                      );
+                      try {
+                        await recordLiveEncryptedAgentInteractionRequest({
+                          requestKey: event.request.requestKey,
+                          projectId: execution.projectId,
+                          provenance: {
+                            chatId: execution.chatId,
+                            threadId: event.request.threadId,
+                            turnId: event.request.turnId,
+                            itemId: event.request.itemId,
+                            executionLaneId,
+                            workflowRunId: null,
+                            workflowNodeId: null,
+                            workerId: execution.workerId,
+                          },
+                          classification: event.request.classification,
+                          protectedPayload: event.request.protectedPayload,
+                          expiresAt: event.request.expiresAt,
+                        });
+                      } catch (error) {
+                        try {
+                          await bridge.request(execution.workerId, {
+                            type: "agent.interaction.cancel",
+                            requestKey: event.request.requestKey,
+                            reason:
+                              "Cantrip could not persist the protected interaction safely.",
                             model: runtime.model,
                             provider: runtime.provider,
                           });
@@ -10145,7 +10240,7 @@ export async function buildApp({
       applicationOwnerId(),
       query.data,
     );
-    return reply.send(agentInteractionRequestListSchema.parse(requests));
+    return reply.send(agentInteractionRequestWireListSchema.parse(requests));
   });
 
   app.get<{ Params: { requestId: string } }>(
@@ -10158,37 +10253,58 @@ export async function buildApp({
       if (!interaction) {
         return reply.code(404).send({ error: "Agent request not found." });
       }
-      return reply.send(agentInteractionRequestSchema.parse(interaction));
+      return reply.send(agentInteractionRequestWireSchema.parse(interaction));
     },
   );
 
   app.post<{ Params: { requestId: string } }>(
     "/api/agent-requests/:requestId/respond",
     async (request, reply) => {
-      const input = agentInteractionResolutionCreateSchema.safeParse(
+      const input = agentInteractionResolutionWireCreateSchema.safeParse(
         request.body,
       );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       try {
-        const existing = await repository.validateAgentInteractionResolution(
-          applicationOwnerId(),
-          request.params.requestId,
-          input.data,
-        );
+        const protectedInput =
+          "protectedResponse" in input.data ? input.data : null;
+        const visibleInput = "response" in input.data ? input.data : null;
+        const existing = protectedInput
+          ? await repository.validateEncryptedAgentInteractionResolution(
+              applicationOwnerId(),
+              request.params.requestId,
+              protectedInput,
+            )
+          : await repository.validateAgentInteractionResolution(
+              applicationOwnerId(),
+              request.params.requestId,
+              visibleInput!,
+            );
         if (!existing) {
           return reply.code(404).send({ error: "Agent request not found." });
         }
         if (existing.status !== "pending") {
-          const replay = await resolveLiveAgentInteractionRequest(
-            applicationOwnerId(),
-            request.params.requestId,
-            input.data,
-          );
-          return reply.send(agentInteractionRequestSchema.parse(replay));
+          const replay = protectedInput
+            ? await resolveLiveEncryptedAgentInteractionRequest(
+                applicationOwnerId(),
+                request.params.requestId,
+                protectedInput,
+              )
+            : await resolveLiveAgentInteractionRequest(
+                applicationOwnerId(),
+                request.params.requestId,
+                visibleInput!,
+              );
+          return reply.send(agentInteractionRequestWireSchema.parse(replay));
         }
         if (!existing.provenance.chatId) {
+          if (!visibleInput || !("payload" in existing)) {
+            return reply.code(409).send({
+              error:
+                "Protected workflow interactions are not supported by this execution path yet.",
+            });
+          }
           if (
             !existing.provenance.workflowRunId ||
             !existing.provenance.workflowNodeId
@@ -10201,7 +10317,7 @@ export async function buildApp({
             await workflowExecutor.respondToInteraction(
               applicationOwnerId(),
               existing,
-              input.data.response,
+              visibleInput.response,
             );
           } catch (error) {
             return sendWorkerConflictFailure(
@@ -10214,9 +10330,11 @@ export async function buildApp({
             const interaction = await resolveLiveAgentInteractionRequest(
               applicationOwnerId(),
               request.params.requestId,
-              input.data,
+              visibleInput,
             );
-            return reply.send(agentInteractionRequestSchema.parse(interaction));
+            return reply.send(
+              agentInteractionRequestWireSchema.parse(interaction),
+            );
           } finally {
             workflowExecutor.finishInteractionResponse(existing.requestKey);
           }
@@ -10247,13 +10365,24 @@ export async function buildApp({
           agentInteractionAcceptedSchema.parse(
             await bridge.request(
               context.workerId,
-              {
-                type: "agent.interaction.respond",
-                requestKey: existing.requestKey,
-                response: input.data.response,
-                model: runtime.model,
-                provider: runtime.provider,
-              },
+              protectedInput
+                ? {
+                    type: "agent.interaction.respond.protected",
+                    requestKey: existing.requestKey,
+                    response: {
+                      classification: protectedInput.classification,
+                      protectedResponse: protectedInput.protectedResponse,
+                    },
+                    model: runtime.model,
+                    provider: runtime.provider,
+                  }
+                : {
+                    type: "agent.interaction.respond",
+                    requestKey: existing.requestKey,
+                    response: visibleInput!.response,
+                    model: runtime.model,
+                    provider: runtime.provider,
+                  },
               { timeoutMs: 30_000 },
             ),
           );
@@ -10264,12 +10393,18 @@ export async function buildApp({
             `The runtime no longer accepts this interaction: ${errorMessage(error)}`,
           );
         }
-        const interaction = await resolveLiveAgentInteractionRequest(
-          applicationOwnerId(),
-          request.params.requestId,
-          input.data,
-        );
-        return reply.send(agentInteractionRequestSchema.parse(interaction));
+        const interaction = protectedInput
+          ? await resolveLiveEncryptedAgentInteractionRequest(
+              applicationOwnerId(),
+              request.params.requestId,
+              protectedInput,
+            )
+          : await resolveLiveAgentInteractionRequest(
+              applicationOwnerId(),
+              request.params.requestId,
+              visibleInput!,
+            );
+        return reply.send(agentInteractionRequestWireSchema.parse(interaction));
       } catch (error) {
         if (error instanceof WorkerUnavailableError) {
           return reply.code(503).send({ error: error.message });

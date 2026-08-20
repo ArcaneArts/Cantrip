@@ -10,8 +10,8 @@ import {
   authLogoutAllResultSchema,
   authSessionSchema,
   authSessionStateSchema,
-  agentInteractionRequestListSchema,
-  agentInteractionRequestSchema,
+  agentInteractionRequestWireListSchema,
+  agentInteractionRequestWireSchema,
   agentInteractionResolutionCreateSchema,
   archivedChatCleanupResultSchema,
   archivedChatWireListSchema,
@@ -418,6 +418,10 @@ import {
   openQueuedPromptOpaqueSummary,
   replaceEncryptedQueuedPrompt,
 } from "@/lib/chat-message-encryption";
+import {
+  createEncryptedAgentInteractionResponse,
+  openEncryptedAgentInteractionRequest,
+} from "@/lib/interaction-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -4059,8 +4063,15 @@ export async function getAgentInteractionRequests(
   if (input.status) query.set("status", input.status);
   if (input.limit) query.set("limit", String(input.limit));
   const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  return agentInteractionRequestListSchema.parse(
+  const requests = agentInteractionRequestWireListSchema.parse(
     await request(`/api/agent-requests${suffix}`),
+  );
+  return Promise.all(
+    requests.map((request) =>
+      "protectedPayload" in request
+        ? openEncryptedAgentInteractionRequest(request)
+        : request,
+    ),
   );
 }
 
@@ -4068,12 +4079,19 @@ export async function respondToAgentInteractionRequest(
   requestId: string,
   input: AgentInteractionResolutionCreate,
 ) {
-  return agentInteractionRequestSchema.parse(
+  const path = `/api/agent-requests/${encodeURIComponent(requestId)}`;
+  const current = agentInteractionRequestWireSchema.parse(await request(path));
+  const response = agentInteractionRequestWireSchema.parse(
     await post(
-      `/api/agent-requests/${encodeURIComponent(requestId)}/respond`,
-      agentInteractionResolutionCreateSchema.parse(input),
+      `${path}/respond`,
+      "protectedPayload" in current
+        ? await createEncryptedAgentInteractionResponse(current, input)
+        : agentInteractionResolutionCreateSchema.parse(input),
     ),
   );
+  return "protectedPayload" in response
+    ? openEncryptedAgentInteractionRequest(response)
+    : response;
 }
 
 export async function reorderProjects(ids: string[]) {

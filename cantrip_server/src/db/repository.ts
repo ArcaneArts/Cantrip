@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DEFAULT_PERMISSION_PROFILE_ID,
   MCP_SECRET_MASK,
+  encryptedAgentInteractionRequestSchema,
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
@@ -27,6 +28,10 @@ import type {
   AgentInteractionRequestQuery,
   AgentInteractionResolutionCreate,
   AgentInteractionResponse,
+  AgentInteractionRequestWire,
+  EncryptedAgentInteractionRequest,
+  EncryptedAgentInteractionRequestCreate,
+  EncryptedAgentInteractionResolutionCreate,
   ArchivedChatWireSummary,
   AccountLicenseWhitelistEntry,
   AccountSessionSummary,
@@ -1627,10 +1632,10 @@ function toWorkerSummary(
   };
 }
 
-function toAgentInteractionRequest(
+function agentInteractionRequestBase(
   request: typeof schema.agentInteractionRequests.$inferSelect,
-): AgentInteractionRequest {
-  return agentInteractionRequestSchema.parse({
+): Omit<AgentInteractionRequest, "payload" | "response"> {
+  return {
     id: request.id,
     requestKey: request.requestKey,
     projectId: request.projectId,
@@ -1644,15 +1649,54 @@ function toAgentInteractionRequest(
       workflowNodeId: request.workflowNodeId,
       workerId: request.workerId,
     },
-    payload: request.payload,
     status: request.status,
-    response: request.response,
     resolvedByUserId: request.resolvedByUserId,
     expiresAt: request.expiresAt ? toISOString(request.expiresAt) : null,
     resolvedAt: request.resolvedAt ? toISOString(request.resolvedAt) : null,
     createdAt: toISOString(request.createdAt),
     updatedAt: toISOString(request.updatedAt),
+  } as Omit<AgentInteractionRequest, "payload" | "response">;
+}
+
+function toAgentInteractionRequestWire(
+  request: typeof schema.agentInteractionRequests.$inferSelect,
+): AgentInteractionRequestWire {
+  const base = agentInteractionRequestBase(request);
+  if (request.protectedPayload) {
+    if (request.payload || request.response) {
+      throw new Error("An interaction row mixes visible and protected data.");
+    }
+    return encryptedAgentInteractionRequestSchema.parse({
+      ...base,
+      classification: { kind: request.kind },
+      protectedPayload: request.protectedPayload,
+      protectedResponse: request.protectedResponse,
+    });
+  }
+  if (!request.payload || request.protectedResponse) {
+    throw new Error("An interaction row has incomplete protected data.");
+  }
+  return agentInteractionRequestSchema.parse({
+    ...base,
+    payload: request.payload,
+    response: request.response,
   });
+}
+
+function toAgentInteractionRequest(
+  request: typeof schema.agentInteractionRequests.$inferSelect,
+): AgentInteractionRequest {
+  return agentInteractionRequestSchema.parse(
+    toAgentInteractionRequestWire(request),
+  );
+}
+
+function toEncryptedAgentInteractionRequest(
+  request: typeof schema.agentInteractionRequests.$inferSelect,
+): EncryptedAgentInteractionRequest {
+  return encryptedAgentInteractionRequestSchema.parse(
+    toAgentInteractionRequestWire(request),
+  );
 }
 
 function agentInteractionResponseForStorage(
@@ -15022,10 +15066,113 @@ export class ServerRepository {
     return normalized;
   }
 
+  async recordEncryptedAgentInteractionRequest(
+    input: EncryptedAgentInteractionRequestCreate,
+  ): Promise<EncryptedAgentInteractionRequest> {
+    const scopes = await this.database
+      .select({ projectId: schema.projects.id })
+      .from(schema.projects)
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, input.provenance.workerId),
+          eq(schema.workers.ownerId, schema.projects.ownerId),
+        ),
+      )
+      .where(eq(schema.projects.id, input.projectId))
+      .limit(1);
+    if (!scopes[0]) {
+      throw new AgentInteractionConflictError(
+        "Interaction worker does not belong to the project owner.",
+      );
+    }
+    if (input.provenance.chatId) {
+      const chats = await this.database
+        .select({ id: schema.chats.id })
+        .from(schema.chats)
+        .where(
+          and(
+            eq(schema.chats.id, input.provenance.chatId),
+            eq(schema.chats.projectId, input.projectId),
+          ),
+        )
+        .limit(1);
+      if (!chats[0]) {
+        throw new AgentInteractionConflictError(
+          "Interaction provenance does not match the project chat.",
+        );
+      }
+    }
+
+    const now = new Date();
+    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    const expiredAtCreation = expiresAt !== null && expiresAt <= now;
+    const rows = await this.database
+      .insert(schema.agentInteractionRequests)
+      .values({
+        id: randomUUID(),
+        requestKey: input.requestKey,
+        projectId: input.projectId,
+        chatId: input.provenance.chatId,
+        workerId: input.provenance.workerId,
+        executionLaneId: input.provenance.executionLaneId,
+        threadId: input.provenance.threadId,
+        turnId: input.provenance.turnId,
+        itemId: input.provenance.itemId,
+        workflowRunId: input.provenance.workflowRunId,
+        workflowNodeId: input.provenance.workflowNodeId,
+        kind: input.classification.kind,
+        status: expiredAtCreation ? "expired" : "pending",
+        protectedPayload: input.protectedPayload,
+        expiresAt,
+        resolvedAt: expiredAtCreation ? now : null,
+      })
+      .onConflictDoNothing({
+        target: schema.agentInteractionRequests.requestKey,
+      })
+      .returning();
+    const inserted = Boolean(rows[0]);
+    let request = rows[0];
+    if (!request) {
+      const existing = await this.database
+        .select()
+        .from(schema.agentInteractionRequests)
+        .where(eq(schema.agentInteractionRequests.requestKey, input.requestKey))
+        .limit(1);
+      request = firstOrThrow(
+        existing,
+        "reading a protected interaction request",
+      );
+    }
+    const normalized = toEncryptedAgentInteractionRequest(request);
+    if (
+      !inserted &&
+      (normalized.projectId !== input.projectId ||
+        JSON.stringify(normalized.provenance) !==
+          JSON.stringify(input.provenance) ||
+        JSON.stringify(normalized.classification) !==
+          JSON.stringify(input.classification) ||
+        JSON.stringify(normalized.protectedPayload) !==
+          JSON.stringify(input.protectedPayload) ||
+        normalized.expiresAt !== (expiresAt?.toISOString() ?? null))
+    ) {
+      throw new AgentInteractionConflictError(
+        "Interaction request key was reused with different request data.",
+      );
+    }
+    if (input.provenance.chatId && request.status === "pending") {
+      await this.database
+        .update(schema.chats)
+        .set({ status: "waiting-for-approval", updatedAt: new Date() })
+        .where(eq(schema.chats.id, input.provenance.chatId));
+    }
+    return normalized;
+  }
+
   async listAgentInteractionRequests(
     ownerId: string,
     query: AgentInteractionRequestQuery,
-  ): Promise<AgentInteractionRequest[]> {
+  ): Promise<AgentInteractionRequestWire[]> {
     await this.expireAgentInteractionRequests();
     const conditions = [eq(schema.projects.ownerId, ownerId)];
     if (query.chatId) {
@@ -15044,13 +15191,13 @@ export class ServerRepository {
       .where(and(...conditions))
       .orderBy(desc(schema.agentInteractionRequests.createdAt))
       .limit(query.limit);
-    return rows.map(({ request }) => toAgentInteractionRequest(request));
+    return rows.map(({ request }) => toAgentInteractionRequestWire(request));
   }
 
   async getAgentInteractionRequest(
     ownerId: string,
     requestId: string,
-  ): Promise<AgentInteractionRequest | null> {
+  ): Promise<AgentInteractionRequestWire | null> {
     await this.expireAgentInteractionRequests();
     const rows = await this.database
       .select({ request: schema.agentInteractionRequests })
@@ -15064,13 +15211,13 @@ export class ServerRepository {
       )
       .where(eq(schema.agentInteractionRequests.id, requestId))
       .limit(1);
-    return rows[0] ? toAgentInteractionRequest(rows[0].request) : null;
+    return rows[0] ? toAgentInteractionRequestWire(rows[0].request) : null;
   }
 
   async getAgentInteractionRequestByKey(
     ownerId: string,
     requestKey: string,
-  ): Promise<AgentInteractionRequest | null> {
+  ): Promise<AgentInteractionRequestWire | null> {
     await this.expireAgentInteractionRequests();
     const rows = await this.database
       .select({ request: schema.agentInteractionRequests })
@@ -15084,7 +15231,7 @@ export class ServerRepository {
       )
       .where(eq(schema.agentInteractionRequests.requestKey, requestKey))
       .limit(1);
-    return rows[0] ? toAgentInteractionRequest(rows[0].request) : null;
+    return rows[0] ? toAgentInteractionRequestWire(rows[0].request) : null;
   }
 
   async resolveAgentInteractionRequest(
@@ -15095,6 +15242,11 @@ export class ServerRepository {
     await this.expireAgentInteractionRequests();
     const existing = await this.getAgentInteractionRequest(ownerId, requestId);
     if (!existing) return null;
+    if (!("payload" in existing)) {
+      throw new AgentInteractionConflictError(
+        "Protected interaction requests require a protected response.",
+      );
+    }
     validateAgentInteractionResponse(existing.payload, input.response);
     const storedResponse = agentInteractionResponseForStorage(
       existing.payload,
@@ -15155,13 +15307,104 @@ export class ServerRepository {
     await this.expireAgentInteractionRequests();
     const existing = await this.getAgentInteractionRequest(ownerId, requestId);
     if (!existing) return null;
+    if (!("payload" in existing)) {
+      throw new AgentInteractionConflictError(
+        "Protected interaction requests require a protected response.",
+      );
+    }
     validateAgentInteractionResponse(existing.payload, input.response);
+    return existing;
+  }
+
+  async resolveEncryptedAgentInteractionRequest(
+    ownerId: string,
+    requestId: string,
+    input: EncryptedAgentInteractionResolutionCreate,
+  ): Promise<EncryptedAgentInteractionRequest | null> {
+    await this.expireAgentInteractionRequests();
+    const existing = await this.getAgentInteractionRequest(ownerId, requestId);
+    if (!existing) return null;
+    if (!("protectedPayload" in existing)) {
+      throw new AgentInteractionConflictError(
+        "Visible interaction requests require a visible response.",
+      );
+    }
+    if (existing.classification.kind !== input.classification.kind) {
+      throw new AgentInteractionConflictError(
+        "Response kind does not match the pending request.",
+      );
+    }
+    if (existing.status !== "pending") {
+      const rows = await this.database
+        .select()
+        .from(schema.agentInteractionRequests)
+        .where(eq(schema.agentInteractionRequests.id, requestId))
+        .limit(1);
+      const row = firstOrThrow(
+        rows,
+        "reading a resolved protected interaction request",
+      );
+      if (row.resolutionIdempotencyKey === input.idempotencyKey) {
+        return toEncryptedAgentInteractionRequest(row);
+      }
+      throw new AgentInteractionConflictError(
+        `Interaction request is already ${existing.status}.`,
+      );
+    }
+
+    const now = new Date();
+    const rows = await this.database
+      .update(schema.agentInteractionRequests)
+      .set({
+        status: "resolved",
+        protectedResponse: input.protectedResponse,
+        resolutionIdempotencyKey: input.idempotencyKey,
+        resolvedByUserId: ownerId,
+        resolvedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(schema.agentInteractionRequests.id, requestId),
+          eq(schema.agentInteractionRequests.status, "pending"),
+        ),
+      )
+      .returning();
+    if (!rows[0]) {
+      throw new AgentInteractionConflictError(
+        "Interaction request was resolved concurrently.",
+      );
+    }
+    if (rows[0].chatId) {
+      await this.restoreChatAfterInteractions(rows[0].chatId);
+    }
+    return toEncryptedAgentInteractionRequest(rows[0]);
+  }
+
+  async validateEncryptedAgentInteractionResolution(
+    ownerId: string,
+    requestId: string,
+    input: EncryptedAgentInteractionResolutionCreate,
+  ): Promise<EncryptedAgentInteractionRequest | null> {
+    await this.expireAgentInteractionRequests();
+    const existing = await this.getAgentInteractionRequest(ownerId, requestId);
+    if (!existing) return null;
+    if (!("protectedPayload" in existing)) {
+      throw new AgentInteractionConflictError(
+        "Visible interaction requests require a visible response.",
+      );
+    }
+    if (existing.classification.kind !== input.classification.kind) {
+      throw new AgentInteractionConflictError(
+        "Response kind does not match the pending request.",
+      );
+    }
     return existing;
   }
 
   async expireAgentInteractionRequests(
     now = new Date(),
-  ): Promise<AgentInteractionRequest[]> {
+  ): Promise<AgentInteractionRequestWire[]> {
     const rows = await this.database
       .update(schema.agentInteractionRequests)
       .set({ status: "expired", resolvedAt: now, updatedAt: now })
@@ -15178,12 +15421,12 @@ export class ServerRepository {
     for (const chatId of chatIds) {
       await this.restoreChatAfterInteractions(chatId);
     }
-    return rows.map(toAgentInteractionRequest);
+    return rows.map(toAgentInteractionRequestWire);
   }
 
   async interruptAgentInteractionRequests(
     chatId: string,
-  ): Promise<AgentInteractionRequest[]> {
+  ): Promise<AgentInteractionRequestWire[]> {
     const now = new Date();
     const rows = await this.database
       .update(schema.agentInteractionRequests)
@@ -15195,7 +15438,7 @@ export class ServerRepository {
         ),
       )
       .returning();
-    return rows.map(toAgentInteractionRequest);
+    return rows.map(toAgentInteractionRequestWire);
   }
 
   async terminalizeAgentInteractionRequestFromWorker(
@@ -15203,7 +15446,7 @@ export class ServerRepository {
     chatId: string,
     workerId: string,
     status: "expired" | "interrupted",
-  ): Promise<AgentInteractionRequest | null> {
+  ): Promise<AgentInteractionRequestWire | null> {
     const now = new Date();
     const rows = await this.database
       .update(schema.agentInteractionRequests)
@@ -15219,7 +15462,7 @@ export class ServerRepository {
       .returning();
     if (!rows[0]) return null;
     await this.restoreChatAfterInteractions(chatId);
-    return toAgentInteractionRequest(rows[0]);
+    return toAgentInteractionRequestWire(rows[0]);
   }
 
   async createChatAttachment(

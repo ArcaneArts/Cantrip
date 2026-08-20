@@ -59,15 +59,20 @@ export function chatWorkerEncryptionReadiness(
     return "pending-approval";
   }
   if (worker.encryption.state === "error") return "unavailable";
-  const grants = worker.encryption.grants.filter(
-    ({ component }) => component === "chat-content",
-  );
-  if (grants.length === 0) return "missing-grant";
+  const requiredComponents = ["chat-content", "interaction-content"] as const;
   if (
-    !grants.some(
-      ({ keyRevision }) => keyRevision === snapshot.masterKeyRevision,
+    !requiredComponents.every((component) =>
+      worker.encryption.grants.some(
+        (grant) =>
+          grant.component === component &&
+          grant.keyRevision === snapshot.masterKeyRevision,
+      ),
     )
   ) {
+    const hasEveryComponent = requiredComponents.every((component) =>
+      worker.encryption.grants.some((grant) => grant.component === component),
+    );
+    if (!hasEveryComponent) return "missing-grant";
     return "wrong-revision";
   }
   return worker.encryption.state === "ready" ? "ready" : "missing-grant";
@@ -119,7 +124,7 @@ export async function ensureChatWorkerEncryption(input: {
   if (readiness !== "ready") {
     await authorizeWorkerEncryption({
       api: input.api,
-      components: ["chat-content"],
+      components: ["chat-content", "interaction-content"],
       identity,
       keyRevision: snapshot.masterKeyRevision,
       service,
