@@ -130,6 +130,7 @@ import {
   projectWorkspaceUpdateSchema,
   projectWorktreeSummarySchema,
   projectTabLayoutSummarySchema,
+  projectTabLayoutWireSummarySchema,
   projectTokenUsageSchema,
   remoteDesktopCreateSchema,
   remoteDesktopFleetSchema,
@@ -151,6 +152,7 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
+  encryptedTabGroupUpdateSchema,
   tabGroupUpdateSchema,
   unprobedCodexRuntimeReport,
   userSettingsSchema,
@@ -168,7 +170,25 @@ import {
   workerManagementSummarySchema,
   workerNotificationEnvelopeSchema,
   workerCliCommandCallSchema,
+  type PrivateDisplayLabelRecordKind,
 } from "../src/index.js";
+
+function protectedLabelFixture(recordKind: PrivateDisplayLabelRecordKind) {
+  return {
+    classification: { recordKind },
+    protectedLabel: {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+}
 
 describe("worker channel JSON codec", () => {
   it("accepts a worker restart control command", () => {
@@ -4329,6 +4349,59 @@ describe("Cantrip protocol", () => {
     ).toEqual({ revision: 3, title: "Agents" });
     expect(
       tabGroupUpdateSchema.safeParse({ revision: 3, title: "   " }).success,
+    ).toBe(false);
+    expect(
+      encryptedTabGroupUpdateSchema.safeParse({
+        revision: 3,
+        titleProtection: protectedLabelFixture("tab-group"),
+      }).success,
+    ).toBe(true);
+    expect(
+      encryptedTabGroupUpdateSchema.safeParse({
+        revision: 3,
+        titleProtection: protectedLabelFixture("chat"),
+      }).success,
+    ).toBe(false);
+    const wireGroup = {
+      id: "group-1",
+      projectId: "project-1",
+      titleProtection: null,
+      position: 0,
+      anchorTabKey: "chat:chat-1",
+      members: [
+        {
+          tabKey: "chat:chat-1",
+          groupId: "group-1",
+          projectId: "project-1",
+          tabKind: "chat" as const,
+          tabId: "chat-1",
+          titleProtection: protectedLabelFixture("chat"),
+          position: 0,
+          createdAt: "2026-08-09T12:00:00.000Z",
+          updatedAt: "2026-08-09T12:00:00.000Z",
+        },
+      ],
+      createdAt: "2026-08-09T12:00:00.000Z",
+      updatedAt: "2026-08-09T12:00:00.000Z",
+    };
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        groups: [wireGroup],
+      }).success,
+    ).toBe(true);
+    expect(
+      projectTabLayoutWireSummarySchema.safeParse({
+        projectId: "project-1",
+        revision: 3,
+        groups: [
+          {
+            ...wireGroup,
+            titleProtection: protectedLabelFixture("tab-group"),
+          },
+        ],
+      }).success,
     ).toBe(false);
   });
 

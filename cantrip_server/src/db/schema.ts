@@ -1659,7 +1659,7 @@ export const tabGroups = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    title: text("title"),
+    protectedLabel: jsonb("protected_label").$type<PrivateDisplayLabelOpaque>(),
     position: integer("position").notNull().default(0),
     anchorTabKey: text("anchor_tab_key").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })

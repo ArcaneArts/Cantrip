@@ -359,7 +359,7 @@ import {
   tabGroupMemberMoveSchema,
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
-  tabGroupUpdateSchema,
+  encryptedTabGroupUpdateSchema,
   systemHealthSchema,
   terminalClientMessageSchema,
   encryptedTerminalCreateSchema,
@@ -21425,7 +21425,7 @@ export async function buildApp({
   app.patch<{ Params: { projectId: string; groupId: string } }>(
     "/api/projects/:projectId/tab-groups/:groupId",
     async (request, reply) => {
-      const input = tabGroupUpdateSchema.safeParse(request.body);
+      const input = encryptedTabGroupUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }

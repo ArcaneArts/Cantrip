@@ -5387,15 +5387,49 @@ export const tabGroupSummarySchema = tabGroupSummaryBaseSchema.extend({
   members: z.array(projectTabMemberSummarySchema).min(1),
 });
 
-export const tabGroupWireSummarySchema = tabGroupSummaryBaseSchema.extend({
-  title: z.string().min(1).max(120).nullable(),
-  members: z.array(projectTabMemberWireSummarySchema).min(1),
-});
+export const tabGroupWireSummarySchema = tabGroupSummaryBaseSchema
+  .extend({
+    titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
+    members: z.array(projectTabMemberWireSummarySchema).min(1),
+  })
+  .superRefine((group, context) => {
+    if (
+      group.titleProtection &&
+      group.titleProtection.classification.recordKind !== "tab-group"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Tab-group title classification must be tab-group.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+    if (group.members.length === 1 && group.titleProtection !== null) {
+      context.addIssue({
+        code: "custom",
+        message: "A single-tab group derives its title from its member.",
+        path: ["titleProtection"],
+      });
+    }
+  });
 
 export const tabGroupUpdateSchema = z.object({
   revision: z.number().int().nonnegative(),
   title: z.string().trim().min(1).max(120),
 });
+
+export const encryptedTabGroupUpdateSchema = z
+  .object({
+    revision: z.number().int().nonnegative(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "tab-group",
+    {
+      message: "Tab-group title classification must be tab-group.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
 
 export const projectTabLayoutSummarySchema = z.object({
   projectId: z.string().min(1),
@@ -11707,6 +11741,9 @@ export type ProjectTabMemberWireSummary = z.infer<
 export type TabGroupSummary = z.infer<typeof tabGroupSummarySchema>;
 export type TabGroupWireSummary = z.infer<typeof tabGroupWireSummarySchema>;
 export type TabGroupUpdate = z.infer<typeof tabGroupUpdateSchema>;
+export type EncryptedTabGroupUpdate = z.infer<
+  typeof encryptedTabGroupUpdateSchema
+>;
 export type ProjectTabLayoutSummary = z.infer<
   typeof projectTabLayoutSummarySchema
 >;

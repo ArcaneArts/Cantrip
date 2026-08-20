@@ -1,7 +1,9 @@
 import type {
   ArchivedChatWireSummary,
   ChatWireSummary,
+  ProjectTabLayoutWireSummary,
 } from "@cantrip/protocol";
+import type { PrivateDisplayLabelOpaque } from "@cantrip/protocol/private-labels";
 import { describe, expect, it } from "vitest";
 
 import { ChatTitleEncryptionAdapter } from "./chat-title-encryption";
@@ -79,6 +81,8 @@ describe("chat title encryption adapter", () => {
     const chatId = "00000000-0000-4000-8000-000000000011";
     const taskId = "00000000-0000-4000-8000-000000000012";
     const terminalId = "00000000-0000-4000-8000-000000000013";
+    const defaultGroupId = "00000000-0000-4000-8000-000000000014";
+    const customGroupId = "00000000-0000-4000-8000-000000000015";
     const chat = await wire(adapter, chatId, "Private agent");
     const task = await wire(adapter, taskId, "Private task", "task");
     const terminalProtection = await surfaceAdapter.protect(
@@ -165,54 +169,88 @@ describe("chat title encryption adapter", () => {
       targets: [{ title: "Private agent" }, { title: "Private terminal" }],
     });
 
-    await expect(
-      adapter.openTabLayout({
-        projectId: "project-a",
-        revision: 1,
-        groups: [
-          {
-            id: "group-a",
-            projectId: "project-a",
-            title: null,
-            position: 0,
-            anchorTabKey: `chat:${chatId}`,
-            members: [
-              {
-                tabKey: `chat:${chatId}`,
-                groupId: "group-a",
-                projectId: "project-a",
-                tabKind: "chat",
-                tabId: chatId,
-                titleProtection: chat.titleProtection,
-                position: 0,
-                createdAt: timestamp,
-                updatedAt: timestamp,
-              },
-              {
-                tabKey: `terminal:${terminalId}`,
-                groupId: "group-a",
-                projectId: "project-a",
-                tabKind: "terminal",
-                tabId: terminalId,
-                titleProtection: terminalProtection,
-                position: 1,
-                createdAt: timestamp,
-                updatedAt: timestamp,
-              },
-            ],
-            createdAt: timestamp,
-            updatedAt: timestamp,
-          },
-        ],
-      }),
-    ).resolves.toMatchObject({
+    const tabLayout: ProjectTabLayoutWireSummary = {
+      projectId: "project-a",
+      revision: 1,
+      groups: [
+        {
+          id: defaultGroupId,
+          projectId: "project-a",
+          titleProtection: null,
+          position: 0,
+          anchorTabKey: `chat:${chatId}`,
+          members: [
+            {
+              tabKey: `chat:${chatId}`,
+              groupId: defaultGroupId,
+              projectId: "project-a",
+              tabKind: "chat",
+              tabId: chatId,
+              titleProtection: chat.titleProtection,
+              position: 0,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        {
+          id: customGroupId,
+          projectId: "project-a",
+          titleProtection: await adapter.protectTabGroup(
+            customGroupId,
+            "Private group",
+          ),
+          position: 1,
+          anchorTabKey: `terminal:${terminalId}`,
+          members: [
+            {
+              tabKey: `terminal:${terminalId}`,
+              groupId: customGroupId,
+              projectId: "project-a",
+              tabKind: "terminal",
+              tabId: terminalId,
+              titleProtection: terminalProtection,
+              position: 1,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+            {
+              tabKey: `chat:${taskId}`,
+              groupId: customGroupId,
+              projectId: "project-a",
+              tabKind: "chat",
+              tabId: taskId,
+              titleProtection: task.titleProtection,
+              position: 2,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    };
+    const expectedLayout = {
       groups: [
         {
           title: "Private agent",
-          members: [{ title: "Private agent" }, { title: "Private terminal" }],
+          members: [{ title: "Private agent" }],
+        },
+        {
+          title: "Private group",
+          members: [{ title: "Private terminal" }, { title: "Private task" }],
         },
       ],
-    });
+    };
+    await expect(adapter.openTabLayout(tabLayout)).resolves.toMatchObject(
+      expectedLayout,
+    );
+    await expect(
+      fixture().adapter.openTabLayout(tabLayout),
+    ).resolves.toMatchObject(expectedLayout);
   });
 
   it("rejects locked writes, stale revisions, wrong-row replay, and tampering", async () => {
@@ -222,6 +260,12 @@ describe("chat title encryption adapter", () => {
     });
     await expect(
       locked.protect("00000000-0000-4000-8000-000000000021", "Blocked"),
+    ).rejects.toMatchObject({ state: "locked" });
+    await expect(
+      locked.protectTabGroup(
+        "00000000-0000-4000-8000-000000000024",
+        "Blocked group",
+      ),
     ).rejects.toMatchObject({ state: "locked" });
 
     const { adapter } = fixture();
@@ -250,5 +294,96 @@ describe("chat title encryption adapter", () => {
     await expect(adapter.open(chat)).rejects.toMatchObject({
       state: "corrupt",
     });
+  });
+
+  it("rejects swapped, wrong-row, and tampered custom group envelopes", async () => {
+    const { adapter, service } = fixture();
+    const surfaceAdapter = new SurfaceTitleEncryptionAdapter({
+      service,
+      session,
+    });
+    const chatId = "00000000-0000-4000-8000-000000000031";
+    const terminalId = "00000000-0000-4000-8000-000000000032";
+    const groupId = "00000000-0000-4000-8000-000000000033";
+    const chat = await wire(adapter, chatId, "Private chat");
+    const terminalProtection = await surfaceAdapter.protect(
+      terminalId,
+      "Private terminal",
+      "terminal",
+    );
+    const groupProtection = await adapter.protectTabGroup(
+      groupId,
+      "Private group",
+    );
+    const layout = (
+      titleProtection: PrivateDisplayLabelOpaque,
+    ): ProjectTabLayoutWireSummary => ({
+      projectId: "project-a",
+      revision: 1,
+      groups: [
+        {
+          id: groupId,
+          projectId: "project-a",
+          titleProtection,
+          position: 0,
+          anchorTabKey: `chat:${chatId}`,
+          members: [
+            {
+              tabKey: `chat:${chatId}`,
+              groupId,
+              projectId: "project-a",
+              tabKind: "chat",
+              tabId: chatId,
+              titleProtection: chat.titleProtection,
+              position: 0,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+            {
+              tabKey: `terminal:${terminalId}`,
+              groupId,
+              projectId: "project-a",
+              tabKind: "terminal",
+              tabId: terminalId,
+              titleProtection: terminalProtection,
+              position: 1,
+              createdAt: timestamp,
+              updatedAt: timestamp,
+            },
+          ],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ],
+    });
+
+    await expect(
+      adapter.openTabLayout(layout(groupProtection)),
+    ).resolves.toMatchObject({ groups: [{ title: "Private group" }] });
+    await expect(
+      adapter.openTabLayout({
+        ...layout(groupProtection),
+        groups: [
+          {
+            ...layout(groupProtection).groups[0]!,
+            id: "00000000-0000-4000-8000-000000000034",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ state: "corrupt" });
+    await expect(
+      adapter.openTabLayout(layout(chat.titleProtection)),
+    ).rejects.toMatchObject({ state: "corrupt" });
+
+    const tampered = structuredClone(groupProtection);
+    tampered.protectedLabel.envelope.ciphertext =
+      (tampered.protectedLabel.envelope.ciphertext.startsWith("A")
+        ? "B"
+        : "A") + tampered.protectedLabel.envelope.ciphertext.slice(1);
+    await expect(adapter.openTabLayout(layout(tampered))).rejects.toMatchObject(
+      {
+        state: "corrupt",
+      },
+    );
   });
 });
