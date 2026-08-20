@@ -64,11 +64,13 @@ export type BuildRepositoryGraphSceneOptions = {
 };
 
 const DEFAULT_MAX_VISIBLE_NODES = 4_000;
-const DEFAULT_RADIAL_GAP = 132;
-const DEFAULT_NODE_GAP = 42;
+const DEFAULT_RADIAL_GAP = 96;
+const DEFAULT_NODE_GAP = 16;
 const SPATIAL_CELL_SIZE = 96;
 const FULL_CIRCLE = Math.PI * 2;
 const RADIAL_START_ANGLE = -Math.PI / 2;
+const MAX_BRANCH_ANGLE = Math.PI * 0.8;
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 function cellKey(x: number, y: number): string {
   return `${x}:${y}`;
@@ -88,6 +90,90 @@ function compareNodes(
 
 function boundedNodeRadius(radius: number): number {
   return Math.max(2, Math.min(32, radius));
+}
+
+type LocalNodePacking = {
+  offsets: ReadonlyMap<string, RepositoryGraphPoint>;
+  radius: number;
+};
+
+function packLocalNodes(
+  nodes: readonly RepositoryGraphInputNode[],
+  centerRadius: number,
+  nodeGap: number,
+): LocalNodePacking {
+  const offsets = new Map<string, RepositoryGraphPoint>();
+  let nextNode = 0;
+  let previousOuterRadius = centerRadius;
+  let ringIndex = 0;
+
+  while (nextNode < nodes.length) {
+    const ring: RepositoryGraphInputNode[] = [];
+    let ringFootprint = 0;
+    let ringMaximumRadius = 0;
+
+    while (nextNode < nodes.length) {
+      const candidate = nodes[nextNode]!;
+      const candidateRadius = boundedNodeRadius(candidate.radius);
+      const nextMaximumRadius = Math.max(ringMaximumRadius, candidateRadius);
+      const provisionalRingRadius =
+        previousOuterRadius + nodeGap + nextMaximumRadius;
+      const nextFootprint = ringFootprint + candidateRadius * 2 + nodeGap;
+      if (
+        ring.length > 0 &&
+        nextFootprint > FULL_CIRCLE * provisionalRingRadius
+      ) {
+        break;
+      }
+      ring.push(candidate);
+      ringFootprint = nextFootprint;
+      ringMaximumRadius = nextMaximumRadius;
+      nextNode += 1;
+    }
+
+    const angularExtents = ring.map(
+      (node) =>
+        FULL_CIRCLE *
+        ((boundedNodeRadius(node.radius) * 2 + nodeGap) / ringFootprint),
+    );
+    const angles: number[] = [];
+    let angleCursor = RADIAL_START_ANGLE + ringIndex * GOLDEN_ANGLE;
+    for (const extent of angularExtents) {
+      angles.push(angleCursor + extent / 2);
+      angleCursor += extent;
+    }
+
+    let ringRadius = previousOuterRadius + nodeGap + ringMaximumRadius;
+    if (ring.length > 1) {
+      for (let index = 0; index < ring.length; index += 1) {
+        const nextIndex = (index + 1) % ring.length;
+        const delta =
+          (angles[nextIndex]! - angles[index]! + FULL_CIRCLE) % FULL_CIRCLE ||
+          FULL_CIRCLE;
+        const chordFactor = 2 * Math.sin(delta / 2);
+        if (chordFactor <= 0.000_001) continue;
+        ringRadius = Math.max(
+          ringRadius,
+          (boundedNodeRadius(ring[index]!.radius) +
+            boundedNodeRadius(ring[nextIndex]!.radius) +
+            nodeGap) /
+            chordFactor,
+        );
+      }
+    }
+
+    ring.forEach((node, index) => {
+      const angle = angles[index]!;
+      offsets.set(node.id, {
+        x: Math.cos(angle) * ringRadius,
+        y: Math.sin(angle) * ringRadius,
+      });
+    });
+    previousOuterRadius = ringRadius + ringMaximumRadius;
+    ringIndex += 1;
+  }
+
+  return { offsets, radius: previousOuterRadius };
 }
 
 function emptyScene(totalNodeCount = 0): RepositoryGraphScene {
@@ -197,26 +283,50 @@ function layoutVisibleNodes(
   }
   for (const siblings of treeChildren.values()) siblings.sort(compareNodes);
 
-  // Allocate angular space from the outside in. A node's own diameter is part
-  // of its subtree footprint, so larger metric-driven nodes widen their branch
-  // instead of painting over their neighbours.
+  // Files orbit their immediate directory instead of sharing one repository-
+  // wide depth ring. Their rendered radii participate in the packing, so a
+  // large metric node physically displaces its local neighbours.
+  const localPackings = new Map<string, LocalNodePacking>();
+  const directoryChildren = new Map<string, RepositoryGraphInputNode[]>();
+  for (const nodeId of traversal) {
+    const node = visibleById.get(nodeId);
+    if (!node) continue;
+    const descendants = treeChildren.get(nodeId) ?? [];
+    const directories = descendants.filter(
+      (child) => child.kind === "directory",
+    );
+    const localNodes = descendants.filter(
+      (child) => child.kind !== "directory",
+    );
+    directoryChildren.set(nodeId, directories);
+    localPackings.set(
+      nodeId,
+      packLocalNodes(localNodes, boundedNodeRadius(node.radius), nodeGap),
+    );
+  }
+
+  // A branch's angular footprint is the larger of its own local cluster and
+  // all child directory branches. This keeps sibling subtrees in separate
+  // sectors without forcing every leaf onto the same global circumference.
   const subtreeFootprints = new Map<string, number>();
   for (let index = traversal.length - 1; index >= 0; index -= 1) {
     const nodeId = traversal[index]!;
     const node = visibleById.get(nodeId);
     if (!node) continue;
-    const ownFootprint = Math.max(
-      nodeGap,
-      boundedNodeRadius(node.radius) * 2 + nodeGap,
-    );
-    const childFootprint = (treeChildren.get(nodeId) ?? []).reduce(
+    const ownFootprint =
+      (localPackings.get(nodeId)?.radius ?? boundedNodeRadius(node.radius)) *
+        2 +
+      nodeGap;
+    const childFootprint = (directoryChildren.get(nodeId) ?? []).reduce(
       (total, child) => total + (subtreeFootprints.get(child.id) ?? nodeGap),
       0,
     );
     subtreeFootprints.set(nodeId, Math.max(ownFootprint, childFootprint));
   }
 
-  const angles = new Map<string, number>();
+  const positions = new Map<string, RepositoryGraphPoint & { depth: number }>([
+    [rootId, { depth: 0, x: 0, y: 0 }],
+  ]);
   const sectors: Array<{ end: number; nodeId: string; start: number }> = [
     {
       end: RADIAL_START_ANGLE + FULL_CIRCLE,
@@ -226,113 +336,100 @@ function layoutVisibleNodes(
   ];
   while (sectors.length > 0) {
     const sector = sectors.pop()!;
-    angles.set(sector.nodeId, (sector.start + sector.end) / 2);
-    const descendants = treeChildren.get(sector.nodeId) ?? [];
+    const descendants = directoryChildren.get(sector.nodeId) ?? [];
     if (descendants.length === 0) continue;
+    const parentPosition = positions.get(sector.nodeId);
+    if (!parentPosition) continue;
     const childFootprint = descendants.reduce(
       (total, child) => total + (subtreeFootprints.get(child.id) ?? nodeGap),
       0,
     );
-    const parentFootprint = Math.max(
-      childFootprint,
-      subtreeFootprints.get(sector.nodeId) ?? childFootprint,
-    );
-    const extent = sector.end - sector.start;
-    const usedExtent = extent * (childFootprint / parentFootprint);
-    let cursor = sector.start + (extent - usedExtent) / 2;
-    const childSectors: typeof sectors = [];
+    const originalExtent = sector.end - sector.start;
+    const branchExtent =
+      sector.nodeId === rootId
+        ? originalExtent
+        : Math.min(originalExtent, MAX_BRANCH_ANGLE);
+    const branchMiddle = (sector.start + sector.end) / 2;
+    let cursor = branchMiddle - branchExtent / 2;
+    const childSectors: Array<{
+      angle: number;
+      end: number;
+      node: RepositoryGraphInputNode;
+      start: number;
+    }> = [];
     for (const child of descendants) {
       const childExtent =
-        extent *
-        ((subtreeFootprints.get(child.id) ?? nodeGap) / parentFootprint);
+        branchExtent *
+        ((subtreeFootprints.get(child.id) ?? nodeGap) / childFootprint);
       childSectors.push({
+        angle: cursor + childExtent / 2,
         end: cursor + childExtent,
-        nodeId: child.id,
+        node: child,
         start: cursor,
       });
       cursor += childExtent;
     }
-    for (let index = childSectors.length - 1; index >= 0; index -= 1)
-      sectors.push(childSectors[index]!);
-  }
-
-  const nodesByDepth = new Map<number, RepositoryGraphInputNode[]>();
-  let maxDepth = 0;
-  for (const nodeId of traversal) {
-    const node = visibleById.get(nodeId);
-    if (!node) continue;
-    const depth = depthById.get(nodeId) ?? 0;
-    maxDepth = Math.max(maxDepth, depth);
-    const depthNodes = nodesByDepth.get(depth) ?? [];
-    depthNodes.push(node);
-    nodesByDepth.set(depth, depthNodes);
-  }
-
-  // Resolve collisions per ring. The chord between adjacent nodes must fit
-  // both rendered radii plus the configured gap. Enlarging one node therefore
-  // pushes the whole ring outward when its current circumference is too small.
-  const ringRadii = new Array<number>(maxDepth + 1).fill(0);
-  let previousMaximumNodeRadius = Math.max(
-    0,
-    ...(nodesByDepth.get(0) ?? []).map((node) =>
-      boundedNodeRadius(node.radius),
-    ),
-  );
-  for (let depth = 1; depth <= maxDepth; depth += 1) {
-    const depthNodes = nodesByDepth.get(depth) ?? [];
-    const maximumNodeRadius = Math.max(
+    const parentLocalRadius =
+      localPackings.get(sector.nodeId)?.radius ?? nodeGap;
+    const maximumChildLocalRadius = Math.max(
       0,
-      ...depthNodes.map((node) => boundedNodeRadius(node.radius)),
+      ...descendants.map(
+        (child) => localPackings.get(child.id)?.radius ?? nodeGap,
+      ),
     );
-    let collisionRadius = 0;
-    if (depthNodes.length > 1) {
-      const ordered = [...depthNodes].sort(
-        (left, right) =>
-          (angles.get(left.id) ?? 0) - (angles.get(right.id) ?? 0),
-      );
-      for (let index = 0; index < ordered.length; index += 1) {
-        const current = ordered[index]!;
-        const next = ordered[(index + 1) % ordered.length]!;
-        const currentAngle = angles.get(current.id) ?? 0;
-        const nextAngle = angles.get(next.id) ?? 0;
+    let branchRadius = Math.max(
+      parentLocalRadius + maximumChildLocalRadius + radialGap,
+      childFootprint / Math.max(0.25, branchExtent),
+    );
+    if (childSectors.length > 1) {
+      const pairCount =
+        branchExtent >= FULL_CIRCLE - 0.000_001
+          ? childSectors.length
+          : childSectors.length - 1;
+      for (let index = 0; index < pairCount; index += 1) {
+        const current = childSectors[index]!;
+        const next = childSectors[(index + 1) % childSectors.length]!;
         const delta =
-          (nextAngle - currentAngle + FULL_CIRCLE) % FULL_CIRCLE || FULL_CIRCLE;
+          (next.angle - current.angle + FULL_CIRCLE) % FULL_CIRCLE ||
+          FULL_CIRCLE;
         const chordFactor = 2 * Math.sin(delta / 2);
         if (chordFactor <= 0.000_001) continue;
-        collisionRadius = Math.max(
-          collisionRadius,
-          (boundedNodeRadius(current.radius) +
-            boundedNodeRadius(next.radius) +
+        branchRadius = Math.max(
+          branchRadius,
+          ((localPackings.get(current.node.id)?.radius ?? nodeGap) +
+            (localPackings.get(next.node.id)?.radius ?? nodeGap) +
             nodeGap) /
             chordFactor,
         );
       }
     }
-    ringRadii[depth] = Math.max(
-      collisionRadius,
-      (ringRadii[depth - 1] ?? 0) +
-        Math.max(
-          radialGap,
-          previousMaximumNodeRadius + maximumNodeRadius + nodeGap,
-        ),
-    );
-    previousMaximumNodeRadius = maximumNodeRadius;
+
+    for (let index = childSectors.length - 1; index >= 0; index -= 1) {
+      const childSector = childSectors[index]!;
+      positions.set(childSector.node.id, {
+        depth: depthById.get(childSector.node.id) ?? parentPosition.depth + 1,
+        x: parentPosition.x + Math.cos(childSector.angle) * branchRadius,
+        y: parentPosition.y + Math.sin(childSector.angle) * branchRadius,
+      });
+      sectors.push({
+        end: childSector.end,
+        nodeId: childSector.node.id,
+        start: childSector.start,
+      });
+    }
   }
 
-  const positions = new Map<string, RepositoryGraphPoint & { depth: number }>();
+  // Translate each local file orbit once its directory center is known.
   for (const nodeId of traversal) {
-    const depth = depthById.get(nodeId) ?? 0;
-    if (depth === 0) {
-      positions.set(nodeId, { depth, x: 0, y: 0 });
-      continue;
+    const parentPosition = positions.get(nodeId);
+    if (!parentPosition) continue;
+    for (const [childId, offset] of localPackings.get(nodeId)?.offsets ?? []) {
+      positions.set(childId, {
+        depth: depthById.get(childId) ?? parentPosition.depth + 1,
+        x: parentPosition.x + offset.x,
+        y: parentPosition.y + offset.y,
+      });
     }
-    const angle = angles.get(nodeId) ?? RADIAL_START_ANGLE;
-    const distance = ringRadii[depth] ?? depth * radialGap;
-    positions.set(nodeId, {
-      depth,
-      x: Math.cos(angle) * distance,
-      y: Math.sin(angle) * distance,
-    });
   }
   return positions;
 }
@@ -410,7 +507,7 @@ export function buildRepositoryGraphScene(
     visible,
     root.id,
     Math.max(24, options.radialGap ?? DEFAULT_RADIAL_GAP),
-    Math.max(18, options.nodeGap ?? DEFAULT_NODE_GAP),
+    Math.max(8, options.nodeGap ?? DEFAULT_NODE_GAP),
   );
   const sceneNodes: RepositoryGraphSceneNode[] = [];
   const nodesById = new Map<string, RepositoryGraphSceneNode>();

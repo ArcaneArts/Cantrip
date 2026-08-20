@@ -143,38 +143,9 @@ export class Canvas2DRepositoryGraphAdapter implements RepositoryGraphRenderingA
     for (const edge of plan.edges) {
       const from = repositoryGraphWorldToScreen(edge.from, camera, viewport);
       const to = repositoryGraphWorldToScreen(edge.to, camera, viewport);
-      const fromRadius = Math.hypot(edge.from.x, edge.from.y);
-      const toRadius = Math.hypot(edge.to.x, edge.to.y);
-      const toAngle = Math.atan2(edge.to.y, edge.to.x);
-      const fromAngle =
-        fromRadius < 0.000_001 ? toAngle : Math.atan2(edge.from.y, edge.from.x);
-      const controlRadius = (fromRadius + toRadius) / 2;
-      const firstControl = repositoryGraphWorldToScreen(
-        {
-          x: Math.cos(fromAngle) * controlRadius,
-          y: Math.sin(fromAngle) * controlRadius,
-        },
-        camera,
-        viewport,
-      );
-      const secondControl = repositoryGraphWorldToScreen(
-        {
-          x: Math.cos(toAngle) * controlRadius,
-          y: Math.sin(toAngle) * controlRadius,
-        },
-        camera,
-        viewport,
-      );
       context.beginPath();
       context.moveTo(from.x, from.y);
-      context.bezierCurveTo(
-        firstControl.x,
-        firstControl.y,
-        secondControl.x,
-        secondControl.y,
-        to.x,
-        to.y,
-      );
+      context.lineTo(to.x, to.y);
       context.stroke();
     }
 
