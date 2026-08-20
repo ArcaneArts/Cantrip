@@ -105,6 +105,14 @@ fn replacement_profile(
     )
 }
 
+fn replacement_credential_required(
+    replaced_worker_id: Option<&str>,
+    next_worker_id: &str,
+    has_stored_credential: bool,
+) -> bool {
+    replaced_worker_id.is_some_and(|worker_id| worker_id != next_worker_id) && has_stored_credential
+}
+
 fn valid_desktop_worker_id(value: &str) -> bool {
     value
         .strip_prefix("desktop-")
@@ -739,10 +747,14 @@ pub fn pair_desktop_worker(
             let stored = serde_json::from_str::<StoredWorkerCredentialIdentity>(&contents).ok()?;
             (stored.worker_id == *worker_id && stored.server_url == server_url).then_some(stored)
         });
-    if replaced_worker_id
-        .as_ref()
-        .is_some_and(|worker_id| worker_id != &profile.worker_id)
-        && replacement.is_none()
+    let replaced_worker_has_credential = replaced_worker_id
+        .as_deref()
+        .is_some_and(|worker_id| workers.has_stored_credential(worker_id));
+    if replacement_credential_required(
+        replaced_worker_id.as_deref(),
+        &profile.worker_id,
+        replaced_worker_has_credential,
+    ) && replacement.is_none()
     {
         return Err(
             "The previous linked worker credential is unavailable, so its old account cannot be safely unlinked. Forget the old worker explicitly before pairing again."
@@ -840,8 +852,9 @@ mod tests {
     use std::{collections::HashMap, fs, path::Path, sync::Mutex};
 
     use super::{
-        normalize_server_url, read_retained_profiles, recover_profiles, replacement_profile,
-        repository_count, sort_worker_candidates, DesktopWorkerCandidate, DesktopWorkerProfile,
+        normalize_server_url, read_retained_profiles, recover_profiles,
+        replacement_credential_required, replacement_profile, repository_count,
+        sort_worker_candidates, DesktopWorkerCandidate, DesktopWorkerProfile,
         DesktopWorkerProjectStorage, DesktopWorkers, WorkerLaunch,
     };
 
@@ -926,6 +939,25 @@ mod tests {
             replacement.worker_id,
             "desktop-019fdc2c-e848-7552-b2ea-6fc7ef09e9f2"
         );
+    }
+
+    #[test]
+    fn credentialless_failed_enrollment_can_be_retried_with_a_fresh_identity() {
+        assert!(!replacement_credential_required(
+            Some("desktop-failed-enrollment"),
+            "desktop-retry",
+            false,
+        ));
+        assert!(replacement_credential_required(
+            Some("desktop-linked-worker"),
+            "desktop-replacement",
+            true,
+        ));
+        assert!(!replacement_credential_required(
+            Some("desktop-reused-worker"),
+            "desktop-reused-worker",
+            true,
+        ));
     }
 
     #[test]

@@ -13,6 +13,10 @@ import {
 import { buildCantripCli, bundleCantripCli } from "./cantrip-cli/build.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
 import {
+  assertPackagedWorkspaceRuntime,
+  serviceWorkspaceBuilds,
+} from "./package-workspace-runtime.mjs";
+import {
   bundleNodeRuntime,
   writeServiceLaunchers,
 } from "./package-runtime.mjs";
@@ -108,6 +112,7 @@ async function packageService(name, destination, { standalone = true } = {}) {
     "--prod",
     destination,
   ]);
+  await assertPackagedWorkspaceRuntime(destination);
 
   if (standalone) {
     await bundleNodeRuntime(path.join(destination, "runtime"));
@@ -154,16 +159,16 @@ async function bundleCantripCode(workerDestination) {
   );
 }
 
-function buildProtocol() {
+function buildServiceWorkspaces() {
   if (!skipProtocolBuild) {
-    runPnpm(["--filter", "@cantrip/version", "build"]);
-    runPnpm(["--filter", "@cantrip/logging", "build"]);
-    runPnpm(["--filter", "@cantrip/protocol", "build"]);
+    for (const packageName of serviceWorkspaceBuilds) {
+      runPnpm(["--filter", packageName, "build"]);
+    }
   }
 }
 
 function buildSelectedServices(selection) {
-  buildProtocol();
+  buildServiceWorkspaces();
   if (selection === "server" || selection === "services") {
     runPnpm(["--filter", "@cantrip/server", "build"]);
   }
