@@ -136,7 +136,7 @@ export function ImportJobRow({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">
-            {job.sourceMetadata?.title ?? title ?? "Codex chat import"}
+            {title ?? "Codex chat import"}
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {importStateLabel(job)} · {detail}

@@ -654,7 +654,10 @@ export function ProjectAutomationsSettings({
                     </p>
                   </div>
                 </div>
-                <p className="truncate text-sm">{automation.chatTitle}</p>
+                <p className="truncate text-sm">
+                  {chats.find(({ id }) => id === automation.chatId)?.title ??
+                    "Unavailable agent"}
+                </p>
                 <div className="min-w-0 text-xs text-muted-foreground">
                   <p className="truncate">
                     {describeProjectAutomationSchedule(automation.schedule)}

@@ -8,6 +8,15 @@ import {
   normalizeGitOrigin,
 } from "../src/external-chat-history.js";
 import type { ExternalChatAttachmentStagingStore } from "../src/external-chat-attachments.js";
+import type { WorkerEncryptionService } from "../src/worker-encryption.js";
+
+const ownerId = "owner-a";
+const chatId = "00000000-0000-4000-8000-000000000031";
+const encryptionService = {
+  status: () => ({ error: null }),
+  ownerId: () => ownerId,
+  componentKey: () => ({ key: new Uint8Array(32).fill(23), keyRevision: 1 }),
+} as unknown as WorkerEncryptionService;
 
 const target: ExternalChatDiscoveryTarget = {
   projectReplicaId: "replica-one",
@@ -58,6 +67,7 @@ function sourceWithResponses(
   return new CodexExternalChatHistorySource({
     binary: "/bin/codex",
     environment: {},
+    encryptionService,
     homeDirectory: "/Users/tester",
     managedDataDirectory: "/Users/tester/Library/Cantrip",
     platform: "darwin",
@@ -324,6 +334,8 @@ describe("external Codex chat history discovery", () => {
     const sourceId = discovered[0]!.sourceId;
 
     const result = await source.read({
+      chatId,
+      ownerId,
       sourceId,
       sourceThreadId: thread().id,
       targets: [target],
@@ -343,8 +355,10 @@ describe("external Codex chat history discovery", () => {
       sourceId,
       sourceThreadId: thread().id,
       metadata: {
-        title: "Codex import",
         match: { kind: "worktree-path", projectReplicaId: "replica-one" },
+      },
+      titleProtection: {
+        classification: { recordKind: "chat" },
       },
       sync: { threadId: thread().id, status: "idle" },
     });
@@ -447,6 +461,8 @@ describe("external Codex chat history discovery", () => {
     });
     expect(attachmentCalls).toEqual([]);
     const result = await source.read({
+      chatId,
+      ownerId,
       sourceId: discovered[0]!.sourceId,
       sourceThreadId: thread().id,
       targets: [target],
@@ -497,6 +513,8 @@ describe("external Codex chat history discovery", () => {
 
     await expect(
       source.read({
+        chatId,
+        ownerId,
         sourceId: discovered[0]!.sourceId,
         sourceThreadId: thread().id,
         targets: [target],

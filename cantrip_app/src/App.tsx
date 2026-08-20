@@ -1568,7 +1568,8 @@ function ChatTranscript({
     },
   });
   const fork = useMutation({
-    mutationFn: (messageId?: string) => forkChat(chat.id, messageId),
+    mutationFn: (messageId?: string) =>
+      forkChat(chat.id, chat.title, messageId),
     onSuccess: async (forked) => {
       await queryClient.invalidateQueries({
         queryKey: ["chats", chat.projectId],
@@ -4007,7 +4008,13 @@ export function App() {
       ),
   });
   const forkChatMutation = useMutation({
-    mutationFn: (chatId: string) => forkChat(chatId),
+    mutationFn: (chatId: string) => {
+      const source = queryClient
+        .getQueryData<ChatSummary[]>(["chats", selectedProjectId])
+        ?.find(({ id }) => id === chatId);
+      if (!source) throw new Error("The source chat is unavailable.");
+      return forkChat(chatId, source.title);
+    },
     onSuccess: async (forked) => {
       await queryClient.invalidateQueries({
         queryKey: ["chats", forked.projectId],

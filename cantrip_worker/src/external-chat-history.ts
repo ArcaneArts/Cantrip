@@ -23,6 +23,8 @@ import {
   MAX_EXTERNAL_CHAT_ATTACHMENT_BYTES,
   type ExternalChatAttachmentCandidate,
 } from "./external-chat-attachments.js";
+import { encodePrivateDisplayLabelForWorker } from "./private-label-encryption.js";
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 import {
   normalizeCodexThreadReadResponse,
@@ -93,6 +95,8 @@ export interface ExternalChatHistorySource {
     targets: ExternalChatDiscoveryTarget[];
   }): Promise<ExternalChatSource[]>;
   read(input: {
+    chatId: string;
+    ownerId: string;
     sourceId: string;
     sourceThreadId: string;
     targets: ExternalChatDiscoveryTarget[];
@@ -113,6 +117,7 @@ interface CodexExternalChatHistoryOptions {
   resolveGitOrigin?: (candidate: string) => Promise<string | null>;
   pathExists?: (candidate: string) => Promise<boolean>;
   attachmentStore?: ExternalChatAttachmentStagingStore;
+  encryptionService?: WorkerEncryptionService;
 }
 
 function attachmentId(
@@ -540,6 +545,7 @@ async function listSourceThreads(
 
 export class CodexExternalChatHistorySource implements ExternalChatHistorySource {
   readonly #attachments: ExternalChatAttachmentStagingStore;
+  readonly #encryptionService?: WorkerEncryptionService;
   readonly #binary: string;
   readonly #createClient: NonNullable<
     CodexExternalChatHistoryOptions["createClient"]
@@ -582,6 +588,7 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
     this.#attachments =
       options.attachmentStore ??
       new ExternalChatAttachmentStagingStore(options.managedDataDirectory);
+    this.#encryptionService = options.encryptionService;
   }
 
   async discover(input: {
@@ -619,6 +626,8 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
   }
 
   async read(input: {
+    chatId: string;
+    ownerId: string;
     sourceId: string;
     sourceThreadId: string;
     targets: ExternalChatDiscoveryTarget[];
@@ -733,13 +742,24 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
       const {
         archived: _archived,
         existingImport: _existingImport,
+        title,
         ...transcriptMetadata
       } = metadata;
+      if (!this.#encryptionService) {
+        throw new Error("Private display-label encryption is unavailable.");
+      }
       return externalChatReadWorkerResultSchema.parse({
         transcript: {
           sourceId: resolvedSourceId,
           sourceThreadId: sourceThread.id,
           metadata: transcriptMetadata,
+          titleProtection: await encodePrivateDisplayLabelForWorker({
+            label: title,
+            ownerId: input.ownerId,
+            recordKind: "chat",
+            rowId: input.chatId,
+            service: this.#encryptionService,
+          }),
           sync,
           attachments: descriptors,
         },
@@ -868,6 +888,8 @@ export async function discoverExternalChatHistory(
 export async function readExternalChatHistory(
   options: CodexExternalChatHistoryOptions,
   input: {
+    chatId: string;
+    ownerId: string;
     sourceId: string;
     sourceThreadId: string;
     targets: ExternalChatDiscoveryTarget[];

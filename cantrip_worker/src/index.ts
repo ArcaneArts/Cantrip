@@ -1165,6 +1165,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           {
             attachmentStore: externalChatAttachments,
             binary: config.codexBinary,
+            encryptionService: workerEncryption,
             managedDataDirectory: config.dataDirectory,
           },
           command,

@@ -15,7 +15,10 @@ import {
   LOCAL_USER_ID,
 } from "../src/db/repository.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-jobs-"),
@@ -40,12 +43,12 @@ let alphaWorktreeId: string;
 let betaWorktreeId: string;
 let betaReplicaId: string;
 
-async function createChat(title: string) {
+async function createChat(_title: string) {
   const chat = await database.repository.createChat(
     LOCAL_USER_ID,
     projectId,
     {
-      title,
+      ...protectedChatFields(),
       worktreeId: alphaWorktreeId,
       worktreeMode: "agent-managed",
     },
@@ -54,7 +57,7 @@ async function createChat(title: string) {
   return chat!;
 }
 
-async function createTask(title: string) {
+async function createTask(_title: string) {
   const classification = {
     state: "draft" as const,
     stableStateBeforeFailure: null,
@@ -72,7 +75,7 @@ async function createTask(title: string) {
     projectId,
     {
       chatId: randomUUID(),
-      title,
+      titleProtection: protectedChatFields().titleProtection,
       task: {
         classification,
         protectedContent: {

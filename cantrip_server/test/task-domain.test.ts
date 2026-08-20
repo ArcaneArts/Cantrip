@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  taskCreateResultSchema,
+  taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -22,7 +22,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const sentinel = "SENTINEL private Task prose";
 const encrypted = {
@@ -288,12 +291,12 @@ describe.sequential("opaque encrypted Task persistence", () => {
       url: `/api/projects/${projectId}/tasks`,
       payload: {
         chatId,
-        title: "Encrypted task",
+        titleProtection: protectedChatFields(chatId).titleProtection,
         task: taskContent("draft", 0, null),
       },
     });
     expect(createdResponse.statusCode).toBe(201);
-    const created = taskCreateResultSchema.parse(createdResponse.json());
+    const created = taskWireCreateResultSchema.parse(createdResponse.json());
     expect(created.task).toMatchObject({
       chatId,
       state: "draft",
@@ -356,7 +359,7 @@ describe.sequential("opaque encrypted Task persistence", () => {
     const chat = await database.repository.createChat(
       LOCAL_USER_ID,
       projectId,
-      { title: "Visible agent chat", worktreeMode: "agent-managed" },
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
       () => true,
     );
     if (!chat) throw new Error("Expected an ordinary chat.");

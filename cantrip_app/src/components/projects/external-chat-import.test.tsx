@@ -241,7 +241,7 @@ describe("external Codex chat import settings", () => {
           onCheckedChange={vi.fn()}
         />,
       ),
-    ).toContain("Imported to Cantrip Mirror");
+    ).toContain("Imported to the selected project");
   });
 
   it("summarizes live progress and exposes retry and navigation actions", () => {

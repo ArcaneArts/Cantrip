@@ -18,7 +18,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-workflow-generation-"),
@@ -152,7 +155,7 @@ beforeAll(async () => {
   );
   app = await buildApp({ config, database, logger: false, workerBridge });
   const chat = await database.repository.createChat(LOCAL_USER_ID, project.id, {
-    title: "Generation runtime",
+    ...protectedChatFields(),
     worktreeMode: "agent-managed",
   });
   chatId = chat!.id;

@@ -4,13 +4,13 @@ import {
   DEFAULT_PERMISSION_PROFILE_ID,
   type AgentActivity,
   type ChatMessage,
-  type ChatSummary,
+  type ChatWireSummary,
 } from "@cantrip/protocol";
 
 import type { ChatExecutionContext } from "../db/repository.js";
 import { errorMessage } from "../http/request-helpers.js";
 
-export function chatIsExecuting(status: ChatSummary["status"]): boolean {
+export function chatIsExecuting(status: ChatWireSummary["status"]): boolean {
   return status === "running" || status === "waiting-for-approval";
 }
 

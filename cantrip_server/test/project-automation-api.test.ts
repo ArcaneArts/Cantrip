@@ -19,7 +19,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-project-automation-api-"),
@@ -116,7 +119,7 @@ beforeAll(async () => {
     },
   );
   const chat = await database.repository.createChat(LOCAL_USER_ID, projectId, {
-    title: "Scheduled work",
+    ...protectedChatFields(),
     worktreeMode: "agent-managed",
   });
   if (!chat) throw new Error("Could not create automation target chat.");
@@ -161,7 +164,7 @@ describe.sequential("project automation API", () => {
     const created = projectAutomationSchema.parse(createdResponse.json());
     automationId = created.id;
     expect(created.nextRunAt).toBe(startsAt);
-    expect(created.chatTitle).toBe("Scheduled work");
+    expect(created).not.toHaveProperty("chatTitle");
     expect(created.condition).toEqual({ type: "open-issues", minimum: 1 });
 
     const workerResponse = await app.inject({

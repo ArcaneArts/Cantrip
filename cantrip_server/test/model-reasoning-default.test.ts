@@ -9,7 +9,10 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-model-reasoning-default-"),
@@ -106,12 +109,12 @@ describe.sequential("remembered model reasoning defaults", () => {
     const firstChat = await database.repository.createChat(
       LOCAL_USER_ID,
       project.id,
-      { title: "First", worktreeMode: "agent-managed" },
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
     );
     const secondChat = await database.repository.createChat(
       LOCAL_USER_ID,
       project.id,
-      { title: "Second", worktreeMode: "agent-managed" },
+      { ...protectedChatFields(), worktreeMode: "agent-managed" },
     );
     if (!firstChat || !secondChat) throw new Error("Could not create chats.");
 

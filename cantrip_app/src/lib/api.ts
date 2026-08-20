@@ -14,14 +14,14 @@ import {
   agentInteractionRequestSchema,
   agentInteractionResolutionCreateSchema,
   archivedChatCleanupResultSchema,
-  archivedChatListSchema,
+  archivedChatWireListSchema,
   browserListSchema,
   browserServiceFleetDiscoverySchema,
   browserServiceListSchema,
   browserSummarySchema,
   browserTunnelRequestSchema,
   agentThreadSyncSchema,
-  chatListSchema,
+  chatWireListSchema,
   chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   chatGoalClearSchema,
@@ -33,7 +33,7 @@ import {
   codexDeviceLoginSchema,
   chatMessageListSchema,
   chatMessageWireListSchema,
-  chatSummarySchema,
+  chatWireSummarySchema,
   chatCompactAcceptedSchema,
   chatImportCreateSchema,
   chatImportJobListSchema,
@@ -87,7 +87,7 @@ import {
   explorerViewStateUpdateSchema,
   executionPlacementResolutionSchema,
   executionPlacementResolveRequestSchema,
-  executionTargetCatalogSchema,
+  executionTargetWireCatalogSchema,
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
   githubAuthStatusSchema,
@@ -212,7 +212,7 @@ import {
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
-  projectTabLayoutSummarySchema,
+  projectTabLayoutWireSummarySchema,
   projectWorktreeListSchema,
   serviceLogReadResultSchema,
   projectWorktreeSummarySchema,
@@ -242,7 +242,7 @@ import {
   tabGroupMemberOrderSchema,
   tabGroupOrderSchema,
   tabGroupUpdateSchema,
-  taskCreateResultSchema,
+  taskWireCreateResultSchema,
   taskImplementationDashboardSchema,
   taskImplementationOpaqueDashboardSchema,
   terminalListSchema,
@@ -386,6 +386,7 @@ import {
   withQuery,
 } from "@/lib/api-client";
 import { getActiveServerUrl } from "@/lib/server-connections";
+import { chatTitleEncryption } from "@/lib/chat-title-encryption";
 import {
   createInitialTaskOpaqueContent,
   openTaskOpaqueSummary,
@@ -2355,9 +2356,11 @@ export async function resolveProjectPlacement(
 }
 
 export async function getProjectExecutionTargets(projectId: string) {
-  return executionTargetCatalogSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/execution-targets`,
+  return chatTitleEncryption.openExecutionTargetCatalog(
+    executionTargetWireCatalogSchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/execution-targets`,
+      ),
     ),
   );
 }
@@ -2580,8 +2583,12 @@ export async function updateProjectPreferredWorkerWire(
 }
 
 export async function getChats(projectId: string) {
-  return chatListSchema.parse(
-    await request(`/api/projects/${encodeURIComponent(projectId)}/chats`),
+  return Promise.all(
+    chatWireListSchema
+      .parse(
+        await request(`/api/projects/${encodeURIComponent(projectId)}/chats`),
+      )
+      .map((chat) => chatTitleEncryption.open(chat)),
   );
 }
 
@@ -2636,10 +2643,14 @@ export async function retryChatImport(
 }
 
 export async function getArchivedChats(projectId: string) {
-  return archivedChatListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/archived-chats`,
-    ),
+  return Promise.all(
+    archivedChatWireListSchema
+      .parse(
+        await request(
+          `/api/projects/${encodeURIComponent(projectId)}/archived-chats`,
+        ),
+      )
+      .map((chat) => chatTitleEncryption.openArchived(chat)),
   );
 }
 
@@ -2698,8 +2709,12 @@ export async function cancelChatRelocation(
 }
 
 export async function getProjectTabLayout(projectId: string) {
-  return projectTabLayoutSummarySchema.parse(
-    await request(`/api/projects/${encodeURIComponent(projectId)}/tab-groups`),
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/tab-groups`,
+      ),
+    ),
   );
 }
 
@@ -2708,13 +2723,17 @@ export async function reorderProjectTabGroups(
   revision: number,
   groupIds: string[],
 ) {
-  return projectTabLayoutSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/order`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(tabGroupOrderSchema.parse({ revision, groupIds })),
-      },
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/order`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(
+            tabGroupOrderSchema.parse({ revision, groupIds }),
+          ),
+        },
+      ),
     ),
   );
 }
@@ -2725,13 +2744,15 @@ export async function updateProjectTabGroup(
   revision: number,
   title: string,
 ) {
-  return projectTabLayoutSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(tabGroupUpdateSchema.parse({ revision, title })),
-      },
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(tabGroupUpdateSchema.parse({ revision, title })),
+        },
+      ),
     ),
   );
 }
@@ -2742,15 +2763,17 @@ export async function reorderProjectTabGroupMembers(
   revision: number,
   tabKeys: string[],
 ) {
-  return projectTabLayoutSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}/members/order`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(
-          tabGroupMemberOrderSchema.parse({ revision, tabKeys }),
-        ),
-      },
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/${encodeURIComponent(groupId)}/members/order`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(
+            tabGroupMemberOrderSchema.parse({ revision, tabKeys }),
+          ),
+        },
+      ),
     ),
   );
 }
@@ -2765,13 +2788,15 @@ export async function moveProjectTabGroupMember(
     targetGroupPosition?: number;
   },
 ) {
-  return projectTabLayoutSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member`,
-      {
-        method: "PATCH",
-        body: JSON.stringify(tabGroupMemberMoveSchema.parse(input)),
-      },
+  return chatTitleEncryption.openTabLayout(
+    projectTabLayoutWireSummarySchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(projectId)}/tab-groups/member`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(tabGroupMemberMoveSchema.parse(input)),
+        },
+      ),
     ),
   );
 }
@@ -2784,14 +2809,18 @@ export async function createChat(
   tabGroupId?: string,
   target?: ExecutionTarget,
 ) {
-  return chatSummarySchema.parse(
-    await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
-      title,
-      ...(worktreeId ? { worktreeId } : {}),
-      ...(worktreeMode ? { worktreeMode } : {}),
-      ...(tabGroupId ? { tabGroupId } : {}),
-      ...(target ? { target } : {}),
-    }),
+  const id = crypto.randomUUID();
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await post(`/api/projects/${encodeURIComponent(projectId)}/chats`, {
+        id,
+        titleProtection: await chatTitleEncryption.protect(id, title),
+        ...(worktreeId ? { worktreeId } : {}),
+        ...(worktreeMode ? { worktreeMode } : {}),
+        ...(tabGroupId ? { tabGroupId } : {}),
+        ...(target ? { target } : {}),
+      }),
+    ),
   );
 }
 
@@ -2805,11 +2834,11 @@ export async function createTask(
 ) {
   const chatId = crypto.randomUUID();
   const task = await createInitialTaskOpaqueContent(chatId);
-  const created = taskCreateResultSchema.parse(
+  const created = taskWireCreateResultSchema.parse(
     await post(`/api/projects/${encodeURIComponent(projectId)}/tasks`, {
       chatId,
       task,
-      title,
+      titleProtection: await chatTitleEncryption.protect(chatId, title),
       ...(worktreeId ? { worktreeId } : {}),
       ...(worktreeMode ? { worktreeMode } : {}),
       ...(tabGroupId ? { tabGroupId } : {}),
@@ -2817,7 +2846,7 @@ export async function createTask(
     }),
   );
   return {
-    chat: created.chat,
+    chat: await chatTitleEncryption.open(created.chat),
     task: await openTaskOpaqueSummary(created.task),
   };
 }
@@ -3458,11 +3487,15 @@ export function remoteSurfaceWebSocketUrl(
 }
 
 export async function renameChat(chatId: string, title: string) {
-  return chatSummarySchema.parse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ title }),
-    }),
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await request(`/api/chats/${encodeURIComponent(chatId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          titleProtection: await chatTitleEncryption.protect(chatId, title),
+        }),
+      }),
+    ),
   );
 }
 
@@ -3470,11 +3503,13 @@ export async function updateChatWorktree(
   chatId: string,
   input: ChatWorktreeUpdate,
 ) {
-  return chatSummarySchema.parse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/worktree`, {
-      method: "PATCH",
-      body: JSON.stringify(input),
-    }),
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await request(`/api/chats/${encodeURIComponent(chatId)}/worktree`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    ),
   );
 }
 
@@ -3485,8 +3520,10 @@ export async function deleteChat(chatId: string) {
 }
 
 export async function restoreArchivedChat(chatId: string) {
-  return chatSummarySchema.parse(
-    await post(`/api/chats/${encodeURIComponent(chatId)}/restore`, {}),
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await post(`/api/chats/${encodeURIComponent(chatId)}/restore`, {}),
+    ),
   );
 }
 
@@ -3496,11 +3533,23 @@ export async function permanentlyDeleteArchivedChat(chatId: string) {
   });
 }
 
-export async function forkChat(chatId: string, messageId?: string) {
-  return chatSummarySchema.parse(
-    await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
-      ...(messageId ? { messageId } : {}),
-    }),
+export async function forkChat(
+  chatId: string,
+  sourceTitle: string,
+  messageId?: string,
+) {
+  const id = crypto.randomUUID();
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await post(`/api/chats/${encodeURIComponent(chatId)}/fork`, {
+        id,
+        titleProtection: await chatTitleEncryption.protect(
+          id,
+          `${sourceTitle} (fork)`,
+        ),
+        ...(messageId ? { messageId } : {}),
+      }),
+    ),
   );
 }
 
@@ -3832,11 +3881,13 @@ export async function getChatExternalImportStatus(
 }
 
 export async function updateChatModel(chatId: string, modelId: string) {
-  return chatSummarySchema.parse(
-    await request(`/api/chats/${encodeURIComponent(chatId)}/model`, {
-      method: "PATCH",
-      body: JSON.stringify({ modelId }),
-    }),
+  return chatTitleEncryption.open(
+    chatWireSummarySchema.parse(
+      await request(`/api/chats/${encodeURIComponent(chatId)}/model`, {
+        method: "PATCH",
+        body: JSON.stringify({ modelId }),
+      }),
+    ),
   );
 }
 

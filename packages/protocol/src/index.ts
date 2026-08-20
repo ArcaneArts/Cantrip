@@ -2685,18 +2685,72 @@ export const executionTargetResolveRequestSchema = z
   })
   .strict();
 
-export const executionTargetDescriptorSchema = executionTargetResolutionSchema
+const executionTargetDescriptorBaseSchema = executionTargetResolutionSchema
   .extend({
     resourceKind: executionTargetResourceKindSchema,
-    title: z.string().min(1).max(500),
     status: z.string().min(1).max(200).nullable(),
   })
   .strict();
+
+export const executionTargetDescriptorSchema =
+  executionTargetDescriptorBaseSchema.extend({
+    title: z.string().min(1).max(500),
+  });
+
+export const executionTargetWireDescriptorSchema =
+  executionTargetDescriptorBaseSchema
+    .extend({
+      title: z.string().min(1).max(500).nullable(),
+      titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
+    })
+    .superRefine((descriptor, context) => {
+      const protectedChat = descriptor.resourceKind === "chat";
+      if (
+        protectedChat !== (descriptor.titleProtection !== null) ||
+        protectedChat === (descriptor.title !== null)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Chat execution targets require an opaque title; other targets require a plaintext title.",
+          path: ["titleProtection"],
+        });
+      }
+      if (
+        descriptor.titleProtection &&
+        descriptor.titleProtection.classification.recordKind !== "chat"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Execution-target title classification must be chat.",
+          path: ["titleProtection", "classification", "recordKind"],
+        });
+      }
+      if (
+        protectedChat &&
+        (descriptor.target.kind !== "surface" ||
+          descriptor.target.surfaceKind !== "chat")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Chat execution targets must identify a chat surface.",
+          path: ["target"],
+        });
+      }
+    });
 
 export const executionTargetCatalogSchema = z
   .object({
     projectId: executionResourceIdSchema,
     targets: z.array(executionTargetDescriptorSchema).max(2_000),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const executionTargetWireCatalogSchema = z
+  .object({
+    projectId: executionResourceIdSchema,
+    targets: z.array(executionTargetWireDescriptorSchema).max(2_000),
     truncated: z.boolean(),
   })
   .strict();
@@ -3528,43 +3582,82 @@ const chatPlacementCreateFields = {
   target: executionTargetSchema.optional(),
 } as const;
 
-export const chatCreateSchema = z
-  .object({
-    title: z.string().trim().min(1).max(200).default("New agent"),
-    ...chatPlacementCreateFields,
-  })
+const chatPlacementCreateSchema = z
+  .object(chatPlacementCreateFields)
+  .strict()
   .refine((input) => !(input.worktreeId && input.target), {
     message: "Choose either a legacy worktreeId or an execution target.",
   });
 
-export const taskCreateSchema = z
-  .object({
-    chatId: z.string().uuid(),
-    task: taskOpaqueContentSchema,
-    title: z.string().trim().min(1).max(200).default("New task"),
-    ...chatPlacementCreateFields,
+export const chatCreateSchema = chatPlacementCreateSchema
+  .safeExtend({
+    title: z.string().trim().min(1).max(200).default("New agent"),
   })
-  .refine((input) => !(input.worktreeId && input.target), {
-    message: "Choose either a legacy worktreeId or an execution target.",
+  .strict();
+
+export const encryptedChatCreateSchema = chatPlacementCreateSchema
+  .safeExtend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
   })
+  .strict()
   .superRefine((input, context) => {
-    const classification = input.task.classification;
-    if (
-      classification.state !== "draft" ||
-      classification.stableStateBeforeFailure !== null ||
-      classification.activeOperationKind !== null ||
-      classification.planAuthorship !== "agent" ||
-      classification.planningRound !== 0 ||
-      classification.hasPlan ||
-      classification.hasQuestions ||
-      classification.hasFinalPlan ||
-      classification.hasGoalPrompt ||
-      classification.lastError !== null
-    ) {
+    if (input.titleProtection.classification.recordKind !== "chat") {
       context.addIssue({
         code: "custom",
-        message: "A new encrypted Task must begin as an empty draft.",
-        path: ["task", "classification"],
+        message: "Chat title classification must be chat.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
+  });
+
+const taskCreateBaseSchema = chatPlacementCreateSchema.safeExtend({
+  chatId: z.string().uuid(),
+  task: taskOpaqueContentSchema,
+});
+
+function refineInitialTask(
+  input: z.infer<typeof taskCreateBaseSchema>,
+  context: z.RefinementCtx,
+): void {
+  const classification = input.task.classification;
+  if (
+    classification.state !== "draft" ||
+    classification.stableStateBeforeFailure !== null ||
+    classification.activeOperationKind !== null ||
+    classification.planAuthorship !== "agent" ||
+    classification.planningRound !== 0 ||
+    classification.hasPlan ||
+    classification.hasQuestions ||
+    classification.hasFinalPlan ||
+    classification.hasGoalPrompt ||
+    classification.lastError !== null
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "A new encrypted Task must begin as an empty draft.",
+      path: ["task", "classification"],
+    });
+  }
+}
+
+export const taskCreateSchema = taskCreateBaseSchema
+  .safeExtend({
+    title: z.string().trim().min(1).max(200).default("New task"),
+  })
+  .strict()
+  .superRefine(refineInitialTask);
+
+export const encryptedTaskCreateSchema = taskCreateBaseSchema
+  .safeExtend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .superRefine((input, context) => {
+    refineInitialTask(input, context);
+    if (input.titleProtection.classification.recordKind !== "chat") {
+      context.addIssue({
+        code: "custom",
+        message: "Task title classification must be chat.",
+        path: ["titleProtection", "classification", "recordKind"],
       });
     }
   });
@@ -3573,20 +3666,44 @@ export const chatUpdateSchema = z.object({
   title: z.string().trim().min(1).max(200),
 });
 
+export const encryptedChatUpdateSchema = z
+  .object({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "chat",
+    {
+      message: "Chat title classification must be chat.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const chatForkSchema = z.object({
   messageId: z.string().min(1).optional(),
   worktreeId: z.string().min(1).optional(),
   worktreeMode: z.enum(["agent-managed", "pinned"]).optional(),
 });
 
+export const encryptedChatForkSchema = chatForkSchema
+  .extend({
+    id: z.string().uuid(),
+    titleProtection: privateDisplayLabelOpaqueSchema,
+  })
+  .strict()
+  .refine(
+    (input) => input.titleProtection.classification.recordKind === "chat",
+    {
+      message: "Forked chat title classification must be chat.",
+      path: ["titleProtection", "classification", "recordKind"],
+    },
+  );
+
 export const orderedIdsSchema = z.object({
   ids: z.array(z.string().min(1)).min(1),
 });
 
-export const chatSummarySchema = z.object({
+const chatSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   experience: z.enum(["agent", "task"]).default("agent"),
   position: z.number().int().nonnegative(),
   status: z.enum([
@@ -3610,17 +3727,34 @@ export const chatSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const chatSummarySchema = chatSummaryBaseSchema
+  .extend({ title: z.string().min(1).max(200) })
+  .strict();
+
+export const chatWireSummarySchema = chatSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .refine((chat) => chat.titleProtection.classification.recordKind === "chat", {
+    message: "Chat title classification must be chat.",
+    path: ["titleProtection", "classification", "recordKind"],
+  });
+
 export const taskCreateResultSchema = z.object({
   chat: chatSummarySchema,
   task: taskOpaqueSummarySchema,
 });
 
-export const chatListSchema = z.array(chatSummarySchema);
+export const taskWireCreateResultSchema = z.object({
+  chat: chatWireSummarySchema,
+  task: taskOpaqueSummarySchema,
+});
 
-export const archivedChatSummarySchema = z.object({
+export const chatListSchema = z.array(chatSummarySchema);
+export const chatWireListSchema = z.array(chatWireSummarySchema);
+
+const archivedChatSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1),
   experience: z.enum(["agent", "task"]).default("agent"),
   messageCount: z.number().int().nonnegative(),
   archivedAt: z.string().datetime(),
@@ -3629,7 +3763,22 @@ export const archivedChatSummarySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const archivedChatSummarySchema = archivedChatSummaryBaseSchema
+  .extend({ title: z.string().min(1).max(200) })
+  .strict();
+
+export const archivedChatWireSummarySchema = archivedChatSummaryBaseSchema
+  .extend({ titleProtection: privateDisplayLabelOpaqueSchema })
+  .strict()
+  .refine((chat) => chat.titleProtection.classification.recordKind === "chat", {
+    message: "Archived chat title classification must be chat.",
+    path: ["titleProtection", "classification", "recordKind"],
+  });
+
 export const archivedChatListSchema = z.array(archivedChatSummarySchema);
+export const archivedChatWireListSchema = z.array(
+  archivedChatWireSummarySchema,
+);
 
 export const archivedChatCleanupResultSchema = z.object({
   deleted: z.number().int().nonnegative(),
@@ -4805,27 +4954,68 @@ export const projectTabKindSchema = z.enum([
   "remote-desktop",
 ]);
 
-export const projectTabMemberSummarySchema = z.object({
+const projectTabMemberSummaryBaseSchema = z.object({
   tabKey: z.string().min(1),
   groupId: z.string().min(1),
   projectId: z.string().min(1),
   tabKind: projectTabKindSchema,
   tabId: z.string().min(1),
-  title: z.string().min(1),
   position: z.number().int().nonnegative(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
 
-export const tabGroupSummarySchema = z.object({
+export const projectTabMemberSummarySchema =
+  projectTabMemberSummaryBaseSchema.extend({ title: z.string().min(1) });
+
+export const projectTabMemberWireSummarySchema =
+  projectTabMemberSummaryBaseSchema
+    .extend({
+      title: z.string().min(1).nullable(),
+      titleProtection: privateDisplayLabelOpaqueSchema.nullable(),
+    })
+    .superRefine((member, context) => {
+      const protectedChat = member.tabKind === "chat";
+      if (
+        protectedChat !== (member.titleProtection !== null) ||
+        protectedChat === (member.title !== null)
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Chat tab members require an opaque title; other members require a plaintext title.",
+          path: ["titleProtection"],
+        });
+      }
+      if (
+        member.titleProtection &&
+        member.titleProtection.classification.recordKind !== "chat"
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Chat tab-member title classification must be chat.",
+          path: ["titleProtection", "classification", "recordKind"],
+        });
+      }
+    });
+
+const tabGroupSummaryBaseSchema = z.object({
   id: z.string().min(1),
   projectId: z.string().min(1),
-  title: z.string().min(1).max(120),
   position: z.number().int().nonnegative(),
   anchorTabKey: z.string().min(1),
-  members: z.array(projectTabMemberSummarySchema).min(1),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
+});
+
+export const tabGroupSummarySchema = tabGroupSummaryBaseSchema.extend({
+  title: z.string().min(1).max(120),
+  members: z.array(projectTabMemberSummarySchema).min(1),
+});
+
+export const tabGroupWireSummarySchema = tabGroupSummaryBaseSchema.extend({
+  title: z.string().min(1).max(120).nullable(),
+  members: z.array(projectTabMemberWireSummarySchema).min(1),
 });
 
 export const tabGroupUpdateSchema = z.object({
@@ -4837,6 +5027,12 @@ export const projectTabLayoutSummarySchema = z.object({
   projectId: z.string().min(1),
   revision: z.number().int().nonnegative(),
   groups: z.array(tabGroupSummarySchema),
+});
+
+export const projectTabLayoutWireSummarySchema = z.object({
+  projectId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  groups: z.array(tabGroupWireSummarySchema),
 });
 
 export const tabGroupOrderSchema = z.object({
@@ -8219,6 +8415,7 @@ export const externalChatTranscriptMetadataSchema =
   externalChatThreadMetadataSchema.omit({
     archived: true,
     existingImport: true,
+    title: true,
   });
 
 export const externalChatAttachmentSchema = z
@@ -8264,10 +8461,18 @@ export const externalChatTranscriptSchema = z
     sourceId: externalChatSourceSchema.shape.sourceId,
     sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
     metadata: externalChatTranscriptMetadataSchema,
+    titleProtection: privateDisplayLabelOpaqueSchema,
     sync: agentThreadSyncSchema,
     attachments: z.array(externalChatAttachmentSchema).max(20).default([]),
   })
   .superRefine((transcript, context) => {
+    if (transcript.titleProtection.classification.recordKind !== "chat") {
+      context.addIssue({
+        code: "custom",
+        message: "Imported title classification must be chat.",
+        path: ["titleProtection", "classification", "recordKind"],
+      });
+    }
     const descriptors = new Map(
       transcript.attachments.map((attachment) => [attachment.id, attachment]),
     );
@@ -8937,6 +9142,8 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("external.chat-history.read"),
+    ownerId: z.string().min(1).max(200),
+    chatId: z.string().uuid(),
     sourceKind: externalChatSourceKindSchema,
     sourceId: externalChatSourceSchema.shape.sourceId,
     sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
@@ -10410,8 +10617,14 @@ export type ExecutionTargetResolveRequest = z.infer<
 export type ExecutionTargetDescriptor = z.infer<
   typeof executionTargetDescriptorSchema
 >;
+export type ExecutionTargetWireDescriptor = z.infer<
+  typeof executionTargetWireDescriptorSchema
+>;
 export type ExecutionTargetCatalog = z.infer<
   typeof executionTargetCatalogSchema
+>;
+export type ExecutionTargetWireCatalog = z.infer<
+  typeof executionTargetWireCatalogSchema
 >;
 export type TunnelOrigin = z.infer<typeof tunnelOriginSchema>;
 export type TunnelManagement = z.infer<typeof tunnelManagementSchema>;
@@ -10814,13 +11027,22 @@ export type ProjectWorktreePolicyUpdate = z.infer<
 export type ChatWorktreeUpdate = z.infer<typeof chatWorktreeUpdateSchema>;
 export type WorktreeSelection = z.infer<typeof worktreeSelectionSchema>;
 export type ChatCreate = z.infer<typeof chatCreateSchema>;
+export type EncryptedChatCreate = z.infer<typeof encryptedChatCreateSchema>;
 export type TaskCreate = z.infer<typeof taskCreateSchema>;
+export type EncryptedTaskCreate = z.infer<typeof encryptedTaskCreateSchema>;
 export type TaskCreateResult = z.infer<typeof taskCreateResultSchema>;
+export type TaskWireCreateResult = z.infer<typeof taskWireCreateResultSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
+export type EncryptedChatUpdate = z.infer<typeof encryptedChatUpdateSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
+export type EncryptedChatFork = z.infer<typeof encryptedChatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;
 export type ChatSummary = z.infer<typeof chatSummarySchema>;
+export type ChatWireSummary = z.infer<typeof chatWireSummarySchema>;
 export type ArchivedChatSummary = z.infer<typeof archivedChatSummarySchema>;
+export type ArchivedChatWireSummary = z.infer<
+  typeof archivedChatWireSummarySchema
+>;
 export type ArchivedChatCleanupResult = z.infer<
   typeof archivedChatCleanupResultSchema
 >;
@@ -11021,10 +11243,17 @@ export type ProjectTabKind = z.infer<typeof projectTabKindSchema>;
 export type ProjectTabMemberSummary = z.infer<
   typeof projectTabMemberSummarySchema
 >;
+export type ProjectTabMemberWireSummary = z.infer<
+  typeof projectTabMemberWireSummarySchema
+>;
 export type TabGroupSummary = z.infer<typeof tabGroupSummarySchema>;
+export type TabGroupWireSummary = z.infer<typeof tabGroupWireSummarySchema>;
 export type TabGroupUpdate = z.infer<typeof tabGroupUpdateSchema>;
 export type ProjectTabLayoutSummary = z.infer<
   typeof projectTabLayoutSummarySchema
+>;
+export type ProjectTabLayoutWireSummary = z.infer<
+  typeof projectTabLayoutWireSummarySchema
 >;
 export type TabGroupOrder = z.infer<typeof tabGroupOrderSchema>;
 export type TabGroupMemberOrder = z.infer<typeof tabGroupMemberOrderSchema>;

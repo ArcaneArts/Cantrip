@@ -27,16 +27,11 @@ function toISOString(value: Date): string {
   return value.toISOString();
 }
 
-function toAutomation(
-  row: AutomationRow,
-  chatTitle: string,
-  workerId: string,
-): ProjectAutomation {
+function toAutomation(row: AutomationRow, workerId: string): ProjectAutomation {
   return projectAutomationSchema.parse({
     id: row.id,
     projectId: row.projectId,
     chatId: row.chatId,
-    chatTitle,
     workerId,
     name: row.name,
     prompt: row.prompt,
@@ -79,10 +74,9 @@ export class ProjectAutomationRepository {
     ownerId: string,
     projectId: string,
     chatId: string,
-  ): Promise<{ chatTitle: string; workerId: string } | null> {
+  ): Promise<{ workerId: string } | null> {
     const rows = await this.database
       .select({
-        chatTitle: schema.chats.title,
         workerId: schema.projectWorktrees.workerId,
       })
       .from(schema.chats)
@@ -140,14 +134,13 @@ export class ProjectAutomationRepository {
         updatedAt: now,
       })
       .returning();
-    return toAutomation(rows[0]!, target.chatTitle, target.workerId);
+    return toAutomation(rows[0]!, target.workerId);
   }
 
   async list(ownerId: string, projectId: string): Promise<ProjectAutomation[]> {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
-        chatTitle: schema.chats.title,
         workerId: schema.projectWorktrees.workerId,
       })
       .from(schema.projectAutomations)
@@ -169,8 +162,8 @@ export class ProjectAutomationRepository {
       .where(eq(schema.projectAutomations.projectId, projectId))
       .orderBy(desc(schema.projectAutomations.createdAt));
     return projectAutomationListSchema.parse(
-      rows.map(({ automation, chatTitle, workerId }) =>
-        toAutomation(automation, chatTitle, workerId),
+      rows.map(({ automation, workerId }) =>
+        toAutomation(automation, workerId),
       ),
     );
   }
@@ -182,7 +175,6 @@ export class ProjectAutomationRepository {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
-        chatTitle: schema.chats.title,
       })
       .from(schema.projectAutomations)
       .innerJoin(
@@ -202,9 +194,7 @@ export class ProjectAutomationRepository {
       .where(eq(schema.projectAutomations.enabled, true))
       .orderBy(schema.projectAutomations.nextRunAt);
     return projectAutomationListSchema.parse(
-      rows.map(({ automation, chatTitle }) =>
-        toAutomation(automation, chatTitle, workerId),
-      ),
+      rows.map(({ automation }) => toAutomation(automation, workerId)),
     );
   }
 
@@ -215,7 +205,6 @@ export class ProjectAutomationRepository {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
-        chatTitle: schema.chats.title,
         workerId: schema.projectWorktrees.workerId,
       })
       .from(schema.projectAutomations)
@@ -237,9 +226,7 @@ export class ProjectAutomationRepository {
       .where(eq(schema.projectAutomations.id, automationId))
       .limit(1);
     const row = rows[0];
-    return row
-      ? toAutomation(row.automation, row.chatTitle, row.workerId)
-      : null;
+    return row ? toAutomation(row.automation, row.workerId) : null;
   }
 
   async update(
@@ -298,9 +285,7 @@ export class ProjectAutomationRepository {
         ),
       )
       .returning();
-    return rows[0]
-      ? toAutomation(rows[0], target.chatTitle, target.workerId)
-      : null;
+    return rows[0] ? toAutomation(rows[0], target.workerId) : null;
   }
 
   async delete(ownerId: string, automationId: string): Promise<boolean> {
@@ -329,7 +314,6 @@ export class ProjectAutomationRepository {
       const rows = await transaction
         .select({
           automation: schema.projectAutomations,
-          chatTitle: schema.chats.title,
           reasoningEffort: schema.chats.reasoningEffort,
           workerId: schema.projectWorktrees.workerId,
         })
@@ -463,11 +447,7 @@ export class ProjectAutomationRepository {
         );
       }
       return {
-        automation: toAutomation(
-          updated[0],
-          selected.chatTitle,
-          selected.workerId,
-        ),
+        automation: toAutomation(updated[0], selected.workerId),
         dispatchInstanceId,
         fencingToken: run.fencingToken,
         leaseToken,

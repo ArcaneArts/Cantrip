@@ -12,7 +12,10 @@ import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-import-jobs-"),
@@ -123,9 +126,9 @@ describe.sequential("chat import job durability", () => {
         externalChatTranscriptSchema.parse({
           sourceId: "d".repeat(64),
           sourceThreadId,
+          titleProtection: protectedChatFields(created.id).titleProtection,
           metadata: {
             sourceThreadId,
-            title: "Recover this import",
             preview: "Durable hydration",
             cwd: worktreePath,
             createdAt: "2026-08-14T10:00:00.000Z",

@@ -19,7 +19,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-executor-"),
@@ -182,7 +185,7 @@ describe.sequential("chat relocation executor", () => {
       LOCAL_USER_ID,
       project.id,
       {
-        title: "Move me",
+        ...protectedChatFields(),
         worktreeId: source.id,
         worktreeMode: "agent-managed",
       },
@@ -426,7 +429,7 @@ describe.sequential("chat relocation executor", () => {
       LOCAL_USER_ID,
       project.id,
       {
-        title: "Stay on source",
+        ...protectedChatFields(),
         worktreeId: source.id,
         worktreeMode: "agent-managed",
       },

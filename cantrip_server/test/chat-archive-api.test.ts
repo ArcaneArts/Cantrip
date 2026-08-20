@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  archivedChatListSchema,
-  chatListSchema,
-  chatSummarySchema,
+  archivedChatWireListSchema,
+  chatWireListSchema,
+  chatWireSummarySchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -19,7 +19,10 @@ import {
 } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-archive-api-"),
@@ -61,9 +64,9 @@ let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
 let projectId: string;
 
-async function createChat(title: string) {
+async function createChat(_title: string) {
   const chat = await database.repository.createChat(LOCAL_USER_ID, projectId, {
-    title,
+    ...protectedChatFields(),
     worktreeMode: "agent-managed",
   });
   if (!chat) throw new Error("Could not create archive test chat.");
@@ -116,6 +119,38 @@ afterAll(async () => {
 });
 
 describe.sequential("chat archive API", () => {
+  it("routes opaque rename and fork labels without synthesizing plaintext", async () => {
+    const source = await createChat("Source title");
+    const renamed = protectedChatFields(source.id).titleProtection;
+    const renameResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${source.id}`,
+      payload: { titleProtection: renamed },
+    });
+    expect(renameResponse.statusCode).toBe(200);
+    expect(chatWireSummarySchema.parse(renameResponse.json())).toMatchObject({
+      id: source.id,
+      titleProtection: renamed,
+    });
+
+    await database.repository.appendMessage(LOCAL_USER_ID, source.id, {
+      role: "user",
+      content: [{ type: "text", text: "Fork from this message" }],
+      idempotencyKey: "opaque-title-fork-source",
+    });
+    const forkFields = protectedChatFields();
+    const forkResponse = await app.inject({
+      method: "POST",
+      url: `/api/chats/${source.id}/fork`,
+      payload: forkFields,
+    });
+    expect(forkResponse.statusCode).toBe(201);
+    expect(chatWireSummarySchema.parse(forkResponse.json())).toMatchObject({
+      id: forkFields.id,
+      titleProtection: forkFields.titleProtection,
+    });
+  });
+
   it("archives populated chats and restores them with their history", async () => {
     const chat = await createChat("Keep this work");
     await database.repository.appendMessage(LOCAL_USER_ID, chat.id, {
@@ -130,7 +165,7 @@ describe.sequential("chat archive API", () => {
     });
     expect(removed.statusCode).toBe(204);
     expect(
-      chatListSchema.parse(
+      chatWireListSchema.parse(
         (
           await app.inject({
             method: "GET",
@@ -140,7 +175,7 @@ describe.sequential("chat archive API", () => {
       ),
     ).not.toContainEqual(expect.objectContaining({ id: chat.id }));
 
-    const archived = archivedChatListSchema.parse(
+    const archived = archivedChatWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -152,7 +187,7 @@ describe.sequential("chat archive API", () => {
     expect(archived[0]).toMatchObject({
       id: chat.id,
       messageCount: 1,
-      title: "Keep this work",
+      titleProtection: chat.titleProtection,
     });
     expect(
       await database.repository.getChatExecutionContext(LOCAL_USER_ID, chat.id),
@@ -163,7 +198,9 @@ describe.sequential("chat archive API", () => {
       url: `/api/chats/${chat.id}/restore`,
     });
     expect(restoredResponse.statusCode).toBe(200);
-    expect(chatSummarySchema.parse(restoredResponse.json()).id).toBe(chat.id);
+    expect(chatWireSummarySchema.parse(restoredResponse.json()).id).toBe(
+      chat.id,
+    );
     expect(
       await database.repository.listMessages(LOCAL_USER_ID, chat.id),
     ).toHaveLength(1);
@@ -226,7 +263,7 @@ describe.sequential("chat archive API", () => {
       ),
     ).toBeGreaterThanOrEqual(1);
     expect(
-      archivedChatListSchema.parse(
+      archivedChatWireListSchema.parse(
         (
           await app.inject({
             method: "GET",

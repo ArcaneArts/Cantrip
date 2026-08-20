@@ -77,7 +77,7 @@ import {
   chatAttachmentListSchema,
   chatAttachmentSummarySchema,
   archivedChatCleanupResultSchema,
-  archivedChatListSchema,
+  archivedChatWireListSchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -101,11 +101,11 @@ import {
   chatPermissionProfileUpdateSchema,
   chatPauseStateSchema,
   chatPauseUpdateSchema,
-  chatCreateSchema,
+  encryptedChatCreateSchema,
   chatExecutionLaneListSchema,
   chatExecutionLaneReleaseSchema,
-  chatForkSchema,
-  chatListSchema,
+  encryptedChatForkSchema,
+  chatWireListSchema,
   chatMessageCreateSchema,
   chatMessageListSchema,
   chatMessageWireListSchema,
@@ -115,11 +115,11 @@ import {
   chatReasoningUpdateSchema,
   chatPromptSteerResultSchema,
   chatPromptSubmitResultSchema,
-  chatSummarySchema,
-  taskCreateResultSchema,
-  taskCreateSchema,
+  chatWireSummarySchema,
+  taskWireCreateResultSchema,
+  encryptedTaskCreateSchema,
   chatTurnCreateSchema,
-  chatUpdateSchema,
+  encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
   explorerCreateSchema,
   explorerDirectoryCommitsSchema,
@@ -134,7 +134,7 @@ import {
   explorerViewStateUpdateSchema,
   executionPlacementResolveRequestSchema,
   executionPlacementResolutionSchema,
-  executionTargetCatalogSchema,
+  executionTargetWireCatalogSchema,
   executionTargetResourceKindSchema,
   executionTargetResolutionSchema,
   executionTargetResolveRequestSchema,
@@ -307,7 +307,7 @@ import {
   encryptedProjectWorkspaceUpdateSchema,
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
-  projectTabLayoutSummarySchema,
+  projectTabLayoutWireSummarySchema,
   projectWorktreeCreateSchema,
   projectWorktreeListSchema,
   projectWorktreeLockSchema,
@@ -4957,7 +4957,7 @@ export async function buildApp({
       const exact = candidates.filter((candidate) => {
         const id = executionTargetId(candidate.target);
         return (
-          id === selector || candidate.title.toLocaleLowerCase() === wanted
+          id === selector || candidate.title?.toLocaleLowerCase() === wanted
         );
       });
       if (exact.length === 1) return exact[0]!;
@@ -4966,7 +4966,9 @@ export async function buildApp({
           resourceKind ?? "execution",
           exact.map((candidate) => ({
             id: executionTargetId(candidate.target),
-            title: candidate.title,
+            title:
+              candidate.title ??
+              `${candidate.resourceKind} ${executionTargetId(candidate.target)}`,
           })),
         );
       }
@@ -4974,7 +4976,7 @@ export async function buildApp({
         const id = executionTargetId(candidate.target);
         return (
           id.startsWith(selector) ||
-          candidate.title.toLocaleLowerCase().includes(wanted)
+          candidate.title?.toLocaleLowerCase().includes(wanted)
         );
       });
       if (partial.length === 1) return partial[0]!;
@@ -4983,7 +4985,9 @@ export async function buildApp({
           resourceKind ?? "execution",
           partial.map((candidate) => ({
             id: executionTargetId(candidate.target),
-            title: candidate.title,
+            title:
+              candidate.title ??
+              `${candidate.resourceKind} ${executionTargetId(candidate.target)}`,
           })),
         );
       }
@@ -5026,7 +5030,9 @@ export async function buildApp({
         resourceKind ?? "execution",
         matches.map((candidate) => ({
           id: executionTargetId(candidate.target),
-          title: candidate.title,
+          title:
+            candidate.title ??
+            `${candidate.resourceKind} ${executionTargetId(candidate.target)}`,
         })),
       );
     }
@@ -11476,7 +11482,7 @@ export async function buildApp({
         (workerId) => bridge.isConnected(workerId),
       );
       return catalog
-        ? reply.send(executionTargetCatalogSchema.parse(catalog))
+        ? reply.send(executionTargetWireCatalogSchema.parse(catalog))
         : reply.code(404).send({ error: "Project not found." });
     },
   );
@@ -17854,7 +17860,7 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.projectId,
       );
-      return reply.send(chatListSchema.parse(chats));
+      return reply.send(chatWireListSchema.parse(chats));
     },
   );
 
@@ -17865,7 +17871,7 @@ export async function buildApp({
         applicationOwnerId(),
         request.params.projectId,
       );
-      return reply.send(archivedChatListSchema.parse(chats));
+      return reply.send(archivedChatWireListSchema.parse(chats));
     },
   );
 
@@ -17880,7 +17886,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/chats",
     async (request, reply) => {
-      const input = chatCreateSchema.safeParse(request.body);
+      const input = encryptedChatCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -17894,7 +17900,7 @@ export async function buildApp({
         if (!chat) {
           return reply.code(404).send({ error: "Project source not found" });
         }
-        return reply.code(201).send(chatSummarySchema.parse(chat));
+        return reply.code(201).send(chatWireSummarySchema.parse(chat));
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {
           if (error.code === "project-not-found") {
@@ -17920,7 +17926,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/tasks",
     async (request, reply) => {
-      const input = taskCreateSchema.safeParse(request.body);
+      const input = encryptedTaskCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -17936,7 +17942,7 @@ export async function buildApp({
         }
         publishChatSummary(created.chat.id, created.chat.projectId);
         publishChatInvalidation(created.chat.id, "task", created.chat.id);
-        return reply.code(201).send(taskCreateResultSchema.parse(created));
+        return reply.code(201).send(taskWireCreateResultSchema.parse(created));
       } catch (error) {
         if (error instanceof ExecutionPlacementUnavailableError) {
           if (error.code === "project-not-found") {
@@ -21367,7 +21373,7 @@ export async function buildApp({
           request.params.projectId,
         );
         return layout
-          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (error instanceof TabLayoutInvariantError) {
@@ -21392,7 +21398,7 @@ export async function buildApp({
           input.data,
         );
         return layout
-          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -21423,7 +21429,7 @@ export async function buildApp({
           input.data,
         );
         return layout
-          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -21454,7 +21460,7 @@ export async function buildApp({
           input.data,
         );
         return layout
-          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -21484,7 +21490,7 @@ export async function buildApp({
           input.data,
         );
         return layout
-          ? reply.send(projectTabLayoutSummarySchema.parse(layout))
+          ? reply.send(projectTabLayoutWireSummarySchema.parse(layout))
           : reply.code(404).send({ error: "Project not found." });
       } catch (error) {
         if (
@@ -21503,7 +21509,7 @@ export async function buildApp({
   app.patch<{ Params: { chatId: string } }>(
     "/api/chats/:chatId",
     async (request, reply) => {
-      const input = chatUpdateSchema.safeParse(request.body);
+      const input = encryptedChatUpdateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -21513,7 +21519,7 @@ export async function buildApp({
         input.data,
       );
       return chat
-        ? reply.send(chatSummarySchema.parse(chat))
+        ? reply.send(chatWireSummarySchema.parse(chat))
         : reply.code(404).send({ error: "Chat not found." });
     },
   );
@@ -21537,7 +21543,7 @@ export async function buildApp({
           input.data,
         );
         return chat
-          ? reply.send(chatSummarySchema.parse(chat))
+          ? reply.send(chatWireSummarySchema.parse(chat))
           : reply.code(404).send({ error: "Chat or worktree not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -21657,7 +21663,7 @@ export async function buildApp({
         request.params.chatId,
       );
       return chat
-        ? reply.send(chatSummarySchema.parse(chat))
+        ? reply.send(chatWireSummarySchema.parse(chat))
         : reply.code(404).send({ error: "Archived chat not found." });
     },
   );
@@ -21678,7 +21684,7 @@ export async function buildApp({
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/fork",
     async (request, reply) => {
-      const input = chatForkSchema.safeParse(request.body ?? {});
+      const input = encryptedChatForkSchema.safeParse(request.body ?? {});
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -21699,7 +21705,7 @@ export async function buildApp({
           input.data,
         );
         return chat
-          ? reply.code(201).send(chatSummarySchema.parse(chat))
+          ? reply.code(201).send(chatWireSummarySchema.parse(chat))
           : reply.code(404).send({ error: "Chat or message not found." });
       } catch (error) {
         if (/unique|duplicate/i.test(errorMessage(error))) {
@@ -23296,7 +23302,7 @@ export async function buildApp({
       if (!result) {
         return reply.code(404).send({ error: "Chat or model not found." });
       }
-      return reply.send(chatSummarySchema.parse(result));
+      return reply.send(chatWireSummarySchema.parse(result));
     },
   );
 

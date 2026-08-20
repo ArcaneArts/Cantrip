@@ -6,7 +6,7 @@ import {
   worktreeStatusResultSchema,
   type ChatRelocationError,
   type ChatRelocationJobSummary,
-  type ChatSummary,
+  type ChatWireSummary,
   type ProjectReplicaJobSummary,
 } from "@cantrip/protocol";
 
@@ -40,7 +40,7 @@ interface ChatRelocationLogger {
 }
 
 export interface ChatRelocationLiveChange {
-  chat?: ChatSummary;
+  chat?: ChatWireSummary;
   job: ChatRelocationJobSummary;
   ownerId: string;
 }

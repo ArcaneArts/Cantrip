@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import {
-  taskCreateResultSchema,
+  taskWireCreateResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
@@ -48,7 +48,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const ownerId = LOCAL_USER_ID;
 const workerId = "task-lifecycle-worker";
@@ -608,7 +611,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
     const initialTask = await sealTask(chatId, initialContent);
     const createPayload = {
       chatId,
-      title: "Encrypted lifecycle Task",
+      titleProtection: protectedChatFields(chatId).titleProtection,
       task: initialTask,
     };
     expect(JSON.stringify(createPayload)).not.toContain(sentinel);
@@ -618,7 +621,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
       payload: createPayload,
     });
     expect(createResponse.statusCode).toBe(201);
-    const created = taskCreateResultSchema.parse(createResponse.json());
+    const created = taskWireCreateResultSchema.parse(createResponse.json());
     let task = await openTask(taskOpaqueSummarySchema.parse(created.task));
 
     const draftMutation = {

@@ -5,13 +5,13 @@ import {
   chatRelocationJobListSchema,
   chatRelocationJobSummarySchema,
   chatRelocationSnapshotSummarySchema,
-  chatSummarySchema,
+  chatWireSummarySchema,
   type ChatRelocationContextPayload,
   type ChatRelocationError,
   type ChatRelocationJobSummary,
   type ChatRelocationProgress,
   type ChatRelocationSnapshotSummary,
-  type ChatSummary,
+  type ChatWireSummary,
   type ExecutionPlacement,
 } from "@cantrip/protocol";
 import {
@@ -226,11 +226,14 @@ function toSnapshot(
   };
 }
 
-function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
-  return chatSummarySchema.parse({
+function toChatWireSummary(
+  chat: typeof schema.chats.$inferSelect,
+): ChatWireSummary {
+  return chatWireSummarySchema.parse({
     id: chat.id,
     projectId: chat.projectId,
-    title: chat.title,
+    titleProtection: chat.protectedLabel,
+    experience: chat.experience,
     position: chat.position,
     status: chat.status,
     activeWorkerId: chat.activeWorkerId,
@@ -238,6 +241,7 @@ function toChatSummary(chat: typeof schema.chats.$inferSelect): ChatSummary {
     placementRevision: chat.placementRevision,
     worktreeMode: chat.worktreeMode,
     modelId: chat.modelId,
+    reasoningEffort: chat.reasoningEffort,
     permissionProfileId: chat.permissionProfileId,
     planMode: chat.planMode,
     hasPendingPlanQuestion: chat.pendingPlanQuestion !== null,
@@ -1247,7 +1251,7 @@ export class ChatRelocationJobRepository {
     jobId: string,
     commandId: string,
     attempt: number,
-  ): Promise<{ chat: ChatSummary; job: ChatRelocationJobSummary }> {
+  ): Promise<{ chat: ChatWireSummary; job: ChatRelocationJobSummary }> {
     return this.database.transaction(async (transaction) => {
       const jobs = await transaction
         .select()
@@ -1364,7 +1368,7 @@ export class ChatRelocationJobRepository {
           throw new ChatRelocationJobStaleAttemptError();
         }
         return {
-          chat: toChatSummary(currentChats[0]),
+          chat: toChatWireSummary(currentChats[0]),
           job: toJob(failed[0]),
         };
       }
@@ -1519,7 +1523,7 @@ export class ChatRelocationJobRepository {
         .returning();
       if (!completed[0]) throw new ChatRelocationJobStaleAttemptError();
       return {
-        chat: toChatSummary(chats[0]),
+        chat: toChatWireSummary(chats[0]),
         job: toJob(completed[0]),
       };
     });

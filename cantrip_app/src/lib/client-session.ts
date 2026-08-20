@@ -13,32 +13,65 @@ export interface ClientSessionContext {
 
 type AuthenticationRequiredListener = (reason: string) => void;
 
-const authenticationRequiredListeners =
-  new Set<AuthenticationRequiredListener>();
-let session: ClientSessionContext | null = null;
-let sessionChannel: BroadcastChannel | null = null;
-let sessionChannelName: string | null = null;
+type ClientSessionRuntimeState = {
+  authenticationRequiredListeners: Set<AuthenticationRequiredListener>;
+  session: ClientSessionContext | null;
+  sessionChannel: BroadcastChannel | null;
+  sessionChannelName: string | null;
+};
+
+type ClientSessionHotState = {
+  clientSession?: ClientSessionRuntimeState;
+};
+
+export function clientSessionForRuntime(
+  hotState?: ClientSessionHotState,
+): ClientSessionRuntimeState {
+  if (!hotState) {
+    return {
+      authenticationRequiredListeners: new Set(),
+      session: null,
+      sessionChannel: null,
+      sessionChannelName: null,
+    };
+  }
+  hotState.clientSession ??= {
+    authenticationRequiredListeners: new Set(),
+    session: null,
+    sessionChannel: null,
+    sessionChannelName: null,
+  };
+  return hotState.clientSession;
+}
+
+// Keep authentication identity and the unlocked encryption service on the same
+// lifetime during development hot reloads. Otherwise a reloaded workspace
+// adapter can observe an empty session while the mounted application remains
+// authenticated, incorrectly reporting that workspace encryption is locked.
+const runtime = clientSessionForRuntime(
+  import.meta.hot?.data as ClientSessionHotState | undefined,
+);
 
 function synchronizeSession(next: ClientSessionContext): void {
   if (typeof BroadcastChannel === "undefined") return;
   const channelName = `cantrip.session.v1.${next.serverId}.${next.user.id}`;
-  if (sessionChannelName !== channelName) {
-    sessionChannel?.close();
-    sessionChannelName = channelName;
-    sessionChannel = new BroadcastChannel(channelName);
-    sessionChannel.addEventListener("message", (event) => {
+  if (runtime.sessionChannelName !== channelName) {
+    runtime.sessionChannel?.close();
+    runtime.sessionChannelName = channelName;
+    runtime.sessionChannel = new BroadcastChannel(channelName);
+    runtime.sessionChannel.addEventListener("message", (event) => {
       const update = event.data as {
         csrfToken?: unknown;
         expiresAt?: unknown;
       };
       if (
-        session &&
+        runtime.session &&
         typeof update.csrfToken === "string" &&
         update.csrfToken.length >= 32 &&
         typeof update.expiresAt === "string"
       ) {
-        session = {
-          ...session,
+        runtime.session = {
+          ...runtime.session,
           csrfToken: update.csrfToken,
           expiresAt: update.expiresAt,
         };
@@ -46,7 +79,7 @@ function synchronizeSession(next: ClientSessionContext): void {
     });
   }
   if (next.csrfToken && next.expiresAt) {
-    sessionChannel?.postMessage({
+    runtime.sessionChannel?.postMessage({
       csrfToken: next.csrfToken,
       expiresAt: next.expiresAt,
     });
@@ -55,31 +88,34 @@ function synchronizeSession(next: ClientSessionContext): void {
 
 export function setClientSession(next: ClientSessionContext): void {
   if (
-    session &&
-    (session.serverId !== next.serverId || session.user.id !== next.user.id)
+    runtime.session &&
+    (runtime.session.serverId !== next.serverId ||
+      runtime.session.user.id !== next.user.id)
   ) {
     clearClientEncryptionMemory();
   }
-  session = next;
+  runtime.session = next;
   synchronizeSession(next);
 }
 
 export function clearClientSession(): void {
   clearClientEncryptionMemory();
-  session = null;
-  sessionChannel?.close();
-  sessionChannel = null;
-  sessionChannelName = null;
+  runtime.session = null;
+  runtime.sessionChannel?.close();
+  runtime.sessionChannel = null;
+  runtime.sessionChannelName = null;
 }
 
 export function getClientSession(): ClientSessionContext | null {
-  return session;
+  return runtime.session;
 }
 
 export function clientStorageScope(): string {
   const serverId =
-    session?.serverId ?? getActiveServerConnection()?.id ?? "unconfigured";
-  return `${serverId}:${session?.user.id ?? "signed-out"}`;
+    runtime.session?.serverId ??
+    getActiveServerConnection()?.id ??
+    "unconfigured";
+  return `${serverId}:${runtime.session?.user.id ?? "signed-out"}`;
 }
 
 export function scopedClientStorageKey(key: string): string {
@@ -89,11 +125,12 @@ export function scopedClientStorageKey(key: string): string {
 export function onAuthenticationRequired(
   listener: AuthenticationRequiredListener,
 ): () => void {
-  authenticationRequiredListeners.add(listener);
-  return () => authenticationRequiredListeners.delete(listener);
+  runtime.authenticationRequiredListeners.add(listener);
+  return () => runtime.authenticationRequiredListeners.delete(listener);
 }
 
 export function notifyAuthenticationRequired(reason: string): void {
-  if (!session) return;
-  for (const listener of authenticationRequiredListeners) listener(reason);
+  if (!runtime.session) return;
+  for (const listener of runtime.authenticationRequiredListeners)
+    listener(reason);
 }
