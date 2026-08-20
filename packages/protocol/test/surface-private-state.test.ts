@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  encryptedTerminalCreateSchema,
+  encryptedTerminalServiceConfigurationSchema,
+  terminalWireSummarySchema,
+  workerCommandSchema,
+} from "../src/index.js";
+
+import {
   browserPrivateStateOpaqueSchema,
   encryptedSurfacePrivateStateSchema,
   surfacePrivateStateContextSchema,
@@ -92,6 +99,64 @@ describe("surface private-state contracts", () => {
       encryptedSurfacePrivateStateSchema.safeParse({
         ...encrypted,
         keyRevision: 3,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps terminal paths and service commands out of server wire contracts", () => {
+    const id = "00000000-0000-4000-8000-000000000101";
+    const stateProtection = {
+      classification: { recordKind: "terminal-state" as const },
+      protectedState: encrypted,
+    };
+    const titleProtection = {
+      classification: { recordKind: "terminal" as const },
+      protectedLabel: encrypted,
+    };
+    expect(
+      encryptedTerminalCreateSchema.safeParse({
+        id,
+        titleProtection,
+        stateProtection,
+        directoryPath: "private/path",
+      }).success,
+    ).toBe(false);
+    expect(
+      encryptedTerminalServiceConfigurationSchema.safeParse({
+        enabled: true,
+        stateProtection,
+        command: "pnpm private",
+      }).success,
+    ).toBe(false);
+    expect(
+      terminalWireSummarySchema.safeParse({
+        id,
+        projectId: "project-1",
+        position: 0,
+        status: "idle",
+        activeWorkerId: "worker-1",
+        worktreeId: "worktree-1",
+        linkedChatId: null,
+        titleProtection,
+        stateProtection,
+        serviceEnabled: true,
+        service: { enabled: true, command: "pnpm private" },
+        createdAt: "2026-08-20T12:00:00.000Z",
+        updatedAt: "2026-08-20T12:00:00.000Z",
+      }).success,
+    ).toBe(false);
+    expect(
+      workerCommandSchema.safeParse({
+        type: "terminal.open",
+        terminalId: id,
+        attachmentId: "attachment-1",
+        serverId: "server-a",
+        worktreePath: "/opaque/worktree",
+        stateProtection,
+        cwd: "/private/worktree/private/path",
+        cols: 80,
+        rows: 24,
+        launch: { type: "shell" },
       }).success,
     ).toBe(false);
   });

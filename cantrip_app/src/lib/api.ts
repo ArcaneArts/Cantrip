@@ -248,6 +248,7 @@ import {
   taskImplementationOpaqueDashboardSchema,
   terminalWireListSchema,
   terminalWireSummarySchema,
+  terminalServiceConfigurationSchema,
   tunnelAttachmentCreateResultSchema,
   tunnelAttachmentCreateSchema,
   tunnelDirectActivationSchema,
@@ -362,6 +363,7 @@ import type {
   SkillSettingsFileRequest,
   SkillSettingsFileUpdate,
   TerminalServiceConfiguration,
+  TerminalSummary,
   TaskDraftUpdate,
   TaskOperationStart,
   TaskContinuationStart,
@@ -3024,15 +3026,20 @@ export async function createTerminal(
     title,
     "terminal",
   );
+  const stateProtection = await surfaceTitleEncryption.protectTerminalState(
+    id,
+    directoryPath,
+    "",
+  );
   return surfaceTitleEncryption.openTerminal(
     terminalWireSummarySchema.parse(
       await post(`/api/projects/${encodeURIComponent(projectId)}/terminals`, {
         id,
         titleProtection,
+        stateProtection,
         ...(worktreeId ? { worktreeId } : {}),
         ...(tabGroupId ? { tabGroupId } : {}),
         ...(target ? { target } : {}),
-        ...(directoryPath ? { directoryPath } : {}),
       }),
     ),
   );
@@ -3072,16 +3079,25 @@ export async function renameTerminal(terminalId: string, title: string) {
 }
 
 export async function updateTerminalService(
-  terminalId: string,
+  terminal: TerminalSummary,
   service: TerminalServiceConfiguration,
 ) {
+  const configuration = terminalServiceConfigurationSchema.parse(service);
+  const stateProtection = await surfaceTitleEncryption.protectTerminalState(
+    terminal.id,
+    terminal.directoryPath,
+    configuration.command,
+  );
   return surfaceTitleEncryption.openTerminal(
     terminalWireSummarySchema.parse(
       await request(
-        `/api/terminals/${encodeURIComponent(terminalId)}/service`,
+        `/api/terminals/${encodeURIComponent(terminal.id)}/service`,
         {
           method: "PUT",
-          body: JSON.stringify(service),
+          body: JSON.stringify({
+            enabled: configuration.enabled,
+            stateProtection,
+          }),
         },
       ),
     ),
@@ -3797,11 +3813,17 @@ export async function createChatConsole(chatId: string) {
     "Console",
     "terminal",
   );
+  const stateProtection = await surfaceTitleEncryption.protectTerminalState(
+    id,
+    null,
+    "",
+  );
   return surfaceTitleEncryption.openTerminal(
     terminalWireSummarySchema.parse(
       await post(`/api/chats/${encodeURIComponent(chatId)}/console`, {
         id,
         titleProtection,
+        stateProtection,
       }),
     ),
   );

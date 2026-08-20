@@ -28,6 +28,10 @@ import type {
   PrivateDisplayLabelOpaque,
   PrivateDisplayLabelRecordKind,
 } from "@cantrip/protocol/private-labels";
+import {
+  terminalPrivateStateProtectedContentSchema,
+  type SurfacePrivateStateOpaque,
+} from "@cantrip/protocol/surface-private-state";
 
 import type { ClientEncryptionService } from "./client-encryption";
 import { clientEncryption } from "./client-encryption";
@@ -36,6 +40,10 @@ import {
   decodePrivateDisplayLabelForClient,
   encodePrivateDisplayLabelForClient,
 } from "./private-label-encryption";
+import {
+  decodeSurfacePrivateStateForClient,
+  encodeSurfacePrivateStateForClient,
+} from "./surface-private-state-encryption";
 
 export class SurfaceTitleEncryptionAdapter {
   constructor(
@@ -73,6 +81,33 @@ export class SurfaceTitleEncryptionAdapter {
     });
   }
 
+  protectTerminalState(
+    terminalId: string,
+    directoryPath: string | null | undefined,
+    serviceCommand: string,
+  ): Promise<SurfacePrivateStateOpaque> {
+    const identity = this.identity();
+    return encodeSurfacePrivateStateForClient({
+      identity,
+      context: {
+        serverId: identity.serverId,
+        resource: "terminal-row",
+        resourceId: terminalId,
+        operationId: null,
+        recordKind: "terminal-state",
+      },
+      content: {
+        version: 1,
+        classification: { recordKind: "terminal-state" },
+        directory: directoryPath
+          ? { kind: "relative-path", path: directoryPath }
+          : { kind: "project-root" },
+        serviceCommand,
+      },
+      service: this.service,
+    });
+  }
+
   private async openLabel(
     rowId: string,
     titleProtection: PrivateDisplayLabelOpaque,
@@ -88,10 +123,36 @@ export class SurfaceTitleEncryptionAdapter {
   }
 
   async openTerminal(terminal: TerminalWireSummary): Promise<TerminalSummary> {
-    const { titleProtection, ...publicTerminal } = terminal;
+    const identity = this.identity();
+    const state = terminalPrivateStateProtectedContentSchema.parse(
+      await decodeSurfacePrivateStateForClient({
+        identity,
+        context: {
+          serverId: identity.serverId,
+          resource: "terminal-row",
+          resourceId: terminal.id,
+          operationId: null,
+          recordKind: "terminal-state",
+        },
+        opaque: terminal.stateProtection,
+        service: this.service,
+      }),
+    );
+    const {
+      serviceEnabled,
+      stateProtection: _stateProtection,
+      titleProtection,
+      ...publicTerminal
+    } = terminal;
     return terminalSummarySchema.parse({
       ...publicTerminal,
       title: await this.openLabel(terminal.id, titleProtection, "terminal"),
+      directoryPath:
+        state.directory.kind === "relative-path" ? state.directory.path : null,
+      service: {
+        enabled: serviceEnabled,
+        command: state.serviceCommand,
+      },
     });
   }
 

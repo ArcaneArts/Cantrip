@@ -367,7 +367,7 @@ import {
   terminalWireListSchema,
   terminalOpenResultSchema,
   terminalSnapshotResultSchema,
-  terminalServiceConfigurationSchema,
+  encryptedTerminalServiceConfigurationSchema,
   terminalServerMessageSchema,
   terminalWireSummarySchema,
   encryptedTerminalUpdateSchema,
@@ -3458,7 +3458,10 @@ export async function buildApp({
     workerId: string,
   ): Promise<void> => {
     if (!bridge.isConnected(workerId)) return;
-    const services = await repository.listTerminalServicesForWorker(workerId);
+    const services = await repository.listTerminalServicesForWorker(
+      workerId,
+      serverId,
+    );
     await bridge.request(
       workerId,
       { type: "terminal.services.reconcile", services },
@@ -4420,7 +4423,7 @@ export async function buildApp({
         ) {
           throw new Error("Terminal placement changed before restart.");
         }
-        if (!terminal.service.enabled) {
+        if (!terminal.serviceEnabled) {
           throw new Error("Terminal service is disabled.");
         }
         await bridge.request(
@@ -8976,18 +8979,20 @@ export async function buildApp({
         return reply.code(503).send({ error: "Worker is offline." });
       }
       try {
-        return reply.send(
-          workerEncryptionRefreshResultSchema.parse(
-            await bridge.request(
-              request.params.workerId,
-              {
-                type: "worker.encryption.refresh",
-                ...input.data,
-              },
-              { ownerId, timeoutMs: 20_000 },
-            ),
+        const result = workerEncryptionRefreshResultSchema.parse(
+          await bridge.request(
+            request.params.workerId,
+            {
+              type: "worker.encryption.refresh",
+              ...input.data,
+            },
+            { ownerId, timeoutMs: 20_000 },
           ),
         );
+        if (input.data.component === "surface-private-state") {
+          await synchronizeTerminalServicesForWorker(request.params.workerId);
+        }
+        return reply.send(result);
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -18689,7 +18694,13 @@ export async function buildApp({
       try {
         const commands = await bridge.request(
           context.workerId,
-          { type: "project.script-commands", cwd: context.cwd },
+          {
+            type: "project.script-commands",
+            terminalId: context.terminalId,
+            serverId,
+            worktreePath: context.worktreePath,
+            stateProtection: context.stateProtection,
+          },
           { timeoutMs: 30_000 },
         );
         return reply.send(scriptCommandListSchema.parse(commands));
@@ -18720,7 +18731,9 @@ export async function buildApp({
   app.put<{ Params: { terminalId: string } }>(
     "/api/terminals/:terminalId/service",
     async (request, reply) => {
-      const input = terminalServiceConfigurationSchema.safeParse(request.body);
+      const input = encryptedTerminalServiceConfigurationSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18777,7 +18790,7 @@ export async function buildApp({
       if (!context) {
         return reply.code(404).send({ error: "Terminal not found." });
       }
-      if (!context.service.enabled) {
+      if (!context.serviceEnabled) {
         return reply.code(409).send({ error: "Terminal service is disabled." });
       }
       if (!bridge.isConnected(context.workerId)) {
@@ -21120,7 +21133,9 @@ export async function buildApp({
             type: "terminal.open",
             terminalId: context.terminalId,
             attachmentId: bootstrapAttachmentId,
-            cwd: context.cwd,
+            serverId,
+            worktreePath: context.worktreePath,
+            stateProtection: context.stateProtection,
             cols: 80,
             rows: 24,
             launch,
@@ -21331,7 +21346,9 @@ export async function buildApp({
                 type: "terminal.open",
                 terminalId,
                 attachmentId,
-                cwd: context.cwd,
+                serverId,
+                worktreePath: context.worktreePath,
+                stateProtection: context.stateProtection,
                 cols: 80,
                 rows: 24,
                 launch,

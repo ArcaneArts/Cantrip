@@ -18,6 +18,7 @@ import {
   protectedChatFields,
   protectedDisplayLabelFields,
   protectedProjectFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
@@ -153,13 +154,16 @@ describe.sequential("desktop update active-work API", () => {
     const terminal = await database.repository.createTerminal(
       LOCAL_USER_ID,
       projectId,
-      protectedDisplayLabelFields("terminal"),
+      protectedTerminalFields(),
     );
     if (!terminal) throw new Error("Could not create update test terminal.");
     await database.repository.updateTerminalService(
       LOCAL_USER_ID,
       terminal.id,
-      { enabled: true, command: "pnpm dev" },
+      {
+        enabled: true,
+        stateProtection: protectedTerminalFields(terminal.id).stateProtection,
+      },
     );
 
     const response = await app.inject({

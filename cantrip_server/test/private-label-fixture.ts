@@ -4,6 +4,7 @@ import type {
   PrivateDisplayLabelOpaque,
   PrivateDisplayLabelRecordKind,
 } from "@cantrip/protocol/private-labels";
+import type { SurfacePrivateStateOpaque } from "@cantrip/protocol/surface-private-state";
 
 export function protectedDisplayLabelFields(
   recordKind: PrivateDisplayLabelRecordKind,
@@ -59,4 +60,28 @@ export function protectedChatFields(id = randomUUID()): {
   titleProtection: PrivateDisplayLabelOpaque;
 } {
   return protectedDisplayLabelFields("chat", id);
+}
+
+export function protectedTerminalFields(id = randomUUID()): {
+  id: string;
+  titleProtection: PrivateDisplayLabelOpaque;
+  stateProtection: SurfacePrivateStateOpaque;
+} {
+  return {
+    ...protectedDisplayLabelFields("terminal", id),
+    stateProtection: {
+      classification: { recordKind: "terminal-state" },
+      protectedState: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: randomBytes(12).toString("base64url"),
+          ciphertext: randomBytes(32).toString("base64url"),
+        },
+      },
+    },
+  };
 }

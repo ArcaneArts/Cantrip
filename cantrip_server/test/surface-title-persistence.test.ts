@@ -12,6 +12,7 @@ import {
   clearSensitiveBytes,
   deriveComponentKey,
   encryptPrivateDisplayLabel,
+  encryptSurfacePrivateState,
   encryptTaskProtectedContent,
   generateAccountMasterKey,
 } from "../../packages/crypto/src/index.js";
@@ -50,6 +51,12 @@ it("persists every private display label only as authenticated ciphertext", asyn
     component: "task-content",
     keyRevision: 1,
   });
+  const surfaceStateKey = deriveComponentKey({
+    accountMasterKey,
+    ownerId: LOCAL_USER_ID,
+    component: "surface-private-state",
+    keyRevision: 1,
+  });
   const protectedTitle = async (
     recordKind: PrivateDisplayLabelRecordKind,
     rowId: string,
@@ -74,6 +81,27 @@ it("persists every private display label only as authenticated ciphertext", asyn
     surface: randomUUID(),
     view: randomUUID(),
   } as const;
+  const terminalStateProtection = await encryptSurfacePrivateState({
+    ownerId: LOCAL_USER_ID,
+    context: {
+      serverId: "surface-title-server",
+      resource: "terminal-row",
+      resourceId: ids.terminal,
+      operationId: null,
+      recordKind: "terminal-state",
+    },
+    keyRevision: 1,
+    componentKey: surfaceStateKey,
+    content: {
+      version: 1,
+      classification: { recordKind: "terminal-state" },
+      directory: {
+        kind: "relative-path",
+        path: `${sentinel}/private-directory`,
+      },
+      serviceCommand: `${sentinel}-SERVICE-COMMAND`,
+    },
+  });
 
   const database = await connectDatabase(config);
   try {
@@ -184,6 +212,7 @@ it("persists every private display label only as authenticated ciphertext", asyn
       {
         id: ids.terminal,
         titleProtection: await protectedTitle("terminal", ids.terminal),
+        stateProtection: terminalStateProtection,
       },
       () => true,
     );
@@ -267,7 +296,27 @@ it("persists every private display label only as authenticated ciphertext", asyn
     expect(
       JSON.stringify([project, chat, task, terminal, explorer, created]),
     ).not.toContain(sentinel);
+    await database.repository.updateTerminalService(
+      LOCAL_USER_ID,
+      ids.terminal,
+      { enabled: true, stateProtection: terminalStateProtection },
+    );
+    const services = await database.repository.listTerminalServicesForWorker(
+      "surface-title-worker",
+      "surface-title-server",
+    );
+    const terminalContext =
+      await database.repository.getTerminalExecutionContext(
+        LOCAL_USER_ID,
+        ids.terminal,
+      );
+    expect(JSON.stringify([services, terminalContext])).not.toContain(sentinel);
+    expect(services[0]).not.toHaveProperty("cwd");
+    expect(services[0]).not.toHaveProperty("command");
+    expect(terminalContext).not.toHaveProperty("cwd");
+    expect(terminalContext).not.toHaveProperty("service");
   } finally {
+    clearSensitiveBytes(surfaceStateKey);
     clearSensitiveBytes(taskKey);
     clearSensitiveBytes(componentKey);
     clearSensitiveBytes(accountMasterKey);
@@ -314,6 +363,11 @@ it("persists every private display label only as authenticated ciphertext", asyn
       expect(names, table).not.toContain(
         table === "projects" ? "name" : "title",
       );
+      if (table === "terminals") {
+        expect(names).toContain("protected_state");
+        expect(names).not.toContain("directory_path");
+        expect(names).not.toContain("service_command");
+      }
     }
 
     const remoteLabels = await scan.query<{

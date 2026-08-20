@@ -17,6 +17,7 @@ describe("TerminalServicePanel", () => {
       activeWorkerId: "worker-1",
       worktreeId: "worktree-1",
       linkedChatId: null,
+      directoryPath: null,
       service: { enabled: true, command: "redis-server" },
       createdAt: now,
       updatedAt: now,

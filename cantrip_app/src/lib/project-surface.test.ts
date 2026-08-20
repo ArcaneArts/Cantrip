@@ -137,6 +137,7 @@ describe("project surfaces", () => {
           activeWorkerId: "worker-1",
           worktreeId: "worktree-1",
           linkedChatId: "chat-1",
+          directoryPath: null,
           service: { enabled: false, command: "" },
           createdAt: timestamp,
           updatedAt: timestamp,

@@ -190,6 +190,23 @@ function protectedLabelFixture(recordKind: PrivateDisplayLabelRecordKind) {
   };
 }
 
+function terminalStateFixture() {
+  return {
+    classification: { recordKind: "terminal-state" as const },
+    protectedState: {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    },
+  };
+}
+
 describe("worker channel JSON codec", () => {
   it("accepts a worker restart control command", () => {
     expect(workerCommandSchema.parse({ type: "worker.restart" })).toEqual({
@@ -2515,7 +2532,10 @@ describe("Cantrip protocol", () => {
     expect(
       workerCommandSchema.parse({
         type: "project.script-commands",
-        cwd: "/worker/projects/cantrip",
+        terminalId: "terminal-1",
+        serverId: "server-1",
+        worktreePath: "/worker/projects/cantrip",
+        stateProtection: terminalStateFixture(),
       }).type,
     ).toBe("project.script-commands");
   });
@@ -4759,6 +4779,8 @@ describe("Cantrip protocol", () => {
         activeWorkerId: "worker-1",
         worktreeId: "worktree-1",
         linkedChatId: null,
+        directoryPath: null,
+        service: { enabled: false, command: "" },
         createdAt: "2026-08-11T12:00:00.000Z",
         updatedAt: "2026-08-11T12:00:00.000Z",
       }).service,
@@ -4788,7 +4810,9 @@ describe("Cantrip protocol", () => {
         type: "terminal.open",
         terminalId: "terminal-1",
         attachmentId: "attachment-1",
-        cwd: "/workspace",
+        serverId: "server-1",
+        worktreePath: "/workspace",
+        stateProtection: terminalStateFixture(),
         cols: 120,
         rows: 40,
         launch: {
@@ -4816,8 +4840,9 @@ describe("Cantrip protocol", () => {
         services: [
           {
             terminalId: "terminal-1",
-            cwd: "/workspace",
-            command: "pnpm dev",
+            serverId: "server-1",
+            worktreePath: "/workspace",
+            stateProtection: terminalStateFixture(),
           },
         ],
       }).type,

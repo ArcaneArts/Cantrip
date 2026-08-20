@@ -6,7 +6,6 @@ import path from "node:path";
 import {
   terminalOpenResultSchema,
   terminalSnapshotResultSchema,
-  type TerminalServiceRuntimeConfiguration,
   type TerminalOpenResult,
   type TerminalSnapshotResult,
   type WorkerCommand,
@@ -172,9 +171,15 @@ export interface TerminalManagerOptions {
   serviceRestartDelayMs?: number;
 }
 
+export interface TerminalServiceRuntime {
+  terminalId: string;
+  cwd: string;
+  command: string;
+}
+
 export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
-  readonly #services = new Map<string, TerminalServiceRuntimeConfiguration>();
+  readonly #services = new Map<string, TerminalServiceRuntime>();
   readonly #environment: Record<string, string>;
   readonly #serviceRestartDelayMs: number;
   #closing = false;
@@ -190,7 +195,7 @@ export class TerminalManager {
     return Boolean(session?.process && !session.exited);
   }
 
-  reconcileServices(services: TerminalServiceRuntimeConfiguration[]): void {
+  reconcileServices(services: TerminalServiceRuntime[]): void {
     const desired = new Map(
       services.map((service) => [service.terminalId, service]),
     );
@@ -471,7 +476,7 @@ export class TerminalManager {
     }
   }
 
-  #configureService(service: TerminalServiceRuntimeConfiguration): void {
+  #configureService(service: TerminalServiceRuntime): void {
     const previous = this.#services.get(service.terminalId);
     this.#services.set(service.terminalId, service);
     const session = this.#sessions.get(service.terminalId);
@@ -519,7 +524,7 @@ export class TerminalManager {
   }
 
   #startService(
-    service: TerminalServiceRuntimeConfiguration,
+    service: TerminalServiceRuntime,
     existing?: TerminalSession,
   ): TerminalSession {
     const session = existing ?? {
@@ -549,7 +554,7 @@ export class TerminalManager {
     );
     try {
       this.#spawn(service.terminalId, session);
-    } catch (error) {
+    } catch {
       workerLogger.rateLimited(
         `terminal-service-start-failed:${service.terminalId}`,
         "warn",
@@ -563,12 +568,11 @@ export class TerminalManager {
           terminalId: service.terminalId,
           attempt: session.restartCount + 1,
           reconnectDelayMs: this.#serviceRestartDelayMs,
-          error: workerLogError(error),
         },
       );
       this.#appendOutput(
         session,
-        `\r\n\x1b[31m[Service failed to start: ${error instanceof Error ? error.message : String(error)}]\x1b[0m\r\n`,
+        "\r\n\x1b[31m[Service failed to start]\x1b[0m\r\n",
       );
       this.#scheduleServiceRestart(
         service.terminalId,

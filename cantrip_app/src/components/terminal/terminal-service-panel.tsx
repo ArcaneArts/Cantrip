@@ -36,7 +36,7 @@ export function TerminalServicePanel({
   };
   const save = useMutation({
     mutationFn: (service: TerminalServiceConfiguration) =>
-      updateTerminalService(terminal.id, service),
+      updateTerminalService(terminal, service),
     onSuccess: (updated) => {
       updateCachedTerminal(updated);
       setEnabled(updated.service.enabled);
