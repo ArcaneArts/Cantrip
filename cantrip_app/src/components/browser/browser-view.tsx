@@ -72,6 +72,7 @@ import {
 } from "@/lib/use-remote-surface-transport";
 
 const decoder = new TextDecoder();
+export const BROWSER_STARTUP_FAILURE_GRACE_MS = 1_000;
 const browserTransportMessages = {
   closeReason: "Browser view closed",
   congestionReason: "Remote Surface connection is congested",
@@ -186,15 +187,21 @@ export function browserTouchPoints(
 
 export function browserSurfaceStartupState(input: {
   error: string | null;
+  failureGraceElapsed?: boolean;
   runtimeMessage: string | null;
   runtimeStatus: "ready" | "recovering" | "error";
   surfaceReady: boolean;
 }): { failure: string | null; loading: boolean } {
-  const failure =
+  const detectedFailure =
     input.error ??
     (input.runtimeStatus === "error"
       ? (input.runtimeMessage ?? "The worker browser could not recover.")
       : null);
+  const failure =
+    detectedFailure &&
+    (input.surfaceReady || input.failureGraceElapsed !== false)
+      ? detectedFailure
+      : null;
   return {
     failure,
     loading: !input.surfaceReady && !failure,
@@ -433,8 +440,34 @@ export function BrowserView({
     [sendFrame],
   );
 
+  const detectedStartupFailure = browserSurfaceStartupState({
+    error: encryptionError ?? error,
+    runtimeMessage,
+    runtimeStatus,
+    surfaceReady,
+  }).failure;
+  const [settledStartupFailure, setSettledStartupFailure] = useState<{
+    browserId: string;
+    failure: string;
+  } | null>(null);
+  useEffect(() => {
+    setSettledStartupFailure(null);
+    if (!detectedStartupFailure || surfaceReady) return;
+    const timeout = window.setTimeout(
+      () =>
+        setSettledStartupFailure({
+          browserId: browser.id,
+          failure: detectedStartupFailure,
+        }),
+      BROWSER_STARTUP_FAILURE_GRACE_MS,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [browser.id, detectedStartupFailure, surfaceReady]);
   const startupState = browserSurfaceStartupState({
     error: encryptionError ?? error,
+    failureGraceElapsed:
+      settledStartupFailure?.browserId === browser.id &&
+      settledStartupFailure.failure === detectedStartupFailure,
     runtimeMessage,
     runtimeStatus,
     surfaceReady,

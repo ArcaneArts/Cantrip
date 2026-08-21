@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BROWSER_STARTUP_FAILURE_GRACE_MS,
   browserAddressRequiresTunnel,
   browserPointerCoordinates,
   browserServiceDisplayName,
@@ -225,7 +226,7 @@ describe("browserSurfaceStartupState", () => {
     });
   });
 
-  it("keeps loading until the first frame and preserves runtime failures", () => {
+  it("keeps loading until the first frame", () => {
     expect(
       browserSurfaceStartupState({
         error: null,
@@ -234,12 +235,41 @@ describe("browserSurfaceStartupState", () => {
         surfaceReady: false,
       }),
     ).toEqual({ failure: null, loading: true });
+  });
+
+  it("defers pre-frame failures until the startup grace period elapses", () => {
+    const failure = {
+      error: null,
+      runtimeMessage: "Remote Surface could not be opened.",
+      runtimeStatus: "error" as const,
+      surfaceReady: false,
+    };
+    expect(BROWSER_STARTUP_FAILURE_GRACE_MS).toBe(1_000);
+    expect(
+      browserSurfaceStartupState({
+        ...failure,
+        failureGraceElapsed: false,
+      }),
+    ).toEqual({ failure: null, loading: true });
+    expect(
+      browserSurfaceStartupState({
+        ...failure,
+        failureGraceElapsed: true,
+      }),
+    ).toEqual({
+      failure: "Remote Surface could not be opened.",
+      loading: false,
+    });
+  });
+
+  it("shows failures immediately after the surface has rendered", () => {
     expect(
       browserSurfaceStartupState({
         error: null,
         runtimeMessage: "Chromium exited during startup.",
         runtimeStatus: "error",
-        surfaceReady: false,
+        surfaceReady: true,
+        failureGraceElapsed: false,
       }),
     ).toEqual({
       failure: "Chromium exited during startup.",
