@@ -13,7 +13,7 @@ import {
   agentActivitySchema,
   agentCommandOutputLimitBytes,
   agentFilePreviewLimitCharacters,
-  CANTRIP_MCP_READ_TOOL_NAMES,
+  CANTRIP_MCP_TOOL_NAMES,
   agentInteractionAcceptedSchema,
   agentInteractionRuntimeRequestSchema,
   agentThreadSyncSchema,
@@ -1649,7 +1649,7 @@ export function codexMcpConfigOverride(
                   required: true,
                   enabled_tools: isManagedCodeGraph
                     ? ["codegraph_explore"]
-                    : [...CANTRIP_MCP_READ_TOOL_NAMES],
+                    : [...CANTRIP_MCP_TOOL_NAMES],
                 }
               : {};
           return [
@@ -1686,7 +1686,7 @@ export function managedMcpToolRequirements(
       return [{ name: "codegraph", tool: "codegraph_explore" }];
     }
     if (isManagedCantripMcpName(server.name)) {
-      return CANTRIP_MCP_READ_TOOL_NAMES.map((tool) => ({
+      return CANTRIP_MCP_TOOL_NAMES.map((tool) => ({
         name: "cantrip",
         tool,
       }));

@@ -32,7 +32,7 @@ import { workerLogger } from "../logger.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { invokeCantripMcpOperation } from "./client.js";
 import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "./http.js";
-import { executeCantripMcpReadOperation } from "./read-operations.js";
+import { executeCantripMcpOperation } from "./operations.js";
 
 export const CANTRIP_MCP_BINDING_DIRECTORY = "agent-mcp-bindings";
 export const CANTRIP_MCP_BINDING_TTL_MS = 6 * 60 * 60 * 1_000;
@@ -313,7 +313,7 @@ export class CantripMcpBroker {
           try {
             const result = cantripAgentOperationResultSchema.parse(
               this.#encryptionService
-                ? await executeCantripMcpReadOperation({
+                ? await executeCantripMcpOperation({
                     binding: stored.binding,
                     execute: this.#execute,
                     request: parsed.request,
@@ -328,10 +328,13 @@ export class CantripMcpBroker {
                     )
                   : (() => {
                       throw new Error(
-                        "Worker encryption is unavailable for Cantrip MCP reads.",
+                        "Worker encryption is unavailable for Cantrip MCP operations.",
                       );
                     })(),
             );
+            if (result.continuationScheduled) {
+              this.revokeBinding(stored.binding.bindingId);
+            }
             sendJson(response, 200, result);
           } finally {
             stored.activeRequests -= 1;
