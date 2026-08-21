@@ -3197,18 +3197,34 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           model: command.model,
           provider: provider(),
         }).interruptThread(command.threadId);
-      case "chat.pause.set":
-        if (command.paused) {
-          pausedChats.add(command.chatId);
-        } else {
-          pausedChats.delete(command.chatId);
+      case "chat.pause.set": {
+        const previouslyPaused = pausedChats.has(command.chatId);
+        try {
+          await Promise.all(
+            [...codexRuntimes.values()].map((runtime) =>
+              runtime.setActiveChatPaused(command.chatId, command.paused),
+            ),
+          );
+          if (command.paused) {
+            pausedChats.add(command.chatId);
+          } else {
+            pausedChats.delete(command.chatId);
+          }
+        } catch (error) {
+          if (previouslyPaused) {
+            pausedChats.add(command.chatId);
+          } else {
+            pausedChats.delete(command.chatId);
+          }
+          await Promise.allSettled(
+            [...codexRuntimes.values()].map((runtime) =>
+              runtime.setActiveChatPaused(command.chatId, previouslyPaused),
+            ),
+          );
+          throw error;
         }
-        await Promise.all(
-          [...codexRuntimes.values()].map((runtime) =>
-            runtime.setActiveChatPaused(command.chatId, command.paused),
-          ),
-        );
         return { paused: command.paused };
+      }
       case "chat.compact":
         return runtimeFor({
           model: command.model,

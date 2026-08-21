@@ -22670,16 +22670,39 @@ export async function buildApp({
         });
       }
 
-      if (!input.data.paused && bridge.isConnected(context.workerId)) {
+      const workerConnected = bridge.isConnected(context.workerId);
+      if (!input.data.paused && workerConnected) {
         try {
-          await bridge.request(context.workerId, {
-            type: "chat.pause.set",
-            chatId: context.chatId,
-            paused: false,
-          });
+          await bridge.request(
+            context.workerId,
+            {
+              type: "chat.pause.set",
+              chatId: context.chatId,
+              paused: false,
+            },
+            { timeoutMs: null },
+          );
         } catch (error) {
           return reply.code(502).send({
             error: `The worker could not resume this chat: ${errorMessage(error)}`,
+          });
+        }
+      }
+
+      if (input.data.paused && workerConnected) {
+        try {
+          await bridge.request(
+            context.workerId,
+            {
+              type: "chat.pause.set",
+              chatId: context.chatId,
+              paused: true,
+            },
+            { timeoutMs: null },
+          );
+        } catch (error) {
+          return reply.code(502).send({
+            error: `The worker could not pause this chat at a safe boundary: ${errorMessage(error)}`,
           });
         }
       }
@@ -22690,21 +22713,20 @@ export async function buildApp({
         input.data.paused,
       );
       if (!updated) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-
-      if (input.data.paused && bridge.isConnected(context.workerId)) {
-        try {
-          await bridge.request(context.workerId, {
-            type: "chat.pause.set",
-            chatId: context.chatId,
-            paused: true,
-          });
-        } catch (error) {
-          return reply.code(502).send({
-            error: `Automatic dispatch is paused, but the active worker could not be notified: ${errorMessage(error)}`,
-          });
+        if (workerConnected) {
+          await bridge
+            .request(
+              context.workerId,
+              {
+                type: "chat.pause.set",
+                chatId: context.chatId,
+                paused: !input.data.paused,
+              },
+              { timeoutMs: null },
+            )
+            .catch(() => undefined);
         }
+        return reply.code(404).send({ error: "Chat source not found." });
       }
 
       if (!input.data.paused) {
