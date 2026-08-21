@@ -547,9 +547,9 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-// AppKit displays status item images at 18 points. A 72 px source gives it a
-// 4x representation to downsample cleanly on Retina displays.
-const MACOS_TRAY_ICON_SIZE: u32 = 72;
+// tray-icon displays the NSImage at 18 points. Use an exact 2x representation
+// so Retina displays do not resample the pixel-hinted status-item artwork.
+const MACOS_TRAY_ICON_SIZE: u32 = 36;
 #[cfg(target_os = "macos")]
 const MACOS_TRAY_ICON_RGBA: &[u8; (MACOS_TRAY_ICON_SIZE * MACOS_TRAY_ICON_SIZE * 4) as usize] =
     include_bytes!("../icons/tray-icon-macos.rgba");
