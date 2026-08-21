@@ -7,6 +7,7 @@ import {
   chatAttachmentSummarySchema,
   providerQuotaSnapshotSchema,
   mentionedSkillNames,
+  workerCommandSchema,
   workerEncryptionRefreshResultSchema,
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
@@ -30,6 +31,12 @@ import {
   terminalSnapshotRequestContentSchema,
   type SurfaceOperationOutcomeContent,
 } from "@cantrip/protocol/surface-stream";
+import {
+  repositoryOperationOutcomeContentSchema,
+  repositoryOperationRequestContentSchema,
+  repositoryOperationWireResponseSchema,
+  type RepositoryOperationOutcomeContent,
+} from "@cantrip/protocol/repository-operation";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
@@ -99,6 +106,11 @@ import {
 } from "./chat-message-encryption.js";
 import { openChatPlanState } from "./chat-plan-encryption.js";
 import { buildEncryptedAgentPolicyContext } from "./policy-encryption.js";
+import {
+  openWorkerRepositoryOperationContent,
+  protectWorkerRepositoryOperationContent,
+  RepositoryOperationReplayGuard,
+} from "./repository-operation-encryption.js";
 import {
   openAgentInteractionResponse,
   protectAgentInteractionRequest,
@@ -446,6 +458,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     { workerId: config.workerId },
   );
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
+  const repositoryOperationReplay = new RepositoryOperationReplayGuard();
   const terminalStreamContexts = new Map<
     string,
     {
@@ -1355,6 +1368,55 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         projectShareTunnel.closeShare(command.shareId);
         await projectShares.close(command.shareId);
         return { accepted: true };
+      case "repository.operation": {
+        const requestContext = {
+          serverId: command.serverId,
+          projectId: command.projectId,
+          worktreeId: command.worktreeId,
+          operationId: command.operationId,
+          direction: "request" as const,
+        };
+        repositoryOperationReplay.reserve(requestContext);
+        const request = await openWorkerRepositoryOperationContent({
+          context: requestContext,
+          opaque: command.protectedRequest,
+          schema: repositoryOperationRequestContentSchema,
+          service: workerEncryption,
+        });
+        let outcome: RepositoryOperationOutcomeContent;
+        try {
+          const trustedCommand = workerCommandSchema.parse({
+            ...request.arguments,
+            type: request.type,
+            cwd: command.cwd,
+            repository: command.repository,
+          });
+          if (trustedCommand.type === "repository.operation") {
+            throw new Error("Nested repository operations are not allowed.");
+          }
+          outcome = {
+            ok: true,
+            result: await handleCommand(trustedCommand, emit),
+          };
+        } catch (error) {
+          outcome = {
+            ok: false,
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Repository operation failed.",
+          };
+        }
+        return repositoryOperationWireResponseSchema.parse({
+          operationId: command.operationId,
+          protectedResponse: await protectWorkerRepositoryOperationContent({
+            context: { ...requestContext, direction: "response" },
+            content: outcome,
+            schema: repositoryOperationOutcomeContentSchema,
+            service: workerEncryption,
+          }),
+        });
+      }
       case "git.history":
         return readGitHistory(
           command.cwd,

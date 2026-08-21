@@ -103,6 +103,9 @@ let activeGitMutations = 0;
 let maximumConcurrentGitMutations = 0;
 const gitActionPaths: string[] = [];
 const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
+const repositoryOperationCommands: Array<
+  Extract<WorkerCommand, { type: "repository.operation" }>
+> = [];
 const gitPatchPreviewCommands: Array<
   Extract<WorkerCommand, { type: "git.patch.preview" }>
 > = [];
@@ -564,6 +567,12 @@ const workerBridge = {
   async request(_workerId, command, options) {
     if (!connected) throw new WorkerUnavailableError("Worker is offline.");
     switch (command.type) {
+      case "repository.operation":
+        repositoryOperationCommands.push(command);
+        return {
+          operationId: command.operationId,
+          protectedResponse: command.protectedRequest,
+        };
       case "worktree.list":
       case "worktree.reconcile":
         return inventory();
@@ -1607,6 +1616,41 @@ afterAll(async () => {
 });
 
 describe.sequential("server worktree control plane", () => {
+  it("relays protected repository operations without inspecting content", async () => {
+    const protectedRequest = {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    };
+    const operationId = "11111111-1111-4111-8111-111111111111";
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
+      payload: { operationId, protectedRequest },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      operationId,
+      protectedResponse: protectedRequest,
+    });
+    expect(repositoryOperationCommands.at(-1)).toMatchObject({
+      type: "repository.operation",
+      projectId,
+      worktreeId: primaryId,
+      operationId,
+      protectedRequest,
+    });
+    expect(JSON.stringify(repositoryOperationCommands.at(-1))).not.toContain(
+      "private/roadmap.md",
+    );
+  });
+
   it("renders durable Primary metadata and reconciles external worktrees", async () => {
     const initial = projectWorktreeListSchema.parse(
       (

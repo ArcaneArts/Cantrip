@@ -414,6 +414,10 @@ import {
   surfaceStreamWireResponseSchema,
 } from "@cantrip/protocol/surface-stream";
 import {
+  repositoryOperationWireRequestSchema,
+  repositoryOperationWireResponseSchema,
+} from "@cantrip/protocol/repository-operation";
+import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
   accountEncryptionProfileInitializeSchema,
@@ -9441,6 +9445,56 @@ export async function buildApp({
           type: "worker.version",
         });
         return reply.send(cantripVersionSchema.parse(version));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; worktreeId: string } }>(
+    "/api/projects/:projectId/worktrees/:worktreeId/repository-operation",
+    { bodyLimit: 24 * 1_024 * 1_024 },
+    async (request, reply) => {
+      const input = repositoryOperationWireRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = principalOwnerId(request);
+      const context = await repository.getProjectWorktreeContext(
+        ownerId,
+        request.params.projectId,
+        request.params.worktreeId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Worktree not found." });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      const githubContext = await repository.getGithubProjectExecutionContext(
+        ownerId,
+        request.params.projectId,
+      );
+      try {
+        const result = await bridge.request(
+          context.workerId,
+          {
+            type: "repository.operation",
+            serverId,
+            projectId: request.params.projectId,
+            worktreeId: request.params.worktreeId,
+            cwd: context.worktree.path,
+            repository:
+              githubContext?.workerId === context.workerId
+                ? githubContext.nameWithOwner
+                : null,
+            ...input.data,
+          },
+          { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+        );
+        return reply.send(repositoryOperationWireResponseSchema.parse(result));
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }

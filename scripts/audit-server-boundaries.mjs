@@ -15,6 +15,12 @@ const surfaceStreamProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/surface-stream.ts",
 );
+const repositoryOperationProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/repository-operation.ts",
+);
+const clientApiPath = resolve(repositoryRoot, "cantrip_app/src/lib/api.ts");
+const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
 const remoteSurfaceStreamProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/remote-surface-stream.ts",
@@ -249,6 +255,16 @@ const prohibitedSurfaceStreamContentSymbols = new Set([
   "terminalOutputContentSchema",
   "terminalSnapshotContentSchema",
   "terminalSnapshotRequestContentSchema",
+]);
+
+const prohibitedRepositoryOperationContentSymbols = new Set([
+  "RepositoryOperationOutcomeContent",
+  "RepositoryOperationRequestContent",
+  "RepositoryOperationType",
+  "repositoryOperationContextSchema",
+  "repositoryOperationOutcomeContentSchema",
+  "repositoryOperationRequestContentSchema",
+  "repositoryOperationTypeSchema",
 ]);
 
 const prohibitedSurfacePrivateStateFields = [
@@ -579,6 +595,44 @@ async function surfaceStreamProductionDependencyAudit() {
   }
   return {
     prohibitedTrustedSurfaceStreamImports: 0,
+    opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
+  };
+}
+
+async function repositoryOperationProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  const opaqueProtocolSources = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const imports = namedImportsFrom(
+      sourceText,
+      "@cantrip/protocol/repository-operation",
+    );
+    if (imports.length > 0) opaqueProtocolSources.push(relativeFile);
+    for (const symbol of imports) {
+      if (prohibitedRepositoryOperationContentSymbols.has(symbol)) {
+        failures.push(
+          `${relativeFile}: prohibited trusted repository-operation symbol ${symbol}`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\b(?:open|protect)(?:Worker)?RepositoryOperationContent\b/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references trusted repository-operation endpoint code (${match[0]})`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the repository-operation E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    prohibitedTrustedRepositoryOperationImports: 0,
     opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
   };
 }
@@ -1366,6 +1420,87 @@ function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
       left.path.localeCompare(right.path) ||
       left.method.localeCompare(right.method),
   );
+}
+
+function repositoryOperationRouteBoundaryAudit(
+  routes,
+  applicationText,
+  protocolText,
+  clientText,
+  workerText,
+) {
+  const failures = [];
+  const method = "POST";
+  const path =
+    "/api/projects/:projectId/worktrees/:worktreeId/repository-operation";
+  const route = routes.find(
+    (candidate) => candidate.method === method && candidate.path === path,
+  );
+  for (const marker of [
+    "repositoryOperationWireRequestSchema",
+    "repositoryOperationWireResponseSchema",
+    'type: "repository.operation"',
+  ]) {
+    if (!route?.source.includes(marker)) {
+      failures.push(
+        `Protected repository route is missing ${method} ${path} (${marker}).`,
+      );
+    }
+  }
+  for (const marker of [
+    "repositoryOperationOpaqueSchema",
+    "protectedRequest: repositoryOperationOpaqueSchema",
+    "protectedResponse: repositoryOperationOpaqueSchema",
+  ]) {
+    if (!protocolText.includes(marker)) {
+      failures.push(`Repository-operation protocol is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "runProtectedRepositoryOperation",
+    "protectRepositoryOperationContent",
+    "openRepositoryOperationContent",
+    "/repository-operation",
+  ]) {
+    if (!clientText.includes(marker)) {
+      failures.push(`Client protected repository path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    'case "repository.operation"',
+    "repositoryOperationReplay.reserve",
+    "openWorkerRepositoryOperationContent",
+    "protectWorkerRepositoryOperationContent",
+    "cwd: command.cwd",
+    "repository: command.repository",
+  ]) {
+    if (!workerText.includes(marker)) {
+      failures.push(`Worker protected repository path is missing ${marker}.`);
+    }
+  }
+  if (
+    applicationText.includes("repositoryOperationRequestContentSchema") ||
+    applicationText.includes("repositoryOperationOutcomeContentSchema")
+  ) {
+    failures.push(
+      "Server application references trusted repository-operation content schemas.",
+    );
+  }
+  if (failures.length > 0) throw new Error(failures.join("\n"));
+  return {
+    protectedRoute: { contract: "opaque-repository-operation", method, path },
+    protectedOperationTypes: enumValues(
+      protocolText,
+      "repositoryOperationTypeSchema",
+    ),
+    pendingPlaintextPaths: [
+      "managed Git operations",
+      "Git agent drafts",
+      "pull-request checkout",
+      "worktree status and lifecycle",
+      "repository identity and paths",
+    ],
+  };
 }
 
 function methodBody(sourceText, methodName) {
@@ -2348,10 +2483,13 @@ async function buildInventory() {
     protocolText,
     liveProtocolText,
     surfaceStreamProtocolText,
+    repositoryOperationProtocolText,
     remoteSurfaceStreamProtocolText,
     remoteSurfaceTransportText,
     remoteSurfaceManagerText,
     remoteSurfaceRelayText,
+    clientApiText,
+    workerText,
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
@@ -2363,16 +2501,20 @@ async function buildInventory() {
     privateDisplayLabelRepository,
     surfacePrivateStateDependencies,
     surfaceStreamDependencies,
+    repositoryOperationDependencies,
     remoteSurfaceStreamDependencies,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
     readFile(protocolPath, "utf8"),
     readFile(liveProtocolPath, "utf8"),
     readFile(surfaceStreamProtocolPath, "utf8"),
+    readFile(repositoryOperationProtocolPath, "utf8"),
     readFile(remoteSurfaceStreamProtocolPath, "utf8"),
     readFile(remoteSurfaceTransportPath, "utf8"),
     readFile(remoteSurfaceManagerPath, "utf8"),
     readFile(remoteSurfaceRelayPath, "utf8"),
+    readFile(clientApiPath, "utf8"),
+    readFile(workerPath, "utf8"),
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
@@ -2384,6 +2526,7 @@ async function buildInventory() {
     privateDisplayLabelRepositoryBoundaryAudit(),
     surfacePrivateStateProductionDependencyAudit(),
     surfaceStreamProductionDependencyAudit(),
+    repositoryOperationProductionDependencyAudit(),
     remoteSurfaceStreamProductionDependencyAudit(),
   ]);
   const surfacePrivateStateRepository =
@@ -2407,6 +2550,13 @@ async function buildInventory() {
   const surfaceStreamRouteContracts = surfaceStreamRouteBoundaryAudit(
     parsedRoutes,
     sourceText,
+  );
+  const repositoryOperationBoundary = repositoryOperationRouteBoundaryAudit(
+    parsedRoutes,
+    sourceText,
+    repositoryOperationProtocolText,
+    clientApiText,
+    workerText,
   );
   const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
   routes.sort(
@@ -2527,6 +2677,11 @@ async function buildInventory() {
       ...surfaceStreamDependencies,
       ...surfaceStreamProtocol,
       routeContracts: surfaceStreamRouteContracts,
+    },
+    repositoryOperationE2eeBoundary: {
+      status: "protected-path-enforced",
+      ...repositoryOperationDependencies,
+      ...repositoryOperationBoundary,
     },
     remoteSurfaceStreamE2eeBoundary: {
       status: "enforced",

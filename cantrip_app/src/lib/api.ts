@@ -286,6 +286,12 @@ import {
   type ExplorerOperationRequestContent,
   type ExplorerOperationResultContent,
 } from "@cantrip/protocol/surface-stream";
+import {
+  repositoryOperationOutcomeContentSchema,
+  repositoryOperationRequestContentSchema,
+  repositoryOperationWireResponseSchema,
+  type RepositoryOperationType,
+} from "@cantrip/protocol/repository-operation";
 import type {
   AccountRegistration,
   AuthLogin,
@@ -461,6 +467,11 @@ import {
 import { getClientSession } from "@/lib/client-session";
 import { clientEncryption } from "@/lib/client-encryption";
 import { authorizeWorkerEncryption } from "@/lib/worker-encryption-grants";
+import {
+  openRepositoryOperationContent,
+  protectRepositoryOperationContent,
+} from "@/lib/repository-operation-encryption";
+import { ensureRepositoryWorkerEncryption } from "@/lib/repository-worker-encryption";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -1420,6 +1431,67 @@ export async function deleteProjectWorkspace(workspaceId: string) {
   });
 }
 
+type RepositoryResultSchema<T> = { parse(value: unknown): T };
+
+async function runProtectedRepositoryOperation<T>(input: {
+  arguments: Record<string, unknown>;
+  projectId: string;
+  resultSchema: RepositoryResultSchema<T>;
+  type: RepositoryOperationType;
+  worktreeId?: string;
+}): Promise<T> {
+  const worktrees = await getProjectWorktrees(input.projectId);
+  const worktree = input.worktreeId
+    ? worktrees.find(({ id }) => id === input.worktreeId)
+    : (worktrees.find(({ isPrimary }) => isPrimary) ??
+      worktrees.find(({ isDefault }) => isDefault));
+  if (!worktree || worktree.lifecycleState !== "ready") {
+    throw new CantripApiError("Project worktree is unavailable.", 409);
+  }
+  const worker = (await getWorkers()).find(
+    ({ workerId }) => workerId === worktree.workerId,
+  );
+  await ensureRepositoryWorkerEncryption({
+    refresh: refreshWorkerEncryption,
+    worker,
+  });
+  const operationId = crypto.randomUUID();
+  const protectedRequest = await protectRepositoryOperationContent({
+    context: {
+      projectId: input.projectId,
+      worktreeId: worktree.id,
+      operationId,
+      direction: "request",
+    },
+    content: {
+      type: input.type,
+      arguments: input.arguments,
+    },
+    schema: repositoryOperationRequestContentSchema,
+  });
+  const wire = repositoryOperationWireResponseSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(input.projectId)}/worktrees/${encodeURIComponent(worktree.id)}/repository-operation`,
+      {
+        method: "POST",
+        body: JSON.stringify({ operationId, protectedRequest }),
+      },
+    ),
+  );
+  const outcome = await openRepositoryOperationContent({
+    context: {
+      projectId: input.projectId,
+      worktreeId: worktree.id,
+      operationId,
+      direction: "response",
+    },
+    opaque: wire.protectedResponse,
+    schema: repositoryOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new CantripApiError(outcome.error, 422);
+  return input.resultSchema.parse(outcome.result);
+}
+
 export async function getProjectWorktrees(projectId: string) {
   return projectWorktreeListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/worktrees`),
@@ -1443,11 +1515,13 @@ export async function getProjectWorktreeFileDiff(
   path: string,
   scope: GitDiffScope,
 ) {
-  return gitFileDiffSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/diff?path=${encodeURIComponent(path)}&scope=${scope}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.diff",
+    arguments: { path, scope },
+    resultSchema: gitFileDiffSchema,
+  });
 }
 
 export async function createProjectWorktree(
@@ -1476,27 +1550,13 @@ export async function getProjectWorktreeHistory(
   worktreeId: string,
   cursor = 0,
 ) {
-  return gitHistorySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/history?cursor=${cursor}&limit=100`,
-    ),
-  );
-}
-
-function projectWorktreeGraphUrl(
-  projectId: string,
-  worktreeId: string,
-  resource: "metrics" | "snapshot",
-  input: Partial<GitGraphRequest> = {},
-): string {
-  const parsed = gitGraphRequestSchema.parse(input);
-  const search = new URLSearchParams({
-    includeBlame: String(parsed.includeBlame),
-    maxNodes: String(parsed.maxNodes),
-    revision: parsed.revision,
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.history",
+    arguments: { cursor, limit: 100, revisions: [] },
+    resultSchema: gitHistorySchema,
   });
-  if (parsed.rootPath) search.set("rootPath", parsed.rootPath);
-  return `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/graph/${resource}?${search.toString()}`;
 }
 
 export async function getProjectWorktreeGraphSnapshot(
@@ -1504,11 +1564,13 @@ export async function getProjectWorktreeGraphSnapshot(
   worktreeId: string,
   input: Partial<GitGraphRequest> = {},
 ) {
-  return gitGraphSnapshotSchema.parse(
-    await request(
-      projectWorktreeGraphUrl(projectId, worktreeId, "snapshot", input),
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.graph.snapshot",
+    arguments: gitGraphRequestSchema.parse(input),
+    resultSchema: gitGraphSnapshotSchema,
+  });
 }
 
 export async function getProjectWorktreeGraphMetrics(
@@ -1516,11 +1578,13 @@ export async function getProjectWorktreeGraphMetrics(
   worktreeId: string,
   input: Partial<GitGraphRequest> = {},
 ) {
-  return gitGraphMetricsSchema.parse(
-    await request(
-      projectWorktreeGraphUrl(projectId, worktreeId, "metrics", input),
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.graph.metrics",
+    arguments: gitGraphRequestSchema.parse(input),
+    resultSchema: gitGraphMetricsSchema,
+  });
 }
 
 export async function getProjectWorktreeGraphCommitOverlay(
@@ -1529,14 +1593,13 @@ export async function getProjectWorktreeGraphCommitOverlay(
   input: GitGraphCommitOverlayRequest,
 ) {
   const parsed = gitGraphCommitOverlayRequestSchema.parse(input);
-  const search = new URLSearchParams();
-  if (parsed.rootPath) search.set("rootPath", parsed.rootPath);
-  const query = search.size ? `?${search.toString()}` : "";
-  return gitGraphCommitOverlaySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/graph/commits/${encodeURIComponent(parsed.revision)}${query}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.graph.commit-overlay",
+    arguments: parsed,
+    resultSchema: gitGraphCommitOverlaySchema,
+  });
 }
 
 export async function getProjectWorktreeFileHistory(
@@ -1546,17 +1609,13 @@ export async function getProjectWorktreeFileHistory(
   revision = "HEAD",
   cursor = 0,
 ) {
-  const search = new URLSearchParams({
-    path,
-    revision,
-    cursor: String(cursor),
-    limit: "100",
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.file.history",
+    arguments: { path, revision, cursor, limit: 100 },
+    resultSchema: gitFileHistorySchema,
   });
-  return gitFileHistorySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/files/history?${search.toString()}`,
-    ),
-  );
 }
 
 export async function getProjectWorktreeFileBlame(
@@ -1566,17 +1625,13 @@ export async function getProjectWorktreeFileBlame(
   revision = "HEAD",
   cursor = 0,
 ) {
-  const search = new URLSearchParams({
-    path,
-    revision,
-    cursor: String(cursor),
-    limit: "200",
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.file.blame",
+    arguments: { path, revision, cursor, limit: 200 },
+    resultSchema: gitBlameSchema,
   });
-  return gitBlameSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/files/blame?${search.toString()}`,
-    ),
-  );
 }
 
 export async function searchProjectWorktreeCommits(
@@ -1585,15 +1640,13 @@ export async function searchProjectWorktreeCommits(
   query: GitCommitSearchQuery,
   cursor = 0,
 ) {
-  const search = new URLSearchParams({ cursor: String(cursor), limit: "100" });
-  for (const [key, value] of Object.entries(query)) {
-    if (value) search.set(key, value);
-  }
-  return gitCommitSearchResultSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/search?${search.toString()}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.commit.search",
+    arguments: { query, cursor, limit: 100 },
+    resultSchema: gitCommitSearchResultSchema,
+  });
 }
 
 export async function getProjectWorktreeRecoveryCandidates(
@@ -1602,16 +1655,13 @@ export async function getProjectWorktreeRecoveryCandidates(
   kind: "reflog" | "dangling",
   cursor = 0,
 ) {
-  const search = new URLSearchParams({
-    kind,
-    cursor: String(cursor),
-    limit: "100",
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.recovery.list",
+    arguments: { kind, cursor, limit: 100 },
+    resultSchema: gitRecoveryCandidateListSchema,
   });
-  return gitRecoveryCandidateListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/recovery?${search.toString()}`,
-    ),
-  );
 }
 
 export async function previewProjectWorktreeRecovery(
@@ -1619,12 +1669,13 @@ export async function previewProjectWorktreeRecovery(
   worktreeId: string,
   action: GitRecoveryAction,
 ) {
-  return gitRecoveryPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/recovery/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.recovery.preview",
+    arguments: { action },
+    resultSchema: gitRecoveryPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeRecovery(
@@ -1632,12 +1683,13 @@ export async function applyProjectWorktreeRecovery(
   worktreeId: string,
   recovery: GitRecoveryApply,
 ) {
-  return gitRecoveryResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/recovery/apply`,
-      recovery,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.recovery.apply",
+    arguments: { request: recovery },
+    resultSchema: gitRecoveryResultSchema,
+  });
 }
 
 export async function getProjectWorktreeCommit(
@@ -1646,11 +1698,13 @@ export async function getProjectWorktreeCommit(
   revision: string,
   parentIndex = 0,
 ) {
-  return gitCommitDetailSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/${encodeURIComponent(revision)}?parent=${parentIndex}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.commit.get",
+    arguments: { revision, parentIndex, revisions: [] },
+    resultSchema: gitCommitDetailSchema,
+  });
 }
 
 export async function getProjectWorktreeCommitSignature(
@@ -1658,22 +1712,26 @@ export async function getProjectWorktreeCommitSignature(
   worktreeId: string,
   revision: string,
 ) {
-  return gitSignatureSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/${encodeURIComponent(revision)}/signature`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.commit.signature.get",
+    arguments: { revision },
+    resultSchema: gitSignatureSchema,
+  });
 }
 
 export async function getProjectWorktreeRevisionCandidates(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitRevisionCandidateListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/refs`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.refs.list",
+    arguments: {},
+    resultSchema: gitRevisionCandidateListSchema,
+  });
 }
 
 export async function getProjectWorktreeComparison(
@@ -1683,12 +1741,13 @@ export async function getProjectWorktreeComparison(
   right: string,
   mode: "direct" | "merge-base",
 ) {
-  const search = new URLSearchParams({ left, right, mode });
-  return gitComparisonSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/compare?${search.toString()}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.compare",
+    arguments: { left, right, mode },
+    resultSchema: gitComparisonSchema,
+  });
 }
 
 export async function getProjectWorktreeRevisionDiff(
@@ -1698,13 +1757,13 @@ export async function getProjectWorktreeRevisionDiff(
   baseRevision: string | null,
   path: string,
 ) {
-  const search = new URLSearchParams({ path });
-  if (baseRevision) search.set("base", baseRevision);
-  return gitRevisionFileDiffSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/revisions/${encodeURIComponent(revision)}/diff?${search.toString()}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.revision.diff",
+    arguments: { revision, baseRevision, path },
+    resultSchema: gitRevisionFileDiffSchema,
+  });
 }
 
 export async function runProjectWorktreeGitAction(
@@ -1712,12 +1771,13 @@ export async function runProjectWorktreeGitAction(
   worktreeId: string,
   action: GitAction,
 ) {
-  return gitActionResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/actions`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.action",
+    arguments: { action },
+    resultSchema: gitActionResultSchema,
+  });
 }
 
 export async function generateProjectWorktreeGitDraft(
@@ -1737,12 +1797,13 @@ export async function previewProjectWorktreeGitForcePush(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitForcePushPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/force-push/preview`,
-      {},
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.force-push.preview",
+    arguments: {},
+    resultSchema: gitForcePushPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeGitForcePush(
@@ -1750,23 +1811,26 @@ export async function applyProjectWorktreeGitForcePush(
   worktreeId: string,
   token: string,
 ) {
-  return gitActionResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/force-push/apply`,
-      { token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.force-push.apply",
+    arguments: { token },
+    resultSchema: gitActionResultSchema,
+  });
 }
 
 export async function getProjectWorktreeBranches(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitBranchListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.branch.list",
+    arguments: {},
+    resultSchema: gitBranchListSchema,
+  });
 }
 
 export async function previewProjectWorktreeBranchAction(
@@ -1774,12 +1838,13 @@ export async function previewProjectWorktreeBranchAction(
   worktreeId: string,
   action: GitBranchAction,
 ) {
-  return gitBranchActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.branch.action.preview",
+    arguments: { action },
+    resultSchema: gitBranchActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeBranchAction(
@@ -1788,12 +1853,13 @@ export async function applyProjectWorktreeBranchAction(
   action: GitBranchAction,
   token: string,
 ) {
-  return gitBranchMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/branches/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.branch.action.apply",
+    arguments: { action, token },
+    resultSchema: gitBranchMutationResultSchema,
+  });
 }
 
 export async function previewProjectWorktreeCommitAction(
@@ -1801,12 +1867,13 @@ export async function previewProjectWorktreeCommitAction(
   worktreeId: string,
   action: GitCommitAction,
 ) {
-  return gitCommitActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.commit.action.preview",
+    arguments: { action },
+    resultSchema: gitCommitActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeCommitAction(
@@ -1815,12 +1882,13 @@ export async function applyProjectWorktreeCommitAction(
   action: GitCommitAction,
   token: string,
 ) {
-  return gitCommitActionResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/commits/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.commit.action.apply",
+    arguments: { action, token },
+    resultSchema: gitCommitActionResultSchema,
+  });
 }
 
 export async function getProjectWorktreeGitOperation(
@@ -1893,11 +1961,13 @@ export async function getProjectWorktreeGitConflicts(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitConflictListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.conflicts.list",
+    arguments: {},
+    resultSchema: gitConflictListSchema,
+  });
 }
 
 export async function getProjectWorktreeGitConflict(
@@ -1905,11 +1975,13 @@ export async function getProjectWorktreeGitConflict(
   worktreeId: string,
   path: string,
 ) {
-  return gitConflictDetailSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts/detail?path=${encodeURIComponent(path)}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.conflicts.get",
+    arguments: { path },
+    resultSchema: gitConflictDetailSchema,
+  });
 }
 
 export async function previewProjectWorktreeGitConflictResolution(
@@ -1917,12 +1989,13 @@ export async function previewProjectWorktreeGitConflictResolution(
   worktreeId: string,
   resolution: GitConflictResolutionRequest,
 ) {
-  return gitConflictResolutionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts/preview`,
-      resolution,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.conflicts.preview",
+    arguments: { request: resolution },
+    resultSchema: gitConflictResolutionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeGitConflictResolution(
@@ -1931,23 +2004,26 @@ export async function applyProjectWorktreeGitConflictResolution(
   resolution: GitConflictResolutionRequest,
   token: string,
 ) {
-  return gitConflictResolutionResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/conflicts/apply`,
-      { request: resolution, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.conflicts.apply",
+    arguments: { request: resolution, token },
+    resultSchema: gitConflictResolutionResultSchema,
+  });
 }
 
 export async function getProjectWorktreeRemotes(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitRemoteListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.remote.list",
+    arguments: {},
+    resultSchema: gitRemoteListSchema,
+  });
 }
 
 export async function previewProjectWorktreeRemoteAction(
@@ -1955,12 +2031,13 @@ export async function previewProjectWorktreeRemoteAction(
   worktreeId: string,
   action: GitRemoteAction,
 ) {
-  return gitRemoteActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.remote.action.preview",
+    arguments: { action },
+    resultSchema: gitRemoteActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeRemoteAction(
@@ -1969,23 +2046,26 @@ export async function applyProjectWorktreeRemoteAction(
   action: GitRemoteAction,
   token: string,
 ) {
-  return gitRemoteMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/remotes/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.remote.action.apply",
+    arguments: { action, token },
+    resultSchema: gitRemoteMutationResultSchema,
+  });
 }
 
 export async function getProjectWorktreeSubmodules(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitSubmoduleListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.submodule.list",
+    arguments: {},
+    resultSchema: gitSubmoduleListSchema,
+  });
 }
 
 export async function previewProjectWorktreeSubmoduleAction(
@@ -1993,12 +2073,13 @@ export async function previewProjectWorktreeSubmoduleAction(
   worktreeId: string,
   action: GitSubmoduleAction,
 ) {
-  return gitSubmoduleActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.submodule.action.preview",
+    arguments: { action },
+    resultSchema: gitSubmoduleActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeSubmoduleAction(
@@ -2007,23 +2088,26 @@ export async function applyProjectWorktreeSubmoduleAction(
   action: GitSubmoduleAction,
   token: string,
 ) {
-  return gitSubmoduleMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/submodules/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.submodule.action.apply",
+    arguments: { action, token },
+    resultSchema: gitSubmoduleMutationResultSchema,
+  });
 }
 
 export async function getProjectWorktreeGitLfs(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitLfsStatusSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/lfs`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.lfs.status",
+    arguments: { refreshLocks: true },
+    resultSchema: gitLfsStatusSchema,
+  });
 }
 
 export async function previewProjectWorktreeGitLfsAction(
@@ -2031,12 +2115,13 @@ export async function previewProjectWorktreeGitLfsAction(
   worktreeId: string,
   action: GitLfsAction,
 ) {
-  return gitLfsActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/lfs/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.lfs.action.preview",
+    arguments: { action },
+    resultSchema: gitLfsActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeGitLfsAction(
@@ -2045,23 +2130,26 @@ export async function applyProjectWorktreeGitLfsAction(
   action: GitLfsAction,
   token: string,
 ) {
-  return gitLfsMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/lfs/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.lfs.action.apply",
+    arguments: { action, token },
+    resultSchema: gitLfsMutationResultSchema,
+  });
 }
 
 export async function getProjectWorktreeTags(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitTagListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.tag.list",
+    arguments: {},
+    resultSchema: gitTagListSchema,
+  });
 }
 
 export async function getProjectWorktreeTag(
@@ -2069,11 +2157,13 @@ export async function getProjectWorktreeTag(
   worktreeId: string,
   name: string,
 ) {
-  return gitTagDetailSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags/${encodeURIComponent(name)}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.tag.get",
+    arguments: { name },
+    resultSchema: gitTagDetailSchema,
+  });
 }
 
 export async function previewProjectWorktreeTagAction(
@@ -2081,12 +2171,13 @@ export async function previewProjectWorktreeTagAction(
   worktreeId: string,
   action: GitTagAction,
 ) {
-  return gitTagActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.tag.action.preview",
+    arguments: { action },
+    resultSchema: gitTagActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeTagAction(
@@ -2095,23 +2186,26 @@ export async function applyProjectWorktreeTagAction(
   action: GitTagAction,
   token: string,
 ) {
-  return gitTagMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/tags/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.tag.action.apply",
+    arguments: { action, token },
+    resultSchema: gitTagMutationResultSchema,
+  });
 }
 
 export async function getProjectWorktreeGithubReleases(
   projectId: string,
   worktreeId: string,
 ) {
-  return githubReleaseListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/releases`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.releases.list",
+    arguments: {},
+    resultSchema: githubReleaseListSchema,
+  });
 }
 
 export async function getProjectWorktreeGithubRelease(
@@ -2119,11 +2213,13 @@ export async function getProjectWorktreeGithubRelease(
   worktreeId: string,
   releaseId: number,
 ) {
-  return githubReleaseSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/releases/${releaseId}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.release.get",
+    arguments: { releaseId },
+    resultSchema: githubReleaseSummarySchema,
+  });
 }
 
 export async function createProjectWorktreeGithubRelease(
@@ -2131,12 +2227,13 @@ export async function createProjectWorktreeGithubRelease(
   worktreeId: string,
   input: GithubReleaseCreate,
 ) {
-  return githubReleaseSummarySchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/releases`,
-      input,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.release.create",
+    arguments: { request: input },
+    resultSchema: githubReleaseSummarySchema,
+  });
 }
 
 export async function previewProjectWorktreePartialPatch(
@@ -2144,12 +2241,13 @@ export async function previewProjectWorktreePartialPatch(
   worktreeId: string,
   input: GitPartialPatchRequest,
 ) {
-  return gitPartialPatchPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/patch/preview`,
-      input,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.patch.preview",
+    arguments: { request: input },
+    resultSchema: gitPartialPatchPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreePartialPatch(
@@ -2158,23 +2256,26 @@ export async function applyProjectWorktreePartialPatch(
   request: GitPartialPatchRequest,
   token: string,
 ) {
-  return gitActionResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/patch/apply`,
-      { request, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.patch.apply",
+    arguments: { request, token },
+    resultSchema: gitActionResultSchema,
+  });
 }
 
 export async function getProjectWorktreeStashes(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitStashListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.stash.list",
+    arguments: {},
+    resultSchema: gitStashListSchema,
+  });
 }
 
 export async function createProjectWorktreeStash(
@@ -2182,12 +2283,13 @@ export async function createProjectWorktreeStash(
   worktreeId: string,
   input: GitStashCreate,
 ) {
-  return gitStashMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes`,
-      input,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.stash.create",
+    arguments: { request: input },
+    resultSchema: gitStashMutationResultSchema,
+  });
 }
 
 export async function getProjectWorktreeStashFileDiff(
@@ -2196,11 +2298,13 @@ export async function getProjectWorktreeStashFileDiff(
   hash: string,
   path: string,
 ) {
-  return gitStashFileDiffSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes/${encodeURIComponent(hash)}/diff?path=${encodeURIComponent(path)}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.stash.diff",
+    arguments: { hash, path },
+    resultSchema: gitStashFileDiffSchema,
+  });
 }
 
 export async function previewProjectWorktreeStashAction(
@@ -2208,12 +2312,13 @@ export async function previewProjectWorktreeStashAction(
   worktreeId: string,
   action: GitStashAction,
 ) {
-  return gitStashActionPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes/actions/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.stash.action.preview",
+    arguments: { action },
+    resultSchema: gitStashActionPreviewSchema,
+  });
 }
 
 export async function applyProjectWorktreeStashAction(
@@ -2222,12 +2327,13 @@ export async function applyProjectWorktreeStashAction(
   action: GitStashAction,
   token: string,
 ) {
-  return gitStashMutationResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/stashes/actions/apply`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.stash.action.apply",
+    arguments: { action, token },
+    resultSchema: gitStashMutationResultSchema,
+  });
 }
 
 export async function lockProjectWorktree(
@@ -2281,11 +2387,12 @@ export async function removeProjectWorktree(
 }
 
 export async function getGitHistory(projectId: string, cursor = 0) {
-  return gitHistorySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/git/history?limit=100&cursor=${cursor}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "git.history",
+    arguments: { cursor, limit: 100, revisions: [] },
+    resultSchema: gitHistorySchema,
+  });
 }
 
 export async function getProjectRepositoryStats(projectId: string) {
@@ -2341,12 +2448,13 @@ export async function createGithubPullRequest(
   worktreeId: string,
   request: GithubPullRequestCreate,
 ) {
-  return githubPullRequestCreateResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests`,
-      request,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.create",
+    arguments: { request },
+    resultSchema: githubPullRequestCreateResultSchema,
+  });
 }
 
 export async function getGithubPullRequest(
@@ -2354,11 +2462,13 @@ export async function getGithubPullRequest(
   worktreeId: string,
   pullRequestNumber: number,
 ) {
-  return githubPullRequestDetailSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.get",
+    arguments: { number: pullRequestNumber },
+    resultSchema: githubPullRequestDetailSchema,
+  });
 }
 
 export async function checkoutGithubPullRequest(
@@ -2380,12 +2490,36 @@ export async function runGithubPullRequestReviewAction(
   pullRequestNumber: number,
   action: GithubPullRequestReviewAction,
 ) {
-  return githubPullRequestDetailSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/actions`,
-      action,
-    ),
-  );
+  const operation =
+    action.type === "comment"
+      ? {
+          type: "github.pull-request.comment" as const,
+          arguments: { number: pullRequestNumber, body: action.body },
+        }
+      : action.type === "submit-review"
+        ? {
+            type: "github.pull-request.review.submit" as const,
+            arguments: { number: pullRequestNumber, review: action.review },
+          }
+        : action.type === "inline-comment"
+          ? {
+              type: "github.pull-request.review.comment" as const,
+              arguments: { number: pullRequestNumber, comment: action.comment },
+            }
+          : {
+              type: "github.pull-request.review.reply" as const,
+              arguments: {
+                number: pullRequestNumber,
+                commentId: action.commentId,
+                body: action.body,
+              },
+            };
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    ...operation,
+    resultSchema: githubPullRequestDetailSchema,
+  });
 }
 
 export async function previewGithubPullRequestLifecycle(
@@ -2394,12 +2528,13 @@ export async function previewGithubPullRequestLifecycle(
   pullRequestNumber: number,
   action: GithubPullRequestLifecycleAction,
 ) {
-  return githubPullRequestLifecyclePreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/lifecycle/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.lifecycle.preview",
+    arguments: { number: pullRequestNumber, action },
+    resultSchema: githubPullRequestLifecyclePreviewSchema,
+  });
 }
 
 export async function applyGithubPullRequestLifecycle(
@@ -2408,12 +2543,13 @@ export async function applyGithubPullRequestLifecycle(
   pullRequestNumber: number,
   input: GithubPullRequestLifecycleApply,
 ) {
-  return githubPullRequestDetailSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/lifecycle/apply`,
-      input,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.lifecycle.apply",
+    arguments: { number: pullRequestNumber, request: input },
+    resultSchema: githubPullRequestDetailSchema,
+  });
 }
 
 export async function getGithubIssues(
@@ -2422,31 +2558,33 @@ export async function getGithubIssues(
   state: GithubIssueState,
   page = 1,
 ) {
-  return githubIssueListSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues?kind=${encodeURIComponent(kind)}&state=${encodeURIComponent(state)}&page=${page}&limit=100`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.issues.list",
+    arguments: { kind, state, page, limit: 100 },
+    resultSchema: githubIssueListSchema,
+  });
 }
 
 export async function getGithubIssue(projectId: string, issueNumber: number) {
-  return githubIssueDetailSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.issue.get",
+    arguments: { number: issueNumber },
+    resultSchema: githubIssueDetailSchema,
+  });
 }
 
 export async function createGithubIssue(
   projectId: string,
   input: GithubIssueCreate,
 ) {
-  return githubIssueDetailSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues`,
-      input,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.issue.create",
+    arguments: { request: input },
+    resultSchema: githubIssueDetailSchema,
+  });
 }
 
 export async function commentOnGithubIssue(
@@ -2454,12 +2592,12 @@ export async function commentOnGithubIssue(
   issueNumber: number,
   body: string,
 ) {
-  return githubIssueDetailSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}/comments`,
-      { body },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.issue.comment",
+    arguments: { number: issueNumber, body },
+    resultSchema: githubIssueDetailSchema,
+  });
 }
 
 export async function closeGithubIssue(
@@ -2467,27 +2605,30 @@ export async function closeGithubIssue(
   issueNumber: number,
   comment: string | null,
 ) {
-  return githubIssueDetailSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/github/issues/${issueNumber}/close`,
-      { comment },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "github.issue.close",
+    arguments: { number: issueNumber, comment },
+    resultSchema: githubIssueDetailSchema,
+  });
 }
 
 export async function getGitStatus(projectId: string) {
-  return gitStatusSchema.parse(
-    await request(`/api/projects/${encodeURIComponent(projectId)}/git/status`),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "git.status",
+    arguments: {},
+    resultSchema: gitStatusSchema,
+  });
 }
 
 export async function runGitAction(projectId: string, action: GitAction) {
-  return gitActionResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/git/actions`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    type: "git.action",
+    arguments: { action },
+    resultSchema: gitActionResultSchema,
+  });
 }
 
 export async function removeProject(

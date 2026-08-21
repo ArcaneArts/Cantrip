@@ -426,7 +426,7 @@ database-compromise guarantee is described.
 | Provider API keys and ChatGPT/Grok OAuth access, refresh, and identity tokens    | Row-bound AES-256-GCM E2EE under `provider-credential`; authorized-worker refresh and reseal                                                                              | E2EE complete                                    | Implemented          | High                                                       | Server cannot test credentials, refresh tokens, or use private catalog endpoints               |
 | MCP names, commands, URLs, headers, environment, and configuration               | Complete row-bound AES-256-GCM configuration under `mcp-secret`; keyed name blind index                                                                                   | E2EE complete                                    | Implemented          | High                                                       | Server can route by scope and blind override key but cannot validate or describe configuration |
 | Workflow prompts, definitions, structured inputs, and results                    | Plaintext                                                                                                                                                                 | Planned                                          | Good when split      | Very high                                                  | Scheduler can route opaque jobs, but conditions and content evaluation must happen on a worker |
-| Repository identities and names, remotes, paths, branch names, and Git output    | Plaintext                                                                                                                                                                 | Planned partial encryption                       | Partial              | High                                                       | Server orchestration currently depends on some of this data                                    |
+| Repository identities and names, remotes, paths, branch names, and Git output    | Primary stateless Git, History, Issues, pull-request, and release requests/results use operation-bound `repository-content`; durable identity/path/state and legacy managed-operation routes remain plaintext                            | Protected operation path complete; closure pending | Partial              | High                                                       | Server cannot inspect protected command arguments, Git output, issue/PR bodies, or errors       |
 | Token usage, quotas, and model-behavior analytics                                | Plaintext/queryable                                                                                                                                                       | Planned minimization                             | Partial              | Medium-High                                                | Fully encrypting numbers removes server dashboards, budgets, and historical analysis           |
 | Diagnostic logs and audit metadata                                               | Redacted but server-readable                                                                                                                                              | Planned minimization                             | Partial              | Medium                                                     | Fully encrypted logs prevent server-side operations and security investigation                 |
 | Worker platform, capabilities, online state, and tunnel endpoints                | Plaintext                                                                                                                                                                 | Intentionally plaintext                          | Poor                 | High                                                       | The server cannot route sessions or decide which worker supports a feature                     |
@@ -1489,6 +1489,40 @@ display paths, branch names, conflicted paths, Git output, errors, and status
 snapshots. Opaque project, worker, and worktree IDs, replica and job state,
 revision fingerprints, leases, and placement relationships remain plaintext.
 
+### Protected repository operations
+
+The primary app path for stateless Git, History, GitHub Issues, pull-request,
+review, lifecycle, and release operations now uses the independently scoped
+`repository-content` component. It adds no recovery secret, local encryption
+password, or repeated prompt: the normal account password unlocks the Account
+Master Key during login, and the app grants the assigned worker only this
+component through its existing persistent public/private-key custody.
+
+The client encrypts the allowlisted operation type and all arguments before
+calling one generic worktree route. The assigned worker authenticates and
+opens the request, overwrites execution path and repository identity with the
+server-authorized routing context, executes the existing typed worker command,
+and encrypts either its result or bounded error. Associated data binds the
+owner, hashed server identity, component, project, worktree, operation UUID,
+request/response direction, format, and key revision. Reuse across a different
+account, server, project, worktree, operation, or direction therefore fails
+closed, and the worker rejects replayed operation IDs.
+
+Cantrip Server validates and relays only the opaque request and response
+contracts. For this intermediate milestone it still sees project/worktree and
+worker placement, the canonical execution path and optional repository
+identity needed by the old execution model, operation size, status, and
+timing. The generated server-boundary audit prohibits importing trusted
+request/result schemas or endpoint codecs and records the protected route and
+allowlisted operations.
+
+This is deliberately not yet the completion claim for the combined ledger
+row. Managed Git-operation persistence, Git-agent drafts, pull-request
+checkout, worktree status/lifecycle calls, repository identity, source and
+worktree paths, branch/HEAD state, and old plaintext server routes remain for
+the next repository-metadata cutover. No database migration or reset is used
+by this operation-only milestone.
+
 ## Analytics
 
 Token usage and provider quota history are intentionally queryable by
@@ -1609,7 +1643,19 @@ counts, worker presence, model-route choices, and traffic patterns.
     only at an authorized endpoint. Cookies, profiles, and browser-held
     credentials remain worker-local; the server retains only routing,
     connection, and traffic-shape metadata.
-18. **Workflows and optional private analytics:** split scheduling metadata
+18. **Protected repository operations — primary path complete:** stateless
+    Git, History, Issues, pull-request/review/lifecycle, and release commands
+    use one authenticated client-to-worker request/result envelope. The server
+    routes only opaque content plus the canonical execution context still
+    required by the legacy repository model; a static dependency and route
+    audit keeps trusted content schemas and crypto outside the server.
+19. **Durable repository metadata and legacy-route closure:** encrypt
+    repository identities, source/worktree paths, branch and HEAD state,
+    managed Git-operation payloads, Git-agent drafts, and remaining private
+    status/error fields; move canonical execution context to authorized
+    endpoints; then remove or fail closed every old plaintext content route
+    before the combined repository ledger row earns `E2EE complete`.
+20. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.
 
