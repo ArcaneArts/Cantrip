@@ -13,6 +13,8 @@ import {
 describe("attachment composer utilities", () => {
   it("classifies common attachment types", () => {
     expect(attachmentKind("screen.png", "image/png")).toBe("image");
+    expect(attachmentKind("photo.jpg", "image/jpeg")).toBe("image");
+    expect(attachmentKind("photo.webp", "image/webp")).toBe("image");
     expect(attachmentKind("voice.m4a", "audio/mp4")).toBe("audio");
     expect(attachmentKind("trace.log", "application/octet-stream")).toBe(
       "text",
