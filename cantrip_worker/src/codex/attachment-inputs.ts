@@ -1,6 +1,6 @@
-import type { WorkerChatAttachment } from "@cantrip/protocol";
+import type { ChatAttachmentSummary } from "@cantrip/protocol";
 
-export interface LocalRuntimeAttachment extends WorkerChatAttachment {
+export interface LocalRuntimeAttachment extends ChatAttachmentSummary {
   path: string;
 }
 

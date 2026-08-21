@@ -25,6 +25,10 @@ import {
   protectedProjectFields,
 } from "./private-label-fixture.js";
 import {
+  protectedAttachmentChunkFixture,
+  protectedAttachmentMetadataFixture,
+} from "./protected-attachment-fixture.js";
+import {
   protectedProviderCredentialFixture,
   providerCredentialMetadataFixture,
 } from "./protected-provider-credential-fixture.js";
@@ -271,13 +275,8 @@ describe.sequential("chat relocation executor", () => {
       {
         id: "executor-attachment-one",
         workerId: "worker-source",
-        fileName: "context.txt",
-        mimeType: "text/plain",
+        protectedMetadata: protectedAttachmentMetadataFixture(attachmentSha256),
         sizeBytes: attachmentBytes.byteLength,
-        kind: "text",
-        source: "file",
-        previewText: "context",
-        sha256: attachmentSha256,
       },
     );
     await appendEncryptedChatMessage(chat!.id, {
@@ -317,7 +316,8 @@ describe.sequential("chat relocation executor", () => {
 
     const commands: WorkerCommand[] = [];
     const hydrationChunks: Buffer[] = [];
-    const attachmentChunks: Buffer[] = [];
+    const sourceAttachmentChunks: unknown[] = [];
+    const relayedAttachmentChunks: unknown[] = [];
     let hydrationDigest = "";
     let hydrationCompleteTimeout: number | null | undefined;
     const bridge = {
@@ -339,25 +339,26 @@ describe.sequential("chat relocation executor", () => {
             command.offset,
             command.offset + command.limit,
           );
-          return {
-            data: bytes.toString("base64"),
+          const chunk = protectedAttachmentChunkFixture({
+            sequence: command.sequence,
+            plaintextBytes: bytes.byteLength,
             eof:
               command.offset + bytes.byteLength >= attachmentBytes.byteLength,
+          });
+          sourceAttachmentChunks[command.sequence] = chunk;
+          return {
+            chunk,
             sizeBytes: attachmentBytes.byteLength,
           };
         }
         if (command.type === "attachment.upload.chunk") {
-          attachmentChunks[command.chunkIndex] = Buffer.from(
-            command.data,
-            "base64",
-          );
+          relayedAttachmentChunks[command.chunk.sequence] = command.chunk;
           return { accepted: true };
         }
         if (command.type === "attachment.upload.complete") {
           return {
-            path: "/target/context.txt",
-            sha256: attachmentSha256,
             sizeBytes: attachmentBytes.byteLength,
+            verified: true,
           };
         }
         if (command.type === "attachment.delete") {
@@ -424,7 +425,8 @@ describe.sequential("chat relocation executor", () => {
     ) as { kind: string; messages: unknown[] };
     expect(hydratedPayload.kind).toBe("chat-encrypted");
     expect(hydratedPayload.messages).toHaveLength(2);
-    expect(Buffer.concat(attachmentChunks)).toEqual(attachmentBytes);
+    expect(relayedAttachmentChunks).toEqual(sourceAttachmentChunks);
+    expect(JSON.stringify(relayedAttachmentChunks)).not.toContain("context");
     expect(
       await database.repository.chatRelocationJobs.isAttachmentAvailable(
         attachment!.id,

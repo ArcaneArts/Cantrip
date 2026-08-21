@@ -9,6 +9,7 @@ import {
 export * from "./json-message.js";
 
 export * from "./communication-content.js";
+export * from "./attachment-content.js";
 
 import {
   chatPlanOpaqueStateSchema,
@@ -20,6 +21,16 @@ import {
   interactionResponseOpaqueContentSchema,
   queuedPromptOpaqueContentSchema,
 } from "./communication-content.js";
+import {
+  attachmentChunkOpaqueSchema,
+  attachmentProtectedMetadataSchema,
+  chatAttachmentKindSchema,
+  chatAttachmentListSchema,
+  chatAttachmentOpaqueListSchema,
+  chatAttachmentOpaqueSummarySchema,
+  chatAttachmentSourceSchema,
+  chatAttachmentSummarySchema,
+} from "./attachment-content.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -5871,32 +5882,6 @@ export const terminalSnapshotResultSchema = z.object({
 
 export const chatMessageRoleSchema = z.enum(["user", "assistant", "system"]);
 export const agentMessagePhaseSchema = z.enum(["commentary", "final_answer"]);
-export const chatAttachmentKindSchema = z.enum([
-  "audio",
-  "file",
-  "image",
-  "text",
-]);
-export const chatAttachmentSourceSchema = z.enum(["file", "paste"]);
-export const chatAttachmentSummarySchema = z.object({
-  id: z.string().min(1),
-  chatId: z.string().min(1),
-  fileName: z.string().min(1).max(200),
-  mimeType: z.string().min(1).max(200),
-  sizeBytes: z
-    .number()
-    .int()
-    .nonnegative()
-    .max(25 * 1_024 * 1_024),
-  kind: chatAttachmentKindSchema,
-  source: chatAttachmentSourceSchema,
-  status: z.enum(["ready", "failed"]),
-  previewText: z.string().max(8_000).nullable(),
-  createdAt: z.string().datetime(),
-});
-export const chatAttachmentListSchema = z
-  .array(chatAttachmentSummarySchema)
-  .max(20);
 export const agentActivityStatusSchema = z.enum([
   "running",
   "completed",
@@ -6199,8 +6184,7 @@ export const taskRelocationContextMessageSchema =
   taskMessageOpaqueSummarySchema;
 
 export const chatRelocationAttachmentAvailabilitySchema = z.object({
-  attachment: chatAttachmentSummarySchema,
-  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
+  attachment: chatAttachmentOpaqueSummarySchema,
   sourceWorkerId: z.string().min(1).max(200),
   availableWorkerIds: z.array(z.string().min(1).max(200)).max(1_000),
 });
@@ -6812,7 +6796,7 @@ export const chatMessageWireListSchema = z.discriminatedUnion("kind", [
 export const encryptedQueuedPromptSchema = queuedPromptOpaqueContentSchema
   .extend({
     chatId: z.string().min(1).max(200),
-    attachments: chatAttachmentListSchema.default([]),
+    attachments: chatAttachmentOpaqueListSchema.default([]),
     position: z.number().int().nonnegative(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime(),
@@ -9106,10 +9090,7 @@ export const agentThreadSyncItemSchema = z.discriminatedUnion("type", [
       type: z.literal("userMessage"),
       id: z.string().min(1),
       text: z.string(),
-      externalAttachmentIds: z
-        .array(z.string().regex(/^[0-9a-f]{64}$/u))
-        .max(20)
-        .default([]),
+      externalAttachmentIds: z.array(z.string().uuid()).max(20).default([]),
     })
     .refine(
       (item) =>
@@ -9280,38 +9261,19 @@ export const externalChatTranscriptMetadataSchema =
 
 export const externalChatAttachmentSchema = z
   .object({
-    id: z.string().regex(/^[0-9a-f]{64}$/u),
+    id: z.string().uuid(),
+    sourceAttachmentId: z.string().regex(/^[0-9a-f]{64}$/u),
     itemId: z.string().min(1).max(500),
-    fileName: chatAttachmentSummarySchema.shape.fileName,
-    mimeType: chatAttachmentSummarySchema.shape.mimeType,
     sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-    kind: z.enum(["audio", "image"]),
     status: z.enum(["available", "missing", "unsafe", "unsupported"]),
-    sha256: z
-      .string()
-      .regex(/^[0-9a-f]{64}$/u)
-      .nullable(),
-    warning: z.string().min(1).max(1_000).nullable(),
+    protectedMetadata: attachmentProtectedMetadataSchema,
   })
   .superRefine((attachment, context) => {
-    const available = attachment.status === "available";
-    if (available !== (attachment.sha256 !== null)) {
-      context.addIssue({
-        code: "custom",
-        message: "Available external attachments require a content digest.",
-      });
-    }
-    if (available && attachment.sizeBytes === 0) {
+    if (attachment.status === "available" && attachment.sizeBytes === 0) {
       context.addIssue({
         code: "custom",
         message: "Available external attachments cannot be empty.",
         path: ["sizeBytes"],
-      });
-    }
-    if (available === (attachment.warning !== null)) {
-      context.addIssue({
-        code: "custom",
-        message: "Unavailable external attachments require a warning.",
       });
     }
   });
@@ -9399,14 +9361,12 @@ export const externalChatAttachmentReadResultSchema = z.discriminatedUnion(
   [
     z.object({
       status: z.literal("available"),
-      data: z.string().max(400_000),
-      eof: z.boolean(),
+      chunk: attachmentChunkOpaqueSchema,
       sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-      sha256: z.string().regex(/^[0-9a-f]{64}$/u),
     }),
     z.object({
       status: z.literal("unavailable"),
-      warning: z.string().min(1).max(1_000),
+      reasonCode: z.enum(["missing", "changed", "invalid"]),
     }),
   ],
 );
@@ -9525,23 +9485,15 @@ const workerRuntimeProviderSchema = z.object({
   credentialHomeKey: z.string().min(1).max(500).nullable().default(null),
 });
 
-export const workerChatAttachmentSchema = z.object({
-  id: z.string().min(1).max(200),
-  fileName: chatAttachmentSummarySchema.shape.fileName,
-  mimeType: chatAttachmentSummarySchema.shape.mimeType,
-  sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
-  kind: chatAttachmentKindSchema,
-});
+export const workerChatAttachmentSchema = chatAttachmentOpaqueSummarySchema;
 
 export const workerAttachmentUploadResultSchema = z.object({
-  path: z.string().min(1),
-  sha256: z.string().regex(/^[0-9a-f]{64}$/u),
   sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
+  verified: z.literal(true),
 });
 
 export const workerAttachmentReadResultSchema = z.object({
-  data: z.string().max(400_000),
-  eof: z.boolean(),
+  chunk: attachmentChunkOpaqueSchema,
   sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
 });
 
@@ -10015,10 +9967,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("external.chat-history.attachment.read"),
+    ownerId: z.string().min(1).max(200),
+    chatId: z.string().uuid(),
     sourceKind: externalChatSourceKindSchema,
     sourceId: externalChatSourceSchema.shape.sourceId,
     sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
-    attachmentId: externalChatAttachmentSchema.shape.id,
+    attachmentId: externalChatAttachmentSchema.shape.sourceAttachmentId,
+    targetAttachmentId: externalChatAttachmentSchema.shape.id,
+    operationId: z.string().uuid(),
+    sequence: z.number().int().nonnegative().safe(),
     offset: z.number().int().nonnegative(),
     limit: z
       .number()
@@ -10635,26 +10592,33 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("attachment.upload.begin"),
     chatId: z.string().min(1).max(200),
     attachmentId: z.string().min(1).max(200),
-    fileName: chatAttachmentSummarySchema.shape.fileName,
+    operationId: z.string().uuid(),
+    direction: z.enum(["upload", "relay"]),
+    protectedMetadata: attachmentProtectedMetadataSchema,
     sizeBytes: chatAttachmentSummarySchema.shape.sizeBytes,
   }),
   z.object({
     type: z.literal("attachment.upload.chunk"),
     chatId: z.string().min(1).max(200),
     attachmentId: z.string().min(1).max(200),
-    chunkIndex: z.number().int().nonnegative(),
-    data: z.string().max(400_000),
+    operationId: z.string().uuid(),
+    direction: z.enum(["upload", "relay"]),
+    chunk: attachmentChunkOpaqueSchema,
   }),
   z.object({
     type: z.literal("attachment.upload.complete"),
     chatId: z.string().min(1).max(200),
     attachmentId: z.string().min(1).max(200),
+    operationId: z.string().uuid(),
   }),
   z.object({
     type: z.literal("attachment.read"),
     chatId: z.string().min(1).max(200),
     attachmentId: z.string().min(1).max(200),
-    fileName: chatAttachmentSummarySchema.shape.fileName,
+    operationId: z.string().uuid(),
+    direction: z.enum(["download", "relay"]),
+    protectedMetadata: attachmentProtectedMetadataSchema,
+    sequence: z.number().int().nonnegative().safe(),
     offset: z.number().int().nonnegative(),
     limit: z
       .number()
@@ -10867,6 +10831,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
         idempotencyKey: z.string().min(1).max(200),
       })
       .strict(),
+    attachments: chatAttachmentOpaqueListSchema.default([]),
   }),
   z.object({
     type: z.literal("chat.messages.protect"),
@@ -10880,6 +10845,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
           .strict(),
       )
       .max(100_000),
+    attachments: chatAttachmentOpaqueListSchema.default([]),
   }),
   z.object({
     type: z.literal("chat.messages.reprotect"),

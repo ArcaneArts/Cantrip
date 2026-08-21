@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,7 +5,8 @@ import path from "node:path";
 import {
   chatImportJobListSchema,
   chatImportJobSummarySchema,
-  chatMessageListSchema,
+  attachmentDownloadOpaqueSchema,
+  chatMessageWireListSchema,
   chatWireListSchema,
   externalChatDiscoveryWorkerResultSchema,
   externalChatReadWorkerResultSchema,
@@ -19,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
+import { chatImportAttachmentId } from "../src/db/chat-import-jobs.js";
 import {
   DEFAULT_MODEL_ID,
   DEFAULT_MODEL_ROUTE_ID,
@@ -29,6 +30,10 @@ import {
   protectedChatFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
+import {
+  protectedAttachmentChunkFixture,
+  protectedAttachmentMetadataFixture,
+} from "./protected-attachment-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-external-chat-history-api-"),
@@ -51,16 +56,19 @@ const connectedWorkers = new Set(["local-worker"]);
 const requests: Array<{ workerId: string; command: WorkerCommand }> = [];
 const hydrationDigests = new Map<string, string>();
 const hydrationChunks = new Map<string, Buffer[]>();
-const attachmentUploads = new Map<string, Buffer[]>();
+const attachmentUploads = new Map<
+  string,
+  {
+    chunks: ReturnType<typeof protectedAttachmentChunkFixture>[];
+    sizeBytes: number;
+  }
+>();
 const attachmentFiles = new Map<string, Buffer>();
 const importedAttachmentBytes = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4,
 ]);
-const importedAttachmentSha256 = createHash("sha256")
-  .update(importedAttachmentBytes)
-  .digest("hex");
-const availableExternalAttachmentId = "1".repeat(64);
-const missingExternalAttachmentId = "2".repeat(64);
+const availableSourceAttachmentId = "1".repeat(64);
+const missingSourceAttachmentId = "2".repeat(64);
 let hydrationFailure: Error | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
@@ -80,24 +88,25 @@ const workerBridge: WorkerCommandBus = {
   async request(workerId, command) {
     requests.push({ workerId, command });
     if (command.type === "attachment.upload.begin") {
-      attachmentUploads.set(command.attachmentId, []);
+      attachmentUploads.set(command.attachmentId, {
+        chunks: [],
+        sizeBytes: command.sizeBytes,
+      });
       return { accepted: true };
     }
     if (command.type === "attachment.upload.chunk") {
-      attachmentUploads.get(command.attachmentId)![command.chunkIndex] =
-        Buffer.from(command.data, "base64");
+      attachmentUploads.get(command.attachmentId)!.chunks[
+        command.chunk.sequence
+      ] = command.chunk;
       return { accepted: true };
     }
     if (command.type === "attachment.upload.complete") {
-      const bytes = Buffer.concat(
-        attachmentUploads.get(command.attachmentId) ?? [],
-      );
+      const upload = attachmentUploads.get(command.attachmentId)!;
       attachmentUploads.delete(command.attachmentId);
-      attachmentFiles.set(command.attachmentId, bytes);
+      attachmentFiles.set(command.attachmentId, importedAttachmentBytes);
       return {
-        path: `/managed/${command.chatId}/${command.attachmentId}`,
-        sha256: createHash("sha256").update(bytes).digest("hex"),
-        sizeBytes: bytes.byteLength,
+        sizeBytes: upload.sizeBytes,
+        verified: true,
       };
     }
     if (command.type === "attachment.delete") {
@@ -113,8 +122,11 @@ const workerBridge: WorkerCommandBus = {
         command.offset + command.limit,
       );
       return {
-        data: bytes.toString("base64"),
-        eof: command.offset + bytes.byteLength >= content.byteLength,
+        chunk: protectedAttachmentChunkFixture({
+          sequence: command.sequence,
+          plaintextBytes: bytes.byteLength,
+          eof: command.offset + bytes.byteLength >= content.byteLength,
+        }),
         sizeBytes: content.byteLength,
       };
     }
@@ -125,11 +137,13 @@ const workerBridge: WorkerCommandBus = {
       );
       return {
         status: "available",
-        data: bytes.toString("base64"),
-        eof:
-          command.offset + bytes.byteLength >= importedAttachmentBytes.length,
+        chunk: protectedAttachmentChunkFixture({
+          sequence: command.sequence,
+          plaintextBytes: bytes.byteLength,
+          eof:
+            command.offset + bytes.byteLength >= importedAttachmentBytes.length,
+        }),
         sizeBytes: importedAttachmentBytes.length,
-        sha256: importedAttachmentSha256,
       };
     }
     if (command.type === "external.chat-history.attachments.release") {
@@ -161,10 +175,45 @@ const workerBridge: WorkerCommandBus = {
         turns: [],
       };
     }
+    if (command.type === "chat.messages.protect") {
+      return command.messages.map((message) => ({
+        id: message.id,
+        classification: {
+          role: message.role,
+          mode: message.mode ?? "default",
+          attachmentIds: message.content.flatMap((item) =>
+            item.type === "attachment" ? [item.attachment.id] : [],
+          ),
+        },
+        protectedContent: {
+          formatVersion: 1,
+          keyRevision: 1,
+          envelope: {
+            version: 1,
+            algorithm: "AES-256-GCM",
+            keyRevision: 1,
+            nonce: "AAAAAAAAAAAAAAAA",
+            ciphertext: Buffer.from(
+              `opaque:${message.id}`.padEnd(32, "x"),
+            ).toString("base64url"),
+          },
+        },
+        reasoningEffort: message.reasoningEffort ?? null,
+        idempotencyKey: message.idempotencyKey,
+      }));
+    }
     if (command.type === "external.chat-history.read") {
       const target = command.targets[0]!;
       const withAttachments =
         command.sourceThreadId === "source-thread-attachments";
+      const availableAttachmentId = chatImportAttachmentId(
+        command.chatId,
+        availableSourceAttachmentId,
+      );
+      const missingAttachmentId = chatImportAttachmentId(
+        command.chatId,
+        missingSourceAttachmentId,
+      );
       return externalChatReadWorkerResultSchema.parse({
         transcript: {
           sourceId: command.sourceId,
@@ -203,10 +252,7 @@ const workerBridge: WorkerCommandBus = {
                     id: "user-one",
                     text: "Please continue this work.",
                     externalAttachmentIds: withAttachments
-                      ? [
-                          availableExternalAttachmentId,
-                          missingExternalAttachmentId,
-                        ]
+                      ? [availableAttachmentId, missingAttachmentId]
                       : [],
                   },
                   {
@@ -229,26 +275,22 @@ const workerBridge: WorkerCommandBus = {
           attachments: withAttachments
             ? [
                 {
-                  id: availableExternalAttachmentId,
+                  id: availableAttachmentId,
+                  sourceAttachmentId: availableSourceAttachmentId,
                   itemId: "user-one",
-                  fileName: "reference.png",
-                  mimeType: "image/png",
                   sizeBytes: importedAttachmentBytes.length,
-                  kind: "image",
                   status: "available",
-                  sha256: importedAttachmentSha256,
-                  warning: null,
+                  protectedMetadata:
+                    protectedAttachmentMetadataFixture("reference"),
                 },
                 {
-                  id: missingExternalAttachmentId,
+                  id: missingAttachmentId,
+                  sourceAttachmentId: missingSourceAttachmentId,
                   itemId: "user-one",
-                  fileName: "missing.png",
-                  mimeType: "application/x-image",
                   sizeBytes: 0,
-                  kind: "image",
                   status: "missing",
-                  sha256: null,
-                  warning: "The original attachment file no longer exists.",
+                  protectedMetadata:
+                    protectedAttachmentMetadataFixture("missing"),
                 },
               ]
             : [],
@@ -541,7 +583,7 @@ describe.sequential("external Codex chat history discovery API", () => {
       titleProtection: expect.any(Object),
       status: "idle",
     });
-    const messages = chatMessageListSchema.parse(
+    const messageWire = chatMessageWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -549,6 +591,8 @@ describe.sequential("external Codex chat history discovery API", () => {
         })
       ).json(),
     );
+    const messages = messageWire.messages;
+    expect(messageWire.kind).toBe("chat-encrypted");
     expect(messages).toHaveLength(2);
     expect(messages.map(({ role }) => role)).toEqual(["user", "assistant"]);
     expect(
@@ -689,7 +733,7 @@ describe.sequential("external Codex chat history discovery API", () => {
       attachmentCount: 2,
       attachmentWarningCount: 1,
     });
-    const messages = chatMessageListSchema.parse(
+    const messageWire = chatMessageWireListSchema.parse(
       (
         await app.inject({
           method: "GET",
@@ -697,22 +741,26 @@ describe.sequential("external Codex chat history discovery API", () => {
         })
       ).json(),
     );
-    const attachments = messages.flatMap((message) =>
-      message.content.flatMap((item) =>
-        item.type === "attachment" ? [item.attachment] : [],
-      ),
+    const attachmentIds = messageWire.messages.flatMap(
+      ({ attachmentIds }) => attachmentIds,
+    );
+    const attachments = await database.repository.getChatAttachments(
+      LOCAL_USER_ID,
+      job.chatId!,
+      attachmentIds,
     );
     expect(attachments).toHaveLength(2);
     const ready = attachments.find(({ status }) => status === "ready")!;
     const missing = attachments.find(({ status }) => status === "failed")!;
     expect(ready).toMatchObject({
-      fileName: "reference.png",
       sizeBytes: importedAttachmentBytes.length,
+      protectedMetadata: protectedAttachmentMetadataFixture("reference"),
     });
     expect(missing).toMatchObject({
-      fileName: "missing.png",
-      previewText: "The original attachment file no longer exists.",
+      sizeBytes: 0,
+      protectedMetadata: protectedAttachmentMetadataFixture("missing"),
     });
+    expect(JSON.stringify(attachments)).not.toContain("reference.png");
     expect(
       requests.filter(
         ({ command }) =>
@@ -756,17 +804,28 @@ describe.sequential("external Codex chat history discovery API", () => {
 
     const readyContent = await app.inject({
       method: "GET",
-      url: `/api/attachments/${ready.id}/content`,
+      url: `/api/attachments/${ready.id}/content?operationId=33333333-3333-4333-8333-333333333333`,
     });
     expect(readyContent.statusCode).toBe(200);
-    expect(readyContent.rawPayload).toEqual(importedAttachmentBytes);
+    expect(
+      attachmentDownloadOpaqueSchema.parse(readyContent.json()),
+    ).toMatchObject({
+      attachmentId: ready.id,
+      sizeBytes: importedAttachmentBytes.length,
+      chunks: [
+        expect.objectContaining({
+          plaintextBytes: importedAttachmentBytes.length,
+          eof: true,
+        }),
+      ],
+    });
     const missingContent = await app.inject({
       method: "GET",
-      url: `/api/attachments/${missing.id}/content`,
+      url: `/api/attachments/${missing.id}/content?operationId=44444444-4444-4444-8444-444444444444`,
     });
     expect(missingContent.statusCode).toBe(409);
     expect(missingContent.json()).toMatchObject({
-      error: "The original attachment file no longer exists.",
+      error: "The attachment content is unavailable.",
     });
   });
 
@@ -919,14 +978,14 @@ describe.sequential("external Codex chat history discovery API", () => {
         error: { code: "worker-error", retryable: true },
       });
       expect(
-        chatMessageListSchema.parse(
+        chatMessageWireListSchema.parse(
           (
             await app.inject({
               method: "GET",
               url: `/api/chats/${job.chatId}/messages`,
             })
           ).json(),
-        ),
+        ).messages,
       ).toHaveLength(2);
       await expect(
         database.repository.startChatExecutionLane(

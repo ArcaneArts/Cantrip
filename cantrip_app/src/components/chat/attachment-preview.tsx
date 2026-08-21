@@ -22,9 +22,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { requestResponse } from "@/lib/api-client";
+import { loadChatAttachmentContent } from "@/lib/api";
 
 export interface AttachmentPresentation {
+  chatId?: string;
+  createdAt?: string;
   fileName: string;
   id: string;
   kind: "audio" | "file" | "image" | "text";
@@ -32,6 +34,47 @@ export interface AttachmentPresentation {
   previewText: string | null;
   sizeBytes: number;
   source: "file" | "paste";
+  status?: "failed" | "ready";
+}
+
+function useAttachmentContentUrl(
+  attachment: AttachmentPresentation | null,
+  contentUrl: string | null,
+  enabled: boolean,
+): string | null {
+  const [resolved, setResolved] = useState<string | null>(null);
+  useEffect(() => {
+    setResolved(null);
+    if (!enabled || !attachment || !contentUrl) return;
+    if (/^(?:blob:|data:)/u.test(contentUrl)) {
+      setResolved(contentUrl);
+      return;
+    }
+    if (!attachment.chatId || !attachment.createdAt || !attachment.status) {
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    void loadChatAttachmentContent({
+      ...attachment,
+      chatId: attachment.chatId,
+      status: attachment.status,
+      createdAt: attachment.createdAt,
+    })
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setResolved(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setResolved(null);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment, contentUrl, enabled]);
+  return resolved;
 }
 
 function AttachmentIcon({ kind }: Pick<AttachmentPresentation, "kind">) {
@@ -64,6 +107,11 @@ export function AttachmentPreview({
   uploading?: boolean;
 }) {
   const [restoring, setRestoring] = useState(false);
+  const resolvedContentUrl = useAttachmentContentUrl(
+    attachment,
+    contentUrl,
+    attachment.kind === "image" && !uploading,
+  );
 
   if (attachment.source === "paste" && onRestoreText) {
     const label = pastedTextAttachmentLabel(
@@ -153,12 +201,12 @@ export function AttachmentPreview({
         disabled={uploading}
         onClick={onOpen}
       >
-        {attachment.kind === "image" && !uploading ? (
+        {attachment.kind === "image" && !uploading && resolvedContentUrl ? (
           <img
             alt={attachment.fileName}
             className="h-24 w-full object-cover"
             loading="lazy"
-            src={contentUrl}
+            src={resolvedContentUrl}
           />
         ) : attachment.kind === "text" && attachment.previewText ? (
           <pre className="h-20 overflow-hidden px-3 pt-2 font-mono text-[10px] leading-4 whitespace-pre-wrap text-muted-foreground [mask-image:linear-gradient(to_bottom,black_55%,transparent)]">
@@ -222,15 +270,25 @@ export function AttachmentViewerDialog({
 }) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const resolvedContentUrl = useAttachmentContentUrl(
+    attachment,
+    contentUrl,
+    open,
+  );
 
   useEffect(() => {
     setText(null);
     setError(null);
-    if (!open || !attachment || attachment.kind !== "text" || !contentUrl) {
+    if (
+      !open ||
+      !attachment ||
+      attachment.kind !== "text" ||
+      !resolvedContentUrl
+    ) {
       return;
     }
     const controller = new AbortController();
-    void requestResponse(contentUrl, { signal: controller.signal })
+    void fetch(resolvedContentUrl, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.text();
@@ -242,7 +300,7 @@ export function AttachmentViewerDialog({
         }
       });
     return () => controller.abort();
-  }, [attachment, contentUrl, open]);
+  }, [attachment, open, resolvedContentUrl]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -258,16 +316,16 @@ export function AttachmentViewerDialog({
             </DialogDescription>
           ) : null}
         </DialogHeader>
-        {attachment && contentUrl ? (
+        {attachment && resolvedContentUrl ? (
           <div className="min-h-0 flex-1 overflow-auto rounded-xl bg-muted/25 p-3">
             {attachment.kind === "image" ? (
               <img
                 alt={attachment.fileName}
                 className="mx-auto max-h-[65vh] max-w-full rounded-lg object-contain"
-                src={contentUrl}
+                src={resolvedContentUrl}
               />
             ) : attachment.kind === "audio" ? (
-              <audio className="w-full" controls src={contentUrl} />
+              <audio className="w-full" controls src={resolvedContentUrl} />
             ) : attachment.kind === "text" ? (
               error ? (
                 <p className="text-sm text-destructive">
@@ -288,7 +346,7 @@ export function AttachmentViewerDialog({
                 <a
                   className="text-sm underline underline-offset-4"
                   download={attachment.fileName}
-                  href={contentUrl}
+                  href={resolvedContentUrl}
                 >
                   Download {attachment.fileName}
                 </a>

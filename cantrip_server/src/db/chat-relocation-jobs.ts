@@ -579,16 +579,11 @@ export class ChatRelocationJobRepository {
               attachment: {
                 id: attachment.id,
                 chatId: attachment.chatId,
-                fileName: attachment.fileName,
-                mimeType: attachment.mimeType,
                 sizeBytes: attachment.sizeBytes,
-                kind: attachment.kind,
-                source: attachment.source,
                 status: attachment.status,
-                previewText: attachment.previewText,
+                protectedMetadata: attachment.protectedMetadata,
                 createdAt: toISOString(attachment.createdAt),
               },
-              sha256: attachment.sha256,
               sourceWorkerId: attachment.workerId,
               availableWorkerIds: [
                 ...new Set(
@@ -864,16 +859,11 @@ export class ChatRelocationJobRepository {
             attachment: {
               id: attachment.id,
               chatId: attachment.chatId,
-              fileName: attachment.fileName,
-              mimeType: attachment.mimeType,
               sizeBytes: attachment.sizeBytes,
-              kind: attachment.kind,
-              source: attachment.source,
               status: attachment.status,
-              previewText: attachment.previewText,
+              protectedMetadata: attachment.protectedMetadata,
               createdAt: toISOString(attachment.createdAt),
             },
-            sha256: attachment.sha256,
             sourceWorkerId: attachment.workerId,
             availableWorkerIds: [
               ...new Set(

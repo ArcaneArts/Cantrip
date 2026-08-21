@@ -41,9 +41,6 @@ import type {
   BrowserWireSummary,
   EncryptedBrowserCreate,
   EncryptedBrowserUpdate,
-  ChatAttachmentKind,
-  ChatAttachmentSource,
-  ChatAttachmentSummary,
   EncryptedChatCreate,
   ChatExperience,
   ChatExecutionLaneSummary,
@@ -173,6 +170,11 @@ import type {
   WorktreeSelection,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
+import {
+  chatAttachmentOpaqueSummarySchema,
+  type AttachmentProtectedMetadata,
+  type ChatAttachmentOpaqueSummary,
+} from "@cantrip/protocol/attachment-content";
 import type {
   ProtectedProviderCredential,
   ProtectedSecretEnvelope,
@@ -391,8 +393,7 @@ export interface ChatExecutionContext {
   worktreePolicy: WorktreePolicy;
 }
 
-export interface ChatAttachmentRecord extends ChatAttachmentSummary {
-  sha256: string;
+export interface ChatAttachmentRecord extends ChatAttachmentOpaqueSummary {
   workerId: string;
 }
 
@@ -1942,18 +1943,15 @@ function toChatAttachment(
   attachment: typeof schema.chatAttachments.$inferSelect,
 ): ChatAttachmentRecord {
   return {
-    id: attachment.id,
-    chatId: attachment.chatId,
+    ...chatAttachmentOpaqueSummarySchema.parse({
+      id: attachment.id,
+      chatId: attachment.chatId,
+      sizeBytes: attachment.sizeBytes,
+      status: attachment.status,
+      protectedMetadata: attachment.protectedMetadata,
+      createdAt: toISOString(attachment.createdAt),
+    }),
     workerId: attachment.workerId,
-    fileName: attachment.fileName,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-    kind: attachment.kind,
-    source: attachment.source,
-    status: attachment.status as ChatAttachmentSummary["status"],
-    previewText: attachment.previewText,
-    sha256: attachment.sha256,
-    createdAt: toISOString(attachment.createdAt),
   };
 }
 
@@ -1968,7 +1966,7 @@ function toQueuedPrompt(
     chatId: prompt.chatId,
     text: prompt.text,
     mode: prompt.mode,
-    attachments: prompt.attachments,
+    attachments: [],
     modelId: prompt.modelId,
     reasoningEffort: prompt.reasoningEffort,
     worktreeId: prompt.worktreeId,
@@ -14906,14 +14904,9 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: {
-      fileName: string;
       id: string;
-      kind: ChatAttachmentKind;
-      mimeType: string;
-      previewText: string | null;
-      sha256: string;
+      protectedMetadata: AttachmentProtectedMetadata;
       sizeBytes: number;
-      source: ChatAttachmentSource;
       workerId: string;
     },
   ): Promise<ChatAttachmentRecord | null> {
@@ -15006,6 +14999,40 @@ export class ServerRepository {
       const attachment = byId.get(id);
       return attachment ? [attachment] : [];
     });
+  }
+
+  async getChatAttachmentReplicaWorkerIds(
+    ownerId: string,
+    attachmentId: string,
+  ): Promise<string[]> {
+    const rows = await this.database
+      .select({ workerId: schema.chatAttachmentReplicas.workerId })
+      .from(schema.chatAttachmentReplicas)
+      .innerJoin(
+        schema.chatAttachments,
+        eq(
+          schema.chatAttachments.id,
+          schema.chatAttachmentReplicas.attachmentId,
+        ),
+      )
+      .innerJoin(
+        schema.chats,
+        eq(schema.chats.id, schema.chatAttachments.chatId),
+      )
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.chatAttachmentReplicas.attachmentId, attachmentId),
+          eq(schema.chatAttachmentReplicas.status, "ready"),
+        ),
+      );
+    return [...new Set(rows.map(({ workerId }) => workerId))];
   }
 
   async deleteChatAttachment(
@@ -15223,7 +15250,7 @@ export class ServerRepository {
     ownerId: string,
     chatId: string,
     input: QueuedPromptOpaqueContent,
-    attachments: ChatAttachmentSummary[],
+    attachments: ChatAttachmentOpaqueSummary[],
   ): Promise<EncryptedQueuedPrompt | null> {
     const prompt = queuedPromptOpaqueContentSchema.parse(input);
     const chat = await this.database
@@ -15280,7 +15307,7 @@ export class ServerRepository {
     ownerId: string,
     promptId: string,
     input: QueuedPromptOpaqueContent,
-    attachments: ChatAttachmentSummary[],
+    attachments: ChatAttachmentOpaqueSummary[],
   ): Promise<EncryptedQueuedPrompt | null> {
     const prompt = queuedPromptOpaqueContentSchema.parse(input);
     if (prompt.id !== promptId) return null;
@@ -15342,7 +15369,7 @@ export class ServerRepository {
     chatId: string,
     input: QueuedPromptCreate,
     modelId: string,
-    attachments: ChatAttachmentSummary[] = [],
+    attachments: ChatAttachmentOpaqueSummary[] = [],
   ): Promise<QueuedPrompt | null> {
     const chat = await this.database
       .select({
@@ -15427,7 +15454,7 @@ export class ServerRepository {
     ownerId: string,
     promptId: string,
     input: QueuedPromptUpdate,
-    attachments?: ChatAttachmentSummary[],
+    attachments?: ChatAttachmentOpaqueSummary[],
   ): Promise<QueuedPrompt | null> {
     const owned = await this.database
       .select({

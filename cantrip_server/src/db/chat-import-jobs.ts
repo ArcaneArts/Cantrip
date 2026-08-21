@@ -1,12 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import {
+  chatAttachmentOpaqueSummarySchema,
   chatImportJobListSchema,
   chatImportJobSummarySchema,
   chatMessageOpaqueContentListSchema,
   chatMessageOpaqueSummarySchema,
   chatRelocationContextPayloadSchema,
   externalChatImportReferenceSchema,
+  type ChatAttachmentOpaqueSummary,
   type ChatAttachmentSummary,
   type ChatMessageCreate,
   type ChatMessageOpaqueContent,
@@ -773,6 +775,7 @@ export class ChatImportJobRepository {
       messages: Array<
         ChatMessageCreate & { id: string; idempotencyKey: string }
       >,
+      attachments: ChatAttachmentOpaqueSummary[],
     ) => Promise<ChatMessageOpaqueContent[]>,
   ): Promise<ChatImportJobSummary> {
     const now = new Date();
@@ -810,7 +813,9 @@ export class ChatImportJobRepository {
         importedAttachments.some(
           ({ descriptor, id }) =>
             !transcriptAttachmentIds.has(descriptor.id) ||
-            id !== chatImportAttachmentId(job.id, descriptor.id),
+            id !== descriptor.id ||
+            id !==
+              chatImportAttachmentId(job.id, descriptor.sourceAttachmentId),
         )
       ) {
         throw new ChatImportJobConflictError(
@@ -917,8 +922,8 @@ export class ChatImportJobRepository {
         tabKind: "chat",
       });
       const attachmentByExternalId = new Map<string, ChatAttachmentSummary>();
+      const opaqueAttachments: ChatAttachmentOpaqueSummary[] = [];
       for (const imported of importedAttachments) {
-        const warning = imported.descriptor.warning;
         const status =
           imported.descriptor.status === "available" ? "ready" : "failed";
         const inserted = await transaction
@@ -927,15 +932,9 @@ export class ChatImportJobRepository {
             id: imported.id,
             chatId,
             workerId: job.targetPlacement.workerId,
-            fileName: imported.descriptor.fileName,
-            mimeType: imported.descriptor.mimeType,
+            protectedMetadata: imported.descriptor.protectedMetadata,
             sizeBytes: imported.descriptor.sizeBytes,
-            kind: imported.descriptor.kind,
-            source: "file",
             status,
-            previewText: warning,
-            sha256: imported.descriptor.sha256 ?? "0".repeat(64),
-            error: warning,
             createdAt: now,
             updatedAt: now,
           })
@@ -954,15 +953,25 @@ export class ChatImportJobRepository {
         attachmentByExternalId.set(imported.descriptor.id, {
           id: attachment.id,
           chatId,
-          fileName: attachment.fileName,
-          mimeType: attachment.mimeType,
+          fileName: "Protected attachment",
+          mimeType: "application/octet-stream",
           sizeBytes: attachment.sizeBytes,
-          kind: attachment.kind,
-          source: attachment.source,
+          kind: "file",
+          source: "file",
           status: attachment.status as "failed" | "ready",
-          previewText: attachment.previewText,
+          previewText: null,
           createdAt: toISOString(attachment.createdAt),
         });
+        opaqueAttachments.push(
+          chatAttachmentOpaqueSummarySchema.parse({
+            id: attachment.id,
+            chatId,
+            sizeBytes: attachment.sizeBytes,
+            status: attachment.status,
+            protectedMetadata: attachment.protectedMetadata,
+            createdAt: toISOString(attachment.createdAt),
+          }),
+        );
       }
       const messages = canonicalMessagesFromThreadSync(transcript.sync, {
         idempotencyPrefix: "codex-import",
@@ -977,6 +986,7 @@ export class ChatImportJobRepository {
             id: randomUUID(),
             idempotencyKey: message.idempotencyKey!,
           })),
+          opaqueAttachments,
         ),
       );
       if (
@@ -1166,16 +1176,11 @@ export class ChatImportJobRepository {
             attachment: {
               id: attachment.id,
               chatId: attachment.chatId,
-              fileName: attachment.fileName,
-              mimeType: attachment.mimeType,
               sizeBytes: attachment.sizeBytes,
-              kind: attachment.kind,
-              source: attachment.source,
               status: attachment.status,
-              previewText: attachment.previewText,
+              protectedMetadata: attachment.protectedMetadata,
               createdAt: toISOString(attachment.createdAt),
             },
-            sha256: attachment.sha256,
             sourceWorkerId: attachment.workerId,
             availableWorkerIds: [
               ...new Set(

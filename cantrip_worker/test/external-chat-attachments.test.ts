@@ -66,17 +66,20 @@ describe("external chat attachment staging", () => {
     const first = await store.read(sourceId, "thread-one", attachmentId, 0, 5);
     expect(first).toMatchObject({
       status: "available",
-      data: bytes.subarray(0, 5).toString("base64"),
       eof: false,
       sizeBytes: bytes.byteLength,
-      sha256: descriptor.sha256,
     });
+    expect(first.status === "available" ? first.bytes : null).toEqual(
+      bytes.subarray(0, 5),
+    );
     const last = await store.read(sourceId, "thread-one", attachmentId, 5, 100);
     expect(last).toMatchObject({
       status: "available",
-      data: bytes.subarray(5).toString("base64"),
       eof: true,
     });
+    expect(last.status === "available" ? last.bytes : null).toEqual(
+      bytes.subarray(5),
+    );
 
     await store.release(sourceId, "thread-one");
     await expect(

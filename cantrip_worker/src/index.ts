@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  chatAttachmentSummarySchema,
   providerQuotaSnapshotSchema,
   mentionedSkillNames,
   workerEncryptionRefreshResultSchema,
@@ -17,9 +18,16 @@ import {
   type WorkerEvent,
   type WorkerNotification,
 } from "@cantrip/protocol";
+import { clearSensitiveBytes } from "@cantrip/crypto";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
+import {
+  openWorkerAttachmentChunk,
+  openWorkerAttachmentMetadata,
+  openWorkerAttachments,
+  protectWorkerAttachmentChunk,
+} from "./attachment-encryption.js";
 import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.js";
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { evaluateProjectAutomationCondition } from "./automation-conditions.js";
@@ -1268,14 +1276,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           },
           command,
         );
-      case "external.chat-history.attachment.read":
-        return externalChatAttachments.read(
+      case "external.chat-history.attachment.read": {
+        if (command.ownerId !== workerEncryption.ownerId()) {
+          throw new Error("Attachment owner does not match this worker.");
+        }
+        const result = await externalChatAttachments.read(
           command.sourceId,
           command.sourceThreadId,
           command.attachmentId,
           command.offset,
           command.limit,
         );
+        if (result.status === "unavailable") return result;
+        try {
+          return {
+            status: "available" as const,
+            chunk: await protectWorkerAttachmentChunk({
+              chatId: command.chatId,
+              attachmentId: command.targetAttachmentId,
+              operationId: command.operationId,
+              direction: "relay",
+              sequence: command.sequence,
+              eof: result.eof,
+              bytes: result.bytes,
+              service: workerEncryption,
+            }),
+            sizeBytes: result.sizeBytes,
+          };
+        } finally {
+          clearSensitiveBytes(result.bytes);
+        }
+      }
       case "external.chat-history.attachments.release":
         await externalChatAttachments.release(
           command.sourceId,
@@ -1804,37 +1835,88 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           model: command.model,
           provider: provider(),
         });
-      case "attachment.upload.begin":
+      case "attachment.upload.begin": {
+        const metadata = await openWorkerAttachmentMetadata({
+          chatId: command.chatId,
+          attachmentId: command.attachmentId,
+          protectedMetadata: command.protectedMetadata,
+          service: workerEncryption,
+        });
+        if (metadata.error !== null) {
+          throw new Error(
+            "Unavailable attachment metadata cannot be uploaded.",
+          );
+        }
         await attachments.begin(
           command.chatId,
           command.attachmentId,
-          command.fileName,
+          metadata.fileName,
           command.sizeBytes,
+          command.operationId,
+          metadata.sha256,
         );
         return { accepted: true };
-      case "attachment.upload.chunk":
-        await attachments.append(
+      }
+      case "attachment.upload.chunk": {
+        const bytes = await openWorkerAttachmentChunk({
+          chatId: command.chatId,
+          attachmentId: command.attachmentId,
+          operationId: command.operationId,
+          direction: command.direction,
+          chunk: command.chunk,
+          service: workerEncryption,
+        });
+        try {
+          await attachments.append(
+            command.chatId,
+            command.attachmentId,
+            command.chunk.sequence,
+            bytes,
+            command.operationId,
+            command.chunk.eof,
+          );
+          return { accepted: true };
+        } finally {
+          clearSensitiveBytes(bytes);
+        }
+      }
+      case "attachment.upload.complete":
+        return attachments.complete(
           command.chatId,
           command.attachmentId,
-          command.chunkIndex,
-          Buffer.from(command.data, "base64"),
+          command.operationId,
         );
-        return { accepted: true };
-      case "attachment.upload.complete":
-        return attachments.complete(command.chatId, command.attachmentId);
       case "attachment.read": {
+        const metadata = await openWorkerAttachmentMetadata({
+          chatId: command.chatId,
+          attachmentId: command.attachmentId,
+          protectedMetadata: command.protectedMetadata,
+          service: workerEncryption,
+        });
         const result = await attachments.read(
           command.chatId,
           command.attachmentId,
-          command.fileName,
+          metadata.fileName,
           command.offset,
           command.limit,
         );
-        return {
-          data: Buffer.from(result.bytes).toString("base64"),
-          eof: result.eof,
-          sizeBytes: result.sizeBytes,
-        };
+        try {
+          return {
+            chunk: await protectWorkerAttachmentChunk({
+              chatId: command.chatId,
+              attachmentId: command.attachmentId,
+              operationId: command.operationId,
+              direction: command.direction,
+              sequence: command.sequence,
+              eof: result.eof,
+              bytes: result.bytes,
+              service: workerEncryption,
+            }),
+            sizeBytes: result.sizeBytes,
+          };
+        } finally {
+          clearSensitiveBytes(result.bytes);
+        }
       }
       case "attachment.delete":
         await attachments.remove(command.chatId, command.attachmentId);
@@ -2011,22 +2093,65 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           );
         }
       }
-      case "chat.message.protect":
+      case "chat.message.protect": {
+        const opened = new Map(
+          (
+            await openWorkerAttachments(command.attachments, workerEncryption)
+          ).map((attachment) => [attachment.id, attachment]),
+        );
         return protectChatMessage({
           id: command.message.id,
-          message: command.message,
+          message: {
+            ...command.message,
+            content: command.message.content.map((item) => {
+              if (item.type !== "attachment") return item;
+              const attachment = opened.get(item.attachment.id);
+              if (!attachment) {
+                throw new Error(
+                  "Protected attachment metadata is unavailable.",
+                );
+              }
+              return {
+                ...item,
+                attachment: chatAttachmentSummarySchema.parse(attachment),
+              };
+            }),
+          },
           service: workerEncryption,
         });
-      case "chat.messages.protect":
-        return Promise.all(
-          command.messages.map((message) =>
-            protectChatMessage({
-              id: message.id,
-              message,
-              service: workerEncryption,
-            }),
-          ),
+      }
+      case "chat.messages.protect": {
+        const opened = new Map(
+          (
+            await openWorkerAttachments(command.attachments, workerEncryption)
+          ).map((attachment) => [attachment.id, attachment]),
         );
+        return Promise.all(
+          command.messages.map((message) => {
+            const hydrated = {
+              ...message,
+              content: message.content.map((item) => {
+                if (item.type !== "attachment") return item;
+                const attachment = opened.get(item.attachment.id);
+                if (!attachment) {
+                  throw new Error(
+                    "Protected attachment metadata is unavailable.",
+                  );
+                }
+                return {
+                  ...item,
+                  attachment: chatAttachmentSummarySchema.parse(attachment),
+                };
+              }),
+            };
+            return protectChatMessage({
+              id: message.id,
+              message: hydrated,
+              service: workerEncryption,
+            });
+          }),
+        );
+      }
       case "chat.messages.reprotect":
         return reprotectChatMessages({
           messages: command.messages,
@@ -2079,10 +2204,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.cwd,
           command.mcpServers,
         );
+        const openedAttachments = await openWorkerAttachments(
+          command.attachments,
+          workerEncryption,
+        );
         const runTurn = (prompt: string, resultMode: AgentTurnResultMode) =>
           runtime.runTurn({
             automationPaused: pausedChats.has(command.chatId),
-            attachments: command.attachments.map((attachment) => ({
+            attachments: openedAttachments.map((attachment) => ({
               ...attachment,
               path: attachments.resolve(
                 command.chatId,
@@ -2628,6 +2757,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               threadId: command.threadId,
             })
           : command.prompt!;
+        const openedAttachments = await openWorkerAttachments(
+          command.attachments,
+          workerEncryption,
+        );
         return runtimeFor({
           model: command.model,
           provider: provider(),
@@ -2635,7 +2768,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command.chatId,
           command.threadId,
           prompt,
-          command.attachments.map((attachment) => ({
+          openedAttachments.map((attachment) => ({
             ...attachment,
             path: attachments.resolve(
               command.chatId,

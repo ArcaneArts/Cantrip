@@ -61,7 +61,7 @@ import {
   type ProviderAccessTokenLease,
   type ProviderQuotaSnapshot,
   type ThreadGoal,
-  type WorkerChatAttachment,
+  type ChatAttachmentSummary,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
@@ -1176,7 +1176,7 @@ export interface RunWorkflowNodeOptions extends Omit<
   onPlan?: ActiveTurn["onPlan"];
 }
 
-export interface RuntimeChatAttachment extends WorkerChatAttachment {
+export interface RuntimeChatAttachment extends ChatAttachmentSummary {
   path: string;
 }
 

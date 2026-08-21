@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 
 import {
   externalChatDiscoveryWorkerResultSchema,
+  externalChatAttachmentSchema,
   externalChatReadWorkerResultSchema,
   externalChatSourceSchema,
   type ExternalChatDiscoveryTarget,
@@ -23,6 +24,7 @@ import {
   MAX_EXTERNAL_CHAT_ATTACHMENT_BYTES,
   type ExternalChatAttachmentCandidate,
 } from "./external-chat-attachments.js";
+import { protectWorkerAttachmentMetadata } from "./attachment-encryption.js";
 import { encodePrivateDisplayLabelForWorker } from "./private-label-encryption.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -129,6 +131,20 @@ function attachmentId(
   return createHash("sha256")
     .update(`${sourceId}\0${threadId}\0${itemId}\0${contentIndex}`)
     .digest("hex");
+}
+
+function importedAttachmentId(
+  chatId: string,
+  sourceAttachmentId: string,
+): string {
+  const bytes = createHash("sha256")
+    .update(`${chatId}\0${sourceAttachmentId}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function externalAttachmentCandidates(
@@ -716,13 +732,39 @@ export class CodexExternalChatHistorySource implements ExternalChatHistorySource
         sourceThread.cwd,
         this.#platform,
       )) {
-        const descriptor = await this.#attachments.stage(
+        const staged = await this.#attachments.stage(
           resolvedSourceId,
           sourceThread.id,
           candidate,
           allowedRoots,
           remainingAttachmentBytes,
         );
+        if (!this.#encryptionService) {
+          throw new Error("Attachment encryption is unavailable.");
+        }
+        const id = importedAttachmentId(input.chatId, staged.id);
+        const descriptor = externalChatAttachmentSchema.parse({
+          id,
+          sourceAttachmentId: staged.id,
+          itemId: staged.itemId,
+          sizeBytes: staged.sizeBytes,
+          status: staged.status,
+          protectedMetadata: await protectWorkerAttachmentMetadata({
+            chatId: input.chatId,
+            attachmentId: id,
+            content: {
+              version: 1,
+              fileName: staged.fileName,
+              mimeType: staged.mimeType,
+              kind: staged.kind,
+              source: "file",
+              previewText: null,
+              sha256: staged.sha256 ?? "0".repeat(64),
+              error: staged.warning,
+            },
+            service: this.#encryptionService,
+          }),
+        });
         descriptors.push(descriptor);
         if (descriptor.status === "available") {
           remainingAttachmentBytes -= descriptor.sizeBytes;

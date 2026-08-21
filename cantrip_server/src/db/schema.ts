@@ -1,9 +1,6 @@
 import type {
   AgentInteractionRequestPayload,
   AgentInteractionResponse,
-  ChatAttachmentKind,
-  ChatAttachmentSource,
-  ChatAttachmentSummary,
   ChatImportError,
   ChatImportProgress,
   ChatImportState,
@@ -49,6 +46,10 @@ import type {
   TunnelSourceEndpoint,
   WorktreeStatusResult,
 } from "@cantrip/protocol";
+import type {
+  AttachmentProtectedMetadata,
+  ChatAttachmentOpaqueSummary,
+} from "@cantrip/protocol/attachment-content";
 import type {
   EncryptedTaskPlanningRoundProtectedContent,
   EncryptedTaskProtectedContent,
@@ -2991,15 +2992,11 @@ export const chatAttachments = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
-    fileName: text("file_name").notNull(),
-    mimeType: text("mime_type").notNull(),
+    protectedMetadata: jsonb("protected_metadata")
+      .$type<AttachmentProtectedMetadata>()
+      .notNull(),
     sizeBytes: integer("size_bytes").notNull(),
-    kind: text("kind").$type<ChatAttachmentKind>().notNull(),
-    source: text("source").$type<ChatAttachmentSource>().notNull(),
     status: text("status").notNull().default("ready"),
-    previewText: text("preview_text"),
-    sha256: text("sha256").notNull(),
-    error: text("error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -3299,7 +3296,7 @@ export const queuedPrompts = pgTable(
     opaqueContent: jsonb("opaque_content").$type<QueuedPromptOpaqueContent>(),
     mode: text("mode").$type<ChatTurnMode>().notNull().default("default"),
     attachments: jsonb("attachments")
-      .$type<ChatAttachmentSummary[]>()
+      .$type<ChatAttachmentOpaqueSummary[]>()
       .notNull()
       .default([]),
     modelId: text("model_id")

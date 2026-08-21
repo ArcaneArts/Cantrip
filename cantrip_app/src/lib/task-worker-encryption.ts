@@ -60,6 +60,7 @@ export function taskWorkerEncryptionReadiness(
   }
   if (worker.encryption.state === "error") return "unavailable";
   for (const component of [
+    "attachment-content",
     "task-content",
     "mcp-secret",
     "policy-content",
@@ -157,6 +158,7 @@ export async function ensureTaskWorkerEncryption(input: {
     await authorizeWorkerEncryption({
       api: input.api,
       components: [
+        "attachment-content",
         "task-content",
         "mcp-secret",
         "policy-content",
