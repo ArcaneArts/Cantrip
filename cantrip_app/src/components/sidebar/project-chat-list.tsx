@@ -51,6 +51,7 @@ import {
   type ChatWorktreeActions,
 } from "@/components/chat/chat-menu";
 import { Button } from "@/components/ui/button";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import {
   openSidebarActionsMenu,
   SortableSidebarSurfaceRow,
@@ -1278,12 +1279,15 @@ export function ProjectChatList({
       </div>
 
       {projectRevealError ? (
-        <div
-          role="alert"
-          className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl"
+        <InlineAlert
+          tone="error"
+          className="fixed bottom-5 right-5 z-50 max-w-md border-destructive bg-destructive px-4 py-3 text-destructive-foreground shadow-xl"
+          dismissLabel="Dismiss project reveal error"
+          icon={false}
+          onDismiss={() => setProjectRevealError(null)}
         >
           Could not reveal project: {projectRevealError}
-        </div>
+        </InlineAlert>
       ) : null}
 
       <Dialog
