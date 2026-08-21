@@ -237,7 +237,8 @@ activated only when Goal mode begins.
 Because Policies already exist:
 
 - every planning/finalization turn receives current effective summaries;
-- the planner can run cantrip policy list/read;
+- the planner prefers managed MCP `policy_list`/`policy_read` when available
+  and can use `cantrip policy list/read` as a fallback;
 - a policy summary decides whether its full body must be read;
 - no policy bodies or revision numbers are copied into Task persistence;
 - policy edits become visible the next time the Agent receives summaries or
@@ -457,7 +458,8 @@ Cantrip builds the actual Goal input from:
 
 1. a small system-owned Task execution wrapper;
 2. current effective policy summaries already provided through Agent context;
-3. instruction to run cantrip policy list and read every policy whose summary
+3. instruction to prefer managed MCP `policy_list`/`policy_read`, fall back to
+   the equivalent CLI commands when needed, and read every policy whose summary
    requires a full read before acting;
 4. final plan Markdown;
 5. Agent-generated Goal prompt.

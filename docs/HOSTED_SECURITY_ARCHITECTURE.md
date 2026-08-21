@@ -38,6 +38,32 @@ The app never receives a worker origin. The server never dereferences a worker
 filesystem path. A worker never treats a model-provider credential as a Cantrip
 enrollment credential.
 
+### 1.1 Worker-owned managed MCP
+
+The managed `cantrip` MCP process runs beside Codex on the account-owned worker,
+not on Cantrip Server or in the app. Codex communicates with it only over
+process-local STDIO. The MCP host reads an expiring connection document from a
+worker-private directory and authenticates to a random loopback-only broker.
+On POSIX hosts the directory is mode `0700` and the regular, non-symlink
+document is mode `0600`; the host rejects unsafe permissions, ownership,
+symlinks, non-loopback endpoints, malformed data, and expired bindings.
+
+The binding fixes owner, project, chat, execution lane, worker, worktree,
+permission profile, and allowed operations. The broker rechecks its random
+credential, expiry, allowlist, payload limits, and concurrency limits. When an
+operation reaches `/api/internal/agent-operations`, the server derives owner and
+worker from the enrolled worker credential, loads the current chat lane, and
+independently rejects mismatched, stale, expired, or unauthorized bindings.
+Cross-worker surface operations use the existing server relay; workers never
+exchange addresses or credentials directly.
+
+The four optional client controls travel from the authorized operation through
+the server's authenticated application live WebSocket. The server selects only
+same-owner, project-active clients that declared the exact capability. Requests
+expire within ten seconds, are acknowledged, and are neither persisted nor
+placed in the replay ring. They cannot create durable surfaces or answer an
+interaction. See [`MCP.md`](MCP.md) for the full catalog and lifecycle.
+
 ## 2. Authentication modes
 
 `CANTRIP_AUTH_MODE` has three deliberately separate meanings:

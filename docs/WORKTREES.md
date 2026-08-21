@@ -149,10 +149,12 @@ snapshot and does not poll an unavailable machine.
 
 ## Agent integration
 
-Codex receives no Cantrip-specific dynamic tools. New chats start with an
-explicit empty tool override, and resumed chats send the same override so old
-persisted tool declarations are removed by the pinned Codex compatibility
-patch. A short developer instruction points agents to `cantrip -h` instead.
+Codex receives no legacy Cantrip-specific dynamic tools. New chats start with
+an explicit empty dynamic-tool override, and resumed chats send the same
+override so old persisted declarations are removed by the pinned Codex
+compatibility patch. The worker separately injects the native managed `cantrip`
+MCP and directs agents to prefer `worktree_create`, `worktree_switch`, and the
+other typed tools. `cantrip -h` remains the fallback when MCP is unavailable.
 
 The worker-managed `cantrip` executable provides layered `worktree`, `target`,
 `explorer`, `terminal`, and `browser` commands. Worktree status can address a

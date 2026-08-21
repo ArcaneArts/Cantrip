@@ -45,6 +45,29 @@ test("caches verified heavyweight runtimes and publishes the requested assets", 
   assert.match(workflow, /tag="v\$\{version\}"/u);
 });
 
+test("smokes the packaged worker MCP on macOS and Windows before archiving", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "native-release.yml"),
+    "utf8",
+  );
+  const workerJob =
+    workflow.match(/^ {2}worker:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
+  assert.match(workerJob, /target: darwin-arm64/u);
+  assert.match(workerJob, /target: win32-x64/u);
+  const packageStep = workerJob.indexOf(
+    "- name: Package worker from verified runtimes",
+  );
+  const verifyStep = workerJob.indexOf("- name: Verify packaged worker MCP");
+  const archiveStep = workerJob.indexOf("archive-distribution.mjs worker");
+  assert.ok(packageStep >= 0);
+  assert.ok(verifyStep > packageStep);
+  assert.ok(archiveStep > verifyStep);
+  assert.match(
+    workerJob,
+    /verify-packaged-worker-mcp\.mjs artifacts\/cantrip-worker-\$\{\{ matrix\.target \}\}/u,
+  );
+});
+
 test("builds mobile releases in parallel and gates publication on them", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "native-release.yml"),

@@ -9,8 +9,8 @@ system prompt:
 - its short summary is made visible to every Agent working in an affected
   project;
 - its full Markdown body remains on the server;
-- an Agent can read the current full body with the Cantrip CLI when the summary
-  says it is relevant;
+- an Agent can read the current full body with managed Cantrip MCP, or the CLI
+  fallback, when the summary says it is relevant;
 - users create and edit policies only from root Settings;
 - users assign nonmandatory policies to workspaces or projects;
 - a mandatory policy applies to every project owned by that user on the server.
@@ -38,7 +38,7 @@ intentionally does not implement Task tabs; Tasks are designed separately in
 | **Project assignment**   | The policy applies directly to one project.                                                                    |
 | **Effective policy**     | An enabled policy that is mandatory or reaches a project through a workspace/project assignment.               |
 | **Summary**              | Compact instruction text included in Agent context.                                                            |
-| **Body**                 | Full Markdown instructions returned by cantrip policy read.                                                    |
+| **Body**                 | Full Markdown instructions returned by MCP `policy_read` or CLI `cantrip policy read`.                         |
 | **Policy key**           | Stable user-visible identifier such as manual-change-protocol.                                                 |
 
 “Global” in this feature means stored on Cantrip Server and available across all
@@ -431,14 +431,26 @@ or consolidate policies.
 ### Full reads
 
 The global Cantrip developer instruction tells Agents that policy summaries are
-instructions and that cantrip policy read returns the current full policy.
+instructions and that managed MCP `policy_read` returns the current full
+policy, with `cantrip policy read` retained as the CLI fallback.
 Policies themselves decide when a full read is necessary. For example, the
 Manual Change Protocol summary explicitly requires a full read before mutation.
 
 The server does not automatically inject all policy bodies. This keeps normal
 turn context compact and lets future policies contain lengthy checklists.
 
-## Cantrip CLI
+## Managed MCP and CLI
+
+Attached Codex chats prefer:
+
+    policy_list
+    policy_read
+
+These MCP tools use the chat's expiring project/lane binding. The CLI adapter
+below exposes the same read contract for humans, scripts, diagnostics, and MCP
+fallback.
+
+### Cantrip CLI
 
 Add a Policy command group:
 

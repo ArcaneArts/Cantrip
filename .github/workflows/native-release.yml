@@ -196,6 +196,8 @@ jobs:
           key: cantrip-code-dependencies-${{ matrix.target }}-${{ hashFiles('cantrip_code/upstream/.nvmrc', 'cantrip_code/upstream/package-lock.json') }}
       - name: Package worker from verified runtimes
         run: pnpm package:worker --target ${{ matrix.target }}
+      - name: Verify packaged worker MCP
+        run: node scripts/verify-packaged-worker-mcp.mjs artifacts/cantrip-worker-${{ matrix.target }}
       - run: node scripts/archive-distribution.mjs worker --target ${{ matrix.target }}
       - uses: actions/upload-artifact@v4
         with:

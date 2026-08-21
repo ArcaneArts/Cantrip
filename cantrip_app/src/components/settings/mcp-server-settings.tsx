@@ -579,7 +579,7 @@ export function McpServerSettings({
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <p className="truncate text-sm font-medium">Cantrip</p>
-              <Badge variant="secondary">Managed</Badge>
+              <Badge variant="secondary">Managed by Cantrip</Badge>
               <Badge variant="outline">Required</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -597,7 +597,7 @@ export function McpServerSettings({
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <p className="truncate text-sm font-medium">CodeGraph</p>
-              <Badge variant="secondary">Managed</Badge>
+              <Badge variant="secondary">Managed by Cantrip</Badge>
               <Badge variant="outline">Read only</Badge>
             </div>
             <p className="mt-1 truncate text-xs text-muted-foreground">

@@ -1,10 +1,11 @@
 # Cantrip CLI
 
-The Cantrip CLI gives humans and agents a conventional command-line interface
-for operations that belong to Cantrip rather than to the local operating
-system. It is intentionally narrow: use normal shell and Git commands for
-ordinary files and repository work, and use `cantrip` when an operation needs
-Cantrip's server-owned context or worker routing.
+The Cantrip CLI gives humans, scripts, diagnostics, and fallback agent runtimes
+a conventional command-line interface for operations that belong to Cantrip
+rather than to the local operating system. Attached Codex chats should prefer
+the worker-owned [`cantrip` MCP server](MCP.md). The CLI intentionally exposes
+the same bounded operation contract when MCP is unavailable. Use normal shell
+and Git commands for ordinary files and repository work.
 
 ## Discovering commands
 
@@ -107,12 +108,17 @@ commands can run from a normal project terminal.
 
 ## Codex integration
 
-Cantrip does not register product-specific functions in Codex's tool list. New
-threads and resumed threads both send `dynamicTools: []`; the pinned runtime's
-resume compatibility patch distinguishes that explicit empty override from an
-omitted field and removes any tool declarations saved by pre-cutover chats.
-Both paths install a small developer instruction directing Codex to
-`cantrip -h` and standard command-line tools.
+For applicable new and resumed chat threads, the worker injects a required
+native MCP server named `cantrip`. Its 23 read, worker-mutation, and ephemeral
+client-control tools appear in Codex's runtime inventory as **Managed by
+Cantrip**. The developer instruction directs Codex to prefer MCP, start with
+`context_get`, read required Policies, and use normal command-line tools for
+repository work. It retains `cantrip -h` as the fallback.
+
+Both thread paths still send `dynamicTools: []`. The pinned runtime's resume
+compatibility patch distinguishes that explicit empty override from an omitted
+field and removes obsolete dynamic-tool declarations saved by older chats.
+Native MCP tools are configured separately and are not disabled by this field.
 
 ## Transport
 

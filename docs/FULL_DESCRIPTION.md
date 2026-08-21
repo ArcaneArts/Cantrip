@@ -465,13 +465,16 @@ timestamps, and assignment internals are excluded. The context is limited to
 64 effective policies and 32 KiB of UTF-8 data; overflow rejects the whole turn
 with an actionable error rather than truncating an arbitrary tail.
 
-The Rust CLI exposes `cantrip policy list` and
-`cantrip policy read <policy-key>`, including global `--json` output. It
-uses the normal thread, terminal, or working-directory context resolver and
-authenticated worker broker, but the server performs the owner/project lookup.
-List output is body-free; read returns the current full Markdown only when the
-key is effective in that project. There are no policy mutation commands for
-Agents.
+Attached Codex chats prefer the worker-owned managed MCP `policy_list` and
+`policy_read` tools. The Rust CLI exposes the same operations as
+`cantrip policy list` and `cantrip policy read <policy-key>`, including global
+`--json` output, for humans, scripts, diagnostics, and MCP fallback. MCP uses an
+expiring chat-lane binding; the CLI uses the normal thread, terminal, or
+working-directory context resolver. Both enter the authenticated worker broker,
+while the server performs the owner/project lookup. List output is body-free;
+read returns the current full Markdown only when the key is effective in that
+project. There are no policy mutation commands for Agents. See
+[MCP.md](MCP.md) for the complete managed catalog and security boundary.
 
 Policy mutations publish owner-scoped live invalidations for root lists,
 details, workspace/project assignments, and effective queries, so independent

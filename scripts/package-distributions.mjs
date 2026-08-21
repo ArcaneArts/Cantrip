@@ -20,6 +20,7 @@ import {
   bundleNodeRuntime,
   writeServiceLaunchers,
 } from "./package-runtime.mjs";
+import { verifyPackagedWorkerMcp } from "./verify-packaged-worker-mcp.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const selection = process.argv[2];
@@ -126,6 +127,7 @@ async function packageService(name, destination, { standalone = true } = {}) {
     const bin = path.join(destination, "bin");
     await cp(path.join(codexBuild, "bundle"), bin, { recursive: true });
     await bundleCantripCli(root, bin);
+    await verifyPackagedWorkerMcp(destination, { smoke: standalone });
   }
   await cp(
     path.join(root, "deploy", `${name}.README.md`),

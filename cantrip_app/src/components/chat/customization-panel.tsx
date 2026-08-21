@@ -9,7 +9,7 @@ import type {
   CodexSkillRootsResult,
   CustomizationCapability,
 } from "@cantrip/protocol";
-import { isManagedCodeGraphMcpName } from "@cantrip/protocol";
+import { isManagedCodeGraphMcpName, isManagedMcpName } from "@cantrip/protocol";
 import {
   useMutation,
   useQuery,
@@ -166,6 +166,27 @@ export function customizationCapabilityRows(
       capability: capabilities.externalImports.apply,
     },
   ];
+}
+
+export function mcpServerPresentation(name: string) {
+  return {
+    managedByCantrip: isManagedMcpName(name),
+    readOnly: isManagedCodeGraphMcpName(name),
+  } as const;
+}
+
+function McpManagementBadges({ name }: { name: string }) {
+  const presentation = mcpServerPresentation(name);
+  return (
+    <>
+      {presentation.managedByCantrip ? (
+        <Badge variant="secondary">Managed by Cantrip</Badge>
+      ) : null}
+      {presentation.readOnly ? (
+        <Badge variant="outline">Read only</Badge>
+      ) : null}
+    </>
+  );
 }
 
 export function boundedResourceText(
@@ -624,12 +645,7 @@ function McpInventory({
                     {server.serverInfo?.title ?? server.name}
                   </strong>
                   <Badge variant="outline">{server.authStatus}</Badge>
-                  {isManagedCodeGraphMcpName(server.name) ? (
-                    <>
-                      <Badge variant="secondary">Managed by Cantrip</Badge>
-                      <Badge variant="outline">Read only</Badge>
-                    </>
-                  ) : null}
+                  <McpManagementBadges name={server.name} />
                   <span className="text-xs text-muted-foreground">
                     {server.tools.length} tools · {server.resources.length}{" "}
                     resources · {server.resourceTemplates.length} templates
