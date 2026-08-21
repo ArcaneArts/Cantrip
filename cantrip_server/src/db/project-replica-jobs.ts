@@ -7,11 +7,11 @@ import {
   type ProjectReplicaJobProgress,
   type ProjectReplicaJobProgressEvent,
   type ProjectReplicaJobSummary,
-  type ProjectReplicaProvisionCreate,
+  type EncryptedProjectReplicaProvisionCreate,
   type ProjectReplicaProvisionResult,
-  type ProjectReplicaRemoveCreate,
+  type EncryptedProjectReplicaRemoveCreate,
   type ProjectReplicaRemoveResult,
-  type ProjectReplicaSynchronizeCreate,
+  type EncryptedProjectReplicaSynchronizeCreate,
   type ProjectReplicaSynchronizeResult,
 } from "@cantrip/protocol";
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
@@ -92,7 +92,7 @@ function toJob(row: ProjectReplicaJobRow): ProjectReplicaJobSummary {
 
 function provisionFingerprint(
   projectId: string,
-  input: ProjectReplicaProvisionCreate,
+  input: EncryptedProjectReplicaProvisionCreate,
 ): string {
   return createHash("sha256")
     .update(
@@ -100,6 +100,7 @@ function provisionFingerprint(
         kind: "provision",
         projectId,
         workerId: input.workerId,
+        repository: input.repository,
         expectedRevision: input.expectedRevision,
       }),
     )
@@ -110,7 +111,9 @@ function replicaOperationFingerprint(
   kind: "synchronize" | "remove",
   projectId: string,
   projectReplicaId: string,
-  input: ProjectReplicaSynchronizeCreate | ProjectReplicaRemoveCreate,
+  input:
+    | EncryptedProjectReplicaSynchronizeCreate
+    | EncryptedProjectReplicaRemoveCreate,
 ): string {
   return createHash("sha256")
     .update(JSON.stringify({ kind, projectId, projectReplicaId, ...input }))
@@ -141,7 +144,7 @@ export class ProjectReplicaJobRepository {
   async createProvision(
     ownerId: string,
     projectId: string,
-    input: ProjectReplicaProvisionCreate,
+    input: EncryptedProjectReplicaProvisionCreate,
   ): Promise<ProjectReplicaJobSummary> {
     const fingerprint = provisionFingerprint(projectId, input);
     const existing = await this.database
@@ -242,7 +245,7 @@ export class ProjectReplicaJobRepository {
             state: "queued",
             idempotencyKey: input.idempotencyKey,
             payloadFingerprint: fingerprint,
-            repository: target.project.githubRepositoryFullName,
+            repository: input.repository,
             expectedRevision: input.expectedRevision,
             progress: progress(
               "queued",
@@ -283,7 +286,7 @@ export class ProjectReplicaJobRepository {
     ownerId: string,
     projectId: string,
     projectReplicaId: string,
-    input: ProjectReplicaSynchronizeCreate,
+    input: EncryptedProjectReplicaSynchronizeCreate,
   ): Promise<ProjectReplicaJobSummary> {
     return this.createReplicaOperation(
       ownerId,
@@ -298,7 +301,7 @@ export class ProjectReplicaJobRepository {
     ownerId: string,
     projectId: string,
     projectReplicaId: string,
-    input: ProjectReplicaRemoveCreate,
+    input: EncryptedProjectReplicaRemoveCreate,
   ): Promise<ProjectReplicaJobSummary> {
     return this.createReplicaOperation(
       ownerId,
@@ -314,7 +317,9 @@ export class ProjectReplicaJobRepository {
     projectId: string,
     projectReplicaId: string,
     kind: "synchronize" | "remove",
-    input: ProjectReplicaSynchronizeCreate | ProjectReplicaRemoveCreate,
+    input:
+      | EncryptedProjectReplicaSynchronizeCreate
+      | EncryptedProjectReplicaRemoveCreate,
   ): Promise<ProjectReplicaJobSummary> {
     const fingerprint = replicaOperationFingerprint(
       kind,
@@ -431,10 +436,12 @@ export class ProjectReplicaJobRepository {
         }
         const synchronizeInput =
           kind === "synchronize"
-            ? (input as ProjectReplicaSynchronizeCreate)
+            ? (input as EncryptedProjectReplicaSynchronizeCreate)
             : null;
         const removeInput =
-          kind === "remove" ? (input as ProjectReplicaRemoveCreate) : null;
+          kind === "remove"
+            ? (input as EncryptedProjectReplicaRemoveCreate)
+            : null;
         const rows = await transaction
           .insert(schema.projectReplicaJobs)
           .values({
@@ -447,7 +454,7 @@ export class ProjectReplicaJobRepository {
             state: "queued",
             idempotencyKey: input.idempotencyKey,
             payloadFingerprint: fingerprint,
-            repository: target.project.githubRepositoryFullName,
+            repository: input.repository,
             expectedRevision: synchronizeInput?.expectedRevision ?? null,
             synchronizationPolicy: synchronizeInput?.policy ?? null,
             deleteLocalFiles: removeInput?.deleteLocalFiles ?? null,

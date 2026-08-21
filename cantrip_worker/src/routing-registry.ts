@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { encodeBase64Url } from "@cantrip/crypto";
 import type { WorkerCommand } from "@cantrip/protocol";
+import { REPOSITORY_METADATA_FIELDS } from "@cantrip/protocol/repository-operation";
 
 const routingTokenPattern = /^ctrr_[A-Za-z0-9_-]{43}$/u;
 
@@ -30,28 +31,7 @@ const protectedResultTypes = new Set([
   "worktree.status",
 ]);
 
-const privateResultFields = new Set([
-  "branch",
-  "displayPath",
-  "gitCommonDir",
-  "lockReason",
-  "managedRoot",
-  "message",
-  "name",
-  "originalPath",
-  "originUrl",
-  "path",
-  "primaryPath",
-  "pruneReason",
-  "prunedPaths",
-  "removedPath",
-  "rootPath",
-  "sourcePath",
-  "upstream",
-  "warning",
-  "warnings",
-  "worktreePath",
-]);
+const privateResultFields = new Set<string>(REPOSITORY_METADATA_FIELDS);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -119,6 +99,34 @@ export class WorkerRoutingRegistry {
   async resolveToken(value: string): Promise<string> {
     await this.#load();
     return this.#resolveString(value);
+  }
+
+  async protectMetadata(
+    values: Record<string, string | string[] | null>,
+  ): Promise<Record<string, string | string[] | null>> {
+    if (Object.keys(values).some((field) => !privateResultFields.has(field))) {
+      throw new Error("Unsupported repository metadata field.");
+    }
+    await this.#load();
+    const protectedValues = this.#protectValue(values) as Record<
+      string,
+      string | string[] | null
+    >;
+    await this.#persist();
+    return protectedValues;
+  }
+
+  async resolveMetadata(
+    values: Record<string, string | string[] | null>,
+  ): Promise<Record<string, string | string[] | null>> {
+    if (Object.keys(values).some((field) => !privateResultFields.has(field))) {
+      throw new Error("Unsupported repository metadata field.");
+    }
+    await this.#load();
+    return this.#resolveValue(values) as Record<
+      string,
+      string | string[] | null
+    >;
   }
 
   #protectValue(value: unknown, field?: string): unknown {

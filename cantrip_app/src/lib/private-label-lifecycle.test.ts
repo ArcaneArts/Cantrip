@@ -151,6 +151,24 @@ function projectWire(
 class MemoryProjectApi implements ProjectWireApi {
   readonly rows: ProjectWireSummary[] = [];
 
+  protectRepositoryIdentity(): Promise<{
+    repository: {
+      repositoryId: string;
+      nameWithOwner: string;
+      url: string;
+    };
+    repositoryBlindIndex: string;
+  }> {
+    return Promise.resolve({
+      repository: {
+        repositoryId: `ctrr_${"i".repeat(43)}`,
+        nameWithOwner: `ctrr_${"n".repeat(43)}`,
+        url: `ctrr_${"u".repeat(43)}`,
+      },
+      repositoryBlindIndex: "b".repeat(43),
+    });
+  }
+
   createGithub(
     _input: EncryptedGithubProjectCreate,
   ): Promise<ProjectWireSummary> {

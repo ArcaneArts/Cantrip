@@ -626,11 +626,24 @@ export class ChatRelocationJobExecutor {
     }
     let replicaJob: ProjectReplicaJobSummary;
     try {
+      const github = await this.repository.getGithubProjectExecutionContext(
+        claimed.ownerId,
+        claimed.job.projectId,
+        target.workerId,
+      );
+      if (!github) {
+        throw executionError(
+          "replica-not-ready",
+          "The target replica has no protected repository identity.",
+          false,
+        );
+      }
       replicaJob = await this.repository.projectReplicaJobs.createSynchronize(
         claimed.ownerId,
         claimed.job.projectId,
         target.projectSourceId,
         {
+          repository: github.nameWithOwner,
           expectedRevision: claimed.snapshot.summary.requiredRevision,
           idempotencyKey: `chat-relocation:${claimed.job.id}:${claimed.snapshot.summary.requiredRevision}`,
           policy: "fast-forward-primary",

@@ -1440,6 +1440,10 @@ function repositoryOperationRouteBoundaryAudit(
   const route = routes.find(
     (candidate) => candidate.method === method && candidate.path === path,
   );
+  const workerPath = "/api/workers/:workerId/repository-operation";
+  const workerRoute = routes.find(
+    (candidate) => candidate.method === method && candidate.path === workerPath,
+  );
   for (const marker of [
     "repositoryOperationWireRequestSchema",
     "repositoryOperationWireResponseSchema",
@@ -1448,6 +1452,17 @@ function repositoryOperationRouteBoundaryAudit(
     if (!route?.source.includes(marker)) {
       failures.push(
         `Protected repository route is missing ${method} ${path} (${marker}).`,
+      );
+    }
+  }
+  for (const marker of [
+    "repositoryWorkerOperationWireRequestSchema",
+    "repositoryOperationWireResponseSchema",
+    'type: "repository.operation"',
+  ]) {
+    if (!workerRoute?.source.includes(marker)) {
+      failures.push(
+        `Protected worker repository route is missing ${method} ${workerPath} (${marker}).`,
       );
     }
   }
@@ -1462,6 +1477,15 @@ function repositoryOperationRouteBoundaryAudit(
   }
   for (const marker of [
     "runProtectedRepositoryOperation",
+    "runProtectedWorkerRepositoryOperation",
+    "registerWorkerRepositoryMetadata",
+    "resolveWorkerRepositoryMetadata",
+    "protectWorkerRepositoryIdentity",
+    "protectReplicaRepository",
+    "openProjectReplicaJob",
+    "encryptedProjectReplicaProvisionCreateSchema",
+    "encryptedProjectReplicaSynchronizeCreateSchema",
+    "encryptedProjectReplicaRemoveCreateSchema",
     "protectRepositoryOperationContent",
     "openRepositoryOperationContent",
     "getProjectWorktreeWireList",
@@ -1478,6 +1502,14 @@ function repositoryOperationRouteBoundaryAudit(
       "Client still calls a plaintext managed Git operation route.",
     );
   }
+  if (clientText.includes("/api/github/")) {
+    failures.push("Client still calls a plaintext GitHub catalog route.");
+  }
+  if (clientText.includes("/checkout")) {
+    failures.push(
+      "Client still calls the plaintext pull-request checkout route.",
+    );
+  }
   for (const marker of [
     'case "repository.operation"',
     "repositoryOperationReplay.reserve",
@@ -1490,6 +1522,8 @@ function repositoryOperationRouteBoundaryAudit(
     'request.type === "git.operation.current"',
     "routingRegistry.resolveCommand",
     "routingRegistry.protectResult",
+    "routingRegistry.protectMetadata",
+    "routingRegistry.resolveMetadata",
     "repository-routing.json",
     "Protected repository operation failed on the worker.",
   ]) {
@@ -1498,9 +1532,22 @@ function repositoryOperationRouteBoundaryAudit(
     }
   }
   for (const marker of [
+    "encryptedProjectReplicaProvisionCreateSchema",
+    "encryptedProjectReplicaSynchronizeCreateSchema",
+    "encryptedProjectReplicaRemoveCreateSchema",
+    "input.data.nameWithOwner",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(
+        `Server protected repository lifecycle is missing ${marker}.`,
+      );
+    }
+  }
+  for (const marker of [
     "legacyGitRoute",
     "legacyHistoryRoute",
     "legacyGithubContentRoute",
+    "legacyGithubCatalogRoute",
     "legacyWorktreeStatusRoute",
     "This plaintext repository route was removed",
   ]) {
@@ -1525,16 +1572,14 @@ function repositoryOperationRouteBoundaryAudit(
       protocolText,
       "repositoryOperationTypeSchema",
     ),
-    pendingPlaintextPaths: [
-      "Git agent drafts",
-      "pull-request checkout",
-      "worktree lifecycle inputs",
-      "repository identity and managed-folder bootstrap paths",
-    ],
+    pendingPlaintextPaths: ["Git agent drafts"],
     protectedDurableEndpointState: [
       "managed Git operation context and output:worker-local",
       "repository path, branch, and status routing:worker-local opaque handles",
+      "repository identity and managed-folder bootstrap:blind indexes plus worker-local opaque handles",
+      "GitHub catalogs and pull-request checkout:protected worker-scoped relay",
       "legacy Git, History, Issues, PR, and release content routes:fail-closed",
+      "legacy GitHub catalog routes:fail-closed",
       "legacy worktree status route:fail-closed",
     ],
   };

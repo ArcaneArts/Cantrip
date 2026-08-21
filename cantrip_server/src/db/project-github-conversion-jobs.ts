@@ -5,7 +5,7 @@ import {
   type ProjectGithubConversionError,
   type ProjectGithubConversionJobSummary,
   type ProjectGithubConversionReady,
-  type ProjectGithubConversionStart,
+  type EncryptedProjectGithubConversionStart,
 } from "@cantrip/protocol";
 import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -157,7 +157,7 @@ export class ProjectGithubConversionJobRepository {
     ownerId: string,
     projectId: string,
     workerId: string,
-    input: ProjectGithubConversionStart,
+    input: EncryptedProjectGithubConversionStart,
   ): Promise<ProjectGithubConversionJobSummary> {
     const now = new Date();
     const row = await this.database.transaction(async (transaction) => {
@@ -206,8 +206,8 @@ export class ProjectGithubConversionJobRepository {
               and(
                 eq(schema.projects.ownerId, ownerId),
                 eq(
-                  schema.projects.githubRepositoryId,
-                  input.repository.repositoryId,
+                  schema.projects.githubRepositoryBlindIndex,
+                  input.repositoryBlindIndex,
                 ),
               ),
             )
@@ -265,6 +265,7 @@ export class ProjectGithubConversionJobRepository {
           projectId,
           projectSourceId: sources[0].id,
           workerId,
+          repositoryBlindIndex: input.repositoryBlindIndex,
           repositoryId: input.repository.repositoryId,
           repositoryFullName: input.repository.nameWithOwner,
           repositoryUrl: input.repository.url,
@@ -500,7 +501,10 @@ export class ProjectGithubConversionJobRepository {
           .where(
             and(
               eq(schema.projects.ownerId, job.ownerId),
-              eq(schema.projects.githubRepositoryId, job.repositoryId),
+              eq(
+                schema.projects.githubRepositoryBlindIndex,
+                job.repositoryBlindIndex,
+              ),
             ),
           )
           .limit(1),
@@ -567,6 +571,7 @@ export class ProjectGithubConversionJobRepository {
         .set({
           originKind: "github",
           folderManagement: null,
+          githubRepositoryBlindIndex: job.repositoryBlindIndex,
           githubRepositoryId: result.repository.repositoryId,
           githubRepositoryFullName: result.repository.nameWithOwner,
           githubRepositoryUrl: result.repository.url,

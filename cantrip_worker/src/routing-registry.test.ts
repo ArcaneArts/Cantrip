@@ -51,6 +51,17 @@ describe("WorkerRoutingRegistry", () => {
         0o777,
     ).toBe(0o600);
 
+    const protectedIdentity = await registry.protectMetadata({
+      nameWithOwner: "ArcaneArts/Private",
+      repositoryId: "private-repository-id",
+      url: "https://github.com/ArcaneArts/Private",
+    });
+    expect(protectedIdentity).toEqual({
+      nameWithOwner: expect.stringMatching(/^ctrr_/u),
+      repositoryId: expect.stringMatching(/^ctrr_/u),
+      url: expect.stringMatching(/^ctrr_/u),
+    });
+
     const restarted = new WorkerRoutingRegistry(dataDirectory);
     const command = await restarted.resolveCommand({
       type: "git.status",
@@ -60,6 +71,14 @@ describe("WorkerRoutingRegistry", () => {
       type: "git.status",
       cwd: "/Users/example/private-repository",
     });
+    expect(await restarted.resolveMetadata(protectedIdentity)).toEqual({
+      nameWithOwner: "ArcaneArts/Private",
+      repositoryId: "private-repository-id",
+      url: "https://github.com/ArcaneArts/Private",
+    });
+    await expect(
+      restarted.protectMetadata({ unsupported: "must not pass through" }),
+    ).rejects.toThrow("Unsupported repository metadata field.");
     expect(
       registry.protectError(
         "worktree.create",

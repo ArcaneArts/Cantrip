@@ -1582,6 +1582,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "test-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     repositoryId: "repo-1",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -1649,6 +1650,29 @@ describe.sequential("server worktree control plane", () => {
     expect(JSON.stringify(repositoryOperationCommands.at(-1))).not.toContain(
       "private/roadmap.md",
     );
+
+    const workerResponse = await app.inject({
+      method: "POST",
+      url: "/api/workers/test-worker/repository-operation",
+      payload: {
+        scopeId: projectId,
+        operationId,
+        protectedRequest,
+      },
+    });
+    expect(workerResponse.statusCode).toBe(200);
+    expect(workerResponse.json()).toEqual({
+      operationId,
+      protectedResponse: protectedRequest,
+    });
+    expect(repositoryOperationCommands.at(-1)).toMatchObject({
+      type: "repository.operation",
+      projectId,
+      worktreeId: "test-worker",
+      cwd: ".",
+      sourcePath: ".",
+      repository: null,
+    });
   });
 
   it("fails closed on legacy plaintext repository routes", async () => {
@@ -1661,8 +1685,21 @@ describe.sequential("server worktree control plane", () => {
       method: "GET",
       url: `/api/projects/${projectId}/worktrees/${primaryId}/status`,
     });
+    const catalogResponse = await app.inject({
+      method: "GET",
+      url: "/api/github/repositories",
+    });
+    const checkoutResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${primaryId}/github/pull-requests/12/checkout`,
+    });
 
-    for (const response of [gitResponse, statusResponse]) {
+    for (const response of [
+      gitResponse,
+      statusResponse,
+      catalogResponse,
+      checkoutResponse,
+    ]) {
       expect(response.statusCode).toBe(410);
       expect(response.json()).toEqual({
         error:
