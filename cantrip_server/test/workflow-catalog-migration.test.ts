@@ -14,7 +14,7 @@ async function migrationFiles() {
     .sort();
 }
 
-describe("workflow definition encryption migrations", () => {
+describe("workflow encryption migrations", () => {
   it("resets legacy rows before requiring opaque catalog and definition columns", async () => {
     const database = new PGlite();
     try {
@@ -200,6 +200,72 @@ describe("workflow definition encryption migrations", () => {
              AND column_name = 'protected_input') AS protected_input
       `);
       expect(runtimeRows.rows).toEqual([{ protected_input: "jsonb", runs: 0 }]);
+
+      await database.exec(`
+        INSERT INTO workflow_runs (
+          id, workflow_id, workflow_revision_id, owner_id, status,
+          idempotency_key, structured_input, protected_input
+        ) VALUES (
+          'gate-run', 'runtime-workflow', 'runtime-revision',
+          'workflow-owner', 'waiting', 'gate-run-once', '{}'::jsonb,
+          '{}'::jsonb
+        );
+        INSERT INTO workflow_run_nodes (
+          id, run_id, revision_node_id, node_key, node_type, status,
+          structured_input
+        ) VALUES (
+          'gate-run-node', 'gate-run', 'runtime-node', 'gate-opaque-id',
+          'gate', 'waiting-for-approval', '{}'::jsonb
+        );
+        INSERT INTO workflow_approval_gates (
+          id, run_id, run_node_id, gate_key, prompt,
+          permission_manifest, requested_by_type, decision_reason
+        ) VALUES (
+          'legacy-gate', 'gate-run', 'gate-run-node', 'gate-opaque-id',
+          'LEGACY_GATE_PROMPT_SENTINEL',
+          '{"skills":["LEGACY_GATE_PERMISSION_SENTINEL"]}'::jsonb,
+          'workflow', 'LEGACY_GATE_REASON_SENTINEL'
+        );
+      `);
+      const gateMigration = files.find((name) => name.startsWith("0129_"));
+      expect(gateMigration).toBeDefined();
+      await database.exec(
+        await readFile(`${migrationsDirectory}/${gateMigration!}`, "utf8"),
+      );
+      const gateColumns = await database.query<{ column_name: string }>(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = 'workflow_approval_gates'
+        ORDER BY column_name
+      `);
+      const gateColumnNames = gateColumns.rows.map(
+        ({ column_name }) => column_name,
+      );
+      expect(gateColumnNames).toEqual(
+        expect.arrayContaining([
+          "denial_policy",
+          "protected_request",
+          "protected_response",
+        ]),
+      );
+      expect(gateColumnNames).not.toEqual(
+        expect.arrayContaining([
+          "prompt",
+          "permission_manifest",
+          "interaction_request_id",
+          "decision_reason",
+        ]),
+      );
+      const gateRows = await database.query<{
+        gates: number;
+        protected_request: unknown;
+      }>(`
+        SELECT
+          count(*)::int AS gates,
+          max(protected_request::text) AS protected_request
+        FROM workflow_approval_gates
+      `);
+      expect(gateRows.rows).toEqual([{ gates: 1, protected_request: null }]);
     } finally {
       await database.close();
     }

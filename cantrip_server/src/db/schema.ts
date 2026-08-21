@@ -4417,22 +4417,16 @@ export const workflowApprovalGates = pgTable(
     }),
     gateKey: text("gate_key").notNull(),
     status: text("status").notNull().default("pending"),
-    prompt: text("prompt").notNull(),
-    permissionManifest: jsonb("permission_manifest")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
-    interactionRequestId: text("interaction_request_id").references(
-      () => agentInteractionRequests.id,
-      { onDelete: "set null" },
-    ),
+    denialPolicy: text("denial_policy").notNull().default("fail-run"),
+    protectedRequest: jsonb("protected_request").$type<WorkflowContentOpaque>(),
+    protectedResponse:
+      jsonb("protected_response").$type<WorkflowContentOpaque>(),
     requestedByType: text("requested_by_type").notNull(),
     requestedById: text("requested_by_id"),
     decision: text("decision"),
     decidedByUserId: text("decided_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
-    decisionReason: text("decision_reason"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -4447,9 +4441,6 @@ export const workflowApprovalGates = pgTable(
       table.runId,
       table.gateKey,
     ),
-    uniqueIndex("workflow_approval_gates_interaction_unique").on(
-      table.interactionRequestId,
-    ),
     index("workflow_approval_gates_status_expiry_index").on(
       table.status,
       table.expiresAt,
@@ -4461,6 +4452,10 @@ export const workflowApprovalGates = pgTable(
     check(
       "workflow_approval_gates_decision_check",
       sql`${table.decision} IS NULL OR ${table.decision} IN ('approved', 'denied')`,
+    ),
+    check(
+      "workflow_approval_gates_denial_policy_check",
+      sql`${table.denialPolicy} IN ('fail-run', 'skip-downstream')`,
     ),
   ],
 );

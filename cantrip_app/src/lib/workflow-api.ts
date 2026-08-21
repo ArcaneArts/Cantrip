@@ -11,7 +11,6 @@ import {
   workflowDefinitionWireListSchema,
   workflowDefinitionWireSummarySchema,
   workflowDefinitionUpdateSchema,
-  workflowGateDecisionSchema,
   workflowGitEventDeliveryCreateSchema,
   workflowNodeRetrySchema,
   workflowRepositoryExportSchema,
@@ -62,6 +61,7 @@ import {
   openWorkflowRunWireDetail,
   protectWorkflowDefinitionCreate,
   protectWorkflowDefinitionUpdate,
+  protectWorkflowGateDecision,
   protectWorkflowRevisionCreate,
   protectWorkflowRunCreate,
 } from "@/lib/workflow-encryption";
@@ -333,7 +333,7 @@ export async function decideWorkflowGate(
   return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/decision`,
-      workflowGateDecisionSchema.parse(input),
+      await protectWorkflowGateDecision(gateId, input),
     ),
   );
 }

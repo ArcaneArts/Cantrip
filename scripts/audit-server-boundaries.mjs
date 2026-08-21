@@ -1862,6 +1862,7 @@ async function workflowCatalogContentBoundaryAudit() {
   const failures = [];
   const definitionTable = tableInitializer(schemaText, "workflowDefinitions");
   const revisionTable = tableInitializer(schemaText, "workflowRevisions");
+  const gateTable = tableInitializer(schemaText, "workflowApprovalGates");
   for (const table of [
     "workflowRuns",
     "workflowRunNodes",
@@ -1921,6 +1922,30 @@ async function workflowCatalogContentBoundaryAudit() {
     if (new RegExp(`\\b${field}\\s*:`, "u").test(revisionTable)) {
       failures.push(
         `workflowRevisions: legacy plaintext ${field} storage returned`,
+      );
+    }
+  }
+  for (const [property, column] of [
+    ["denialPolicy", "denial_policy"],
+    ["protectedRequest", "protected_request"],
+    ["protectedResponse", "protected_response"],
+  ]) {
+    if (
+      !gateTable.includes(`${property}:`) ||
+      !gateTable.includes(`"${column}"`)
+    ) {
+      failures.push(`workflowApprovalGates: missing ${column}`);
+    }
+  }
+  for (const field of [
+    "prompt",
+    "permissionManifest",
+    "decisionReason",
+    "interactionRequestId",
+  ]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(gateTable)) {
+      failures.push(
+        `workflowApprovalGates: legacy plaintext ${field} storage returned`,
       );
     }
   }
@@ -1995,6 +2020,25 @@ async function workflowCatalogContentBoundaryAudit() {
       failures.push(`Server application imports trusted ${symbol}.`);
     }
   }
+  for (const [source, sourceText] of [
+    ["application", applicationText],
+    ["workflow repository", repositoryText],
+    ["workflow run repository", runRepositoryText],
+    ["workflow executor", executorText],
+  ]) {
+    const imports = namedImportsFrom(sourceText, "@cantrip/protocol/workflows");
+    for (const symbol of [
+      "workflowApprovalGateSchema",
+      "workflowGateDecisionSchema",
+      "workflowGateNodeConfigurationSchema",
+      "workflowGateProtectedRequestSchema",
+      "workflowGateProtectedResponseSchema",
+    ]) {
+      if (imports.includes(symbol)) {
+        failures.push(`${source}: imports trusted gate content ${symbol}.`);
+      }
+    }
+  }
   for (const marker of [
     "encryptedWorkflowDefinitionCreateSchema",
     "encryptedWorkflowDefinitionUpdateSchema",
@@ -2009,6 +2053,12 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRunWireDetailSchema",
     "protectedWorkflowNodeExecutionRequestSchema",
     "protectedWorkflowNodeExecutionResultSchema",
+    "workflowApprovalGateWireSchema",
+    "workflowGateProtectedRequestSchema",
+    "workflowGateProtectedResponseSchema",
+    "encryptedWorkflowGateDecisionSchema",
+    "protectedWorkflowGateDecisionRequestSchema",
+    "protectedWorkflowGateDecisionResultSchema",
     "outgoingDependencies",
     "selectedDependencyIds",
     "logicalExecutionCount",
@@ -2034,6 +2084,7 @@ async function workflowCatalogContentBoundaryAudit() {
     "openWorkflowRevisionWire",
     "protectWorkflowRunCreate",
     "openWorkflowRunWireDetail",
+    "protectWorkflowGateDecision",
   ]) {
     if (!clientApiText.includes(marker)) {
       failures.push(`Client workflow API is missing ${marker}.`);
@@ -2049,6 +2100,8 @@ async function workflowCatalogContentBoundaryAudit() {
     "computeBlindLookupTag",
     "encryptWorkflowContent",
     "decryptWorkflowContent",
+    "openWorkflowGateWithContext",
+    "protectWorkflowGateDecision",
   ]) {
     if (!clientEncryptionText.includes(marker)) {
       failures.push(`Client workflow encryption is missing ${marker}.`);
@@ -2073,6 +2126,9 @@ async function workflowCatalogContentBoundaryAudit() {
     "protectedRunInput: lease.candidate.protectedRunInput",
     "outgoingDependencies: lease.candidate.outgoingDependencies",
     "protectedWorkflowNodeExecutionResultSchema.parse",
+    'type: "workflow.gate.decide.protected"',
+    "openProtectedGateAttempt",
+    "decideProtectedGate",
   ]) {
     if (!executorText.includes(marker)) {
       failures.push(`Protected workflow executor is missing ${marker}.`);
@@ -2099,6 +2155,10 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRepeatUntilNodeConfigurationSchema",
     "workflowVerifyNodeConfigurationSchema",
     "workflowConditionNodeConfigurationSchema",
+    "workflowGateNodeConfigurationSchema",
+    "workflowGateProtectedRequestSchema",
+    "workflowGateProtectedResponseSchema",
+    "resolveProtectedWorkflowGate",
     "evaluatePredicate",
     "protectedAttemptResult",
     "protectedRunResult",
@@ -2150,6 +2210,8 @@ async function workflowCatalogContentBoundaryAudit() {
     "protectedInput: input.protectedInput",
     "protectedResult: result.protectedNodeResult",
     "protectedResult: result.protectedAttemptResult",
+    "protectedRequest: result.protectedRequest",
+    "protectedResponse: input.protectedResponse",
   ]) {
     if (!runRepositoryText.includes(marker)) {
       failures.push(`Workflow run repository is missing ${marker}.`);
@@ -2182,9 +2244,13 @@ async function workflowCatalogContentBoundaryAudit() {
       "map-pipeline-reduce-repeat-verify-condition:worker-only-semantics",
       "collection-values-and-branch-predicates:opaque-to-server",
       "workflow-agent-interactions:interaction-content-client-worker-only",
-      "gate-and-trigger-ingress:fail-closed-until-worker-runtime",
+      "workflow-gate-request-response:workflow-content-client-worker-only",
+      "workflow-gate-semantics:worker-authenticated",
+      "trigger-ingress:fail-closed-until-worker-runtime",
     ],
-    remainingPlaintextContent: ["events, gates, triggers, and deliveries"],
+    remainingPlaintextContent: [
+      "content-bearing events, triggers, and deliveries",
+    ],
   };
 }
 

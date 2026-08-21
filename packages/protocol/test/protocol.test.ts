@@ -3557,6 +3557,35 @@ describe("Cantrip protocol", () => {
         provider: command.provider,
       }).type,
     ).toBe("workflow.node.interrupt");
+    const protectedGateDecision = workerCommandSchema.parse({
+      type: "workflow.gate.decide.protected",
+      workflowRunId: "run-1",
+      workflowRevisionId: "revision-1",
+      revisionNodeId: "revision-node-1",
+      nodePosition: 0,
+      runNodeId: "run-node-1",
+      attemptId: "attempt-1",
+      gateId: "gate-1",
+      denialPolicy: "fail-run",
+      protectedDefinition: workflowContentFixture(),
+      protectedRunInput: workflowContentFixture(),
+      predecessorResults: [],
+      outgoingDependencies: [],
+      mutationMode: "read-only",
+      permissionProfileId: ":read-only",
+      protectedResponse: workflowContentFixture(),
+    });
+    expect(protectedGateDecision).toMatchObject({
+      type: "workflow.gate.decide.protected",
+      gateId: "gate-1",
+      denialPolicy: "fail-run",
+    });
+    expect(
+      workerCommandSchema.safeParse({
+        ...protectedGateDecision,
+        reason: "A private gate reason must not cross this boundary.",
+      }).success,
+    ).toBe(false);
     expect(
       workerEventSchema.parse({
         type: "workflow.node.activity",

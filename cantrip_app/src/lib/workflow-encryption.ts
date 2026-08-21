@@ -8,6 +8,7 @@ import {
 import {
   encryptedWorkflowDefinitionCreateSchema,
   encryptedWorkflowDefinitionUpdateSchema,
+  encryptedWorkflowGateDecisionSchema,
   encryptedWorkflowRevisionCreateSchema,
   encryptedWorkflowRunCreateSchema,
   workflowDefinitionCreateSchema,
@@ -28,6 +29,11 @@ import {
   workflowRevisionWireSchema,
   workflowRevisionWireSummarySchema,
   workflowNodeAttemptSchema,
+  workflowApprovalGateSchema,
+  workflowApprovalGateWireSchema,
+  workflowGateDecisionSchema,
+  workflowGateProtectedRequestSchema,
+  workflowGateProtectedResponseSchema,
   workflowNodeProtectedInputSchema,
   workflowNodeProtectedResultSchema,
   workflowProtectedErrorSchema,
@@ -42,6 +48,7 @@ import {
   workflowRunWireSchema,
   type EncryptedWorkflowDefinitionCreate,
   type EncryptedWorkflowDefinitionUpdate,
+  type EncryptedWorkflowGateDecision,
   type EncryptedWorkflowRevisionCreate,
   type WorkflowDefinitionCreate,
   type WorkflowDefinitionDetail,
@@ -49,6 +56,7 @@ import {
   type WorkflowDefinitionUpdate,
   type WorkflowDefinitionWireDetail,
   type WorkflowDefinitionWireSummary,
+  type WorkflowGateDecision,
   type WorkflowRevision,
   type WorkflowRevisionCreate,
   type WorkflowRevisionSummary,
@@ -771,6 +779,85 @@ export async function openWorkflowRunWire(
   }
 }
 
+async function openWorkflowGateWithContext(
+  raw: unknown,
+  context: EncryptionContext,
+) {
+  const wire = workflowApprovalGateWireSchema.parse(raw);
+  const [request, response] = await Promise.all([
+    decryptWorkflowContent({
+      ownerId: context.ownerId,
+      context: {
+        recordKind: "workflow-gate",
+        recordId: wire.id,
+        field: "request",
+      },
+      keyRevision: wire.protectedRequest.keyRevision,
+      componentKey: context.componentKey,
+      encrypted: wire.protectedRequest,
+      schema: workflowGateProtectedRequestSchema,
+    }),
+    wire.protectedResponse
+      ? decryptWorkflowContent({
+          ownerId: context.ownerId,
+          context: {
+            recordKind: "workflow-gate",
+            recordId: wire.id,
+            field: "response",
+          },
+          keyRevision: wire.protectedResponse.keyRevision,
+          componentKey: context.componentKey,
+          encrypted: wire.protectedResponse,
+          schema: workflowGateProtectedResponseSchema,
+        })
+      : null,
+  ]);
+  if (response && response.decision !== wire.decision) {
+    throw new Error("Protected workflow gate decision does not match status.");
+  }
+  return workflowApprovalGateSchema.parse({
+    ...wire,
+    protectedRequest: undefined,
+    protectedResponse: undefined,
+    prompt: request.prompt,
+    permissionManifest: request.permissionManifest,
+    decisionReason: response?.reason ?? null,
+  });
+}
+
+export async function protectWorkflowGateDecision(
+  gateId: string,
+  raw: WorkflowGateDecision,
+  options: TrustedOptions = {},
+): Promise<EncryptedWorkflowGateDecision> {
+  const input = workflowGateDecisionSchema.parse(raw);
+  const context = encryptionContext(options);
+  try {
+    return encryptedWorkflowGateDecisionSchema.parse({
+      classification: { decision: input.decision },
+      protectedResponse: await encryptWorkflowContent({
+        ownerId: context.ownerId,
+        context: {
+          recordKind: "workflow-gate",
+          recordId: gateId,
+          field: "response",
+        },
+        keyRevision: context.keyRevision,
+        componentKey: context.componentKey,
+        content: {
+          version: 1,
+          decision: input.decision,
+          reason: input.reason,
+        },
+        schema: workflowGateProtectedResponseSchema,
+      }),
+      idempotencyKey: input.idempotencyKey,
+    });
+  } finally {
+    clearSensitiveBytes(context.componentKey);
+  }
+}
+
 export async function openWorkflowRunWireDetail(
   raw: WorkflowRunWireDetail,
   options: TrustedOptions = {},
@@ -881,12 +968,16 @@ export async function openWorkflowRunWireDetail(
         });
       }),
     );
+    const gates = await Promise.all(
+      wire.gates.map((gate) => openWorkflowGateWithContext(gate, context)),
+    );
     return workflowRunDetailSchema.parse({
       ...wire,
       run,
       nodes,
       items,
       attempts,
+      gates,
     });
   } catch {
     throw new ClientEncryptionError(

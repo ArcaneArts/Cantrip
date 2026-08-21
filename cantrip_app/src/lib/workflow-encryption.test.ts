@@ -4,6 +4,7 @@ import {
 } from "@cantrip/crypto";
 import {
   workflowDefinitionCreateSchema,
+  workflowGateProtectedResponseSchema,
   workflowRunCreateSchema,
   workflowRunProtectedInputSchema,
 } from "@cantrip/protocol/workflows";
@@ -14,6 +15,7 @@ import { ClientEncryptionService } from "./client-encryption";
 import {
   openWorkflowDefinitionWireDetail,
   openWorkflowDefinitionWireSummary,
+  protectWorkflowGateDecision,
   protectWorkflowDefinitionCreate,
   protectWorkflowRunCreate,
 } from "./workflow-encryption";
@@ -211,6 +213,47 @@ describe("workflow catalog encryption", () => {
     ).resolves.toEqual({
       version: 1,
       input: { request: "RUN_INPUT_SENTINEL" },
+    });
+  });
+
+  it("protects gate decisions before they reach the server", async () => {
+    const encryption = service();
+    const gateId = "gate-1";
+    const protectedDecision = await protectWorkflowGateDecision(
+      gateId,
+      {
+        decision: "denied",
+        reason: "GATE_REASON_SENTINEL",
+        idempotencyKey: "gate-decision-once",
+      },
+      { service: encryption, session },
+    );
+    expect(protectedDecision.classification).toEqual({ decision: "denied" });
+    expect(JSON.stringify(protectedDecision)).not.toContain(
+      "GATE_REASON_SENTINEL",
+    );
+    const componentKey = encryption.componentKey({
+      component: "workflow-content",
+      identity: { ownerId, serverId },
+      keyRevision: 1,
+    });
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-gate",
+          recordId: gateId,
+          field: "response",
+        },
+        keyRevision: 1,
+        componentKey,
+        encrypted: protectedDecision.protectedResponse,
+        schema: workflowGateProtectedResponseSchema,
+      }),
+    ).resolves.toEqual({
+      version: 1,
+      decision: "denied",
+      reason: "GATE_REASON_SENTINEL",
     });
   });
 });
