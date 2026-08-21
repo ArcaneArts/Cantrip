@@ -3,10 +3,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import {
   agentInteractionAcceptedSchema,
   worktreeStatusResultSchema,
-  type AgentInteractionRequest,
-  type AgentInteractionResponse,
+  type EncryptedAgentInteractionRequest,
   type WorkerEvent,
 } from "@cantrip/protocol";
+import type { InteractionResponseOpaqueContent } from "@cantrip/protocol/communication-content";
 import {
   workflowFolderProducedChangesSchema,
   protectedWorkflowNodeExecutionResultSchema,
@@ -528,19 +528,18 @@ export class WorkflowExecutor {
     await Promise.allSettled(this.#activeRuns.values());
   }
 
-  async respondToInteraction(
+  async respondToEncryptedInteraction(
     ownerId: string,
-    interaction: AgentInteractionRequest,
-    response: AgentInteractionResponse,
+    interaction: EncryptedAgentInteractionRequest,
+    response: InteractionResponseOpaqueContent,
   ): Promise<{ accepted: true }> {
     const runId = interaction.provenance.workflowRunId;
     const runNodeId = interaction.provenance.workflowNodeId;
-    if (!runId || !runNodeId) {
-      throw new Error("The interaction is not attributed to a workflow node.");
-    }
     const threadId = interaction.provenance.threadId;
-    if (!threadId) {
-      throw new Error("The interaction is not attributed to a Codex thread.");
+    if (!runId || !runNodeId || !threadId) {
+      throw new Error(
+        "The protected interaction is not attributed to an active workflow turn.",
+      );
     }
     const context =
       await this.repository.workflowRuns.getInteractionExecutionContext(
@@ -568,7 +567,7 @@ export class WorkflowExecutor {
         await this.bridge.request(
           context.workerId,
           {
-            type: "agent.interaction.respond",
+            type: "agent.interaction.respond.protected",
             requestKey: interaction.requestKey,
             response,
             model: runtime.model,
@@ -1069,8 +1068,19 @@ export class WorkflowExecutor {
     workerId: string,
   ): Promise<void> {
     if (event.type === "workflow.node.interaction.requested") {
+      await this.cancelWorkerInteraction(
+        workerId,
+        lease,
+        event.request.requestKey,
+        "Protected workflow interactions require ciphertext.",
+      );
+      throw new Error(
+        "The worker emitted a visible interaction for a protected workflow.",
+      );
+    }
+    if (event.type === "workflow.node.interaction.requested.protected") {
       try {
-        await this.repository.recordAgentInteractionRequest({
+        await this.repository.recordEncryptedAgentInteractionRequest({
           requestKey: event.request.requestKey,
           projectId: lease.candidate.projectId!,
           provenance: {
@@ -1083,7 +1093,8 @@ export class WorkflowExecutor {
             workflowNodeId: lease.candidate.node.id,
             workerId,
           },
-          payload: event.request.payload,
+          classification: event.request.classification,
+          protectedPayload: event.request.protectedPayload,
           expiresAt: event.request.expiresAt,
         });
       } catch (error) {
@@ -1122,7 +1133,7 @@ export class WorkflowExecutor {
       this.notifyRunChanged(
         lease.candidate.run.id,
         lease.candidate.projectId,
-        event.type === "workflow.node.interaction.requested" ||
+        event.type === "workflow.node.interaction.requested.protected" ||
           event.type === "workflow.node.interaction.cleared" ||
           event.type === "workflow.node.interaction.expired"
           ? "workflow-gate"
@@ -1165,7 +1176,7 @@ export class WorkflowExecutor {
         }
       }
     } catch (error) {
-      if (event.type === "workflow.node.interaction.requested") {
+      if (event.type === "workflow.node.interaction.requested.protected") {
         await this.cancelWorkerInteraction(
           workerId,
           lease,

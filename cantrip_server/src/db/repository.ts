@@ -14647,6 +14647,11 @@ export class ServerRepository {
     if (query.chatId) {
       conditions.push(eq(schema.agentInteractionRequests.chatId, query.chatId));
     }
+    if (query.workflowRunId) {
+      conditions.push(
+        eq(schema.agentInteractionRequests.workflowRunId, query.workflowRunId),
+      );
+    }
     if (query.status) {
       conditions.push(eq(schema.agentInteractionRequests.status, query.status));
     }

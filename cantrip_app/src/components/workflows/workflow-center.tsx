@@ -1,4 +1,9 @@
-import type { ChatSummary, WorkerSummary } from "@cantrip/protocol";
+import type {
+  AgentInteractionRequest,
+  AgentInteractionResponse,
+  ChatSummary,
+  WorkerSummary,
+} from "@cantrip/protocol";
 import type {
   WorkflowDefinitionDetail,
   WorkflowDefinitionSummary,
@@ -37,8 +42,9 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +59,7 @@ import {
   cancelWorkflowRun,
   createWorkflowRun,
   getWorkflowAutomationTriggers,
+  getAgentInteractionRequests,
   decideWorkflowGate,
   exportWorkflowToRepository,
   getWorkflow,
@@ -63,6 +70,7 @@ import {
   pauseWorkflowRun,
   importWorkflowRepositoryItem,
   resolveWorkflowWorktree,
+  respondToAgentInteractionRequest,
   resumeWorkflowRun,
   retryWorkflowNode,
   saveWorkflowRunRevision,
@@ -280,6 +288,7 @@ export function WorkflowCenter({
   const [inputText, setInputText] = useState("{}");
   const [inputError, setInputError] = useState<string | null>(null);
   const [preparedInput, setPreparedInput] = useState<WorkflowJsonObject>({});
+  const interactionIdempotencyKeys = useRef(new Map<string, string>());
   useAppLiveScope(
     selectedRunId ? { kind: "workflow-run", runId: selectedRunId } : null,
   );
@@ -349,6 +358,16 @@ export function WorkflowCenter({
             ? 1_500
             : false,
   });
+  const interactionRequests = useQuery({
+    enabled: Boolean(selectedRunId),
+    queryFn: () =>
+      getAgentInteractionRequests({
+        workflowRunId: selectedRunId!,
+        status: "pending",
+      }),
+    queryKey: ["workflow-interactions", selectedRunId, "pending"],
+    refetchInterval: workflowResourcesLive ? false : 1_500,
+  });
 
   const storeRun = (detail: WorkflowRunDetail) => {
     queryClient.setQueryData(["workflow-run", detail.run.id], detail);
@@ -361,16 +380,9 @@ export function WorkflowCenter({
     mutationFn: async () => {
       const revision = workflow.data?.revision;
       if (!revision) throw new Error("This workflow has no runnable revision.");
-      if (
-        revision.permissionRequirements.approvalMode !== "preauthorized" ||
-        revision.nodes.some(
-          (node) =>
-            node.type === "gate" ||
-            node.permissionRequirements.approvalMode !== "preauthorized",
-        )
-      ) {
+      if (revision.nodes.some((node) => node.type === "gate")) {
         throw new Error(
-          "Protected execution requires preauthorized nodes; gates remain unavailable until encrypted interactions are enabled.",
+          "Protected workflow gates remain unavailable until their encrypted decision contract is enabled.",
         );
       }
       await ensureChatWorkerEncryption({ worker });
@@ -449,6 +461,35 @@ export function WorkflowCenter({
       }
     },
     onSuccess: storeRun,
+  });
+  const interactionResponse = useMutation({
+    mutationFn: async ({
+      requestId,
+      response,
+    }: {
+      requestId: string;
+      response: AgentInteractionResponse;
+    }) => {
+      const idempotencyKey =
+        interactionIdempotencyKeys.current.get(requestId) ??
+        crypto.randomUUID();
+      interactionIdempotencyKeys.current.set(requestId, idempotencyKey);
+      return respondToAgentInteractionRequest(requestId, {
+        idempotencyKey,
+        response,
+      });
+    },
+    onSuccess: (interaction) => {
+      interactionIdempotencyKeys.current.delete(interaction.id);
+      void queryClient.invalidateQueries({
+        queryKey: ["workflow-interactions", selectedRunId],
+      });
+      if (selectedRunId) {
+        void queryClient.invalidateQueries({
+          queryKey: ["workflow-run", selectedRunId],
+        });
+      }
+    },
   });
   const saveRun = useMutation({
     mutationFn: (runId: string) =>
@@ -887,10 +928,28 @@ export function WorkflowCenter({
             <RunDetail
               detail={run.data}
               directFolder={directFolder}
-              pending={control.isPending || saveRun.isPending}
+              interactionError={
+                interactionResponse.isError
+                  ? errorMessage(interactionResponse.error)
+                  : interactionRequests.isError
+                    ? errorMessage(interactionRequests.error)
+                    : null
+              }
+              interactionRequests={interactionRequests.data ?? []}
+              pending={
+                control.isPending ||
+                saveRun.isPending ||
+                interactionResponse.isPending
+              }
+              respondingInteractionId={
+                interactionResponse.variables?.requestId ?? null
+              }
               revisionNodes={workflow.data?.revision?.nodes ?? []}
               onControl={(action) => control.mutate(action)}
               onOpenHistory={onOpenHistory}
+              onRespondToInteraction={(requestId, response) =>
+                interactionResponse.mutate({ requestId, response })
+              }
               onSaveRevision={() => saveRun.mutate(run.data!.run.id)}
             />
           ) : (
@@ -1210,18 +1269,29 @@ export function WorkflowCenter({
 function RunDetail({
   detail,
   directFolder,
+  interactionError,
+  interactionRequests,
   onControl,
   onOpenHistory,
+  onRespondToInteraction,
   onSaveRevision,
   pending,
+  respondingInteractionId,
   revisionNodes,
 }: {
   detail: WorkflowRunDetail;
   directFolder: boolean;
+  interactionError: string | null;
+  interactionRequests: AgentInteractionRequest[];
   onControl(action: ControlAction): void;
   onOpenHistory(worktreeId: string): void;
+  onRespondToInteraction(
+    requestId: string,
+    response: AgentInteractionResponse,
+  ): void;
   onSaveRevision(): void;
   pending: boolean;
+  respondingInteractionId: string | null;
   revisionNodes: WorkflowGraph["nodes"];
 }) {
   const { run } = detail;
@@ -1319,6 +1389,13 @@ function RunDetail({
       ) : null}
 
       <PermissionSummary permissions={run.permissionManifest} />
+
+      <AgentInteractionPanel
+        error={interactionError}
+        pendingRequestId={respondingInteractionId}
+        requests={interactionRequests}
+        onRespond={onRespondToInteraction}
+      />
 
       {detail.gates.some(({ status }) => status === "pending") ? (
         <div className="space-y-2">

@@ -136,7 +136,10 @@ describe("application live query bridge", () => {
           scope: { kind: "workflow-run", runId: "run-one" },
         }),
       ),
-    ).toEqual([["workflow-run", "run-one"]]);
+    ).toEqual([
+      ["workflow-run", "run-one"],
+      ["workflow-interactions", "run-one"],
+    ]);
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["worktrees", "project-one"]);
@@ -739,9 +742,12 @@ describe("application live query bridge", () => {
 
       await vi.advanceTimersByTimeAsync(100);
 
-      expect(invalidate).toHaveBeenCalledTimes(2);
+      expect(invalidate).toHaveBeenCalledTimes(3);
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["workflow-run", "run-one"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workflow-interactions", "run-one"],
       });
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["workflow-runs", "project-one"],
@@ -784,6 +790,9 @@ describe("application live query bridge", () => {
 
       expect(invalidate).toHaveBeenCalledWith({
         queryKey: ["workflow-run", "run-one"],
+      });
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: ["workflow-interactions", "run-one"],
       });
     } finally {
       vi.useRealTimers();

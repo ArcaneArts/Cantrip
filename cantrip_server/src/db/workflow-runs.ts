@@ -2316,10 +2316,6 @@ export class WorkflowRunRepository {
       if (!protectedDefinition) {
         unsupportedReason = "The protected workflow definition is unavailable.";
       }
-      if (detail.run.permissionManifest.approvalMode !== "preauthorized") {
-        unsupportedReason =
-          "Protected workflow execution currently requires preauthorized nodes.";
-      }
       const predecessorResults = detail.dependencies
         .filter(
           (dependency) =>
@@ -3054,7 +3050,8 @@ export class WorkflowRunRepository {
     const attribution = this.workerEventAttribution(event);
     const now = new Date();
     const attemptStatus =
-      event.type === "workflow.node.interaction.requested"
+      event.type === "workflow.node.interaction.requested" ||
+      event.type === "workflow.node.interaction.requested.protected"
         ? "waiting-for-approval"
         : event.type === "workflow.node.interaction.cleared" ||
             event.type === "workflow.node.interaction.expired"
@@ -7767,6 +7764,12 @@ export class WorkflowRunRepository {
       return { threadId: null, turnId: event.turnId };
     }
     if (event.type === "workflow.node.interaction.requested") {
+      return {
+        threadId: event.request.threadId,
+        turnId: event.request.turnId,
+      };
+    }
+    if (event.type === "workflow.node.interaction.requested.protected") {
       return {
         threadId: event.request.threadId,
         turnId: event.request.turnId,

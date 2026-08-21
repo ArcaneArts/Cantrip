@@ -338,15 +338,6 @@ export async function executeProtectedWorkflowNode(input: {
           "The protected workflow node does not match its execution route.",
         );
       }
-      if (
-        definition.permissionRequirements.approvalMode !== "preauthorized" ||
-        definition.graph.nodes.some(
-          ({ permissionRequirements }) =>
-            permissionRequirements.approvalMode !== "preauthorized",
-        )
-      ) {
-        throw new Error("Protected workflow nodes must be preauthorized.");
-      }
       const incoming = definition.graph.edges.filter(
         ({ to }) => to === node.key,
       );

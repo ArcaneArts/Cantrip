@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   accountSessionListSchema,
   agentActivitySchema,
+  agentInteractionRequestQuerySchema,
   agentInteractionRequestSchema,
   agentInteractionRuntimeRequestSchema,
   agentInteractionResolutionCreateSchema,
@@ -3570,6 +3571,42 @@ describe("Cantrip protocol", () => {
     ).toMatchObject({
       type: "workflow.node.activity",
       attemptId: "attempt-1",
+    });
+  });
+
+  it("routes protected workflow interactions without visible payloads", () => {
+    const event = workerEventSchema.parse({
+      type: "workflow.node.interaction.requested.protected",
+      attemptId: "attempt-1",
+      request: {
+        requestKey: "request-1",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        classification: { kind: "userInput" },
+        protectedPayload: workflowContentFixture(),
+        expiresAt: "2026-08-21T12:00:00.000Z",
+      },
+    });
+
+    expect(event).toMatchObject({
+      type: "workflow.node.interaction.requested.protected",
+      attemptId: "attempt-1",
+      request: {
+        requestKey: "request-1",
+        classification: { kind: "userInput" },
+      },
+    });
+    expect("payload" in event.request).toBe(false);
+    expect(
+      agentInteractionRequestQuerySchema.parse({
+        workflowRunId: "run-1",
+        status: "pending",
+      }),
+    ).toEqual({
+      workflowRunId: "run-1",
+      status: "pending",
+      limit: 100,
     });
   });
 

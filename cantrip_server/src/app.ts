@@ -2120,6 +2120,14 @@ export async function buildApp({
       );
       publishChatSummary(interaction.provenance.chatId, interaction.projectId);
     }
+    if (interaction?.provenance.workflowRunId) {
+      publishWorkflowRunChange({
+        projectId: interaction.projectId,
+        resource: "workflow-gate",
+        revision: null,
+        runId: interaction.provenance.workflowRunId,
+      });
+    }
     return interaction;
   };
   const terminalizeLiveAgentInteractionRequest = async (
@@ -10377,7 +10385,12 @@ export async function buildApp({
   );
 
   app.get<{
-    Querystring: { chatId?: string; limit?: string; status?: string };
+    Querystring: {
+      chatId?: string;
+      workflowRunId?: string;
+      limit?: string;
+      status?: string;
+    };
   }>("/api/agent-requests", async (request, reply) => {
     const query = agentInteractionRequestQuerySchema.safeParse(request.query);
     if (!query.success) {
@@ -10446,10 +10459,10 @@ export async function buildApp({
           return reply.send(agentInteractionRequestWireSchema.parse(replay));
         }
         if (!existing.provenance.chatId) {
-          if (!visibleInput || !("payload" in existing)) {
+          if (!protectedInput || !("protectedPayload" in existing)) {
             return reply.code(409).send({
               error:
-                "Protected workflow interactions are not supported by this execution path yet.",
+                "Protected workflow interactions require an encrypted response.",
             });
           }
           if (
@@ -10461,10 +10474,13 @@ export async function buildApp({
             });
           }
           try {
-            await workflowExecutor.respondToInteraction(
+            await workflowExecutor.respondToEncryptedInteraction(
               applicationOwnerId(),
               existing,
-              visibleInput.response,
+              {
+                classification: protectedInput.classification,
+                protectedResponse: protectedInput.protectedResponse,
+              },
             );
           } catch (error) {
             return sendWorkerConflictFailure(
@@ -10474,11 +10490,12 @@ export async function buildApp({
             );
           }
           try {
-            const interaction = await resolveLiveAgentInteractionRequest(
-              applicationOwnerId(),
-              request.params.requestId,
-              visibleInput,
-            );
+            const interaction =
+              await resolveLiveEncryptedAgentInteractionRequest(
+                applicationOwnerId(),
+                request.params.requestId,
+                protectedInput,
+              );
             return reply.send(
               agentInteractionRequestWireSchema.parse(interaction),
             );
