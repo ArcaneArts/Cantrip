@@ -283,6 +283,17 @@ describe("remote surface input messages", () => {
         },
       ],
     });
+    expect(
+      remoteSurfaceTouchInput(
+        {
+          ...noModifiers,
+          touches: [{ clientX: 60, clientY: 45, identifier: 3 }],
+        },
+        "end",
+        bounds,
+        target,
+      ),
+    ).toMatchObject({ event: "end", points: [] });
   });
 });
 

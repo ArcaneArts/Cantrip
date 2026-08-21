@@ -158,3 +158,50 @@ export async function ensureSurfacePrivateStateWorkerEncryption(input: {
   }
   return refreshed.status;
 }
+
+export function surfacePrivateStateWorkerRetryDelay(attempt: number): number {
+  return Math.min(250 * 2 ** Math.max(0, attempt), 2_000);
+}
+
+export async function waitForSurfacePrivateStateWorkerEncryption(
+  input: Omit<
+    Parameters<typeof ensureSurfacePrivateStateWorkerEncryption>[0],
+    "worker"
+  > & {
+    attempts?: number;
+    isCancelled?(): boolean;
+    loadWorker(): Promise<SurfacePrivateStateWorkerDescriptor | undefined>;
+    sleep?(durationMs: number): Promise<void>;
+  },
+): Promise<WorkerEncryptionStatus> {
+  const {
+    attempts: requestedAttempts = 5,
+    isCancelled,
+    loadWorker,
+    sleep = (durationMs) =>
+      new Promise<void>((resolve) => setTimeout(resolve, durationMs)),
+    ...dependencies
+  } = input;
+  const attempts = Math.max(1, requestedAttempts);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (isCancelled?.()) throw new Error("Worker encryption wait cancelled.");
+    try {
+      return await ensureSurfacePrivateStateWorkerEncryption({
+        ...dependencies,
+        worker: await loadWorker(),
+      });
+    } catch (error) {
+      lastError = error;
+      if (
+        (error instanceof SurfacePrivateStateWorkerReadinessError &&
+          (error.state === "locked" || error.state === "revoked")) ||
+        attempt === attempts - 1
+      ) {
+        throw error;
+      }
+      await sleep(surfacePrivateStateWorkerRetryDelay(attempt));
+    }
+  }
+  throw lastError;
+}
