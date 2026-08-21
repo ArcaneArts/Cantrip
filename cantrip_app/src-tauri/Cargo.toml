@@ -40,7 +40,6 @@ windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_NetworkManagement_WebDav",
   "Win32_NetworkManagement_WNet",
-  "Win32_Storage_FileSystem",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
