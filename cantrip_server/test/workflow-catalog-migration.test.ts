@@ -146,6 +146,60 @@ describe("workflow definition encryption migrations", () => {
           revisions: 0,
         },
       ]);
+
+      await database.exec(`
+        INSERT INTO workflow_definitions (
+          id, owner_id, scope, slug_blind_index, protected_slug,
+          protected_name, protected_description, protected_provenance,
+          source, trust_state
+        ) VALUES (
+          'runtime-workflow', 'workflow-owner', 'personal', 'runtime-blind',
+          '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+          'manual', 'untrusted'
+        );
+        INSERT INTO workflow_revisions (
+          id, workflow_id, revision, source, protected_provenance,
+          trust_state, content_blind_index, protected_content_hash,
+          protected_definition, created_by_user_id
+        ) VALUES (
+          'runtime-revision', 'runtime-workflow', 1, 'manual', '{}'::jsonb,
+          'untrusted', 'runtime-content', '{}'::jsonb, '{}'::jsonb,
+          'workflow-owner'
+        );
+        INSERT INTO workflow_revision_nodes (
+          id, revision_id, node_key, node_type, name, position,
+          configuration, input_schema, output_schema,
+          permission_requirements, mutation_mode
+        ) VALUES (
+          'runtime-node', 'runtime-revision', 'node-1', 'agent',
+          'Encrypted workflow node', 0, '{}'::jsonb, '{}'::jsonb,
+          '{}'::jsonb, '{}'::jsonb, 'read-only'
+        );
+        INSERT INTO workflow_runs (
+          id, workflow_id, workflow_revision_id, owner_id, status,
+          idempotency_key, structured_input
+        ) VALUES (
+          'legacy-run', 'runtime-workflow', 'runtime-revision',
+          'workflow-owner', 'queued', 'legacy-run-once',
+          '{"sentinel":"LEGACY_RUN_SENTINEL"}'::jsonb
+        );
+      `);
+      const runtimeMigration = files.find((name) => name.startsWith("0128_"));
+      expect(runtimeMigration).toBeDefined();
+      await database.exec(
+        await readFile(`${migrationsDirectory}/${runtimeMigration!}`, "utf8"),
+      );
+      const runtimeRows = await database.query<{
+        protected_input: string;
+        runs: number;
+      }>(`
+        SELECT
+          (SELECT count(*)::int FROM workflow_runs) AS runs,
+          (SELECT data_type FROM information_schema.columns
+           WHERE table_name = 'workflow_runs'
+             AND column_name = 'protected_input') AS protected_input
+      `);
+      expect(runtimeRows.rows).toEqual([{ protected_input: "jsonb", runs: 0 }]);
     } finally {
       await database.close();
     }

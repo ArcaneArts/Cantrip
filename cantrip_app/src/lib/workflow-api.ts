@@ -22,8 +22,8 @@ import {
   workflowRevisionWireSchema,
   workflowRunCancelSchema,
   workflowRunCreateSchema,
-  workflowRunDetailSchema,
-  workflowRunListSchema,
+  workflowRunWireDetailSchema,
+  workflowRunWireListSchema,
   workflowRunPauseSchema,
   workflowRunResumeSchema,
   workflowRunSaveRevisionSchema,
@@ -58,9 +58,12 @@ import {
   openWorkflowDefinitionWireDetail,
   openWorkflowDefinitionWireSummary,
   openWorkflowRevisionWire,
+  openWorkflowRunWire,
+  openWorkflowRunWireDetail,
   protectWorkflowDefinitionCreate,
   protectWorkflowDefinitionUpdate,
   protectWorkflowRevisionCreate,
+  protectWorkflowRunCreate,
 } from "@/lib/workflow-encryption";
 
 export async function getWorkflows(
@@ -240,7 +243,7 @@ export async function deliverWorkflowGitEvent(
 }
 
 export async function getWorkflowRuns(input: Partial<WorkflowRunQuery> = {}) {
-  return workflowRunListSchema.parse(
+  const wire = workflowRunWireListSchema.parse(
     await request(
       withQuery("/api/workflow-runs", {
         workflowId: input.workflowId,
@@ -251,11 +254,14 @@ export async function getWorkflowRuns(input: Partial<WorkflowRunQuery> = {}) {
       }),
     ),
   );
+  return Promise.all(wire.map((run) => openWorkflowRunWire(run)));
 }
 
 export async function getWorkflowRun(runId: string) {
-  return workflowRunDetailSchema.parse(
-    await request(`/api/workflow-runs/${encodeURIComponent(runId)}`),
+  return openWorkflowRunWireDetail(
+    workflowRunWireDetailSchema.parse(
+      await request(`/api/workflow-runs/${encodeURIComponent(runId)}`),
+    ),
   );
 }
 
@@ -272,13 +278,22 @@ export async function saveWorkflowRunRevision(
 }
 
 export async function createWorkflowRun(input: WorkflowRunCreate) {
-  return workflowRunDetailSchema.parse(
-    await post("/api/workflow-runs", workflowRunCreateSchema.parse(input)),
+  const protectedInput = await protectWorkflowRunCreate(
+    workflowRunCreateSchema.parse(input),
+  );
+  return openWorkflowRunWireDetail(
+    workflowRunWireDetailSchema.parse(
+      await post("/api/workflow-runs", protectedInput),
+    ),
   );
 }
 
+async function openWorkflowRunResponse(response: unknown) {
+  return openWorkflowRunWireDetail(workflowRunWireDetailSchema.parse(response));
+}
+
 export async function pauseWorkflowRun(runId: string, input: WorkflowRunPause) {
-  return workflowRunDetailSchema.parse(
+  return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/pause`,
       workflowRunPauseSchema.parse(input),
@@ -290,7 +305,7 @@ export async function resumeWorkflowRun(
   runId: string,
   input: WorkflowRunResume,
 ) {
-  return workflowRunDetailSchema.parse(
+  return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/resume`,
       workflowRunResumeSchema.parse(input),
@@ -302,7 +317,7 @@ export async function cancelWorkflowRun(
   runId: string,
   input: WorkflowRunCancel,
 ) {
-  return workflowRunDetailSchema.parse(
+  return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/cancel`,
       workflowRunCancelSchema.parse(input),
@@ -315,7 +330,7 @@ export async function decideWorkflowGate(
   gateId: string,
   input: WorkflowGateDecision,
 ) {
-  return workflowRunDetailSchema.parse(
+  return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/gates/${encodeURIComponent(gateId)}/decision`,
       workflowGateDecisionSchema.parse(input),
@@ -328,7 +343,7 @@ export async function retryWorkflowNode(
   runNodeId: string,
   input: WorkflowNodeRetry,
 ) {
-  return workflowRunDetailSchema.parse(
+  return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(runNodeId)}/retry`,
       workflowNodeRetrySchema.parse(input),
@@ -341,7 +356,7 @@ export async function resolveWorkflowWorktree(
   leaseId: string,
   input: WorkflowWorktreeOutcomeRequest,
 ) {
-  return workflowRunDetailSchema.parse(
+  return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/worktree-leases/${encodeURIComponent(leaseId)}/outcome`,
       workflowWorktreeOutcomeRequestSchema.parse(input),

@@ -560,6 +560,7 @@ export function ProjectSettingsPage({
             directFolder={!project.capabilities.git}
             initialWorkflowId={initialWorkflowId}
             projectId={project.id}
+            worker={projectWorker ?? null}
             onOpenHistory={onCreateHistory}
           />
         </div>

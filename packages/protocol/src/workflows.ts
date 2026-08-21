@@ -1437,6 +1437,61 @@ export const workflowRunCreateSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const workflowRunProtectedInputSchema = z
+  .object({
+    version: z.literal(1),
+    input: workflowJsonObjectSchema,
+  })
+  .strict();
+
+export const workflowRunProtectedResultSchema = z
+  .object({
+    version: z.literal(1),
+    result: workflowJsonValueSchema,
+  })
+  .strict();
+
+export const workflowNodeProtectedInputSchema = z
+  .object({
+    version: z.literal(1),
+    input: workflowJsonValueSchema,
+  })
+  .strict();
+
+export const workflowNodeProtectedResultSchema = z
+  .object({
+    version: z.literal(1),
+    text: z.string().max(1_000_000),
+    structuredResult: workflowJsonValueSchema,
+  })
+  .strict();
+
+export const workflowProtectedErrorSchema = z
+  .object({
+    version: z.literal(1),
+    code: z.string().trim().min(1).max(200),
+    message: z.string().trim().min(1).max(100_000),
+  })
+  .strict();
+
+export const encryptedWorkflowRunCreateSchema = workflowRunCreateSchema
+  .omit({ structuredInput: true })
+  .extend({
+    id: idSchema,
+    protectedInput: workflowContentOpaqueSchema,
+  })
+  .strict()
+  .superRefine((run, context) => {
+    if (Object.keys(run.trigger.metadata).length > 0) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Protected manual workflow runs cannot expose trigger metadata.",
+        path: ["trigger", "metadata"],
+      });
+    }
+  });
+
 const nullableTimestamp = z.string().datetime().nullable();
 export const workflowRunSchema = z.object({
   id: idSchema,
@@ -1883,12 +1938,54 @@ export const workflowApprovalGateSchema = z
     }
   });
 
+export const workflowRunWireSchema = workflowRunSchema
+  .extend({
+    protectedInput: workflowContentOpaqueSchema,
+    protectedResult: workflowContentOpaqueSchema.nullable(),
+    protectedError: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict();
+
+export const workflowRunNodeWireSchema = workflowRunNodeSchema
+  .extend({
+    protectedInput: workflowContentOpaqueSchema.nullable(),
+    protectedResult: workflowContentOpaqueSchema.nullable(),
+    protectedError: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict();
+
+export const workflowRunNodeItemWireSchema = workflowRunNodeItemSchema
+  .extend({
+    protectedInput: workflowContentOpaqueSchema.nullable(),
+    protectedResult: workflowContentOpaqueSchema.nullable(),
+    protectedError: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict();
+
+export const workflowNodeAttemptWireSchema = workflowNodeAttemptSchema
+  .extend({
+    protectedInput: workflowContentOpaqueSchema.nullable(),
+    protectedResult: workflowContentOpaqueSchema.nullable(),
+    protectedError: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict();
+
 export const workflowRunDetailSchema = z.object({
   run: workflowRunSchema,
   nodes: z.array(workflowRunNodeSchema).max(1_000),
   items: z.array(workflowRunNodeItemSchema).max(10_000).default([]),
   dependencies: z.array(workflowRunNodeDependencySchema).max(10_000),
   attempts: z.array(workflowNodeAttemptSchema).max(10_000),
+  worktreeLeases: z.array(workflowWorktreeLeaseSchema).max(10_000).default([]),
+  gates: z.array(workflowApprovalGateSchema).max(1_000),
+});
+
+export const workflowRunWireDetailSchema = z.object({
+  run: workflowRunWireSchema,
+  nodes: z.array(workflowRunNodeWireSchema).max(1_000),
+  items: z.array(workflowRunNodeItemWireSchema).max(10_000).default([]),
+  dependencies: z.array(workflowRunNodeDependencySchema).max(10_000),
+  attempts: z.array(workflowNodeAttemptWireSchema).max(10_000),
   worktreeLeases: z.array(workflowWorktreeLeaseSchema).max(10_000).default([]),
   gates: z.array(workflowApprovalGateSchema).max(1_000),
 });
@@ -1968,6 +2065,7 @@ export const workflowTriggerDeliveryResultSchema = z.object({
   replayed: z.boolean(),
 });
 export const workflowRunListSchema = z.array(workflowRunSchema);
+export const workflowRunWireListSchema = z.array(workflowRunWireSchema);
 export const workflowRunQuerySchema = z.object({
   workflowId: idSchema.optional(),
   projectId: idSchema.optional(),
@@ -2056,6 +2154,69 @@ export const workflowNodeExecutionRequestSchema = z.object({
     .min(1_000)
     .max(24 * 60 * 60 * 1_000),
 });
+
+export const protectedWorkflowNodeExecutionRequestSchema = z.object({
+  workflowRunId: idSchema,
+  workflowRevisionId: idSchema,
+  revisionNodeId: idSchema,
+  nodePosition: z.number().int().nonnegative().max(999),
+  runNodeId: idSchema,
+  attemptId: idSchema,
+  idempotencyKey: z.string().trim().min(1).max(200),
+  worktreeId: optionalIdSchema,
+  rootKind: workflowExecutionRootKindSchema.default("git-worktree"),
+  cwd: z.string().trim().min(1).max(8_192),
+  threadId: optionalIdSchema,
+  protectedDefinition: workflowContentOpaqueSchema,
+  protectedRunInput: workflowContentOpaqueSchema,
+  predecessorResults: z
+    .array(
+      z
+        .object({
+          revisionNodeId: idSchema,
+          nodePosition: z.number().int().nonnegative().max(999),
+          runNodeId: idSchema,
+          protectedResult: workflowContentOpaqueSchema,
+        })
+        .strict(),
+    )
+    .max(1_000)
+    .default([]),
+  mutationMode: workflowMutationModeSchema,
+  permissionProfileId: optionalIdSchema,
+  timeoutMs: z
+    .number()
+    .int()
+    .min(1_000)
+    .max(24 * 60 * 60 * 1_000),
+});
+
+export const protectedWorkflowNodeExecutionResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("completed"),
+        threadId: idSchema,
+        turnId: idSchema,
+        measuredUsage: workflowMeasuredUsageSchema,
+        protectedNodeInput: workflowContentOpaqueSchema,
+        protectedNodeResult: workflowContentOpaqueSchema,
+        protectedAttemptInput: workflowContentOpaqueSchema,
+        protectedAttemptResult: workflowContentOpaqueSchema,
+        protectedRunResult: workflowContentOpaqueSchema,
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("failed"),
+        protectedAttemptError: workflowContentOpaqueSchema,
+        protectedNodeError: workflowContentOpaqueSchema,
+        protectedRunError: workflowContentOpaqueSchema,
+      })
+      .strict(),
+  ],
+);
 
 export const workflowNodeExecutionResultSchema = z.object({
   threadId: idSchema,
@@ -2247,9 +2408,14 @@ export type WorkflowTriggerDeliveryResult = z.infer<
   typeof workflowTriggerDeliveryResultSchema
 >;
 export type WorkflowRunCreate = z.infer<typeof workflowRunCreateSchema>;
+export type EncryptedWorkflowRunCreate = z.infer<
+  typeof encryptedWorkflowRunCreateSchema
+>;
 export type WorkflowRun = z.infer<typeof workflowRunSchema>;
+export type WorkflowRunWire = z.infer<typeof workflowRunWireSchema>;
 export type WorkflowRunNodeStatus = z.infer<typeof workflowRunNodeStatusSchema>;
 export type WorkflowRunNode = z.infer<typeof workflowRunNodeSchema>;
+export type WorkflowRunNodeWire = z.infer<typeof workflowRunNodeWireSchema>;
 export type WorkflowDependencyStatus = z.infer<
   typeof workflowDependencyStatusSchema
 >;
@@ -2295,6 +2461,7 @@ export type WorkflowApprovalGateStatus = z.infer<
 >;
 export type WorkflowApprovalGate = z.infer<typeof workflowApprovalGateSchema>;
 export type WorkflowRunDetail = z.infer<typeof workflowRunDetailSchema>;
+export type WorkflowRunWireDetail = z.infer<typeof workflowRunWireDetailSchema>;
 export type WorkflowRunQuery = z.infer<typeof workflowRunQuerySchema>;
 export type WorkflowRunEventQuery = z.infer<typeof workflowRunEventQuerySchema>;
 export type WorkflowRunEventPage = z.infer<typeof workflowRunEventPageSchema>;

@@ -9,6 +9,7 @@ import {
   encryptedWorkflowDefinitionCreateSchema,
   encryptedWorkflowDefinitionUpdateSchema,
   encryptedWorkflowRevisionCreateSchema,
+  encryptedWorkflowRunCreateSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionProtectedDescriptionSchema,
   workflowDefinitionProtectedNameSchema,
@@ -26,6 +27,19 @@ import {
   workflowRevisionSummarySchema,
   workflowRevisionWireSchema,
   workflowRevisionWireSummarySchema,
+  workflowNodeAttemptSchema,
+  workflowNodeProtectedInputSchema,
+  workflowNodeProtectedResultSchema,
+  workflowProtectedErrorSchema,
+  workflowRunCreateSchema,
+  workflowRunDetailSchema,
+  workflowRunNodeItemSchema,
+  workflowRunNodeSchema,
+  workflowRunProtectedInputSchema,
+  workflowRunProtectedResultSchema,
+  workflowRunSchema,
+  workflowRunWireDetailSchema,
+  workflowRunWireSchema,
   type EncryptedWorkflowDefinitionCreate,
   type EncryptedWorkflowDefinitionUpdate,
   type EncryptedWorkflowRevisionCreate,
@@ -40,6 +54,12 @@ import {
   type WorkflowRevisionSummary,
   type WorkflowRevisionWire,
   type WorkflowRevisionWireSummary,
+  type EncryptedWorkflowRunCreate,
+  type WorkflowRun,
+  type WorkflowRunCreate,
+  type WorkflowRunDetail,
+  type WorkflowRunWire,
+  type WorkflowRunWireDetail,
 } from "@cantrip/protocol/workflows";
 import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 
@@ -629,6 +649,249 @@ export async function openWorkflowDefinitionWireDetail(
     throw new ClientEncryptionError(
       "decryption-failed",
       "Protected workflow content could not be authenticated.",
+    );
+  } finally {
+    clearSensitiveBytes(context.componentKey);
+  }
+}
+
+export async function protectWorkflowRunCreate(
+  raw: WorkflowRunCreate,
+  options: TrustedOptions = {},
+): Promise<EncryptedWorkflowRunCreate> {
+  const input = workflowRunCreateSchema.parse(raw);
+  const { structuredInput, ...metadata } = input;
+  const id = crypto.randomUUID();
+  const context = encryptionContext(options);
+  try {
+    return encryptedWorkflowRunCreateSchema.parse({
+      ...metadata,
+      id,
+      permissionManifest: {
+        ...input.permissionManifest,
+        skills: [],
+        mcpServers: [],
+      },
+      protectedInput: await encryptWorkflowContent({
+        ownerId: context.ownerId,
+        context: { recordKind: "workflow-run", recordId: id, field: "input" },
+        keyRevision: context.keyRevision,
+        componentKey: context.componentKey,
+        content: { version: 1, input: structuredInput },
+        schema: workflowRunProtectedInputSchema,
+      }),
+    });
+  } finally {
+    clearSensitiveBytes(context.componentKey);
+  }
+}
+
+async function openRuntimeField<T>(input: {
+  context: EncryptionContext;
+  encrypted: WorkflowContentOpaque;
+  field: "input" | "result" | "error";
+  recordId: string;
+  recordKind:
+    | "workflow-run"
+    | "workflow-run-node"
+    | "workflow-run-node-item"
+    | "workflow-attempt";
+  schema: { parse(value: unknown): T };
+}): Promise<T> {
+  return decryptWorkflowContent({
+    ownerId: input.context.ownerId,
+    context: {
+      recordKind: input.recordKind,
+      recordId: input.recordId,
+      field: input.field,
+    },
+    keyRevision: input.encrypted.keyRevision,
+    componentKey: input.context.componentKey,
+    encrypted: input.encrypted,
+    schema: input.schema,
+  });
+}
+
+async function openWorkflowRunWithContext(
+  raw: WorkflowRunWire,
+  context: EncryptionContext,
+): Promise<WorkflowRun> {
+  const wire = workflowRunWireSchema.parse(raw);
+  const [input, result, error] = await Promise.all([
+    openRuntimeField({
+      context,
+      encrypted: wire.protectedInput,
+      field: "input",
+      recordId: wire.id,
+      recordKind: "workflow-run",
+      schema: workflowRunProtectedInputSchema,
+    }),
+    wire.protectedResult
+      ? openRuntimeField({
+          context,
+          encrypted: wire.protectedResult,
+          field: "result",
+          recordId: wire.id,
+          recordKind: "workflow-run",
+          schema: workflowRunProtectedResultSchema,
+        })
+      : null,
+    wire.protectedError
+      ? openRuntimeField({
+          context,
+          encrypted: wire.protectedError,
+          field: "error",
+          recordId: wire.id,
+          recordKind: "workflow-run",
+          schema: workflowProtectedErrorSchema,
+        })
+      : null,
+  ]);
+  return workflowRunSchema.parse({
+    ...wire,
+    protectedInput: undefined,
+    protectedResult: undefined,
+    protectedError: undefined,
+    structuredInput: input.input,
+    structuredResult: result?.result ?? null,
+    errorCode: error?.code ?? wire.errorCode,
+    errorMessage: error?.message ?? wire.errorMessage,
+  });
+}
+
+export async function openWorkflowRunWire(
+  raw: WorkflowRunWire,
+  options: TrustedOptions = {},
+): Promise<WorkflowRun> {
+  const context = encryptionContext(options);
+  try {
+    return await openWorkflowRunWithContext(raw, context);
+  } finally {
+    clearSensitiveBytes(context.componentKey);
+  }
+}
+
+export async function openWorkflowRunWireDetail(
+  raw: WorkflowRunWireDetail,
+  options: TrustedOptions = {},
+): Promise<WorkflowRunDetail> {
+  const wire = workflowRunWireDetailSchema.parse(raw);
+  const context = encryptionContext(options);
+  try {
+    const run = await openWorkflowRunWithContext(wire.run, context);
+    const nodes = await Promise.all(
+      wire.nodes.map(async (node) => {
+        const [input, result, error] = await Promise.all([
+          node.protectedInput
+            ? openRuntimeField({
+                context,
+                encrypted: node.protectedInput,
+                field: "input",
+                recordId: node.id,
+                recordKind: "workflow-run-node",
+                schema: workflowNodeProtectedInputSchema,
+              })
+            : null,
+          node.protectedResult
+            ? openRuntimeField({
+                context,
+                encrypted: node.protectedResult,
+                field: "result",
+                recordId: node.id,
+                recordKind: "workflow-run-node",
+                schema: workflowNodeProtectedResultSchema,
+              })
+            : null,
+          node.protectedError
+            ? openRuntimeField({
+                context,
+                encrypted: node.protectedError,
+                field: "error",
+                recordId: node.id,
+                recordKind: "workflow-run-node",
+                schema: workflowProtectedErrorSchema,
+              })
+            : null,
+        ]);
+        return workflowRunNodeSchema.parse({
+          ...node,
+          protectedInput: undefined,
+          protectedResult: undefined,
+          protectedError: undefined,
+          structuredInput: input?.input ?? {},
+          structuredResult: result?.structuredResult ?? null,
+          errorCode: error?.code,
+          errorMessage: error?.message,
+        });
+      }),
+    );
+    const items = wire.items.map((item) =>
+      workflowRunNodeItemSchema.parse({
+        ...item,
+        protectedInput: undefined,
+        protectedResult: undefined,
+        protectedError: undefined,
+        structuredInput: {},
+        structuredResult: null,
+      }),
+    );
+    const attempts = await Promise.all(
+      wire.attempts.map(async (attempt) => {
+        const [input, result, error] = await Promise.all([
+          attempt.protectedInput
+            ? openRuntimeField({
+                context,
+                encrypted: attempt.protectedInput,
+                field: "input",
+                recordId: attempt.id,
+                recordKind: "workflow-attempt",
+                schema: workflowNodeProtectedInputSchema,
+              })
+            : null,
+          attempt.protectedResult
+            ? openRuntimeField({
+                context,
+                encrypted: attempt.protectedResult,
+                field: "result",
+                recordId: attempt.id,
+                recordKind: "workflow-attempt",
+                schema: workflowNodeProtectedResultSchema,
+              })
+            : null,
+          attempt.protectedError
+            ? openRuntimeField({
+                context,
+                encrypted: attempt.protectedError,
+                field: "error",
+                recordId: attempt.id,
+                recordKind: "workflow-attempt",
+                schema: workflowProtectedErrorSchema,
+              })
+            : null,
+        ]);
+        return workflowNodeAttemptSchema.parse({
+          ...attempt,
+          protectedInput: undefined,
+          protectedResult: undefined,
+          protectedError: undefined,
+          structuredInput: input?.input ?? {},
+          structuredResult: result?.structuredResult ?? null,
+          errorCode: error?.code ?? attempt.errorCode,
+          errorMessage: error?.message ?? attempt.errorMessage,
+        });
+      }),
+    );
+    return workflowRunDetailSchema.parse({
+      ...wire,
+      run,
+      nodes,
+      items,
+      attempts,
+    });
+  } catch {
+    throw new ClientEncryptionError(
+      "decryption-failed",
+      "Protected workflow run content could not be authenticated.",
     );
   } finally {
     clearSensitiveBytes(context.componentKey);
