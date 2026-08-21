@@ -200,6 +200,22 @@ describe("project overview", () => {
     expect(markup).toContain("Running");
     expect(markup).toContain("Worker online");
     expect(markup).not.toContain("bounded line scan");
+    expect(markup.match(/data-elite-global-key=/g)).toHaveLength(10);
+    expect(markup).toContain(
+      'data-elite-global-key="project-overview:project-1:hero"',
+    );
+    expect(markup).toContain(
+      'data-elite-global-key="project-overview:project-1:metric:open-tabs"',
+    );
+    expect(markup).toContain(
+      'data-elite-global-key="project-overview:project-1:services"',
+    );
+    expect(markup).toContain(
+      'data-elite-global-key="project-overview:project-1:repository"',
+    );
+    expect(markup).toContain(
+      'data-elite-global-key="project-overview:project-1:workspace"',
+    );
   });
 
   it("formats tracked repository sizes at stable unit boundaries", () => {

@@ -127,12 +127,14 @@ function surfaceWorktreeId(surface: ProjectSurface): string | null {
 }
 
 function MetricCard({
+  eliteKey,
   icon,
   label,
   value,
   detail,
   onClick,
 }: {
+  eliteKey: string;
   icon: React.ReactNode;
   label: string;
   value: React.ReactNode;
@@ -151,6 +153,7 @@ function MetricCard({
   );
   return onClick ? (
     <button
+      data-elite-global-key={eliteKey}
       type="button"
       className="rounded-xl border bg-card/70 p-4 text-left shadow-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onClick}
@@ -158,7 +161,12 @@ function MetricCard({
       {content}
     </button>
   ) : (
-    <div className="rounded-xl border bg-card/70 p-4 shadow-sm">{content}</div>
+    <div
+      data-elite-global-key={eliteKey}
+      className="rounded-xl border bg-card/70 p-4 shadow-sm"
+    >
+      {content}
+    </div>
   );
 }
 
@@ -225,11 +233,15 @@ export function ProjectOverview({
   ) : (
     "—"
   );
+  const eliteKeyPrefix = `project-overview:${project.id}`;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <main className="mx-auto w-full max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8">
-        <section className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-sm sm:p-7">
+        <section
+          data-elite-global-key={`${eliteKeyPrefix}:hero`}
+          className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-sm sm:p-7"
+        >
           <div className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
           <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 gap-4">
@@ -313,18 +325,21 @@ export function ProjectOverview({
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
           <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:open-tabs`}
             icon={<Rows3 className="size-3.5" />}
             label="Open tabs"
             value={countFormat.format(orderedSurfaces.length)}
             detail="Across this project"
           />
           <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:running`}
             icon={<Play className="size-3.5" />}
             label="Running now"
             value={countFormat.format(runningCount)}
             detail="Agents, terminals, and Code"
           />
           <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:history`}
             icon={
               folderProject ? (
                 <Folder className="size-3.5" />
@@ -347,6 +362,7 @@ export function ProjectOverview({
             }
           />
           <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:lines`}
             icon={<Files className="size-3.5" />}
             label={folderProject ? "Lines of text" : "Lines of code"}
             value={stats ? countFormat.format(stats.lineCount) : loadingValue}
@@ -357,6 +373,7 @@ export function ProjectOverview({
             }
           />
           <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:size`}
             icon={<HardDrive className="size-3.5" />}
             label={folderProject ? "Folder size" : "Repository size"}
             value={
@@ -373,6 +390,7 @@ export function ProjectOverview({
             }
           />
           <MetricCard
+            eliteKey={`${eliteKeyPrefix}:metric:tokens`}
             icon={<Coins className="size-3.5" />}
             label="Token usage"
             value={
@@ -395,6 +413,7 @@ export function ProjectOverview({
         >
           {compact ? (
             <button
+              data-elite-global-key={`${eliteKeyPrefix}:open-tabs`}
               className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left shadow-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
               onClick={onOpenTabs}
               type="button"
@@ -411,7 +430,10 @@ export function ProjectOverview({
               <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </button>
           ) : (
-            <div className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+            <div
+              data-elite-global-key={`${eliteKeyPrefix}:services`}
+              className="overflow-hidden rounded-2xl border bg-card shadow-sm"
+            >
               <div className="flex items-center justify-between border-b px-5 py-4">
                 <div>
                   <h2 className="font-semibold">Active services</h2>
@@ -530,7 +552,10 @@ export function ProjectOverview({
           )}
 
           <aside className="space-y-5">
-            <div className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div
+              data-elite-global-key={`${eliteKeyPrefix}:repository`}
+              className="rounded-2xl border bg-card p-5 shadow-sm"
+            >
               <h2 className="font-semibold">
                 {folderProject ? "Folder" : "Repository"}
               </h2>
@@ -567,7 +592,10 @@ export function ProjectOverview({
               ) : null}
             </div>
 
-            <div className="rounded-2xl border bg-card p-5 shadow-sm">
+            <div
+              data-elite-global-key={`${eliteKeyPrefix}:workspace`}
+              className="rounded-2xl border bg-card p-5 shadow-sm"
+            >
               <h2 className="font-semibold">
                 {folderProject ? "Location" : "Workspace"}
               </h2>
