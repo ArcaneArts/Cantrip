@@ -18,7 +18,12 @@ export function ChatRunStatus({
 
   if (status === "running" && !automationPaused && !waitingForPlanAnswer) {
     return (
-      <div aria-live="polite" role="status" className="text-sm">
+      <div
+        aria-live="polite"
+        className="text-sm"
+        data-elite-ignore=""
+        role="status"
+      >
         <span className="chat-working-shimmer">
           {syncingCodeGraph ? "Syncing CodeGraph..." : "Working..."}
         </span>
@@ -36,8 +41,9 @@ export function ChatRunStatus({
   return (
     <div
       aria-live="polite"
-      role="status"
       className="flex items-center gap-3 text-sm text-muted-foreground"
+      data-elite-ignore=""
+      role="status"
     >
       <div className="grid size-7 place-items-center rounded-lg border bg-card">
         {automationPaused ? (

@@ -16,6 +16,7 @@ import "./elite-global-effects.css";
 
 export const ELITE_GLOBAL_CANDIDATE_SELECTOR = [
   "[data-elite-global]",
+  "[data-elite-global-key]",
   '[data-slot="card"]',
   '[data-slot="dialog-content"]',
   '[data-slot="empty-state"]',
@@ -39,6 +40,9 @@ export const ELITE_GLOBAL_CANDIDATE_SELECTOR = [
   "p",
 ].join(",");
 
+export const ELITE_GLOBAL_SCROLL_SUPPRESSION_MS = 120;
+export const ELITE_GLOBAL_SEEN_KEY_LIMIT = 10_000;
+
 const ELITE_GLOBAL_STYLE_PROPERTIES = [
   "--elite-chromatic-angle",
   "--elite-chromatic-channel-a",
@@ -58,10 +62,40 @@ const ELITE_GLOBAL_STYLE_PROPERTIES = [
   "--elite-shift-y",
 ] as const;
 
-function eligibleEliteGlobalElement(element: HTMLElement): boolean {
-  return !element.closest(
-    "[data-elite-lab], [data-elite-ignore], [data-elite-reveal]",
-  );
+export function isEligibleEliteGlobalElement(element: HTMLElement): boolean {
+  if (
+    element.closest(
+      "[data-elite-lab], [data-elite-ignore], [data-elite-reveal]",
+    )
+  ) {
+    return false;
+  }
+  return !element.parentElement?.closest("[data-elite-global-key]");
+}
+
+function eliteGlobalStableKey(element: HTMLElement): string | null {
+  const key = element.dataset.eliteGlobalKey?.trim();
+  return key ? key : null;
+}
+
+export function shouldAnimateEliteGlobalElement(
+  element: HTMLElement,
+  animated: WeakSet<HTMLElement>,
+  seenKeys: Set<string>,
+  suppressUnkeyed: boolean,
+): boolean {
+  if (animated.has(element) || !element.isConnected) return false;
+  animated.add(element);
+
+  const stableKey = eliteGlobalStableKey(element);
+  if (!stableKey) return !suppressUnkeyed;
+  if (seenKeys.has(stableKey)) return false;
+  seenKeys.add(stableKey);
+  if (seenKeys.size > ELITE_GLOBAL_SEEN_KEY_LIMIT) {
+    const oldestKey = seenKeys.values().next().value;
+    if (oldestKey) seenKeys.delete(oldestKey);
+  }
+  return true;
 }
 
 export function eliteGlobalContentKind(
@@ -91,7 +125,7 @@ export function collectEliteGlobalCandidates(root: ParentNode): HTMLElement[] {
   root
     .querySelectorAll<HTMLElement>(ELITE_GLOBAL_CANDIDATE_SELECTOR)
     .forEach((element) => candidates.add(element));
-  const eligible = [...candidates].filter(eligibleEliteGlobalElement);
+  const eligible = [...candidates].filter(isEligibleEliteGlobalElement);
   const eligibleSet = new Set(eligible);
   return eligible.filter((element) => {
     const parentCandidate = element.parentElement?.closest<HTMLElement>(
@@ -146,10 +180,12 @@ export function EliteGlobalEffects({
     if (!enabled || !hasVariants) return;
 
     const animated = new WeakSet<HTMLElement>();
+    const seenKeys = new Set<string>();
     const active = new Set<HTMLElement>();
     const timers = new Map<HTMLElement, Set<number>>();
     let batchQueued = false;
     let cancelled = false;
+    let suppressUnkeyedUntil = 0;
     const pendingRoots = new Set<ParentNode>();
 
     const schedule = (
@@ -173,11 +209,15 @@ export function EliteGlobalEffects({
     };
     const animateBatch = (elements: HTMLElement[]) => {
       if (cancelled) return;
-      const fresh = elements.filter((element) => {
-        if (animated.has(element) || !element.isConnected) return false;
-        animated.add(element);
-        return true;
-      });
+      const suppressUnkeyed = Date.now() < suppressUnkeyedUntil;
+      const fresh = elements.filter((element) =>
+        shouldAnimateEliteGlobalElement(
+          element,
+          animated,
+          seenKeys,
+          suppressUnkeyed,
+        ),
+      );
       const visible = fresh
         .filter(isEliteRevealVisible)
         .map((element) => ({ element, rect: element.getBoundingClientRect() }))
@@ -260,6 +300,13 @@ export function EliteGlobalEffects({
     };
 
     queueRoot(document.body);
+    const handleScroll = () => {
+      suppressUnkeyedUntil = Date.now() + ELITE_GLOBAL_SCROLL_SUPPRESSION_MS;
+    };
+    document.addEventListener("scroll", handleScroll, {
+      capture: true,
+      passive: true,
+    });
     const observer = new MutationObserver((records) => {
       records.forEach((record) => {
         record.addedNodes.forEach((node) => {
@@ -272,6 +319,7 @@ export function EliteGlobalEffects({
     return () => {
       cancelled = true;
       observer.disconnect();
+      document.removeEventListener("scroll", handleScroll, true);
       pendingRoots.clear();
       timers.forEach((elementTimers) =>
         elementTimers.forEach((timer) => window.clearTimeout(timer)),

@@ -16,6 +16,7 @@ describe("ChatRunStatus", () => {
 
     expect(markup).toContain("Working...");
     expect(markup).toContain("chat-working-shimmer");
+    expect(markup).toContain('data-elite-ignore=""');
     expect(markup).not.toContain("working through Codex");
     expect(markup).not.toContain("animate-spin");
     expect(markup).not.toContain("<svg");
@@ -56,6 +57,8 @@ describe("ChatRunStatus", () => {
 
     expect(approvalMarkup).toContain("waiting for your approval");
     expect(pausedMarkup).toContain("Pause requested");
+    expect(approvalMarkup).toContain('data-elite-ignore=""');
+    expect(pausedMarkup).toContain('data-elite-ignore=""');
   });
 
   it("does not render for an idle agent", () => {
