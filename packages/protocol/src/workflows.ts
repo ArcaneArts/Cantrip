@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { workflowContentOpaqueSchema } from "./workflow-content.js";
+
 const MAX_JSON_BYTES = 1_000_000;
 const MAX_JSON_DEPTH = 32;
 const MAX_JSON_NODES = 10_000;
@@ -908,6 +910,132 @@ export const workflowDefinitionUpdateSchema = z
     message: "Provide at least one workflow metadata update.",
   });
 
+export const workflowDefinitionProtectedSlugSchema = z
+  .object({
+    version: z.literal(1),
+    slug: workflowDefinitionCreateObject.shape.slug,
+  })
+  .strict();
+
+export const workflowDefinitionProtectedNameSchema = z
+  .object({
+    version: z.literal(1),
+    name: workflowDefinitionCreateObject.shape.name,
+  })
+  .strict();
+
+export const workflowDefinitionProtectedDescriptionSchema = z
+  .object({
+    version: z.literal(1),
+    description: workflowDefinitionCreateObject.shape.description,
+  })
+  .strict();
+
+export const workflowDefinitionProtectedProvenanceSchema = z
+  .object({ version: z.literal(1), provenance: workflowProvenanceSchema })
+  .strict();
+
+export const workflowRevisionProtectedProvenanceSchema = z
+  .object({ version: z.literal(1), provenance: workflowProvenanceSchema })
+  .strict();
+
+export const workflowRevisionProtectedContentHashSchema = z
+  .object({
+    version: z.literal(1),
+    contentHash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  })
+  .strict();
+
+const workflowBlindIndexSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
+
+export const workflowDefinitionOpaqueContentSchema = z
+  .object({
+    protectedSlug: workflowContentOpaqueSchema,
+    protectedName: workflowContentOpaqueSchema,
+    protectedDescription: workflowContentOpaqueSchema,
+    protectedProvenance: workflowContentOpaqueSchema,
+  })
+  .strict();
+
+export const workflowRevisionOpaqueContentSchema = z
+  .object({
+    protectedProvenance: workflowContentOpaqueSchema,
+    protectedContentHash: workflowContentOpaqueSchema,
+  })
+  .strict();
+
+export const encryptedWorkflowRevisionCreateSchema =
+  workflowRevisionCreateSchema
+    .omit({ provenance: true })
+    .extend({
+      id: z.uuid(),
+      contentBlindIndex: workflowBlindIndexSchema,
+      content: workflowRevisionOpaqueContentSchema,
+    })
+    .strict();
+
+export const encryptedWorkflowDefinitionCreateSchema =
+  workflowDefinitionCreateObject
+    .omit({
+      slug: true,
+      name: true,
+      description: true,
+      provenance: true,
+      revision: true,
+    })
+    .extend({
+      id: z.uuid(),
+      slugBlindIndex: workflowBlindIndexSchema,
+      content: workflowDefinitionOpaqueContentSchema,
+      revision: encryptedWorkflowRevisionCreateSchema,
+    })
+    .strict()
+    .superRefine((workflow, context) => {
+      if (workflow.scope === "project" && !workflow.projectId) {
+        context.addIssue({
+          code: "custom",
+          message: "Project workflows require a project id.",
+          path: ["projectId"],
+        });
+      }
+      if (workflow.scope === "personal" && workflow.projectId) {
+        context.addIssue({
+          code: "custom",
+          message: "Personal workflows cannot belong to a project.",
+          path: ["projectId"],
+        });
+      }
+      if (
+        workflow.source !== workflow.revision.source ||
+        workflow.trustState !== workflow.revision.trustState
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "The initial revision must use the workflow source and trust state.",
+          path: ["revision"],
+        });
+      }
+    });
+
+export const encryptedWorkflowDefinitionUpdateSchema = z
+  .object({
+    content: workflowDefinitionOpaqueContentSchema
+      .pick({ protectedName: true, protectedDescription: true })
+      .partial()
+      .optional(),
+    trustState: workflowTrustStateSchema.optional(),
+    archived: z.boolean().optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.trustState !== undefined ||
+      value.archived !== undefined ||
+      (value.content !== undefined && Object.keys(value.content).length > 0),
+    { message: "Provide at least one encrypted workflow metadata update." },
+  );
+
 export const workflowRevisionSummarySchema = z.object({
   id: idSchema,
   workflowId: idSchema,
@@ -919,6 +1047,11 @@ export const workflowRevisionSummarySchema = z.object({
   createdByUserId: idSchema.nullable(),
   createdAt: z.string().datetime(),
 });
+
+export const workflowRevisionWireSummarySchema = workflowRevisionSummarySchema
+  .omit({ provenance: true, contentHash: true })
+  .extend({ content: workflowRevisionOpaqueContentSchema })
+  .strict();
 
 export const workflowDefinitionSummarySchema = z.object({
   id: idSchema,
@@ -936,6 +1069,21 @@ export const workflowDefinitionSummarySchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
+
+export const workflowDefinitionWireSummarySchema =
+  workflowDefinitionSummarySchema
+    .omit({
+      slug: true,
+      name: true,
+      description: true,
+      provenance: true,
+      latestRevision: true,
+    })
+    .extend({
+      content: workflowDefinitionOpaqueContentSchema,
+      latestRevision: workflowRevisionWireSummarySchema.nullable(),
+    })
+    .strict();
 
 export const workflowRevisionNodeSchema = workflowRevisionNodeInputObject
   .extend({
@@ -971,10 +1119,27 @@ export const workflowRevisionSchema = workflowRevisionSummarySchema.extend({
   edges: z.array(workflowRevisionEdgeSchema).max(2_048),
 });
 
+export const workflowRevisionWireSchema = workflowRevisionSchema
+  .omit({ provenance: true, contentHash: true })
+  .extend({ content: workflowRevisionOpaqueContentSchema })
+  .strict();
+
 export const workflowDefinitionDetailSchema = z.object({
   workflow: workflowDefinitionSummarySchema,
   revision: workflowRevisionSchema.nullable(),
 });
+export const workflowDefinitionWireDetailSchema = z
+  .object({
+    workflow: workflowDefinitionWireSummarySchema,
+    revision: workflowRevisionWireSchema.nullable(),
+  })
+  .strict();
+export const workflowDefinitionWireListSchema = z.array(
+  workflowDefinitionWireSummarySchema,
+);
+export const workflowRevisionWireListSchema = z.array(
+  workflowRevisionWireSummarySchema,
+);
 export const workflowDefinitionListSchema = z.array(
   workflowDefinitionSummarySchema,
 );
@@ -1871,6 +2036,31 @@ export type WorkflowRepositoryImport = z.infer<
 export type WorkflowDefinitionUpdate = z.infer<
   typeof workflowDefinitionUpdateSchema
 >;
+export type EncryptedWorkflowDefinitionCreate = z.infer<
+  typeof encryptedWorkflowDefinitionCreateSchema
+>;
+export type EncryptedWorkflowDefinitionUpdate = z.infer<
+  typeof encryptedWorkflowDefinitionUpdateSchema
+>;
+export type EncryptedWorkflowRevisionCreate = z.infer<
+  typeof encryptedWorkflowRevisionCreateSchema
+>;
+export type WorkflowDefinitionOpaqueContent = z.infer<
+  typeof workflowDefinitionOpaqueContentSchema
+>;
+export type WorkflowRevisionOpaqueContent = z.infer<
+  typeof workflowRevisionOpaqueContentSchema
+>;
+export type WorkflowDefinitionWireSummary = z.infer<
+  typeof workflowDefinitionWireSummarySchema
+>;
+export type WorkflowDefinitionWireDetail = z.infer<
+  typeof workflowDefinitionWireDetailSchema
+>;
+export type WorkflowRevisionWireSummary = z.infer<
+  typeof workflowRevisionWireSummarySchema
+>;
+export type WorkflowRevisionWire = z.infer<typeof workflowRevisionWireSchema>;
 export type WorkflowRevisionSummary = z.infer<
   typeof workflowRevisionSummarySchema
 >;

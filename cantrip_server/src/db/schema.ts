@@ -3457,14 +3457,20 @@ export const workflowDefinitions = pgTable(
       onDelete: "cascade",
     }),
     scope: text("scope").notNull(),
-    slug: text("slug").notNull(),
-    name: text("name").notNull(),
-    description: text("description"),
+    slugBlindIndex: text("slug_blind_index").notNull(),
+    protectedSlug: jsonb("protected_slug")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
+    protectedName: jsonb("protected_name")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
+    protectedDescription: jsonb("protected_description")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     source: text("source").notNull().default("cantrip"),
-    provenance: jsonb("provenance")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
+    protectedProvenance: jsonb("protected_provenance")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     trustState: text("trust_state").notNull().default("untrusted"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -3476,10 +3482,10 @@ export const workflowDefinitions = pgTable(
   },
   (table) => [
     uniqueIndex("workflow_definitions_personal_slug_unique")
-      .on(table.ownerId, table.slug)
+      .on(table.ownerId, table.slugBlindIndex)
       .where(sql`${table.scope} = 'personal' AND ${table.projectId} IS NULL`),
     uniqueIndex("workflow_definitions_project_slug_unique")
-      .on(table.projectId, table.slug)
+      .on(table.projectId, table.slugBlindIndex)
       .where(
         sql`${table.scope} = 'project' AND ${table.projectId} IS NOT NULL`,
       ),
@@ -3515,7 +3521,6 @@ export const workflowRevisions = pgTable(
       .notNull()
       .references(() => workflowDefinitions.id, { onDelete: "cascade" }),
     revision: integer("revision").notNull(),
-    definition: jsonb("definition").$type<Record<string, unknown>>().notNull(),
     declaredInputs: jsonb("declared_inputs")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -3533,12 +3538,14 @@ export const workflowRevisions = pgTable(
       .notNull()
       .default({}),
     source: text("source").notNull(),
-    provenance: jsonb("provenance")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
+    protectedProvenance: jsonb("protected_provenance")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     trustState: text("trust_state").notNull().default("untrusted"),
-    contentHash: text("content_hash").notNull(),
+    contentBlindIndex: text("content_blind_index").notNull(),
+    protectedContentHash: jsonb("protected_content_hash")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -3553,7 +3560,7 @@ export const workflowRevisions = pgTable(
     ),
     uniqueIndex("workflow_revisions_workflow_hash_unique").on(
       table.workflowId,
-      table.contentHash,
+      table.contentBlindIndex,
     ),
     index("workflow_revisions_workflow_created_index").on(
       table.workflowId,

@@ -5,10 +5,11 @@ import {
   workflowAutomationTriggerUpdateSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionDetailSchema,
+  workflowDefinitionWireDetailSchema,
   workflowDefinitionGenerationCreateSchema,
   workflowDefinitionGenerationResultSchema,
-  workflowDefinitionListSchema,
-  workflowDefinitionSummarySchema,
+  workflowDefinitionWireListSchema,
+  workflowDefinitionWireSummarySchema,
   workflowDefinitionUpdateSchema,
   workflowGateDecisionSchema,
   workflowGitEventDeliveryCreateSchema,
@@ -18,7 +19,7 @@ import {
   workflowRepositoryInventorySchema,
   workflowRepositoryWriteResultSchema,
   workflowRevisionCreateSchema,
-  workflowRevisionSchema,
+  workflowRevisionWireSchema,
   workflowRunCancelSchema,
   workflowRunCreateSchema,
   workflowRunDetailSchema,
@@ -53,11 +54,19 @@ import {
 } from "@cantrip/protocol/workflows";
 
 import { post, request, withQuery } from "@/lib/api-client";
+import {
+  openWorkflowDefinitionWireDetail,
+  openWorkflowDefinitionWireSummary,
+  openWorkflowRevisionWire,
+  protectWorkflowDefinitionCreate,
+  protectWorkflowDefinitionUpdate,
+  protectWorkflowRevisionCreate,
+} from "@/lib/workflow-encryption";
 
 export async function getWorkflows(
   input: Partial<WorkflowDefinitionQuery> = {},
 ) {
-  return workflowDefinitionListSchema.parse(
+  const wire = workflowDefinitionWireListSchema.parse(
     await request(
       withQuery("/api/workflows", {
         scope: input.scope,
@@ -67,17 +76,28 @@ export async function getWorkflows(
       }),
     ),
   );
+  return Promise.all(
+    wire.map((workflow) => openWorkflowDefinitionWireSummary(workflow)),
+  );
 }
 
 export async function getWorkflow(workflowId: string) {
-  return workflowDefinitionDetailSchema.parse(
-    await request(`/api/workflows/${encodeURIComponent(workflowId)}`),
+  return openWorkflowDefinitionWireDetail(
+    workflowDefinitionWireDetailSchema.parse(
+      await request(`/api/workflows/${encodeURIComponent(workflowId)}`),
+    ),
   );
 }
 
 export async function createWorkflow(input: WorkflowDefinitionCreate) {
-  return workflowDefinitionDetailSchema.parse(
-    await post("/api/workflows", workflowDefinitionCreateSchema.parse(input)),
+  const trusted = workflowDefinitionCreateSchema.parse(input);
+  return openWorkflowDefinitionWireDetail(
+    workflowDefinitionWireDetailSchema.parse(
+      await post(
+        "/api/workflows",
+        await protectWorkflowDefinitionCreate(trusted),
+      ),
+    ),
   );
 }
 
@@ -97,11 +117,16 @@ export async function updateWorkflow(
   workflowId: string,
   input: WorkflowDefinitionUpdate,
 ) {
-  return workflowDefinitionSummarySchema.parse(
-    await request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(workflowDefinitionUpdateSchema.parse(input)),
-    }),
+  const trusted = workflowDefinitionUpdateSchema.parse(input);
+  return openWorkflowDefinitionWireSummary(
+    workflowDefinitionWireSummarySchema.parse(
+      await request(`/api/workflows/${encodeURIComponent(workflowId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(
+          await protectWorkflowDefinitionUpdate(workflowId, trusted),
+        ),
+      }),
+    ),
   );
 }
 
@@ -109,10 +134,13 @@ export async function appendWorkflowRevision(
   workflowId: string,
   input: WorkflowRevisionCreate,
 ) {
-  return workflowRevisionSchema.parse(
-    await post(
-      `/api/workflows/${encodeURIComponent(workflowId)}/revisions`,
-      workflowRevisionCreateSchema.parse(input),
+  const trusted = workflowRevisionCreateSchema.parse(input);
+  return openWorkflowRevisionWire(
+    workflowRevisionWireSchema.parse(
+      await post(
+        `/api/workflows/${encodeURIComponent(workflowId)}/revisions`,
+        await protectWorkflowRevisionCreate(trusted),
+      ),
     ),
   );
 }
