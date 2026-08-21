@@ -391,6 +391,19 @@ export interface ChatAttachmentRecord extends ChatAttachmentOpaqueSummary {
   workerId: string;
 }
 
+export function toChatAttachmentOpaqueSummary(
+  attachment: ChatAttachmentRecord,
+): ChatAttachmentOpaqueSummary {
+  return chatAttachmentOpaqueSummarySchema.parse({
+    id: attachment.id,
+    chatId: attachment.chatId,
+    sizeBytes: attachment.sizeBytes,
+    status: attachment.status,
+    protectedMetadata: attachment.protectedMetadata,
+    createdAt: attachment.createdAt,
+  });
+}
+
 export class ExecutionLaneConflictError extends Error {}
 export class SurfacePrivateStateConflictError extends Error {}
 export class ExecutionPlacementUnavailableError extends Error {

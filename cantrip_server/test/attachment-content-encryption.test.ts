@@ -7,10 +7,36 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { describe, expect, it } from "vitest";
 
 import * as schema from "../src/db/schema.js";
+import {
+  toChatAttachmentOpaqueSummary,
+  type ChatAttachmentRecord,
+} from "../src/db/repository.js";
+import { protectedAttachmentMetadataFixture } from "./protected-attachment-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
 describe("opaque attachment persistence", () => {
+  it("removes internal worker placement from public attachment summaries", () => {
+    const attachment: ChatAttachmentRecord = {
+      id: "22222222-2222-4222-8222-222222222222",
+      chatId: "11111111-1111-4111-8111-111111111111",
+      workerId: "worker-attachment",
+      protectedMetadata: protectedAttachmentMetadataFixture(),
+      sizeBytes: 42,
+      status: "ready",
+      createdAt: "2026-08-21T21:04:07.176Z",
+    };
+
+    expect(toChatAttachmentOpaqueSummary(attachment)).toEqual({
+      id: attachment.id,
+      chatId: attachment.chatId,
+      protectedMetadata: attachment.protectedMetadata,
+      sizeBytes: attachment.sizeBytes,
+      status: attachment.status,
+      createdAt: attachment.createdAt,
+    });
+  });
+
   it("stores only protected metadata and public control-plane fields", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });

@@ -418,7 +418,6 @@ import {
   attachmentDownloadOpaqueSchema,
   attachmentUploadOpaqueSchema,
   chatAttachmentOpaqueListSchema,
-  chatAttachmentOpaqueSummarySchema,
 } from "@cantrip/protocol/attachment-content";
 import {
   surfaceStreamWireRequestSchema,
@@ -667,6 +666,7 @@ import {
   WORKER_ONLINE_WINDOW_MS,
   type ChatExecutionContext,
   type ModelRuntime,
+  toChatAttachmentOpaqueSummary,
 } from "./db/repository.js";
 import { ProjectAutomationConflictError } from "./db/project-automations.js";
 import {
@@ -7552,7 +7552,7 @@ export async function buildApp({
             idempotencyKey: input.idempotencyKey,
           },
           attachments: attachments.map((attachment) =>
-            chatAttachmentOpaqueSummarySchema.parse(attachment),
+            toChatAttachmentOpaqueSummary(attachment),
           ),
         }),
       );
@@ -7866,7 +7866,7 @@ export async function buildApp({
                       protectedPlan: null,
                     }),
                 attachments: attachments.map((attachment) =>
-                  chatAttachmentOpaqueSummarySchema.parse(attachment),
+                  toChatAttachmentOpaqueSummary(attachment),
                 ),
                 skillNames:
                   options.structuredResult || encryptedChatMessages
@@ -24243,9 +24243,7 @@ export async function buildApp({
           },
         );
         if (!attachment) throw new Error("Chat not found.");
-        return reply
-          .code(201)
-          .send(chatAttachmentOpaqueSummarySchema.parse(attachment));
+        return reply.code(201).send(toChatAttachmentOpaqueSummary(attachment));
       } catch (error) {
         try {
           await bridge.request(context.workerId, {
@@ -24663,7 +24661,7 @@ export async function buildApp({
         context.chatId,
         input.data,
         attachments.map((attachment) =>
-          chatAttachmentOpaqueSummarySchema.parse(attachment),
+          toChatAttachmentOpaqueSummary(attachment),
         ),
       );
       if (!prompt) return reply.code(404).send({ error: "Chat not found." });
@@ -24742,7 +24740,7 @@ export async function buildApp({
         request.params.promptId,
         input.data.prompt,
         attachments.map((attachment) =>
-          chatAttachmentOpaqueSummarySchema.parse(attachment),
+          toChatAttachmentOpaqueSummary(attachment),
         ),
       );
       if (!prompt) {
@@ -24815,7 +24813,7 @@ export async function buildApp({
             threadId: context.threadId,
             protectedPrompt: queued.pendingMessage,
             attachments: attachments.map((attachment) =>
-              chatAttachmentOpaqueSummarySchema.parse(attachment),
+              toChatAttachmentOpaqueSummary(attachment),
             ),
             model: runtime.model,
             provider: runtime.provider,
@@ -24954,7 +24952,7 @@ export async function buildApp({
           context.chatId,
           input.data.queuedPrompt,
           attachments.map((attachment) =>
-            chatAttachmentOpaqueSummarySchema.parse(attachment),
+            toChatAttachmentOpaqueSummary(attachment),
           ),
         );
         if (prompt) {
