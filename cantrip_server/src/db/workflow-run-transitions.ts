@@ -36,6 +36,8 @@ export async function cancelPendingWorkflowGates(
     .update(schema.workflowRunNodes)
     .set({
       status: "cancelled",
+      executionLeaseKey: null,
+      timeoutAt: null,
       waitingAt: null,
       completedAt: input.now,
       updatedAt: input.now,
@@ -48,6 +50,25 @@ export async function cancelPendingWorkflowGates(
       ),
     )
     .returning({ id: schema.workflowRunNodes.id });
+  if (nodes.length > 0) {
+    await transaction
+      .update(schema.workflowNodeAttempts)
+      .set({
+        status: "cancelled",
+        heartbeatAt: input.now,
+        completedAt: input.now,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          inArray(
+            schema.workflowNodeAttempts.runNodeId,
+            nodes.map(({ id }) => id),
+          ),
+          eq(schema.workflowNodeAttempts.status, "waiting-for-approval"),
+        ),
+      );
+  }
   await transaction
     .update(schema.workflowApprovalGates)
     .set({ status: "cancelled", updatedAt: input.now })
@@ -483,7 +504,7 @@ export async function recomputeWorkflowRun(
     status === "waiting"
       ? (
           await transaction
-            .select({ prompt: schema.workflowApprovalGates.prompt })
+            .select({ id: schema.workflowApprovalGates.id })
             .from(schema.workflowApprovalGates)
             .where(
               and(
@@ -512,7 +533,9 @@ export async function recomputeWorkflowRun(
         status === "paused"
           ? input.lockedRun.pauseReason
           : status === "waiting"
-            ? (pendingGate?.prompt ?? input.lockedRun.pauseReason)
+            ? pendingGate
+              ? "Waiting for a protected workflow gate decision."
+              : input.lockedRun.pauseReason
             : null,
       pausedAt:
         status === "paused" || status === "waiting"

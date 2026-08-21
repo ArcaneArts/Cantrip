@@ -5,13 +5,19 @@ import {
 } from "@cantrip/crypto";
 import type { WorkerCommand } from "@cantrip/protocol";
 import {
+  workflowGateProtectedRequestSchema,
+  workflowGateProtectedResponseSchema,
   workflowNodeProtectedResultSchema,
+  workflowProtectedErrorSchema,
   workflowRevisionProtectedDefinitionSchema,
   workflowRunProtectedInputSchema,
 } from "@cantrip/protocol/workflows";
 import { describe, expect, it } from "vitest";
 
-import { executeProtectedWorkflowNode } from "../src/workflow-execution-encryption.js";
+import {
+  executeProtectedWorkflowNode,
+  resolveProtectedWorkflowGate,
+} from "../src/workflow-execution-encryption.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const ownerId = "owner-workflow-runtime";
@@ -444,5 +450,189 @@ describe("protected workflow execution", () => {
       selectedDependencyIds: ["dependency-yes"],
     });
     expect(JSON.stringify(result)).not.toContain("approved");
+  });
+
+  it("opens gate requests and decisions only at trusted endpoints", async () => {
+    const key = randomBytes(32);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({ key: new Uint8Array(key), keyRevision: 1 }),
+    } as unknown as WorkerEncryptionService;
+    const permissionRequirements = {
+      filesystem: "read-only" as const,
+      network: "none" as const,
+      approvalMode: "preauthorized" as const,
+      skills: ["private-gate-skill"],
+      mcpServers: [],
+      nativeSubagents: false,
+    };
+    const protectedDefinition = await encryptWorkflowContent({
+      ownerId,
+      context: {
+        recordKind: "workflow-revision",
+        recordId: revisionId,
+        field: "definition",
+      },
+      keyRevision: 1,
+      componentKey: key,
+      content: {
+        version: 1,
+        graph: {
+          version: 1,
+          nodes: [
+            {
+              key: "confirm",
+              type: "gate",
+              name: "Private gate",
+              configuration: {
+                prompt: "PRIVATE_GATE_PROMPT",
+                expiresAfterMs: null,
+                denialPolicy: "fail-run",
+              },
+              inputSchema: {},
+              outputSchema: {},
+              permissionRequirements,
+              mutationMode: "read-only",
+              modelRouteId: null,
+              permissionProfileId: null,
+            },
+          ],
+          edges: [],
+        },
+        declaredInputs: {},
+        declaredOutputs: {},
+        defaults: {},
+        permissionRequirements,
+      },
+      schema: workflowRevisionProtectedDefinitionSchema,
+    });
+    const protectedRunInput = await encryptWorkflowContent({
+      ownerId,
+      context: { recordKind: "workflow-run", recordId: runId, field: "input" },
+      keyRevision: 1,
+      componentKey: key,
+      content: { version: 1, input: { request: "PRIVATE_GATE_INPUT" } },
+      schema: workflowRunProtectedInputSchema,
+    });
+    const nodeCommand = {
+      type: "workflow.node.execute",
+      workflowRunId: runId,
+      workflowRevisionId: revisionId,
+      revisionNodeId: "revision-node-1",
+      nodePosition: 0,
+      nodeType: "gate",
+      runNodeId,
+      attemptId,
+      idempotencyKey: "gate-once",
+      worktreeId: null,
+      rootKind: "git-worktree",
+      cwd: "/tmp/project",
+      threadId: null,
+      protectedDefinition,
+      protectedRunInput,
+      predecessorResults: [],
+      outgoingDependencies: [],
+      mutationMode: "read-only",
+      permissionProfileId: null,
+      maxNodeExecutions: 1,
+      timeoutMs: 30_000,
+      model: {},
+      provider: {},
+      mcpServers: [],
+    } as unknown as Extract<WorkerCommand, { type: "workflow.node.execute" }>;
+    const opened = await executeProtectedWorkflowNode({
+      command: nodeCommand,
+      service,
+      execute: async () => {
+        throw new Error("gate nodes must not invoke a model");
+      },
+    });
+    expect(opened.status).toBe("waiting-for-gate");
+    expect(JSON.stringify(opened)).not.toContain("PRIVATE_GATE_PROMPT");
+    expect(JSON.stringify(opened)).not.toContain("private-gate-skill");
+    if (opened.status !== "waiting-for-gate") {
+      throw new Error("gate did not open");
+    }
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-gate",
+          recordId: opened.gateId,
+          field: "request",
+        },
+        keyRevision: 1,
+        componentKey: key,
+        encrypted: opened.protectedRequest,
+        schema: workflowGateProtectedRequestSchema,
+      }),
+    ).resolves.toMatchObject({
+      prompt: "PRIVATE_GATE_PROMPT",
+      permissionManifest: { skills: ["private-gate-skill"] },
+    });
+
+    const protectedResponse = await encryptWorkflowContent({
+      ownerId,
+      context: {
+        recordKind: "workflow-gate",
+        recordId: opened.gateId,
+        field: "response",
+      },
+      keyRevision: 1,
+      componentKey: key,
+      content: {
+        version: 1,
+        decision: "denied",
+        reason: "PRIVATE_GATE_REASON",
+      },
+      schema: workflowGateProtectedResponseSchema,
+    });
+    const resolved = await resolveProtectedWorkflowGate({
+      command: {
+        type: "workflow.gate.decide.protected",
+        workflowRunId: runId,
+        workflowRevisionId: revisionId,
+        revisionNodeId: "revision-node-1",
+        nodePosition: 0,
+        runNodeId,
+        attemptId,
+        gateId: opened.gateId,
+        denialPolicy: opened.denialPolicy,
+        protectedResponse,
+        protectedDefinition,
+        protectedRunInput,
+        predecessorResults: [],
+        outgoingDependencies: [],
+        mutationMode: "read-only",
+        permissionProfileId: null,
+      },
+      service,
+    });
+    expect(resolved).toMatchObject({
+      decision: "denied",
+      denialPolicy: "fail-run",
+      selectedDependencyIds: null,
+      protectedAttemptError: expect.any(Object),
+      protectedNodeError: expect.any(Object),
+      protectedRunError: expect.any(Object),
+    });
+    expect(JSON.stringify(resolved)).not.toContain("PRIVATE_GATE_REASON");
+    if (!resolved.protectedRunError) {
+      throw new Error("denied gate did not seal its private failure");
+    }
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run",
+          recordId: runId,
+          field: "error",
+        },
+        keyRevision: 1,
+        componentKey: key,
+        encrypted: resolved.protectedRunError,
+        schema: workflowProtectedErrorSchema,
+      }),
+    ).resolves.toMatchObject({ message: "PRIVATE_GATE_REASON" });
   });
 });

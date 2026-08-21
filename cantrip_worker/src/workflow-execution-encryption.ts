@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 
 import {
@@ -8,8 +9,12 @@ import {
 import type { WorkerCommand } from "@cantrip/protocol";
 import {
   protectedWorkflowNodeExecutionResultSchema,
+  protectedWorkflowGateDecisionResultSchema,
   workflowAgentNodeConfigurationSchema,
   workflowConditionNodeConfigurationSchema,
+  workflowGateNodeConfigurationSchema,
+  workflowGateProtectedRequestSchema,
+  workflowGateProtectedResponseSchema,
   workflowJsonValueSchema,
   workflowMapNodeConfigurationSchema,
   workflowMeasuredUsageSchema,
@@ -36,6 +41,14 @@ import type { WorkerEncryptionService } from "./worker-encryption.js";
 type ProtectedCommand = Extract<
   WorkerCommand,
   { type: "workflow.node.execute" }
+>;
+type ProtectedGateDecisionCommand = Extract<
+  WorkerCommand,
+  { type: "workflow.gate.decide.protected" }
+>;
+type ProtectableCommand = Pick<
+  ProtectedCommand,
+  "attemptId" | "protectedDefinition" | "runNodeId" | "workflowRunId"
 >;
 
 function pointerValue(value: WorkflowJsonValue, selector: string | null) {
@@ -229,7 +242,7 @@ function aggregateCollection(
 }
 
 async function protectError(input: {
-  command: ProtectedCommand;
+  command: ProtectableCommand;
   componentKey: Uint8Array;
   ownerId: string;
   error: unknown;
@@ -321,11 +334,7 @@ export async function executeProtectedWorkflowNode(input: {
         ),
       ]);
       const node = definition.graph.nodes[input.command.nodePosition];
-      if (
-        !node ||
-        node.type !== input.command.nodeType ||
-        node.type === "gate"
-      ) {
+      if (!node || node.type !== input.command.nodeType) {
         throw new Error(
           "The protected workflow node does not match its scheduling manifest.",
         );
@@ -402,6 +411,38 @@ export async function executeProtectedWorkflowNode(input: {
         throw new Error(
           "The protected workflow dependency manifest is inconsistent.",
         );
+      }
+      if (node.type === "gate") {
+        const gateId = randomUUID();
+        const configuration = workflowGateNodeConfigurationSchema.parse(
+          node.configuration,
+        );
+        const expiresAt = configuration.expiresAfterMs
+          ? new Date(Date.now() + configuration.expiresAfterMs).toISOString()
+          : null;
+        const protectedRequest = await encryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-gate",
+            recordId: gateId,
+            field: "request",
+          },
+          keyRevision: component.keyRevision,
+          componentKey: component.key,
+          content: {
+            version: 1,
+            prompt: configuration.prompt,
+            permissionManifest: node.permissionRequirements,
+          },
+          schema: workflowGateProtectedRequestSchema,
+        });
+        return protectedWorkflowNodeExecutionResultSchema.parse({
+          status: "waiting-for-gate",
+          gateId,
+          denialPolicy: configuration.denialPolicy,
+          expiresAt,
+          protectedRequest,
+        });
       }
 
       const invoke = (
@@ -789,6 +830,252 @@ export async function executeProtectedWorkflowNode(input: {
         ...protectedErrors,
       });
     }
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
+
+export async function resolveProtectedWorkflowGate(input: {
+  command: ProtectedGateDecisionCommand;
+  service: WorkerEncryptionService;
+}) {
+  const component = input.service.componentKey("workflow-content");
+  const ownerId = input.service.ownerId();
+  try {
+    const [definition, runInput, response, ...predecessorResults] =
+      await Promise.all([
+        decryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-revision",
+            recordId: input.command.workflowRevisionId,
+            field: "definition",
+          },
+          keyRevision: input.command.protectedDefinition.keyRevision,
+          componentKey: component.key,
+          encrypted: input.command.protectedDefinition,
+          schema: workflowRevisionProtectedDefinitionSchema,
+        }),
+        decryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-run",
+            recordId: input.command.workflowRunId,
+            field: "input",
+          },
+          keyRevision: input.command.protectedRunInput.keyRevision,
+          componentKey: component.key,
+          encrypted: input.command.protectedRunInput,
+          schema: workflowRunProtectedInputSchema,
+        }),
+        decryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-gate",
+            recordId: input.command.gateId,
+            field: "response",
+          },
+          keyRevision: input.command.protectedResponse.keyRevision,
+          componentKey: component.key,
+          encrypted: input.command.protectedResponse,
+          schema: workflowGateProtectedResponseSchema,
+        }),
+        ...input.command.predecessorResults.map((predecessor) =>
+          decryptWorkflowContent({
+            ownerId,
+            context: {
+              recordKind: "workflow-run-node" as const,
+              recordId: predecessor.runNodeId,
+              field: "result" as const,
+            },
+            keyRevision: predecessor.protectedResult.keyRevision,
+            componentKey: component.key,
+            encrypted: predecessor.protectedResult,
+            schema: workflowNodeProtectedResultSchema,
+          }),
+        ),
+      ]);
+    const node = definition.graph.nodes[input.command.nodePosition];
+    if (
+      !node ||
+      node.type !== "gate" ||
+      node.mutationMode !== input.command.mutationMode ||
+      node.permissionProfileId !== input.command.permissionProfileId
+    ) {
+      throw new Error(
+        "The protected workflow gate does not match its scheduling manifest.",
+      );
+    }
+    const configuration = workflowGateNodeConfigurationSchema.parse(
+      node.configuration,
+    );
+    if (configuration.denialPolicy !== input.command.denialPolicy) {
+      throw new Error("The protected workflow gate denial policy is invalid.");
+    }
+    const incoming = definition.graph.edges.filter(({ to }) => to === node.key);
+    if (incoming.length !== predecessorResults.length) {
+      throw new Error("The protected workflow predecessor set is incomplete.");
+    }
+    let structuredInput: WorkflowJsonValue = runInput.input;
+    if (incoming.length > 0) {
+      const mapped = incoming.map((edge) => {
+        const commandIndex = input.command.predecessorResults.findIndex(
+          ({ nodePosition }) =>
+            definition.graph.nodes[nodePosition]?.key === edge.from,
+        );
+        if (commandIndex < 0) {
+          throw new Error(
+            "The protected workflow predecessor mapping is invalid.",
+          );
+        }
+        return {
+          sourceNodeKey: edge.from,
+          targetInput: edge.targetInput,
+          value: pointerValue(
+            predecessorResults[commandIndex]!.structuredResult,
+            edge.sourceOutput,
+          ),
+        };
+      });
+      if (mapped.length === 1 && mapped[0]!.targetInput === null) {
+        structuredInput = mapped[0]!.value;
+      } else {
+        const aggregate: Record<string, WorkflowJsonValue> = {};
+        for (const item of mapped) {
+          const key = item.targetInput ?? item.sourceNodeKey;
+          if (Object.hasOwn(aggregate, key)) {
+            throw new Error(`Workflow dependency mappings collide at ${key}.`);
+          }
+          aggregate[key] = item.value;
+        }
+        structuredInput = aggregate;
+      }
+    }
+    const outgoing = definition.graph.edges
+      .map((edge, edgePosition) => ({ edge, edgePosition }))
+      .filter(({ edge }) => edge.from === node.key);
+    const dependencyByEdgePosition = new Map(
+      input.command.outgoingDependencies.map(
+        ({ edgePosition, dependencyId }) => [edgePosition, dependencyId],
+      ),
+    );
+    if (
+      dependencyByEdgePosition.size !==
+        input.command.outgoingDependencies.length ||
+      outgoing.length !== dependencyByEdgePosition.size ||
+      outgoing.some(
+        ({ edgePosition }) => !dependencyByEdgePosition.has(edgePosition),
+      )
+    ) {
+      throw new Error(
+        "The protected workflow dependency manifest is inconsistent.",
+      );
+    }
+
+    const nodeInput = { version: 1 as const, input: structuredInput };
+    const nodeResult = {
+      version: 1 as const,
+      text: "",
+      structuredResult: structuredInput,
+    };
+    const [
+      protectedNodeInput,
+      protectedNodeResult,
+      protectedAttemptInput,
+      protectedAttemptResult,
+      protectedRunResult,
+    ] = await Promise.all([
+      encryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run-node",
+          recordId: input.command.runNodeId,
+          field: "input",
+        },
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: nodeInput,
+        schema: workflowNodeProtectedInputSchema,
+      }),
+      encryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run-node",
+          recordId: input.command.runNodeId,
+          field: "result",
+        },
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: nodeResult,
+        schema: workflowNodeProtectedResultSchema,
+      }),
+      encryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-attempt",
+          recordId: input.command.attemptId,
+          field: "input",
+        },
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: nodeInput,
+        schema: workflowNodeProtectedInputSchema,
+      }),
+      encryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-attempt",
+          recordId: input.command.attemptId,
+          field: "result",
+        },
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: nodeResult,
+        schema: workflowNodeProtectedResultSchema,
+      }),
+      encryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run",
+          recordId: input.command.workflowRunId,
+          field: "result",
+        },
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: { version: 1, result: structuredInput },
+        schema: workflowRunProtectedResultSchema,
+      }),
+    ]);
+    const protectedErrors =
+      response.decision === "denied" &&
+      configuration.denialPolicy === "fail-run"
+        ? await protectError({
+            command: input.command,
+            componentKey: component.key,
+            ownerId,
+            error: new Error(response.reason ?? "Workflow gate was denied."),
+          })
+        : {
+            protectedAttemptError: null,
+            protectedNodeError: null,
+            protectedRunError: null,
+          };
+    return protectedWorkflowGateDecisionResultSchema.parse({
+      decision: response.decision,
+      denialPolicy: configuration.denialPolicy,
+      selectedDependencyIds:
+        response.decision === "approved"
+          ? null
+          : configuration.denialPolicy === "skip-downstream"
+            ? []
+            : null,
+      protectedNodeInput,
+      protectedNodeResult,
+      protectedAttemptInput,
+      protectedAttemptResult,
+      protectedRunResult,
+      ...protectedErrors,
+    });
   } finally {
     clearSensitiveBytes(component.key);
   }

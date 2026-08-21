@@ -12,7 +12,7 @@ import {
   type WorktreeCreateMode,
 } from "@cantrip/protocol";
 import type {
-  WorkflowRunDetail,
+  WorkflowRunWireDetail,
   WorkflowWorktreeLease,
   WorkflowWorktreeOutcomeRequest,
 } from "@cantrip/protocol/workflows";
@@ -403,7 +403,7 @@ export class ProjectWorktreeCoordinator {
     runId: string,
     leaseId: string,
     input: WorkflowWorktreeOutcomeRequest,
-  ): Promise<WorkflowRunDetail | null> {
+  ): Promise<WorkflowRunWireDetail | null> {
     const initial = await this.repository.workflowRuns.getRun(ownerId, runId);
     if (!initial) return null;
     if (!initial.run.projectId) {

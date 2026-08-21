@@ -478,6 +478,7 @@ import {
 import {
   encryptedWorkflowDefinitionCreateSchema,
   encryptedWorkflowDefinitionUpdateSchema,
+  encryptedWorkflowGateDecisionSchema,
   encryptedWorkflowRevisionCreateSchema,
   workflowAutomationTriggerCreateSchema,
   workflowAutomationTriggerListSchema,
@@ -488,7 +489,6 @@ import {
   workflowDefinitionWireListSchema,
   workflowDefinitionQuerySchema,
   workflowDefinitionWireSummarySchema,
-  workflowGateDecisionSchema,
   workflowGitEventDeliveryCreateSchema,
   workflowJsonObjectSchema,
   workflowRevisionWireListSchema,
@@ -14187,7 +14187,7 @@ export async function buildApp({
   app.post<{ Params: { gateId: string; runId: string } }>(
     "/api/workflow-runs/:runId/gates/:gateId/decision",
     async (request, reply) => {
-      const input = workflowGateDecisionSchema.safeParse(request.body);
+      const input = encryptedWorkflowGateDecisionSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -14204,6 +14204,11 @@ export async function buildApp({
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {
           return reply.code(409).send({ error: error.message });
+        }
+        if (error instanceof WorkerUnavailableError) {
+          return reply
+            .code(503)
+            .send({ error: "The assigned workflow worker is offline." });
         }
         throw error;
       }

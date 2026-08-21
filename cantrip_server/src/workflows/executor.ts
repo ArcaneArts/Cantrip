@@ -9,11 +9,12 @@ import {
 import type { InteractionResponseOpaqueContent } from "@cantrip/protocol/communication-content";
 import {
   workflowFolderProducedChangesSchema,
+  protectedWorkflowGateDecisionResultSchema,
   protectedWorkflowNodeExecutionResultSchema,
-  type WorkflowGateDecision,
+  type EncryptedWorkflowGateDecision,
   type WorkflowNodeRetry,
   type WorkflowRunCancel,
-  type WorkflowRunDetail,
+  type WorkflowRunWireDetail,
   type WorkflowRunPause,
   type WorkflowRunResume,
 } from "@cantrip/protocol/workflows";
@@ -304,7 +305,7 @@ export class WorkflowExecutor {
     ownerId: string,
     runId: string,
     input: WorkflowRunCancel,
-  ): Promise<WorkflowRunDetail | null> {
+  ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const requested = await this.repository.workflowRuns.requestCancellation(
         this.#ownerId(),
@@ -350,7 +351,7 @@ export class WorkflowExecutor {
     ownerId: string,
     runId: string,
     input: WorkflowRunPause,
-  ): Promise<WorkflowRunDetail | null> {
+  ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const run = await this.repository.workflowRuns.pauseRun(
         this.#ownerId(),
@@ -379,7 +380,7 @@ export class WorkflowExecutor {
     ownerId: string,
     runId: string,
     input: WorkflowRunResume,
-  ): Promise<WorkflowRunDetail | null> {
+  ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const run = await this.repository.workflowRuns.resumeRun(
         this.#ownerId(),
@@ -451,7 +452,7 @@ export class WorkflowExecutor {
     runId: string,
     runNodeId: string,
     input: WorkflowNodeRetry,
-  ): Promise<WorkflowRunDetail | null> {
+  ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const run = await this.repository.workflowRuns.retryNode(
         this.#ownerId(),
@@ -471,20 +472,57 @@ export class WorkflowExecutor {
     ownerId: string,
     runId: string,
     gateId: string,
-    input: WorkflowGateDecision,
-  ): Promise<WorkflowRunDetail | null> {
+    input: EncryptedWorkflowGateDecision,
+  ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
-      const result = await this.repository.workflowRuns.decideGate(
+      const context =
+        await this.repository.workflowRuns.getProtectedGateDecisionContext(
+          this.#ownerId(),
+          runId,
+          gateId,
+        );
+      if (!context) {
+        return this.repository.workflowRuns.replayProtectedGateDecision(
+          this.#ownerId(),
+          runId,
+          gateId,
+          input,
+        );
+      }
+      if (!this.bridge.isConnected(context.workerId)) {
+        throw new WorkerUnavailableError(
+          `Worker ${context.workerId} is offline.`,
+        );
+      }
+      const workerResult = protectedWorkflowGateDecisionResultSchema.parse(
+        await this.bridge.request(
+          context.workerId,
+          {
+            type: "workflow.gate.decide.protected",
+            ...context.command,
+            protectedResponse: input.protectedResponse,
+          },
+          { timeoutMs: 30_000 },
+        ),
+      );
+      const result = await this.repository.workflowRuns.decideProtectedGate(
         this.#ownerId(),
         runId,
         gateId,
         input,
+        workerResult,
       );
-      if (result) {
-        this.notifyRunChanged(runId, result.run.run.projectId, "workflow-gate");
-        this.queueRun(runId);
+      if (!result) {
+        return this.repository.workflowRuns.replayProtectedGateDecision(
+          this.#ownerId(),
+          runId,
+          gateId,
+          input,
+        );
       }
-      return result?.run ?? null;
+      this.notifyRunChanged(runId, result.run.run.projectId, "workflow-gate");
+      this.queueRun(runId);
+      return result.run;
     });
   }
 
@@ -813,10 +851,12 @@ export class WorkflowExecutor {
       "Workflow node attempt started",
     );
     try {
-      await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
-        attemptStatus: "running",
-        startedAt,
-      });
+      if (lease.candidate.node.nodeType !== "gate") {
+        await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
+          attemptStatus: "running",
+          startedAt,
+        });
+      }
       const mcpServers = await this.repository.listEffectiveMcpServers(
         this.#ownerId(),
         lease.candidate.run.projectId,
@@ -888,6 +928,19 @@ export class WorkflowExecutor {
         );
         return;
       }
+      if (result.status === "waiting-for-gate") {
+        await this.repository.workflowRuns.openProtectedGateAttempt(
+          this.#ownerId(),
+          lease,
+          result,
+        );
+        this.notifyRunChanged(
+          lease.candidate.run.id,
+          lease.candidate.projectId,
+          "workflow-gate",
+        );
+        return;
+      }
       observedTurnId = result.turnId;
       await this.recordWorkflowTokenUsage(
         lease,
@@ -933,12 +986,14 @@ export class WorkflowExecutor {
       );
     } catch (error) {
       const failedAt = new Date();
-      await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
-        attemptStatus: "failed",
-        turnId: observedTurnId,
-        completedAt: failedAt,
-        finalizedAt: failedAt,
-      });
+      if (lease.candidate.node.nodeType !== "gate") {
+        await this.recordWorkflowTokenUsage(lease, runtime, undefined, {
+          attemptStatus: "failed",
+          turnId: observedTurnId,
+          completedAt: failedAt,
+          finalizedAt: failedAt,
+        });
+      }
       const failureMetadata = this.failureFrom(error);
       const failure = await this.repository.workflowRuns.failAgentAttempt(
         this.#ownerId(),

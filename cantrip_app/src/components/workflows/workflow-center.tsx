@@ -380,11 +380,6 @@ export function WorkflowCenter({
     mutationFn: async () => {
       const revision = workflow.data?.revision;
       if (!revision) throw new Error("This workflow has no runnable revision.");
-      if (revision.nodes.some((node) => node.type === "gate")) {
-        throw new Error(
-          "Protected workflow gates remain unavailable until their encrypted decision contract is enabled.",
-        );
-      }
       await ensureChatWorkerEncryption({ worker });
       return createWorkflowRun({
         workflowRevisionId: revision.id,

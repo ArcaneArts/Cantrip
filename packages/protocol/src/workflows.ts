@@ -473,6 +473,11 @@ export const workflowRepeatUntilNodeConfigurationSchema =
     })
     .strict();
 
+export const workflowGateDenialPolicySchema = z.enum([
+  "fail-run",
+  "skip-downstream",
+]);
+
 export const workflowGateNodeConfigurationSchema = z
   .object({
     prompt: z.string().trim().min(1).max(5_000),
@@ -483,7 +488,7 @@ export const workflowGateNodeConfigurationSchema = z
       .max(30 * 24 * 60 * 60 * 1_000)
       .nullable()
       .default(null),
-    denialPolicy: z.enum(["fail-run", "skip-downstream"]).default("fail-run"),
+    denialPolicy: workflowGateDenialPolicySchema.default("fail-run"),
   })
   .strict();
 
@@ -1900,40 +1905,88 @@ export const workflowApprovalGateStatusSchema = z.enum([
   "expired",
   "cancelled",
 ]);
-export const workflowApprovalGateSchema = z
+export const workflowGateProtectedRequestSchema = z
+  .object({
+    version: z.literal(1),
+    prompt: z.string().min(1).max(10_000),
+    permissionManifest: workflowPermissionRequirementsSchema,
+  })
+  .strict();
+export const workflowGateDecisionClassificationSchema = z
+  .object({ decision: z.enum(["approved", "denied"]) })
+  .strict();
+export const workflowGateProtectedResponseSchema = z
+  .object({
+    version: z.literal(1),
+    decision: z.enum(["approved", "denied"]),
+    reason: z.string().trim().min(1).max(5_000).nullable(),
+  })
+  .strict();
+
+const workflowApprovalGateBaseSchema = z
   .object({
     id: idSchema,
     runId: idSchema,
     runNodeId: idSchema.nullable(),
     gateKey: z.string().min(1).max(200),
     status: workflowApprovalGateStatusSchema,
-    prompt: z.string().min(1).max(10_000),
-    permissionManifest: workflowPermissionRequirementsSchema,
-    interactionRequestId: idSchema.nullable(),
+    denialPolicy: workflowGateDenialPolicySchema,
     requestedByType: z.string().min(1).max(100),
     requestedById: z.string().max(500).nullable(),
     decision: z.enum(["approved", "denied"]).nullable(),
     decidedByUserId: idSchema.nullable(),
-    decisionReason: z.string().max(5_000).nullable(),
     expiresAt: nullableTimestamp,
     decidedAt: nullableTimestamp,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
+  .strict();
+
+function validateWorkflowApprovalGate(
+  gate: z.infer<typeof workflowApprovalGateBaseSchema>,
+  context: z.RefinementCtx,
+): void {
+  const decided = gate.status === "approved" || gate.status === "denied";
+  if (decided !== Boolean(gate.decision && gate.decidedAt)) {
+    context.addIssue({
+      code: "custom",
+      message: "Approved and denied gates require matching decision data.",
+      path: ["decision"],
+    });
+  }
+  if (gate.decision && gate.decision !== gate.status) {
+    context.addIssue({
+      code: "custom",
+      message: "Gate decision must match its terminal status.",
+      path: ["decision"],
+    });
+  }
+}
+
+export const workflowApprovalGateSchema = workflowApprovalGateBaseSchema
+  .extend({
+    prompt: workflowGateProtectedRequestSchema.shape.prompt,
+    permissionManifest:
+      workflowGateProtectedRequestSchema.shape.permissionManifest,
+    decisionReason: workflowGateProtectedResponseSchema.shape.reason,
+  })
+  .strict()
+  .superRefine(validateWorkflowApprovalGate);
+
+export const workflowApprovalGateWireSchema = workflowApprovalGateBaseSchema
+  .extend({
+    protectedRequest: workflowContentOpaqueSchema,
+    protectedResponse: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict()
   .superRefine((gate, context) => {
+    validateWorkflowApprovalGate(gate, context);
     const decided = gate.status === "approved" || gate.status === "denied";
-    if (decided !== Boolean(gate.decision && gate.decidedAt)) {
+    if (decided !== Boolean(gate.protectedResponse)) {
       context.addIssue({
         code: "custom",
-        message: "Approved and denied gates require matching decision data.",
-        path: ["decision"],
-      });
-    }
-    if (gate.decision && gate.decision !== gate.status) {
-      context.addIssue({
-        code: "custom",
-        message: "Gate decision must match its terminal status.",
-        path: ["decision"],
+        message: "Approved and denied gates require a protected response.",
+        path: ["protectedResponse"],
       });
     }
   });
@@ -1987,7 +2040,7 @@ export const workflowRunWireDetailSchema = z.object({
   dependencies: z.array(workflowRunNodeDependencySchema).max(10_000),
   attempts: z.array(workflowNodeAttemptWireSchema).max(10_000),
   worktreeLeases: z.array(workflowWorktreeLeaseSchema).max(10_000).default([]),
-  gates: z.array(workflowApprovalGateSchema).max(1_000),
+  gates: z.array(workflowApprovalGateWireSchema).max(1_000),
 });
 
 const workflowAutomationTriggerBase = z.object({
@@ -2125,6 +2178,14 @@ export const workflowGateDecisionSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const encryptedWorkflowGateDecisionSchema = z
+  .object({
+    classification: workflowGateDecisionClassificationSchema,
+    protectedResponse: workflowContentOpaqueSchema,
+    idempotencyKey: z.string().trim().min(1).max(200),
+  })
+  .strict();
+
 export const workflowNodeExecutionRequestSchema = z.object({
   workflowRunId: idSchema,
   runNodeId: idSchema,
@@ -2204,6 +2265,29 @@ export const protectedWorkflowNodeExecutionRequestSchema = z.object({
     .max(24 * 60 * 60 * 1_000),
 });
 
+export const protectedWorkflowGateDecisionRequestSchema =
+  protectedWorkflowNodeExecutionRequestSchema
+    .pick({
+      workflowRunId: true,
+      workflowRevisionId: true,
+      revisionNodeId: true,
+      nodePosition: true,
+      runNodeId: true,
+      attemptId: true,
+      protectedDefinition: true,
+      protectedRunInput: true,
+      predecessorResults: true,
+      outgoingDependencies: true,
+      mutationMode: true,
+      permissionProfileId: true,
+    })
+    .extend({
+      gateId: idSchema,
+      denialPolicy: workflowGateDenialPolicySchema,
+      protectedResponse: workflowContentOpaqueSchema,
+    })
+    .strict();
+
 export const protectedWorkflowNodeExecutionResultSchema = z.discriminatedUnion(
   "status",
   [
@@ -2224,6 +2308,15 @@ export const protectedWorkflowNodeExecutionResultSchema = z.discriminatedUnion(
       .strict(),
     z
       .object({
+        status: z.literal("waiting-for-gate"),
+        gateId: idSchema,
+        denialPolicy: workflowGateDenialPolicySchema,
+        expiresAt: nullableTimestamp,
+        protectedRequest: workflowContentOpaqueSchema,
+      })
+      .strict(),
+    z
+      .object({
         status: z.literal("failed"),
         protectedAttemptError: workflowContentOpaqueSchema,
         protectedNodeError: workflowContentOpaqueSchema,
@@ -2232,6 +2325,60 @@ export const protectedWorkflowNodeExecutionResultSchema = z.discriminatedUnion(
       .strict(),
   ],
 );
+
+export const protectedWorkflowGateDecisionResultSchema = z
+  .object({
+    decision: z.enum(["approved", "denied"]),
+    denialPolicy: workflowGateDenialPolicySchema,
+    selectedDependencyIds: z.array(idSchema).max(2_048).nullable(),
+    protectedNodeInput: workflowContentOpaqueSchema,
+    protectedNodeResult: workflowContentOpaqueSchema,
+    protectedAttemptInput: workflowContentOpaqueSchema,
+    protectedAttemptResult: workflowContentOpaqueSchema,
+    protectedRunResult: workflowContentOpaqueSchema,
+    protectedAttemptError: workflowContentOpaqueSchema.nullable(),
+    protectedNodeError: workflowContentOpaqueSchema.nullable(),
+    protectedRunError: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict()
+  .superRefine((result, context) => {
+    const requiresError =
+      result.decision === "denied" && result.denialPolicy === "fail-run";
+    const hasAllErrors = Boolean(
+      result.protectedAttemptError &&
+      result.protectedNodeError &&
+      result.protectedRunError,
+    );
+    if (requiresError !== hasAllErrors) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Failing gate denials require protected attempt, node, and run errors.",
+        path: ["protectedRunError"],
+      });
+    }
+    if (
+      result.decision === "approved" &&
+      result.selectedDependencyIds !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Approved gates must settle every outgoing dependency.",
+        path: ["selectedDependencyIds"],
+      });
+    }
+    if (
+      result.decision === "denied" &&
+      result.denialPolicy === "skip-downstream" &&
+      result.selectedDependencyIds?.length !== 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Skipped gate denials cannot select downstream dependencies.",
+        path: ["selectedDependencyIds"],
+      });
+    }
+  });
 
 export const workflowNodeExecutionResultSchema = z.object({
   threadId: idSchema,
@@ -2283,6 +2430,9 @@ export type WorkflowVerifyNodeConfiguration = z.infer<
 >;
 export type WorkflowConditionNodeConfiguration = z.infer<
   typeof workflowConditionNodeConfigurationSchema
+>;
+export type WorkflowGateDenialPolicy = z.infer<
+  typeof workflowGateDenialPolicySchema
 >;
 export type WorkflowRepeatUntilNodeConfiguration = z.infer<
   typeof workflowRepeatUntilNodeConfigurationSchema
@@ -2475,6 +2625,9 @@ export type WorkflowApprovalGateStatus = z.infer<
   typeof workflowApprovalGateStatusSchema
 >;
 export type WorkflowApprovalGate = z.infer<typeof workflowApprovalGateSchema>;
+export type WorkflowApprovalGateWire = z.infer<
+  typeof workflowApprovalGateWireSchema
+>;
 export type WorkflowRunDetail = z.infer<typeof workflowRunDetailSchema>;
 export type WorkflowRunWireDetail = z.infer<typeof workflowRunWireDetailSchema>;
 export type WorkflowRunQuery = z.infer<typeof workflowRunQuerySchema>;
@@ -2494,6 +2647,18 @@ export type WorkflowWorktreeOutcomeRequest = z.infer<
 >;
 export type WorkflowNodeRetry = z.infer<typeof workflowNodeRetrySchema>;
 export type WorkflowGateDecision = z.infer<typeof workflowGateDecisionSchema>;
+export type EncryptedWorkflowGateDecision = z.infer<
+  typeof encryptedWorkflowGateDecisionSchema
+>;
+export type ProtectedWorkflowGateDecisionRequest = z.infer<
+  typeof protectedWorkflowGateDecisionRequestSchema
+>;
+export type ProtectedWorkflowGateDecisionResult = z.infer<
+  typeof protectedWorkflowGateDecisionResultSchema
+>;
+export type ProtectedWorkflowNodeExecutionResult = z.infer<
+  typeof protectedWorkflowNodeExecutionResultSchema
+>;
 export type WorkflowNodeExecutionRequest = z.infer<
   typeof workflowNodeExecutionRequestSchema
 >;

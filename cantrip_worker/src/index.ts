@@ -66,7 +66,10 @@ import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
-import { executeProtectedWorkflowNode } from "./workflow-execution-encryption.js";
+import {
+  executeProtectedWorkflowNode,
+  resolveProtectedWorkflowGate,
+} from "./workflow-execution-encryption.js";
 import {
   discoverExternalChatHistory,
   readExternalChatHistory,
@@ -3074,6 +3077,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         if (protectedEventFailure) throw protectedEventFailure;
         return result;
       }
+      case "workflow.gate.decide.protected":
+        return resolveProtectedWorkflowGate({
+          command,
+          service: workerEncryption,
+        });
       case "workflow.definition.generate":
         return runtimeFor({
           model: command.model,
