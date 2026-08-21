@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import readline from "node:readline";
 
@@ -9,6 +9,7 @@ import {
   type CodexDeviceLogin,
 } from "@cantrip/protocol";
 
+import { spawnGuardedProcess } from "../code/process-guard.js";
 import { workerLogger } from "../logger.js";
 
 import {
@@ -234,7 +235,7 @@ export class CodexAuthClient {
       status: "started",
     });
     await mkdir(this.codexHome, { recursive: true });
-    const child = spawn(
+    const child = spawnGuardedProcess(
       this.codexBinary,
       [
         "app-server",
@@ -244,8 +245,9 @@ export class CodexAuthClient {
         'cli_auth_credentials_store="file"',
       ],
       {
+        cwd: process.cwd(),
         env: { ...process.env, CODEX_HOME: this.codexHome },
-        stdio: ["pipe", "pipe", "pipe"],
+        stdin: "pipe",
       },
     );
     this.#child = child;

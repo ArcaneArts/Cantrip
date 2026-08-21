@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   execFile,
-  spawn,
   type ChildProcessWithoutNullStreams,
   type ProcessEnvOptions,
 } from "node:child_process";
@@ -66,6 +65,7 @@ import {
 } from "@cantrip/protocol";
 import { cantripVersion } from "@cantrip/version";
 
+import { spawnGuardedProcess } from "../code/process-guard.js";
 import { workerLogError, workerLogger } from "../logger.js";
 import {
   ProviderAccessTokenRequestError,
@@ -128,7 +128,12 @@ const launchCodexProcess: CodexProcessLauncher = (
   binary,
   arguments_,
   options,
-) => spawn(binary, arguments_, { ...options, stdio: ["pipe", "pipe", "pipe"] });
+) =>
+  spawnGuardedProcess(binary, arguments_, {
+    cwd: process.cwd(),
+    env: options.env ?? process.env,
+    stdin: "pipe",
+  });
 
 export interface RpcError {
   code: number;
