@@ -2591,7 +2591,8 @@ function ChatTranscript({
                 {draft ? (
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 overflow-hidden px-2 py-2 text-sm leading-5 text-foreground whitespace-pre-wrap break-words"
+                    data-slot="chat-composer-highlight"
+                    className="pointer-events-none absolute inset-0 overflow-hidden px-2 py-2 text-sm leading-5 text-foreground whitespace-pre-wrap break-words [scrollbar-gutter:stable]"
                   >
                     <div
                       style={{
@@ -2793,7 +2794,7 @@ function ChatTranscript({
                                 : "Ask Cantrip to work on this repository…"
                   }
                   className={cn(
-                    "relative max-h-48 min-h-10 w-full resize-none bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground",
+                    "relative max-h-48 min-h-10 w-full field-sizing-content resize-none overflow-y-auto bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground [scrollbar-gutter:stable]",
                     draft && "text-transparent caret-foreground",
                   )}
                 />
