@@ -37,3 +37,22 @@ export function projectSetupPercent(
 ): number {
   return job?.progress.percent ?? 5;
 }
+
+export function isWindowsLongPathSetupFailure(
+  job: Pick<ProjectReplicaJobSummary, "error"> | null | undefined,
+): boolean {
+  const error = job?.error;
+  if (!error) return false;
+  return (
+    error.code === "windows-long-paths-disabled" ||
+    /\b(?:filename|file name|path)(?: or extension)?(?: is)? too long\b/iu.test(
+      error.message,
+    )
+  );
+}
+
+export function projectSetupFailureKey(
+  job: Pick<ProjectReplicaJobSummary, "id" | "stateRevision">,
+): string {
+  return `${job.id}:${job.stateRevision}`;
+}

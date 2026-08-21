@@ -2,8 +2,10 @@ import type { ProjectReplicaJobSummary } from "@cantrip/protocol";
 import { describe, expect, it } from "vitest";
 
 import {
+  isWindowsLongPathSetupFailure,
   latestProjectProvisionJob,
   projectOwningWorkerId,
+  projectSetupFailureKey,
   projectSetupPercent,
 } from "./project-setup-progress";
 
@@ -62,5 +64,41 @@ describe("project setup progress", () => {
         { workerId: "worker-job" },
       ),
     ).toBe("worker-source");
+  });
+
+  it("recognizes typed and legacy Windows long-path failures", () => {
+    expect(
+      isWindowsLongPathSetupFailure({
+        error: {
+          code: "windows-long-paths-disabled",
+          message: "Git long paths are disabled.",
+          retryable: true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isWindowsLongPathSetupFailure({
+        error: {
+          code: "remote-unavailable",
+          message: "fatal: cannot write keep file: Filename too long",
+          retryable: true,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isWindowsLongPathSetupFailure({
+        error: {
+          code: "remote-unavailable",
+          message: "fatal: the remote disconnected",
+          retryable: true,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("keys a failure by job revision so a repeated failure can reopen", () => {
+    expect(projectSetupFailureKey({ id: "job-one", stateRevision: 4 })).toBe(
+      "job-one:4",
+    );
   });
 });
