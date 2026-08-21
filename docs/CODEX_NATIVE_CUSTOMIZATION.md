@@ -35,6 +35,20 @@ Cantrip owns MCP server configuration independently from the worker's
   then global.
 - Project settings can copy a server from another project. The copy receives a
   new id and can be edited or removed without changing its source.
+- The Available section performs an explicit, on-demand scan on a selected
+  worker. It reads that worker user's `~/.codex/config.toml` and
+  `~/.claude.json`; project scans additionally read `.codex/config.toml`,
+  `.mcp.json`, and the matching Claude Code project entry from the selected
+  ready replica. Discovered entries remain inactive until the user chooses Add
+  or Add all, and every imported entry is bound to the worker that found it.
+
+The worker encrypts importable discovered configurations with `mcp-secret`
+before returning them. The server relays only row-bound ciphertext plus the
+non-sensitive source kind and scope, and the client opens the candidate for
+display. Adding a candidate persists that same ciphertext; plaintext commands,
+URLs, headers, arguments, and environment values never pass through the server.
+The scan is bounded to standard files and does not recursively search the
+filesystem or inspect Cantrip's isolated managed Codex home.
 
 Both stdio commands and streamable HTTP endpoints are validated by the shared
 protocol before persistence. Stdio configuration supports argument arrays and
@@ -48,8 +62,9 @@ An effective disabled definition still shadows less-specific definitions but
 is omitted from worker dispatch. The worker also rejects disabled definitions
 defensively before decryption and omits them from Codex's native configuration,
 so Codex receives no tools, resources, prompts, instructions, or server identity
-for a disabled user server. The separately synthesized managed CodeGraph MCP is
-always enabled and cannot be edited, copied, disabled, or removed.
+for a disabled user server. The separately synthesized managed Cantrip and
+CodeGraph MCP servers are always enabled and cannot be edited, copied, disabled,
+or removed.
 The worker translates that set to Codex's native `mcp_servers` configuration
 and supplies it through `thread/start` or `thread/resume`. When the effective
 set changes for an already-loaded idle thread, the worker unsubscribes and

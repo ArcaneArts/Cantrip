@@ -272,6 +272,7 @@ import {
   encryptedModelProviderUpdateSchema,
   encryptedMcpServerCreateSchema,
   encryptedMcpServerUpdateSchema,
+  mcpServerDiscoveryResultSchema,
   mcpServerWireListSchema,
   mcpServerWireSummarySchema,
   mentionedSkillNames,
@@ -12134,6 +12135,33 @@ export async function buildApp({
     return reply.send(mcpServerWireListSchema.parse(servers ?? []));
   });
 
+  app.get<{ Params: { workerId: string } }>(
+    "/api/settings/mcp-discovery/:workerId",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      if (!worker.online || !bridge.isConnected(worker.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const result = await bridge.request(
+          worker.workerId,
+          { type: "mcp.configurations.discover", projectRoot: null },
+          { timeoutMs: 20_000 },
+        );
+        return reply.send(mcpServerDiscoveryResultSchema.parse(result));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
   app.post("/api/settings/mcp-servers", async (request, reply) => {
     const input = encryptedMcpServerCreateSchema.safeParse(request.body);
     if (!input.success) {
@@ -13499,6 +13527,56 @@ export async function buildApp({
       return servers
         ? reply.send(mcpServerWireListSchema.parse(servers))
         : reply.code(404).send({ error: "Project not found." });
+    },
+  );
+
+  app.get<{ Params: { projectId: string; workerId: string } }>(
+    "/api/projects/:projectId/mcp-discovery/:workerId",
+    async (request, reply) => {
+      const ownerId = applicationOwnerId();
+      const project = await repository.getProject(
+        ownerId,
+        request.params.projectId,
+      );
+      if (!project) {
+        return reply.code(404).send({ error: "Project not found." });
+      }
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) {
+        return reply.code(404).send({ error: "Worker not found." });
+      }
+      const replicas = await repository.listProjectReplicas(
+        ownerId,
+        project.id,
+      );
+      const replica = replicas?.find(
+        (candidate) =>
+          candidate.workerId === worker.workerId && candidate.ready,
+      );
+      if (!replica) {
+        return reply.code(409).send({
+          error: "This project does not have a ready replica on that worker.",
+        });
+      }
+      if (!worker.online || !bridge.isConnected(worker.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const result = await bridge.request(
+          worker.workerId,
+          {
+            type: "mcp.configurations.discover",
+            projectRoot: replica.path,
+          },
+          { timeoutMs: 20_000 },
+        );
+        return reply.send(mcpServerDiscoveryResultSchema.parse(result));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
     },
   );
 

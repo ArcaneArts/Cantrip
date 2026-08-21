@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { ClientEncryptionService } from "./client-encryption";
 import {
+  openDiscoveredMcpServerCreate,
   openModelProviderAccountWireSummary,
   protectMcpServerCreate,
   protectModelProviderAccountCreate,
@@ -45,6 +46,32 @@ describe("protected MCP adapter", () => {
       ).rejects.toThrow("reserved");
     },
   );
+
+  it("opens a worker-sealed discovery candidate without changing its ciphertext", async () => {
+    const options = unlockedOptions();
+    const encrypted = await protectMcpServerCreate(
+      {
+        name: "discovered_private",
+        enabled: true,
+        transport: "http",
+        url: "http://127.0.0.1:4141/private",
+        bearerTokenEnvironmentVariable: null,
+        headers: { Authorization: "Bearer private-discovery-secret" },
+        environmentHeaders: {},
+      },
+      "worker-1",
+      options,
+    );
+
+    const opened = await openDiscoveredMcpServerCreate(encrypted, options);
+    expect(opened.encrypted).toEqual(encrypted);
+    expect(opened.configuration).toMatchObject({
+      name: "discovered_private",
+      transport: "http",
+      headers: { Authorization: "Bearer private-discovery-secret" },
+    });
+    expect(JSON.stringify(encrypted)).not.toContain("private-discovery-secret");
+  });
 });
 
 describe("protected provider payloads", () => {
