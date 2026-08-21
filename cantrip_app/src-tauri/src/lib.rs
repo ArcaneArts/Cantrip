@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File, OpenOptions},
+    fs,
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -231,14 +231,6 @@ fn set_macos_pro_mode(window: tauri::WebviewWindow, enabled: bool) -> Result<boo
     }
 }
 
-fn open_log(path: &Path) -> Result<File, String> {
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|error| format!("Could not open {}: {error}", path.display()))
-}
-
 fn node_service_command(node: &Path, directory: &Path) -> Command {
     let mut command = Command::new(node);
     command.arg("dist/index.js").current_dir(directory);
@@ -248,18 +240,11 @@ fn node_service_command(node: &Path, directory: &Path) -> Command {
 fn spawn_node_service(
     node: &Path,
     directory: &Path,
-    log_path: &Path,
     environment: &[(&str, String)],
 ) -> Result<Child, String> {
-    let stdout = open_log(log_path)?;
-    let stderr = stdout
-        .try_clone()
-        .map_err(|error| format!("Could not clone log handle: {error}"))?;
     let mut command = node_service_command(node, directory);
     configure_desktop_child(&mut command);
-    command
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr));
+    command.stdout(Stdio::null()).stderr(Stdio::null());
     for (key, value) in environment {
         command.env(key, value);
     }
@@ -709,7 +694,6 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let mut server = spawn_node_service(
         &node,
         &server_directory,
-        &logs.join("server.log"),
         &[
             ("CANTRIP_SERVER_HOST", "127.0.0.1".into()),
             ("CANTRIP_SERVER_PORT", port.to_string()),
@@ -728,10 +712,8 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
             ),
             ("CANTRIP_WORKER_TOKEN", worker_token.clone()),
             (
-                "CANTRIP_SERVICE_LOG_FILE",
-                logs.join("server.service.jsonl")
-                    .to_string_lossy()
-                    .into_owned(),
+                "CANTRIP_SERVICE_LOG_DIR",
+                logs.join("server").to_string_lossy().into_owned(),
             ),
         ],
     )?;
@@ -778,7 +760,6 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
     let worker = match spawn_node_service(
         &node,
         &worker_directory,
-        &logs.join("worker.log"),
         &[
             ("CANTRIP_SERVER_URL", server_url.clone()),
             ("CANTRIP_WORKER_TOKEN", worker_token),
@@ -790,8 +771,8 @@ fn build_runtime(app: &tauri::App) -> Result<ManagedRuntime, String> {
                 data.join("worker").to_string_lossy().into_owned(),
             ),
             (
-                "CANTRIP_SERVICE_LOG_FILE",
-                logs.join("worker.service.jsonl")
+                "CANTRIP_SERVICE_LOG_DIR",
+                logs.join("workers/desktop-local")
                     .to_string_lossy()
                     .into_owned(),
             ),
@@ -913,6 +894,7 @@ pub fn run() {
             desktop_worker::pair_desktop_worker,
             desktop_worker::forget_desktop_worker,
             direct_probe::probe_direct_worker,
+            local_logs::open_local_logs_directory,
             local_logs::read_local_service_logs,
             local_server_url,
             relay_client_log,
@@ -935,6 +917,7 @@ pub fn run() {
             ))?;
             let local_logs = local_logs::build(app).map_err(std::io::Error::other)?;
             app.manage(local_logs);
+            local_logs::start_maintenance(app.handle().clone());
             let runtime = build_runtime(app).map_err(|error| {
                 app.state::<local_logs::LocalServiceLogs>().runtime_event(
                     "fatal",

@@ -7,7 +7,10 @@ const tauri = vi.hoisted(() => ({
 
 vi.mock("@tauri-apps/api/core", () => tauri);
 
-import { readLocalServiceLogs } from "./local-service-logs";
+import {
+  openLocalLogsDirectory,
+  readLocalServiceLogs,
+} from "./local-service-logs";
 
 describe("local service log bridge", () => {
   beforeEach(() => {
@@ -45,5 +48,11 @@ describe("local service log bridge", () => {
       "desktop app",
     );
     expect(tauri.invoke).not.toHaveBeenCalled();
+  });
+
+  it("opens only the fixed native logs directory without accepting a path", async () => {
+    tauri.invoke.mockResolvedValue(undefined);
+    await openLocalLogsDirectory();
+    expect(tauri.invoke).toHaveBeenCalledWith("open_local_logs_directory");
   });
 });

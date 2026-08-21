@@ -1,26 +1,31 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     fs::{self, File, OpenOptions},
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{Mutex, OnceLock},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::{App, Manager, State};
+use tauri::{App, AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 use url::Url;
 
 use crate::desktop_worker::DesktopWorkers;
 
 const MAX_BYTES: usize = 5 * 1024 * 1024;
 const MAX_ENTRIES: usize = 10_000;
-const MAX_FILES: usize = 3;
 const MAX_RECORD_BYTES: usize = 16 * 1024;
 const MAX_CONTEXT_DEPTH: usize = 6;
 const MAX_CONTEXT_ENTRIES: usize = 100;
 const REDACTED: &str = "[REDACTED]";
+const ARCHIVE_MAX_BYTES: u64 = 100 * 1024 * 1024;
+const ARCHIVE_PART_BYTES: u64 = 10 * 1024 * 1024;
+const COMPRESSION_AGE: Duration = Duration::from_secs(48 * 60 * 60);
 
 fn secret_field_pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
@@ -245,26 +250,148 @@ struct BufferedRecord {
     record: LocalServiceLogRecord,
 }
 
+#[derive(Clone)]
+struct ManagedArchiveFile {
+    compressed: bool,
+    created: SystemTime,
+    day: String,
+    part: u32,
+    path: PathBuf,
+    size: u64,
+}
+
+impl ManagedArchiveFile {
+    fn part_key(&self) -> String {
+        format!("{}:{:04}", self.day, self.part)
+    }
+}
+
+fn managed_archive_name(source: &str, day: &str, part: u32) -> String {
+    format!("{source}-{day}.part-{part:04}.jsonl")
+}
+
+fn parse_managed_archive_file(path: PathBuf, source: &str) -> Option<ManagedArchiveFile> {
+    let name = path.file_name()?.to_str()?;
+    let suffix = name.strip_prefix(&format!("{source}-"))?;
+    let (day, suffix) = suffix.split_at_checked(10)?;
+    chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d").ok()?;
+    let suffix = suffix.strip_prefix(".part-")?;
+    let (part, extension) = suffix.split_at_checked(4)?;
+    let part = part.parse::<u32>().ok()?;
+    let compressed = match extension {
+        ".jsonl" => false,
+        ".jsonl.gz" => true,
+        _ => return None,
+    };
+    let metadata = fs::metadata(&path).ok()?;
+    let fallback = chrono::NaiveDate::parse_from_str(day, "%Y-%m-%d")
+        .ok()?
+        .and_hms_milli_opt(23, 59, 59, 999)?
+        .and_utc()
+        .timestamp_millis();
+    let fallback = UNIX_EPOCH + Duration::from_millis(fallback.max(0) as u64);
+    Some(ManagedArchiveFile {
+        compressed,
+        created: metadata.created().unwrap_or(fallback),
+        day: day.to_string(),
+        part,
+        path,
+        size: metadata.len(),
+    })
+}
+
+fn managed_archive_files(
+    directory: &Path,
+    source: &str,
+) -> Result<Vec<ManagedArchiveFile>, String> {
+    let mut files = fs::read_dir(directory)
+        .map_err(|error| format!("Could not list local service logs: {error}"))?
+        .filter_map(Result::ok)
+        .filter_map(|entry| parse_managed_archive_file(entry.path(), source))
+        .collect::<Vec<_>>();
+    files.sort_by(|left, right| {
+        left.day
+            .cmp(&right.day)
+            .then(left.part.cmp(&right.part))
+            .then(left.compressed.cmp(&right.compressed))
+    });
+    Ok(files)
+}
+
+fn set_private_file_permissions(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
+    }
+}
+
+pub(crate) fn migrate_legacy_archive(
+    directory: &Path,
+    source: &str,
+    legacy_paths: &[PathBuf],
+) -> Result<(), String> {
+    fs::create_dir_all(directory)
+        .map_err(|error| format!("Could not create local log archive: {error}"))?;
+    let mut candidates = Vec::new();
+    for base in legacy_paths {
+        for suffix in [".3", ".2", ".1", ""] {
+            let candidate = PathBuf::from(format!("{}{}", base.display(), suffix));
+            if candidate.is_file() {
+                let metadata = fs::metadata(&candidate)
+                    .map_err(|error| format!("Could not inspect legacy service logs: {error}"))?;
+                candidates.push((metadata.modified().unwrap_or(UNIX_EPOCH), candidate));
+            }
+        }
+    }
+    candidates.sort_by_key(|(modified, _)| *modified);
+    let mut files = managed_archive_files(directory, source)?;
+    for (modified, candidate) in candidates {
+        let day = chrono::DateTime::<chrono::Utc>::from(modified)
+            .format("%Y-%m-%d")
+            .to_string();
+        let part = files
+            .iter()
+            .filter(|file| file.day == day)
+            .map(|file| file.part)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let destination = directory.join(managed_archive_name(source, &day, part));
+        fs::rename(&candidate, &destination)
+            .map_err(|error| format!("Could not adopt legacy service logs: {error}"))?;
+        set_private_file_permissions(&destination);
+        if let Some(file) = parse_managed_archive_file(destination, source) {
+            files.push(file);
+        }
+    }
+    Ok(())
+}
+
 struct SourceTail {
     bytes: usize,
     cursor: u64,
+    directory: PathBuf,
     initialized: bool,
-    offset: u64,
-    path: PathBuf,
-    pending: Vec<u8>,
+    offsets: HashMap<PathBuf, u64>,
+    pending: HashMap<PathBuf, Vec<u8>>,
+    read_parts: HashSet<String>,
     records: VecDeque<BufferedRecord>,
+    source: String,
 }
 
 impl SourceTail {
-    fn new(path: PathBuf) -> Self {
+    fn new(directory: PathBuf, source: impl Into<String>) -> Self {
         Self {
             bytes: 0,
             cursor: 0,
+            directory,
             initialized: false,
-            offset: 0,
-            path,
-            pending: Vec::new(),
+            offsets: HashMap::new(),
+            pending: HashMap::new(),
+            read_parts: HashSet::new(),
             records: VecDeque::new(),
+            source: source.into(),
         }
     }
 
@@ -304,23 +431,21 @@ impl SourceTail {
         }
     }
 
-    fn consume(&mut self, bytes: &[u8]) {
-        self.pending.extend_from_slice(bytes);
+    fn consume(&mut self, path: &Path, bytes: &[u8]) {
+        let mut pending = self.pending.remove(path).unwrap_or_default();
+        pending.extend_from_slice(bytes);
         let mut consumed = 0;
-        while let Some(relative) = self.pending[consumed..]
-            .iter()
-            .position(|byte| *byte == b'\n')
-        {
+        while let Some(relative) = pending[consumed..].iter().position(|byte| *byte == b'\n') {
             let end = consumed + relative;
-            let line = self.pending[consumed..end].to_vec();
+            let line = pending[consumed..end].to_vec();
             self.append_line(&line);
             consumed = end + 1;
         }
         if consumed > 0 {
-            self.pending.drain(..consumed);
+            pending.drain(..consumed);
         }
-        if self.pending.len() > MAX_RECORD_BYTES * 2 {
-            self.pending.clear();
+        if pending.len() <= MAX_RECORD_BYTES * 2 {
+            self.pending.insert(path.to_path_buf(), pending);
         }
     }
 
@@ -339,41 +464,79 @@ impl SourceTail {
         }
         let bounded_offset = offset.max(length.saturating_sub(MAX_BYTES as u64));
         if bounded_offset > offset {
-            self.pending.clear();
+            self.pending.remove(path);
         }
         file.seek(SeekFrom::Start(bounded_offset))
             .map_err(|error| format!("Could not seek local service logs: {error}"))?;
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .map_err(|error| format!("Could not read local service logs: {error}"))?;
-        self.consume(&contents);
+        self.consume(path, &contents);
         Ok(length)
     }
 
+    fn read_gzip(&mut self, path: &Path) -> Result<(), String> {
+        let file = File::open(path)
+            .map_err(|error| format!("Could not open compressed service logs: {error}"))?;
+        let mut decoder = GzDecoder::new(file);
+        let mut contents = Vec::new();
+        decoder
+            .read_to_end(&mut contents)
+            .map_err(|error| format!("Could not decompress service logs: {error}"))?;
+        self.consume(path, &contents);
+        self.pending.remove(path);
+        Ok(())
+    }
+
     fn refresh(&mut self) -> Result<(), String> {
+        let files = managed_archive_files(&self.directory, &self.source)?;
         if !self.initialized {
-            for index in (1..=MAX_FILES).rev() {
-                let archive = PathBuf::from(format!("{}.{}", self.path.display(), index));
-                self.read_range(&archive, 0)?;
-                self.pending.clear();
+            let mut retained_bytes = 0_u64;
+            let mut selected = Vec::new();
+            for file in files.iter().rev() {
+                selected.push(file.clone());
+                retained_bytes = retained_bytes.saturating_add(file.size);
+                if retained_bytes >= MAX_BYTES as u64 {
+                    break;
+                }
             }
-            let path = self.path.clone();
-            self.offset = self.read_range(&path, 0)?;
+            selected.reverse();
+            for file in selected {
+                if file.compressed {
+                    self.read_gzip(&file.path)?;
+                } else {
+                    let offset = self.read_range(&file.path, 0)?;
+                    self.offsets.insert(file.path.clone(), offset);
+                }
+                self.read_parts.insert(file.part_key());
+            }
             self.initialized = true;
             return Ok(());
         }
 
-        let length = fs::metadata(&self.path)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
-        if length < self.offset {
-            let archive = PathBuf::from(format!("{}.1", self.path.display()));
-            self.read_range(&archive, self.offset)?;
-            self.pending.clear();
-            self.offset = 0;
+        let current_paths = files
+            .iter()
+            .map(|file| file.path.clone())
+            .collect::<HashSet<_>>();
+        self.offsets.retain(|path, _| current_paths.contains(path));
+        self.pending.retain(|path, _| current_paths.contains(path));
+        for file in files {
+            let part_key = file.part_key();
+            if file.compressed {
+                if self.read_parts.insert(part_key) {
+                    self.read_gzip(&file.path)?;
+                }
+                continue;
+            }
+            let offset = self.offsets.get(&file.path).copied().unwrap_or(0);
+            let length = fs::metadata(&file.path)
+                .map(|metadata| metadata.len())
+                .unwrap_or(0);
+            let offset = if length < offset { 0 } else { offset };
+            let next = self.read_range(&file.path, offset)?;
+            self.offsets.insert(file.path.clone(), next);
+            self.read_parts.insert(part_key);
         }
-        let path = self.path.clone();
-        self.offset = self.read_range(&path, self.offset)?;
         Ok(())
     }
 
@@ -417,48 +580,30 @@ impl SourceTail {
     }
 }
 
-struct RotatingJsonlWriter {
+struct DailyJsonlWriter {
     bytes: u64,
     cursor: u64,
+    day: String,
+    directory: PathBuf,
     path: PathBuf,
+    source: String,
 }
 
-impl RotatingJsonlWriter {
-    fn new(path: PathBuf) -> Result<Self, String> {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("Could not create local log directory: {error}"))?;
-        }
-        let bytes = fs::metadata(&path)
-            .map(|metadata| metadata.len())
-            .unwrap_or(0);
-        Ok(Self {
-            bytes,
+impl DailyJsonlWriter {
+    fn new(directory: PathBuf, source: impl Into<String>) -> Result<Self, String> {
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("Could not create local log directory: {error}"))?;
+        let mut writer = Self {
+            bytes: 0,
             cursor: 0,
-            path,
-        })
-    }
-
-    fn rotate(&mut self) -> Result<(), String> {
-        let oldest = PathBuf::from(format!("{}.{}", self.path.display(), MAX_FILES));
-        let _ = fs::remove_file(oldest);
-        for index in (1..MAX_FILES).rev() {
-            let source = PathBuf::from(format!("{}.{}", self.path.display(), index));
-            let target = PathBuf::from(format!("{}.{}", self.path.display(), index + 1));
-            if source.exists() {
-                fs::rename(source, target)
-                    .map_err(|error| format!("Could not rotate client logs: {error}"))?;
-            }
-        }
-        if self.path.exists() {
-            fs::rename(
-                &self.path,
-                PathBuf::from(format!("{}.1", self.path.display())),
-            )
-            .map_err(|error| format!("Could not rotate client logs: {error}"))?;
-        }
-        self.bytes = 0;
-        Ok(())
+            day: String::new(),
+            path: PathBuf::new(),
+            source: source.into(),
+            directory,
+        };
+        writer.open_day(&chrono::Utc::now().format("%Y-%m-%d").to_string())?;
+        writer.maintain()?;
+        Ok(writer)
     }
 
     fn append(
@@ -467,6 +612,11 @@ impl RotatingJsonlWriter {
         message: String,
         context: Option<Value>,
     ) -> Result<(), String> {
+        let day = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        if day != self.day {
+            self.open_day(&day)?;
+            self.maintain()?;
+        }
         self.cursor += 1;
         let mut record = DiskServiceLogRecord {
             cursor: self.cursor,
@@ -488,26 +638,163 @@ impl RotatingJsonlWriter {
             }
         }
         line.push(b'\n');
-        if self.bytes > 0 && self.bytes + line.len() as u64 > MAX_BYTES as u64 {
-            self.rotate()?;
+        if self.bytes > 0 && self.bytes + line.len() as u64 > ARCHIVE_PART_BYTES {
+            self.open_next_part(&day)?;
         }
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&self.path)
             .map_err(|error| format!("Could not open client log: {error}"))?;
+        set_private_file_permissions(&self.path);
         file.write_all(&line)
             .map_err(|error| format!("Could not write client log: {error}"))?;
         self.bytes += line.len() as u64;
+        let total = managed_archive_files(&self.directory, &self.source)?
+            .iter()
+            .map(|file| file.size)
+            .sum::<u64>();
+        if total > ARCHIVE_MAX_BYTES {
+            self.enforce_quota()?;
+        }
+        Ok(())
+    }
+
+    fn open_day(&mut self, day: &str) -> Result<(), String> {
+        let files = managed_archive_files(&self.directory, &self.source)?;
+        let newest = files
+            .iter()
+            .filter(|file| file.day == day && !file.compressed)
+            .max_by_key(|file| file.part);
+        let (part, bytes) = newest
+            .filter(|file| file.size < ARCHIVE_PART_BYTES)
+            .map(|file| (file.part, file.size))
+            .unwrap_or_else(|| {
+                (
+                    files
+                        .iter()
+                        .filter(|file| file.day == day)
+                        .map(|file| file.part)
+                        .max()
+                        .unwrap_or(0)
+                        + 1,
+                    0,
+                )
+            });
+        self.day = day.to_string();
+        self.path = self
+            .directory
+            .join(managed_archive_name(&self.source, day, part));
+        self.bytes = bytes;
+        Ok(())
+    }
+
+    fn open_next_part(&mut self, day: &str) -> Result<(), String> {
+        let part = managed_archive_files(&self.directory, &self.source)?
+            .iter()
+            .filter(|file| file.day == day)
+            .map(|file| file.part)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        self.day = day.to_string();
+        self.path = self
+            .directory
+            .join(managed_archive_name(&self.source, day, part));
+        self.bytes = 0;
+        Ok(())
+    }
+
+    fn maintain(&mut self) -> Result<(), String> {
+        self.recover_temporary_files()?;
+        let now = SystemTime::now();
+        for file in managed_archive_files(&self.directory, &self.source)? {
+            if file.compressed || file.path == self.path {
+                continue;
+            }
+            let old_enough = now
+                .duration_since(file.created)
+                .map(|age| age > COMPRESSION_AGE)
+                .unwrap_or(false);
+            if !old_enough {
+                continue;
+            }
+            let completed = PathBuf::from(format!("{}.gz", file.path.display()));
+            if completed.exists() {
+                fs::remove_file(&file.path)
+                    .map_err(|error| format!("Could not remove compressed source log: {error}"))?;
+                continue;
+            }
+            let temporary = PathBuf::from(format!("{}.tmp", completed.display()));
+            let source = File::open(&file.path)
+                .map_err(|error| format!("Could not open service log for compression: {error}"))?;
+            let target = OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temporary)
+                .map_err(|error| format!("Could not create compressed service log: {error}"))?;
+            set_private_file_permissions(&temporary);
+            let mut encoder = GzEncoder::new(target, Compression::best());
+            if let Err(error) = std::io::copy(&mut std::io::BufReader::new(source), &mut encoder)
+                .and_then(|_| encoder.finish().map(|_| 0))
+            {
+                return Err(format!("Could not compress service log: {error}"));
+            }
+            fs::rename(&temporary, &completed)
+                .map_err(|error| format!("Could not publish compressed service log: {error}"))?;
+            fs::remove_file(&file.path)
+                .map_err(|error| format!("Could not remove compressed source log: {error}"))?;
+        }
+        self.enforce_quota()
+    }
+
+    fn recover_temporary_files(&self) -> Result<(), String> {
+        for entry in fs::read_dir(&self.directory)
+            .map_err(|error| format!("Could not inspect temporary service logs: {error}"))?
+            .filter_map(Result::ok)
+        {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Some(completed_name) = name.strip_suffix(".jsonl.gz.tmp") else {
+                continue;
+            };
+            let completed = self.directory.join(format!("{completed_name}.jsonl.gz"));
+            let source = self.directory.join(format!("{completed_name}.jsonl"));
+            if (completed.exists() || source.exists())
+                && parse_managed_archive_file(completed, &self.source).is_some()
+            {
+                let _ = fs::remove_file(path);
+            }
+        }
+        Ok(())
+    }
+
+    fn enforce_quota(&self) -> Result<(), String> {
+        let files = managed_archive_files(&self.directory, &self.source)?;
+        let mut total = files.iter().map(|file| file.size).sum::<u64>();
+        for file in files {
+            if total <= ARCHIVE_MAX_BYTES {
+                break;
+            }
+            if file.path == self.path {
+                continue;
+            }
+            fs::remove_file(&file.path)
+                .map_err(|error| format!("Could not prune old service logs: {error}"))?;
+            total = total.saturating_sub(file.size);
+        }
         Ok(())
     }
 }
 
 pub struct LocalServiceLogs {
-    client: Mutex<RotatingJsonlWriter>,
-    client_path: PathBuf,
-    server_path: PathBuf,
-    worker_path: PathBuf,
+    archive_root: PathBuf,
+    client: Mutex<DailyJsonlWriter>,
+    client_directory: PathBuf,
+    server_directory: PathBuf,
+    worker_directory: PathBuf,
     tails: Mutex<HashMap<String, SourceTail>>,
 }
 
@@ -562,17 +849,20 @@ impl LocalServiceLogs {
         }
     }
 
-    fn read_path(
+    fn read_archive(
         &self,
-        path: PathBuf,
+        directory: PathBuf,
+        source: &str,
         request: &LocalServiceLogReadRequest,
     ) -> Result<LocalServiceLogReadResult, String> {
-        let key = path.to_string_lossy().into_owned();
+        let key = format!("{}:{source}", directory.to_string_lossy());
         let mut tails = self
             .tails
             .lock()
             .map_err(|_| "The local service log reader is unavailable.".to_string())?;
-        let tail = tails.entry(key).or_insert_with(|| SourceTail::new(path));
+        let tail = tails
+            .entry(key)
+            .or_insert_with(|| SourceTail::new(directory, source));
         tail.refresh()?;
         Ok(tail.read(
             request.after_cursor.unwrap_or(0),
@@ -591,7 +881,7 @@ pub fn build(app: &App) -> Result<LocalServiceLogs, String> {
     fs::create_dir_all(&packaged_logs)
         .map_err(|error| format!("Could not create local log directory: {error}"))?;
 
-    let (client_path, server_path, worker_path) = if cfg!(debug_assertions) {
+    let archive_root = if cfg!(debug_assertions) {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(Path::parent)
@@ -599,26 +889,78 @@ pub fn build(app: &App) -> Result<LocalServiceLogs, String> {
             .join(".cantrip/dev/logs");
         fs::create_dir_all(&root)
             .map_err(|error| format!("Could not create development logs: {error}"))?;
-        (
-            root.join("client.jsonl"),
-            root.join("server.jsonl"),
-            root.join("worker.jsonl"),
-        )
+        root
     } else {
-        (
-            packaged_logs.join("client.service.jsonl"),
-            packaged_logs.join("server.service.jsonl"),
-            packaged_logs.join("worker.service.jsonl"),
-        )
+        packaged_logs
     };
+    let client_directory = archive_root.join("client");
+    let server_directory = archive_root.join("server");
+    let worker_directory = archive_root.join("workers/desktop-local");
+    migrate_legacy_archive(
+        &client_directory,
+        "client",
+        &[
+            archive_root.join("client.jsonl"),
+            archive_root.join("client.service.jsonl"),
+        ],
+    )?;
+    migrate_legacy_archive(
+        &server_directory,
+        "server",
+        &[
+            archive_root.join("server.jsonl"),
+            archive_root.join("server.service.jsonl"),
+        ],
+    )?;
+    migrate_legacy_archive(
+        &worker_directory,
+        "worker",
+        &[
+            archive_root.join("worker.jsonl"),
+            archive_root.join("worker.service.jsonl"),
+        ],
+    )?;
 
     Ok(LocalServiceLogs {
-        client: Mutex::new(RotatingJsonlWriter::new(client_path.clone())?),
-        client_path,
-        server_path,
-        worker_path,
+        archive_root,
+        client: Mutex::new(DailyJsonlWriter::new(client_directory.clone(), "client")?),
+        client_directory,
+        server_directory,
+        worker_directory,
         tails: Mutex::new(HashMap::new()),
     })
+}
+
+pub fn start_maintenance(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let now = chrono::Utc::now();
+            let next = (now.date_naive() + chrono::Days::new(1))
+                .and_hms_opt(0, 0, 0)
+                .expect("UTC midnight must exist")
+                .and_utc();
+            let delay = (next - now)
+                .to_std()
+                .unwrap_or_else(|_| Duration::from_secs(1));
+            tokio::time::sleep(delay.max(Duration::from_secs(1))).await;
+            let logs = app.state::<LocalServiceLogs>();
+            if let Ok(mut writer) = logs.client.lock() {
+                if let Err(error) = writer.maintain() {
+                    eprintln!("Could not maintain client log archive: {error}");
+                }
+            };
+        }
+    });
+}
+
+#[tauri::command]
+pub fn open_local_logs_directory(
+    app: AppHandle,
+    logs: State<'_, LocalServiceLogs>,
+) -> Result<(), String> {
+    app.opener()
+        .open_path(logs.archive_root.to_string_lossy(), None::<&str>)
+        .map_err(|error| format!("Could not open the Cantrip logs directory: {error}"))
 }
 
 #[tauri::command]
@@ -627,19 +969,19 @@ pub fn read_local_service_logs(
     logs: State<'_, LocalServiceLogs>,
     workers: State<'_, DesktopWorkers>,
 ) -> Result<LocalServiceLogReadResult, String> {
-    let path = match request.source {
-        LocalLogSource::Client => logs.client_path.clone(),
-        LocalLogSource::Server => logs.server_path.clone(),
-        LocalLogSource::Worker => logs.worker_path.clone(),
+    let (directory, source) = match request.source {
+        LocalLogSource::Client => (logs.client_directory.clone(), "client"),
+        LocalLogSource::Server => (logs.server_directory.clone(), "server"),
+        LocalLogSource::Worker => (logs.worker_directory.clone(), "worker"),
         LocalLogSource::LinkedWorker => {
             let worker_id = request
                 .worker_id
                 .as_deref()
                 .ok_or_else(|| "Choose a linked worker.".to_string())?;
-            workers.service_log_path(worker_id)?
+            (workers.service_log_path(worker_id)?, "worker")
         }
     };
-    logs.read_path(path, &request)
+    logs.read_archive(directory, source, &request)
 }
 
 fn sanitize_text(value: &str) -> String {
@@ -692,7 +1034,7 @@ mod tests {
     #[test]
     fn local_tail_filters_and_advances_cursors() {
         let root = std::env::temp_dir().join(format!("cantrip-local-log-{}", std::process::id()));
-        let path = root.join("service.jsonl");
+        let path = root.join("worker-2026-08-16.part-0001.jsonl");
         fs::create_dir_all(&root).unwrap();
         fs::write(
             &path,
@@ -702,7 +1044,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let mut tail = SourceTail::new(path);
+        let mut tail = SourceTail::new(root.clone(), "worker");
         tail.refresh().unwrap();
         let result = tail.read(0, 10, ServiceLogLevel::Warn);
         assert_eq!(result.records.len(), 1);
@@ -717,8 +1059,7 @@ mod tests {
             "cantrip-client-log-writer-{}",
             uuid::Uuid::new_v4()
         ));
-        let path = root.join("client.jsonl");
-        let mut writer = RotatingJsonlWriter::new(path.clone()).unwrap();
+        let mut writer = DailyJsonlWriter::new(root.clone(), "client").unwrap();
         writer
             .append(
                 ServiceLogLevel::Error,
@@ -726,6 +1067,9 @@ mod tests {
                 Some(json!({ "source": "bootstrap" })),
             )
             .unwrap();
+        let path = managed_archive_files(&root, "client").unwrap()[0]
+            .path
+            .clone();
         let contents = fs::read_to_string(path).unwrap();
         let record = serde_json::from_str::<DiskServiceLogRecord>(contents.trim()).unwrap();
         assert_eq!(record.system, "client");
@@ -740,8 +1084,7 @@ mod tests {
             "cantrip-native-log-redaction-{}",
             uuid::Uuid::new_v4()
         ));
-        let path = root.join("client.jsonl");
-        let mut writer = RotatingJsonlWriter::new(path.clone()).unwrap();
+        let mut writer = DailyJsonlWriter::new(root.clone(), "client").unwrap();
         writer
             .append(
                 ServiceLogLevel::Warn,
@@ -758,6 +1101,9 @@ mod tests {
                 })),
             )
             .unwrap();
+        let path = managed_archive_files(&root, "client").unwrap()[0]
+            .path
+            .clone();
         let contents = fs::read_to_string(path).unwrap();
         assert!(!contents.contains("ghp_abcdefghijk"));
         assert!(!contents.contains("private-token"));
@@ -778,7 +1124,7 @@ mod tests {
             "cantrip-local-tail-redaction-{}",
             uuid::Uuid::new_v4()
         ));
-        let path = root.join("service.jsonl");
+        let path = root.join("worker-2026-08-16.part-0001.jsonl");
         fs::create_dir_all(&root).unwrap();
         fs::write(
             &path,
@@ -787,7 +1133,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let mut tail = SourceTail::new(path);
+        let mut tail = SourceTail::new(root.clone(), "worker");
         tail.refresh().unwrap();
         let result = tail.read(0, 10, ServiceLogLevel::Trace);
         let encoded = serde_json::to_string(&result.records).unwrap();

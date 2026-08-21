@@ -5,6 +5,7 @@ import { ApplicationSession } from "@/components/auth/application-session";
 import {
   clientLogger,
   installClientLogCapture,
+  initializeClientLogPersistence,
   operationalErrorMetadata,
 } from "@/lib/client-log-relay";
 import { initializeServerConnections } from "@/lib/server-connections";
@@ -14,6 +15,7 @@ import "./index.css";
 installClientLogCapture();
 
 async function start(): Promise<void> {
+  await initializeClientLogPersistence();
   const startedAt = performance.now();
   const tauriRuntime = "__TAURI_INTERNALS__" in window;
   clientLogger.info("Cantrip client boot started", {

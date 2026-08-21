@@ -1,23 +1,57 @@
 import {
   createServiceLogger,
   normalizeLogError,
-  RotatingJsonlLog,
   ServiceLogBuffer,
   type ServiceLogContext,
   type ServiceLogLevel,
   type ServiceLogRecordInput,
 } from "@cantrip/logging";
+import type { DailyLogArchive } from "@cantrip/logging/archive";
+import { createNodeDailyLogArchive } from "@cantrip/logging/node";
 import type { WorkerLogReadQuery } from "@cantrip/protocol";
+import path from "node:path";
 
 const workerLogBuffer = new ServiceLogBuffer();
-const configuredLogFile = process.env.CANTRIP_SERVICE_LOG_FILE?.trim();
-const workerLogFile = configuredLogFile
-  ? new RotatingJsonlLog({ filePath: configuredLogFile })
-  : null;
+let workerLogArchive: DailyLogArchive | null = null;
+let lastArchiveDiagnosticAt = 0;
 
 function storeWorkerLogRecord(record: ServiceLogRecordInput) {
   const stored = workerLogBuffer.append(record);
-  workerLogFile?.write(stored);
+  void workerLogArchive?.append(stored);
+}
+
+export async function initializeWorkerLogArchive(
+  dataDirectory: string,
+): Promise<void> {
+  const configuredDirectory = process.env.CANTRIP_SERVICE_LOG_DIR?.trim();
+  const configuredFile = process.env.CANTRIP_SERVICE_LOG_FILE?.trim();
+  const directory = configuredDirectory
+    ? path.resolve(configuredDirectory)
+    : configuredFile
+      ? path.dirname(path.resolve(configuredFile))
+      : path.join(dataDirectory, "logs");
+  workerLogArchive = createNodeDailyLogArchive({
+    directory,
+    legacyFileNames: configuredFile
+      ? [path.basename(configuredFile)]
+      : ["worker.jsonl", "worker.service.jsonl"],
+    onDiagnostic({ error, operation }) {
+      const now = Date.now();
+      if (now - lastArchiveDiagnosticAt < 30_000) return;
+      lastArchiveDiagnosticAt = now;
+      process.stderr.write(
+        `[worker] WARN Service log archive ${operation} failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    },
+    source: "worker",
+  });
+  await workerLogArchive.initialize();
+}
+
+export async function closeWorkerLogArchive(): Promise<void> {
+  const archive = workerLogArchive;
+  workerLogArchive = null;
+  await archive?.close();
 }
 
 export const workerLogger = createServiceLogger("worker", {

@@ -12,6 +12,10 @@ import {
   type OperationalLogContext,
 } from "@cantrip/logging/core";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import {
+  initializeMobileClientLogArchive,
+  persistMobileClientLog,
+} from "@/lib/mobile-log-archive";
 
 type ClientConsoleLevel = "debug" | "error" | "info" | "log" | "trace" | "warn";
 
@@ -123,8 +127,9 @@ function relayDeliberateClientRecord(record: ServiceLogRecordInput): void {
 /** Deliberate operational logger. Its sanitized record feeds console and Logs. */
 export const clientLogger = createServiceLogEmitter("client", {
   onRecord: (record) => {
-    state().buffer.append(record);
-    relayDeliberateClientRecord(record);
+    const stored = state().buffer.append(record);
+    relayDeliberateClientRecord(stored);
+    persistMobileClientLog(stored);
   },
   output: (record) => {
     const level = consoleLevel(record.level);
@@ -172,13 +177,14 @@ export function recordClientLog(
   values: readonly unknown[],
   source?: string,
 ): void {
-  state().buffer.append({
+  const stored = state().buffer.append({
     timestamp: new Date().toISOString(),
     system: "client",
     level: serviceLevel(level),
     message: formatClientLogArguments(values.map(sanitizeLogContext)),
     ...(source ? { context: { source } } : {}),
   });
+  persistMobileClientLog(stored);
 }
 
 export function readClientLogs(
@@ -246,4 +252,8 @@ export function installClientLogCapture(): void {
       event.reason,
     ]);
   });
+}
+
+export async function initializeClientLogPersistence(): Promise<void> {
+  await initializeMobileClientLogArchive();
 }

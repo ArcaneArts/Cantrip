@@ -15,6 +15,8 @@ import {
 export * from "./core.js";
 export * from "./records.js";
 export * from "./rotating-jsonl.js";
+export * from "./archive.js";
+export * from "./node.js";
 
 export type { ServiceLogLevel } from "./records.js";
 

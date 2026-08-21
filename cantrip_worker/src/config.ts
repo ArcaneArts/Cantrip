@@ -35,6 +35,13 @@ function positiveMilliseconds(value: string | undefined, fallback: number) {
   return parsed;
 }
 
+export function resolveWorkerDataDirectory(): string {
+  return path.resolve(
+    process.cwd(),
+    process.env.CANTRIP_WORKER_DATA_DIR ?? "../.cantrip/dev/worker",
+  );
+}
+
 export function readWorkerConfig(): WorkerConfig {
   const codexInstallation = resolveCodexInstallation({
     override: process.env.CANTRIP_CODEX_BIN,
@@ -55,10 +62,7 @@ export function readWorkerConfig(): WorkerConfig {
       "CANTRIP_SERVER_URL must be an HTTP(S) origin without a path or credentials.",
     );
   }
-  const dataDirectory = path.resolve(
-    process.cwd(),
-    process.env.CANTRIP_WORKER_DATA_DIR ?? "../.cantrip/dev/worker",
-  );
+  const dataDirectory = resolveWorkerDataDirectory();
   const enrollmentCode =
     process.env.CANTRIP_WORKER_ENROLLMENT_CODE?.trim() || null;
   const replacementWorkerId =

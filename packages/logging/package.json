@@ -16,6 +16,14 @@
       "types": "./src/records.ts",
       "import": "./dist/records.js"
     },
+    "./archive": {
+      "types": "./src/archive.ts",
+      "import": "./dist/archive.js"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "import": "./dist/node.js"
+    },
     "./rotating-jsonl": {
       "types": "./src/rotating-jsonl.ts",
       "import": "./dist/rotating-jsonl.js"

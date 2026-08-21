@@ -1,17 +1,17 @@
 import {
   createPinoServiceLogStream,
   createServiceLogger,
-  RotatingJsonlLog,
   ServiceLogBuffer,
   type ServiceLogRecordInput,
   type ServiceLogFormatterOptions,
 } from "@cantrip/logging";
+import { createNodeDailyLogArchive } from "@cantrip/logging/node";
+import type { DailyLogArchive } from "@cantrip/logging/archive";
+import path from "node:path";
 
 const serverLogBuffer = new ServiceLogBuffer();
-const configuredLogFile = process.env.CANTRIP_SERVICE_LOG_FILE?.trim();
-const serverLogFile = configuredLogFile
-  ? new RotatingJsonlLog({ filePath: configuredLogFile })
-  : null;
+let serverLogArchive: DailyLogArchive | null = null;
+let lastArchiveDiagnosticAt = 0;
 
 export const SERVER_LOG_REDACTION_PATHS = [
   "req.headers.authorization",
@@ -40,7 +40,41 @@ export const SERVER_LOG_REDACTION_PATHS = [
 
 function captureServerLog(record: ServiceLogRecordInput): void {
   const stored = serverLogBuffer.append(record);
-  serverLogFile?.write(stored);
+  void serverLogArchive?.append(stored);
+}
+
+export async function initializeServerLogArchive(
+  dataDirectory: string,
+): Promise<void> {
+  const configuredDirectory = process.env.CANTRIP_SERVICE_LOG_DIR?.trim();
+  const configuredFile = process.env.CANTRIP_SERVICE_LOG_FILE?.trim();
+  const directory = configuredDirectory
+    ? path.resolve(configuredDirectory)
+    : configuredFile
+      ? path.dirname(path.resolve(configuredFile))
+      : path.join(dataDirectory, "logs");
+  serverLogArchive = createNodeDailyLogArchive({
+    directory,
+    legacyFileNames: configuredFile
+      ? [path.basename(configuredFile)]
+      : ["server.jsonl", "server.service.jsonl"],
+    onDiagnostic({ error, operation }) {
+      const now = Date.now();
+      if (now - lastArchiveDiagnosticAt < 30_000) return;
+      lastArchiveDiagnosticAt = now;
+      process.stderr.write(
+        `[server] WARN Service log archive ${operation} failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    },
+    source: "server",
+  });
+  await serverLogArchive.initialize();
+}
+
+export async function closeServerLogArchive(): Promise<void> {
+  const archive = serverLogArchive;
+  serverLogArchive = null;
+  await archive?.close();
 }
 
 export const serverLogger = createServiceLogger("server", {
