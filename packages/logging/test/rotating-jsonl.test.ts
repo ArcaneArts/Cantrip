@@ -10,7 +10,7 @@ describe("rotating JSONL logs", () => {
   it("rotates bounded files without dropping the triggering record", () => {
     const directory = mkdtempSync(join(tmpdir(), "cantrip-log-"));
     const filePath = join(directory, "worker.jsonl");
-    const log = new RotatingJsonlLog({ filePath, maxBytes: 220, maxFiles: 2 });
+    const log = new RotatingJsonlLog({ filePath, maxBytes: 350, maxFiles: 2 });
     for (let cursor = 1; cursor <= 5; cursor += 1) {
       log.write({
         cursor,
@@ -18,6 +18,7 @@ describe("rotating JSONL logs", () => {
         system: "worker",
         level: "info",
         message: `record-${cursor}`,
+        context: { event: `worker.record.${cursor}` },
       });
     }
     log.close();
@@ -27,5 +28,32 @@ describe("rotating JSONL logs", () => {
     expect(current).toContain('"cursor":5');
     expect(previous).toContain('"cursor":3');
     expect(previous).toContain('"cursor":4');
+  });
+
+  it("does not persist raw messages or arbitrary context", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cantrip-log-private-"));
+    const filePath = join(directory, "server.jsonl");
+    const log = new RotatingJsonlLog({ filePath });
+    log.write({
+      cursor: 1,
+      timestamp: "2026-08-16T12:00:00.000Z",
+      system: "server",
+      level: "error",
+      message: "prompt-secret at /Users/private/source.ts",
+      context: {
+        event: "server.request.failed",
+        requestId: "opaque-request-id",
+        responseBody: "provider-body-secret",
+        error: new Error("diagnostic-secret"),
+      },
+    });
+    log.close();
+
+    const persisted = readFileSync(filePath, "utf8");
+    expect(persisted).toContain("server.request.failed");
+    expect(persisted).toContain("opaque-request-id");
+    expect(persisted).not.toMatch(
+      /prompt-secret|\/Users\/private|provider-body-secret|diagnostic-secret/u,
+    );
   });
 });

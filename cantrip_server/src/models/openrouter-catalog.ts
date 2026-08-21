@@ -303,7 +303,7 @@ export class OpenRouterCatalogService {
         this.#repository.setProviderCatalogSyncState(provider.id, {
           scopeKey,
           status: "refreshing",
-          error: null,
+          errorCode: null,
           refreshStartedAt: startedAt,
         }),
       ),
@@ -336,7 +336,6 @@ export class OpenRouterCatalogService {
         servedStale,
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       const existing = await this.#repository.getProviderModelCatalog(
         ownerId,
         providerId,
@@ -347,7 +346,7 @@ export class OpenRouterCatalogService {
           this.#repository.setProviderCatalogSyncState(provider.id, {
             scopeKey,
             status: existing?.models.length ? "stale" : "failed",
-            error: message,
+            errorCode: "openrouter-catalog-refresh-failed",
           }),
         ),
       );
@@ -388,7 +387,7 @@ export class OpenRouterCatalogService {
     await this.#repository.setProviderCatalogSyncState(provider.id, {
       scopeKey: OPENROUTER_GLOBAL_SCOPE,
       status: servedStale ? "stale" : "current",
-      error: null,
+      errorCode: null,
       etag: publicSnapshot.etag,
       ...(servedStale ? {} : { lastSuccessAt: now }),
     });
@@ -411,7 +410,7 @@ export class OpenRouterCatalogService {
             this.#repository.setProviderCatalogSyncState(providerId, {
               scopeKey,
               status: "stale",
-              error: error instanceof Error ? error.message : String(error),
+              errorCode: "openrouter-background-refresh-failed",
             }),
           ),
         );

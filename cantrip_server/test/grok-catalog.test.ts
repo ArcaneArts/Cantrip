@@ -14,6 +14,7 @@ import {
 } from "../src/models/grok-catalog.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -147,9 +148,14 @@ describe("Grok catalog", () => {
         );
       `);
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+        id: "00000000-0000-4000-8000-000000000953",
         name: "Grok",
         kind: "grok",
         baseUrl: "https://cli-chat-proxy.grok.com/v1",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000954",
+          protectedLabel: protectedSecretEnvelopeFixture("W"),
+        },
       });
       const first = (await repository.listModelProviderAccounts(
         LOCAL_USER_ID,
@@ -158,7 +164,10 @@ describe("Grok catalog", () => {
       const second = await repository.createModelProviderAccount(
         LOCAL_USER_ID,
         provider.id,
-        { label: "Backup Grok" },
+        {
+          id: "00000000-0000-4000-8000-000000000955",
+          protectedLabel: protectedSecretEnvelopeFixture("X"),
+        },
       );
       for (const account of [first, second!]) {
         await repository.storeModelProviderAccountCredential(

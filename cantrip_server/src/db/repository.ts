@@ -84,15 +84,16 @@ import type {
   EncryptedMcpServerUpdate,
   McpServerOpaqueRuntime,
   McpServerWireSummary,
-  ModelProviderAccountCreate,
-  ModelProviderAccountSummary,
-  ModelProviderAccountUpdate,
+  EncryptedModelProviderAccountCreate,
+  EncryptedModelProviderAccountUpdate,
+  ModelProviderAccountWireSummary,
   EncryptedModelProviderCreate,
   ProviderCatalogSyncState,
   ProviderModelAvailability,
   ProviderModelCatalogEntry,
   ProviderModelCatalogResult,
   ModelProviderSummary,
+  ModelProviderWireSummary,
   EncryptedModelProviderUpdate,
   ModelRouteSummary,
   EncryptedChatPlanWireState,
@@ -116,7 +117,7 @@ import type {
   ProjectReplicaSummary,
   ProjectWireSummary,
   ProjectTokenUsage,
-  ProviderTelemetryAnalytics,
+  ProviderTelemetryWireAnalytics,
   ProviderTelemetryDeleteResult,
   ProviderTelemetryExport,
   EncryptedProjectWorkspaceCreate,
@@ -131,7 +132,7 @@ import type {
   EncryptedProjectViewCreate,
   ProjectViewWireSummary,
   EncryptedProjectViewUpdate,
-  SettingsBundle,
+  SettingsBundleWire,
   EncryptedTerminalCreate,
   EncryptedTerminalServiceConfiguration,
   TerminalServiceRuntimeConfiguration,
@@ -223,7 +224,6 @@ import {
 } from "../models/catalog-enrichment.js";
 import {
   accountProviderLabel,
-  defaultAccountLabel,
   isAccountProviderKind,
 } from "../models/account-provider.js";
 import { sampleProviderTelemetryQuotaHistory } from "../models/provider-telemetry.js";
@@ -336,14 +336,11 @@ export interface AuditEventCreate {
   action: string;
   actorSessionId: string | null;
   actorUserId: string | null;
-  ipAddressHash: string | null;
-  metadata?: Record<string, string>;
   ownerId: string | null;
   requestId: string | null;
   resourceId: string | null;
   resourceType: string;
   result: AuditEvent["result"];
-  userAgentHash: string | null;
 }
 
 export interface ActiveWorkerCredential {
@@ -579,10 +576,9 @@ export interface ModelRuntime {
 
 export interface ModelProviderAccountRuntime {
   accountId: string;
-  credentialState: ModelProviderAccountSummary["credentialState"];
+  credentialState: ModelProviderAccountWireSummary["credentialState"];
   credentialHomeKey: string;
   enabled: boolean;
-  label: string;
   legacyWorkerAuthenticated: boolean;
   modelAvailability: ProviderModelAvailability["state"] | null;
   position: number;
@@ -640,9 +636,6 @@ export interface TokenUsageRecordInput {
   projectId: string | null;
   chatId: string | null;
   modelRouteId: string;
-  modelName: string;
-  providerName: string;
-  providerModelName: string;
   providerAccountId?: string | null;
   workerId?: string | null;
   turnId?: string | null;
@@ -670,7 +663,6 @@ export interface TokenUsageRecordInput {
     reasoningOutputTokens?: number;
     cacheWriteInputTokens?: number;
     visibleOutputTokens?: number | null;
-    sanitizedRawUsage?: Record<string, unknown>;
   };
 }
 
@@ -679,9 +671,6 @@ export interface ModelBehaviorObservationInput {
   projectId: string | null;
   chatId: string | null;
   modelRouteId: string;
-  modelName: string;
-  providerName: string;
-  providerModelName: string;
   providerAccountId?: string | null;
   workerId?: string | null;
   turnId?: string | null;
@@ -744,7 +733,6 @@ export interface ProviderQuotaObservationInput {
   resetsAt: Date | null;
   windowDurationMinutes: number | null;
   limitId: string | null;
-  limitName: string | null;
   windowKind: string;
   planType: string | null;
   reachedType: string | null;
@@ -756,7 +744,6 @@ export interface ProviderQuotaObservationInput {
   workerVersion: string | null;
   serverVersion: string | null;
   codexVersion: string | null;
-  sanitizedRawPayload: Record<string, unknown>;
 }
 
 const ZERO_TOKEN_USAGE: TokenUsageTotals = {
@@ -843,12 +830,7 @@ function stableJsonValue(value: unknown): unknown {
 
 function catalogMetadataSnapshot(model: ProviderModelCatalogWrite) {
   const metadata = stableJsonValue(model) as Record<string, unknown>;
-  return {
-    metadata,
-    metadataHash: createHash("sha256")
-      .update(JSON.stringify(metadata))
-      .digest("hex"),
-  };
+  return createHash("sha256").update(JSON.stringify(metadata)).digest("hex");
 }
 
 function toUserSummary(user: UserRow): UserSummary {
@@ -888,7 +870,6 @@ function toAuditEvent(event: AuditEventRow): AuditEvent {
       id: event.resourceId,
     },
     requestId: event.requestId,
-    metadata: event.metadata,
     occurredAt: toISOString(event.occurredAt),
   };
 }
@@ -1676,8 +1657,8 @@ function toRemoteDesktopWireSummary(
 function toProviderSummary(
   provider: typeof schema.modelProviders.$inferSelect,
   tokenUsage: TokenUsageTotals = ZERO_TOKEN_USAGE,
-  accounts: ModelProviderAccountSummary[] = [],
-): ModelProviderSummary {
+  accounts: ModelProviderAccountWireSummary[] = [],
+): ModelProviderWireSummary {
   return {
     id: provider.id,
     name: provider.name,
@@ -1697,17 +1678,16 @@ function toProviderAccountSummary(
   workerBindings: Array<
     typeof schema.modelProviderAccountWorkers.$inferSelect
   > = [],
-): ModelProviderAccountSummary {
+): ModelProviderAccountWireSummary {
   return {
     id: account.id,
     providerId: account.providerId,
-    label: account.label,
-    email: account.email,
+    protectedLabel: account.protectedLabel,
     planType: account.planType,
     position: account.position,
     enabled: account.enabled,
     credentialState:
-      account.credentialState as ModelProviderAccountSummary["credentialState"],
+      account.credentialState as ModelProviderAccountWireSummary["credentialState"],
     weeklyUsageUsedPercent:
       account.weeklyUsageUsedBasisPoints === null
         ? null
@@ -1721,7 +1701,7 @@ function toProviderAccountSummary(
     workerBindings: workerBindings.map((binding) => ({
       workerId: binding.workerId,
       authState:
-        binding.authState as ModelProviderAccountSummary["workerBindings"][number]["authState"],
+        binding.authState as ModelProviderAccountWireSummary["workerBindings"][number]["authState"],
       weeklyUsageUsedPercent:
         binding.weeklyUsageUsedBasisPoints === null
           ? null
@@ -1803,7 +1783,7 @@ function toProviderCatalogSyncState(
     workerId: state.workerId,
     providerAccountId: state.providerAccountId,
     status: state.status as ProviderCatalogSyncState["status"],
-    error: state.error,
+    error: state.errorCode,
     etag: state.etag,
     refreshStartedAt: state.refreshStartedAt
       ? toISOString(state.refreshStartedAt)
@@ -2714,7 +2694,7 @@ export class ServerRepository {
       .onConflictDoNothing({ target: schema.userSettings.userId });
   }
 
-  async getSettings(ownerId: string): Promise<SettingsBundle> {
+  async getSettings(ownerId: string): Promise<SettingsBundleWire> {
     const [
       settingsRows,
       providerRows,
@@ -2893,11 +2873,8 @@ export class ServerRepository {
     const routeRows = await this.database
       .select({
         modelId: schema.modelProfiles.id,
-        modelName: schema.modelProfiles.name,
         modelRouteId: schema.modelRoutes.id,
         providerId: schema.modelProviders.id,
-        providerName: schema.modelProviders.name,
-        providerModelName: schema.modelRoutes.modelName,
       })
       .from(schema.modelRoutes)
       .innerJoin(
@@ -2930,19 +2907,6 @@ export class ServerRepository {
         ? exactCount(usage.visibleOutputTokens)
         : null;
     const reportedTotalTokens = usage ? exactCount(usage.totalTokens) : null;
-    const sanitizedRawUsage =
-      usage?.sanitizedRawUsage ??
-      (usage
-        ? {
-            inputTokens,
-            outputTokens,
-            totalTokens: reportedTotalTokens,
-            cachedInputTokens,
-            reasoningOutputTokens,
-            cacheWriteInputTokens,
-            visibleOutputTokens,
-          }
-        : {});
     const updatedAt = new Date();
     const attemptStatus = input.attemptStatus ?? "completed";
     const completedAt =
@@ -2960,9 +2924,6 @@ export class ServerRepository {
         modelId: route?.modelId ?? null,
         modelRouteId: route?.modelRouteId ?? null,
         providerId: route?.providerId ?? null,
-        modelName: route?.modelName ?? input.modelName,
-        providerName: route?.providerName ?? input.providerName,
-        providerModelName: route?.providerModelName ?? input.providerModelName,
         providerAccountId: input.providerAccountId ?? null,
         workerId: input.workerId ?? null,
         turnId: input.turnId ?? null,
@@ -2981,7 +2942,6 @@ export class ServerRepository {
         visibleOutputTokens,
         reportedTotalTokens,
         usageSemantics: "provider-reported-v2",
-        sanitizedRawUsage,
         startedAt: input.startedAt ?? updatedAt,
         completedAt,
         finalizedAt,
@@ -2998,10 +2958,6 @@ export class ServerRepository {
           modelId: route?.modelId ?? null,
           modelRouteId: route?.modelRouteId ?? null,
           providerId: route?.providerId ?? null,
-          modelName: route?.modelName ?? input.modelName,
-          providerName: route?.providerName ?? input.providerName,
-          providerModelName:
-            route?.providerModelName ?? input.providerModelName,
           providerAccountId: input.providerAccountId ?? null,
           workerId: input.workerId ?? null,
           turnId: input.turnId ?? null,
@@ -3022,7 +2978,6 @@ export class ServerRepository {
                 visibleOutputTokens,
                 reportedTotalTokens,
                 usageSemantics: "provider-reported-v2",
-                sanitizedRawUsage,
               }
             : {}),
           ...(input.completedAt !== undefined
@@ -3043,11 +2998,8 @@ export class ServerRepository {
     const routeRows = await this.database
       .select({
         modelId: schema.modelProfiles.id,
-        modelName: schema.modelProfiles.name,
         modelRouteId: schema.modelRoutes.id,
         providerId: schema.modelProviders.id,
-        providerName: schema.modelProviders.name,
-        providerModelName: schema.modelRoutes.modelName,
       })
       .from(schema.modelRoutes)
       .innerJoin(
@@ -3082,9 +3034,6 @@ export class ServerRepository {
       modelId: route?.modelId ?? null,
       modelRouteId: route?.modelRouteId ?? null,
       providerId: route?.providerId ?? null,
-      modelName: route?.modelName ?? input.modelName,
-      providerName: route?.providerName ?? input.providerName,
-      providerModelName: route?.providerModelName ?? input.providerModelName,
       providerAccountId: input.providerAccountId ?? null,
       workerId: input.workerId ?? null,
       turnId: input.turnId ?? null,
@@ -3213,27 +3162,32 @@ export class ServerRepository {
       this.database
         .select({
           id: schema.tokenUsageRecords.providerId,
-          name: schema.tokenUsageRecords.providerName,
+          name: sql<string>`coalesce(${schema.modelProviders.name}, 'Deleted provider')`,
           ...tokenSums,
         })
         .from(schema.tokenUsageRecords)
+        .leftJoin(
+          schema.modelProviders,
+          eq(schema.modelProviders.id, schema.tokenUsageRecords.providerId),
+        )
         .where(filter)
         .groupBy(
           schema.tokenUsageRecords.providerId,
-          schema.tokenUsageRecords.providerName,
+          schema.modelProviders.name,
         ),
       this.database
         .select({
           id: schema.tokenUsageRecords.modelId,
-          name: schema.tokenUsageRecords.modelName,
+          name: sql<string>`coalesce(${schema.modelProfiles.name}, 'Deleted model')`,
           ...tokenSums,
         })
         .from(schema.tokenUsageRecords)
+        .leftJoin(
+          schema.modelProfiles,
+          eq(schema.modelProfiles.id, schema.tokenUsageRecords.modelId),
+        )
         .where(filter)
-        .groupBy(
-          schema.tokenUsageRecords.modelId,
-          schema.tokenUsageRecords.modelName,
-        ),
+        .groupBy(schema.tokenUsageRecords.modelId, schema.modelProfiles.name),
     ]);
     const mergeBreakdowns = (
       rows: Array<{
@@ -3352,7 +3306,7 @@ export class ServerRepository {
   async updateSettings(
     ownerId: string,
     input: UserSettingsUpdate,
-  ): Promise<SettingsBundle | null> {
+  ): Promise<SettingsBundleWire | null> {
     if (input.defaultModelId) {
       const model = await this.getModelRuntime(ownerId, input.defaultModelId);
       if (!model) {
@@ -3384,9 +3338,10 @@ export class ServerRepository {
   async createModelProvider(
     ownerId: string,
     input: EncryptedModelProviderCreate,
-  ): Promise<ModelProviderSummary> {
-    // Endpoint callers allocate IDs before sealing an API key. The fallback is
-    // limited to internal callers creating providers with no protected key.
+  ): Promise<ModelProviderWireSummary> {
+    // HTTP callers always allocate the ID before sealing protected fields.
+    // The fallback keeps non-account internal/test callers ergonomic without
+    // giving the server a way to fabricate an encrypted account label.
     const id = input.id ?? randomUUID();
     return this.database.transaction(async (transaction) => {
       if (isAccountProviderKind(input.kind)) {
@@ -3421,12 +3376,15 @@ export class ServerRepository {
       const provider = firstOrThrow(result, "creating a model provider");
       if (!isAccountProviderKind(input.kind))
         return toProviderSummary(provider);
+      if (!input.initialAccount) {
+        throw new Error("The provider is missing its protected account label.");
+      }
       const accountRows = await transaction
         .insert(schema.modelProviderAccounts)
         .values({
-          id: randomUUID(),
+          id: input.initialAccount.id,
           providerId: id,
-          label: defaultAccountLabel(input.kind),
+          protectedLabel: input.initialAccount.protectedLabel,
           position: 0,
           credentialHomeKey: id,
         })
@@ -3445,7 +3403,7 @@ export class ServerRepository {
   async getModelProvider(
     ownerId: string,
     providerId: string,
-  ): Promise<ModelProviderSummary | null> {
+  ): Promise<ModelProviderWireSummary | null> {
     const rows = await this.database
       .select()
       .from(schema.modelProviders)
@@ -3462,7 +3420,7 @@ export class ServerRepository {
   async listModelProviderAccounts(
     ownerId: string,
     providerId: string,
-  ): Promise<ModelProviderAccountSummary[] | null> {
+  ): Promise<ModelProviderAccountWireSummary[] | null> {
     const provider = await this.database
       .select({
         id: schema.modelProviders.id,
@@ -3697,11 +3655,9 @@ export class ServerRepository {
             ? new Date(metadata.expiresAt)
             : null,
           credentialUpdatedAt: updatedAt,
-          credentialLastRefreshError: null,
           credentialLastRefreshAt: updatedAt,
           credentialRefreshLeaseId: null,
           credentialRefreshLeaseExpiresAt: null,
-          email: null,
           authLastSyncedAt: updatedAt,
           updatedAt,
         })
@@ -3834,8 +3790,6 @@ export class ServerRepository {
           credentialUpdatedAt: now,
           credentialRefreshLeaseId: null,
           credentialRefreshLeaseExpiresAt: null,
-          credentialLastRefreshError: null,
-          email: null,
           planType: null,
           weeklyUsageUsedBasisPoints: null,
           weeklyUsageResetsAt: null,
@@ -3871,8 +3825,8 @@ export class ServerRepository {
   async createModelProviderAccount(
     ownerId: string,
     providerId: string,
-    input: ModelProviderAccountCreate,
-  ): Promise<ModelProviderAccountSummary | null> {
+    input: EncryptedModelProviderAccountCreate,
+  ): Promise<ModelProviderAccountWireSummary | null> {
     return this.database.transaction(async (transaction) => {
       const provider = await transaction
         .select({ kind: schema.modelProviders.kind })
@@ -3891,13 +3845,13 @@ export class ServerRepository {
         .where(eq(schema.modelProviderAccounts.providerId, providerId))
         .orderBy(desc(schema.modelProviderAccounts.position))
         .limit(1);
-      const accountId = randomUUID();
+      const accountId = input.id;
       const rows = await transaction
         .insert(schema.modelProviderAccounts)
         .values({
           id: accountId,
           providerId,
-          label: input.label,
+          protectedLabel: input.protectedLabel,
           position: (positions[0]?.position ?? -1) + 1,
           credentialHomeKey: accountId,
         })
@@ -3915,11 +3869,17 @@ export class ServerRepository {
     ownerId: string,
     providerId: string,
     accountId: string,
-    input: ModelProviderAccountUpdate,
-  ): Promise<ModelProviderAccountSummary | null> {
+    input: EncryptedModelProviderAccountUpdate,
+  ): Promise<ModelProviderAccountWireSummary | null> {
     const rows = await this.database
       .update(schema.modelProviderAccounts)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...(input.protectedLabel === undefined
+          ? {}
+          : { protectedLabel: input.protectedLabel }),
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(schema.modelProviderAccounts.id, accountId),
@@ -4111,7 +4071,6 @@ export class ServerRepository {
             : null,
           weeklyUsageObservedAt: status.weeklyUsage ? now : null,
           lastSyncedAt: now,
-          lastError: null,
           updatedAt: now,
         })
         .onConflictDoUpdate({
@@ -4129,7 +4088,6 @@ export class ServerRepository {
               : null,
             ...(status.weeklyUsage ? { weeklyUsageObservedAt: now } : {}),
             lastSyncedAt: now,
-            lastError: null,
             updatedAt: now,
           },
         });
@@ -4203,9 +4161,7 @@ export class ServerRepository {
     }
     const accountRows = await this.database
       .select({
-        accountLabel: schema.modelProviderAccounts.label,
         providerKind: schema.modelProviders.kind,
-        providerName: schema.modelProviders.name,
       })
       .from(schema.modelProviderAccounts)
       .innerJoin(
@@ -4225,10 +4181,9 @@ export class ServerRepository {
     const account = accountRows[0];
     if (!account) return false;
 
-    let workerName: string | null = null;
     if (input.workerId) {
       const workerRows = await this.database
-        .select({ name: schema.workers.name })
+        .select({ id: schema.workers.id })
         .from(schema.workers)
         .where(
           and(
@@ -4238,7 +4193,6 @@ export class ServerRepository {
         )
         .limit(1);
       if (!workerRows[0]) return false;
-      workerName = workerRows[0].name;
     }
 
     return this.database.transaction(async (transaction) => {
@@ -4250,20 +4204,15 @@ export class ServerRepository {
           eventKey: input.eventKey,
           observationBatchKey: input.observationBatchKey,
           providerId: input.providerId,
-          providerName: account.providerName,
           providerKind: account.providerKind,
           providerAccountId: input.providerAccountId,
-          providerAccountLabel: account.accountLabel,
           workerId: input.workerId,
-          workerName,
           observedAt: input.observedAt,
           usedPercentMicros: Math.round(input.usedPercent * 1_000_000),
           resetsAt: input.resetsAt,
           windowDurationMinutes: input.windowDurationMinutes,
           limitId: input.limitId,
-          limitName: input.limitName,
           windowKind: input.windowKind,
-          planType: input.planType,
           reachedType: input.reachedType,
           observationTrigger: input.observationTrigger,
           isWeeklyProjection: input.isWeeklyProjection,
@@ -4273,7 +4222,6 @@ export class ServerRepository {
           workerVersion: input.workerVersion,
           serverVersion: input.serverVersion,
           codexVersion: input.codexVersion,
-          sanitizedRawPayload: input.sanitizedRawPayload,
         })
         .onConflictDoNothing({
           target: [
@@ -4404,7 +4352,7 @@ export class ServerRepository {
       providerId: row.providerId,
       providerAccountId: row.providerAccountId,
       limitId: row.limitId,
-      limitName: row.limitName,
+      limitName: row.limitId ?? row.windowKind,
       windowKind: row.windowKind,
       windowDurationMinutes: row.windowDurationMinutes,
       resetsAt: row.resetsAt,
@@ -4446,7 +4394,7 @@ export class ServerRepository {
         providerId: row.providerId,
         providerAccountId: row.providerAccountId,
         modelId: row.modelId,
-        modelName: row.modelName,
+        modelName: row.modelId ?? row.modelRouteId ?? "unattributed",
         reasoningEffort: row.reasoningEffort,
         projectId: row.projectId,
         startedAt: row.startedAt,
@@ -4468,7 +4416,7 @@ export class ServerRepository {
   async getProviderTelemetryAnalytics(
     ownerId: string,
     query: QuotaTokenAnalyticsQuery = {},
-  ): Promise<ProviderTelemetryAnalytics> {
+  ): Promise<ProviderTelemetryWireAnalytics> {
     const from = query.from ?? new Date(Date.now() - 364 * 86_400_000);
     const to = query.to ?? new Date();
     const scopedQuery = { ...query, from, to };
@@ -4527,8 +4475,8 @@ export class ServerRepository {
       gte(schema.modelBehaviorObservations.startedAt, from),
       lte(schema.modelBehaviorObservations.startedAt, to),
     ];
-    const [quota, tokenRows, behaviorRows, currentAccounts, quotaLabels] =
-      await Promise.all([
+    const [quota, tokenRows, behaviorRows, currentAccounts] = await Promise.all(
+      [
         this.getQuotaTokenAnalytics(ownerId, scopedQuery),
         this.database
           .select()
@@ -4544,8 +4492,6 @@ export class ServerRepository {
           .select({
             id: schema.modelProviderAccounts.id,
             providerId: schema.modelProviderAccounts.providerId,
-            providerName: schema.modelProviders.name,
-            label: schema.modelProviderAccounts.label,
           })
           .from(schema.modelProviderAccounts)
           .innerJoin(
@@ -4563,62 +4509,31 @@ export class ServerRepository {
                 : []),
             ),
           ),
-        this.database
-          .select({
-            providerId: schema.providerQuotaObservations.providerId,
-            providerName: schema.providerQuotaObservations.providerName,
-            accountId: schema.providerQuotaObservations.providerAccountId,
-            accountLabel: schema.providerQuotaObservations.providerAccountLabel,
-          })
-          .from(schema.providerQuotaObservations)
-          .where(
-            and(
-              eq(schema.providerQuotaObservations.ownerId, ownerId),
-              ...(query.providerId
-                ? [
-                    eq(
-                      schema.providerQuotaObservations.providerId,
-                      query.providerId,
-                    ),
-                  ]
-                : []),
-            ),
-          ),
-      ]);
+      ],
+    );
 
     const accountById = new Map(
       currentAccounts.map((account) => [account.id, account] as const),
     );
-    for (const historical of quotaLabels) {
-      if (accountById.has(historical.accountId)) continue;
-      accountById.set(historical.accountId, {
-        id: historical.accountId,
-        providerId: historical.providerId,
-        providerName: historical.providerName,
-        label: historical.accountLabel,
+    for (const reading of quota.readings) {
+      if (accountById.has(reading.providerAccountId)) continue;
+      accountById.set(reading.providerAccountId, {
+        id: reading.providerAccountId,
+        providerId: reading.providerId,
       });
     }
-    const modelLabelById = new Map<string, string>();
-    for (const row of [...tokenRows, ...behaviorRows]) {
-      if (row.modelId) modelLabelById.set(row.modelId, row.modelName);
-    }
 
-    const quotaHistory = quota.readings.map((reading) => {
-      const account = accountById.get(reading.providerAccountId);
-      return {
-        id: reading.id,
-        providerId: reading.providerId,
-        providerName: account?.providerName ?? reading.providerId,
-        providerAccountId: reading.providerAccountId,
-        providerAccountLabel: account?.label ?? reading.providerAccountId,
-        limitName: reading.limitName ?? reading.windowKind,
-        windowKind: reading.windowKind,
-        usedPercent: reading.usedPercent,
-        remainingPercent: Math.max(0, 100 - reading.usedPercent),
-        resetsAt: reading.resetsAt?.toISOString() ?? null,
-        observedAt: reading.observedAt.toISOString(),
-      };
-    });
+    const quotaHistory = quota.readings.map((reading) => ({
+      id: reading.id,
+      providerId: reading.providerId,
+      providerAccountId: reading.providerAccountId,
+      limitId: reading.limitId,
+      windowKind: reading.windowKind,
+      usedPercent: reading.usedPercent,
+      remainingPercent: Math.max(0, 100 - reading.usedPercent),
+      resetsAt: reading.resetsAt?.toISOString() ?? null,
+      observedAt: reading.observedAt.toISOString(),
+    }));
     const currentQuotaByBucket = new Map<
       string,
       (typeof quotaHistory)[number]
@@ -4628,7 +4543,7 @@ export class ServerRepository {
         [
           reading.providerId,
           reading.providerAccountId,
-          reading.limitName,
+          reading.limitId ?? "unidentified-limit",
           reading.windowKind,
         ].join(":"),
         reading,
@@ -4640,13 +4555,9 @@ export class ServerRepository {
       const date = row.startedAt.toISOString().slice(0, 10);
       dailyTokens.set(date, [...(dailyTokens.get(date) ?? []), row]);
     }
-    const detailedBreakdown = (
-      entries: typeof quota.breakdowns.model,
-      labels: ReadonlyMap<string, string> = new Map(),
-    ) =>
+    const detailedBreakdown = (entries: typeof quota.breakdowns.model) =>
       entries.map((entry) => ({
         key: entry.key,
-        label: labels.get(entry.key) ?? entry.key,
         sampleCount: entry.sampleCount,
         highConfidenceSamples: entry.highConfidenceSamples,
         unattributedSamples: entry.unattributedSamples,
@@ -4663,35 +4574,17 @@ export class ServerRepository {
     const behaviorBreakdown = <Row extends (typeof behaviorRows)[number]>(
       rows: Row[],
       keyFor: (row: Row) => string,
-      labelFor: (key: string) => string,
     ) =>
       [...groupModelBehavior(rows, keyFor).entries()]
-        .map(([key, summary]) => ({ key, label: labelFor(key), ...summary }))
+        .map(([key, summary]) => ({ key, ...summary }))
         .sort((left, right) => right.attemptCount - left.attemptCount);
-    const dailyBehavior = behaviorBreakdown(
-      behaviorRows,
-      (row) => row.startedAt.toISOString().slice(0, 10),
-      (key) => key,
-    ).map(({ key: _key, label: date, ...summary }) => ({ date, ...summary }));
-    const accountLabels = new Map(
-      [...accountById.values()].map((account) => [account.id, account.label]),
-    );
-    const accountBreakdownLabels = new Map(
-      [...accountById.values()].map((account) => [account.id, account.label]),
-    );
+    const dailyBehavior = behaviorBreakdown(behaviorRows, (row) =>
+      row.startedAt.toISOString().slice(0, 10),
+    ).map(({ key: date, ...summary }) => ({ date, ...summary }));
     const changePoints = detectTelemetryChanges(
       quota.movementSamples,
       behaviorRows,
-    ).map((change) => ({
-      ...change,
-      providerAccountLabel: change.providerAccountId
-        ? (accountLabels.get(change.providerAccountId) ??
-          change.providerAccountId)
-        : null,
-      modelLabel: change.modelId
-        ? (modelLabelById.get(change.modelId) ?? change.modelId)
-        : null,
-    }));
+    );
     const estimates = quota.movementSamples;
     const attributableEstimates = estimates.filter(
       ({ unattributed }) => !unattributed,
@@ -4717,7 +4610,7 @@ export class ServerRepository {
       generatedAt: new Date().toISOString(),
       range: { from: from.toISOString(), to: to.toISOString() },
       accounts: [...accountById.values()].sort((left, right) =>
-        left.label.localeCompare(right.label),
+        left.id.localeCompare(right.id),
       ),
       currentQuota: [...currentQuotaByBucket.values()].sort((left, right) =>
         right.observedAt.localeCompare(left.observedAt),
@@ -4757,11 +4650,8 @@ export class ServerRepository {
         monthOverMonth: quota.monthOverMonth,
       },
       breakdowns: {
-        accounts: detailedBreakdown(
-          quota.breakdowns.account,
-          accountBreakdownLabels,
-        ),
-        models: detailedBreakdown(quota.breakdowns.model, modelLabelById),
+        accounts: detailedBreakdown(quota.breakdowns.account),
+        models: detailedBreakdown(quota.breakdowns.model),
         reasoningEfforts: detailedBreakdown(quota.breakdowns.reasoningEffort),
         months: detailedBreakdown(quota.breakdowns.month),
       },
@@ -4771,17 +4661,14 @@ export class ServerRepository {
         accounts: behaviorBreakdown(
           behaviorRows,
           (row) => row.providerAccountId ?? "unattributed",
-          (key) => accountLabels.get(key) ?? key,
         ),
         models: behaviorBreakdown(
           behaviorRows,
-          (row) => row.modelId ?? `deleted:${row.modelName}`,
-          (key) => modelLabelById.get(key) ?? key.replace(/^deleted:/u, ""),
+          (row) => row.modelId ?? row.modelRouteId ?? "unattributed",
         ),
         reasoningEfforts: behaviorBreakdown(
           behaviorRows,
           (row) => row.reasoningEffort ?? "provider-default",
-          (key) => key,
         ),
       },
       changePoints,
@@ -4793,10 +4680,7 @@ export class ServerRepository {
     providerId: string,
   ): Promise<ProviderTelemetryExport | null> {
     const providerRows = await this.database
-      .select({
-        id: schema.modelProviders.id,
-        name: schema.modelProviders.name,
-      })
+      .select({ id: schema.modelProviders.id })
       .from(schema.modelProviders)
       .where(
         and(
@@ -4854,12 +4738,13 @@ export class ServerRepository {
     );
 
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       provider,
       privacy: {
         includesMessageContent: false,
-        rawPayloadsSanitized: true,
+        rawPayloadsStored: false,
+        dimensionLabels: "opaque-ids",
         retention: "owner-controlled-indefinite",
       },
       quotaObservations: quotaRows.map((row) => ({
@@ -4867,7 +4752,6 @@ export class ServerRepository {
         eventKey: row.eventKey,
         observationBatchKey: row.observationBatchKey,
         providerAccountId: row.providerAccountId,
-        providerAccountLabel: row.providerAccountLabel,
         workerId: row.workerId,
         observedAt: row.observedAt.toISOString(),
         receivedAt: row.receivedAt.toISOString(),
@@ -4875,9 +4759,7 @@ export class ServerRepository {
         resetsAt: row.resetsAt?.toISOString() ?? null,
         windowDurationMinutes: row.windowDurationMinutes,
         limitId: row.limitId,
-        limitName: row.limitName,
         windowKind: row.windowKind,
-        planType: row.planType,
         reachedType: row.reachedType,
         observationTrigger: row.observationTrigger,
         chatId: row.chatId,
@@ -4886,7 +4768,6 @@ export class ServerRepository {
         workerVersion: row.workerVersion,
         serverVersion: row.serverVersion,
         codexVersion: row.codexVersion,
-        sanitizedRawPayload: row.sanitizedRawPayload,
       })),
       tokenUsage: tokenRows.map((row) => ({
         id: row.id,
@@ -4895,8 +4776,6 @@ export class ServerRepository {
         sourceKey: row.sourceKey,
         modelId: row.modelId,
         modelRouteId: row.modelRouteId,
-        modelName: row.modelName,
-        providerModelName: row.providerModelName,
         providerAccountId: row.providerAccountId,
         workerId: row.workerId,
         turnId: row.turnId,
@@ -4912,7 +4791,6 @@ export class ServerRepository {
         visibleOutputTokens: row.visibleOutputTokens,
         reportedTotalTokens: row.reportedTotalTokens,
         usageSemantics: row.usageSemantics,
-        sanitizedRawUsage: row.sanitizedRawUsage,
         startedAt: row.startedAt.toISOString(),
         completedAt: row.completedAt?.toISOString() ?? null,
         finalizedAt: row.finalizedAt?.toISOString() ?? null,
@@ -4927,8 +4805,6 @@ export class ServerRepository {
         chatId: row.chatId,
         modelId: row.modelId,
         modelRouteId: row.modelRouteId,
-        modelName: row.modelName,
-        providerModelName: row.providerModelName,
         providerAccountId: row.providerAccountId,
         workerId: row.workerId,
         turnId: row.turnId,
@@ -4970,11 +4846,8 @@ export class ServerRepository {
         providerAccountId: row.providerAccountId,
         workerId: row.workerId,
         availabilityScope: row.availabilityScope,
-        nativeModelId: row.nativeModelId,
-        canonicalModelId: row.canonicalModelId,
         metadataSource: row.metadataSource,
         metadataHash: row.metadataHash,
-        metadata: row.metadata,
         observedAt: row.observedAt.toISOString(),
       })),
     };
@@ -5062,7 +4935,7 @@ export class ServerRepository {
     ownerId: string,
     providerId: string,
     input: EncryptedModelProviderUpdate,
-  ): Promise<ModelProviderSummary | null> {
+  ): Promise<ModelProviderWireSummary | null> {
     const current = await this.getModelProvider(ownerId, providerId);
     if (!current) return null;
     if (current.kind !== input.kind) {
@@ -5143,7 +5016,7 @@ export class ServerRepository {
     input: {
       scopeKey: string;
       status: ProviderCatalogSyncState["status"];
-      error?: string | null;
+      errorCode?: string | null;
       etag?: string | null;
       refreshStartedAt?: Date | null;
       lastSuccessAt?: Date | null;
@@ -5159,7 +5032,7 @@ export class ServerRepository {
         providerId,
         scopeKey: input.scopeKey,
         status: input.status,
-        error: input.error ?? null,
+        errorCode: input.errorCode ?? null,
         etag: input.etag ?? null,
         refreshStartedAt: input.refreshStartedAt ?? null,
         lastSuccessAt: input.lastSuccessAt ?? null,
@@ -5174,7 +5047,9 @@ export class ServerRepository {
         ],
         set: {
           status: input.status,
-          ...(input.error === undefined ? {} : { error: input.error }),
+          ...(input.errorCode === undefined
+            ? {}
+            : { errorCode: input.errorCode }),
           ...(input.etag === undefined ? {} : { etag: input.etag }),
           ...(input.refreshStartedAt === undefined
             ? {}
@@ -5206,10 +5081,7 @@ export class ServerRepository {
     },
   ): Promise<boolean> {
     const provider = await this.database
-      .select({
-        id: schema.modelProviders.id,
-        name: schema.modelProviders.name,
-      })
+      .select({ id: schema.modelProviders.id })
       .from(schema.modelProviders)
       .where(
         and(
@@ -5227,20 +5099,15 @@ export class ServerRepository {
           .insert(schema.providerModelCatalogSnapshots)
           .values(
             input.models.map((model) => {
-              const snapshot = catalogMetadataSnapshot(model);
               return {
                 id: randomUUID(),
                 ownerId,
                 providerId,
-                providerName: provider[0]!.name,
                 providerAccountId: input.availabilityProviderAccountId ?? null,
                 workerId: input.availabilityWorkerId ?? null,
                 availabilityScope: input.availabilityScope,
-                nativeModelId: model.nativeModelId,
-                canonicalModelId: model.canonicalModelId,
                 metadataSource: model.metadataSource,
-                metadataHash: snapshot.metadataHash,
-                metadata: snapshot.metadata,
+                metadataHash: catalogMetadataSnapshot(model),
                 observedAt: now,
               };
             }),
@@ -5957,7 +5824,6 @@ export class ServerRepository {
         account.credentialState as ModelProviderAccountRuntime["credentialState"],
       credentialHomeKey: account.credentialHomeKey,
       enabled: account.enabled,
-      label: account.label,
       legacyWorkerAuthenticated: binding?.authState === "signed-in",
       modelAvailability: availabilityByAccount.get(account.id)?.state ?? null,
       position: account.position,

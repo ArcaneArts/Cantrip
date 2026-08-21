@@ -165,7 +165,7 @@ export class ZaiCatalogService {
     await this.#repository.setProviderCatalogSyncState(providerId, {
       scopeKey: ZAI_CODEX_CATALOG_SCOPE,
       status: "refreshing",
-      error: null,
+      errorCode: null,
       refreshStartedAt: new Date(),
     });
     await this.#repository.reconcileProviderModelCatalog(ownerId, providerId, {
@@ -179,7 +179,7 @@ export class ZaiCatalogService {
     await this.#repository.setProviderCatalogSyncState(providerId, {
       scopeKey: ZAI_CODEX_CATALOG_SCOPE,
       status: "current",
-      error: null,
+      errorCode: null,
       etag: `built-in-v${ZAI_CODEX_CATALOG_VERSION}`,
       lastSuccessAt: new Date(),
     });

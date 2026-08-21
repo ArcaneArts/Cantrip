@@ -45,7 +45,6 @@ export async function persistProviderQuotaSnapshot(
           window.resetsAt === null ? null : new Date(window.resetsAt * 1_000),
         windowDurationMinutes: window.windowDurationMinutes,
         limitId: window.limitId,
-        limitName: window.limitName,
         windowKind: window.windowKind,
         planType: window.planType ?? context.accountPlanType,
         reachedType: window.reachedType,
@@ -57,10 +56,6 @@ export async function persistProviderQuotaSnapshot(
         workerVersion: snapshot.workerVersion,
         serverVersion: cantripVersion.version,
         codexVersion: snapshot.codexVersion,
-        sanitizedRawPayload: {
-          snapshotId: snapshot.snapshotId,
-          ...window.rawPayload,
-        },
       },
     );
     if (recorded) inserted += 1;

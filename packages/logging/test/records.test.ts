@@ -120,8 +120,8 @@ describe("structured service logs", () => {
 
     expect(buffer.read({ afterCursor: 1 })).toMatchObject({
       records: [
-        expect.objectContaining({ cursor: 3, message: "three" }),
-        expect.objectContaining({ cursor: 4, message: "four" }),
+        expect.objectContaining({ cursor: 3, message: "worker.diagnostic" }),
+        expect.objectContaining({ cursor: 4, message: "worker.diagnostic" }),
       ],
       nextCursor: 4,
       oldestCursor: 3,
@@ -141,26 +141,57 @@ describe("structured service logs", () => {
     buffer.append({ ...baseRecord, level: "info", message: "also hidden" });
 
     expect(buffer.read({ minimumLevel: "warn" })).toMatchObject({
-      records: [expect.objectContaining({ cursor: 2, message: "shown" })],
+      records: [
+        expect.objectContaining({ cursor: 2, message: "worker.diagnostic" }),
+      ],
       nextCursor: 3,
       latestCursor: 3,
       hasMore: false,
     });
   });
 
-  it("caps each serialized record independently", () => {
+  it("persists only event-coded operational metadata", () => {
     const buffer = new ServiceLogBuffer({
       maxBytes: 1_000,
       maxEntries: 10,
-      maxRecordBytes: 180,
+      maxRecordBytes: 1_000,
     });
     const record = buffer.append({
       ...baseRecord,
-      message: "x".repeat(1_000),
-      context: { extra: "y".repeat(1_000) },
+      message: "failed /Users/private/project with prompt secret-prompt-body",
+      context: {
+        event: "worker.command.failed",
+        operation: "execute",
+        requestId: "opaque-request-id",
+        path: "/api/workers/command",
+        extra: "provider-response-secret",
+        error: new Error("raw-error-secret"),
+      },
     });
-    expect(Buffer.byteLength(JSON.stringify(record))).toBeLessThanOrEqual(180);
-    expect(record.context).toBeUndefined();
-    expect(record.message.endsWith("…")).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(record))).toBeLessThanOrEqual(
+      1_000,
+    );
+    expect(record).toMatchObject({
+      message: "worker.command.failed",
+      context: {
+        event: "worker.command.failed",
+        operation: "execute",
+        requestId: "opaque-request-id",
+        path: "/api/workers/command",
+        errorClass: "Error",
+      },
+    });
+    expect(JSON.stringify(record)).not.toMatch(
+      /private|secret-prompt-body|provider-response-secret|raw-error-secret/u,
+    );
+
+    const filesystemRecord = buffer.append({
+      ...baseRecord,
+      context: {
+        event: "worker.command.failed",
+        path: "/Users/private/project",
+      },
+    });
+    expect(filesystemRecord.context).not.toHaveProperty("path");
   });
 });

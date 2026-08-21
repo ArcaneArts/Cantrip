@@ -368,8 +368,10 @@ import type {
   GithubRepositoryCreate,
   EncryptedManagedFolderProjectCreate,
   ModelProfileCreate,
+  ModelProfileSummary,
   ModelProfileUpdate,
   ModelProviderCreate,
+  ModelProviderSummary,
   ModelProviderAccountCreate,
   ModelProviderAccountUpdate,
   ModelProviderUpdate,
@@ -478,11 +480,19 @@ import {
 import {
   openMcpServerWireList,
   openMcpServerWireSummary,
+  openModelProviderAccountWireList,
+  openModelProviderAccountWireSummary,
+  openModelProviderWireSummary,
+  openModelProviderWireList,
+  openSettingsBundleWire,
   protectMcpServerCreate,
   protectMcpServerUpdate,
+  protectModelProviderAccountCreate,
+  protectModelProviderAccountUpdate,
   protectModelProviderCreate,
   protectModelProviderUpdate,
 } from "@/lib/protected-secrets";
+import { openProviderTelemetryWireAnalytics } from "@/lib/provider-telemetry";
 import { getClientSession } from "@/lib/client-session";
 import { clientEncryption } from "@/lib/client-encryption";
 import { authorizeWorkerEncryption } from "@/lib/worker-encryption-grants";
@@ -913,11 +923,11 @@ export async function logoutCodex(
 }
 
 export async function getSettings() {
-  return settingsBundleSchema.parse(await request("/api/settings"));
+  return openSettingsBundleWire(await request("/api/settings"));
 }
 
 export async function updateSettings(input: UserSettingsUpdate) {
-  return settingsBundleSchema.parse(
+  return openSettingsBundleWire(
     await request("/api/settings", {
       method: "PATCH",
       body: JSON.stringify(input),
@@ -1152,7 +1162,7 @@ export async function deleteGlobalMcpServer(serverId: string) {
 }
 
 export async function createModelProvider(input: ModelProviderCreate) {
-  return modelProviderSummarySchema.parse(
+  return openModelProviderWireSummary(
     await post(
       "/api/settings/providers",
       await protectModelProviderCreate(input),
@@ -1199,7 +1209,7 @@ export async function testModelProviderConnection(
 }
 
 export async function listModelProviderAccounts(providerId: string) {
-  return modelProviderAccountListSchema.parse(
+  return openModelProviderAccountWireList(
     await request(
       `/api/settings/providers/${encodeURIComponent(providerId)}/accounts`,
     ),
@@ -1210,10 +1220,10 @@ export async function createModelProviderAccount(
   providerId: string,
   input: ModelProviderAccountCreate,
 ) {
-  return modelProviderAccountSummarySchema.parse(
+  return openModelProviderAccountWireSummary(
     await post(
       `/api/settings/providers/${encodeURIComponent(providerId)}/accounts`,
-      modelProviderAccountCreateSchema.parse(input),
+      await protectModelProviderAccountCreate(input),
     ),
   );
 }
@@ -1223,12 +1233,14 @@ export async function updateModelProviderAccount(
   accountId: string,
   input: ModelProviderAccountUpdate,
 ) {
-  return modelProviderAccountSummarySchema.parse(
+  return openModelProviderAccountWireSummary(
     await request(
       `/api/settings/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`,
       {
         method: "PATCH",
-        body: JSON.stringify(modelProviderAccountUpdateSchema.parse(input)),
+        body: JSON.stringify(
+          await protectModelProviderAccountUpdate(accountId, input),
+        ),
       },
     ),
   );
@@ -1267,7 +1279,7 @@ export async function updateModelProvider(
   providerId: string,
   input: ModelProviderUpdate,
 ) {
-  return modelProviderSummarySchema.parse(
+  return openModelProviderWireSummary(
     await request(`/api/settings/providers/${encodeURIComponent(providerId)}`, {
       method: "PATCH",
       body: JSON.stringify(await protectModelProviderUpdate(providerId, input)),
@@ -2752,7 +2764,8 @@ export async function getProjectTokenUsage(projectId: string) {
 }
 
 export async function getProviderTelemetryAnalytics(input: {
-  providerId?: string;
+  provider: ModelProviderSummary;
+  models: readonly ModelProfileSummary[];
   providerAccountId?: string;
   modelId?: string;
   reasoningEffort?: string;
@@ -2760,11 +2773,20 @@ export async function getProviderTelemetryAnalytics(input: {
   days?: number;
 }) {
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(input)) {
+  query.set("providerId", input.provider.id);
+  for (const [key, value] of Object.entries({
+    providerAccountId: input.providerAccountId,
+    modelId: input.modelId,
+    reasoningEffort: input.reasoningEffort,
+    projectId: input.projectId,
+    days: input.days,
+  })) {
     if (value !== undefined && value !== "") query.set(key, String(value));
   }
-  return providerTelemetryAnalyticsSchema.parse(
+  return openProviderTelemetryWireAnalytics(
     await request(`/api/analytics/provider-telemetry?${query.toString()}`),
+    input.provider,
+    input.models,
   );
 }
 

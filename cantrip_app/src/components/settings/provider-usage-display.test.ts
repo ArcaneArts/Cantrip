@@ -15,7 +15,6 @@ function account(
     id,
     providerId: "provider-1",
     label: id,
-    email: null,
     planType: "pro",
     position: 0,
     enabled: true,

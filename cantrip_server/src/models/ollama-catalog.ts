@@ -134,7 +134,7 @@ export class OllamaCatalogService {
         scopeKey,
         workerId,
         status: "stale",
-        error: "Worker is offline.",
+        errorCode: "worker-offline",
       });
       if (existing && existing.models.length > 0) {
         return this.#repository.getProviderModelCatalog(
@@ -150,7 +150,7 @@ export class OllamaCatalogService {
       scopeKey,
       workerId,
       status: "refreshing",
-      error: null,
+      errorCode: null,
       refreshStartedAt: new Date(),
     });
     try {
@@ -188,17 +188,16 @@ export class OllamaCatalogService {
         scopeKey,
         workerId,
         status: "current",
-        error: null,
+        errorCode: null,
         lastSuccessAt: new Date(),
       });
       return this.#repository.getProviderModelCatalog(ownerId, providerId);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
       await this.#repository.setProviderCatalogSyncState(providerId, {
         scopeKey,
         workerId,
         status: existing?.models.length ? "stale" : "failed",
-        error: message,
+        errorCode: "ollama-catalog-refresh-failed",
       });
       if (existing && existing.models.length > 0) {
         return this.#repository.getProviderModelCatalog(

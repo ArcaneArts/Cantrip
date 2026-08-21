@@ -8,6 +8,8 @@ import {
 import {
   encryptedMcpServerCreateSchema,
   encryptedMcpServerUpdateSchema,
+  encryptedModelProviderAccountCreateSchema,
+  encryptedModelProviderAccountUpdateSchema,
   encryptedModelProviderCreateSchema,
   encryptedModelProviderUpdateSchema,
   isManagedCodeGraphMcpName,
@@ -17,18 +19,38 @@ import {
   mcpServerWireListSchema,
   mcpServerWireSummarySchema,
   modelProviderCreateSchema,
+  modelProviderAccountCreateSchema,
+  modelProviderAccountUpdateSchema,
+  modelProviderAccountSummarySchema,
+  modelProviderAccountWireListSchema,
+  modelProviderAccountWireSummarySchema,
+  modelProviderSummarySchema,
+  modelProviderWireListSchema,
+  modelProviderWireSummarySchema,
   modelProviderUpdateSchema,
+  settingsBundleSchema,
+  settingsBundleWireSchema,
   type EncryptedMcpServerCreate,
   type EncryptedMcpServerUpdate,
   type EncryptedModelProviderCreate,
   type EncryptedModelProviderUpdate,
+  type EncryptedModelProviderAccountCreate,
+  type EncryptedModelProviderAccountUpdate,
   type McpServerConfiguration,
   type McpServerSummary,
   type McpServerWireSummary,
   type ModelProviderCreate,
+  type ModelProviderAccountCreate,
+  type ModelProviderAccountSummary,
+  type ModelProviderAccountUpdate,
+  type ModelProviderSummary,
   type ModelProviderUpdate,
+  type SettingsBundle,
 } from "@cantrip/protocol";
-import { providerApiKeyProtectedContentSchema } from "@cantrip/protocol/protected-secrets";
+import {
+  providerAccountLabelProtectedContentSchema,
+  providerApiKeyProtectedContentSchema,
+} from "@cantrip/protocol/protected-secrets";
 
 import type { ClientSessionContext } from "./client-session";
 import { getClientSession } from "./client-session";
@@ -95,15 +117,175 @@ async function protectProviderApiKey(input: {
   }
 }
 
+async function protectProviderAccountLabel(input: {
+  accountId: string;
+  label: string;
+  options: TrustedOptions;
+}) {
+  const encryption = context(input.options);
+  const componentKey = encryption.service.componentKey({
+    component: "provider-credential",
+    identity: encryption.service.getSnapshot().identity!,
+    keyRevision: encryption.keyRevision,
+  });
+  try {
+    return await encryptProtectedSecret({
+      ownerId: encryption.ownerId,
+      component: "provider-credential",
+      table: "model_provider_accounts",
+      rowId: input.accountId,
+      field: "protected_label",
+      keyRevision: encryption.keyRevision,
+      componentKey,
+      content: { version: 1, label: input.label },
+      contentSchema: providerAccountLabelProtectedContentSchema,
+      maximumBytes: 1_024,
+    });
+  } finally {
+    clearSensitiveBytes(componentKey);
+  }
+}
+
+export async function protectModelProviderAccountCreate(
+  raw: ModelProviderAccountCreate,
+  options: TrustedOptions = {},
+): Promise<EncryptedModelProviderAccountCreate> {
+  const input = modelProviderAccountCreateSchema.parse(raw);
+  const id = crypto.randomUUID();
+  return encryptedModelProviderAccountCreateSchema.parse({
+    id,
+    protectedLabel: await protectProviderAccountLabel({
+      accountId: id,
+      label: input.label,
+      options,
+    }),
+  });
+}
+
+export async function protectModelProviderAccountUpdate(
+  accountId: string,
+  raw: ModelProviderAccountUpdate,
+  options: TrustedOptions = {},
+): Promise<EncryptedModelProviderAccountUpdate> {
+  const input = modelProviderAccountUpdateSchema.parse(raw);
+  return encryptedModelProviderAccountUpdateSchema.parse({
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+    ...(input.label === undefined
+      ? {}
+      : {
+          protectedLabel: await protectProviderAccountLabel({
+            accountId,
+            label: input.label,
+            options,
+          }),
+        }),
+  });
+}
+
+export async function openModelProviderAccountWireSummary(
+  raw: unknown,
+  options: TrustedOptions = {},
+): Promise<ModelProviderAccountSummary> {
+  const wire = modelProviderAccountWireSummarySchema.parse(raw);
+  const encryption = context(options);
+  const componentKey = encryption.service.componentKey({
+    component: "provider-credential",
+    identity: encryption.service.getSnapshot().identity!,
+    keyRevision: wire.protectedLabel.keyRevision,
+  });
+  try {
+    const content = await decryptProtectedSecret({
+      ownerId: encryption.ownerId,
+      component: "provider-credential",
+      table: "model_provider_accounts",
+      rowId: wire.id,
+      field: "protected_label",
+      keyRevision: wire.protectedLabel.keyRevision,
+      componentKey,
+      encrypted: wire.protectedLabel,
+      contentSchema: providerAccountLabelProtectedContentSchema,
+      maximumBytes: 1_024,
+    });
+    return modelProviderAccountSummarySchema.parse({
+      ...wire,
+      protectedLabel: undefined,
+      label: content.label,
+    });
+  } catch {
+    throw new ClientEncryptionError(
+      "decryption-failed",
+      "Provider account label could not be authenticated.",
+    );
+  } finally {
+    clearSensitiveBytes(componentKey);
+  }
+}
+
+export async function openModelProviderWireSummary(
+  raw: unknown,
+  options: TrustedOptions = {},
+): Promise<ModelProviderSummary> {
+  const wire = modelProviderWireSummarySchema.parse(raw);
+  return modelProviderSummarySchema.parse({
+    ...wire,
+    accounts: await Promise.all(
+      wire.accounts.map((account) =>
+        openModelProviderAccountWireSummary(account, options),
+      ),
+    ),
+  });
+}
+
+export async function openModelProviderAccountWireList(
+  raw: unknown,
+  options: TrustedOptions = {},
+): Promise<ModelProviderAccountSummary[]> {
+  const wire = modelProviderAccountWireListSchema.parse(raw);
+  return Promise.all(
+    wire.map((account) =>
+      openModelProviderAccountWireSummary(account, options),
+    ),
+  );
+}
+
+export async function openModelProviderWireList(
+  raw: unknown,
+  options: TrustedOptions = {},
+): Promise<ModelProviderSummary[]> {
+  const wire = modelProviderWireListSchema.parse(raw);
+  return Promise.all(
+    wire.map((provider) => openModelProviderWireSummary(provider, options)),
+  );
+}
+
+export async function openSettingsBundleWire(
+  raw: unknown,
+  options: TrustedOptions = {},
+): Promise<SettingsBundle> {
+  const wire = settingsBundleWireSchema.parse(raw);
+  return settingsBundleSchema.parse({
+    ...wire,
+    providers: await openModelProviderWireList(wire.providers, options),
+  });
+}
+
 export async function protectModelProviderCreate(
   raw: ModelProviderCreate,
   options: TrustedOptions = {},
 ): Promise<EncryptedModelProviderCreate> {
   const input = modelProviderCreateSchema.parse(raw);
   const id = crypto.randomUUID();
+  const initialAccount =
+    input.kind === "chatgpt" || input.kind === "grok"
+      ? await protectModelProviderAccountCreate(
+          { label: `${input.kind === "grok" ? "Grok" : "ChatGPT"} account` },
+          options,
+        )
+      : null;
   return encryptedModelProviderCreateSchema.parse({
     ...input,
     id,
+    initialAccount,
     apiKey: undefined,
     protectedApiKey: input.apiKey
       ? await protectProviderApiKey({

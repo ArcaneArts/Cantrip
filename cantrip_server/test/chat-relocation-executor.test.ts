@@ -30,6 +30,7 @@ import {
 } from "./protected-attachment-fixture.js";
 import {
   protectedProviderCredentialFixture,
+  protectedSecretEnvelopeFixture,
   providerCredentialMetadataFixture,
 } from "./protected-provider-credential-fixture.js";
 
@@ -236,9 +237,14 @@ describe.sequential("chat relocation executor", () => {
     const provider = await database.repository.createModelProvider(
       LOCAL_USER_ID,
       {
+        id: "00000000-0000-4000-8000-000000000951",
         name: "Portable ChatGPT",
         kind: "chatgpt",
         baseUrl: "https://chatgpt.com/backend-api/codex",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000952",
+          protectedLabel: protectedSecretEnvelopeFixture("V"),
+        },
       },
     );
     const account = provider.accounts[0]!;

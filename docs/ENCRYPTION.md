@@ -42,17 +42,19 @@ implementation.
 
 ## Current state
 
-Some data is already protected, but it is not end-to-end encrypted:
+The implemented boundary now separates end-to-end encrypted payloads from
+intentionally visible control-plane metadata:
 
 - Passwords use Argon2id hashes and cannot be recovered. Session, CSRF, mobile
   sign-in, enrollment, and worker tokens are also stored as hashes. See
   [service.ts](../cantrip_server/src/auth/service.ts) and
   [schema.ts](../cantrip_server/src/db/schema.ts).
-- Provider API keys, ChatGPT/Grok credentials, and complete MCP configurations
-  now use endpoint-only AES-256-GCM envelopes. Authorized clients seal API keys
-  and MCP configuration; authorized workers open provider credentials, refresh
-  OAuth tokens, and reseal replacements. The server owns no usable decryption
-  key for these payloads.
+- Provider API keys, provider-account display labels, ChatGPT/Grok credentials,
+  and complete MCP configurations now use endpoint-only AES-256-GCM envelopes.
+  Authorized clients seal API keys, account labels, and MCP configuration;
+  authorized workers open provider credentials, refresh OAuth tokens, and
+  reseal replacements. The server owns no usable decryption key for these
+  payloads.
 - Attachment bytes remain worker-local and use authenticated ciphertext chunks
   whenever they cross the server relay. Filenames, MIME types, kinds, sources,
   previews, digests, and errors are endpoint-only encrypted metadata. The
@@ -78,9 +80,15 @@ Some data is already protected, but it is not end-to-end encrypted:
 - Repository and Git operations, including Git-agent tasks, locally gathered
   evidence, and generated drafts, use protected client-to-worker envelopes or
   worker-local opaque routing handles.
-- Logs redact known prompts, passwords, credentials, plans, and other sensitive
-  fields, although optional persistent service logs remain server-readable.
-  See [logger.ts](../cantrip_server/src/logger.ts).
+- Queryable analytics retain only counters, timestamps, versions, coarse
+  outcomes, routing-required identifiers, and opaque dimension IDs. Provider
+  payloads, copied labels/names, exact diagnostic bodies, and denormalized
+  model/provider/account labels are not stored in telemetry history.
+- Persistent and remotely readable logs are reduced to stable event codes and
+  an operational allowlist. Audit events use fixed columns without arbitrary
+  metadata, IP hashes, user-agent hashes, or content-bearing diagnostic fields.
+  Human diagnostic messages remain local console output only. See
+  [records.ts](../packages/logging/src/records.ts).
 
 ## Key architecture
 
@@ -443,7 +451,7 @@ database-compromise guarantee is described.
 | Custom tab-group display labels                                                                                             | AES-256-GCM E2EE for custom labels; unnamed groups derive from decrypted members client-side                                                                                                          | E2EE complete                                    | Implemented          | Medium                                                     | Server retains layout structure but cannot present or synthesize group labels                                                                                               |
 | Private display-label server boundary and lifecycle audit                                                                   | Generated route inventory, repository/schema guards, endpoint restart proof, full temporary-DB sentinel scan                                                                                          | Closure audit complete                           | Required             | Medium                                                     | Server builds and persists only opaque label contracts                                                                                                                      |
 | Cantrip policy content and effective agent policy context                                                                   | AES-256-GCM E2EE for policy keys, names, summaries, bodies, prompt context, and CLI presentation; keyed blind uniqueness                                                                              | E2EE complete                                    | Implemented          | Medium-High                                                | Server cannot inspect policy semantics, compose policy prompts, or resolve CLI keys                                                                                         |
-| Provider API keys and ChatGPT/Grok OAuth access, refresh, and identity tokens                                               | Row-bound AES-256-GCM E2EE under `provider-credential`; authorized-worker refresh and reseal                                                                                                          | E2EE complete                                    | Implemented          | High                                                       | Server cannot test credentials, refresh tokens, or use private catalog endpoints                                                                                            |
+| Provider API keys, account labels, and ChatGPT/Grok OAuth access, refresh, and identity tokens                              | Row-bound AES-256-GCM E2EE under `provider-credential`; client-only label presentation; authorized-worker credential refresh and reseal                                                               | E2EE complete                                    | Implemented          | High                                                       | Server cannot present account labels, test credentials, refresh tokens, or use private catalog endpoints                                                                    |
 | MCP names, commands, URLs, headers, environment, and configuration                                                          | Complete row-bound AES-256-GCM configuration under `mcp-secret`; keyed name blind index                                                                                                               | E2EE complete                                    | Implemented          | High                                                       | Server can route by scope and blind override key but cannot validate or describe configuration                                                                              |
 | Project automation names, prompts, and conditions                                                                           | Row-bound `workflow-content`; client-only presentation; worker-only condition evaluation and chat-turn sealing                                                                                        | E2EE complete                                    | Implemented          | Medium                                                     | Server can schedule and route automations but cannot inspect their name, prompt, or condition                                                                               |
 | Workflow catalog slugs, names, descriptions, provenance, and revision hashes                                                | Row-bound `workflow-content`; client-only presentation; keyed blind indexes for slug uniqueness and revision deduplication                                                                            | E2EE complete                                    | Implemented          | Medium                                                     | Server loses catalog presentation and provenance; equality within an account remains visible through blind indexes                                                          |
@@ -454,8 +462,8 @@ database-compromise guarantee is described.
 | Workflow control reasons and content-bearing events                                                                         | Client-sealed pause/cancel/retry/resume reasons; opaque event payload slot; explicit allowlist for server-readable scheduling/routing metadata                                                        | E2EE/minimization complete                       | Implemented          | Very high                                                  | Server sees event type/order/actors, opaque IDs, lifecycle classifications, aggregate usage, and bounded operational codes, but no user reason or worker event content      |
 | Workflow triggers and deliveries                                                                                            | Row/operation-bound `workflow-content`; client-only authoring/presentation; worker-only private routing validation, input merge, and run-input sealing; minimized public schedule/rate/event metadata | E2EE/minimization complete                       | Implemented          | Very high                                                  | Server sees trigger type, cadence, enabled/status/timestamps, Git event class, coarse errors, and hashed webhook credential, but no name, branch pattern, command, or input |
 | Repository identities and names, remotes, paths, branch names, and Git output                                               | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts             | E2EE complete                                    | Implemented          | High                                                       | Repository/Git content, identity, paths, branches, status, errors, GitHub catalogs, and Git-agent prose; equality leakage remains                                           |
-| Token usage, quotas, and model-behavior analytics                                                                           | Plaintext/queryable                                                                                                                                                                                   | Planned minimization                             | Partial              | Medium-High                                                | Fully encrypting numbers removes server dashboards, budgets, and historical analysis                                                                                        |
-| Diagnostic logs and audit metadata                                                                                          | Redacted but server-readable                                                                                                                                                                          | Planned minimization                             | Partial              | Medium                                                     | Fully encrypted logs prevent server-side operations and security investigation                                                                                              |
+| Token usage, quotas, and model-behavior analytics                                                                           | Minimized operational ledger: counters, timestamps, versions, coarse outcomes, routing IDs, and opaque dimensions only; labels are resolved on the unlocked client                                    | Selective minimization complete                  | Intentional metadata | Medium                                                     | Server retains aggregate analysis and routing dimensions but loses raw payloads, historical labels, copied names, and exact diagnostic context                              |
+| Diagnostic logs and audit metadata                                                                                          | Persistent/remote logs use event codes plus an operational allowlist; audits use fixed columns without arbitrary metadata, IP/user-agent hashes, raw errors, paths, prompts, or provider bodies       | Minimization complete                            | Intentional metadata | Medium                                                     | Server retains coarse operational/security events but loses free-form forensic payloads and exact diagnostics                                                               |
 | Worker platform, capabilities, online state, and tunnel endpoints                                                           | Plaintext                                                                                                                                                                                             | Intentionally plaintext                          | Poor                 | High                                                       | The server cannot route sessions or decide which worker supports a feature                                                                                                  |
 | Workflow status, leases, retries, dependencies, and deadlines                                                               | Plaintext                                                                                                                                                                                             | Intentionally plaintext                          | Poor                 | Very high                                                  | The server cannot schedule or recover jobs                                                                                                                                  |
 | User IDs, roles, account status, licenses, and memberships                                                                  | Plaintext                                                                                                                                                                                             | Do not encrypt                                   | Do not encrypt       | -                                                          | The server must enforce authorization                                                                                                                                       |
@@ -1413,6 +1421,15 @@ catalog paths no longer receive the usable key; public OpenRouter catalog data
 can still be fetched anonymously, while credential-specific operations require
 an authorized worker.
 
+Provider-account display labels use that same independently scoped component,
+but a distinct row-bound field domain. The client allocates the account UUID,
+encrypts `{ version: 1, label }` with authenticated context for
+`model_provider_accounts.protected_label`, and sends only the envelope. Settings
+and analytics APIs return opaque account records; the unlocked client opens the
+label and joins it to opaque analytics dimensions locally. Moving an envelope
+to another account row or changing its ciphertext fails authentication. This
+introduces no new password, recovery secret, key hierarchy, or worker grant.
+
 OAuth capture, use, and refresh follow the same custody boundary. After normal
 device login, the app grants `provider-credential` to the selected worker. The
 worker reads the provider's local login result, encrypts the complete access,
@@ -1448,12 +1465,24 @@ separate encryption prompt is introduced.
 The generated [server boundary inventory](security/server-route-inventory.json)
 guards the opaque schema, repository, and route contracts, removal of the
 server token-lease endpoint, and presence of worker-only open/reseal paths. The
-server still retains provider kind/name/base URL, opaque account ID and label,
-routing priority, expiry/health state, coarse plan/quota counters reported by
-quota observation paths, and public catalog data. It does not persist OAuth
-email or upstream identity metadata. The remaining fields are visible
-operational or presentation metadata, not usable credentials; label and
-analytics minimization remain tracked in the later audit cycle.
+server still retains provider kind/name/base URL, opaque account ID, routing
+priority, expiry/health state, coarse plan/quota counters, exact model route
+identifiers needed to dispatch work, and public catalog data. Provider names,
+base URLs, exact route identifiers, and the live public model catalog are
+intentionally visible routing/configuration state. The server does not persist
+the account label, OAuth email, upstream identity, copied provider/model names,
+or raw provider diagnostic payloads.
+
+[Migration 0132](../cantrip_server/drizzle/0132_polite_mongoose.sql) is the
+final pre-release privacy cutover for this slice. It adds required encrypted
+account-label storage and a coarse catalog error-code field, then drops the
+former plaintext account label/email/error columns plus copied analytics,
+catalog, audit, and raw-diagnostic columns. It deliberately does not translate
+plaintext into ciphertext or copy raw errors into error codes. Because
+`protected_label` is required, an installation with pre-cutover provider
+accounts must perform the already-planned full disposable/pre-release database
+wipe before applying this migration. No remote or production database is
+automatically reset or modified by the migration tooling or tests.
 
 ## Attachments
 
@@ -1871,15 +1900,50 @@ treated as user-authored content.
 
 ## Analytics
 
-Token usage and provider quota history are intentionally queryable by
-provider, account, model, project, worker, chat, turn, and date. Fully
-encrypting the numeric ledger removes server-side historical graphs, quotas,
-and budget enforcement.
+Token usage, provider quota history, and model-behavior measurements remain
+intentionally queryable by opaque provider, account, model, project, worker,
+chat, turn, route, and time dimensions. Fully encrypting these numeric records
+would remove server-side historical graphs, quota projection, comparisons, and
+budget enforcement without hiding the traffic and routing metadata the server
+already observes.
 
-A balanced design keeps counters, timestamps, opaque dimension IDs, and
-versions plaintext; encrypts raw provider payloads, labels, names, errors, and
-potentially exact model names; and lets clients resolve opaque dimensions to
-decrypted names. A later privacy mode can move the entire ledger to workers.
+The durable analytics ledger is therefore deliberately minimized rather than
+claimed as E2EE. It keeps numeric token/quota/behavior counters, timestamps,
+versions, coarse attempt/outcome/window classifications, public routing IDs,
+and opaque dimension IDs. It does not store raw or sanitized provider payloads,
+raw usage objects, provider/account/worker/model labels, duplicated native
+model names, catalog metadata bodies, plan labels in history, or free-form
+errors. Historical exports use schema version 2 and explicitly advertise
+`rawPayloadsStored: false` and `dimensionLabels: opaque-ids`.
+
+The client already possesses decrypted settings. It joins encrypted
+provider-account labels and current model/provider presentation names to the
+opaque analytics response in memory, after unlock. Deleted dimensions remain
+opaque IDs rather than preserving a plaintext historical label. Provider
+names, base URLs, exact current route identifiers, and live public catalog
+records remain intentionally plaintext because the server must route model
+execution and the catalog is public/operational data.
+
+Persistent service logs and remotely readable client/worker/server log buffers
+follow the same minimization boundary. Storage replaces human diagnostic text
+with the stable event code when available (or a generic system diagnostic),
+keeps only allowlisted operational fields such as subsystem, operation, status,
+reason code, opaque IDs, versions, counts, duration, HTTP path/status, platform,
+architecture, and coarse error class/code, and drops arbitrary nested context,
+filesystem paths, prompts, provider bodies, thrown error messages, and stacks.
+Local developer console output remains sanitized but useful. Rotating JSONL
+files reapply the minimizer so direct writes cannot bypass it.
+
+Audit records retain actor/owner/resource IDs, action, result, request ID, and
+timestamp in fixed columns. Arbitrary JSON metadata plus IP and user-agent
+hashes are removed. Provider catalog refresh failures persist bounded stable
+codes instead of upstream exception text. The generated server boundary audit
+now fails if these schema fields, repository references, plaintext account
+contracts, or persistent-log bypasses return.
+
+A later optional maximum-privacy mode may relocate the remaining numeric ledger
+to authorized workers, but that is a product tradeoff rather than unfinished
+payload encryption in the current database-compromise target.
 
 ## Important web-client limitation
 
@@ -2033,8 +2097,14 @@ counts, worker presence, model-route choices, and traffic patterns.
     inputs are sealed; the authorized worker validates routing and emits the
     run-bound input envelope while the server retains only required scheduling
     classifications and coarse delivery state.
-22. **Optional private analytics:** after workflow runtime content is opaque,
-    minimize or relocate analytics according to the selected privacy mode.
+22. **Analytics, audit, and persistent-log minimization — complete:** analytics
+    retain only counters, timestamps, coarse classifications, public routing
+    IDs, and opaque dimensions; clients reconstruct presentation labels after
+    unlock. Raw provider/usage/catalog payloads, copied labels/names, account
+    email and diagnostic fields, arbitrary audit metadata, and free-form
+    persistent log messages are removed. The boundary is statically audited,
+    and an optional future maximum-privacy mode may relocate the remaining
+    numeric ledger to workers.
 
 A usable first encrypted component is moderate in scope. A robust system with
 multi-device enrollment, unattended workers, device replacement, rotation,

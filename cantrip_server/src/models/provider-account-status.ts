@@ -1,12 +1,12 @@
 import {
   codexAuthStatusSchema,
   type CodexAuthStatus,
-  type ModelProviderAccountSummary,
+  type ModelProviderAccountWireSummary,
 } from "@cantrip/protocol";
 
 import type { AccountProviderKind } from "./account-provider.js";
 
-function statusError(account: ModelProviderAccountSummary): string | null {
+function statusError(account: ModelProviderAccountWireSummary): string | null {
   switch (account.credentialState) {
     case "migration-needed":
       return "The original worker must reconnect to migrate this provider account.";
@@ -23,13 +23,13 @@ function statusError(account: ModelProviderAccountSummary): string | null {
 /** Builds the global account status without consulting worker-local storage. */
 export function providerAccountAuthStatus(
   kind: AccountProviderKind,
-  account: ModelProviderAccountSummary,
+  account: ModelProviderAccountWireSummary,
 ): CodexAuthStatus {
   const authenticated = account.credentialState === "signed-in";
   return codexAuthStatusSchema.parse({
     authenticated,
     authMode: authenticated ? kind : null,
-    email: account.email,
+    email: null,
     planType: account.planType,
     weeklyUsage:
       account.weeklyUsageUsedPercent === null

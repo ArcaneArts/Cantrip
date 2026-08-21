@@ -2578,12 +2578,21 @@ async function providerSecretRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
   const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
-  const [schemaText, repositoryText, applicationText, workerText] =
-    await Promise.all(
-      [schemaPath, repositoryPath, appPath, workerPath].map((path) =>
-        readFile(path, "utf8"),
-      ),
-    );
+  const clientSecretsPath = resolve(
+    repositoryRoot,
+    "cantrip_app/src/lib/protected-secrets.ts",
+  );
+  const [
+    schemaText,
+    repositoryText,
+    applicationText,
+    workerText,
+    clientSecretsText,
+  ] = await Promise.all(
+    [schemaPath, repositoryPath, appPath, workerPath, clientSecretsPath].map(
+      (path) => readFile(path, "utf8"),
+    ),
+  );
   const failures = [];
   const providerTable = tableInitializer(schemaText, "modelProviders");
   const accountTable = tableInitializer(schemaText, "modelProviderAccounts");
@@ -2591,6 +2600,7 @@ async function providerSecretRepositoryBoundaryAudit() {
   for (const [initializer, marker, description] of [
     [providerTable, "protectedApiKey", "model provider API-key envelope"],
     [accountTable, "protectedCredential", "provider credential envelope"],
+    [accountTable, "protectedLabel", "provider account label envelope"],
     [
       accountTable,
       "credentialSubjectBlindIndex",
@@ -2607,7 +2617,13 @@ async function providerSecretRepositoryBoundaryAudit() {
     [providerTable, ["apiKey", "apiKeyEnvelope"], "modelProviders"],
     [
       accountTable,
-      ["credentialEnvelope", "credentialSubject"],
+      [
+        "label",
+        "email",
+        "credentialEnvelope",
+        "credentialSubject",
+        "credentialLastRefreshError",
+      ],
       "modelProviderAccounts",
     ],
     [
@@ -2639,6 +2655,9 @@ async function providerSecretRepositoryBoundaryAudit() {
     "schema.modelProviders.apiKeyEnvelope",
     "schema.modelProviderAccounts.credentialEnvelope",
     "schema.modelProviderAccounts.credentialSubject",
+    "schema.modelProviderAccounts.label",
+    "schema.modelProviderAccounts.email",
+    "schema.modelProviderAccounts.credentialLastRefreshError",
     "schema.mcpServers.environmentEnvelope",
     "schema.mcpServers.headersEnvelope",
   ]) {
@@ -2662,12 +2681,27 @@ async function providerSecretRepositoryBoundaryAudit() {
   for (const marker of [
     "encryptedModelProviderCreateSchema",
     "encryptedModelProviderUpdateSchema",
+    "encryptedModelProviderAccountCreateSchema",
+    "encryptedModelProviderAccountUpdateSchema",
+    "modelProviderAccountWireSummarySchema",
     "encryptedMcpServerCreateSchema",
     "encryptedMcpServerUpdateSchema",
     "providerCredentialWireRecordSchema",
   ]) {
     if (!applicationText.includes(marker)) {
       failures.push(`application: missing opaque contract ${marker}`);
+    }
+  }
+  for (const marker of [
+    "protectProviderAccountLabel",
+    "openModelProviderAccountWireSummary",
+    'component: "provider-credential"',
+    'field: "protected_label"',
+  ]) {
+    if (!clientSecretsText.includes(marker)) {
+      failures.push(
+        `client: missing provider-account label boundary ${marker}`,
+      );
     }
   }
   for (const marker of [
@@ -2693,8 +2727,121 @@ async function providerSecretRepositoryBoundaryAudit() {
     guards: [
       "provider-api-keys:opaque-only",
       "provider-oauth-credentials:opaque-worker-refresh",
+      "provider-account-labels:client-encrypted",
       "mcp-configurations:opaque-and-blind-indexed",
       "legacy-provider-and-mcp-columns:absent",
+    ],
+  };
+}
+
+async function analyticsAuditLogPrivacyBoundaryAudit() {
+  const paths = {
+    schema: resolve(serverSourcePath, "db/schema.ts"),
+    repository: resolve(serverSourcePath, "db/repository.ts"),
+    application: appPath,
+    logging: resolve(repositoryRoot, "packages/logging/src/records.ts"),
+    rotatingLog: resolve(
+      repositoryRoot,
+      "packages/logging/src/rotating-jsonl.ts",
+    ),
+  };
+  const texts = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([name, path]) => [
+        name,
+        await readFile(path, "utf8"),
+      ]),
+    ),
+  );
+  const failures = [];
+  const schemaTables = {
+    auditEvents: ["ipAddressHash", "userAgentHash", "metadata"],
+    modelBehaviorObservations: [
+      "modelName",
+      "providerName",
+      "providerModelName",
+    ],
+    modelProviderAccountWorkers: ["lastError"],
+    providerCatalogSyncStates: ["error"],
+    providerModelCatalogSnapshots: [
+      "providerName",
+      "nativeModelId",
+      "canonicalModelId",
+      "metadata",
+    ],
+    providerQuotaObservations: [
+      "providerName",
+      "providerAccountLabel",
+      "workerName",
+      "limitName",
+      "planType",
+      "sanitizedRawPayload",
+    ],
+    tokenUsageRecords: [
+      "modelName",
+      "providerName",
+      "providerModelName",
+      "sanitizedRawUsage",
+    ],
+  };
+  for (const [table, fields] of Object.entries(schemaTables)) {
+    const initializer = tableInitializer(texts.schema, table);
+    for (const field of fields) {
+      if (new RegExp(`\\b${field}\\s*:`, "u").test(initializer)) {
+        failures.push(`${table}: sensitive diagnostic field ${field} returned`);
+      }
+    }
+  }
+  for (const marker of [
+    "providerTelemetryWireAnalyticsSchema",
+    "modelProviderAccountWireSummarySchema",
+    "settingsBundleWireSchema",
+  ]) {
+    if (!texts.application.includes(marker)) {
+      failures.push(`application: missing minimized wire contract ${marker}`);
+    }
+  }
+  for (const marker of [
+    "minimizeServiceLogRecordInput",
+    "Human messages, arbitrary context",
+  ]) {
+    if (!texts.logging.includes(marker)) {
+      failures.push(
+        `logging: missing persistent minimization marker ${marker}`,
+      );
+    }
+  }
+  if (!texts.rotatingLog.includes("minimizeServiceLogRecordInput(record)")) {
+    failures.push("logging: rotating files do not enforce minimization");
+  }
+  for (const reference of [
+    "schema.modelProviderAccounts.label",
+    "schema.providerQuotaObservations.providerAccountLabel",
+    "schema.providerQuotaObservations.sanitizedRawPayload",
+    "schema.tokenUsageRecords.sanitizedRawUsage",
+  ]) {
+    if (texts.repository.includes(reference)) {
+      failures.push(`repository: sensitive persistence reference ${reference}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Analytics/audit/log privacy boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: [
+      "audit_events",
+      "model_behavior_observations",
+      "provider_model_catalog_snapshots",
+      "provider_quota_observations",
+      "token_usage_records",
+    ],
+    guards: [
+      "analytics:opaque-dimensions-and-counters-only",
+      "audits:fixed-columns-without-arbitrary-metadata",
+      "persistent-logs:event-coded-allowlist",
+      "provider-account-diagnostics:coarse-codes-only",
     ],
   };
 }
@@ -3411,6 +3558,7 @@ async function buildInventory() {
     policyDependencies,
     policyRepository,
     providerSecretRepository,
+    analyticsAuditLogPrivacy,
     attachmentContentRepository,
     privateDisplayLabelDependencies,
     privateDisplayLabelRepository,
@@ -3439,6 +3587,7 @@ async function buildInventory() {
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
+    analyticsAuditLogPrivacyBoundaryAudit(),
     attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
     privateDisplayLabelRepositoryBoundaryAudit(),
@@ -3581,6 +3730,10 @@ async function buildInventory() {
     providerSecretE2eeBoundary: {
       status: "enforced",
       ...providerSecretRepository,
+    },
+    analyticsAuditLogPrivacyBoundary: {
+      status: "minimized",
+      ...analyticsAuditLogPrivacy,
     },
     attachmentContentE2eeBoundary: {
       status: "enforced",

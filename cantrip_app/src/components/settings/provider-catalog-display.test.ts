@@ -141,7 +141,6 @@ describe("provider catalog presentation", () => {
               id: "grok-account",
               providerId: provider.id,
               label: "SuperGrok",
-              email: "grok@example.com",
               planType: "SuperGrok",
               position: 0,
               enabled: true,

@@ -49,14 +49,20 @@ describe("opaque provider and MCP persistence", () => {
       await repository.ensureLocalIdentity();
 
       const protectedApiKey = envelope("provider-ciphertext-sentinel");
+      const protectedLabel = envelope("account-label-ciphertext-sentinel");
+      const accountId = "00000000-0000-4000-8000-000000000923";
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
         id: providerId,
         baseUrl: "https://chatgpt.com/backend-api/codex",
         kind: "chatgpt",
         name: "ChatGPT",
         protectedApiKey,
+        initialAccount: { id: accountId, protectedLabel },
       });
-      const accountId = provider.accounts[0]!.id;
+      expect(provider.accounts[0]).toMatchObject({
+        id: accountId,
+        protectedLabel,
+      });
       const protectedCredential = {
         subjectBlindIndex: "A".repeat(43),
         protectedCredential: envelope("oauth-ciphertext-sentinel"),
@@ -121,13 +127,14 @@ describe("opaque provider and MCP persistence", () => {
       });
 
       const raw = await client.query<{
-        email: string | null;
         plan_type: string | null;
         protected_api_key: unknown;
+        protected_label: unknown;
         protected_credential: unknown;
         protected_configuration: unknown;
       }>(`
-        SELECT a.email, a.plan_type, p.protected_api_key, a.protected_credential,
+        SELECT a.plan_type, p.protected_api_key, a.protected_label,
+               a.protected_credential,
                m.protected_configuration
         FROM model_providers p
         JOIN model_provider_accounts a ON a.provider_id = p.id
@@ -135,9 +142,9 @@ describe("opaque provider and MCP persistence", () => {
         WHERE p.id = '${providerId}' AND m.id = '${mcpId}'
       `);
       expect(raw.rows[0]).toMatchObject({
-        email: null,
         plan_type: null,
         protected_api_key: protectedApiKey,
+        protected_label: protectedLabel,
         protected_credential: protectedCredential.protectedCredential,
         protected_configuration: protectedConfiguration,
       });
@@ -152,7 +159,10 @@ describe("opaque provider and MCP persistence", () => {
           (table_name = 'model_providers'
             AND column_name IN ('api_key', 'api_key_envelope'))
           OR (table_name = 'model_provider_accounts'
-            AND column_name IN ('credential_envelope', 'credential_subject'))
+            AND column_name IN (
+              'label', 'email', 'credential_last_refresh_error',
+              'credential_envelope', 'credential_subject'
+            ))
           OR (table_name = 'mcp_servers'
             AND column_name IN (
               'name', 'command', 'url', 'environment',

@@ -13,6 +13,7 @@ import { SecretVault } from "../src/security/secret-vault.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 import {
   protectedProviderCredentialFixture,
+  protectedSecretEnvelopeFixture,
   providerCredentialMetadataFixture,
 } from "./protected-provider-credential-fixture.js";
 
@@ -32,9 +33,14 @@ describe("global provider account lifecycle", () => {
     );
     await repository.ensureLocalIdentity();
     const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+      id: "00000000-0000-4000-8000-000000000945",
       baseUrl: "https://chatgpt.com/backend-api/codex",
       kind: "chatgpt",
       name: "ChatGPT",
+      initialAccount: {
+        id: "00000000-0000-4000-8000-000000000946",
+        protectedLabel: protectedSecretEnvelopeFixture("S"),
+      },
     });
     const account = provider.accounts[0]!;
     const protectedCredential = protectedProviderCredentialFixture("K");

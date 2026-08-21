@@ -243,6 +243,104 @@ export function sanitizeLogRecordInput(
   };
 }
 
+const PERSISTED_STRING_CONTEXT_KEYS = new Set([
+  "architecture",
+  "attemptKind",
+  "errorClass",
+  "errorCode",
+  "event",
+  "method",
+  "mode",
+  "observationTrigger",
+  "operation",
+  "path",
+  "platform",
+  "providerKind",
+  "reasonCode",
+  "status",
+  "subsystem",
+  "windowKind",
+]);
+const PERSISTED_NUMBER_CONTEXT_KEY =
+  /(?:^attempt$|^durationMs$|^errorStatus$|^statusCode$|Count$|Bytes$|Ms$|Percent$|BasisPoints$)/u;
+const PERSISTED_ID_CONTEXT_KEY = /Ids?$/u;
+const PERSISTED_VERSION_CONTEXT_KEY = /Version$/u;
+
+function minimizeLogContext(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  const sanitized = sanitizeLogContext(value);
+  if (!sanitized || typeof sanitized !== "object" || Array.isArray(sanitized)) {
+    return undefined;
+  }
+  const source = sanitized as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(source)) {
+    if (key === "path") {
+      if (typeof nested === "string" && nested.startsWith("/api/")) {
+        output.path = truncateText(nested, 512);
+      }
+      continue;
+    }
+    if (
+      typeof nested === "string" &&
+      (PERSISTED_STRING_CONTEXT_KEYS.has(key) ||
+        PERSISTED_ID_CONTEXT_KEY.test(key) ||
+        PERSISTED_VERSION_CONTEXT_KEY.test(key))
+    ) {
+      output[key] = truncateText(nested, 512);
+      continue;
+    }
+    if (
+      typeof nested === "number" &&
+      Number.isFinite(nested) &&
+      PERSISTED_NUMBER_CONTEXT_KEY.test(key)
+    ) {
+      output[key] = nested;
+      continue;
+    }
+    if (
+      typeof nested === "boolean" &&
+      /^(?:active|enabled|success)$/u.test(key)
+    ) {
+      output[key] = nested;
+    }
+  }
+  const error = source.error;
+  if (error && typeof error === "object" && !Array.isArray(error)) {
+    const errorRecord = error as Record<string, unknown>;
+    if (typeof errorRecord.name === "string") {
+      output.errorClass = truncateText(errorRecord.name, 128);
+    }
+    if (typeof errorRecord.code === "string") {
+      output.errorCode = truncateText(errorRecord.code, 128);
+    }
+  }
+  return Object.keys(output).length > 0 ? output : undefined;
+}
+
+/**
+ * Reduces persisted and remotely readable logs to stable operational fields.
+ * Human messages, arbitrary context, provider bodies, filesystem paths, and
+ * thrown error messages remain console-only diagnostics.
+ */
+export function minimizeServiceLogRecordInput(
+  input: ServiceLogRecordInput,
+): ServiceLogRecordInput {
+  const context = minimizeLogContext(input.context);
+  const event = context?.event;
+  return {
+    timestamp: input.timestamp,
+    system: sanitizeLogText(input.system),
+    level: input.level,
+    message:
+      typeof event === "string"
+        ? event
+        : `${sanitizeLogText(input.system)}.diagnostic`,
+    ...(context ? { context } : {}),
+  };
+}
+
 function fitRecord(
   record: ServiceLogRecord,
   maxRecordBytes: number,
@@ -311,8 +409,8 @@ export class ServiceLogBuffer {
   }
 
   append(input: ServiceLogRecordInput): ServiceLogRecord {
-    const sanitized = sanitizeLogRecordInput(input);
-    const candidate = { ...sanitized, cursor: ++this.#cursor };
+    const minimized = minimizeServiceLogRecordInput(input);
+    const candidate = { ...minimized, cursor: ++this.#cursor };
     const fitted = fitRecord(candidate, this.#maxRecordBytes);
     this.#entries.push(fitted);
     this.#bytes += fitted.bytes;
