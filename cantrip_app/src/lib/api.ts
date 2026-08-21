@@ -1498,7 +1498,9 @@ export async function deleteProjectWorkspace(workspaceId: string) {
 type RepositoryResultSchema<T> = { parse(value: unknown): T };
 
 async function runProtectedRepositoryOperation<T>(input: {
+  agent?: boolean;
   arguments: Record<string, unknown>;
+  modelId?: string;
   projectId: string;
   resultSchema: RepositoryResultSchema<T>;
   type: RepositoryOperationType;
@@ -1538,7 +1540,12 @@ async function runProtectedRepositoryOperation<T>(input: {
       `/api/projects/${encodeURIComponent(input.projectId)}/worktrees/${encodeURIComponent(worktree.id)}/repository-operation`,
       {
         method: "POST",
-        body: JSON.stringify({ operationId, protectedRequest }),
+        body: JSON.stringify({
+          operationId,
+          protectedRequest,
+          agent: input.agent ?? false,
+          ...(input.modelId ? { modelId: input.modelId } : {}),
+        }),
       },
     ),
   );
@@ -2082,12 +2089,16 @@ export async function generateProjectWorktreeGitDraft(
   worktreeId: string,
   input: GitAgentDraftCreate,
 ) {
-  return gitAgentDraftResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/agent/drafts`,
-      gitAgentDraftCreateSchema.parse(input),
-    ),
-  );
+  const request = gitAgentDraftCreateSchema.parse(input);
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.agent.generate",
+    arguments: request,
+    agent: true,
+    modelId: request.modelId,
+    resultSchema: gitAgentDraftResultSchema,
+  });
 }
 
 export async function previewProjectWorktreeGitForcePush(

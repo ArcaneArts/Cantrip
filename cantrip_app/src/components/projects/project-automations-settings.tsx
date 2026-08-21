@@ -7,7 +7,7 @@ import {
   type ProjectAutomationIntervalUnit,
   type ProjectAutomationSchedule,
 } from "@cantrip/protocol/automations";
-import type { ChatSummary } from "@cantrip/protocol";
+import type { ChatSummary, WorkerSummary } from "@cantrip/protocol";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlarmClock,
@@ -42,6 +42,7 @@ import {
   getProjectAutomations,
   updateProjectAutomation,
 } from "@/lib/project-automation-api";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-message";
 
@@ -118,6 +119,7 @@ function AutomationDialog({
   onOpenChange,
   open,
   projectId,
+  workers,
 }: {
   automation: ProjectAutomation | null;
   chats: ChatSummary[];
@@ -125,6 +127,7 @@ function AutomationDialog({
   onOpenChange(open: boolean): void;
   open: boolean;
   projectId: string;
+  workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
@@ -224,6 +227,12 @@ function AutomationDialog({
         schedule,
         condition,
         enabled: automation?.enabled ?? true,
+      });
+      const targetChat = chats.find((chat) => chat.id === input.chatId);
+      await ensureChatWorkerEncryption({
+        worker: workers.find(
+          (worker) => worker.workerId === targetChat?.activeWorkerId,
+        ),
       });
       return automation
         ? updateProjectAutomation(automation.id, input)
@@ -530,10 +539,12 @@ export function ProjectAutomationsSettings({
   chats,
   githubAvailable,
   projectId,
+  workers,
 }: {
   chats: ChatSummary[];
   githubAvailable: boolean;
   projectId: string;
+  workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -552,10 +563,18 @@ export function ProjectAutomationsSettings({
       queryKey: ["project-automations", projectId],
     });
   const toggle = useMutation({
-    mutationFn: (automation: ProjectAutomation) =>
-      updateProjectAutomation(automation.id, {
+    mutationFn: async (automation: ProjectAutomation) => {
+      if (!automation.enabled) {
+        await ensureChatWorkerEncryption({
+          worker: workers.find(
+            (worker) => worker.workerId === automation.workerId,
+          ),
+        });
+      }
+      return updateProjectAutomation(automation.id, {
         enabled: !automation.enabled,
-      }),
+      });
+    },
     onSuccess: refresh,
   });
   const remove = useMutation({
@@ -740,6 +759,7 @@ export function ProjectAutomationsSettings({
         onOpenChange={setEditorOpen}
         open={editorOpen}
         projectId={projectId}
+        workers={workers}
       />
 
       <Dialog

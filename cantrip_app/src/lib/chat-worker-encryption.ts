@@ -66,6 +66,7 @@ export function chatWorkerEncryptionReadiness(
     "mcp-secret",
     "policy-content",
     "provider-credential",
+    "workflow-content",
   ] as const;
   if (
     !requiredComponents.every((component) =>
@@ -138,6 +139,7 @@ export async function ensureChatWorkerEncryption(input: {
         "mcp-secret",
         "policy-content",
         "provider-credential",
+        "workflow-content",
       ],
       identity,
       keyRevision: snapshot.masterKeyRevision,

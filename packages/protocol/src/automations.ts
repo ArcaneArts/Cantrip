@@ -1,6 +1,8 @@
 import { Cron } from "croner";
 import { z } from "zod";
 
+import { workflowContentOpaqueSchema } from "./workflow-content.js";
+
 const idSchema = z.string().trim().min(1);
 const timestampSchema = z.string().datetime();
 
@@ -119,6 +121,62 @@ export const projectAutomationCreateSchema = z.object({
   enabled: z.boolean().default(true),
 });
 
+export const projectAutomationProtectedNameSchema = z
+  .object({
+    version: z.literal(1),
+    name: projectAutomationCreateSchema.shape.name,
+  })
+  .strict();
+
+export const projectAutomationProtectedPromptSchema = z
+  .object({
+    version: z.literal(1),
+    prompt: projectAutomationCreateSchema.shape.prompt,
+  })
+  .strict();
+
+export const projectAutomationProtectedConditionSchema = z
+  .object({
+    version: z.literal(1),
+    condition: projectAutomationConditionSchema.nullable(),
+  })
+  .strict();
+
+export const projectAutomationOpaqueContentSchema = z
+  .object({
+    protectedName: workflowContentOpaqueSchema,
+    protectedPrompt: workflowContentOpaqueSchema,
+    protectedCondition: workflowContentOpaqueSchema,
+  })
+  .strict();
+
+export const encryptedProjectAutomationCreateSchema = z
+  .object({
+    id: z.uuid(),
+    chatId: idSchema,
+    schedule: projectAutomationScheduleSchema,
+    enabled: z.boolean().default(true),
+    content: projectAutomationOpaqueContentSchema,
+  })
+  .strict();
+
+export const encryptedProjectAutomationUpdateSchema = z
+  .object({
+    chatId: idSchema.optional(),
+    schedule: projectAutomationScheduleSchema.optional(),
+    enabled: z.boolean().optional(),
+    content: projectAutomationOpaqueContentSchema.partial().optional(),
+  })
+  .strict()
+  .refine(
+    (input) =>
+      input.chatId !== undefined ||
+      input.schedule !== undefined ||
+      input.enabled !== undefined ||
+      (input.content !== undefined && Object.keys(input.content).length > 0),
+    { message: "Provide at least one encrypted automation update." },
+  );
+
 export const projectAutomationUpdateSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
@@ -160,6 +218,15 @@ export const projectAutomationSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+export const projectAutomationWireSchema = projectAutomationSchema
+  .omit({ name: true, prompt: true, condition: true })
+  .extend({ content: projectAutomationOpaqueContentSchema })
+  .strict();
+
+export const projectAutomationWireListSchema = z.array(
+  projectAutomationWireSchema,
+);
+
 export const projectAutomationListSchema = z.array(projectAutomationSchema);
 
 export const projectAutomationDispatchRequestSchema = z.object({
@@ -192,6 +259,16 @@ export type ProjectAutomationUpdate = z.infer<
   typeof projectAutomationUpdateSchema
 >;
 export type ProjectAutomation = z.infer<typeof projectAutomationSchema>;
+export type ProjectAutomationWire = z.infer<typeof projectAutomationWireSchema>;
+export type ProjectAutomationOpaqueContent = z.infer<
+  typeof projectAutomationOpaqueContentSchema
+>;
+export type EncryptedProjectAutomationCreate = z.infer<
+  typeof encryptedProjectAutomationCreateSchema
+>;
+export type EncryptedProjectAutomationUpdate = z.infer<
+  typeof encryptedProjectAutomationUpdateSchema
+>;
 export type ProjectAutomationDispatchRequest = z.infer<
   typeof projectAutomationDispatchRequestSchema
 >;

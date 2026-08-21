@@ -13,6 +13,7 @@ export * from "./attachment-content.js";
 export * from "./explorer.js";
 export * from "./surface-stream.js";
 export * from "./repository-operation.js";
+export * from "./workflow-content.js";
 
 import {
   chatPlanOpaqueStateSchema,
@@ -117,7 +118,7 @@ import {
   terminalPrivateStateOpaqueSchema,
 } from "./surface-private-state.js";
 
-import { projectAutomationConditionSchema } from "./automations.js";
+import { projectAutomationOpaqueContentSchema } from "./automations.js";
 import {
   workflowJsonObjectSchema,
   workflowNodeExecutionRequestSchema,
@@ -6797,6 +6798,22 @@ export const encryptedChatTurnCreateSchema = z
     }
   });
 
+export const projectAutomationProtectedDispatchResultSchema = z
+  .object({
+    allowed: z.boolean(),
+    protectedTurn: encryptedChatTurnCreateSchema.nullable(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.allowed !== Boolean(value.protectedTurn)) {
+      context.addIssue({
+        code: "custom",
+        message: "Allowed automation dispatches require a protected turn.",
+        path: ["protectedTurn"],
+      });
+    }
+  });
+
 export const encryptedQueuedPromptUpdateSchema = z
   .object({ prompt: queuedPromptOpaqueContentSchema })
   .strict();
@@ -9725,10 +9742,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     request: githubRepositoryCreateSchema,
   }),
   z.object({
-    type: z.literal("automation.condition.evaluate"),
-    condition: projectAutomationConditionSchema,
+    type: z.literal("automation.dispatch.protect"),
+    automationId: z.string().uuid(),
+    content: projectAutomationOpaqueContentSchema,
     cwd: z.string().min(1).max(8_192),
     repository: workerRepositoryNameSchema.nullable(),
+    promptId: z.string().uuid(),
+    messageId: z.string().uuid(),
+    mode: chatTurnModeSchema,
+    modelId: z.string().min(1).max(200),
+    reasoningEffort: reasoningEffortSchema.nullable(),
+    idempotencyKey: z.string().min(1).max(200),
   }),
   z.object({
     type: z.literal("github.issues.list"),
@@ -10294,30 +10318,22 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
       sourcePath: z.string().min(1).max(8_192),
       repository: workerRepositoryNameSchema.nullable(),
+      agentRuntimes: z
+        .array(
+          z
+            .object({
+              routeId: z.string().min(1).max(200),
+              model: workerRuntimeModelSchema,
+              provider: workerRuntimeProviderSchema,
+            })
+            .strict(),
+        )
+        .max(20)
+        .default([]),
+      mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
     })
     .extend(repositoryOperationWireRequestSchema.shape)
     .strict(),
-  z.object({
-    type: z.literal("git.agent.generate"),
-    generationId: z.string().min(1).max(200),
-    cwd: z.string().min(1).max(8_192),
-    task: gitAgentDraftTaskSchema,
-    instructions: z.string().trim().max(2_000).nullable(),
-    baseRevision: gitAgentRevisionSchema.nullable(),
-    headRevision: gitAgentRevisionSchema.nullable(),
-    pullRequestNumber: z.number().int().positive().nullable(),
-    repository: workerRepositoryNameSchema.nullable(),
-    developerInstructions: z.string().trim().min(1).max(100_000),
-    outputSchema: workflowJsonObjectSchema,
-    timeoutMs: z
-      .number()
-      .int()
-      .min(1_000)
-      .max(30 * 60 * 1_000),
-    model: workerRuntimeModelSchema,
-    provider: workerRuntimeProviderSchema,
-    mcpServers: z.array(mcpServerOpaqueRuntimeSchema).max(200).default([]),
-  }),
   z.object({
     type: z.literal("worktree.list"),
     sourcePath: z.string().min(1),

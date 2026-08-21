@@ -64,10 +64,8 @@ import type {
   TaskStableState,
   TaskState,
 } from "@cantrip/protocol/tasks";
-import type {
-  ProjectAutomationCondition,
-  ProjectAutomationSchedule,
-} from "@cantrip/protocol/automations";
+import type { ProjectAutomationSchedule } from "@cantrip/protocol/automations";
+import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import type {
   EncryptedPolicyBodyContent,
   EncryptedPolicySummaryContent,
@@ -3343,10 +3341,16 @@ export const projectAutomations = pgTable(
     chatId: text("chat_id")
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
-    prompt: text("prompt").notNull(),
+    protectedName: jsonb("protected_name")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
+    protectedPrompt: jsonb("protected_prompt")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     schedule: jsonb("schedule").$type<ProjectAutomationSchedule>().notNull(),
-    condition: jsonb("condition").$type<ProjectAutomationCondition>(),
+    protectedCondition: jsonb("protected_condition")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     enabled: boolean("enabled").notNull().default(true),
     revision: integer("revision").notNull().default(1),
     nextRunAt: timestamp("next_run_at", { withTimezone: true }),

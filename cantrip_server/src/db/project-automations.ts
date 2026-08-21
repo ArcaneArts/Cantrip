@@ -2,14 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import {
   firstProjectAutomationRunAt,
+  encryptedProjectAutomationCreateSchema,
+  encryptedProjectAutomationUpdateSchema,
   nextProjectAutomationRunAt,
-  projectAutomationListSchema,
-  projectAutomationSchema,
-  type ProjectAutomation,
-  type ProjectAutomationCreate,
+  projectAutomationWireListSchema,
+  projectAutomationWireSchema,
+  type EncryptedProjectAutomationCreate,
+  type EncryptedProjectAutomationUpdate,
   type ProjectAutomationDispatchRequest,
   type ProjectAutomationSchedule,
-  type ProjectAutomationUpdate,
+  type ProjectAutomationWire,
 } from "@cantrip/protocol/automations";
 import type { ReasoningEffort } from "@cantrip/protocol";
 import { and, desc, eq, gt, lte } from "drizzle-orm";
@@ -27,16 +29,21 @@ function toISOString(value: Date): string {
   return value.toISOString();
 }
 
-function toAutomation(row: AutomationRow, workerId: string): ProjectAutomation {
-  return projectAutomationSchema.parse({
+function toAutomationWire(
+  row: AutomationRow,
+  workerId: string,
+): ProjectAutomationWire {
+  return projectAutomationWireSchema.parse({
     id: row.id,
     projectId: row.projectId,
     chatId: row.chatId,
     workerId,
-    name: row.name,
-    prompt: row.prompt,
+    content: {
+      protectedName: row.protectedName,
+      protectedPrompt: row.protectedPrompt,
+      protectedCondition: row.protectedCondition,
+    },
     schedule: row.schedule,
-    condition: row.condition,
     enabled: row.enabled,
     revision: row.revision,
     nextRunAt: row.nextRunAt ? toISOString(row.nextRunAt) : null,
@@ -57,7 +64,7 @@ function nextRunFor(
 }
 
 export interface ProjectAutomationDispatchLease {
-  automation: ProjectAutomation;
+  automation: ProjectAutomationWire;
   dispatchInstanceId: string;
   fencingToken: number;
   leaseToken: string;
@@ -105,8 +112,9 @@ export class ProjectAutomationRepository {
   async create(
     ownerId: string,
     projectId: string,
-    input: ProjectAutomationCreate,
-  ): Promise<ProjectAutomation | null> {
+    rawInput: EncryptedProjectAutomationCreate,
+  ): Promise<ProjectAutomationWire | null> {
+    const input = encryptedProjectAutomationCreateSchema.parse(rawInput);
     const target = await this.target(ownerId, projectId, input.chatId);
     if (!target) return null;
     const now = new Date();
@@ -119,14 +127,14 @@ export class ProjectAutomationRepository {
     const rows = await this.database
       .insert(schema.projectAutomations)
       .values({
-        id: randomUUID(),
+        id: input.id,
         ownerId,
         projectId,
         chatId: input.chatId,
-        name: input.name,
-        prompt: input.prompt,
+        protectedName: input.content.protectedName,
+        protectedPrompt: input.content.protectedPrompt,
+        protectedCondition: input.content.protectedCondition,
         schedule: input.schedule,
-        condition: input.condition,
         enabled: input.enabled,
         revision: 1,
         nextRunAt,
@@ -134,10 +142,13 @@ export class ProjectAutomationRepository {
         updatedAt: now,
       })
       .returning();
-    return toAutomation(rows[0]!, target.workerId);
+    return toAutomationWire(rows[0]!, target.workerId);
   }
 
-  async list(ownerId: string, projectId: string): Promise<ProjectAutomation[]> {
+  async list(
+    ownerId: string,
+    projectId: string,
+  ): Promise<ProjectAutomationWire[]> {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
@@ -161,9 +172,9 @@ export class ProjectAutomationRepository {
       )
       .where(eq(schema.projectAutomations.projectId, projectId))
       .orderBy(desc(schema.projectAutomations.createdAt));
-    return projectAutomationListSchema.parse(
+    return projectAutomationWireListSchema.parse(
       rows.map(({ automation, workerId }) =>
-        toAutomation(automation, workerId),
+        toAutomationWire(automation, workerId),
       ),
     );
   }
@@ -171,7 +182,7 @@ export class ProjectAutomationRepository {
   async listForWorker(
     ownerId: string,
     workerId: string,
-  ): Promise<ProjectAutomation[]> {
+  ): Promise<ProjectAutomationWire[]> {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
@@ -193,15 +204,15 @@ export class ProjectAutomationRepository {
       )
       .where(eq(schema.projectAutomations.enabled, true))
       .orderBy(schema.projectAutomations.nextRunAt);
-    return projectAutomationListSchema.parse(
-      rows.map(({ automation }) => toAutomation(automation, workerId)),
+    return projectAutomationWireListSchema.parse(
+      rows.map(({ automation }) => toAutomationWire(automation, workerId)),
     );
   }
 
   async get(
     ownerId: string,
     automationId: string,
-  ): Promise<ProjectAutomation | null> {
+  ): Promise<ProjectAutomationWire | null> {
     const rows = await this.database
       .select({
         automation: schema.projectAutomations,
@@ -226,14 +237,15 @@ export class ProjectAutomationRepository {
       .where(eq(schema.projectAutomations.id, automationId))
       .limit(1);
     const row = rows[0];
-    return row ? toAutomation(row.automation, row.workerId) : null;
+    return row ? toAutomationWire(row.automation, row.workerId) : null;
   }
 
   async update(
     ownerId: string,
     automationId: string,
-    input: ProjectAutomationUpdate,
-  ): Promise<ProjectAutomation | null> {
+    rawInput: EncryptedProjectAutomationUpdate,
+  ): Promise<ProjectAutomationWire | null> {
+    const input = encryptedProjectAutomationUpdateSchema.parse(rawInput);
     const current = await this.get(ownerId, automationId);
     if (!current) return null;
     const chatId = input.chatId ?? current.chatId;
@@ -264,11 +276,15 @@ export class ProjectAutomationRepository {
     const rows = await this.database
       .update(schema.projectAutomations)
       .set({
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.prompt !== undefined ? { prompt: input.prompt } : {}),
-        ...(input.condition !== undefined
-          ? { condition: input.condition }
-          : {}),
+        ...(input.content?.protectedName === undefined
+          ? {}
+          : { protectedName: input.content.protectedName }),
+        ...(input.content?.protectedPrompt === undefined
+          ? {}
+          : { protectedPrompt: input.content.protectedPrompt }),
+        ...(input.content?.protectedCondition === undefined
+          ? {}
+          : { protectedCondition: input.content.protectedCondition }),
         chatId,
         schedule,
         enabled,
@@ -285,7 +301,7 @@ export class ProjectAutomationRepository {
         ),
       )
       .returning();
-    return rows[0] ? toAutomation(rows[0], target.workerId) : null;
+    return rows[0] ? toAutomationWire(rows[0], target.workerId) : null;
   }
 
   async delete(ownerId: string, automationId: string): Promise<boolean> {
@@ -447,7 +463,7 @@ export class ProjectAutomationRepository {
         );
       }
       return {
-        automation: toAutomation(updated[0], selected.workerId),
+        automation: toAutomationWire(updated[0], selected.workerId),
         dispatchInstanceId,
         fencingToken: run.fencingToken,
         leaseToken,

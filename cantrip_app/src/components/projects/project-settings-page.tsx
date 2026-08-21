@@ -543,6 +543,7 @@ export function ProjectSettingsPage({
             chats={chats}
             githubAvailable={project.capabilities.github}
             projectId={project.id}
+            workers={workers}
           />
         </div>
       ) : null}
