@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,6 +17,8 @@ export const ELITE_GLITCH_VARIANTS = [
   "left-frame",
   "right-frame",
   "chromatic",
+  "spatial-shift",
+  "pixelate",
   "noise",
   "scanline",
   "text-jitter",
@@ -29,8 +38,8 @@ export interface EliteRevealConfig {
 export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
   glitchCountMax: 3,
   glitchCountMin: 1,
-  glitchShowMs: 15,
-  staggerDelayMs: 25,
+  glitchShowMs: 9,
+  staggerDelayMs: 7,
   variants: ELITE_GLITCH_VARIANTS,
 };
 
@@ -108,9 +117,120 @@ export function createEliteGlitchSequence(
   });
 }
 
+export interface EliteGlitchFrame {
+  chromaticAngleDeg: number;
+  chromaticDistancePx: number;
+  chromaticOffsetXPx: number;
+  chromaticOffsetYPx: number;
+  pixelOffsetXPx: number;
+  pixelOffsetYPx: number;
+  pixelSizePx: number;
+  shiftXPercent: number;
+  shiftYPercent: number;
+  variant: EliteGlitchVariant;
+}
+
+function unitRandom(random: () => number): number {
+  return Math.min(0.999_999, Math.max(0, random()));
+}
+
+function roundFrameValue(value: number): number {
+  return Math.round(value * 1_000) / 1_000;
+}
+
+export function createEliteGlitchFrame(
+  variant: EliteGlitchVariant,
+  random: () => number = Math.random,
+): EliteGlitchFrame {
+  const frame: EliteGlitchFrame = {
+    chromaticAngleDeg: 0,
+    chromaticDistancePx: 0,
+    chromaticOffsetXPx: 0,
+    chromaticOffsetYPx: 0,
+    pixelOffsetXPx: 0,
+    pixelOffsetYPx: 0,
+    pixelSizePx: 6,
+    shiftXPercent: 0,
+    shiftYPercent: 0,
+    variant,
+  };
+
+  if (variant === "chromatic") {
+    const angleDegrees = unitRandom(random) * 360;
+    const distancePixels = 1 + unitRandom(random) * 5;
+    const angleRadians = (angleDegrees * Math.PI) / 180;
+    frame.chromaticAngleDeg = roundFrameValue(angleDegrees);
+    frame.chromaticDistancePx = roundFrameValue(distancePixels);
+    frame.chromaticOffsetXPx = roundFrameValue(
+      Math.cos(angleRadians) * distancePixels,
+    );
+    frame.chromaticOffsetYPx = roundFrameValue(
+      Math.sin(angleRadians) * distancePixels,
+    );
+  } else if (variant === "spatial-shift") {
+    const angleRadians = unitRandom(random) * Math.PI * 2;
+    const distancePercent = unitRandom(random) * 15;
+    frame.shiftXPercent = roundFrameValue(
+      Math.cos(angleRadians) * distancePercent,
+    );
+    frame.shiftYPercent = roundFrameValue(
+      Math.sin(angleRadians) * distancePercent,
+    );
+  } else if (variant === "pixelate") {
+    const pixelSize = 4 + Math.floor(unitRandom(random) * 9);
+    frame.pixelSizePx = pixelSize;
+    frame.pixelOffsetXPx = roundFrameValue(
+      (unitRandom(random) * 2 - 1) * pixelSize,
+    );
+    frame.pixelOffsetYPx = roundFrameValue(
+      (unitRandom(random) * 2 - 1) * pixelSize,
+    );
+  }
+
+  return frame;
+}
+
 type RevealStage =
-  | { state: "glitch"; variant: EliteGlitchVariant }
-  | { state: "ready" | "waiting"; variant: null };
+  | { frame: EliteGlitchFrame; state: "glitch" }
+  | { frame: null; state: "armed" | "ready" | "waiting" };
+
+type EliteRevealStyle = CSSProperties & {
+  [property: `--elite-${string}`]: string;
+};
+
+interface PendingEliteRevealStart {
+  active: boolean;
+  index: number;
+  start(staggerSlot: number): void;
+}
+
+const pendingEliteRevealStarts = new Set<PendingEliteRevealStart>();
+let pendingEliteRevealFrame: number | null = null;
+
+function queueEliteRevealStart(
+  index: number,
+  start: (staggerSlot: number) => void,
+): () => void {
+  const pending: PendingEliteRevealStart = { active: true, index, start };
+  pendingEliteRevealStarts.add(pending);
+  pendingEliteRevealFrame ??= window.requestAnimationFrame(() => {
+    const starts = [...pendingEliteRevealStarts]
+      .filter((candidate) => candidate.active)
+      .sort((left, right) => left.index - right.index);
+    pendingEliteRevealStarts.clear();
+    pendingEliteRevealFrame = null;
+    starts.forEach((candidate, staggerSlot) => candidate.start(staggerSlot));
+  });
+
+  return () => {
+    pending.active = false;
+    pendingEliteRevealStarts.delete(pending);
+    if (!pendingEliteRevealStarts.size && pendingEliteRevealFrame !== null) {
+      window.cancelAnimationFrame(pendingEliteRevealFrame);
+      pendingEliteRevealFrame = null;
+    }
+  };
+}
 
 export function EliteReveal({
   children,
@@ -127,6 +247,7 @@ export function EliteReveal({
   index?: number;
   replayKey: number;
 }) {
+  const elementRef = useRef<HTMLDivElement>(null);
   const normalized = useMemo(
     () => normalizeEliteRevealConfig(config),
     [
@@ -140,19 +261,22 @@ export function EliteReveal({
   const configSignature = `${normalized.glitchCountMin}:${normalized.glitchCountMax}:${normalized.glitchShowMs}:${normalized.staggerDelayMs}:${normalized.variants.join(",")}`;
   const [stage, setStage] = useState<RevealStage>(() =>
     variantsForEliteContent(normalized.variants, contentKind).length
-      ? { state: "waiting", variant: null }
-      : { state: "ready", variant: null },
+      ? { frame: null, state: "armed" }
+      : { frame: null, state: "ready" },
   );
 
   useEffect(() => {
     const sequence = createEliteGlitchSequence(normalized, contentKind);
     if (!sequence.length) {
-      setStage({ state: "ready", variant: null });
+      setStage({ frame: null, state: "ready" });
       return;
     }
 
     const timers = new Set<number>();
     let cancelled = false;
+    let cancelQueuedStart = () => {};
+    let observer: IntersectionObserver | null = null;
+    let started = false;
     const schedule = (callback: () => void, delayMs: number) => {
       const timer = window.setTimeout(() => {
         timers.delete(timer);
@@ -160,32 +284,77 @@ export function EliteReveal({
       }, delayMs);
       timers.add(timer);
     };
-    const interGlitchGapMs = Math.max(
-      6,
-      Math.round(normalized.glitchShowMs * 0.65),
-    );
     let sequenceIndex = 0;
     const showNextGlitch = () => {
       const variant = sequence[sequenceIndex];
       if (!variant) {
-        setStage({ state: "ready", variant: null });
+        setStage({ frame: null, state: "ready" });
         return;
       }
-      setStage({ state: "glitch", variant });
+      setStage({ frame: createEliteGlitchFrame(variant), state: "glitch" });
       schedule(() => {
         sequenceIndex += 1;
-        setStage({ state: "waiting", variant: null });
-        schedule(showNextGlitch, interGlitchGapMs);
+        showNextGlitch();
       }, normalized.glitchShowMs);
     };
+    const startWhenVisible = () => {
+      if (started) return;
+      started = true;
+      observer?.disconnect();
+      setStage({ frame: null, state: "waiting" });
+      cancelQueuedStart = queueEliteRevealStart(index, (staggerSlot) =>
+        schedule(showNextGlitch, staggerSlot * normalized.staggerDelayMs),
+      );
+    };
 
-    setStage({ state: "waiting", variant: null });
-    schedule(showNextGlitch, Math.max(0, index) * normalized.staggerDelayMs);
+    setStage({ frame: null, state: "armed" });
+    const element = elementRef.current;
+    observer =
+      element && "IntersectionObserver" in window
+        ? new IntersectionObserver(
+            (entries) => {
+              if (
+                entries.some(
+                  (entry) =>
+                    entry.target === element &&
+                    entry.isIntersecting &&
+                    entry.intersectionRatio > 0,
+                )
+              ) {
+                startWhenVisible();
+              }
+            },
+            { threshold: 0.01 },
+          )
+        : null;
+
+    if (observer && element) observer.observe(element);
+    else startWhenVisible();
+
     return () => {
       cancelled = true;
+      cancelQueuedStart();
+      observer?.disconnect();
       timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [configSignature, contentKind, index, normalized, replayKey]);
+
+  const frame = stage.state === "glitch" ? stage.frame : null;
+  const frameStyle: EliteRevealStyle | undefined = frame
+    ? {
+        "--elite-chromatic-angle": `${frame.chromaticAngleDeg}deg`,
+        "--elite-chromatic-distance": `${frame.chromaticDistancePx}px`,
+        "--elite-chromatic-x": `${frame.chromaticOffsetXPx}px`,
+        "--elite-chromatic-x-negative": `${-frame.chromaticOffsetXPx}px`,
+        "--elite-chromatic-y": `${frame.chromaticOffsetYPx}px`,
+        "--elite-chromatic-y-negative": `${-frame.chromaticOffsetYPx}px`,
+        "--elite-pixel-offset-x": `${frame.pixelOffsetXPx}px`,
+        "--elite-pixel-offset-y": `${frame.pixelOffsetYPx}px`,
+        "--elite-pixel-size": `${frame.pixelSizePx}px`,
+        "--elite-shift-x": `${frame.shiftXPercent}%`,
+        "--elite-shift-y": `${frame.shiftYPercent}%`,
+      }
+    : undefined;
 
   return (
     <div
@@ -193,7 +362,9 @@ export function EliteReveal({
       data-content-kind={contentKind}
       data-elite-reveal=""
       data-state={stage.state}
-      data-variant={stage.variant ?? undefined}
+      data-variant={frame?.variant}
+      ref={elementRef}
+      style={frameStyle}
     >
       <div className="elite-reveal__content">{children}</div>
       <span aria-hidden="true" className="elite-reveal__signal" />

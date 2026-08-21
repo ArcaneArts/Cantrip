@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createEliteGlitchFrame,
   createEliteGlitchSequence,
+  DEFAULT_ELITE_REVEAL_CONFIG,
   ELITE_GLITCH_VARIANTS,
   normalizeEliteRevealConfig,
   variantsForEliteContent,
@@ -17,6 +19,15 @@ const config: EliteRevealConfig = {
 };
 
 describe("Elite reveal sequencing", () => {
+  it("uses the intentionally brief default cadence", () => {
+    expect(DEFAULT_ELITE_REVEAL_CONFIG).toMatchObject({
+      glitchCountMax: 3,
+      glitchCountMin: 1,
+      glitchShowMs: 9,
+      staggerDelayMs: 7,
+    });
+  });
+
   it("normalizes timing and count boundaries", () => {
     expect(
       normalizeEliteRevealConfig({
@@ -71,6 +82,46 @@ describe("Elite reveal sequencing", () => {
     ).toEqual([]);
   });
 
+  it("randomizes chromatic split angle and distance", () => {
+    const randomValues = [0.25, 0.5];
+    const frame = createEliteGlitchFrame(
+      "chromatic",
+      () => randomValues.shift() ?? 0,
+    );
+
+    expect(frame.chromaticAngleDeg).toBe(90);
+    expect(frame.chromaticDistancePx).toBe(3.5);
+    expect(frame.chromaticOffsetXPx).toBeCloseTo(0);
+    expect(frame.chromaticOffsetYPx).toBe(3.5);
+  });
+
+  it("limits spatial displacement to fifteen percent of element size", () => {
+    const randomValues = [0.125, 0.8];
+    const frame = createEliteGlitchFrame(
+      "spatial-shift",
+      () => randomValues.shift() ?? 0,
+    );
+
+    expect(Math.hypot(frame.shiftXPercent, frame.shiftYPercent)).toBeCloseTo(
+      12,
+      3,
+    );
+    expect(Math.abs(frame.shiftXPercent)).toBeLessThanOrEqual(15);
+    expect(Math.abs(frame.shiftYPercent)).toBeLessThanOrEqual(15);
+  });
+
+  it("keeps randomized pixel blocks within compact bounds", () => {
+    const randomValues = [0.999, 0, 0.999];
+    const frame = createEliteGlitchFrame(
+      "pixelate",
+      () => randomValues.shift() ?? 0,
+    );
+
+    expect(frame.pixelSizePx).toBe(12);
+    expect(Math.abs(frame.pixelOffsetXPx)).toBeLessThanOrEqual(12);
+    expect(Math.abs(frame.pixelOffsetYPx)).toBeLessThanOrEqual(12);
+  });
+
   it("keeps the public variant catalog stable and unique", () => {
     expect(new Set(ELITE_GLITCH_VARIANTS).size).toBe(
       ELITE_GLITCH_VARIANTS.length,
@@ -78,5 +129,7 @@ describe("Elite reveal sequencing", () => {
     expect(ELITE_GLITCH_VARIANTS).toContain("left-frame");
     expect(ELITE_GLITCH_VARIANTS).toContain("right-frame");
     expect(ELITE_GLITCH_VARIANTS).toContain("noise");
+    expect(ELITE_GLITCH_VARIANTS).toContain("pixelate");
+    expect(ELITE_GLITCH_VARIANTS).toContain("spatial-shift");
   });
 });

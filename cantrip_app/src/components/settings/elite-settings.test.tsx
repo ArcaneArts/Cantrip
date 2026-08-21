@@ -15,6 +15,7 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain("Text</button>");
     expect(markup).toContain("Table</button>");
     expect(markup).toContain("Widgets</button>");
+    expect(markup).toContain("1–3 glitches · 9 ms · 7 ms stagger");
   });
 
   it("marks fixture items with explicit reveal semantics", () => {
@@ -22,7 +23,7 @@ describe("Elite settings laboratory", () => {
 
     expect(markup).toContain('data-elite-reveal=""');
     expect(markup).toContain('data-content-kind="box"');
-    expect(markup).toContain('data-state="waiting"');
+    expect(markup).toContain('data-state="armed"');
     expect(markup).toContain("Relay subsystem 01");
   });
 });

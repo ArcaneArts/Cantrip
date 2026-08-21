@@ -62,8 +62,10 @@ const variantLabels: Record<EliteGlitchVariant, string> = {
   "left-frame": "Left half frame",
   noise: "Noise mask",
   outline: "Bright outline",
+  pixelate: "Pixel fragmentation",
   "right-frame": "Right half frame",
   scanline: "Scanline slice",
+  "spatial-shift": "Spatial shift",
   "text-jitter": "Text jitter",
 };
 
@@ -828,9 +830,10 @@ export function EliteSettings() {
               <Badge variant="outline">Experimental</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              First-pass materialization effects for explicit text, box, and
-              control boundaries. Settings are local to this lab and reset when
-              it closes.
+              Materialization effects for explicit text, box, and control
+              boundaries. Off-screen items remain armed until scrolling brings
+              them into view. Settings are local to this lab and reset when it
+              closes.
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -877,8 +880,9 @@ export function EliteSettings() {
 
       <div className="shrink-0 border-t bg-muted/25 px-4 py-2 text-[11px] text-muted-foreground">
         React component types are not reliably inspectable after composition.
-        This lab uses explicit semantic roles; DOM traversal is possible, but
-        intentionally avoided because it is brittle.
+        This lab uses explicit semantic roles and observes rendered boundaries
+        for visibility; DOM type traversal is possible, but intentionally
+        avoided because it is brittle.
       </div>
 
       {configuratorOpen ? (
