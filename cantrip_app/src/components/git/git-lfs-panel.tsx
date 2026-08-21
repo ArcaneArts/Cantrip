@@ -15,6 +15,7 @@ import {
 import { type FormEvent, type ReactNode, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ContentEmpty, ContentLoading } from "@/components/ui/content-state";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import {
   applyProjectWorktreeGitLfsAction,
   getProjectWorktreeGitLfs,
@@ -100,28 +102,30 @@ export function GitLfsPanel({
   const busy = operation.busy;
 
   if (lfs.isLoading) {
-    return (
-      <div className="grid h-48 place-items-center text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-      </div>
-    );
+    return <ContentLoading label="Loading Git LFS…" />;
   }
   if (lfs.error) {
-    return <ErrorMessage error={lfs.error} />;
+    return (
+      <InlineAlert
+        className="m-4"
+        tone="error"
+        error={lfs.error}
+        fallback="Git LFS request failed."
+      />
+    );
   }
   const status = lfs.data;
   if (!status?.available) {
     return (
-      <div className="grid h-64 place-items-center p-6 text-center">
-        <div className="max-w-md">
-          <Database className="mx-auto mb-3 size-7 text-muted-foreground" />
-          <p className="text-sm font-medium">Git LFS is unavailable</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {status?.message ??
-              "Install git-lfs on this worker to inspect and manage large-file objects."}
-          </p>
-        </div>
-      </div>
+      <ContentEmpty
+        className="min-h-64"
+        icon={<Database className="size-6 text-muted-foreground" />}
+        title="Git LFS is unavailable"
+        description={
+          status?.message ??
+          "Install git-lfs on this worker to inspect and manage large-file objects."
+        }
+      />
     );
   }
 
@@ -262,7 +266,7 @@ export function GitLfsPanel({
             );
           })
         ) : (
-          <Empty>No LFS pointer files are reachable in this repository.</Empty>
+          <ContentEmpty description="No LFS pointer files are reachable in this repository." />
         )
       ) : view === "patterns" ? (
         status.patterns.length ? (
@@ -295,7 +299,7 @@ export function GitLfsPanel({
             </div>
           ))
         ) : (
-          <Empty>No Git LFS patterns are configured.</Empty>
+          <ContentEmpty description="No Git LFS patterns are configured." />
         )
       ) : status.locks.length ? (
         status.locks.map((lock) => (
@@ -333,11 +337,13 @@ export function GitLfsPanel({
           </div>
         ))
       ) : (
-        <Empty>
-          {status.lockError
-            ? `Locks unavailable: ${status.lockError}`
-            : `No ${status.locksCached ? "cached " : ""}LFS locks.`}
-        </Empty>
+        <ContentEmpty
+          description={
+            status.lockError
+              ? `Locks unavailable: ${status.lockError}`
+              : `No ${status.locksCached ? "cached " : ""}LFS locks.`
+          }
+        />
       )}
 
       <Dialog
@@ -426,22 +432,6 @@ function ActionButton({
       {icon}
       {label}
     </Button>
-  );
-}
-
-function Empty({ children }: { children: ReactNode }) {
-  return (
-    <div className="grid h-48 place-items-center p-6 text-center text-sm text-muted-foreground">
-      {children}
-    </div>
-  );
-}
-
-function ErrorMessage({ error }: { error: unknown }) {
-  return (
-    <p className="p-4 text-sm text-destructive">
-      {error instanceof Error ? error.message : "Git LFS request failed."}
-    </p>
   );
 }
 

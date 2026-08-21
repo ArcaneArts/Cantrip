@@ -4,6 +4,7 @@ import { FileClock, GitCommitHorizontal, Loader2, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ContentEmpty, ContentLoading } from "@/components/ui/content-state";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import {
   getProjectWorktreeFileBlame,
   getProjectWorktreeFileHistory,
@@ -158,18 +160,22 @@ export function GitFileHistoryDialog({
           ))}
         </div>
         {!selection ? (
-          <div className="grid min-h-0 flex-1 place-items-center text-center text-sm text-muted-foreground">
-            <div>
-              <FileClock className="mx-auto mb-3 size-6" />
-              Enter a repository-relative path to begin.
-            </div>
-          </div>
+          <ContentEmpty
+            className="min-h-0"
+            icon={<FileClock className="size-5 text-muted-foreground" />}
+            description="Enter a repository-relative path to begin."
+          />
         ) : tab === "history" ? (
           <div className="min-h-0 flex-1 overflow-auto py-2">
             {history.isLoading ? (
-              <Loading label="Loading file history…" />
+              <ContentLoading label="Loading file history…" />
             ) : history.error ? (
-              <ErrorState error={history.error} />
+              <InlineAlert
+                className="m-6"
+                tone="error"
+                error={history.error}
+                fallback="Git request failed."
+              />
             ) : (
               <>
                 {commits.map((commit) => (
@@ -197,7 +203,7 @@ export function GitFileHistoryDialog({
                   </button>
                 ))}
                 {commits.length === 0 ? (
-                  <EmptyState label="No commits touch this path." />
+                  <ContentEmpty description="No commits touch this path." />
                 ) : null}
                 {history.hasNextPage ? (
                   <div className="grid h-12 place-items-center">
@@ -220,9 +226,14 @@ export function GitFileHistoryDialog({
         ) : tab === "blame" ? (
           <div className="min-h-0 flex-1 overflow-auto py-2">
             {blame.isLoading ? (
-              <Loading label="Loading blame…" />
+              <ContentLoading label="Loading blame…" />
             ) : blame.error ? (
-              <ErrorState error={blame.error} />
+              <InlineAlert
+                className="m-6"
+                tone="error"
+                error={blame.error}
+                fallback="Git request failed."
+              />
             ) : (
               <>
                 {blameRanges.map((range) => (
@@ -255,7 +266,7 @@ export function GitFileHistoryDialog({
                   </button>
                 ))}
                 {blameRanges.length === 0 ? (
-                  <EmptyState label="No blame lines were returned." />
+                  <ContentEmpty description="No blame lines were returned." />
                 ) : null}
                 {blame.hasNextPage ? (
                   <div className="grid h-12 place-items-center">
@@ -323,31 +334,5 @@ export function GitFileHistoryDialog({
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Loading({ label }: { label: string }) {
-  return (
-    <div className="grid min-h-48 place-items-center text-sm text-muted-foreground">
-      <span className="flex items-center gap-2">
-        <Loader2 className="size-4 animate-spin" /> {label}
-      </span>
-    </div>
-  );
-}
-
-function ErrorState({ error }: { error: unknown }) {
-  return (
-    <div className="grid min-h-48 place-items-center p-6 text-center text-sm text-destructive">
-      {error instanceof Error ? error.message : "Git request failed."}
-    </div>
-  );
-}
-
-function EmptyState({ label }: { label: string }) {
-  return (
-    <div className="grid min-h-48 place-items-center text-sm text-muted-foreground">
-      {label}
-    </div>
   );
 }
