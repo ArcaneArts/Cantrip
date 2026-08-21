@@ -7,6 +7,9 @@ import {
 } from "@cantrip/protocol";
 
 import { CantripServerRequestError } from "../cli-client.js";
+import { readBoundedJsonResponse } from "./http.js";
+
+const CANTRIP_MCP_SERVER_RESPONSE_LIMIT_BYTES = 8 * 1_024 * 1_024;
 
 export async function invokeCantripMcpOperation(options: {
   binding: CantripMcpBinding;
@@ -29,8 +32,12 @@ export async function invokeCantripMcpOperation(options: {
         requestId: options.requestId,
       }),
     ),
+    signal: AbortSignal.timeout(30_000),
   });
-  const payload = (await response.json()) as unknown;
+  const payload = await readBoundedJsonResponse(
+    response,
+    CANTRIP_MCP_SERVER_RESPONSE_LIMIT_BYTES,
+  );
   if (!response.ok) {
     const record =
       payload && typeof payload === "object"

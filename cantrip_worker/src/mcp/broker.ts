@@ -28,12 +28,16 @@ import {
 
 import { CantripServerRequestError } from "../cli-client.js";
 import type { WorkerConfig } from "../config.js";
-import { workerLogError, workerLogger } from "../logger.js";
+import { workerLogger } from "../logger.js";
+import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { invokeCantripMcpOperation } from "./client.js";
+import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "./http.js";
+import { executeCantripMcpReadOperation } from "./read-operations.js";
 
 export const CANTRIP_MCP_BINDING_DIRECTORY = "agent-mcp-bindings";
 export const CANTRIP_MCP_BINDING_TTL_MS = 6 * 60 * 60 * 1_000;
 export const CANTRIP_MCP_CONNECTION_FILE = "connection.json";
+export const CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS = 4;
 
 type McpOperationExecutor = (
   binding: CantripMcpBinding,
@@ -47,6 +51,7 @@ type BindingInput = Omit<
 >;
 
 interface StoredBinding {
+  activeRequests: number;
   binding: CantripMcpBinding;
   connectionPath: string;
   credential: string;
@@ -66,7 +71,14 @@ function authorized(requestValue: string | undefined, expected: string) {
 }
 
 function sendJson(response: ServerResponse, status: number, payload: unknown) {
-  const body = `${JSON.stringify(payload)}\n`;
+  let body = `${JSON.stringify(payload)}\n`;
+  if (Buffer.byteLength(body) > CANTRIP_MCP_MAX_RESPONSE_BYTES) {
+    status = 413;
+    body = `${JSON.stringify({
+      code: "output-too-large",
+      error: "The MCP operation result exceeded the worker output limit.",
+    })}\n`;
+  }
   response.setHeader("cache-control", "no-store");
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.setHeader("content-length", Buffer.byteLength(body));
@@ -114,6 +126,7 @@ export class CantripMcpBroker {
   readonly #execute: McpOperationExecutor;
   readonly #now: () => number;
   readonly #ttlMs: number;
+  #encryptionService: WorkerEncryptionService | null = null;
   #endpoint: string | null = null;
   #server: Server | null = null;
   #sweepTimer: ReturnType<typeof setInterval> | null = null;
@@ -155,6 +168,10 @@ export class CantripMcpBroker {
     return this.#endpoint;
   }
 
+  setEncryptionService(service: WorkerEncryptionService): void {
+    this.#encryptionService = service;
+  }
+
   createBinding(input: BindingInput): CantripMcpAttachment {
     if (!this.#server || !this.#endpoint) {
       throw new Error("Cantrip MCP broker is not running.");
@@ -189,6 +206,7 @@ export class CantripMcpBroker {
     });
     writeConnectionDocument(connectionPath, connection);
     this.#bindings.set(binding.bindingId, {
+      activeRequests: 0,
       binding,
       connectionPath,
       credential,
@@ -284,10 +302,40 @@ export class CantripMcpBroker {
             });
             return;
           }
-          const result = cantripAgentOperationResultSchema.parse(
-            await this.#execute(stored.binding, parsed.request, requestId),
-          );
-          sendJson(response, 200, result);
+          if (stored.activeRequests >= CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS) {
+            sendJson(response, 429, {
+              code: "busy",
+              error: "This MCP binding has too many operations in flight.",
+            });
+            return;
+          }
+          stored.activeRequests += 1;
+          try {
+            const result = cantripAgentOperationResultSchema.parse(
+              this.#encryptionService
+                ? await executeCantripMcpReadOperation({
+                    binding: stored.binding,
+                    execute: this.#execute,
+                    request: parsed.request,
+                    requestId,
+                    service: this.#encryptionService,
+                  })
+                : parsed.request.operation === "context.get"
+                  ? await this.#execute(
+                      stored.binding,
+                      parsed.request,
+                      requestId,
+                    )
+                  : (() => {
+                      throw new Error(
+                        "Worker encryption is unavailable for Cantrip MCP reads.",
+                      );
+                    })(),
+            );
+            sendJson(response, 200, result);
+          } finally {
+            stored.activeRequests -= 1;
+          }
         } catch (error) {
           if (error instanceof CantripServerRequestError) {
             if (
@@ -309,11 +357,17 @@ export class CantripMcpBroker {
             reasonCode: "request-failed",
             status: "failed",
             requestId,
-            error: workerLogError(error),
+            error: {
+              message: "Cantrip MCP operation validation failed.",
+              name: error instanceof Error ? error.name : "UnknownError",
+            },
           });
           sendJson(response, 400, {
             code: "invalid",
-            error: error instanceof Error ? error.message : String(error),
+            error:
+              error instanceof Error && error.name !== "ZodError"
+                ? error.message.slice(0, 2_000)
+                : "Cantrip MCP operation validation failed on the worker.",
           });
         }
       })();

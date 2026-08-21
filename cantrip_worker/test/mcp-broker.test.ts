@@ -4,10 +4,12 @@ import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { CANTRIP_MCP_READ_TOOL_NAMES } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CantripServerRequestError } from "../src/cli-client.js";
 import { CantripMcpBroker } from "../src/mcp/broker.js";
+import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const directories: string[] = [];
 
@@ -169,7 +171,24 @@ describe("Cantrip MCP worker broker", () => {
             worktreeId: binding.worktreeId,
             continuationScheduled: false,
             mutated: false,
-            data: { projectId: binding.projectId },
+            data: {
+              worker: {
+                id: binding.workerId,
+                name: "Worker one",
+                online: true,
+              },
+              context: {
+                chatId: binding.chatId,
+                executionLaneId: binding.executionLaneId,
+                permissionProfileId: binding.permissionProfileId,
+                projectId: binding.projectId,
+                rootKind: binding.rootKind,
+                terminalId: null,
+                workerId: binding.workerId,
+                worktreeId: binding.worktreeId,
+                worktreeMode: "agent-managed",
+              },
+            },
           }),
         },
       );
@@ -193,17 +212,21 @@ describe("Cantrip MCP worker broker", () => {
         await client.connect(transport);
         expect(transport.pid).not.toBeNull();
         const catalog = await client.listTools();
-        expect(catalog.tools).toEqual([
-          expect.objectContaining({
-            name: "context_get",
+        expect(catalog.tools.map(({ name }) => name)).toEqual([
+          ...CANTRIP_MCP_READ_TOOL_NAMES,
+        ]);
+        for (const tool of catalog.tools) {
+          expect(tool).toMatchObject({
             annotations: {
               readOnlyHint: true,
               destructiveHint: false,
               idempotentHint: true,
-              openWorldHint: false,
+              openWorldHint: tool.name === "browser_services",
             },
-          }),
-        ]);
+            inputSchema: { type: "object" },
+            outputSchema: { type: "object" },
+          });
+        }
         const result = await client.callTool({
           name: "context_get",
           arguments: {},
@@ -221,6 +244,119 @@ describe("Cantrip MCP worker broker", () => {
     },
     20_000,
   );
+
+  it("bounds response size and concurrent calls per binding", async () => {
+    const dataDirectory = await temporaryDirectory();
+    let calls = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      {
+        execute: async (binding) => {
+          calls += 1;
+          await gate;
+          return {
+            summary: "Context is current.",
+            target: null,
+            worktreeId: binding.worktreeId,
+            continuationScheduled: false,
+            mutated: false,
+            data: { value: "x".repeat(600_000) },
+          };
+        },
+      },
+    );
+    await broker.start();
+    const attachment = broker.createBinding(bindingInput());
+    const call = () =>
+      fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: { operation: "context.get", arguments: {} },
+        }),
+      });
+    try {
+      const active = [call(), call(), call(), call()];
+      await expect.poll(() => calls).toBe(4);
+      const busy = await call();
+      expect(busy.status).toBe(429);
+      await expect(busy.json()).resolves.toMatchObject({ code: "busy" });
+      release();
+      const completed = await Promise.all(active);
+      expect(completed.map(({ status }) => status)).toEqual([
+        413, 413, 413, 413,
+      ]);
+      await expect(completed[0]!.json()).resolves.toMatchObject({
+        code: "output-too-large",
+      });
+    } finally {
+      release();
+      await broker.close();
+    }
+  });
+
+  it("does not echo protected validation payloads into the MCP transcript", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const sentinel = "protected-ciphertext-sentinel";
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      {
+        execute: async (binding) => ({
+          summary: "Malformed protected target catalog.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          continuationScheduled: false,
+          mutated: false,
+          data: { targets: [{ ciphertext: sentinel }] },
+        }),
+      },
+    );
+    broker.setEncryptionService({
+      ownerId: () => "owner-one",
+    } as unknown as WorkerEncryptionService);
+    await broker.start();
+    const attachment = broker.createBinding({
+      ...bindingInput(),
+      allowedOperations: ["target.list"],
+    });
+    try {
+      const response = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: { operation: "target.list", arguments: {} },
+        }),
+      });
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).toContain("validation failed");
+      expect(text).not.toContain(sentinel);
+    } finally {
+      await broker.close();
+    }
+  });
 
   it("revokes a binding when the durable server rejects it as stale", async () => {
     const dataDirectory = await temporaryDirectory();
