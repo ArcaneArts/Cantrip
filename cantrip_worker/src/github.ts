@@ -190,6 +190,48 @@ export function parseGithubCloneProgress(
   return latest ? { message: latest.message, percent: latest.percent } : null;
 }
 
+export function summarizeGithubCloneFailure(output: string): string {
+  const lines = output
+    .split(/[\r\n]+/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const diagnostics = lines.filter((line) => /\b(?:error|fatal):/iu.test(line));
+  return (diagnostics.length > 0 ? diagnostics.slice(-8) : lines.slice(-20))
+    .join("\n")
+    .slice(-4_000);
+}
+
+export function isWindowsLongPathGitFailure(
+  output: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return (
+    platform === "win32" &&
+    /\b(?:filename|file name|path)(?: or extension)?(?: is)? too long\b/iu.test(
+      output,
+    )
+  );
+}
+
+export function githubCloneFailureDetails(
+  detail: string,
+  platform: NodeJS.Platform = process.platform,
+): {
+  code: "remote-unavailable" | "windows-long-paths-disabled";
+  message: string;
+} {
+  return isWindowsLongPathGitFailure(detail, platform)
+    ? {
+        code: "windows-long-paths-disabled",
+        message:
+          "Git for Windows rejected Cantrip's managed repository path because long-path support is disabled. Enable Git long paths on this worker, then retry setup.",
+      }
+    : {
+        code: "remote-unavailable",
+        message: `Could not clone the repository: ${detail}`,
+      };
+}
+
 async function cloneGithubRepository(
   nameWithOwner: string,
   target: string,
@@ -259,7 +301,7 @@ async function cloneGithubRepository(
         finish();
         return;
       }
-      const detail = output.trim().slice(-4_000);
+      const detail = summarizeGithubCloneFailure(output);
       finish(
         new Error(
           detail ||
@@ -2027,7 +2069,8 @@ export class GithubClient {
         | "target-mismatch"
         | "worktree-dirty"
         | "revision-diverged"
-        | "remote-unavailable",
+        | "remote-unavailable"
+        | "windows-long-paths-disabled",
       message: string,
       retryable: boolean,
     ): ProjectReplicaProvisionResult =>
@@ -2210,11 +2253,10 @@ export class GithubClient {
         await rm(staging, { recursive: true, force: true }).catch(
           () => undefined,
         );
-        return blocked(
-          "remote-unavailable",
-          `Could not clone the repository: ${(error as Error).message}`,
-          true,
-        );
+        const detail =
+          error instanceof Error ? error.message : "Unknown Git clone failure.";
+        const failure = githubCloneFailureDetails(detail);
+        return blocked(failure.code, failure.message, true);
       }
     }
 

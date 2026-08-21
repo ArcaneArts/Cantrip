@@ -193,6 +193,7 @@ import { MobileProjectSelector } from "@/components/mobile/mobile-project-select
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
 import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
+import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
 import {
   FolderProjectDialog,
   type FolderSourceMode,
@@ -337,6 +338,7 @@ import {
   renameProjectView,
   renameTerminal,
   removeProject,
+  retryProjectReplicaJob,
   retryProjectFolderSetup,
   moveProjectTabGroupMember,
   reorderProjectTabGroupMembers,
@@ -418,8 +420,10 @@ import {
   resolveProjectWorkspace,
 } from "@/lib/project-workspaces";
 import {
+  isWindowsLongPathSetupFailure,
   latestProjectProvisionJob,
   projectOwningWorkerId,
+  projectSetupFailureKey,
   projectSetupPercent,
 } from "@/lib/project-setup-progress";
 import type {
@@ -3049,6 +3053,9 @@ export function App() {
   );
   const [createdRepositoryOnboarding, setCreatedRepositoryOnboarding] =
     useState<{ openInitialChat: boolean; projectId: string } | null>(null);
+  const [dismissedLongPathFailure, setDismissedLongPathFailure] = useState<
+    string | null
+  >(null);
   const [workspaceSelection, setWorkspaceSelection] = useState(() =>
     emptyWorkspaceSelection(popoutProjectId),
   );
@@ -3478,20 +3485,25 @@ export function App() {
     workers.data,
     workers.isSuccess,
   ]);
-  const cloningProjectIds = (projects.data ?? [])
-    .filter((project) => project.setupStatus === "cloning")
-    .map((project) => project.id);
+  const repositorySetupProjects = (projects.data ?? []).filter(
+    (project) =>
+      project.originKind === "github" &&
+      (project.setupStatus === "cloning" || project.setupStatus === "failed"),
+  );
   const projectSetupJobQueries = useQueries({
-    queries: cloningProjectIds.map((projectId) => ({
-      queryFn: () => getProjectReplicaJobs(projectId),
-      queryKey: ["project-replica-jobs", projectId],
-      refetchInterval: projectResourcesLive ? false : 2_000,
+    queries: repositorySetupProjects.map((project) => ({
+      queryFn: () => getProjectReplicaJobs(project.id),
+      queryKey: ["project-replica-jobs", project.id],
+      refetchInterval:
+        projectResourcesLive || project.setupStatus === "failed"
+          ? false
+          : 2_000,
     })),
   });
   const projectSetupJobs = new Map<string, ProjectReplicaJobSummary>();
-  cloningProjectIds.forEach((projectId, index) => {
+  repositorySetupProjects.forEach((project, index) => {
     const job = latestProjectProvisionJob(projectSetupJobQueries[index]?.data);
-    if (job) projectSetupJobs.set(projectId, job);
+    if (job) projectSetupJobs.set(project.id, job);
   });
   const folderSetupProjects = (projects.data ?? []).filter(
     (project) =>
@@ -3521,6 +3533,19 @@ export function App() {
   const selectedProject = projects.data?.find(
     (project) => project.id === selectedProjectId,
   );
+  const retryLongPathSetupMutation = useMutation({
+    mutationFn: (job: ProjectReplicaJobSummary) =>
+      retryProjectReplicaJob(job.id, { stateRevision: job.stateRevision }),
+    onSuccess: async (_updated, job) => {
+      setDismissedLongPathFailure(projectSetupFailureKey(job));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["project-replica-jobs", job.projectId],
+        }),
+      ]);
+    },
+  });
   const createWorkspaceMutation = useMutation({
     mutationFn: (name: string) => createProjectWorkspace({ name }),
     onSuccess: (workspace) => {
@@ -4671,6 +4696,14 @@ export function App() {
   const selectedProjectSetupJob = selectedProject
     ? projectSetupJobs.get(selectedProject.id)
     : undefined;
+  const selectedLongPathSetupJob = isWindowsLongPathSetupFailure(
+    selectedProjectSetupJob,
+  )
+    ? selectedProjectSetupJob
+    : undefined;
+  const selectedLongPathFailure = selectedLongPathSetupJob
+    ? projectSetupFailureKey(selectedLongPathSetupJob)
+    : null;
   const selectedProjectWorkerId = projectOwningWorkerId(
     selectedProject,
     selectedProjectSetupJob,
@@ -7335,9 +7368,11 @@ export function App() {
                     : selectedProject.setupStatus === "preparing" &&
                         !selectedFolderSetupNeedsAttention
                       ? `${selectedProject.name} is getting a new empty directory on its owning worker.`
-                      : (selectedFolderSetupJob?.error?.message ??
-                        selectedProject.setupError ??
-                        "The worker could not prepare this project.")}
+                      : selectedLongPathSetupJob
+                        ? "Git for Windows needs long-path support before this repository can be stored in Cantrip's managed AppData directory."
+                        : (selectedFolderSetupJob?.error?.message ??
+                          selectedProject.setupError ??
+                          "The worker could not prepare this project.")}
                 </EmptyStateDescription>
                 {selectedProject.setupStatus === "cloning" ? (
                   <div className="mx-auto mt-4 w-full max-w-sm text-left">
@@ -7673,6 +7708,29 @@ export function App() {
           workspaces={projectWorkspaces.data ?? []}
         />
       ) : null}
+
+      <WindowsLongPathDialog
+        open={Boolean(
+          selectedLongPathFailure &&
+          selectedLongPathFailure !== dismissedLongPathFailure,
+        )}
+        pending={retryLongPathSetupMutation.isPending}
+        retryError={
+          retryLongPathSetupMutation.isError
+            ? errorText(retryLongPathSetupMutation.error)
+            : null
+        }
+        onOpenChange={(open) => {
+          if (!open && selectedLongPathFailure) {
+            setDismissedLongPathFailure(selectedLongPathFailure);
+          }
+        }}
+        onRetry={() => {
+          if (selectedLongPathSetupJob) {
+            retryLongPathSetupMutation.mutate(selectedLongPathSetupJob);
+          }
+        }}
+      />
 
       {surfaceCreationFailure ? (
         <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">

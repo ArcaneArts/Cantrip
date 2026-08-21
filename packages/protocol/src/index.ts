@@ -2871,6 +2871,7 @@ export const projectReplicaJobErrorCodeSchema = z.enum([
   "stale-attempt",
   "policy-denied",
   "remote-unavailable",
+  "windows-long-paths-disabled",
   "replica-in-use",
   "unpushed-commits",
   "worker-error",

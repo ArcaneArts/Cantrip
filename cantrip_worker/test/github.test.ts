@@ -16,8 +16,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   GithubClient,
+  githubCloneFailureDetails,
+  isWindowsLongPathGitFailure,
   parseGithubCloneProgress,
   readProjectWorktreePolicy,
+  summarizeGithubCloneFailure,
 } from "../src/github.js";
 
 const directories: string[] = [];
@@ -308,6 +311,49 @@ describe("GitHub project files", () => {
     ).toEqual({
       message: "Resolving repository deltas (50%).",
       percent: 78,
+    });
+  });
+
+  it("isolates Git diagnostics from carriage-return progress output", () => {
+    const failure = summarizeGithubCloneFailure(
+      [
+        "Receiving objects: 14%\rReceiving objects: 42%\rReceiving objects: 100%",
+        "error: unable to open loose object abc: Filename too long",
+        "fatal: cannot write keep file C:\\deep\\pack.keep: Filename too long",
+        "fatal: fetch-pack: invalid index-pack output",
+      ].join("\n"),
+    );
+
+    expect(failure).toBe(
+      [
+        "error: unable to open loose object abc: Filename too long",
+        "fatal: cannot write keep file C:\\deep\\pack.keep: Filename too long",
+        "fatal: fetch-pack: invalid index-pack output",
+      ].join("\n"),
+    );
+    expect(failure).not.toContain("Receiving objects");
+  });
+
+  it("classifies only Windows filename-too-long Git failures", () => {
+    const output =
+      "fatal: cannot write keep file C:\\deep\\pack.keep: Filename too long";
+    expect(isWindowsLongPathGitFailure(output, "win32")).toBe(true);
+    expect(isWindowsLongPathGitFailure(output, "darwin")).toBe(false);
+    expect(
+      isWindowsLongPathGitFailure(
+        "fatal: unable to access repository: connection reset",
+        "win32",
+      ),
+    ).toBe(false);
+    expect(githubCloneFailureDetails(output, "win32")).toEqual({
+      code: "windows-long-paths-disabled",
+      message: expect.stringContaining("Enable Git long paths"),
+    });
+    expect(
+      githubCloneFailureDetails("fatal: the remote disconnected", "win32"),
+    ).toEqual({
+      code: "remote-unavailable",
+      message: "Could not clone the repository: fatal: the remote disconnected",
     });
   });
 
