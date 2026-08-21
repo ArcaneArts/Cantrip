@@ -26,6 +26,7 @@ export function ExplorerFileBrowser({
   onOpenFile,
   onShowInGraph,
   onOpenTerminal,
+  replayKey,
   revealedPath,
 }: {
   explorer: ExplorerSummary;
@@ -33,6 +34,7 @@ export function ExplorerFileBrowser({
   onOpenFile(entry: ExplorerEntry): void;
   onShowInGraph(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
+  replayKey: number;
   revealedPath?: string | null;
 }) {
   const [expandedPaths, setExpandedPaths] = useState<ReadonlySet<string>>(
@@ -108,7 +110,7 @@ export function ExplorerFileBrowser({
           Folder could not be loaded. Click to retry.
         </button>
       ) : (
-        <div role="tree" aria-label="Project files">
+        <div key={replayKey} role="tree" aria-label="Project files">
           {entries.map((entry) =>
             entry.kind === "directory" ? (
               <ExplorerDirectoryNode

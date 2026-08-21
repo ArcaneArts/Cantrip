@@ -40,6 +40,9 @@ export const ELITE_GLOBAL_CANDIDATE_SELECTOR = [
   "p",
 ].join(",");
 
+export const ELITE_GLOBAL_BOUNDARY_SELECTOR =
+  "[data-elite-global], [data-elite-global-key]";
+
 export const ELITE_GLOBAL_SCROLL_SUPPRESSION_MS = 120;
 export const ELITE_GLOBAL_SEEN_KEY_LIMIT = 10_000;
 
@@ -70,7 +73,7 @@ export function isEligibleEliteGlobalElement(element: HTMLElement): boolean {
   ) {
     return false;
   }
-  return !element.parentElement?.closest("[data-elite-global-key]");
+  return !element.parentElement?.closest(ELITE_GLOBAL_BOUNDARY_SELECTOR);
 }
 
 function eliteGlobalStableKey(element: HTMLElement): string | null {
@@ -88,7 +91,9 @@ export function shouldAnimateEliteGlobalElement(
   animated.add(element);
 
   const stableKey = eliteGlobalStableKey(element);
-  if (!stableKey) return !suppressUnkeyed;
+  if (!stableKey) {
+    return element.hasAttribute("data-elite-global") || !suppressUnkeyed;
+  }
   if (seenKeys.has(stableKey)) return false;
   seenKeys.add(stableKey);
   if (seenKeys.size > ELITE_GLOBAL_SEEN_KEY_LIMIT) {

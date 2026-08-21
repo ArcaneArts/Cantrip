@@ -3,6 +3,14 @@ import type { ExplorerLifecycleActions } from "./explorer-view";
 export type ExplorerPreparationResult =
   "cancelled" | "ready" | "save-failed" | "state-failed";
 
+export function nextExplorerEntryReplayKey(
+  current: number,
+  wasActive: boolean,
+  active: boolean,
+): number {
+  return active && !wasActive ? current + 1 : current;
+}
+
 export function confirmExplorerDiscard(
   actions: ExplorerLifecycleActions | null | undefined,
   confirmDiscard: () => boolean,
