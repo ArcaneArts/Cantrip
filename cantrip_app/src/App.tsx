@@ -135,6 +135,14 @@ import {
   filterCommandPalette,
   type CommandPaletteSuggestion,
 } from "@/components/chat/command-palette";
+import {
+  activeGithubMention,
+  containsGithubReference,
+  expandGithubReferences,
+  filterGithubReferences,
+  insertGithubMention,
+  type GithubReference,
+} from "@/components/chat/github-mentions";
 import { PromptQueue } from "@/components/chat/prompt-queue";
 import type { CodeHeaderState } from "@/components/code/code-view";
 import {
@@ -292,6 +300,7 @@ import {
   getCachedGithubRepositories,
   getExplorers,
   getGithubRepositories,
+  getGithubIssues,
   getGithubStatus,
   getMessages,
   getAgentInteractionRequests,
@@ -1005,6 +1014,7 @@ function RepositoryImporter({
 
 function ChatTranscript({
   chat,
+  githubEnabled,
   inspectOnly = false,
   inspectOpen,
   inspectOverlay,
@@ -1020,6 +1030,7 @@ function ChatTranscript({
   syncEnabled,
 }: {
   chat: ChatSummary;
+  githubEnabled: boolean;
   inspectOnly?: boolean;
   inspectOpen: boolean;
   inspectOverlay: boolean;
@@ -1065,8 +1076,13 @@ function ChatTranscript({
   const [commandNotice, setCommandNotice] = useState<string | null>(null);
   const [slashMenuDismissed, setSlashMenuDismissed] = useState(false);
   const [skillMenuDismissed, setSkillMenuDismissed] = useState(false);
+  const [githubMenuDismissed, setGithubMenuDismissed] = useState(false);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
+  const [selectedGithubIndex, setSelectedGithubIndex] = useState(0);
+  const [selectedGithubReferences, setSelectedGithubReferences] = useState<
+    GithubReference[]
+  >([]);
   const [composerCaret, setComposerCaret] = useState(0);
   const [composerScrollTop, setComposerScrollTop] = useState(0);
   const [draftAttachments, setDraftAttachments] = useState<
@@ -1079,6 +1095,7 @@ function ChatTranscript({
     useState<ChatAttachmentSummary | null>(null);
   const commandListRef = useRef<HTMLDivElement>(null);
   const skillListRef = useRef<HTMLDivElement>(null);
+  const githubListRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
@@ -1234,6 +1251,10 @@ function ChatTranscript({
     retry: false,
     staleTime: 30_000,
   });
+  const githubMention = useMemo(
+    () => activeGithubMention(draft, composerCaret),
+    [composerCaret, draft],
+  );
   const skills = useQuery({
     enabled: Boolean(
       selectedModelId &&
@@ -1263,6 +1284,23 @@ function ChatTranscript({
     queryKey: ["workflow-triggers", chat.projectId, "saved-command", true],
     retry: false,
     staleTime: 30_000,
+  });
+  const githubReferences = useQuery({
+    enabled: githubEnabled && githubMention !== null,
+    queryFn: async () => {
+      const lists = await Promise.all([
+        getGithubIssues(chat.projectId, "issue", "open"),
+        getGithubIssues(chat.projectId, "issue", "closed"),
+        getGithubIssues(chat.projectId, "pull-request", "open"),
+        getGithubIssues(chat.projectId, "pull-request", "closed"),
+      ]);
+      return lists.flatMap((list) =>
+        list.issues.map((issue) => ({ ...issue, kind: list.kind })),
+      );
+    },
+    queryKey: ["github-references", chat.projectId],
+    retry: false,
+    staleTime: 60_000,
   });
   const timeline = useMemo(
     () => buildChatTimeline(messages.data ?? []),
@@ -1304,6 +1342,20 @@ function ChatTranscript({
   const skillMenuLoading =
     !skillMenuDismissed && skillMention !== null && skills.isFetching;
   const skillMenuVisible = skillMenuOpen || skillMenuLoading;
+  const githubSuggestions = useMemo(
+    () =>
+      githubMention
+        ? filterGithubReferences(
+            githubReferences.data ?? [],
+            githubMention.query,
+          )
+        : [],
+    [githubMention, githubReferences.data],
+  );
+  const githubMenuOpen =
+    !githubMenuDismissed &&
+    githubMention !== null &&
+    githubSuggestions.length > 0;
   const highlightedDraft = useMemo(
     () => skillMentionSegments(draft, skills.data ?? []),
     [draft, skills.data],
@@ -1524,6 +1576,7 @@ function ChatTranscript({
     },
     onSuccess: async () => {
       setDraft("");
+      setSelectedGithubReferences([]);
       setComposerMode("default");
       clearDraftAttachments();
       await Promise.all([
@@ -1783,6 +1836,10 @@ function ChatTranscript({
   }, [skillMention?.query]);
 
   useEffect(() => {
+    setSelectedGithubIndex(0);
+  }, [githubMention?.query]);
+
+  useEffect(() => {
     if (!slashMenuOpen) return;
     commandListRef.current
       ?.querySelector<HTMLElement>(
@@ -1798,9 +1855,18 @@ function ChatTranscript({
       ?.scrollIntoView({ block: "nearest" });
   }, [selectedSkillIndex, skillMenuOpen]);
 
+  useEffect(() => {
+    if (!githubMenuOpen) return;
+    githubListRef.current
+      ?.querySelector<HTMLElement>(
+        `[data-github-index="${selectedGithubIndex}"]`,
+      )
+      ?.scrollIntoView({ block: "nearest" });
+  }, [githubMenuOpen, selectedGithubIndex]);
+
   const submit = (event?: FormEvent) => {
     event?.preventDefault();
-    const text = draft.trim();
+    const text = expandGithubReferences(draft.trim(), selectedGithubReferences);
     const readyAttachments = draftAttachments.filter(
       ({ error, uploading }) => !error && !uploading,
     );
@@ -1833,6 +1899,7 @@ function ChatTranscript({
           onSuccess: () => {
             setEditingPrompt(null);
             setDraft("");
+            setSelectedGithubReferences([]);
             setComposerMode("default");
             setComposerReasoningEffort(chat.reasoningEffort);
             clearDraftAttachments();
@@ -1852,6 +1919,7 @@ function ChatTranscript({
   const executeSlashCommand = async ({ command }: SlashCommandSuggestion) => {
     const name = command.name;
     setDraft("");
+    setSelectedGithubReferences([]);
     setSlashMenuDismissed(true);
     setCommandNotice(null);
 
@@ -1925,6 +1993,23 @@ function ChatTranscript({
     });
   };
 
+  const chooseGithubReference = (reference: GithubReference) => {
+    if (!githubMention) return;
+    const inserted = insertGithubMention(draft, githubMention, reference);
+    setDraft(inserted.text);
+    setComposerCaret(inserted.caret);
+    setSelectedGithubReferences((current) => [
+      ...current.filter(({ number }) => number !== reference.number),
+      reference,
+    ]);
+    setGithubMenuDismissed(true);
+    setCommandNotice(null);
+    window.requestAnimationFrame(() => {
+      composerRef.current?.focus();
+      composerRef.current?.setSelectionRange(inserted.caret, inserted.caret);
+    });
+  };
+
   const executeCommandPalette = async (
     suggestion: CommandPaletteSuggestion,
   ) => {
@@ -1936,11 +2021,13 @@ function ChatTranscript({
     setCommandNotice(null);
     if (suggestion.kind === "workflow") {
       setDraft("");
+      setSelectedGithubReferences([]);
       onOpenWorkflow(suggestion.workflow.id);
       return;
     }
     if (suggestion.kind === "saved-command") {
       setDraft("");
+      setSelectedGithubReferences([]);
       try {
         const result = await invokeSavedWorkflowCommand(suggestion.trigger.id, {
           idempotencyKey: `saved-command-${crypto.randomUUID()}`,
@@ -2169,6 +2256,49 @@ function ChatTranscript({
               <ArrowDown className="size-4" />
             </Button>
           ) : null}
+          {githubMenuOpen ? (
+            <div
+              id="github-reference-menu"
+              ref={githubListRef}
+              role="listbox"
+              aria-label="GitHub issues and pull requests"
+              className="chat-composer-surface absolute inset-x-0 bottom-[calc(100%+0.5rem)] max-h-72 overflow-y-auto rounded-xl border p-1.5 shadow-2xl"
+            >
+              {githubSuggestions.map((reference, index) => (
+                <button
+                  key={`${reference.kind}:${reference.number}`}
+                  id={`github-reference-${index}`}
+                  data-github-index={index}
+                  role="option"
+                  aria-selected={index === selectedGithubIndex}
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left",
+                    index === selectedGithubIndex
+                      ? "bg-accent text-accent-foreground"
+                      : "text-foreground hover:bg-accent/60",
+                  )}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setSelectedGithubIndex(index)}
+                  onClick={() => chooseGithubReference(reference)}
+                >
+                  <span className="w-16 shrink-0 font-mono text-sm font-medium text-sky-600 dark:text-sky-400">
+                    #{reference.number}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {reference.title}
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="hidden shrink-0 capitalize sm:inline-flex"
+                  >
+                    {reference.kind === "pull-request" ? "PR" : "Issue"}
+                    {reference.state === "closed" ? " · Closed" : ""}
+                  </Badge>
+                </button>
+              ))}
+            </div>
+          ) : null}
           {slashMenuOpen ? (
             <div
               id="slash-command-menu"
@@ -2352,6 +2482,7 @@ function ChatTranscript({
             onEdit={(prompt) => {
               setEditingPrompt({ id: prompt.id, frozen: prompt.frozen });
               setDraft(prompt.text);
+              setSelectedGithubReferences([]);
               setComposerMode(prompt.mode);
               setComposerReasoningEffort(prompt.reasoningEffort);
               clearDraftAttachments();
@@ -2487,18 +2618,22 @@ function ChatTranscript({
                   disabled={relocationActive}
                   aria-autocomplete="list"
                   aria-controls={
-                    skillMenuVisible
-                      ? "skill-mention-menu"
-                      : slashMenuOpen
-                        ? "slash-command-menu"
-                        : undefined
+                    githubMenuOpen
+                      ? "github-reference-menu"
+                      : skillMenuVisible
+                        ? "skill-mention-menu"
+                        : slashMenuOpen
+                          ? "slash-command-menu"
+                          : undefined
                   }
                   aria-activedescendant={
-                    skillMenuOpen
-                      ? `skill-mention-${selectedSkillIndex}`
-                      : slashMenuOpen
-                        ? `slash-command-${selectedCommandIndex}`
-                        : undefined
+                    githubMenuOpen
+                      ? `github-reference-${selectedGithubIndex}`
+                      : skillMenuOpen
+                        ? `skill-mention-${selectedSkillIndex}`
+                        : slashMenuOpen
+                          ? `slash-command-${selectedCommandIndex}`
+                          : undefined
                   }
                   onPaste={(event) => {
                     const files = [...event.clipboardData.files];
@@ -2529,10 +2664,17 @@ function ChatTranscript({
                     void attachFiles([file], "paste");
                   }}
                   onChange={(event) => {
-                    setDraft(event.target.value);
+                    const nextDraft = event.target.value;
+                    setDraft(nextDraft);
                     setComposerCaret(event.target.selectionStart);
                     setSlashMenuDismissed(false);
                     setSkillMenuDismissed(false);
+                    setGithubMenuDismissed(false);
+                    setSelectedGithubReferences((current) =>
+                      current.filter((reference) =>
+                        containsGithubReference(nextDraft, reference),
+                      ),
+                    );
                     setCommandNotice(null);
                   }}
                   onSelect={(event) => {
@@ -2542,6 +2684,33 @@ function ChatTranscript({
                     setComposerScrollTop(event.currentTarget.scrollTop);
                   }}
                   onKeyDown={(event) => {
+                    if (githubMenuOpen && event.key === "ArrowDown") {
+                      event.preventDefault();
+                      setSelectedGithubIndex((index) =>
+                        Math.min(index + 1, githubSuggestions.length - 1),
+                      );
+                      return;
+                    }
+                    if (githubMenuOpen && event.key === "ArrowUp") {
+                      event.preventDefault();
+                      setSelectedGithubIndex((index) => Math.max(index - 1, 0));
+                      return;
+                    }
+                    if (githubMenuOpen && event.key === "Escape") {
+                      event.preventDefault();
+                      setGithubMenuDismissed(true);
+                      return;
+                    }
+                    if (
+                      githubMenuOpen &&
+                      (event.key === "Tab" ||
+                        (event.key === "Enter" && !event.shiftKey))
+                    ) {
+                      event.preventDefault();
+                      const reference = githubSuggestions[selectedGithubIndex];
+                      if (reference) chooseGithubReference(reference);
+                      return;
+                    }
                     if (skillMenuOpen && event.key === "ArrowDown") {
                       event.preventDefault();
                       setSelectedSkillIndex((index) =>
@@ -6980,6 +7149,7 @@ export function App() {
           <ChatTranscript
             key={selectedChat.id}
             chat={selectedChat}
+            githubEnabled={selectedProject?.capabilities.github ?? false}
             inspectOnly={selectedChat.experience === "task"}
             inspectOpen={agentInspectOpenChats.has(selectedChat.id)}
             inspectOverlay={narrowViewport}
