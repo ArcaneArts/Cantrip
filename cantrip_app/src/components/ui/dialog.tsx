@@ -10,6 +10,8 @@ export const DialogClose = DialogPrimitive.Close;
 
 export const DIALOG_POSITIONER_CLASS_NAME =
   "pointer-events-none fixed inset-0 z-50 grid place-items-center p-4";
+export const DIALOG_OVERLAY_CLASS_NAME =
+  "fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=open]:fade-in-0";
 export const DIALOG_CONTENT_CLASS_NAME =
   "cantrip-dialog-content pointer-events-auto relative grid max-h-[calc(100vh-2rem)] w-full max-w-lg gap-5 overflow-y-auto rounded-xl border bg-popover p-6 text-popover-foreground shadow-xl";
 
@@ -23,7 +25,12 @@ export function DialogContent({
 }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+      {/*
+        Keep close teardown synchronous. Radix Presence retains an overlay
+        while its exit animation runs; WKWebView can strand that transparent,
+        pointer-active layer after a window focus or compositor transition.
+      */}
+      <DialogPrimitive.Overlay className={DIALOG_OVERLAY_CLASS_NAME} />
       <div className={DIALOG_POSITIONER_CLASS_NAME}>
         <DialogPrimitive.Content
           data-slot="dialog-content"
