@@ -83,6 +83,7 @@ export function ExplorerEntryRow({
   }, [revealed]);
   const row = (
     <button
+      data-elite-global
       ref={rowRef}
       type="button"
       aria-disabled={!openable}

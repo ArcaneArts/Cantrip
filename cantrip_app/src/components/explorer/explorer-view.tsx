@@ -28,6 +28,7 @@ import { Markdown } from "@/components/chat/markdown";
 import { ExplorerFileBrowser } from "@/components/explorer/explorer-file-browser";
 import { explorerSurfaceSelectedPath } from "@/components/explorer/explorer-file-routing";
 import { explorerFileEntryForGraphPath } from "@/components/explorer/explorer-graph-routing";
+import { nextExplorerEntryReplayKey } from "@/components/explorer/explorer-lifecycle";
 import {
   defaultExplorerFileMode,
   monacoLanguageForPath,
@@ -295,6 +296,8 @@ export function ExplorerView({
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   transientFile?: TransientExplorerFile;
 }) {
+  const previousActiveRef = useRef(active);
+  const [entryReplayKey, setEntryReplayKey] = useState(0);
   const [selectedPath, setSelectedPath] = useState(() =>
     explorerSurfaceSelectedPath({
       openFilesExternally: Boolean(onOpenFile),
@@ -302,6 +305,16 @@ export function ExplorerView({
       transientPath: transientFile?.path,
     }),
   );
+
+  useEffect(() => {
+    const wasActive = previousActiveRef.current;
+    previousActiveRef.current = active;
+    if (!wasActive && active) {
+      setEntryReplayKey((current) =>
+        nextExplorerEntryReplayKey(current, wasActive, active),
+      );
+    }
+  }, [active]);
   const [graphRootPath, setGraphRootPath] = useState<string | null | undefined>(
     undefined,
   );
@@ -988,6 +1001,7 @@ export function ExplorerView({
             onOpenFile={openEntry}
             onShowInGraph={openGraph}
             onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
+            replayKey={entryReplayKey}
             revealedPath={revealedPath}
           />
         </div>

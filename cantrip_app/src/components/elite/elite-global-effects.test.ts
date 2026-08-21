@@ -1,14 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ELITE_GLOBAL_BOUNDARY_SELECTOR,
   ELITE_GLOBAL_CANDIDATE_SELECTOR,
   isEligibleEliteGlobalElement,
   shouldAnimateEliteGlobalElement,
 } from "./elite-global-effects";
 
-function trackedElement(stableKey?: string, isConnected = true): HTMLElement {
+function trackedElement(
+  stableKey?: string,
+  isConnected = true,
+  explicitBoundary = false,
+): HTMLElement {
   return {
     dataset: stableKey ? { eliteGlobalKey: stableKey } : {},
+    hasAttribute: (name: string) =>
+      explicitBoundary && name === "data-elite-global",
     isConnected,
   } as unknown as HTMLElement;
 }
@@ -62,7 +69,20 @@ describe("Elite global effects", () => {
     ).toBe(true);
   });
 
-  it("treats keyed reveal boundaries as stable scopes", () => {
+  it("always reveals an explicit entry boundary through scroll suppression", () => {
+    const animated = new WeakSet<HTMLElement>();
+    const seenKeys = new Set<string>();
+    const entryBoundary = trackedElement(undefined, true, true);
+
+    expect(
+      shouldAnimateEliteGlobalElement(entryBoundary, animated, seenKeys, true),
+    ).toBe(true);
+    expect(
+      shouldAnimateEliteGlobalElement(entryBoundary, animated, seenKeys, false),
+    ).toBe(false);
+  });
+
+  it("treats explicit reveal boundaries as scopes", () => {
     const boundary = {
       closest: () => null,
       parentElement: null,
@@ -71,7 +91,7 @@ describe("Elite global effects", () => {
       closest: () => null,
       parentElement: {
         closest: (selector: string) =>
-          selector === "[data-elite-global-key]" ? boundary : null,
+          selector === ELITE_GLOBAL_BOUNDARY_SELECTOR ? boundary : null,
       },
     } as unknown as HTMLElement;
     const ignored = {

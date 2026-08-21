@@ -153,7 +153,7 @@ function MetricCard({
   );
   return onClick ? (
     <button
-      data-elite-global-key={eliteKey}
+      data-elite-global={eliteKey}
       type="button"
       className="rounded-xl border bg-card/70 p-4 text-left shadow-sm transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       onClick={onClick}
@@ -162,7 +162,7 @@ function MetricCard({
     </button>
   ) : (
     <div
-      data-elite-global-key={eliteKey}
+      data-elite-global={eliteKey}
       className="rounded-xl border bg-card/70 p-4 shadow-sm"
     >
       {content}
@@ -239,7 +239,7 @@ export function ProjectOverview({
     <div className="min-h-0 flex-1 overflow-y-auto">
       <main className="mx-auto w-full max-w-6xl space-y-5 p-4 sm:p-6 lg:p-8">
         <section
-          data-elite-global-key={`${eliteKeyPrefix}:hero`}
+          data-elite-global={`${eliteKeyPrefix}:hero`}
           className="relative overflow-hidden rounded-2xl border bg-card p-5 shadow-sm sm:p-7"
         >
           <div className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-primary/10 blur-3xl" />
@@ -413,7 +413,7 @@ export function ProjectOverview({
         >
           {compact ? (
             <button
-              data-elite-global-key={`${eliteKeyPrefix}:open-tabs`}
+              data-elite-global={`${eliteKeyPrefix}:open-tabs`}
               className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left shadow-sm outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring"
               onClick={onOpenTabs}
               type="button"
@@ -431,7 +431,7 @@ export function ProjectOverview({
             </button>
           ) : (
             <div
-              data-elite-global-key={`${eliteKeyPrefix}:services`}
+              data-elite-global={`${eliteKeyPrefix}:services`}
               className="overflow-hidden rounded-2xl border bg-card shadow-sm"
             >
               <div className="flex items-center justify-between border-b px-5 py-4">
@@ -553,7 +553,7 @@ export function ProjectOverview({
 
           <aside className="space-y-5">
             <div
-              data-elite-global-key={`${eliteKeyPrefix}:repository`}
+              data-elite-global={`${eliteKeyPrefix}:repository`}
               className="rounded-2xl border bg-card p-5 shadow-sm"
             >
               <h2 className="font-semibold">
@@ -593,7 +593,7 @@ export function ProjectOverview({
             </div>
 
             <div
-              data-elite-global-key={`${eliteKeyPrefix}:workspace`}
+              data-elite-global={`${eliteKeyPrefix}:workspace`}
               className="rounded-2xl border bg-card p-5 shadow-sm"
             >
               <h2 className="font-semibold">

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ExplorerLifecycleActions } from "./explorer-view";
 import {
   confirmExplorerDiscard,
+  nextExplorerEntryReplayKey,
   prepareExplorerPopout,
   prepareExplorerRebind,
 } from "./explorer-lifecycle";
@@ -63,5 +64,15 @@ describe("Explorer lifecycle preparation", () => {
     expect(await prepareExplorerPopout(stateFailed, () => true)).toBe(
       "state-failed",
     );
+  });
+});
+
+describe("Explorer entry reveal lifecycle", () => {
+  it("advances only when entering an inactive Explorer", () => {
+    expect(nextExplorerEntryReplayKey(0, true, true)).toBe(0);
+    expect(nextExplorerEntryReplayKey(0, true, false)).toBe(0);
+    expect(nextExplorerEntryReplayKey(0, false, false)).toBe(0);
+    expect(nextExplorerEntryReplayKey(0, false, true)).toBe(1);
+    expect(nextExplorerEntryReplayKey(1, false, true)).toBe(2);
   });
 });
