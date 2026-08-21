@@ -612,19 +612,21 @@ export const codeGraphJobSchema = z.object({
   completedAt: z.iso.datetime().nullable(),
 });
 
-export const codeGraphProjectStatusSchema = z.object({
-  projectId: z.string().uuid(),
-  worktreeId: z.string().min(1).max(200),
-  state: codeGraphProjectStateSchema,
-  lastIndexedAt: z.iso.datetime().nullable(),
-  lastSuccessfulSyncAt: z.iso.datetime().nullable(),
-  fileCount: z.number().int().nonnegative().nullable(),
-  nodeCount: z.number().int().nonnegative().nullable(),
-  edgeCount: z.number().int().nonnegative().nullable(),
-  pendingChanges: z.number().int().nonnegative().nullable(),
-  statusMessage: z.string().max(1_000).nullable(),
-  job: codeGraphJobSchema.nullable(),
-});
+export const codeGraphProjectStatusSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    worktreeId: z.string().min(1).max(200),
+    state: codeGraphProjectStateSchema,
+    lastIndexedAt: z.iso.datetime().nullable(),
+    lastSuccessfulSyncAt: z.iso.datetime().nullable(),
+    fileCount: z.number().int().nonnegative().nullable(),
+    nodeCount: z.number().int().nonnegative().nullable(),
+    edgeCount: z.number().int().nonnegative().nullable(),
+    pendingChanges: z.number().int().nonnegative().nullable(),
+    statusMessage: z.string().max(1_000).nullable(),
+    job: codeGraphJobSchema.nullable(),
+  })
+  .strict();
 
 export const codeGraphActionAcknowledgementSchema = z.object({
   jobId: z.string().uuid(),
@@ -11405,10 +11407,12 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
     worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
     result: worktreeStatusResultSchema,
   }),
-  z.object({
-    type: z.literal("codegraph.status.observed"),
-    status: codeGraphProjectStatusSchema,
-  }),
+  z
+    .object({
+      type: z.literal("codegraph.status.observed"),
+      status: codeGraphProjectStatusSchema,
+    })
+    .strict(),
 ]);
 
 export const workerNotificationEnvelopeSchema = z.object({

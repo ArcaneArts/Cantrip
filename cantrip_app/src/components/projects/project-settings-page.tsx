@@ -76,6 +76,8 @@ import {
   unlockProjectWorktree,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { codeGraphSettingsRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { updateProjectWorktreePolicy } from "@/lib/project-encryption";
 import { WorkflowCenter } from "@/components/workflows/workflow-center";
 import { ProjectAutomationsSettings } from "./project-automations-settings";
@@ -235,20 +237,17 @@ function CodeGraphWorktreeControls({
   worktreeId: string;
 }) {
   const queryClient = useQueryClient();
+  const codeGraphResourcesLive = useAppLiveStatus() === "live";
   const queryKey = ["codegraph", projectId, worktreeId] as const;
   const status = useQuery({
     enabled: enabled && available,
     queryKey,
     queryFn: () => getCodeGraphWorktreeStatus(projectId, worktreeId),
-    refetchInterval: (query) => {
-      const current = query.state.data;
-      return current?.job?.state === "queued" ||
-        current?.job?.state === "running" ||
-        current?.state === "indexing" ||
-        current?.state === "syncing"
-        ? 1_500
-        : 15_000;
-    },
+    refetchInterval: (query) =>
+      codeGraphSettingsRefreshIntervalMs(
+        query.state.data,
+        codeGraphResourcesLive,
+      ),
     retry: false,
   });
   const action = useMutation({

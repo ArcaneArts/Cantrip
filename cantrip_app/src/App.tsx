@@ -235,6 +235,7 @@ import {
   chatResourceRefreshIntervalMs,
   chatTranscriptNeedsFastRefresh,
 } from "@/lib/chat-resource-refresh";
+import { codeGraphChatRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -1146,14 +1147,12 @@ function ChatTranscript({
     queryFn: () =>
       getCodeGraphWorktreeStatus(chat.projectId, chat.activeWorktreeId),
     queryKey: ["codegraph", chat.projectId, chat.activeWorktreeId],
-    refetchInterval: (query) => {
-      const state = query.state.data?.state;
-      const active =
-        state === "indexing" || state === "queued" || state === "syncing";
-      return active || Date.now() < codeGraphProbeDeadlineRef.current
-        ? 500
-        : false;
-    },
+    refetchInterval: (query) =>
+      codeGraphChatRefreshIntervalMs(
+        query.state.data,
+        chatResourcesLive,
+        Date.now() < codeGraphProbeDeadlineRef.current,
+      ),
     retry: false,
   });
   const syncingCodeGraph =

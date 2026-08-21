@@ -23,6 +23,9 @@ describe("application live protocol", () => {
     expect(appLiveResourceSchema.parse("tunnel")).toBe("tunnel");
     expect(appLiveResourceSchema.parse("policy")).toBe("policy");
     expect(appLiveResourceSchema.parse("task")).toBe("task");
+    expect(appLiveResourceSchema.parse("codegraph-status")).toBe(
+      "codegraph-status",
+    );
     expect(appLiveResourceSchema.parse("project-folder-setup-job")).toBe(
       "project-folder-setup-job",
     );

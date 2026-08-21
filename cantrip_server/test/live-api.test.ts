@@ -1,18 +1,24 @@
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
   appLiveServerMessageSchema,
-  chatMessageSchema,
+  chatMessageOpaqueSummarySchema,
   codexMcpOauthStartResultSchema,
   unprobedCodexRuntimeReport,
 } from "@cantrip/protocol";
-import type { AppLiveServerMessage } from "@cantrip/protocol";
+import type {
+  AppLiveServerMessage,
+  WorkerNotification,
+} from "@cantrip/protocol";
 import {
-  workflowAutomationTriggerSchema,
-  workflowDefinitionDetailSchema,
-  workflowTriggerDeliveryResultSchema,
+  encryptedWorkflowAutomationTriggerCreateSchema,
+  encryptedWorkflowDefinitionCreateSchema,
+  workflowAutomationTriggerWireSchema,
+  workflowDefinitionWireDetailSchema,
+  workflowTriggerDeliveryWireResultSchema,
 } from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { WebSocket } from "ws";
@@ -21,12 +27,16 @@ import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
-import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import type {
+  WorkerCommandBus,
+  WorkerNotificationListener,
+} from "../src/workers/bridge.js";
 
 import { opaquePolicyCreate } from "./policy-encryption-fixture.js";
 import {
   protectedChatFields,
   protectedProjectFields,
+  protectedTerminalFields,
 } from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-live-api-"));
@@ -75,7 +85,19 @@ const preauthorized = {
   mcpServers: [],
   nativeSubagents: false,
 };
+const opaqueWorkflowContent = () => ({
+  formatVersion: 1 as const,
+  keyRevision: 1,
+  envelope: {
+    version: 1 as const,
+    algorithm: "AES-256-GCM" as const,
+    keyRevision: 1,
+    nonce: randomBytes(12).toString("base64url"),
+    ciphertext: randomBytes(32).toString("base64url"),
+  },
+});
 let oauthStatusReads = 0;
+let workerNotificationListener: WorkerNotificationListener | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -91,6 +113,19 @@ const workerBridge: WorkerCommandBus = {
   subscribeSurfaceFrames() {
     return () => undefined;
   },
+  subscribeNotifications(workerId, listener) {
+    if (workerId !== liveTestHeartbeat.workerId) {
+      throw new Error(
+        `Unexpected worker notification subscription ${workerId}.`,
+      );
+    }
+    workerNotificationListener = listener;
+    return () => {
+      if (workerNotificationListener === listener) {
+        workerNotificationListener = null;
+      }
+    };
+  },
   async request(_workerId, command) {
     switch (command.type) {
       case "customization.mcp.oauth.start":
@@ -104,6 +139,13 @@ const workerBridge: WorkerCommandBus = {
         return { server: command.server, status: "succeeded", error: null };
       case "customization.skill.configure":
         return { path: command.path, effectiveEnabled: command.enabled };
+      case "worktree.observation.configure":
+        return { accepted: true };
+      case "workflow.trigger.prepare.protected":
+        return {
+          status: "accepted",
+          protectedRunInput: opaqueWorkflowContent(),
+        };
       default:
         throw new Error(`Unexpected worker command ${command.type}.`);
     }
@@ -114,6 +156,7 @@ let database: DatabaseConnection;
 let app: Awaited<ReturnType<typeof buildApp>>;
 let projectId: string;
 let chatId: string;
+let worktreeId: string;
 
 beforeAll(async () => {
   database = await connectDatabase(config);
@@ -126,6 +169,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "live-test-worker",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "A".repeat(43),
     repositoryId: "live-test-repository",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -143,6 +187,12 @@ beforeAll(async () => {
       warning: null,
     },
   );
+  const primaryWorktree = (
+    await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
+  ).find((worktree) => worktree.isPrimary);
+  if (!primaryWorktree)
+    throw new Error("Could not create the live test worktree.");
+  worktreeId = primaryWorktree.id;
   const chat = await database.repository.createChat(LOCAL_USER_ID, projectId, {
     ...protectedChatFields(),
     worktreeMode: "agent-managed",
@@ -228,6 +278,118 @@ describe.sequential("application live WebSocket", () => {
       }),
     );
 
+    const workerSocket = await app.injectWS(
+      `/api/internal/workers/connect?workerId=${liveTestHeartbeat.workerId}`,
+      { headers: { authorization: `Bearer ${config.workerToken}` } },
+    );
+    await vi.waitFor(() => expect(workerNotificationListener).not.toBeNull());
+
+    const codeGraphStatus = {
+      projectId,
+      worktreeId,
+      state: "syncing" as const,
+      lastIndexedAt: null,
+      lastSuccessfulSyncAt: null,
+      fileCount: 10,
+      nodeCount: 20,
+      edgeCount: 30,
+      pendingChanges: 2,
+      statusMessage: "Synchronizing",
+      job: null,
+    };
+    const codeGraphNotification: WorkerNotification = {
+      type: "codegraph.status.observed",
+      status: codeGraphStatus,
+    };
+    const codeGraphEventStart = messages.length;
+    const notificationListener = workerNotificationListener;
+    if (!notificationListener) {
+      throw new Error("Worker notification listener did not initialize.");
+    }
+    await notificationListener(codeGraphNotification);
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(codeGraphEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "codegraph-status" &&
+              message.entityId === worktreeId,
+          ),
+      ).toMatchObject({
+        type: "event",
+        action: "updated",
+        scope: { kind: "project", projectId },
+        payload: codeGraphStatus,
+        revision: expect.any(Number),
+      }),
+    );
+
+    const duplicateEventStart = messages.length;
+    await notificationListener(codeGraphNotification);
+    await notificationListener({
+      type: "codegraph.status.observed",
+      status: { ...codeGraphStatus, worktreeId: "unowned-worktree" },
+    });
+    expect(
+      messages
+        .slice(duplicateEventStart)
+        .filter(
+          (message) =>
+            message.type === "event" && message.resource === "codegraph-status",
+        ),
+    ).toEqual([]);
+
+    const originalContextRead =
+      database.repository.getProjectWorktreeContext.bind(database.repository);
+    let releaseOlderContextRead: (() => void) | null = null;
+    const olderContextReadGate = new Promise<void>((resolve) => {
+      releaseOlderContextRead = resolve;
+    });
+    let contextReadCount = 0;
+    const contextRead = vi
+      .spyOn(database.repository, "getProjectWorktreeContext")
+      .mockImplementation(
+        async (ownerId, candidateProjectId, candidateWorktreeId) => {
+          contextReadCount += 1;
+          if (contextReadCount === 1) await olderContextReadGate;
+          return originalContextRead(
+            ownerId,
+            candidateProjectId,
+            candidateWorktreeId,
+          );
+        },
+      );
+    const reorderedEventStart = messages.length;
+    try {
+      const olderNotification = notificationListener({
+        ...codeGraphNotification,
+        status: { ...codeGraphStatus, pendingChanges: 3 },
+      });
+      await vi.waitFor(() => expect(contextReadCount).toBe(1));
+      await notificationListener({
+        ...codeGraphNotification,
+        status: { ...codeGraphStatus, pendingChanges: 0 },
+      });
+      releaseOlderContextRead?.();
+      await olderNotification;
+      await vi.waitFor(() =>
+        expect(
+          messages
+            .slice(reorderedEventStart)
+            .filter(
+              (message) =>
+                message.type === "event" &&
+                message.resource === "codegraph-status",
+            ),
+        ).toMatchObject([{ payload: { pendingChanges: 0 } }]),
+      );
+    } finally {
+      releaseOlderContextRead?.();
+      contextRead.mockRestore();
+    }
+
     for (const [requestId, scope] of [
       ["missing-project", { kind: "project", projectId: "missing-project" }],
       ["missing-chat", { kind: "chat", chatId: "missing-chat" }],
@@ -254,7 +416,7 @@ describe.sequential("application live WebSocket", () => {
       await app.inject({
         method: "POST",
         url: `/api/projects/${projectId}/terminals`,
-        payload: { title: "Live event terminal" },
+        payload: protectedTerminalFields(),
       }),
     ).toMatchObject({ statusCode: 201 });
     await vi.waitFor(() =>
@@ -325,17 +487,36 @@ describe.sequential("application live WebSocket", () => {
     );
 
     const messageEventStart = messages.length;
+    const protectedMessage = {
+      id: randomUUID(),
+      classification: {
+        role: "system" as const,
+        mode: "default" as const,
+        attachmentIds: [],
+      },
+      protectedContent: {
+        formatVersion: 1 as const,
+        keyRevision: 1,
+        envelope: {
+          version: 1 as const,
+          algorithm: "AES-256-GCM" as const,
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
+      reasoningEffort: null,
+      idempotencyKey: "live-api-message",
+    };
     const messageResponse = await app.inject({
       method: "POST",
       url: `/api/chats/${chatId}/messages`,
-      payload: {
-        role: "system",
-        content: [{ type: "text", text: "Persist before publishing" }],
-        idempotencyKey: "live-api-message",
-      },
+      payload: protectedMessage,
     });
     expect(messageResponse.statusCode).toBe(201);
-    const persistedMessage = chatMessageSchema.parse(messageResponse.json());
+    const persistedMessage = chatMessageOpaqueSummarySchema.parse(
+      messageResponse.json(),
+    );
     await vi.waitFor(() =>
       expect(
         messages
@@ -355,36 +536,51 @@ describe.sequential("application live WebSocket", () => {
     );
 
     const workflowEventStart = messages.length;
+    const workflowRevisionId = randomUUID();
     const workflowResponse = await app.inject({
       method: "POST",
       url: "/api/workflows",
-      payload: {
+      payload: encryptedWorkflowDefinitionCreateSchema.parse({
+        id: randomUUID(),
         scope: "project",
         projectId,
-        slug: "live-workflow",
-        name: "Live workflow",
+        source: "manual",
         trustState: "trusted",
+        slugBlindIndex: randomBytes(32).toString("base64url"),
+        content: {
+          protectedSlug: opaqueWorkflowContent(),
+          protectedName: opaqueWorkflowContent(),
+          protectedDescription: opaqueWorkflowContent(),
+          protectedProvenance: opaqueWorkflowContent(),
+        },
         revision: {
-          graph: {
+          id: workflowRevisionId,
+          source: "manual",
+          trustState: "trusted",
+          contentBlindIndex: randomBytes(32).toString("base64url"),
+          content: {
+            protectedProvenance: opaqueWorkflowContent(),
+            protectedContentHash: opaqueWorkflowContent(),
+            protectedDefinition: opaqueWorkflowContent(),
+          },
+          manifest: {
             version: 1,
             nodes: [
               {
-                key: "gate",
-                type: "gate",
-                name: "Approval gate",
-                configuration: { prompt: "Approve completion." },
-                permissionRequirements: preauthorized,
+                id: randomUUID(),
+                type: "agent",
+                mutationMode: "read-only",
+                modelRouteId: null,
+                permissionProfileId: null,
               },
             ],
             edges: [],
           },
-          permissionRequirements: preauthorized,
-          trustState: "trusted",
         },
-      },
+      }),
     });
     expect(workflowResponse.statusCode).toBe(201);
-    const workflow = workflowDefinitionDetailSchema.parse(
+    const workflow = workflowDefinitionWireDetailSchema.parse(
       workflowResponse.json(),
     );
     await vi.waitFor(() =>
@@ -405,19 +601,24 @@ describe.sequential("application live WebSocket", () => {
     const triggerResponse = await app.inject({
       method: "POST",
       url: "/api/workflow-triggers",
-      payload: {
-        workflowRevisionId: workflow.revision!.id,
+      payload: encryptedWorkflowAutomationTriggerCreateSchema.parse({
+        id: randomUUID(),
+        workflowRevisionId,
         projectId,
-        name: "Live trigger",
         type: "api",
         enabled: true,
-        configuration: { minimumIntervalSeconds: 60 },
-        structuredInput: {},
         permissionManifest: preauthorized,
-      },
+        selectedModelRouteId: null,
+        selectedPermissionProfileId: null,
+        protectedName: opaqueWorkflowContent(),
+        protectedConfiguration: opaqueWorkflowContent(),
+        protectedInput: opaqueWorkflowContent(),
+        publicConfiguration: { type: "api", minimumIntervalSeconds: 60 },
+        credentialHash: null,
+      }),
     });
     expect(triggerResponse.statusCode).toBe(201);
-    const trigger = workflowAutomationTriggerSchema.parse(
+    const trigger = workflowAutomationTriggerWireSchema.parse(
       triggerResponse.json(),
     );
     await vi.waitFor(() =>
@@ -439,11 +640,14 @@ describe.sequential("application live WebSocket", () => {
     const deliveryResponse = await app.inject({
       method: "POST",
       url: `/api/workflow-triggers/${trigger.id}/deliver`,
-      payload: { idempotencyKey: "live-trigger-delivery" },
+      payload: {
+        idempotencyKey: "live-trigger-delivery",
+        protectedPayload: opaqueWorkflowContent(),
+      },
     });
     expect(deliveryResponse.statusCode).toBe(201);
     expect(
-      workflowTriggerDeliveryResultSchema.parse(deliveryResponse.json())
+      workflowTriggerDeliveryWireResultSchema.parse(deliveryResponse.json())
         .delivery.status,
     ).toBe("accepted");
     await vi.waitFor(() =>
@@ -504,6 +708,7 @@ describe.sequential("application live WebSocket", () => {
     expect(health.live.publicationCount).toBeGreaterThan(0);
     expect(health.live.deliveredEventCount).toBeGreaterThan(0);
 
+    workerSocket.terminate();
     socket.terminate();
   });
 });

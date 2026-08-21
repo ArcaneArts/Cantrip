@@ -13,6 +13,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { codeGraphProjectStatusSchema } from "@cantrip/protocol";
+import type { CodeGraphProjectStatus } from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CodeGraphProjectSupervisor } from "../src/codegraph/supervisor.js";
@@ -176,7 +178,7 @@ describe("CodeGraph project supervisor", () => {
   it("addresses nonblocking jobs by server-owned project identity", async () => {
     const project = await gitProject("cantrip-codegraph-identity-");
     const fake = fakeCodeGraph();
-    const observations: Array<{ state: string; jobState: string | null }> = [];
+    const observations: CodeGraphProjectStatus[] = [];
     const projectId = "00000000-0000-4000-8000-000000000001";
     const worktreeId = "primary:test";
     const supervisor = new CodeGraphProjectSupervisor({
@@ -184,10 +186,7 @@ describe("CodeGraph project supervisor", () => {
       command: "/managed/codegraph",
       execute: fake.execute,
       onStatus: (status) =>
-        observations.push({
-          state: status.state,
-          jobState: status.job?.state ?? null,
-        }),
+        observations.push(codeGraphProjectStatusSchema.parse(status)),
     });
 
     await supervisor.configure([
@@ -220,10 +219,12 @@ describe("CodeGraph project supervisor", () => {
         }),
       }),
     );
-    expect(observations.some(({ jobState }) => jobState === "running")).toBe(
-      true,
-    );
-    expect(observations.at(-1)?.jobState).toBe("completed");
+    expect(observations.some(({ job }) => job?.state === "running")).toBe(true);
+    expect(observations.at(-1)).toMatchObject({
+      projectId,
+      worktreeId,
+      job: { state: "completed" },
+    });
     expect(() =>
       supervisor.requestAction(projectId, "unmanaged", "rebuild"),
     ).toThrow("not managed");
