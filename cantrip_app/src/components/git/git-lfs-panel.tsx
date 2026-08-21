@@ -1,5 +1,5 @@
 import type { GitLfsAction, GitLfsFile, GitLfsStatus } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CloudDownload,
   Database,
@@ -30,6 +30,11 @@ import {
   previewProjectWorktreeGitLfsAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+import {
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "./reviewed-operation";
 
 type View = "files" | "patterns" | "locks";
 
@@ -63,20 +68,17 @@ export function GitLfsPanel({
     queryKey,
     queryFn: () => getProjectWorktreeGitLfs(projectId, worktreeId),
   });
-  const preview = useMutation({
-    mutationFn: (action: GitLfsAction) =>
+  const operation = useReviewedOperation({
+    preview: (action: GitLfsAction) =>
       previewProjectWorktreeGitLfsAction(projectId, worktreeId, action),
-  });
-  const apply = useMutation({
-    mutationFn: async () => {
-      if (!preview.data) throw new Error("Review a Git LFS action first.");
-      return applyProjectWorktreeGitLfsAction(
+    apply: ({ preview }) =>
+      applyProjectWorktreeGitLfsAction(
         projectId,
         worktreeId,
-        preview.data.action,
-        preview.data.token,
-      );
-    },
+        preview.action,
+        preview.token,
+      ),
+    missingReviewMessage: "Review a Git LFS action first.",
     onSuccess: (result) => {
       queryClient.setQueryData(queryKey, result.lfs);
       queryClient.setQueryData(
@@ -86,22 +88,16 @@ export function GitLfsPanel({
       void queryClient.invalidateQueries({
         queryKey: ["worktree-history", projectId, worktreeId],
       });
-      preview.reset();
     },
   });
-  const review = (action: GitLfsAction) => {
-    preview.reset();
-    apply.reset();
-    preview.mutate(action);
-  };
   const submitTrack = (event: FormEvent) => {
     event.preventDefault();
     const pattern = trackPattern?.trim();
     if (!pattern) return;
     setTrackPattern(null);
-    review({ type: "track", pattern });
+    operation.review({ type: "track", pattern });
   };
-  const busy = preview.isPending || apply.isPending;
+  const busy = operation.busy;
 
   if (lfs.isLoading) {
     return (
@@ -140,25 +136,29 @@ export function GitLfsPanel({
           disabled={busy}
           icon={<PackageCheck className="size-3" />}
           label="Install"
-          onClick={() => review({ type: "install" })}
+          onClick={() => operation.review({ type: "install" })}
         />
         <ActionButton
           disabled={busy}
           icon={<Download className="size-3" />}
           label="Fetch"
-          onClick={() => review({ type: "fetch", remote: null, all: false })}
+          onClick={() =>
+            operation.review({ type: "fetch", remote: null, all: false })
+          }
         />
         <ActionButton
           disabled={busy}
           icon={<CloudDownload className="size-3" />}
           label="Pull"
-          onClick={() => review({ type: "pull", remote: null })}
+          onClick={() => operation.review({ type: "pull", remote: null })}
         />
         <ActionButton
           disabled={busy}
           icon={<Trash2 className="size-3" />}
           label="Prune…"
-          onClick={() => review({ type: "prune", verifyRemote: true })}
+          onClick={() =>
+            operation.review({ type: "prune", verifyRemote: true })
+          }
         />
       </div>
       <div className="flex h-9 items-center gap-2 border-b px-3">
@@ -192,7 +192,9 @@ export function GitLfsPanel({
             variant="ghost"
             className="h-7 px-2 text-[10px]"
             disabled={busy}
-            onClick={() => review({ type: "fetch", remote: null, all: true })}
+            onClick={() =>
+              operation.review({ type: "fetch", remote: null, all: true })
+            }
           >
             Fetch all…
           </Button>
@@ -212,7 +214,7 @@ export function GitLfsPanel({
             variant="ghost"
             className="h-7 gap-1 px-2 text-[10px]"
             disabled={busy}
-            onClick={() => review({ type: "refreshLocks" })}
+            onClick={() => operation.review({ type: "refreshLocks" })}
           >
             <RefreshCw className="size-3" /> Refresh remote
           </Button>
@@ -242,7 +244,7 @@ export function GitLfsPanel({
                   className="h-7 gap-1 px-2 text-[10px]"
                   disabled={busy}
                   onClick={() =>
-                    review(
+                    operation.review(
                       lock
                         ? { type: "unlock", path: file.path, force: false }
                         : { type: "lock", path: file.path },
@@ -282,7 +284,10 @@ export function GitLfsPanel({
                 className="size-7 text-destructive"
                 disabled={busy}
                 onClick={() =>
-                  review({ type: "untrack", pattern: pattern.pattern })
+                  operation.review({
+                    type: "untrack",
+                    pattern: pattern.pattern,
+                  })
                 }
               >
                 <Trash2 className="size-3" />
@@ -315,7 +320,7 @@ export function GitLfsPanel({
               className="h-7 gap-1 px-2 text-[10px]"
               disabled={busy}
               onClick={() =>
-                review({
+                operation.review({
                   type: "unlock",
                   path: lock.path,
                   force: !lock.ours,
@@ -370,72 +375,33 @@ export function GitLfsPanel({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={
-          preview.isPending || Boolean(preview.data) || Boolean(preview.error)
+      <ReviewedOperationDialog
+        operation={operation}
+        title="Review Git LFS action"
+        description="The assigned worker recomputes LFS and worktree state before applying this action."
+        loadingLabel="Inspecting Git LFS…"
+        loadingClassName="justify-start"
+        bodyClassName="grid gap-3 py-3 text-sm"
+        previewErrorFallback="Git LFS preview failed."
+        applyErrorFallback="Git LFS action failed."
+        applyLabel="Apply"
+        applyClassName={
+          operation.preview.data?.destructive
+            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            : undefined
         }
-        onOpenChange={(open) => {
-          if (!open && !apply.isPending) {
-            preview.reset();
-            apply.reset();
-          }
-        }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Review Git LFS action</DialogTitle>
-            <DialogDescription>
-              The assigned worker recomputes LFS and worktree state before
-              applying this action.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-3 text-sm">
-            {preview.isPending ? (
-              <p className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Inspecting Git LFS…
+        {(preview) => (
+          <>
+            <p>{preview.summary}</p>
+            {preview.warnings.map((warning) => (
+              <p key={warning} className="text-xs text-amber-600">
+                {warning}
               </p>
-            ) : preview.error ? (
-              <ErrorMessage error={preview.error} />
-            ) : preview.data ? (
-              <>
-                <p>{preview.data.summary}</p>
-                {preview.data.warnings.map((warning) => (
-                  <p key={warning} className="text-xs text-amber-600">
-                    {warning}
-                  </p>
-                ))}
-              </>
-            ) : null}
-            {apply.error ? <ErrorMessage error={apply.error} /> : null}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={apply.isPending}
-              onClick={() => {
-                preview.reset();
-                apply.reset();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className={
-                preview.data?.destructive
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : undefined
-              }
-              disabled={!preview.data || apply.isPending}
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : null}
-              Apply
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            ))}
+          </>
+        )}
+      </ReviewedOperationDialog>
     </>
   );
 }

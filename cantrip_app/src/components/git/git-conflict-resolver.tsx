@@ -15,14 +15,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   applyProjectWorktreeGitConflictResolution,
   generateProjectWorktreeGitDraft,
   getProjectWorktreeGitConflict,
@@ -34,6 +26,10 @@ import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { cn } from "@/lib/utils";
 
 import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
+import {
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "./reviewed-operation";
 
 export interface ConflictMarkerSection {
   start: number;
@@ -155,9 +151,6 @@ export function GitConflictResolver({
   );
   const [draft, setDraft] = useState("");
   const [agentOpen, setAgentOpen] = useState(false);
-  const [reviewed, setReviewed] = useState<GitConflictResolutionRequest | null>(
-    null,
-  );
   const conflicts = useQuery({
     queryKey: ["git-conflicts", projectId, worktreeId],
     queryFn: () => getProjectWorktreeGitConflicts(projectId, worktreeId),
@@ -179,29 +172,22 @@ export function GitConflictResolver({
     setDraft(detail.data?.result.content ?? "");
     setView("result");
   }, [detail.data]);
-  const preview = useMutation({
-    mutationFn: (request: GitConflictResolutionRequest) =>
+  const reviewedOperation = useReviewedOperation({
+    preview: (request: GitConflictResolutionRequest) =>
       previewProjectWorktreeGitConflictResolution(
         projectId,
         worktreeId,
         request,
       ),
-  });
-  const apply = useMutation({
-    mutationFn: async () => {
-      if (!reviewed || !preview.data) {
-        throw new Error("Review the conflict resolution first.");
-      }
-      return applyProjectWorktreeGitConflictResolution(
+    apply: ({ preview, request }) =>
+      applyProjectWorktreeGitConflictResolution(
         projectId,
         worktreeId,
-        reviewed,
-        preview.data.token,
-      );
-    },
+        request,
+        preview.token,
+      ),
+    missingReviewMessage: "Review the conflict resolution first.",
     onSuccess: (result) => {
-      setReviewed(null);
-      preview.reset();
       setSelectedPath(result.remainingPaths[0] ?? null);
       queryClient.setQueryData(
         ["worktree-status", projectId, worktreeId],
@@ -228,12 +214,7 @@ export function GitConflictResolver({
         pullRequestNumber: null,
       }),
   });
-  const review = (request: GitConflictResolutionRequest) => {
-    setReviewed(request);
-    preview.reset();
-    apply.reset();
-    preview.mutate(request);
-  };
+  const review = reviewedOperation.review;
   const sections = useMemo(() => parseConflictMarkerSections(draft), [draft]);
   const selectedView = detail.data ? detailView(detail.data, view) : null;
 
@@ -486,78 +467,42 @@ export function GitConflictResolver({
         </div>
       </div>
 
-      <Dialog
-        open={Boolean(reviewed)}
-        onOpenChange={(open) => {
-          if (!open && !apply.isPending) setReviewed(null);
-        }}
+      <ReviewedOperationDialog
+        operation={reviewedOperation}
+        title="Review conflict resolution"
+        description="Cantrip rechecks the unmerged index before applying this exact result, then verifies that Git no longer reports the path as conflicted."
+        loadingLabel="Inspecting conflict result…"
+        loadingClassName="my-16"
+        previewErrorFallback="Conflict resolution preview failed."
+        applyErrorFallback="Conflict resolution failed."
+        applyLabel="Apply and stage"
+        contentClassName="max-w-3xl"
+        bodyClassName="grid gap-3"
+        errorClassName="rounded bg-destructive/10 p-3"
       >
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Review conflict resolution</DialogTitle>
-            <DialogDescription>
-              Cantrip rechecks the unmerged index before applying this exact
-              result, then verifies that Git no longer reports the path as
-              conflicted.
-            </DialogDescription>
-          </DialogHeader>
-          {preview.isPending ? (
-            <Loader2 className="mx-auto my-16 size-5 animate-spin" />
-          ) : preview.error ? (
-            <p className="rounded bg-destructive/10 p-3 text-sm text-destructive">
-              {preview.error instanceof Error
-                ? preview.error.message
-                : "Conflict resolution preview failed."}
+        {(preview) => (
+          <div className="space-y-3">
+            <p className="text-sm">
+              <span className="font-medium capitalize">
+                {preview.request.strategy}
+              </span>{" "}
+              · <span className="font-mono">{preview.request.path}</span>
             </p>
-          ) : preview.data ? (
-            <div className="space-y-3">
-              <p className="text-sm">
-                <span className="font-medium capitalize">
-                  {preview.data.request.strategy}
-                </span>{" "}
-                · <span className="font-mono">{preview.data.request.path}</span>
+            {preview.warnings.map((warning) => (
+              <p key={warning} className="text-xs text-amber-600">
+                {warning}
               </p>
-              {preview.data.warnings.map((warning) => (
-                <p key={warning} className="text-xs text-amber-600">
-                  {warning}
-                </p>
-              ))}
-              <pre className="max-h-80 overflow-auto rounded-lg bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
-                {preview.data.resultDeleted
-                  ? "Path will be deleted."
-                  : preview.data.resultBinary
-                    ? "Binary result selected."
-                    : (preview.data.resultContent ?? "")}
-              </pre>
-            </div>
-          ) : null}
-          {apply.error ? (
-            <p className="text-sm text-destructive">
-              {apply.error instanceof Error
-                ? apply.error.message
-                : "Conflict resolution failed."}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={apply.isPending}
-              onClick={() => setReviewed(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!preview.data || apply.isPending}
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
-              Apply and stage
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            ))}
+            <pre className="max-h-80 overflow-auto rounded-lg bg-muted/40 p-3 font-mono text-xs whitespace-pre-wrap">
+              {preview.resultDeleted
+                ? "Path will be deleted."
+                : preview.resultBinary
+                  ? "Binary result selected."
+                  : (preview.resultContent ?? "")}
+            </pre>
+          </div>
+        )}
+      </ReviewedOperationDialog>
       <GitAgentDraftDialog
         draft={agentExplain.data ?? null}
         error={

@@ -5,7 +5,7 @@ import type {
   GitManagedBranch,
   GitMergeRebaseAction,
 } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRightLeft,
   CloudUpload,
@@ -39,6 +39,11 @@ import {
   previewProjectWorktreeBranchAction,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+import {
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "./reviewed-operation";
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
@@ -316,28 +321,21 @@ export function GitBranchPanel({
   const [kind, setKind] = useState<"local" | "remote">("local");
   const [search, setSearch] = useState("");
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [reviewedAction, setReviewedAction] = useState<GitBranchAction | null>(
-    null,
-  );
   const branches = useQuery({
     queryKey: ["worktree-branches", projectId, worktreeId],
     queryFn: () => getProjectWorktreeBranches(projectId, worktreeId),
   });
-  const preview = useMutation({
-    mutationFn: (action: GitBranchAction) =>
+  const operation = useReviewedOperation({
+    preview: (action: GitBranchAction) =>
       previewProjectWorktreeBranchAction(projectId, worktreeId, action),
-  });
-  const apply = useMutation({
-    mutationFn: () => {
-      if (!reviewedAction || !preview.data)
-        throw new Error("Review a branch action first.");
-      return applyProjectWorktreeBranchAction(
+    apply: ({ preview, request }) =>
+      applyProjectWorktreeBranchAction(
         projectId,
         worktreeId,
-        reviewedAction,
-        preview.data.token,
-      );
-    },
+        request,
+        preview.token,
+      ),
+    missingReviewMessage: "Review a branch action first.",
     onSuccess: (result) => {
       queryClient.setQueryData(
         ["worktree-branches", projectId, worktreeId],
@@ -356,16 +354,8 @@ export function GitBranchPanel({
       void queryClient.invalidateQueries({
         queryKey: ["worktree-revision-candidates", projectId, worktreeId],
       });
-      setReviewedAction(null);
-      preview.reset();
     },
   });
-  const review = (action: GitBranchAction) => {
-    setReviewedAction(action);
-    preview.reset();
-    apply.reset();
-    preview.mutate(action);
-  };
   const submitEditor = (event: FormEvent) => {
     event.preventDefault();
     if (!editor) return;
@@ -376,7 +366,7 @@ export function GitBranchPanel({
     )
       return;
     setEditor(null);
-    review(action);
+    operation.review(action);
   };
   const shown = useMemo(
     () => filterManagedBranches(branches.data?.branches ?? [], kind, search),
@@ -386,7 +376,7 @@ export function GitBranchPanel({
     branches.data?.branches.filter(({ kind }) => kind === "local").length ?? 0;
   const remoteCount =
     branches.data?.branches.filter(({ kind }) => kind === "remote").length ?? 0;
-  const busy = preview.isPending || apply.isPending;
+  const busy = operation.busy;
 
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full min-w-0 flex-col border-l bg-background shadow-2xl md:w-[min(48rem,78vw)]">
@@ -421,7 +411,9 @@ export function GitBranchPanel({
           variant="ghost"
           className="h-7 gap-1 text-xs"
           disabled={!branches.data?.remotes.length || busy}
-          onClick={() => review({ type: "fetch", remote: null, prune: false })}
+          onClick={() =>
+            operation.review({ type: "fetch", remote: null, prune: false })
+          }
         >
           <RefreshCw className="size-3.5" /> Fetch
         </Button>
@@ -430,7 +422,9 @@ export function GitBranchPanel({
           variant="ghost"
           className="h-7 px-2 text-xs"
           disabled={!branches.data?.remotes.length || busy}
-          onClick={() => review({ type: "fetch", remote: null, prune: true })}
+          onClick={() =>
+            operation.review({ type: "fetch", remote: null, prune: true })
+          }
         >
           Prune…
         </Button>
@@ -536,7 +530,7 @@ export function GitBranchPanel({
                 inventory={branches.data!}
                 onEdit={setEditor}
                 onOperation={onOperation}
-                onReview={review}
+                onReview={operation.review}
               />
             </div>
           ))
@@ -709,78 +703,43 @@ export function GitBranchPanel({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={Boolean(reviewedAction)}
-        onOpenChange={(open) =>
-          !open && !apply.isPending && setReviewedAction(null)
+      <ReviewedOperationDialog
+        operation={operation}
+        title="Confirm branch action"
+        description={
+          operation.request
+            ? branchActionDescription(operation.request)
+            : "Review this action."
+        }
+        loadingLabel="Inspecting branch state…"
+        loadingClassName="h-32"
+        previewErrorFallback="Branch preview failed."
+        applyErrorFallback="Branch action failed."
+        applyLabel="Confirm"
+        contentClassName="max-w-xl"
+        bodyClassName="grid gap-3"
+        applyClassName={
+          operation.preview.data?.destructive
+            ? "bg-destructive text-white hover:bg-destructive/90"
+            : undefined
         }
       >
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Confirm branch action</DialogTitle>
-            <DialogDescription>
-              {reviewedAction
-                ? branchActionDescription(reviewedAction)
-                : "Review this action."}
-            </DialogDescription>
-          </DialogHeader>
-          {preview.isPending ? (
-            <div className="grid h-32 place-items-center">
-              <Loader2 className="size-4 animate-spin" />
-            </div>
-          ) : preview.error ? (
-            <p className="text-sm text-destructive">
-              {preview.error instanceof Error
-                ? preview.error.message
-                : "Branch preview failed."}
-            </p>
-          ) : preview.data ? (
-            <div className="space-y-2 rounded-lg bg-muted/30 p-3 text-xs">
-              <p className="font-medium">{preview.data.summary}</p>
-              {preview.data.branch ? (
-                <p className="break-all font-mono text-muted-foreground">
-                  {preview.data.branch.fullRef} @ {preview.data.branch.hash}
-                </p>
-              ) : null}
-              {preview.data.warnings.map((warning) => (
-                <p key={warning} className="text-amber-700 dark:text-amber-300">
-                  {warning}
-                </p>
-              ))}
-            </div>
-          ) : null}
-          {apply.error ? (
-            <p className="text-sm text-destructive">
-              {apply.error instanceof Error
-                ? apply.error.message
-                : "Branch action failed."}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={apply.isPending}
-              onClick={() => setReviewedAction(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!preview.data || apply.isPending}
-              className={
-                preview.data?.destructive
-                  ? "bg-destructive text-white hover:bg-destructive/90"
-                  : undefined
-              }
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {(preview) => (
+          <div className="space-y-2 rounded-lg bg-muted/30 p-3 text-xs">
+            <p className="font-medium">{preview.summary}</p>
+            {preview.branch ? (
+              <p className="break-all font-mono text-muted-foreground">
+                {preview.branch.fullRef} @ {preview.branch.hash}
+              </p>
+            ) : null}
+            {preview.warnings.map((warning) => (
+              <p key={warning} className="text-amber-700 dark:text-amber-300">
+                {warning}
+              </p>
+            ))}
+          </div>
+        )}
+      </ReviewedOperationDialog>
     </aside>
   );
 }

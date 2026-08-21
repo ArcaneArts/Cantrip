@@ -47,6 +47,10 @@ import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
 import { GitConflictResolver } from "./git-conflict-resolver";
+import {
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "./reviewed-operation";
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, {
   numeric: "auto",
@@ -202,9 +206,6 @@ export function GitStashPanel({
   const [includeStaged, setIncludeStaged] = useState(true);
   const [includeUnstaged, setIncludeUnstaged] = useState(true);
   const [includeUntracked, setIncludeUntracked] = useState(false);
-  const [reviewedAction, setReviewedAction] = useState<GitStashAction | null>(
-    null,
-  );
   const [branchStash, setBranchStash] = useState<GitStashSummary | null>(null);
   const [branchName, setBranchName] = useState("");
   const stashes = useQuery({
@@ -289,21 +290,17 @@ export function GitStashPanel({
       setSelectedPath(result.stash?.files[0]?.path ?? null);
     },
   });
-  const preview = useMutation({
-    mutationFn: (action: GitStashAction) =>
+  const reviewedOperation = useReviewedOperation({
+    preview: (action: GitStashAction) =>
       previewProjectWorktreeStashAction(projectId, worktreeId, action),
-  });
-  const apply = useMutation({
-    mutationFn: () => {
-      if (!reviewedAction || !preview.data)
-        throw new Error("Review a stash action first.");
-      return applyProjectWorktreeStashAction(
+    apply: ({ preview, request }) =>
+      applyProjectWorktreeStashAction(
         projectId,
         worktreeId,
-        reviewedAction,
-        preview.data.token,
-      );
-    },
+        request,
+        preview.token,
+      ),
+    missingReviewMessage: "Review a stash action first.",
     onSuccess: (result) => {
       refreshAfterMutation(result.status);
       void queryClient.invalidateQueries({
@@ -312,8 +309,6 @@ export function GitStashPanel({
       void queryClient.invalidateQueries({
         queryKey: ["git-conflicts", projectId, worktreeId],
       });
-      setReviewedAction(null);
-      preview.reset();
     },
   });
   const control = useMutation({
@@ -344,12 +339,6 @@ export function GitStashPanel({
       });
     },
   });
-  const review = (action: GitStashAction) => {
-    setReviewedAction(action);
-    preview.reset();
-    apply.reset();
-    preview.mutate(action);
-  };
   const chooseAction = (
     type: "apply" | "pop" | "drop" | "branch",
     stash: GitStashSummary,
@@ -359,7 +348,7 @@ export function GitStashPanel({
       setBranchName("");
       return;
     }
-    review({ type, ref: stash.ref, hash: stash.hash });
+    reviewedOperation.review({ type, ref: stash.ref, hash: stash.hash });
   };
   const submitCreate = (event: FormEvent) => {
     event.preventDefault();
@@ -374,7 +363,7 @@ export function GitStashPanel({
   const submitBranch = (event: FormEvent) => {
     event.preventDefault();
     if (!branchStash || !branchName.trim()) return;
-    review({
+    reviewedOperation.review({
       type: "branch",
       ref: branchStash.ref,
       hash: branchStash.hash,
@@ -400,8 +389,8 @@ export function GitStashPanel({
           disabled={
             Boolean(activeStashOperation) ||
             create.isPending ||
-            preview.isPending ||
-            apply.isPending
+            reviewedOperation.preview.isPending ||
+            reviewedOperation.apply.isPending
           }
           onClick={() => setCreateOpen(true)}
         >
@@ -414,10 +403,10 @@ export function GitStashPanel({
           disabled={
             !stashes.data?.stashes.length ||
             Boolean(activeStashOperation) ||
-            preview.isPending ||
-            apply.isPending
+            reviewedOperation.preview.isPending ||
+            reviewedOperation.apply.isPending
           }
-          onClick={() => review({ type: "clear" })}
+          onClick={() => reviewedOperation.review({ type: "clear" })}
         >
           Clear…
         </Button>
@@ -525,8 +514,8 @@ export function GitStashPanel({
                 <StashActions
                   disabled={
                     Boolean(activeStashOperation) ||
-                    preview.isPending ||
-                    apply.isPending
+                    reviewedOperation.preview.isPending ||
+                    reviewedOperation.apply.isPending
                   }
                   stash={stash}
                   onAction={chooseAction}
@@ -740,90 +729,65 @@ export function GitStashPanel({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={Boolean(reviewedAction)}
-        onOpenChange={(open) =>
-          !open && !apply.isPending && setReviewedAction(null)
+      <ReviewedOperationDialog
+        operation={reviewedOperation}
+        title={
+          <span className="capitalize">
+            {reviewedOperation.request?.type} stash changes?
+          </span>
+        }
+        description={
+          reviewedOperation.request
+            ? stashActionDescription(reviewedOperation.request)
+            : "Review this action."
+        }
+        loadingLabel="Inspecting stash state…"
+        loadingClassName="h-36"
+        previewErrorFallback="Preview failed."
+        applyErrorFallback="Stash action failed."
+        applyLabel={
+          <>
+            Confirm{" "}
+            <span className="capitalize">
+              {reviewedOperation.request?.type}
+            </span>
+          </>
+        }
+        contentClassName="max-w-2xl"
+        bodyClassName="grid gap-3"
+        errorClassName="text-xs"
+        applyClassName={
+          reviewedOperation.preview.data?.destructive &&
+          reviewedOperation.request?.type !== "pop" &&
+          reviewedOperation.request?.type !== "branch"
+            ? "bg-destructive text-white hover:bg-destructive/90"
+            : undefined
         }
       >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="capitalize">
-              {reviewedAction?.type} stash changes?
-            </DialogTitle>
-            <DialogDescription>
-              {reviewedAction
-                ? stashActionDescription(reviewedAction)
-                : "Review this action."}
-            </DialogDescription>
-          </DialogHeader>
-          {preview.isPending ? (
-            <div className="grid h-36 place-items-center">
-              <Loader2 className="size-4 animate-spin" />
-            </div>
-          ) : preview.error ? (
-            <p className="text-xs text-destructive">
-              {preview.error instanceof Error
-                ? preview.error.message
-                : "Preview failed."}
-            </p>
-          ) : preview.data ? (
-            <div className="max-h-[50vh] overflow-auto rounded-lg bg-muted/30 p-3 text-xs">
-              {preview.data.warnings.map((warning) => (
-                <p
-                  key={warning}
-                  className="mb-2 text-amber-700 dark:text-amber-300"
-                >
-                  {warning}
+        {(preview) => (
+          <div className="max-h-[50vh] overflow-auto rounded-lg bg-muted/30 p-3 text-xs">
+            {preview.warnings.map((warning) => (
+              <p
+                key={warning}
+                className="mb-2 text-amber-700 dark:text-amber-300"
+              >
+                {warning}
+              </p>
+            ))}
+            {preview.stashes.map((stash) => (
+              <div key={stash.hash} className="mb-2 last:mb-0">
+                <p className="font-medium">
+                  {stash.ref} · {stash.message}
                 </p>
-              ))}
-              {preview.data.stashes.map((stash) => (
-                <div key={stash.hash} className="mb-2 last:mb-0">
-                  <p className="font-medium">
-                    {stash.ref} · {stash.message}
-                  </p>
-                  <p className="text-muted-foreground">
-                    {stash.filesChanged} files, +{stash.additions} −
-                    {stash.deletions} · {stash.hash}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {apply.error ? (
-            <p className="text-xs text-destructive">
-              {apply.error instanceof Error
-                ? apply.error.message
-                : "Stash action failed."}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={apply.isPending}
-              onClick={() => setReviewedAction(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!preview.data || apply.isPending}
-              className={
-                preview.data?.destructive &&
-                reviewedAction?.type !== "pop" &&
-                reviewedAction?.type !== "branch"
-                  ? "bg-destructive text-white hover:bg-destructive/90"
-                  : undefined
-              }
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}{" "}
-              Confirm {reviewedAction?.type}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                <p className="text-muted-foreground">
+                  {stash.filesChanged} files, +{stash.additions} −
+                  {stash.deletions} · {stash.hash}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </ReviewedOperationDialog>
     </aside>
   );
 }

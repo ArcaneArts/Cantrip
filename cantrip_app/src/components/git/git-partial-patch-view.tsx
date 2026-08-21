@@ -3,19 +3,11 @@ import type {
   GitPartialPatchOperation,
   GitPartialPatchRequest,
 } from "@cantrip/protocol";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckSquare2, Loader2, Square, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   applyProjectWorktreePartialPatch,
   previewProjectWorktreePartialPatch,
@@ -23,6 +15,10 @@ import {
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
+import {
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "./reviewed-operation";
 
 export interface SelectablePatchLine {
   index: number;
@@ -138,24 +134,18 @@ export function GitPartialPatchView({
   );
   const unavailableReason = partialPatchUnavailableReason(diff);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [reviewedRequest, setReviewedRequest] =
-    useState<GitPartialPatchRequest | null>(null);
   useEffect(() => setSelected(new Set()), [diff?.patch]);
-  const preview = useMutation({
-    mutationFn: (input: GitPartialPatchRequest) =>
+  const reviewedOperation = useReviewedOperation({
+    preview: (input: GitPartialPatchRequest) =>
       previewProjectWorktreePartialPatch(projectId, worktreeId, input),
-  });
-  const apply = useMutation({
-    mutationFn: () => {
-      if (!reviewedRequest || !preview.data)
-        throw new Error("Review a patch first.");
-      return applyProjectWorktreePartialPatch(
+    apply: ({ preview, request }) =>
+      applyProjectWorktreePartialPatch(
         projectId,
         worktreeId,
-        reviewedRequest,
-        preview.data.token,
-      );
-    },
+        request,
+        preview.token,
+      ),
+    missingReviewMessage: "Review a patch first.",
     onSuccess: (result) => {
       queryClient.setQueryData(
         ["worktree-status", projectId, worktreeId],
@@ -167,7 +157,6 @@ export function GitPartialPatchView({
       void queryClient.invalidateQueries({
         queryKey: ["worktree-history", projectId, worktreeId],
       });
-      setReviewedRequest(null);
       setSelected(new Set());
     },
   });
@@ -200,13 +189,10 @@ export function GitPartialPatchView({
       selected,
     );
     if (!nextRequest) return;
-    setReviewedRequest(nextRequest);
-    preview.reset();
-    apply.reset();
-    preview.mutate(nextRequest);
+    reviewedOperation.review(nextRequest);
   };
 
-  const operation = reviewedRequest?.operation ?? null;
+  const operation = reviewedOperation.request?.operation ?? null;
 
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
@@ -343,80 +329,42 @@ export function GitPartialPatchView({
         </Button>
       </div>
 
-      <Dialog
-        open={reviewedRequest !== null}
-        onOpenChange={(open) =>
-          !open && !apply.isPending && setReviewedRequest(null)
+      <ReviewedOperationDialog
+        operation={reviewedOperation}
+        title={
+          <span className="capitalize">{operation} selected changes?</span>
+        }
+        description="Review the exact patch. It will be rejected if the file changes before apply."
+        loadingLabel="Inspecting exact patch…"
+        loadingClassName="h-48"
+        previewErrorFallback="Patch preview failed."
+        applyErrorFallback="Patch apply failed."
+        applyLabel="Apply exact patch"
+        contentClassName="max-w-3xl"
+        bodyClassName="grid gap-3"
+        applyClassName={
+          operation === "discard"
+            ? "bg-destructive text-white hover:bg-destructive/90"
+            : undefined
         }
       >
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle className="capitalize">
-              {operation} selected changes?
-            </DialogTitle>
-            <DialogDescription>
-              Review the exact patch. It will be rejected if the file changes
-              before apply.
-            </DialogDescription>
-          </DialogHeader>
-          {preview.isPending ? (
-            <div className="grid h-48 place-items-center">
-              <Loader2 className="size-5 animate-spin" />
-            </div>
-          ) : preview.error ? (
-            <p className="text-sm text-destructive">
-              {preview.error instanceof Error
-                ? preview.error.message
-                : "Patch preview failed."}
-            </p>
-          ) : preview.data ? (
-            <div className="flex h-[55vh] min-h-72 overflow-hidden rounded-lg border">
-              <GitPatchView
-                error={null}
-                loading={false}
-                newLabel="Result"
-                oldLabel="Before"
-                onClose={() => undefined}
-                patch={preview.data.patch}
-                path={preview.data.path}
-                showClose={false}
-                subtitle={`${preview.data.selectedHunks} hunk${preview.data.selectedHunks === 1 ? "" : "s"} · ${preview.data.selectedLines} changed line${preview.data.selectedLines === 1 ? "" : "s"}`}
-                truncated={false}
-              />
-            </div>
-          ) : null}
-          {apply.error ? (
-            <p className="text-sm text-destructive">
-              {apply.error instanceof Error
-                ? apply.error.message
-                : "Patch apply failed."}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={apply.isPending}
-              onClick={() => setReviewedRequest(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className={
-                operation === "discard"
-                  ? "bg-destructive text-white hover:bg-destructive/90"
-                  : undefined
-              }
-              disabled={!preview.data || apply.isPending}
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
-              Apply exact patch
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        {(preview) => (
+          <div className="flex h-[55vh] min-h-72 overflow-hidden rounded-lg border">
+            <GitPatchView
+              error={null}
+              loading={false}
+              newLabel="Result"
+              oldLabel="Before"
+              onClose={() => undefined}
+              patch={preview.patch}
+              path={preview.path}
+              showClose={false}
+              subtitle={`${preview.selectedHunks} hunk${preview.selectedHunks === 1 ? "" : "s"} · ${preview.selectedLines} changed line${preview.selectedLines === 1 ? "" : "s"}`}
+              truncated={false}
+            />
+          </div>
+        )}
+      </ReviewedOperationDialog>
     </section>
   );
 }

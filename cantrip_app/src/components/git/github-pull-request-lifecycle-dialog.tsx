@@ -3,7 +3,6 @@ import type {
   GithubPullRequestLifecycleAction,
   GithubPullRequestLifecyclePreview,
 } from "@cantrip/protocol";
-import { useMutation } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -22,6 +21,8 @@ import {
   previewGithubPullRequestLifecycle,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+
+import { useReviewedOperation } from "./reviewed-operation";
 
 export function pullRequestLifecycleLabel(
   action: GithubPullRequestLifecycleAction,
@@ -85,17 +86,15 @@ export function GithubPullRequestLifecycleDialog({
         : initialAction,
     [commitMessage, commitTitle, initialAction, method],
   );
-  const preview = useMutation({
-    mutationFn: (input: GithubPullRequestLifecycleAction) =>
+  const reviewedOperation = useReviewedOperation({
+    preview: (input: GithubPullRequestLifecycleAction) =>
       previewGithubPullRequestLifecycle(
         projectId,
         worktreeId,
         pullRequestNumber,
         input,
       ),
-  });
-  const apply = useMutation({
-    mutationFn: async (review: GithubPullRequestLifecyclePreview) =>
+    apply: ({ preview: review }) =>
       applyGithubPullRequestLifecycle(
         projectId,
         worktreeId,
@@ -111,20 +110,28 @@ export function GithubPullRequestLifecycleDialog({
       onOpenChange(false);
     },
   });
+  const preview = reviewedOperation.preview;
+  const apply = reviewedOperation.apply;
   useEffect(() => {
     if (!initialAction) return;
     setMethod(initialAction.type === "merge" ? initialAction.method : "squash");
     setCommitTitle("");
     setCommitMessage("");
     setConfirmation("");
-    preview.reset();
-    apply.reset();
+    reviewedOperation.reset();
   }, [initialAction]);
   const reviewed = preview.data;
-  const pending = preview.isPending || apply.isPending;
+  const pending = reviewedOperation.busy;
 
   return (
-    <Dialog open={initialAction !== null} onOpenChange={onOpenChange}>
+    <Dialog
+      open={initialAction !== null}
+      onOpenChange={(open) => {
+        if (!open && apply.isPending) return;
+        if (!open) reviewedOperation.reset();
+        onOpenChange(open);
+      }}
+    >
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
@@ -186,7 +193,7 @@ export function GithubPullRequestLifecycleDialog({
               </Button>
               <Button
                 disabled={pending || !action}
-                onClick={() => action && preview.mutate(action)}
+                onClick={() => action && reviewedOperation.review(action)}
               >
                 {preview.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
@@ -243,7 +250,7 @@ export function GithubPullRequestLifecycleDialog({
                 disabled={pending}
                 onClick={() => {
                   setConfirmation("");
-                  preview.reset();
+                  reviewedOperation.reset();
                 }}
               >
                 Back
@@ -253,7 +260,7 @@ export function GithubPullRequestLifecycleDialog({
                   pending ||
                   !lifecycleConfirmationMatches(reviewed, confirmation)
                 }
-                onClick={() => apply.mutate(reviewed)}
+                onClick={reviewedOperation.applyReviewed}
               >
                 {apply.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
