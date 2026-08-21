@@ -11,7 +11,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::{App, AppHandle, Manager, State};
-use url::Url;
+use url::{Host, Url};
 use uuid::Uuid;
 
 use crate::{node_service_command, process_environment::configure_desktop_child, terminate_child};
@@ -63,6 +63,7 @@ enum WorkerLaunch {
 }
 
 pub struct DesktopWorkers {
+    active_local_server_url: String,
     children: Mutex<HashMap<String, Child>>,
     data_directory: PathBuf,
     launch: WorkerLaunch,
@@ -118,6 +119,19 @@ fn valid_desktop_worker_id(value: &str) -> bool {
         .strip_prefix("desktop-")
         .and_then(|value| Uuid::parse_str(value).ok())
         .is_some()
+}
+
+fn should_autostart_profile(profile_server_url: &str, active_local_server_url: &str) -> bool {
+    let Ok(profile_server) = Url::parse(profile_server_url) else {
+        return false;
+    };
+    let loopback = match profile_server.host() {
+        Some(Host::Ipv4(address)) => address.is_loopback(),
+        Some(Host::Ipv6(address)) => address.is_loopback(),
+        Some(Host::Domain(domain)) => domain.eq_ignore_ascii_case("localhost"),
+        None => false,
+    };
+    !loopback || profile_server_url == active_local_server_url
 }
 
 fn open_log(path: &Path) -> Result<File, String> {
@@ -292,6 +306,10 @@ impl DesktopWorkers {
         self.profile_directory(worker_id)
             .join("worker-credential.json")
             .is_file()
+    }
+
+    fn should_autostart(&self, profile: &DesktopWorkerProfile) -> bool {
+        should_autostart_profile(&profile.server_url, &self.active_local_server_url)
     }
 
     pub(crate) fn resolve_project_directory(
@@ -566,7 +584,7 @@ pub(crate) fn resolve_project_directory_under_root(
     Some(project_directory)
 }
 
-pub fn build(app: &App) -> Result<DesktopWorkers, String> {
+pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers, String> {
     let root = app
         .path()
         .app_data_dir()
@@ -611,6 +629,7 @@ pub fn build(app: &App) -> Result<DesktopWorkers, String> {
         }
     };
     let manager = DesktopWorkers {
+        active_local_server_url: normalize_server_url(active_local_server_url)?,
         children: Mutex::new(HashMap::new()),
         data_directory,
         launch,
@@ -624,7 +643,7 @@ pub fn build(app: &App) -> Result<DesktopWorkers, String> {
         }
     }
     for profile in profiles {
-        if manager.has_stored_credential(&profile.worker_id) {
+        if manager.should_autostart(&profile) && manager.has_stored_credential(&profile.worker_id) {
             if let Err(_error) = manager.ensure_running(&profile, None, None) {
                 app.state::<crate::local_logs::LocalServiceLogs>()
                     .runtime_event(
@@ -655,7 +674,7 @@ pub fn list_desktop_workers(
         .map_err(|_| "The desktop worker registry is unavailable.".to_string())?
         .clone();
     for profile in &profiles {
-        if workers.has_stored_credential(&profile.worker_id) {
+        if workers.should_autostart(profile) && workers.has_stored_credential(&profile.worker_id) {
             if let Err(_error) = workers.ensure_running(profile, None, None) {
                 app.state::<crate::local_logs::LocalServiceLogs>()
                     .runtime_event(
@@ -854,12 +873,13 @@ mod tests {
     use super::{
         normalize_server_url, read_retained_profiles, recover_profiles,
         replacement_credential_required, replacement_profile, repository_count,
-        sort_worker_candidates, DesktopWorkerCandidate, DesktopWorkerProfile,
-        DesktopWorkerProjectStorage, DesktopWorkers, WorkerLaunch,
+        should_autostart_profile, sort_worker_candidates, DesktopWorkerCandidate,
+        DesktopWorkerProfile, DesktopWorkerProjectStorage, DesktopWorkers, WorkerLaunch,
     };
 
     fn test_manager(root: &Path) -> DesktopWorkers {
         DesktopWorkers {
+            active_local_server_url: "http://127.0.0.1:4310".into(),
             children: Mutex::new(HashMap::new()),
             data_directory: root.join("profiles"),
             launch: WorkerLaunch::Development {
@@ -870,6 +890,22 @@ mod tests {
             profiles: Mutex::new(Vec::new()),
             profiles_path: root.join("desktop-workers.json"),
         }
+    }
+
+    #[test]
+    fn skips_orphaned_loopback_profiles_during_autostart() {
+        assert!(!should_autostart_profile(
+            "http://127.0.0.1:4320",
+            "http://127.0.0.1:4310",
+        ));
+        assert!(should_autostart_profile(
+            "http://127.0.0.1:4310",
+            "http://127.0.0.1:4310",
+        ));
+        assert!(should_autostart_profile(
+            "https://winterhold.cantrip.art",
+            "http://127.0.0.1:4310",
+        ));
     }
 
     fn local_project_manager(root: &Path, worker_id: &str) -> DesktopWorkers {

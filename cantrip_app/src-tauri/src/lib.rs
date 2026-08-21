@@ -949,20 +949,21 @@ pub fn run() {
                 );
                 std::io::Error::other(error)
             })?;
-            let desktop_workers = desktop_worker::build(app).map_err(|error| {
-                app.state::<local_logs::LocalServiceLogs>().runtime_event(
-                    "error",
-                    "Desktop worker manager startup failed",
-                    Some(json!({
-                        "event": "desktop.worker-manager.failed",
-                        "operation": "bootstrap-worker-manager",
-                        "reasonCode": "worker-manager-startup-failed",
-                        "status": "failed",
-                        "subsystem": "desktop-worker"
-                    })),
-                );
-                std::io::Error::other(error)
-            })?;
+            let desktop_workers =
+                desktop_worker::build(app, &runtime.server_url).map_err(|error| {
+                    app.state::<local_logs::LocalServiceLogs>().runtime_event(
+                        "error",
+                        "Desktop worker manager startup failed",
+                        Some(json!({
+                            "event": "desktop.worker-manager.failed",
+                            "operation": "bootstrap-worker-manager",
+                            "reasonCode": "worker-manager-startup-failed",
+                            "status": "failed",
+                            "subsystem": "desktop-worker"
+                        })),
+                    );
+                    std::io::Error::other(error)
+                })?;
             app.state::<local_logs::LocalServiceLogs>().runtime_event(
                 "info",
                 "Cantrip desktop runtime initialized",

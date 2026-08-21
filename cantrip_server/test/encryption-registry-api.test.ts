@@ -294,29 +294,38 @@ describe("opaque encryption registry", () => {
         ...publicKey,
         value: Buffer.alloc(65, 1).toString("base64url"),
       };
-      const replacementResponse = await app.inject({
-        method: "POST",
-        url: "/api/internal/workers/encryption/bootstrap",
-        headers: {
-          authorization: `Bearer ${config.workerToken}`,
-          "x-cantrip-worker-id": workerId,
-        },
-        payload: {
-          principalId: replacementPrincipalId,
-          publicKey: replacementPublicKey,
-        },
-      });
-      expect(replacementResponse.statusCode).toBe(200);
-      expect(
-        workerEncryptionBootstrapResultSchema.parse(replacementResponse.json()),
-      ).toMatchObject({
-        principal: {
-          id: replacementPrincipalId,
-          state: "pending",
-          workerId,
-        },
-        grants: [],
-      });
+      const replacementRequest = () =>
+        app.inject({
+          method: "POST",
+          url: "/api/internal/workers/encryption/bootstrap",
+          headers: {
+            authorization: `Bearer ${config.workerToken}`,
+            "x-cantrip-worker-id": workerId,
+          },
+          payload: {
+            principalId: replacementPrincipalId,
+            publicKey: replacementPublicKey,
+          },
+        });
+      const replacementResponses = await Promise.all([
+        replacementRequest(),
+        replacementRequest(),
+      ]);
+      for (const replacementResponse of replacementResponses) {
+        expect(replacementResponse.statusCode).toBe(200);
+        expect(
+          workerEncryptionBootstrapResultSchema.parse(
+            replacementResponse.json(),
+          ),
+        ).toMatchObject({
+          principal: {
+            id: replacementPrincipalId,
+            state: "pending",
+            workerId,
+          },
+          grants: [],
+        });
+      }
 
       const principals = encryptionPrincipalListSchema.parse(
         (
