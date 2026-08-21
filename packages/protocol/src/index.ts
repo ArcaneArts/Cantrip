@@ -6966,7 +6966,43 @@ const cantripCliArgumentsSchema = z
     message: "Cantrip CLI commands accept at most 20 arguments.",
   });
 
-export const cantripCliCommandResultSchema = z.object({
+export const cantripAgentOperationNameSchema = z.enum([
+  "context.get",
+  "policy.list",
+  "policy.read",
+  "target.list",
+  "target.inspect",
+  "worktree.list",
+  "worktree.status",
+  "worktree.create",
+  "worktree.acquire",
+  "worktree.switch",
+  "worktree.release",
+  "worktree.remove",
+  "explorer.list",
+  "explorer.read",
+  "explorer.write",
+  "terminal.read",
+  "terminal.send",
+  "terminal.restart",
+  "browser.services",
+  "browser.open",
+]);
+
+export const cantripAgentOperationArgumentsSchema = z
+  .record(z.string().min(1).max(100), z.unknown())
+  .refine((arguments_) => Object.keys(arguments_).length <= 32, {
+    message: "Cantrip agent operations accept at most 32 arguments.",
+  });
+
+export const cantripAgentOperationRequestSchema = z
+  .object({
+    operation: cantripAgentOperationNameSchema,
+    arguments: cantripAgentOperationArgumentsSchema,
+  })
+  .strict();
+
+export const cantripAgentOperationResultSchema = z.object({
   summary: z.string().min(1).max(2_000),
   target: executionTargetSchema.nullable().default(null),
   worktreeId: z.string().min(1).nullable().default(null),
@@ -6974,6 +7010,10 @@ export const cantripCliCommandResultSchema = z.object({
   mutated: z.boolean().default(false),
   data: z.unknown().optional(),
 });
+
+// The human CLI is a compatibility adapter over the same operation result
+// contract used by worker-owned agent transports.
+export const cantripCliCommandResultSchema = cantripAgentOperationResultSchema;
 
 export const cantripCliCommandNameSchema = z.enum([
   "status",
@@ -12972,6 +13012,15 @@ export type AgentInteractionResolutionWireCreate = z.infer<
 >;
 export type AgentInteractionRequestQuery = z.infer<
   typeof agentInteractionRequestQuerySchema
+>;
+export type CantripAgentOperationName = z.infer<
+  typeof cantripAgentOperationNameSchema
+>;
+export type CantripAgentOperationRequest = z.infer<
+  typeof cantripAgentOperationRequestSchema
+>;
+export type CantripAgentOperationResult = z.infer<
+  typeof cantripAgentOperationResultSchema
 >;
 export type CantripCliCommandName = z.infer<typeof cantripCliCommandNameSchema>;
 export type CantripCliContext = z.infer<typeof cantripCliContextSchema>;
