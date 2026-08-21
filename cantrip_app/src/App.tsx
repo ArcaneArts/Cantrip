@@ -718,6 +718,21 @@ function RepositoryImporter({
           <div className="grid flex-1 place-items-center text-muted-foreground">
             <Loader2 className="size-5 animate-spin" />
           </div>
+        ) : github.isError ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Unable to reach GitHub through the worker</CardTitle>
+              <CardDescription className="max-w-xl leading-6 text-destructive">
+                {errorText(github.error)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={() => void github.refetch()}>
+                <RefreshCw className="size-4" />
+                Try again
+              </Button>
+            </CardContent>
+          </Card>
         ) : !github.data?.authenticated ? (
           <Card>
             <CardHeader>

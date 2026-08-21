@@ -603,7 +603,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   );
   await workerEncryption
     .refresh({ credential: config.token })
-    .catch(() => undefined);
+    .catch((error) => {
+      workerLogger.rateLimited(
+        `worker-encryption-refresh-failed:${config.workerId}`,
+        "warn",
+        "Worker protected server connection is not ready",
+        {
+          event: "worker.encryption.refresh-failed",
+          subsystem: "worker-encryption",
+          operation: "refresh-grants",
+          reasonCode: "request-failed",
+          status: "retrying",
+          workerId: config.workerId,
+          error: workerLogError(error),
+        },
+      );
+    });
   cliBroker.setSurfacePrivateStateService(workerEncryption);
   cliBroker.setPolicyEncryptionService(workerEncryption);
   browserAdapter.setSurfacePrivateStateService(workerEncryption);
@@ -3535,7 +3550,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     try {
       await workerEncryption
         .refresh({ credential: config.token })
-        .catch(() => undefined);
+        .catch((error) => {
+          workerLogger.rateLimited(
+            `worker-encryption-refresh-failed:${config.workerId}`,
+            "warn",
+            "Worker protected server connection is not ready",
+            {
+              event: "worker.encryption.refresh-failed",
+              subsystem: "worker-encryption",
+              operation: "refresh-grants",
+              reasonCode: "request-failed",
+              status: "retrying",
+              workerId: config.workerId,
+              error: workerLogError(error),
+            },
+          );
+        });
       await sendHeartbeat(
         config,
         createHeartbeat(

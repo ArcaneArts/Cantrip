@@ -24261,6 +24261,9 @@ export async function buildApp({
             label: "Cantrip worker",
             publicKey: input.data.publicKey,
           },
+          workerAuth.development
+            ? { developmentBootstrapWorkerId: workerId }
+            : undefined,
         );
       }
       if (
