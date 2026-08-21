@@ -58,8 +58,14 @@ export interface CodeGraphRuntimeStatus {
 export interface CodeGraphTarget {
   archiveKind: CodeGraphArchiveKind;
   assetName: string;
-  executableName: "codegraph" | "codegraph.exe";
+  executableName: "codegraph" | "codegraph.cmd";
   target: string;
+}
+
+export interface CodeGraphProcessInvocation {
+  arguments: string[];
+  command: string;
+  requiredFiles: string[];
 }
 
 interface ReleaseAsset {
@@ -157,8 +163,36 @@ export function codeGraphTargetFor(
   return {
     archiveKind,
     assetName: `codegraph-${platformName}-${architectureName}.${archiveKind}`,
-    executableName: platformName === "win32" ? "codegraph.exe" : "codegraph",
+    executableName: platformName === "win32" ? "codegraph.cmd" : "codegraph",
     target: `${platformName}-${architectureName}`,
+  };
+}
+
+export function codeGraphProcessInvocationFor(
+  executable: string,
+  platform: NodeJS.Platform,
+): CodeGraphProcessInvocation {
+  if (platform !== "win32") {
+    return { command: executable, arguments: [], requiredFiles: [executable] };
+  }
+  const pathApi = path.win32;
+  const packageDirectory = pathApi.dirname(pathApi.dirname(executable));
+  const command = pathApi.join(packageDirectory, "node.exe");
+  const script = pathApi.join(
+    packageDirectory,
+    "lib",
+    "dist",
+    "bin",
+    "codegraph.js",
+  );
+  return {
+    command,
+    arguments: [
+      "--liftoff-only",
+      "--disable-warning=ExperimentalWarning",
+      script,
+    ],
+    requiredFiles: [executable, command, script],
   };
 }
 
@@ -237,7 +271,18 @@ if (!executable.startsWith(versionsRoot + path.sep)) {
   process.exit(1);
 }
 const arguments_ = process.argv.length > 2 ? process.argv.slice(2) : ["status"];
-const result = spawnSync(executable, arguments_, {
+let invocationCommand = executable;
+let prefixArguments = [];
+if (process.platform === "win32" && path.basename(executable).toLowerCase() === "codegraph.cmd") {
+  const packageDirectory = path.dirname(path.dirname(executable));
+  invocationCommand = path.join(packageDirectory, "node.exe");
+  prefixArguments = [
+    "--liftoff-only",
+    "--disable-warning=ExperimentalWarning",
+    path.join(packageDirectory, "lib", "dist", "bin", "codegraph.js"),
+  ];
+}
+const result = spawnSync(invocationCommand, [...prefixArguments, ...arguments_], {
   env: {
     ...process.env,
     CODEGRAPH_DIR: ".codegraph-cantrip",
@@ -299,36 +344,51 @@ async function runProcess(
 }
 
 async function verifyMcpHandshake(
-  executable: string,
+  invocation: CodeGraphProcessInvocation,
   projectRoot: string,
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(executable, ["serve", "--mcp", "--path", projectRoot], {
-      cwd: projectRoot,
-      env: {
-        ...process.env,
-        ...CODEGRAPH_ENVIRONMENT,
-        CODEGRAPH_DIR: ".codegraph-cantrip",
-        CODEGRAPH_NO_DAEMON: "1",
+    const child = spawn(
+      invocation.command,
+      [...invocation.arguments, "serve", "--mcp", "--path", projectRoot],
+      {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          ...CODEGRAPH_ENVIRONMENT,
+          CODEGRAPH_DIR: ".codegraph-cantrip",
+          CODEGRAPH_NO_DAEMON: "1",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
       },
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    );
     let settled = false;
+    let stopping = false;
+    let stoppingError: Error | undefined;
+    let forceKill: ReturnType<typeof setTimeout> | null = null;
     let stdout = "";
     let stderr = "";
-    const finish = (error?: Error) => {
+    const settle = (error?: Error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 1_000).unref();
+      if (forceKill) clearTimeout(forceKill);
       if (error) reject(error);
       else resolve();
     };
+    const stop = (error?: Error) => {
+      if (settled || stopping) return;
+      stopping = true;
+      stoppingError = error;
+      clearTimeout(timeout);
+      child.kill("SIGTERM");
+      forceKill = setTimeout(() => child.kill("SIGKILL"), 1_000);
+      forceKill.unref();
+    };
     const timeout = setTimeout(
       () =>
-        finish(
+        stop(
           new Error(
             `CodeGraph MCP initialize timed out after ${MCP_HANDSHAKE_TIMEOUT_MS}ms.`,
           ),
@@ -360,7 +420,7 @@ async function verifyMcpHandshake(
             response.result?.serverInfo?.name === "codegraph" &&
             response.result.capabilities?.tools !== undefined
           ) {
-            finish();
+            stop();
             return;
           }
         } catch {
@@ -368,15 +428,17 @@ async function verifyMcpHandshake(
         }
       }
     });
-    child.once("error", (error) => finish(error));
-    child.once("exit", (code) => {
-      if (!settled) {
-        finish(
-          new Error(
-            `CodeGraph MCP exited before initialize completed (${code ?? "signal"}): ${stderr.trim() || "no diagnostic"}`,
-          ),
-        );
+    child.once("error", (error) => settle(error));
+    child.once("close", (code) => {
+      if (stopping) {
+        settle(stoppingError);
+        return;
       }
+      settle(
+        new Error(
+          `CodeGraph MCP exited before initialize completed (${code ?? "signal"}): ${stderr.trim() || "no diagnostic"}`,
+        ),
+      );
     });
     child.stdin.write(
       `${JSON.stringify({
@@ -863,7 +925,10 @@ export class CodeGraphRuntimeManager {
       await this.#verifyVersion(stagedExecutable, release.version);
       await this.#disableTelemetry(stagedExecutable);
       const stagedHealthRoot = await mkdtemp(path.join(staging, "mcp-health-"));
-      await verifyMcpHandshake(stagedExecutable, stagedHealthRoot);
+      await verifyMcpHandshake(
+        codeGraphProcessInvocationFor(stagedExecutable, this.#platform),
+        stagedHealthRoot,
+      );
       const packageBase = `${release.version}-${archiveSha256.slice(0, 12)}`;
       let packageDirectory = packageBase;
       try {
@@ -887,7 +952,10 @@ export class CodeGraphRuntimeManager {
       const promotedHealthRoot = await mkdtemp(
         path.join(staging, "promoted-mcp-health-"),
       );
-      await verifyMcpHandshake(promotedExecutable, promotedHealthRoot);
+      await verifyMcpHandshake(
+        codeGraphProcessInvocationFor(promotedExecutable, this.#platform),
+        promotedHealthRoot,
+      );
       return {
         schemaVersion: 1,
         archiveSha256,
@@ -1025,8 +1093,15 @@ export class CodeGraphRuntimeManager {
     executable: string,
     expectedVersion: string,
   ): Promise<void> {
-    await access(executable);
-    const result = await runProcess(executable, ["--version"]);
+    const invocation = codeGraphProcessInvocationFor(
+      executable,
+      this.#platform,
+    );
+    await Promise.all(invocation.requiredFiles.map((file) => access(file)));
+    const result = await runProcess(invocation.command, [
+      ...invocation.arguments,
+      "--version",
+    ]);
     const reported = safeVersion(`${result.stdout}\n${result.stderr}`.trim());
     if (result.code !== 0 || reported !== expectedVersion) {
       throw new Error(
@@ -1036,7 +1111,15 @@ export class CodeGraphRuntimeManager {
   }
 
   async #disableTelemetry(executable: string): Promise<void> {
-    const result = await runProcess(executable, ["telemetry", "off"]);
+    const invocation = codeGraphProcessInvocationFor(
+      executable,
+      this.#platform,
+    );
+    const result = await runProcess(invocation.command, [
+      ...invocation.arguments,
+      "telemetry",
+      "off",
+    ]);
     if (result.code !== 0) {
       throw new Error(
         `codegraph telemetry off failed: ${(result.stderr || result.stdout).trim() || `exit ${result.code}`}`,
