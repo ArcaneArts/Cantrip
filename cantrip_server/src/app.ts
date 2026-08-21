@@ -918,7 +918,18 @@ type ChatLiveResource = Extract<
   | "task"
 >;
 
-function mutationLiveResources(route: string): AppLiveResource[] {
+export function mutationLiveResources(
+  route: string,
+  repositoryAccess: "read" | "write" = "write",
+): AppLiveResource[] {
+  if (
+    repositoryAccess === "read" &&
+    (route ===
+      "/api/projects/:projectId/worktrees/:worktreeId/repository-operation" ||
+      route === "/api/workers/:workerId/repository-operation")
+  ) {
+    return [];
+  }
   if (
     route === "/api/projects/:projectId/tasks" ||
     route.startsWith("/api/tasks/:chatId/")
@@ -3154,6 +3165,7 @@ export async function buildApp({
       limiter = websocketRateLimiter;
       category = "websocket-handshake";
     }
+    if (category === "api" && config.deploymentMode === "local") return;
     const retryAfter = limiter.consume(key);
     if (retryAfter === null) {
       if (category === "upload") {
@@ -3385,7 +3397,14 @@ export async function buildApp({
       return;
     }
     const route = request.routeOptions.url ?? "";
-    const resources = mutationLiveResources(route);
+    const repositoryAccess =
+      request.body !== null &&
+      typeof request.body === "object" &&
+      "access" in request.body &&
+      request.body.access === "read"
+        ? "read"
+        : "write";
+    const resources = mutationLiveResources(route, repositoryAccess);
     const chatResources = mutationChatLiveResources(route);
     if (resources.length === 0 && chatResources.length === 0) return;
     const params = request.params as Record<string, unknown>;
