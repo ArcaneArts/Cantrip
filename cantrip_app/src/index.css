@@ -422,7 +422,8 @@
     textarea,
     select,
     [contenteditable]:not([contenteditable="false"]),
-    [role="textbox"]
+    [role="textbox"],
+    [data-slot="chat-composer-highlight"]
   ) {
     font-size: 16px;
   }
