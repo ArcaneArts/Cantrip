@@ -2987,15 +2987,30 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
         return runTurn(command.prompt!, command.resultMode);
       }
-      case "workflow.node.execute":
-        return executeProtectedWorkflowNode({
+      case "workflow.node.execute": {
+        let protectedEventQueue = Promise.resolve();
+        let protectedEventFailure: unknown = null;
+        const queueProtectedEvent = (
+          create: () => WorkerEvent | Promise<WorkerEvent>,
+        ): void => {
+          protectedEventQueue = protectedEventQueue
+            .then(async () => {
+              if (protectedEventFailure) return;
+              emit(await create());
+            })
+            .catch((error: unknown) => {
+              protectedEventFailure ??= error;
+            });
+        };
+        const result = await executeProtectedWorkflowNode({
           command,
           service: workerEncryption,
-          execute: async ({ executionKey, threadId, ...protectedOptions }) =>
-            runtimeFor({
+          execute: async ({ executionKey, threadId, ...protectedOptions }) => {
+            const runtime = runtimeFor({
               model: command.model,
               provider: provider(),
-            }).runWorkflowNode({
+            });
+            const execution = await runtime.runWorkflowNode({
               workflowRunId: command.workflowRunId,
               runNodeId: command.runNodeId,
               attemptId: command.attemptId,
@@ -3018,8 +3033,47 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 command.cwd,
                 command.mcpServers,
               ),
-            }),
+              onInteractionRequest: (request) =>
+                queueProtectedEvent(async () => {
+                  try {
+                    return {
+                      type: "workflow.node.interaction.requested.protected",
+                      attemptId: command.attemptId,
+                      request: await protectAgentInteractionRequest({
+                        request,
+                        service: workerEncryption,
+                      }),
+                    };
+                  } catch (error) {
+                    await runtime.cancelAgentInteraction(
+                      request.requestKey,
+                      "Cantrip could not encrypt the workflow interaction safely.",
+                    );
+                    throw error;
+                  }
+                }),
+              onInteractionCleared: (requestKey) =>
+                queueProtectedEvent(() => ({
+                  type: "workflow.node.interaction.cleared",
+                  attemptId: command.attemptId,
+                  requestKey,
+                })),
+              onInteractionExpired: (requestKey) =>
+                queueProtectedEvent(() => ({
+                  type: "workflow.node.interaction.expired",
+                  attemptId: command.attemptId,
+                  requestKey,
+                })),
+            });
+            await protectedEventQueue;
+            if (protectedEventFailure) throw protectedEventFailure;
+            return execution;
+          },
         });
+        await protectedEventQueue;
+        if (protectedEventFailure) throw protectedEventFailure;
+        return result;
+      }
       case "workflow.definition.generate":
         return runtimeFor({
           model: command.model,

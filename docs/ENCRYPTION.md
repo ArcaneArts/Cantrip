@@ -63,12 +63,13 @@ Some data is already protected, but it is not end-to-end encrypted:
 - Workflow definition slugs, names, descriptions, and provenance plus revision
   provenance, content hashes, graphs, node names/prompts/configuration, edge
   predicates, schemas, defaults, and permission requirements are
-  client-encrypted under `workflow-content`. Manual preauthorized agent DAG
+  client-encrypted under `workflow-content`. Manual agent DAG
   inputs/results, node/attempt payloads, and private worker errors now use the
   same client/worker-only boundary. Map, pipeline, reduce, repeat-until,
   verification, and condition semantics now execute wholly on an authorized
-  worker. Gates, interactions, triggers, deliveries, and content-bearing events
-  still require the remaining worker-runtime cutover.
+  worker. Live workflow agent interactions reuse the independently scoped
+  `interaction-content` key end to end. Gates, triggers, deliveries, and other
+  content-bearing events still require the remaining worker-runtime cutover.
 - Repository and Git operations, including Git-agent tasks, locally gathered
   evidence, and generated drafts, use protected client-to-worker envelopes or
   worker-local opaque routing handles.
@@ -422,7 +423,7 @@ database-compromise guarantee is described.
 | Queued prompts                                                                                                              | Client- or worker-sealed `chat-content`, including the future row-bound message; worker opens only when dispatching or steering                                                           | E2EE complete                                    | Excellent            | Medium                                                     | Server cannot dispatch prompt content without an authorized endpoint                                                              |
 | Ordinary chat plan snapshots and questions                                                                                  | Worker-sealed `chat-content` state; client-only presentation; answers use encrypted interaction responses                                                                                 | E2EE complete                                    | Implemented          | Medium                                                     | Server cannot inspect plan prose, questions, or answers                                                                           |
 | Attachment bytes, filenames, MIME, previews, digests, and errors                                                            | Worker-local bytes; row-bound metadata envelopes; operation/sequence-bound ciphertext chunks across upload, download, import, and relocation relays                                       | E2EE complete                                    | Excellent            | Medium                                                     | Server-side previews, malware scanning, content deduplication                                                                     |
-| Interaction and approval request details and responses                                                                      | Ordinary chat requests/responses use row-bound `interaction-content`; workflow-node interactions retain a temporary plaintext path                                                        | Ordinary chat E2EE; workflow closure pending     | Excellent            | Medium                                                     | Server can route ordinary approvals but cannot display or validate their semantics                                                |
+| Interaction and approval request details and responses                                                                      | Ordinary chat and live workflow-agent requests/responses use row-bound `interaction-content`; worker/client endpoints alone open semantic content                                         | E2EE complete                                    | Excellent            | Medium                                                     | Server can route approvals but cannot display or validate their semantics                                                         |
 | Surface private-state contracts, endpoint codecs, and scoped worker grants                                                  | Bounded `surface-private-state` envelopes; independently grantable from display labels                                                                                                    | E2EE closure complete and statically enforced    | Required             | Medium                                                     | No server decryption capability is introduced                                                                                     |
 | Terminal working directories and service commands                                                                           | AES-256-GCM E2EE; client-created row-bound state; worker-only execution                                                                                                                   | E2EE complete                                    | Excellent            | Medium                                                     | Server cannot inspect or synthesize launch paths or service commands                                                              |
 | Explorer selected path                                                                                                      | AES-256-GCM E2EE; client-created row-bound state                                                                                                                                          | E2EE complete                                    | Excellent            | Low-Medium                                                 | Server cannot restore or inspect the selected entry                                                                               |
@@ -444,7 +445,7 @@ database-compromise guarantee is described.
 | Workflow revision graphs, node names/prompts/configuration, edge predicates, schemas, defaults, and permission requirements | One row-bound opaque revision definition plus a minimized public scheduling manifest of random IDs, topology, primitive type, read/write mode, and routing IDs                            | E2EE complete; noninteractive execution enabled  | Implemented          | High                                                       | Server cannot inspect or validate authoring semantics; it retains only the topology and classifications needed by the scheduler   |
 | Workflow run inputs/results, noninteractive node inputs/results, attempts, and private worker errors                        | Client-sealed run input; worker-opened definitions and predecessor outputs; separately row-bound run/node/attempt result and error envelopes                                              | Noninteractive runtime E2EE complete             | Implemented          | Very high                                                  | Server schedules preauthorized DAGs but cannot compose prompts, apply mappings, inspect results, or read private failures         |
 | Workflow map, pipeline, reduce, repeat-until, verify, and condition semantics                                               | Authorized-worker-only collection expansion, iteration, predicate evaluation, and branch selection; one opaque top-level result with public aggregate usage and logical execution count   | E2EE complete                                    | Implemented          | Very high                                                  | Server sees random-ID topology, selected branch, aggregate usage/counts, and lifecycle, but never collection values or predicates |
-| Workflow interactions, gates, content-bearing events, triggers, and deliveries                                              | Interactive and unattended ingress remain fail-closed; legacy runtime rows receive no new protected-path plaintext                                                                        | Protected runtime closure pending                | Good when split      | Very high                                                  | Encrypted request/response and trigger/delivery relays must still move to authorized clients and workers                          |
+| Workflow gates, content-bearing events, triggers, and deliveries                                                            | Gate and unattended ingress remain fail-closed; legacy runtime rows receive no new protected-path plaintext                                                                               | Protected runtime closure pending                | Good when split      | Very high                                                  | Encrypted gate decisions and trigger/delivery relays must still move to authorized clients and workers                            |
 | Repository identities and names, remotes, paths, branch names, and Git output                                               | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts | E2EE complete                                    | Implemented          | High                                                       | Repository/Git content, identity, paths, branches, status, errors, GitHub catalogs, and Git-agent prose; equality leakage remains |
 | Token usage, quotas, and model-behavior analytics                                                                           | Plaintext/queryable                                                                                                                                                                       | Planned minimization                             | Partial              | Medium-High                                                | Fully encrypting numbers removes server dashboards, budgets, and historical analysis                                              |
 | Diagnostic logs and audit metadata                                                                                          | Redacted but server-readable                                                                                                                                                              | Planned minimization                             | Partial              | Medium                                                     | Fully encrypted logs prevent server-side operations and security investigation                                                    |
@@ -571,17 +572,20 @@ Queued prompts carry a separately row-bound prompt envelope plus the already
 sealed future message, so dispatch and steering do not require server
 decryption or re-encryption.
 
-Ordinary chat approval and elicitation requests use the separate
-`interaction-content` grant in the same passwordless post-login flow. The
-worker seals command details, paths, permission requests, questions, and MCP
-elicitation data before emitting them. The server persists only the public
+Ordinary chat and live workflow-agent approval and elicitation requests use the
+separate `interaction-content` grant in the same passwordless post-login flow.
+The worker seals command details, paths, permission requests, questions, and
+MCP elicitation data before emitting them. The server persists only the public
 interaction kind, routing provenance, lifecycle state, and opaque request and
 response envelopes. The client opens the request for presentation and seals
 the user's response; the worker opens that response immediately before handing
 it to the runtime. The server never receives semantic details or secret
-answers in plaintext. Workflow-node interactions still use the visible
-compatibility shape and remain tracked under the workflow-content rollout, so
-the ledger row is not yet globally `E2EE complete`.
+answers in plaintext. For workflow runs, the server additionally retains only
+the random run/node IDs and thread/turn attribution needed to route the pending
+request. A visible workflow interaction event or response fails closed; the
+workflow center queries by public run ID, opens requests client-side, and seals
+decisions before relay. No new password, recovery secret, local password, or
+server-held decryption key is involved.
 
 The ordinary message and queue rows are now closed. Server-authored worktree
 continuations, failure notices, recovery messages, automation turns, and
@@ -1602,8 +1606,8 @@ relays the revision envelope, run input, and encrypted predecessor results to
 the assigned worker.
 
 The worker authenticates and opens the complete revision, reconstructs each
-node's input mappings, validates the private node type, route, permission mode,
-preauthorization, predecessor set, and outgoing dependency positions, then
+node's input mappings, validates the private node type, route, permission
+requirements, predecessor set, and outgoing dependency positions, then
 executes its semantics. It composes agent prompts; expands map and pipeline
 collections; selects reduce inputs; evaluates verification, repeat progress,
 repeat success, and conditional branch predicates; and aggregates results
@@ -1615,10 +1619,15 @@ Every completed top-level node separately encrypts its run, node, and attempt
 inputs/results. Worker failures are also sealed separately for their attempt,
 node, and run rows; the server retains only a coarse failure code. Plaintext
 workflow activity, message, plan, and interaction events are not emitted by
-this runtime. The server retains aggregate token/cost usage and a logical
-execution count so it can enforce the public run budget without learning item
-values or predicates. Protected advanced nodes are dispatched serially so
-prior logical expansion is accounted before the next node starts.
+this runtime. Interactive agent nodes instead emit a bounded
+`interaction-content` request envelope, which the server stores and relays with
+public kind, lifecycle, expiry, and routing provenance only. The client opens
+the request and seals its response; the assigned worker opens that response
+immediately before resuming the runtime. The server retains aggregate
+token/cost usage and a logical execution count so it can enforce the public run
+budget without learning item values or predicates. Protected advanced nodes
+are dispatched serially so prior logical expansion is accounted before the
+next node starts.
 
 [Migration 0128](../cantrip_server/drizzle/0128_aromatic_slapstick.sql) resets
 only legacy workflow runs and dependent runtime rows before adding the
@@ -1629,11 +1638,11 @@ topology, budgets, aggregate token usage, worker/worktree/model routing,
 leases, deadlines, attempt counts, and timestamps remain intentionally
 plaintext because scheduling and recovery require them.
 
-Gate semantics, workflow interactions, content-bearing events, trigger
+Gate semantics, content-bearing activity/message/plan events, trigger
 configuration/input, delivery payloads, and their private errors remain the
-next protected-runtime slice. Every trigger mutation and delivery route still
-returns `410`, and the client and worker reject gates or interactive nodes
-before any plaintext fallback can run.
+next protected-runtime slices. Every trigger mutation and delivery route still
+returns `410`, and the client and worker reject explicit gate nodes before any
+plaintext fallback can run.
 
 The focused client and worker encryption tests cover client-side run sealing,
 permission-manifest minimization, worker-only prompt construction and
@@ -1830,9 +1839,9 @@ counts, worker presence, model-route choices, and traffic patterns.
    and parsers are removed; static dependency, route, and repository audits
    enforce the trusted-endpoint boundary; and a reopened temporary-database
    scan contains zero Task sentinel prose. Ordinary chat secondary producers
-   are closed in milestone 10; workflow interaction payloads remain planned.
-   Ordinary chat approvals use the endpoint-only `interaction-content` path.
-   Task/chat titles are tracked separately and are E2EE complete.
+   are closed in milestone 10. Ordinary chat and workflow-agent approvals use
+   the endpoint-only `interaction-content` path, completed in milestones 11 and
+   21. Task/chat titles are tracked separately and are E2EE complete.
 8. **Private display labels — complete:** one bounded bundle, exact
    associated-data mapping, trusted
    client and worker adapters, scoped worker readiness, and fail-closed label
@@ -1925,11 +1934,14 @@ counts, worker presence, model-route choices, and traffic patterns.
     are client-encrypted. The server retains only opaque envelopes, blind
     indexes, and a minimized random-ID scheduling manifest. Legacy plaintext
     generation/repository/save paths and all trigger ingress fail closed.
-    Manual preauthorized DAGs now use client-sealed run inputs and worker-sealed
+    Manual DAGs now use client-sealed run inputs and worker-sealed
     run/node/attempt results and errors. Prompt composition, dependency
     mappings, collection expansion, iteration, verification, and conditional
-    predicates occur only on the worker. Gates, interactions, content-bearing
-    events, triggers, and deliveries remain the next protected-runtime phases.
+    predicates occur only on the worker. Interactive workflow-agent requests
+    and responses now use `interaction-content` between the assigned worker and
+    unlocked client; the server retains only routing/lifecycle metadata and
+    ciphertext. Gates, content-bearing events, triggers, and deliveries remain
+    the next protected-runtime phases.
 22. **Optional private analytics:** after workflow runtime content is opaque,
     minimize or relocate analytics according to the selected privacy mode.
 

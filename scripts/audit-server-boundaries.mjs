@@ -1828,26 +1828,36 @@ async function workflowCatalogContentBoundaryAudit() {
     repositoryRoot,
     "cantrip_worker/src/workflow-execution-encryption.ts",
   );
+  const workflowCenterPath = resolve(
+    repositoryRoot,
+    "cantrip_app/src/components/workflows/workflow-center.tsx",
+  );
   const [
     schemaText,
     repositoryText,
     applicationText,
     protocolText,
+    interactionProtocolText,
     clientApiText,
     clientEncryptionText,
     runRepositoryText,
     executorText,
     workerExecutionText,
+    workerText,
+    workflowCenterText,
   ] = await Promise.all([
     readFile(schemaPath, "utf8"),
     readFile(repositoryPath, "utf8"),
     readFile(appPath, "utf8"),
     readFile(workflowProtocolPath, "utf8"),
+    readFile(protocolPath, "utf8"),
     readFile(clientWorkflowApiPath, "utf8"),
     readFile(clientWorkflowEncryptionPath, "utf8"),
     readFile(runRepositoryPath, "utf8"),
     readFile(executorPath, "utf8"),
     readFile(workerExecutionPath, "utf8"),
+    readFile(workerPath, "utf8"),
+    readFile(workflowCenterPath, "utf8"),
   ]);
   const failures = [];
   const definitionTable = tableInitializer(schemaText, "workflowDefinitions");
@@ -2008,6 +2018,14 @@ async function workflowCatalogContentBoundaryAudit() {
     }
   }
   for (const marker of [
+    "workflow.node.interaction.requested.protected",
+    "workflowRunId: z.string().min(1).optional()",
+  ]) {
+    if (!interactionProtocolText.includes(marker)) {
+      failures.push(`Workflow interaction protocol is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
     "protectWorkflowDefinitionCreate",
     "protectWorkflowDefinitionUpdate",
     "protectWorkflowRevisionCreate",
@@ -2090,6 +2108,44 @@ async function workflowCatalogContentBoundaryAudit() {
     }
   }
   for (const marker of [
+    "protectAgentInteractionRequest",
+    'type: "workflow.node.interaction.requested.protected"',
+  ]) {
+    if (!workerText.includes(marker)) {
+      failures.push(`Worker workflow interaction path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "recordEncryptedAgentInteractionRequest",
+    "respondToEncryptedInteraction",
+  ]) {
+    if (!executorText.includes(marker)) {
+      failures.push(`Workflow executor interaction path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "workflowExecutor.respondToEncryptedInteraction",
+    "resolveLiveEncryptedAgentInteractionRequest",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`Workflow interaction relay is missing ${marker}.`);
+    }
+  }
+  if (applicationText.includes("workflowExecutor.respondToInteraction(")) {
+    failures.push(
+      "Workflow interaction relay still calls the visible response path.",
+    );
+  }
+  for (const marker of [
+    "AgentInteractionPanel",
+    "workflowRunId: selectedRunId!",
+    'queryKey: ["workflow-interactions", selectedRunId, "pending"]',
+  ]) {
+    if (!workflowCenterText.includes(marker)) {
+      failures.push(`Workflow interaction client is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
     "structuredInput: {}",
     "protectedInput: input.protectedInput",
     "protectedResult: result.protectedNodeResult",
@@ -2112,6 +2168,7 @@ async function workflowCatalogContentBoundaryAudit() {
       "workflow_run_nodes",
       "workflow_run_node_items",
       "workflow_node_attempts",
+      "agent_interaction_requests",
     ],
     guards: [
       "definition-slug-name-description-provenance:opaque-only",
@@ -2124,11 +2181,10 @@ async function workflowCatalogContentBoundaryAudit() {
       "agent-run-input-result-error:opaque-client-worker-runtime",
       "map-pipeline-reduce-repeat-verify-condition:worker-only-semantics",
       "collection-values-and-branch-predicates:opaque-to-server",
-      "gate-interaction-and-trigger-ingress:fail-closed-until-worker-runtime",
+      "workflow-agent-interactions:interaction-content-client-worker-only",
+      "gate-and-trigger-ingress:fail-closed-until-worker-runtime",
     ],
-    remainingPlaintextContent: [
-      "events, interactions, gates, triggers, and deliveries",
-    ],
+    remainingPlaintextContent: ["events, gates, triggers, and deliveries"],
   };
 }
 

@@ -246,7 +246,10 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
     case "workflow-node":
     case "workflow-gate":
       if (event.scope.kind === "workflow-run") {
-        return [["workflow-run", event.scope.runId]];
+        return [
+          ["workflow-run", event.scope.runId],
+          ["workflow-interactions", event.scope.runId],
+        ];
       }
       return projectId ? [["workflow-runs", projectId]] : [];
     case "workflow-trigger":
@@ -321,7 +324,10 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["chat-customizations", scope.chatId, "inventory"],
       ];
     case "workflow-run":
-      return [["workflow-run", scope.runId]];
+      return [
+        ["workflow-run", scope.runId],
+        ["workflow-interactions", scope.runId],
+      ];
   }
 }
 

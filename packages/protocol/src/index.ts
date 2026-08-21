@@ -6661,6 +6661,7 @@ export const agentInteractionResolutionWireCreateSchema = z.union([
 
 export const agentInteractionRequestQuerySchema = z.object({
   chatId: z.string().min(1).optional(),
+  workflowRunId: z.string().min(1).optional(),
   status: agentInteractionRequestStatusSchema.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
@@ -11253,6 +11254,11 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     type: z.literal("workflow.node.interaction.requested"),
     attemptId: z.string().min(1).max(200),
     request: agentInteractionRuntimeRequestSchema,
+  }),
+  z.object({
+    type: z.literal("workflow.node.interaction.requested.protected"),
+    attemptId: z.string().min(1).max(200),
+    request: encryptedAgentInteractionRuntimeRequestSchema,
   }),
   z.object({
     type: z.literal("workflow.node.interaction.cleared"),
