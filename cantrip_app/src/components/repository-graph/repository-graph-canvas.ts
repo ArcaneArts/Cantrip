@@ -138,8 +138,8 @@ export class Canvas2DRepositoryGraphAdapter implements RepositoryGraphRenderingA
     context.lineCap = "round";
     context.lineJoin = "round";
     context.strokeStyle = options.theme.edge;
-    context.lineWidth = options.highContrast ? 1.6 : 1.2;
-    context.globalAlpha = options.highContrast ? 0.85 : 0.62;
+    context.lineWidth = options.highContrast ? 1.6 : 1.3;
+    context.globalAlpha = options.highContrast ? 0.85 : 0.78;
     for (const edge of plan.edges) {
       const from = repositoryGraphWorldToScreen(edge.from, camera, viewport);
       const to = repositoryGraphWorldToScreen(edge.to, camera, viewport);
