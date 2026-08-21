@@ -19,6 +19,7 @@ export const encryptionComponentScopeSchema = z.enum([
   "policy-content",
   "provider-credential",
   "mcp-secret",
+  "repository-content",
   "workflow-content",
   "private-analytics",
 ]);

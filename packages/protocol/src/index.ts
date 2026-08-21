@@ -12,6 +12,7 @@ export * from "./communication-content.js";
 export * from "./attachment-content.js";
 export * from "./explorer.js";
 export * from "./surface-stream.js";
+export * from "./repository-operation.js";
 
 import {
   chatPlanOpaqueStateSchema,
@@ -49,6 +50,7 @@ import {
   surfaceStreamOpaqueSchema,
   surfaceStreamWireRequestSchema,
 } from "./surface-stream.js";
+import { repositoryOperationWireRequestSchema } from "./repository-operation.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -10225,6 +10227,17 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       cwd: z.string().min(1).max(8_192),
     })
     .extend(gitForcePushApplySchema.shape),
+  z
+    .object({
+      type: z.literal("repository.operation"),
+      serverId: z.string().min(1).max(2_000),
+      projectId: z.string().min(1).max(200),
+      worktreeId: z.string().min(1).max(200),
+      cwd: z.string().min(1).max(8_192),
+      repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
+    })
+    .extend(repositoryOperationWireRequestSchema.shape)
+    .strict(),
   z.object({
     type: z.literal("git.agent.generate"),
     generationId: z.string().min(1).max(200),

@@ -9,6 +9,7 @@ export * from "./policy-content.js";
 export * from "./protected-secret.js";
 export * from "./private-labels.js";
 export * from "./remote-surface-stream.js";
+export * from "./repository-operation.js";
 export * from "./surface-private-state.js";
 export * from "./surface-stream.js";
 export * from "./task-content.js";
