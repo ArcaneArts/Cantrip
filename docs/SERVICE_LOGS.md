@@ -133,7 +133,261 @@ The console uses fixed-height row virtualization. The UI retains at most
 10,000 records and approximately 5 MiB per source. Log contents are not saved
 to browser storage or Postgres.
 
-## Retention and limits
+## Approved daily archive plan
+
+The current bounded rotation described below will be replaced by a shared
+daily archive system. This section is the implementation contract for that
+work; it describes approved future behavior, not behavior available in the
+current release.
+
+### Package boundary
+
+Daily archive behavior belongs in the existing `@cantrip/logging` package.
+Cantrip will not introduce a generic `cantrip_core` package for this work. The
+repository already uses focused shared packages, and logging policy should
+remain independently testable without becoming a dependency for unrelated
+features.
+
+The package will expose environment-specific entrypoints:
+
+```text
+@cantrip/logging/core       Environment-neutral logger and noise controls
+@cantrip/logging/records    Record types, sanitization, and minimization
+@cantrip/logging/archive    Pure-TypeScript daily archive coordinator
+@cantrip/logging/node       Node filesystem and gzip adapter
+```
+
+`@cantrip/logging/archive` must not depend on Node, React, Tauri, or Capacitor.
+It will coordinate an injected clock and storage adapter and expose lifecycle
+operations equivalent to `initialize`, `append`, `maintain`, `flush`, and
+`close`. Platform adapters own filesystem access, compression, atomic rename,
+and deletion.
+
+The coordinator serializes writes and maintenance through one queue. Storage
+failures report through a separate, rate-limited diagnostic sink so that a
+failed log write cannot recursively log itself or terminate the component.
+
+### Archive contract
+
+Every client, server, and worker instance receives its own archive directory
+and independent 100 MiB archive budget. The directories and budgets remain
+separate when all three processes run on one machine in Tauri internal mode.
+Multiple workers likewise receive distinct directories and independent
+budgets.
+
+Daily boundaries use UTC, matching the ISO timestamps already stored in log
+records. Canonical files are sanitized structured JSONL:
+
+```text
+client-2026-08-21.part-0001.jsonl
+client-2026-08-18.part-0001.jsonl.gz
+
+server-2026-08-21.part-0001.jsonl
+server-2026-08-18.part-0001.jsonl.gz
+
+worker-2026-08-21.part-0001.jsonl
+worker-2026-08-18.part-0001.jsonl.gz
+```
+
+Normal traffic produces one or more 10 MiB parts per source per UTC day. Parts
+ensure quota enforcement never needs to rewrite an open file and a very noisy
+day cannot monopolize the archive:
+
+```text
+client-2026-08-21.part-0001.jsonl
+client-2026-08-21.part-0002.jsonl
+```
+
+The next part opens before a write would take the active part above 10 MiB. A
+single bounded record may cause a small temporary overshoot, after which
+maintenance restores the archive budget. Parts sort by UTC day and part number
+for compression, reading, export, and oldest-first deletion.
+
+Only files matching the managed naming contract are eligible for compression
+or deletion. Temporary export bundles are stored outside the archive and do
+not count against its 100 MiB budget.
+
+### Launch and UTC rollover lifecycle
+
+At component launch, the archive performs these operations in order:
+
+1. Create the component's log directory if it does not exist.
+2. Open the newest non-full part for the current UTC day, or create part 1.
+3. Recover or remove stale temporary compression artifacts.
+4. Compress inactive parts created more than 48 hours ago.
+5. Recalculate the combined size of compressed and uncompressed managed files.
+6. Delete complete files oldest-first while the archive exceeds 100 MiB.
+7. Schedule the next UTC day boundary.
+
+At a UTC day change, the writer flushes and closes the previous part, opens or
+resumes the current day's part, runs the same compression and quota pass, and
+schedules the next boundary. Every append also performs a cheap UTC-day check
+so sleep, clock changes, delayed timers, or process suspension cannot leave a
+writer attached to yesterday's file.
+
+The coordinator tracks archive bytes during normal writes. Crossing 100 MiB
+triggers quota maintenance immediately instead of allowing an oversized
+archive to remain until the next launch or day boundary. The active part is
+never deleted while open; it is first finalized and replaced when it must
+become eligible for oldest-first deletion.
+
+Mobile applications cannot execute while suspended. They run the same check
+when returning to the foreground and before their next persisted write.
+
+### Compression and deletion safety
+
+Inactive parts become compression candidates only after their creation time is
+more than 48 hours old. Filesystem creation time is preferred; platforms that
+cannot provide it use conservative UTC filename metadata so a file is never
+compressed early.
+
+Compression uses gzip level 9 and an atomic replacement sequence:
+
+1. Stream the JSONL source into a sibling `.jsonl.gz.tmp` file.
+2. Finish and close the gzip stream.
+3. Atomically rename the temporary file to `.jsonl.gz`.
+4. Remove the source JSONL only after the rename succeeds.
+
+A failed or interrupted compression leaves the original JSONL readable. A
+later maintenance pass may retry it. Stale temporary files are never counted
+as completed archives and may be removed only after confirming the source or
+completed gzip remains available.
+
+After all eligible compression finishes, quota enforcement sums every managed
+`.jsonl` and `.jsonl.gz` file in the component archive. It deletes whole files
+in logical creation order until the sum is at most 100 MiB. Compressed and
+uncompressed files count equally by their actual on-disk size.
+
+### Platform placement and behavior
+
+| Runtime               | Planned archive location and adapter                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------- |
+| Standalone server     | `<CANTRIP_DATA_DIR>/logs`, using the Node adapter                                           |
+| Standalone worker     | `<CANTRIP_WORKER_DATA_DIR>/logs`, using the Node adapter                                    |
+| Tauri client          | `<app-data>/logs/client`, using trusted Rust filesystem operations                          |
+| Tauri internal server | `<app-data>/logs/server`, with its own 100 MiB component budget                             |
+| Tauri worker          | `<app-data>/logs/workers/<worker-id>`, with an independent 100 MiB budget for each worker   |
+| iOS/Android client    | App-private, non-cloud-backed client log storage through a Capacitor adapter                |
+| Browser client        | No persistent archive; the existing bounded in-memory client buffer remains the only source |
+
+The Node adapter streams gzip through Node's filesystem and zlib APIs rather
+than loading a complete part into memory. Server and worker persistence becomes
+the default even when `CANTRIP_SERVICE_LOG_FILE` is not configured. Existing
+deployment overrides remain compatible or migrate to an explicit log-directory
+override.
+
+Tauri retains a small Rust implementation because the native shell owns local
+filesystem access and can emit startup records before React runs. The Rust
+implementation follows the same policy contract and shared test vectors as the
+TypeScript archive coordinator. The webview does not receive arbitrary local
+filesystem access.
+
+Mobile uses a Capacitor filesystem adapter and a browser-safe streaming gzip
+implementation that accepts compression level 9. Foreground/resume events run
+overdue rollover and maintenance. Browser builds must not bundle or invoke any
+Node or native filesystem adapter.
+
+### Canonical records and legacy migration
+
+The retained archive contains the same minimized, sanitized operational
+records used by the service buffers. User prompts, model transcripts, terminal
+contents, provider payloads, raw subprocess output, and credentials remain
+outside the archive. Compression and export do not weaken the redaction
+boundary.
+
+Separate packaged Tauri `server.log`, `worker.log`, and linked-worker stdout
+files will be retired after bootstrap and unexpected-exit diagnostics have
+equivalent bounded structured events. Sanitized structured JSONL becomes the
+only canonical persistent service log, preventing duplicate data from evading
+the component budget.
+
+The first daily-archive maintenance pass adopts existing files matching the
+old rotation scheme:
+
+```text
+*.service.jsonl
+*.service.jsonl.1
+*.service.jsonl.2
+*.service.jsonl.3
+```
+
+Legacy files are assigned stable logical creation metadata, preserved as
+recognized archive files, compressed when eligible, and included in the
+100 MiB quota. Migration must not parse or move an arbitrary path supplied by
+the client.
+
+### Archive controls
+
+The existing copy, clear, and **Export visible output** controls remain scoped
+to the records currently loaded in the viewer. A separate archive-level action
+is runtime-specific:
+
+- **Desktop — Open Logs Folder:** a fixed Tauri command resolves and opens the
+  parent Cantrip application logs directory in Finder, Explorer, or the
+  platform file manager. The frontend cannot supply a path. In internal mode
+  this directory contains separate client, server, and worker subdirectories
+  with independent budgets.
+- **Mobile — Export Device Logs:** the client creates one temporary
+  `cantrip-client-logs-<timestamp>.zip` containing only that mobile client's
+  retained `.jsonl` and `.jsonl.gz` files, copies the bundle to a shareable
+  cache location, and opens the native share sheet. The next launch removes
+  stale export bundles.
+- **Browser:** no archive-level action is shown because no browser archive
+  exists. Exporting currently visible in-memory records remains available.
+
+Mobile export deliberately excludes server and worker archives. Future support
+and diagnostic collection modes may add authorized multi-component gathering,
+but that is outside this plan.
+
+### Delivery phases
+
+Implementation should be split into independently mergeable manual-change
+pull requests:
+
+1. **Shared archive engine:** add the pure retention coordinator, Node adapter,
+   10 MiB part handling, atomic gzip, migration planning, and deterministic
+   fake-clock/storage tests to `@cantrip/logging`.
+2. **Server and worker adoption:** enable default archives below each data
+   directory; integrate startup, rollover, overflow, flush, and shutdown; and
+   stop development startup from deleting retained logs.
+3. **Desktop integration:** implement the matching Tauri writer and reader,
+   migrate embedded and linked service paths, retire duplicate raw logs, and
+   add **Open Logs Folder**.
+4. **Mobile integration:** add Capacitor persistence, foreground maintenance,
+   streaming level-9 compression, client-only ZIP export, platform privacy
+   declarations, and Android/iOS build verification.
+
+Each phase must use its own worktree and pull request, enable squash
+auto-merge, observe the merge, and start the dependent phase only from the
+updated `main` branch.
+
+### Acceptance criteria
+
+Automated tests must establish that:
+
+- launching twice on the same UTC day resumes the newest non-full part;
+- writes open a new part before the current part would exceed 10 MiB;
+- a UTC day change cannot append new records to the previous day;
+- files at or below 48 hours of age are never compressed;
+- interrupted compression preserves a readable source;
+- compressed and uncompressed files both count toward quota;
+- deletion is oldest-first, restores the archive to at most 100 MiB, and never
+  touches an unrelated file;
+- concurrent writes, rollover, compression, and deletion remain serialized;
+- server, worker, and client archives enforce independent quotas;
+- browser runtimes never invoke persistent filesystem APIs;
+- a resumed mobile client runs overdue maintenance;
+- desktop opens only Cantrip's fixed logs directory;
+- mobile export includes all and only the retained local client archive; and
+- existing sanitization, minimization, and remote log authorization guarantees
+  remain intact.
+
+Focused verification covers the logging package, server, worker, app, Tauri,
+Android, and iOS targets. A manual clock-driven smoke pass must also exercise a
+same-day restart, a simulated UTC rollover, compression eligibility, quota
+deletion, desktop folder opening, mobile background/resume, and mobile export.
+
+## Current retention and limits
 
 Server and worker process buffers are bounded by both count and approximate
 serialized size. Defaults are:
