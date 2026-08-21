@@ -15,6 +15,7 @@ const mainWorkspace = projectWorkspaceSummarySchema.parse({
   position: 0,
   isDefault: true,
   projectIds: [],
+  revision: 1,
   createdAt: now,
   updatedAt: now,
 });
@@ -24,6 +25,7 @@ const personalWorkspace = projectWorkspaceSummarySchema.parse({
   position: 1,
   isDefault: false,
   projectIds: [],
+  revision: 1,
   createdAt: now,
   updatedAt: now,
 });

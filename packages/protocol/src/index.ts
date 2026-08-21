@@ -362,26 +362,28 @@ export const accountSessionListSchema = z
   .array(accountSessionSummarySchema)
   .max(1_000);
 
-export const auditEventSchema = z.object({
-  id: z.number().int().positive(),
-  ownerId: z.string().min(1).nullable(),
-  actor: z.object({
-    userId: z.string().min(1).nullable(),
-    sessionId: z.string().min(1).nullable(),
-  }),
-  action: z
-    .string()
-    .min(3)
-    .max(160)
-    .regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u),
-  result: z.enum(["succeeded", "failed", "denied"]),
-  resource: z.object({
-    type: z.string().min(1).max(80),
-    id: z.string().min(1).max(500).nullable(),
-  }),
-  requestId: z.string().min(1).max(200).nullable(),
-  occurredAt: z.iso.datetime(),
-});
+export const auditEventSchema = z
+  .object({
+    id: z.number().int().positive(),
+    ownerId: z.string().min(1).nullable(),
+    actor: z.object({
+      userId: z.string().min(1).nullable(),
+      sessionId: z.string().min(1).nullable(),
+    }),
+    action: z
+      .string()
+      .min(3)
+      .max(160)
+      .regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/u),
+    result: z.enum(["succeeded", "failed", "denied"]),
+    resource: z.object({
+      type: z.string().min(1).max(80),
+      id: z.string().min(1).max(500).nullable(),
+    }),
+    requestId: z.string().min(1).max(200).nullable(),
+    occurredAt: z.iso.datetime(),
+  })
+  .strict();
 
 export const auditEventListSchema = z.object({
   items: z.array(auditEventSchema).max(200),
