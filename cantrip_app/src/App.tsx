@@ -3417,14 +3417,14 @@ export function App() {
     queryFn: getProjects,
     queryKey: ["projects"],
     refetchInterval: (query) =>
-      query.state.data?.some(
-        (project) =>
-          project.setupStatus === "cloning" ||
-          project.setupStatus === "preparing",
-      )
-        ? 3_000
-        : projectResourcesLive
-          ? false
+      projectResourcesLive
+        ? false
+        : query.state.data?.some(
+              (project) =>
+                project.setupStatus === "cloning" ||
+                project.setupStatus === "preparing",
+            )
+          ? 3_000
           : 15_000,
   });
   useEffect(() => {
