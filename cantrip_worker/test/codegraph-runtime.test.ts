@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { validateCodeGraphArchivePath } from "../src/codegraph/archive.js";
 import {
   CodeGraphRuntimeManager,
+  codeGraphProcessInvocationFor,
   codeGraphTargetFor,
 } from "../src/codegraph/runtime.js";
 
@@ -40,7 +41,11 @@ interface FakeRelease {
 
 async function fakeRelease(
   version: string,
-  options: { mcpHealthy?: boolean; reportedVersion?: string } = {},
+  options: {
+    mcpHealthy?: boolean;
+    mcpShutdownDelaySeconds?: number;
+    reportedVersion?: string;
+  } = {},
 ): Promise<FakeRelease> {
   const target = codeGraphTargetFor(process.platform, process.arch);
   if (target.archiveKind !== "tar.gz") {
@@ -54,9 +59,17 @@ async function fakeRelease(
   const bin = path.join(root, folder, "bin");
   await mkdir(bin, { recursive: true });
   const executable = path.join(bin, "codegraph");
+  const mcpResponse =
+    'read request; echo \'{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"codegraph","version":"test"}}}\'';
+  const mcpBehavior =
+    options.mcpHealthy === false
+      ? "exit 9"
+      : options.mcpShutdownDelaySeconds
+        ? `trap 'sleep ${options.mcpShutdownDelaySeconds}; touch "$0.shutdown-complete"; exit 0' TERM\n  ${mcpResponse}\n  read shutdown`
+        : mcpResponse;
   await writeFile(
     executable,
-    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  ${options.mcpHealthy === false ? "exit 9" : 'read request; echo \'{"jsonrpc":"2.0","id":0,"result":{"protocolVersion":"2025-11-25","capabilities":{"tools":{}},"serverInfo":{"name":"codegraph","version":"test"}}}\''}\n  exit 0\nfi\necho "fake codegraph $* dir=$CODEGRAPH_DIR"\n`,
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo "${options.reportedVersion ?? version}"; exit 0; fi\nif [ "$1" = "telemetry" ] && [ "$2" = "off" ]; then touch "$0.telemetry-disabled"; exit 0; fi\nif [ "$1" = "serve" ]; then\n  [ -f "$0.telemetry-disabled" ] || exit 8\n  [ "$CODEGRAPH_TELEMETRY" = "0" ] || exit 8\n  [ "$DO_NOT_TRACK" = "1" ] || exit 8\n  [ "$CODEGRAPH_NO_UPDATE_CHECK" = "1" ] || exit 8\n  ${mcpBehavior}\n  exit 0\nfi\necho "fake codegraph $* dir=$CODEGRAPH_DIR"\n`,
   );
   await chmod(executable, 0o755);
   const archivePath = path.join(root, target.assetName);
@@ -147,7 +160,7 @@ describe("CodeGraph runtime targets", () => {
     expect(codeGraphTargetFor("win32", "arm64")).toMatchObject({
       assetName: "codegraph-win32-arm64.zip",
       archiveKind: "zip",
-      executableName: "codegraph.exe",
+      executableName: "codegraph.cmd",
     });
     expect(codeGraphTargetFor("win32", "x64").assetName).toBe(
       "codegraph-win32-x64.zip",
@@ -155,6 +168,27 @@ describe("CodeGraph runtime targets", () => {
     expect(() => codeGraphTargetFor("freebsd", "x64")).toThrow(
       "does not publish a runtime",
     );
+  });
+
+  it("runs the Windows command launcher through its bundled Node runtime", () => {
+    expect(
+      codeGraphProcessInvocationFor(
+        "C:\\CodeGraph\\bundle\\bin\\codegraph.cmd",
+        "win32",
+      ),
+    ).toEqual({
+      command: "C:\\CodeGraph\\bundle\\node.exe",
+      arguments: [
+        "--liftoff-only",
+        "--disable-warning=ExperimentalWarning",
+        "C:\\CodeGraph\\bundle\\lib\\dist\\bin\\codegraph.js",
+      ],
+      requiredFiles: [
+        "C:\\CodeGraph\\bundle\\bin\\codegraph.cmd",
+        "C:\\CodeGraph\\bundle\\node.exe",
+        "C:\\CodeGraph\\bundle\\lib\\dist\\bin\\codegraph.js",
+      ],
+    });
   });
 
   it("rejects traversal, absolute, Windows-drive, and ambiguous paths", () => {
@@ -227,6 +261,34 @@ describe.skipIf(process.platform === "win32")(
         CODEGRAPH_TELEMETRY: "0",
         DO_NOT_TRACK: "1",
       });
+    });
+
+    it("waits for MCP health processes to close before promoting the runtime", async () => {
+      const dataDirectory = await mkdtemp(
+        path.join(tmpdir(), "cantrip-codegraph-shutdown-"),
+      );
+      directories.push(dataDirectory);
+      const release = await fakeRelease("1.2.4", {
+        mcpShutdownDelaySeconds: 0.5,
+      });
+      const manager = new CodeGraphRuntimeManager({
+        dataDirectory,
+        fetch: releaseFetch(() => release),
+      });
+
+      await manager.prepare();
+      await expect(manager.waitForUpdate()).resolves.toMatchObject({
+        state: "ready",
+        installedVersion: "1.2.4",
+      });
+      const current = JSON.parse(
+        await readFile(path.join(manager.root, "bin", "current.json"), "utf8"),
+      ) as { executable: string };
+      await expect(
+        readFile(
+          path.join(manager.root, `${current.executable}.shutdown-complete`),
+        ),
+      ).resolves.toBeInstanceOf(Buffer);
     });
 
     it("atomically upgrades while retaining the previous verified runtime", async () => {
