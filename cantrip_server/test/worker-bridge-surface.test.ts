@@ -200,6 +200,41 @@ describe("WorkerBridge Remote Surface transport", () => {
     bridge.close();
   });
 
+  it("rejects a streaming command as soon as its event handler fails", async () => {
+    const bridge = new WorkerBridge();
+    const socket = new TestWorkerSocket();
+    bridge.attach("worker-1", socket);
+
+    const response = bridge.request(
+      "worker-1",
+      { type: "code.probe" },
+      {
+        timeoutMs: 100,
+        onEvent: () => {
+          throw new Error("terminal relay consumer failed");
+        },
+      },
+    );
+    const request = JSON.parse(String(socket.sent.at(-1))) as {
+      requestId: string;
+    };
+    socket.emit(
+      "message",
+      JSON.stringify(
+        workerEventEnvelopeSchema.parse({
+          kind: "event",
+          requestId: request.requestId,
+          event: { type: "terminal.ready" },
+        }),
+      ),
+      false,
+    );
+
+    await expect(response).rejects.toThrow("terminal relay consumer failed");
+    expect(bridge.stats().activeRequests).toBe(0);
+    bridge.close();
+  });
+
   it("multiplexes binary frames over the authenticated worker channel", () => {
     const bridge = new WorkerBridge();
     const socket = new TestWorkerSocket();

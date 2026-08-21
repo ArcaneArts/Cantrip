@@ -308,9 +308,29 @@ export class WorkerBridge implements WorkerCommandBus {
   ): void {
     const pending = this.#pending.get(requestId);
     if (!pending || pending.workerId !== workerId || !pending.onEvent) return;
-    pending.eventQueue = pending.eventQueue.then(() =>
-      pending.onEvent?.(event),
-    );
+    const eventQueue = pending.eventQueue.then(() => pending.onEvent?.(event));
+    pending.eventQueue = eventQueue;
+    void eventQueue
+      .catch((error: unknown) => {
+        if (this.#pending.get(requestId) !== pending) return;
+        this.#pending.delete(requestId);
+        if (pending.timeout) clearTimeout(pending.timeout);
+        this.#failedRequests += 1;
+        this.logger.event("warn", "Worker command event handling failed", {
+          event: "worker.command.event-handler-failed",
+          subsystem: "worker-command",
+          operation: pending.commandType,
+          requestId,
+          reasonCode: "event-handler-failed",
+          status: "failed",
+          durationMs: Math.max(0, Date.now() - pending.startedAtMs),
+          workerId,
+        });
+        pending.reject(
+          error instanceof Error ? error : new Error(String(error)),
+        );
+      })
+      .catch(() => undefined);
   }
 
   private completeRequest(

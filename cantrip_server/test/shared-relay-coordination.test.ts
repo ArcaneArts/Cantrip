@@ -241,6 +241,58 @@ describe("shared relay coordination", () => {
     await Promise.all([coordinatorA.close(), coordinatorB.close()]);
   });
 
+  it("rejects a relayed streaming command when its event consumer fails", async () => {
+    const backend = createInMemoryRelayCoordinatorBackend();
+    const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
+    const coordinatorB = new InMemoryRelayCoordinator("instance-b", backend);
+    await Promise.all([coordinatorA.start(), coordinatorB.start()]);
+    const resolveOwnerId = async () => "owner-1";
+    const bridgeA = new CoordinatedWorkerBridge({
+      coordinator: coordinatorA,
+      resolveOwnerId,
+    });
+    const bridgeB = new CoordinatedWorkerBridge({
+      coordinator: coordinatorB,
+      resolveOwnerId,
+    });
+    const workerSocket = new TestWorkerSocket();
+    await bridgeB.attach("worker-1", workerSocket, "owner-1");
+
+    const response = bridgeA.request(
+      "worker-1",
+      { type: "code.probe" },
+      {
+        ownerId: "owner-1",
+        timeoutMs: 100,
+        onEvent: () => {
+          throw new Error("remote terminal relay consumer failed");
+        },
+      },
+    );
+    await vi.waitFor(() => expect(workerSocket.sent).toHaveLength(1));
+    const workerRequest = workerRequestEnvelopeSchema.parse(
+      JSON.parse(String(workerSocket.sent[0])),
+    );
+    workerSocket.emit(
+      "message",
+      JSON.stringify({
+        kind: "event",
+        requestId: workerRequest.requestId,
+        event: { type: "terminal.ready" },
+      }),
+      false,
+    );
+
+    await expect(response).rejects.toThrow(
+      "remote terminal relay consumer failed",
+    );
+    expect(bridgeA.stats().activeRequests).toBe(0);
+
+    await bridgeA.close();
+    await bridgeB.close();
+    await Promise.all([coordinatorA.close(), coordinatorB.close()]);
+  });
+
   it("fans live invalidations out to clients on another instance", async () => {
     const backend = createInMemoryRelayCoordinatorBackend();
     const coordinatorA = new InMemoryRelayCoordinator("instance-a", backend);
