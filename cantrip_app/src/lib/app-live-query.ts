@@ -1,5 +1,6 @@
 import {
   chatMessageSchema,
+  codeGraphProjectStatusSchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
   gitStatusSchema,
@@ -9,6 +10,7 @@ import type {
   AppLiveScope,
   AppLiveServerMessage,
   ChatMessage,
+  CodeGraphProjectStatus,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
   GitStatus,
@@ -31,6 +33,7 @@ export interface AppLiveQueryBridgeStats {
 }
 
 const MAX_TRACKED_WORKFLOW_SEQUENCES = 4_096;
+const MAX_TRACKED_CODEGRAPH_REVISIONS = 4_096;
 
 function projectScopeId(scope: AppLiveScope): string | null {
   return scope.kind === "project" ? scope.projectId : null;
@@ -123,6 +126,14 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         : event.scope.kind === "current-user"
           ? [["worktree-status"]]
           : [];
+    case "codegraph-status":
+      return projectId
+        ? [
+            event.entityId
+              ? ["codegraph", projectId, event.entityId]
+              : ["codegraph", projectId],
+          ]
+        : [];
     case "git-operation":
       return projectId
         ? [["git-operation", projectId]]
@@ -292,6 +303,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-tab-layout", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],
+        ["codegraph", scope.projectId],
         ["worktree-history", scope.projectId],
         ["git-graph-snapshot", scope.projectId],
         ["git-graph-metrics", scope.projectId],
@@ -338,6 +350,7 @@ function uniqueQueryKeys(keys: QueryKey[]): QueryKey[] {
 }
 
 export class AppLiveQueryBridge {
+  readonly #codeGraphRevisions = new Map<string, number>();
   readonly #messageCursors = new Map<string, number>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
@@ -360,6 +373,7 @@ export class AppLiveQueryBridge {
     const worktreeStatus = this.#applyWorktreeStatusEvent(event);
     const directlyApplied =
       this.#applyChatMessageEvent(event) ||
+      this.#applyCodeGraphStatusEvent(event) ||
       worktreeStatus.applied ||
       this.#applyCustomizationStatusEvent(event);
     if (directlyApplied) {
@@ -577,6 +591,48 @@ export class AppLiveQueryBridge {
     };
   }
 
+  #applyCodeGraphStatusEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "codegraph-status" ||
+      event.action !== "updated" ||
+      event.scope.kind !== "project" ||
+      !event.entityId ||
+      event.revision === null
+    ) {
+      return false;
+    }
+    const revisionKey = `${event.scope.projectId}:${event.entityId}`;
+    const latestRevision = this.#codeGraphRevisions.get(revisionKey);
+    if (latestRevision !== undefined && event.revision <= latestRevision) {
+      return true;
+    }
+    const parsed = codeGraphProjectStatusSchema.safeParse(event.payload);
+    if (
+      !parsed.success ||
+      parsed.data.projectId !== event.scope.projectId ||
+      parsed.data.worktreeId !== event.entityId
+    ) {
+      return false;
+    }
+    const queryKey = [
+      "codegraph",
+      event.scope.projectId,
+      event.entityId,
+    ] as const;
+    void this.#queryClient.cancelQueries({ queryKey, exact: true });
+    this.#queryClient.setQueryData<CodeGraphProjectStatus>(
+      queryKey,
+      parsed.data,
+    );
+    this.#codeGraphRevisions.delete(revisionKey);
+    this.#codeGraphRevisions.set(revisionKey, event.revision);
+    if (this.#codeGraphRevisions.size > MAX_TRACKED_CODEGRAPH_REVISIONS) {
+      const oldest = this.#codeGraphRevisions.keys().next().value;
+      if (oldest !== undefined) this.#codeGraphRevisions.delete(oldest);
+    }
+    return true;
+  }
+
   #applyCustomizationStatusEvent(event: AppLiveEvent): boolean {
     if (
       event.resource !== "customization" ||
@@ -629,6 +685,13 @@ export class AppLiveQueryBridge {
       const prefix = `${scope.chatId}:`;
       for (const key of this.#messageCursors.keys()) {
         if (key.startsWith(prefix)) this.#messageCursors.delete(key);
+      }
+    }
+    for (const scope of scopes) {
+      if (scope.kind !== "project") continue;
+      const prefix = `${scope.projectId}:`;
+      for (const key of this.#codeGraphRevisions.keys()) {
+        if (key.startsWith(prefix)) this.#codeGraphRevisions.delete(key);
       }
     }
     for (const scope of scopes) {

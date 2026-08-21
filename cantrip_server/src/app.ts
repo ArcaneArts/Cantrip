@@ -448,6 +448,7 @@ import type {
   ChatMessageOpaqueSummary,
   ChatReasoningState,
   ChatTurnCreate,
+  CodeGraphProjectStatus,
   CodeRuntimeStatus,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
@@ -1349,6 +1350,15 @@ export async function buildApp({
   };
   const runningGitOperationRequests = new Set<string>();
   const workerNotificationSubscriptions = new Map<string, () => void>();
+  const codeGraphStatusObservations = new Map<
+    string,
+    {
+      fingerprint: string;
+      lastPublishedFingerprint: string | null;
+      revision: number;
+    }
+  >();
+  let codeGraphStatusRevision = Date.now() * 1_000;
   const publishWorktreeStatus = (
     projectId: string,
     worktreeId: string,
@@ -1369,6 +1379,32 @@ export async function buildApp({
       app.log.error(
         { err: error, projectId, worktreeId },
         "Could not publish worktree status",
+      );
+    }
+  };
+  const publishCodeGraphStatus = (
+    status: CodeGraphProjectStatus,
+    revision: number,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "project", projectId: status.projectId },
+        resource: "codegraph-status",
+        action: "updated",
+        entityId: status.worktreeId,
+        revision,
+        payload: appLiveEventPayloadSchema.parse(status),
+      });
+    } catch (error) {
+      app.log.error(
+        {
+          err: error,
+          projectId: status.projectId,
+          worktreeId: status.worktreeId,
+        },
+        "Could not publish CodeGraph status",
       );
     }
   };
@@ -1532,15 +1568,42 @@ export async function buildApp({
       return;
     }
     if (notification.type === "codegraph.status.observed") {
+      const status = codeGraphProjectStatusSchema.parse(notification.status);
+      const observationKey = `${ownerId}:${workerId}:${status.projectId}:${status.worktreeId}`;
+      const previousObservation =
+        codeGraphStatusObservations.get(observationKey);
+      codeGraphStatusRevision = Math.max(
+        codeGraphStatusRevision + 1,
+        Date.now() * 1_000,
+      );
+      const observation = {
+        fingerprint: JSON.stringify(status),
+        lastPublishedFingerprint:
+          previousObservation?.lastPublishedFingerprint ?? null,
+        revision: codeGraphStatusRevision,
+      };
+      // Refresh insertion order so the bounded map retains recently active worktrees.
+      codeGraphStatusObservations.delete(observationKey);
+      codeGraphStatusObservations.set(observationKey, observation);
+      if (codeGraphStatusObservations.size > 4_096) {
+        const oldest = codeGraphStatusObservations.keys().next().value;
+        if (oldest !== undefined) codeGraphStatusObservations.delete(oldest);
+      }
       const context = await repository.getProjectWorktreeContext(
         ownerId,
-        notification.status.projectId,
-        notification.status.worktreeId,
+        status.projectId,
+        status.worktreeId,
       );
       if (!context || context.workerId !== workerId) return;
-      publishLiveInvalidation("worktree", {
-        projectId: notification.status.projectId,
-      });
+      const latestObservation = codeGraphStatusObservations.get(observationKey);
+      if (
+        latestObservation?.revision !== observation.revision ||
+        latestObservation.lastPublishedFingerprint === observation.fingerprint
+      ) {
+        return;
+      }
+      latestObservation.lastPublishedFingerprint = observation.fingerprint;
+      publishCodeGraphStatus(status, observation.revision);
       return;
     }
     const context = await repository.getProjectWorktreeObservationContext(

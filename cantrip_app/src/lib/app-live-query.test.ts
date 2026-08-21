@@ -78,6 +78,15 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          entityId: "worktree-one",
+          resource: "codegraph-status",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["codegraph", "project-one", "worktree-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "chat-message",
           scope: { kind: "chat", chatId: "chat-one" },
         }),
@@ -149,6 +158,9 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["git-graph-metrics", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["codegraph", "project-one"]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -523,6 +535,63 @@ describe("application live query bridge", () => {
       1,
     );
     expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("applies ordered CodeGraph status payloads without a follow-up GET", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000001";
+    const worktreeId = "worktree-one";
+    const queryKey = ["codegraph", projectId, worktreeId] as const;
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const status = {
+      projectId,
+      worktreeId,
+      state: "indexing" as const,
+      lastIndexedAt: null,
+      lastSuccessfulSyncAt: null,
+      fileCount: 1,
+      nodeCount: 2,
+      edgeCount: 3,
+      pendingChanges: 4,
+      statusMessage: "Indexing",
+      job: null,
+    };
+    const send = (revision: number, pendingChanges: number) =>
+      bridge.handleEvent({
+        ...event({
+          entityId: worktreeId,
+          resource: "codegraph-status",
+          scope: { kind: "project", projectId },
+        }),
+        revision,
+        payload: { ...status, pendingChanges },
+      });
+
+    send(5, 2);
+    send(5, 9);
+    send(4, 8);
+
+    expect(queryClient.getQueryData(queryKey)).toEqual({
+      ...status,
+      pendingChanges: 2,
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+
+    await bridge.recoverScopes(
+      [{ kind: "project", projectId }],
+      "server-epoch-changed",
+    );
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["codegraph", projectId],
+    });
+    send(1, 1);
+    expect(queryClient.getQueryData(queryKey)).toEqual({
+      ...status,
+      pendingChanges: 1,
+    });
   });
 
   it("ignores duplicate and out-of-order payloads for the same message", () => {
