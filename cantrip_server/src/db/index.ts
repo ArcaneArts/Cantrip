@@ -1,4 +1,4 @@
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +24,13 @@ const migrationsFolder = fileURLToPath(
   new URL("../../drizzle", import.meta.url),
 );
 const SLOW_DATABASE_HEALTH_CHECK_MS = 250;
+
+class PgliteMigrationError extends Error {
+  constructor(cause: unknown) {
+    super("Could not migrate the internal PGlite database.", { cause });
+    this.name = "PgliteMigrationError";
+  }
+}
 
 async function databaseHealthCheck(
   engine: DatabaseEngine,
@@ -84,6 +91,32 @@ async function connectPglite(
   try {
     return await openPglite(databaseDirectory, secretVault);
   } catch (error) {
+    if (
+      config.bootstrapMode === "tauri" &&
+      error instanceof PgliteMigrationError
+    ) {
+      serverLogger.event(
+        "warn",
+        "Internal desktop database migration failed; resetting the database",
+        {
+          event: "database.reset.started",
+          subsystem: "database",
+          operation: "reset-desktop-database",
+          reasonCode: "migration-failed",
+          status: "resetting",
+        },
+      );
+      await rm(databaseDirectory, { recursive: true, force: true });
+      const connection = await openPglite(databaseDirectory, secretVault);
+      serverLogger.event("info", "Internal desktop database reset completed", {
+        event: "database.reset.completed",
+        subsystem: "database",
+        operation: "reset-desktop-database",
+        status: "ready",
+        durationMs: Date.now() - startedAtMs,
+      });
+      return connection;
+    }
     if (config.bootstrapMode !== "pnpm-dev" || !isPgliteAbort(error)) {
       throw error;
     }
@@ -147,7 +180,11 @@ async function openPglite(
   const database = drizzlePglite(client, { schema });
 
   try {
-    await migratePglite(database, { migrationsFolder });
+    try {
+      await migratePglite(database, { migrationsFolder });
+    } catch (error) {
+      throw new PgliteMigrationError(error);
+    }
     const repository = new ServerRepository(database, secretVault);
     await repository.ensureLocalIdentity();
     await repository.policies.ensureOwnerState(LOCAL_USER_ID);
