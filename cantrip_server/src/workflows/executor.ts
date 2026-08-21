@@ -860,6 +860,7 @@ export class WorkflowExecutor {
       const mcpServers = await this.repository.listEffectiveMcpServers(
         this.#ownerId(),
         lease.candidate.run.projectId,
+        workerId,
       );
       const rawResult = await this.bridge.request(
         workerId,

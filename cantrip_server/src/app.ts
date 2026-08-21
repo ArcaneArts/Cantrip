@@ -7343,7 +7343,11 @@ export async function buildApp({
     if (!options.structuredResult) await prepareCodeEditorsForTurn(context);
     const mcpServers = options.structuredResult
       ? []
-      : await repository.listEffectiveMcpServers(ownerId, context.projectId);
+      : await repository.listEffectiveMcpServers(
+          ownerId,
+          context.projectId,
+          context.workerId,
+        );
     const execution = await repository.startChatExecutionLane(
       ownerId,
       context.chatId,
@@ -10138,6 +10142,7 @@ export async function buildApp({
           ? await repository.listEffectiveMcpServers(
               ownerId,
               request.params.projectId,
+              context.workerId,
             )
           : [];
         const dispatch = () =>
@@ -19441,6 +19446,7 @@ export async function buildApp({
           const mcpServers = await repository.listEffectiveMcpServers(
             applicationOwnerId(),
             context.projectId,
+            context.workerId,
           );
           const result = (await bridge.request(context.workerId, {
             type: "chat.thread.ensure",
@@ -21866,6 +21872,7 @@ export async function buildApp({
             mcpServers: await repository.listEffectiveMcpServers(
               principal.user.id,
               chat.projectId,
+              context.workerId,
             ),
           };
         }
@@ -22122,6 +22129,7 @@ export async function buildApp({
               mcpServers: await repository.listEffectiveMcpServers(
                 applicationOwnerId(),
                 chat.projectId,
+                workerId,
               ),
             };
           }

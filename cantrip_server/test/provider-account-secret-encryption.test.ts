@@ -18,6 +18,9 @@ import { SecretVault } from "../src/security/secret-vault.js";
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 const providerId = "00000000-0000-4000-8000-000000000921";
 const mcpId = "00000000-0000-4000-8000-000000000922";
+const workerMcpId = "00000000-0000-4000-8000-000000000924";
+const workerId = "mcp-test-worker";
+const otherWorkerId = "mcp-test-worker-other";
 
 function envelope(ciphertext: string): ProtectedSecretEnvelope {
   return {
@@ -117,6 +120,7 @@ describe("opaque provider and MCP persistence", () => {
         repository.createMcpServer(LOCAL_USER_ID, null, {
           id: mcpId,
           enabled: true,
+          workerId: null,
           nameBlindIndex: "C".repeat(43),
           protectedConfiguration,
         }),
@@ -125,6 +129,67 @@ describe("opaque provider and MCP persistence", () => {
         nameBlindIndex: "C".repeat(43),
         protectedConfiguration,
       });
+
+      const now = new Date();
+      await database.insert(schema.workers).values([
+        {
+          id: workerId,
+          ownerId: LOCAL_USER_ID,
+          name: "MCP worker",
+          platform: "darwin",
+          architecture: "arm64",
+          startedAt: now,
+          lastSeenAt: now,
+        },
+        {
+          id: otherWorkerId,
+          ownerId: LOCAL_USER_ID,
+          name: "Other MCP worker",
+          platform: "linux",
+          architecture: "x64",
+          startedAt: now,
+          lastSeenAt: now,
+        },
+      ]);
+      const workerProtectedConfiguration = envelope(
+        "worker-mcp-ciphertext-sentinel",
+      );
+      await repository.createMcpServer(LOCAL_USER_ID, null, {
+        id: workerMcpId,
+        enabled: true,
+        workerId,
+        nameBlindIndex: "C".repeat(43),
+        protectedConfiguration: workerProtectedConfiguration,
+      });
+
+      await expect(
+        repository.listEffectiveMcpServers(LOCAL_USER_ID, null, workerId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: workerMcpId,
+          enabled: true,
+          protectedConfiguration: workerProtectedConfiguration,
+        }),
+      ]);
+      await expect(
+        repository.listEffectiveMcpServers(LOCAL_USER_ID, null, otherWorkerId),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: mcpId,
+          enabled: true,
+          protectedConfiguration,
+        }),
+      ]);
+
+      await repository.updateMcpServer(LOCAL_USER_ID, null, workerMcpId, {
+        enabled: false,
+        workerId,
+        nameBlindIndex: "C".repeat(43),
+        protectedConfiguration: workerProtectedConfiguration,
+      });
+      await expect(
+        repository.listEffectiveMcpServers(LOCAL_USER_ID, null, workerId),
+      ).resolves.toEqual([]);
 
       const raw = await client.query<{
         plan_type: string | null;

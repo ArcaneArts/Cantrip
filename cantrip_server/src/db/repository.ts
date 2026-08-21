@@ -415,6 +415,7 @@ export class ProjectWorkspaceInvariantError extends Error {}
 export class WorkerEnrollmentError extends Error {}
 export class TunnelManagementError extends Error {}
 export class ManagedMcpServerInvariantError extends Error {}
+export class McpServerWorkerBindingError extends Error {}
 
 export interface TunnelAttachmentAuthorization {
   attachmentId: string;
@@ -1052,6 +1053,7 @@ function toMcpServerWireSummary(server: McpServerRow): McpServerWireSummary {
     id: server.id,
     scope: server.projectId ? "project" : "global",
     projectId: server.projectId,
+    workerId: server.workerId,
     enabled: server.enabled,
     nameBlindIndex: server.nameBlindIndex,
     protectedConfiguration: server.protectedConfiguration,
@@ -7689,6 +7691,7 @@ export class ServerRepository {
   async listEffectiveMcpServers(
     ownerId: string,
     projectId: string | null,
+    workerId: string,
   ): Promise<McpServerOpaqueRuntime[]> {
     const rows = await this.database
       .select()
@@ -7700,6 +7703,10 @@ export class ServerRepository {
             isNull(schema.mcpServers.projectId),
             ...(projectId ? [eq(schema.mcpServers.projectId, projectId)] : []),
           ),
+          or(
+            isNull(schema.mcpServers.workerId),
+            eq(schema.mcpServers.workerId, workerId),
+          ),
         ),
       )
       .orderBy(
@@ -7709,11 +7716,20 @@ export class ServerRepository {
     const effective = new Map<string, McpServerRow>();
     for (const row of rows) {
       const current = effective.get(row.nameBlindIndex);
-      if (!current || (projectId && row.projectId === projectId)) {
+      const priority =
+        (projectId && row.projectId === projectId ? 2 : 0) +
+        (row.workerId === workerId ? 1 : 0);
+      const currentPriority = current
+        ? (projectId && current.projectId === projectId ? 2 : 0) +
+          (current.workerId === workerId ? 1 : 0)
+        : -1;
+      if (!current || priority > currentPriority) {
         effective.set(row.nameBlindIndex, row);
       }
     }
-    return [...effective.values()].map(toMcpServerOpaqueRuntime);
+    return [...effective.values()]
+      .filter(({ enabled }) => enabled)
+      .map(toMcpServerOpaqueRuntime);
   }
 
   async createMcpServer(
@@ -7734,12 +7750,18 @@ export class ServerRepository {
         .limit(1);
       if (!project[0]) return null;
     }
+    if (input.workerId && !(await this.getWorker(ownerId, input.workerId))) {
+      throw new McpServerWorkerBindingError(
+        "The selected MCP worker is not available to this account.",
+      );
+    }
     const rows = await this.database
       .insert(schema.mcpServers)
       .values({
         id: input.id,
         ownerId,
         projectId,
+        workerId: input.workerId,
         enabled: input.enabled,
         nameBlindIndex: input.nameBlindIndex,
         protectedConfiguration: input.protectedConfiguration,
@@ -7754,9 +7776,15 @@ export class ServerRepository {
     serverId: string,
     input: EncryptedMcpServerUpdate,
   ): Promise<McpServerWireSummary | null> {
+    if (input.workerId && !(await this.getWorker(ownerId, input.workerId))) {
+      throw new McpServerWorkerBindingError(
+        "The selected MCP worker is not available to this account.",
+      );
+    }
     const rows = await this.database
       .update(schema.mcpServers)
       .set({
+        workerId: input.workerId,
         enabled: input.enabled,
         nameBlindIndex: input.nameBlindIndex,
         protectedConfiguration: input.protectedConfiguration,

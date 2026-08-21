@@ -1140,11 +1140,14 @@ export async function getGlobalMcpServers() {
   return openMcpServerWireList(await request("/api/settings/mcp-servers"));
 }
 
-export async function createGlobalMcpServer(input: McpServerConfiguration) {
+export async function createGlobalMcpServer(
+  input: McpServerConfiguration,
+  workerId: string | null = null,
+) {
   return openMcpServerWireSummary(
     await post(
       "/api/settings/mcp-servers",
-      await protectMcpServerCreate(input),
+      await protectMcpServerCreate(input, workerId),
     ),
   );
 }
@@ -1152,11 +1155,14 @@ export async function createGlobalMcpServer(input: McpServerConfiguration) {
 export async function updateGlobalMcpServer(
   serverId: string,
   input: McpServerConfiguration,
+  workerId: string | null = null,
 ) {
   return openMcpServerWireSummary(
     await request(`/api/settings/mcp-servers/${encodeURIComponent(serverId)}`, {
       method: "PUT",
-      body: JSON.stringify(await protectMcpServerUpdate(serverId, input)),
+      body: JSON.stringify(
+        await protectMcpServerUpdate(serverId, input, workerId),
+      ),
     }),
   );
 }
@@ -1386,11 +1392,12 @@ export async function getProjectMcpServers(projectId: string) {
 export async function createProjectMcpServer(
   projectId: string,
   input: McpServerConfiguration,
+  workerId: string | null = null,
 ) {
   return openMcpServerWireSummary(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/mcp-servers`,
-      await protectMcpServerCreate(input),
+      await protectMcpServerCreate(input, workerId),
     ),
   );
 }
@@ -1399,13 +1406,16 @@ export async function updateProjectMcpServer(
   projectId: string,
   serverId: string,
   input: McpServerConfiguration,
+  workerId: string | null = null,
 ) {
   return openMcpServerWireSummary(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/mcp-servers/${encodeURIComponent(serverId)}`,
       {
         method: "PUT",
-        body: JSON.stringify(await protectMcpServerUpdate(serverId, input)),
+        body: JSON.stringify(
+          await protectMcpServerUpdate(serverId, input, workerId),
+        ),
       },
     ),
   );
@@ -1434,11 +1444,12 @@ export async function copyProjectMcpServer(
     id: _id,
     scope: _scope,
     projectId: _projectId,
+    workerId: _workerId,
     createdAt: _createdAt,
     updatedAt: _updatedAt,
     ...configuration
   } = source;
-  return createProjectMcpServer(projectId, configuration);
+  return createProjectMcpServer(projectId, configuration, source.workerId);
 }
 
 export async function createProjectNetworkShare(projectId: string) {

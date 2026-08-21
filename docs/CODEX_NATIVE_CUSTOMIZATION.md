@@ -29,6 +29,10 @@ Cantrip owns MCP server configuration independently from the worker's
 - Settings → MCP stores global servers that are inherited by every project.
 - Project Settings → MCP servers stores project-local servers. A local server
   with the same name replaces the inherited definition for that project.
+- Either scope may optionally bind a server to one worker. Worker-bound
+  definitions participate only when that worker executes the project; within a
+  name collision the precedence is project+worker, project, global+worker,
+  then global.
 - Project settings can copy a server from another project. The copy receives a
   new id and can be edited or removed without changing its source.
 
@@ -40,6 +44,12 @@ environment variable. Secret values are not shown in server list rows.
 
 The server resolves the effective name-keyed set before dispatching chats,
 Codex consoles, workflow execution or generation, and Git agent generation.
+An effective disabled definition still shadows less-specific definitions but
+is omitted from worker dispatch. The worker also rejects disabled definitions
+defensively before decryption and omits them from Codex's native configuration,
+so Codex receives no tools, resources, prompts, instructions, or server identity
+for a disabled user server. The separately synthesized managed CodeGraph MCP is
+always enabled and cannot be edited, copied, disabled, or removed.
 The worker translates that set to Codex's native `mcp_servers` configuration
 and supplies it through `thread/start` or `thread/resume`. When the effective
 set changes for an already-loaded idle thread, the worker unsubscribes and

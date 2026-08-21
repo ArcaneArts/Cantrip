@@ -1922,6 +1922,7 @@ export const encryptedMcpServerCreateSchema = z
   .object({
     id: z.string().uuid(),
     enabled: z.boolean(),
+    workerId: z.string().min(1).max(255).nullable().default(null),
     nameBlindIndex: encryptionKeyBytesSchema,
     protectedConfiguration: protectedSecretEnvelopeSchema,
   })
@@ -1938,6 +1939,7 @@ export const mcpServerSummarySchema = mcpServerConfigurationSchema.and(
     id: z.string().min(1),
     scope: mcpServerScopeSchema,
     projectId: z.string().min(1).nullable(),
+    workerId: z.string().min(1).max(255).nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   }),
@@ -1949,6 +1951,7 @@ export const mcpServerWireSummarySchema = mcpServerOpaqueRuntimeSchema.and(
   z.object({
     scope: mcpServerScopeSchema,
     projectId: z.string().min(1).nullable(),
+    workerId: z.string().min(1).max(255).nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   }),

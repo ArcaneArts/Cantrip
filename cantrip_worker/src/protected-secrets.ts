@@ -62,29 +62,31 @@ export async function openMcpServers(input: {
   service: WorkerEncryptionService;
 }): Promise<McpServerConfiguration[]> {
   return Promise.all(
-    input.servers.map(async (server) => {
-      const component = input.service.componentKey("mcp-secret");
-      try {
-        const configuration = await decryptProtectedSecret({
-          ownerId: input.service.ownerId(),
-          component: "mcp-secret",
-          table: "mcp_servers",
-          rowId: server.id,
-          field: "protected_configuration",
-          keyRevision: server.protectedConfiguration.keyRevision,
-          componentKey: component.key,
-          encrypted: server.protectedConfiguration,
-          contentSchema: mcpServerConfigurationSchema,
-          maximumBytes: 1024 * 1024,
-        });
-        return mcpServerConfigurationSchema.parse({
-          ...configuration,
-          enabled: server.enabled,
-        });
-      } finally {
-        clearSensitiveBytes(component.key);
-      }
-    }),
+    input.servers
+      .filter(({ enabled }) => enabled)
+      .map(async (server) => {
+        const component = input.service.componentKey("mcp-secret");
+        try {
+          const configuration = await decryptProtectedSecret({
+            ownerId: input.service.ownerId(),
+            component: "mcp-secret",
+            table: "mcp_servers",
+            rowId: server.id,
+            field: "protected_configuration",
+            keyRevision: server.protectedConfiguration.keyRevision,
+            componentKey: component.key,
+            encrypted: server.protectedConfiguration,
+            contentSchema: mcpServerConfigurationSchema,
+            maximumBytes: 1024 * 1024,
+          });
+          return mcpServerConfigurationSchema.parse({
+            ...configuration,
+            enabled: server.enabled,
+          });
+        } finally {
+          clearSensitiveBytes(component.key);
+        }
+      }),
   );
 }
 

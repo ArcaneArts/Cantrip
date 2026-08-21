@@ -1636,35 +1636,37 @@ export function codexMcpConfigOverride(
 ): Record<string, unknown> {
   return {
     mcp_servers: Object.fromEntries(
-      servers.map((server) => {
-        const isManagedCodeGraph = isManagedCodeGraphMcpName(server.name);
-        const managedOverrides = isManagedCodeGraph
-          ? {
-              required: true,
-              enabled_tools: ["codegraph_explore"],
-            }
-          : {};
-        return [
-          server.name,
-          server.transport === "stdio"
+      servers
+        .filter(({ enabled }) => enabled)
+        .map((server) => {
+          const isManagedCodeGraph = isManagedCodeGraphMcpName(server.name);
+          const managedOverrides = isManagedCodeGraph
             ? {
-                command: server.command,
-                args: server.args,
-                env: server.environment,
-                enabled: server.enabled,
-                ...managedOverrides,
+                required: true,
+                enabled_tools: ["codegraph_explore"],
               }
-            : {
-                url: server.url,
-                bearer_token_env_var:
-                  server.bearerTokenEnvironmentVariable ?? undefined,
-                http_headers: server.headers,
-                env_http_headers: server.environmentHeaders,
-                enabled: server.enabled,
-                ...managedOverrides,
-              },
-        ];
-      }),
+            : {};
+          return [
+            server.name,
+            server.transport === "stdio"
+              ? {
+                  command: server.command,
+                  args: server.args,
+                  env: server.environment,
+                  enabled: server.enabled,
+                  ...managedOverrides,
+                }
+              : {
+                  url: server.url,
+                  bearer_token_env_var:
+                    server.bearerTokenEnvironmentVariable ?? undefined,
+                  http_headers: server.headers,
+                  env_http_headers: server.environmentHeaders,
+                  enabled: server.enabled,
+                  ...managedOverrides,
+                },
+          ];
+        }),
     ),
   };
 }
