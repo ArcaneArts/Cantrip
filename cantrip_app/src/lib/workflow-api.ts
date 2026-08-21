@@ -62,8 +62,12 @@ import {
   protectWorkflowDefinitionCreate,
   protectWorkflowDefinitionUpdate,
   protectWorkflowGateDecision,
+  protectWorkflowNodeRetry,
   protectWorkflowRevisionCreate,
+  protectWorkflowRunCancel,
   protectWorkflowRunCreate,
+  protectWorkflowRunPause,
+  protectWorkflowRunResume,
 } from "@/lib/workflow-encryption";
 
 export async function getWorkflows(
@@ -296,7 +300,7 @@ export async function pauseWorkflowRun(runId: string, input: WorkflowRunPause) {
   return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/pause`,
-      workflowRunPauseSchema.parse(input),
+      await protectWorkflowRunPause(runId, workflowRunPauseSchema.parse(input)),
     ),
   );
 }
@@ -308,7 +312,10 @@ export async function resumeWorkflowRun(
   return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/resume`,
-      workflowRunResumeSchema.parse(input),
+      await protectWorkflowRunResume(
+        runId,
+        workflowRunResumeSchema.parse(input),
+      ),
     ),
   );
 }
@@ -320,7 +327,10 @@ export async function cancelWorkflowRun(
   return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/cancel`,
-      workflowRunCancelSchema.parse(input),
+      await protectWorkflowRunCancel(
+        runId,
+        workflowRunCancelSchema.parse(input),
+      ),
     ),
   );
 }
@@ -346,7 +356,11 @@ export async function retryWorkflowNode(
   return openWorkflowRunResponse(
     await post(
       `/api/workflow-runs/${encodeURIComponent(runId)}/nodes/${encodeURIComponent(runNodeId)}/retry`,
-      workflowNodeRetrySchema.parse(input),
+      await protectWorkflowNodeRetry(
+        runId,
+        runNodeId,
+        workflowNodeRetrySchema.parse(input),
+      ),
     ),
   );
 }

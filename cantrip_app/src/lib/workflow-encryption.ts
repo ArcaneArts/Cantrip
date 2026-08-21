@@ -9,8 +9,12 @@ import {
   encryptedWorkflowDefinitionCreateSchema,
   encryptedWorkflowDefinitionUpdateSchema,
   encryptedWorkflowGateDecisionSchema,
+  encryptedWorkflowNodeRetrySchema,
   encryptedWorkflowRevisionCreateSchema,
+  encryptedWorkflowRunCancelSchema,
   encryptedWorkflowRunCreateSchema,
+  encryptedWorkflowRunPauseSchema,
+  encryptedWorkflowRunResumeSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionProtectedDescriptionSchema,
   workflowDefinitionProtectedNameSchema,
@@ -31,24 +35,30 @@ import {
   workflowNodeAttemptSchema,
   workflowApprovalGateSchema,
   workflowApprovalGateWireSchema,
+  workflowControlProtectedReasonSchema,
   workflowGateDecisionSchema,
   workflowGateProtectedRequestSchema,
   workflowGateProtectedResponseSchema,
   workflowNodeProtectedInputSchema,
   workflowNodeProtectedResultSchema,
+  workflowNodeRetrySchema,
   workflowProtectedErrorSchema,
   workflowRunCreateSchema,
+  workflowRunCancelSchema,
   workflowRunDetailSchema,
   workflowRunNodeItemSchema,
   workflowRunNodeSchema,
   workflowRunProtectedInputSchema,
   workflowRunProtectedResultSchema,
+  workflowRunPauseSchema,
+  workflowRunResumeSchema,
   workflowRunSchema,
   workflowRunWireDetailSchema,
   workflowRunWireSchema,
   type EncryptedWorkflowDefinitionCreate,
   type EncryptedWorkflowDefinitionUpdate,
   type EncryptedWorkflowGateDecision,
+  type EncryptedWorkflowNodeRetry,
   type EncryptedWorkflowRevisionCreate,
   type WorkflowDefinitionCreate,
   type WorkflowDefinitionDetail,
@@ -63,11 +73,18 @@ import {
   type WorkflowRevisionWire,
   type WorkflowRevisionWireSummary,
   type EncryptedWorkflowRunCreate,
+  type EncryptedWorkflowRunCancel,
+  type EncryptedWorkflowRunPause,
+  type EncryptedWorkflowRunResume,
   type WorkflowRun,
   type WorkflowRunCreate,
+  type WorkflowRunCancel,
   type WorkflowRunDetail,
+  type WorkflowRunPause,
+  type WorkflowRunResume,
   type WorkflowRunWire,
   type WorkflowRunWireDetail,
+  type WorkflowNodeRetry,
 } from "@cantrip/protocol/workflows";
 import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 
@@ -694,10 +711,111 @@ export async function protectWorkflowRunCreate(
   }
 }
 
+async function protectWorkflowControlReason(input: {
+  content: { reason: string | null };
+  field: "pause-reason" | "cancel-reason" | "reason";
+  options: TrustedOptions;
+  recordId: string;
+  recordKind: "workflow-run" | "workflow-event";
+}) {
+  const context = encryptionContext(input.options);
+  try {
+    return await encryptWorkflowContent({
+      ownerId: context.ownerId,
+      context: {
+        recordKind: input.recordKind,
+        recordId: input.recordId,
+        field: input.field,
+      },
+      keyRevision: context.keyRevision,
+      componentKey: context.componentKey,
+      content: { version: 1, reason: input.content.reason },
+      schema: workflowControlProtectedReasonSchema,
+    });
+  } finally {
+    clearSensitiveBytes(context.componentKey);
+  }
+}
+
+export async function protectWorkflowRunPause(
+  runId: string,
+  input: WorkflowRunPause,
+  options: TrustedOptions = {},
+): Promise<EncryptedWorkflowRunPause> {
+  const parsed = workflowRunPauseSchema.parse(input);
+  return encryptedWorkflowRunPauseSchema.parse({
+    idempotencyKey: parsed.idempotencyKey,
+    protectedReason: await protectWorkflowControlReason({
+      content: parsed,
+      field: "pause-reason",
+      options,
+      recordId: runId,
+      recordKind: "workflow-run",
+    }),
+  });
+}
+
+export async function protectWorkflowRunCancel(
+  runId: string,
+  input: WorkflowRunCancel,
+  options: TrustedOptions = {},
+): Promise<EncryptedWorkflowRunCancel> {
+  const parsed = workflowRunCancelSchema.parse(input);
+  return encryptedWorkflowRunCancelSchema.parse({
+    idempotencyKey: parsed.idempotencyKey,
+    protectedReason: await protectWorkflowControlReason({
+      content: parsed,
+      field: "cancel-reason",
+      options,
+      recordId: runId,
+      recordKind: "workflow-run",
+    }),
+  });
+}
+
+export async function protectWorkflowRunResume(
+  runId: string,
+  input: WorkflowRunResume,
+  options: TrustedOptions = {},
+): Promise<EncryptedWorkflowRunResume> {
+  const parsed = workflowRunResumeSchema.parse(input);
+  const eventKey = `run-resume:${parsed.idempotencyKey}`;
+  return encryptedWorkflowRunResumeSchema.parse({
+    idempotencyKey: parsed.idempotencyKey,
+    protectedReason: await protectWorkflowControlReason({
+      content: parsed,
+      field: "reason",
+      options,
+      recordId: `${runId}:${eventKey}`,
+      recordKind: "workflow-event",
+    }),
+  });
+}
+
+export async function protectWorkflowNodeRetry(
+  runId: string,
+  runNodeId: string,
+  input: WorkflowNodeRetry,
+  options: TrustedOptions = {},
+): Promise<EncryptedWorkflowNodeRetry> {
+  const parsed = workflowNodeRetrySchema.parse(input);
+  const eventKey = `node-retry:${runNodeId}:${parsed.idempotencyKey}`;
+  return encryptedWorkflowNodeRetrySchema.parse({
+    idempotencyKey: parsed.idempotencyKey,
+    protectedReason: await protectWorkflowControlReason({
+      content: parsed,
+      field: "reason",
+      options,
+      recordId: `${runId}:${eventKey}`,
+      recordKind: "workflow-event",
+    }),
+  });
+}
+
 async function openRuntimeField<T>(input: {
   context: EncryptionContext;
   encrypted: WorkflowContentOpaque;
-  field: "input" | "result" | "error";
+  field: "input" | "result" | "error" | "pause-reason" | "cancel-reason";
   recordId: string;
   recordKind:
     | "workflow-run"
@@ -725,7 +843,7 @@ async function openWorkflowRunWithContext(
   context: EncryptionContext,
 ): Promise<WorkflowRun> {
   const wire = workflowRunWireSchema.parse(raw);
-  const [input, result, error] = await Promise.all([
+  const [input, result, error, pauseReason, cancelReason] = await Promise.all([
     openRuntimeField({
       context,
       encrypted: wire.protectedInput,
@@ -754,16 +872,40 @@ async function openWorkflowRunWithContext(
           schema: workflowProtectedErrorSchema,
         })
       : null,
+    wire.protectedPauseReason
+      ? openRuntimeField({
+          context,
+          encrypted: wire.protectedPauseReason,
+          field: "pause-reason",
+          recordId: wire.id,
+          recordKind: "workflow-run",
+          schema: workflowControlProtectedReasonSchema,
+        })
+      : null,
+    wire.protectedCancelReason
+      ? openRuntimeField({
+          context,
+          encrypted: wire.protectedCancelReason,
+          field: "cancel-reason",
+          recordId: wire.id,
+          recordKind: "workflow-run",
+          schema: workflowControlProtectedReasonSchema,
+        })
+      : null,
   ]);
   return workflowRunSchema.parse({
     ...wire,
     protectedInput: undefined,
     protectedResult: undefined,
     protectedError: undefined,
+    protectedPauseReason: undefined,
+    protectedCancelReason: undefined,
     structuredInput: input.input,
     structuredResult: result?.result ?? null,
     errorCode: error?.code ?? wire.errorCode,
     errorMessage: error?.message ?? wire.errorMessage,
+    pauseReason: pauseReason?.reason ?? null,
+    cancelReason: cancelReason?.reason ?? null,
   });
 }
 

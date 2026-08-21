@@ -4,6 +4,7 @@ import {
 } from "@cantrip/crypto";
 import {
   workflowDefinitionCreateSchema,
+  workflowControlProtectedReasonSchema,
   workflowGateProtectedResponseSchema,
   workflowRunCreateSchema,
   workflowRunProtectedInputSchema,
@@ -16,8 +17,12 @@ import {
   openWorkflowDefinitionWireDetail,
   openWorkflowDefinitionWireSummary,
   protectWorkflowGateDecision,
+  protectWorkflowNodeRetry,
   protectWorkflowDefinitionCreate,
   protectWorkflowRunCreate,
+  protectWorkflowRunCancel,
+  protectWorkflowRunPause,
+  protectWorkflowRunResume,
 } from "./workflow-encryption";
 
 const ownerId = "workflow-owner";
@@ -214,6 +219,88 @@ describe("workflow catalog encryption", () => {
       version: 1,
       input: { request: "RUN_INPUT_SENTINEL" },
     });
+  });
+
+  it("protects workflow control reasons before they reach the server", async () => {
+    const encryption = service();
+    const options = { service: encryption, session };
+    const runId = "run-control-1";
+    const runNodeId = "run-node-control-1";
+    const reason = "CONTROL_REASON_SENTINEL inspect the private failure";
+    const [pause, cancel, resume, retry] = await Promise.all([
+      protectWorkflowRunPause(
+        runId,
+        { reason, idempotencyKey: "pause-once" },
+        options,
+      ),
+      protectWorkflowRunCancel(
+        runId,
+        { reason, idempotencyKey: "cancel-once" },
+        options,
+      ),
+      protectWorkflowRunResume(
+        runId,
+        { reason, idempotencyKey: "resume-once" },
+        options,
+      ),
+      protectWorkflowNodeRetry(
+        runId,
+        runNodeId,
+        { reason, idempotencyKey: "retry-once" },
+        options,
+      ),
+    ]);
+    expect(JSON.stringify({ pause, cancel, resume, retry })).not.toContain(
+      "CONTROL_REASON_SENTINEL",
+    );
+
+    const componentKey = encryption.componentKey({
+      component: "workflow-content",
+      identity: { ownerId, serverId },
+      keyRevision: 1,
+    });
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run",
+          recordId: runId,
+          field: "pause-reason",
+        },
+        keyRevision: 1,
+        componentKey,
+        encrypted: pause.protectedReason,
+        schema: workflowControlProtectedReasonSchema,
+      }),
+    ).resolves.toEqual({ version: 1, reason });
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run",
+          recordId: "another-run",
+          field: "pause-reason",
+        },
+        keyRevision: 1,
+        componentKey,
+        encrypted: pause.protectedReason,
+        schema: workflowControlProtectedReasonSchema,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-event",
+          recordId: `${runId}:node-retry:${runNodeId}:retry-once`,
+          field: "reason",
+        },
+        keyRevision: 1,
+        componentKey,
+        encrypted: retry.protectedReason,
+        schema: workflowControlProtectedReasonSchema,
+      }),
+    ).resolves.toEqual({ version: 1, reason });
   });
 
   it("protects gate decisions before they reach the server", async () => {

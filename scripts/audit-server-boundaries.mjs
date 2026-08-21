@@ -1824,6 +1824,10 @@ async function workflowCatalogContentBoundaryAudit() {
   const repositoryPath = resolve(serverSourcePath, "db/workflows.ts");
   const runRepositoryPath = resolve(serverSourcePath, "db/workflow-runs.ts");
   const executorPath = resolve(serverSourcePath, "workflows/executor.ts");
+  const runTransitionsPath = resolve(
+    serverSourcePath,
+    "db/workflow-run-transitions.ts",
+  );
   const workerExecutionPath = resolve(
     repositoryRoot,
     "cantrip_worker/src/workflow-execution-encryption.ts",
@@ -1841,6 +1845,7 @@ async function workflowCatalogContentBoundaryAudit() {
     clientApiText,
     clientEncryptionText,
     runRepositoryText,
+    runTransitionsText,
     executorText,
     workerExecutionText,
     workerText,
@@ -1854,6 +1859,7 @@ async function workflowCatalogContentBoundaryAudit() {
     readFile(clientWorkflowApiPath, "utf8"),
     readFile(clientWorkflowEncryptionPath, "utf8"),
     readFile(runRepositoryPath, "utf8"),
+    readFile(runTransitionsPath, "utf8"),
     readFile(executorPath, "utf8"),
     readFile(workerExecutionPath, "utf8"),
     readFile(workerPath, "utf8"),
@@ -1863,6 +1869,8 @@ async function workflowCatalogContentBoundaryAudit() {
   const definitionTable = tableInitializer(schemaText, "workflowDefinitions");
   const revisionTable = tableInitializer(schemaText, "workflowRevisions");
   const gateTable = tableInitializer(schemaText, "workflowApprovalGates");
+  const runTable = tableInitializer(schemaText, "workflowRuns");
+  const eventTable = tableInitializer(schemaText, "workflowRunEvents");
   for (const table of [
     "workflowRuns",
     "workflowRunNodes",
@@ -1879,6 +1887,36 @@ async function workflowCatalogContentBoundaryAudit() {
         failures.push(`${table}: missing ${column}`);
       }
     }
+  }
+  for (const [property, column] of [
+    ["protectedPauseReason", "protected_pause_reason"],
+    ["protectedCancelReason", "protected_cancel_reason"],
+  ]) {
+    if (
+      !runTable.includes(`${property}:`) ||
+      !runTable.includes(`"${column}"`)
+    ) {
+      failures.push(`workflowRuns: missing ${column}`);
+    }
+  }
+  for (const field of ["pauseReason", "cancelReason"]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(runTable)) {
+      failures.push(`workflowRuns: plaintext ${field} storage returned`);
+    }
+  }
+  for (const [property, column] of [
+    ["publicPayload", "public_payload"],
+    ["protectedPayload", "protected_payload"],
+  ]) {
+    if (
+      !eventTable.includes(`${property}:`) ||
+      !eventTable.includes(`"${column}"`)
+    ) {
+      failures.push(`workflowRunEvents: missing ${column}`);
+    }
+  }
+  if (/\\bpayload\\s*:\s*jsonb\(["']payload["']\)/u.test(eventTable)) {
+    failures.push("workflowRunEvents: unrestricted plaintext payload returned");
   }
   for (const [property, column] of [
     ["slugBlindIndex", "slug_blind_index"],
@@ -2015,6 +2053,10 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRepositoryImportSchema",
     "workflowRepositoryExportSchema",
     "workflowRunSaveRevisionSchema",
+    "workflowRunPauseSchema",
+    "workflowRunResumeSchema",
+    "workflowRunCancelSchema",
+    "workflowNodeRetrySchema",
   ]) {
     if (trustedServerImports.includes(symbol)) {
       failures.push(`Server application imports trusted ${symbol}.`);
@@ -2050,6 +2092,10 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRevisionManifestSchema",
     "workflowRevisionWireManifestSchema",
     "encryptedWorkflowRunCreateSchema",
+    "encryptedWorkflowRunPauseSchema",
+    "encryptedWorkflowRunResumeSchema",
+    "encryptedWorkflowRunCancelSchema",
+    "encryptedWorkflowNodeRetrySchema",
     "workflowRunWireDetailSchema",
     "protectedWorkflowNodeExecutionRequestSchema",
     "protectedWorkflowNodeExecutionResultSchema",
@@ -2083,6 +2129,10 @@ async function workflowCatalogContentBoundaryAudit() {
     "openWorkflowDefinitionWireDetail",
     "openWorkflowRevisionWire",
     "protectWorkflowRunCreate",
+    "protectWorkflowRunPause",
+    "protectWorkflowRunResume",
+    "protectWorkflowRunCancel",
+    "protectWorkflowNodeRetry",
     "openWorkflowRunWireDetail",
     "protectWorkflowGateDecision",
   ]) {
@@ -2102,6 +2152,8 @@ async function workflowCatalogContentBoundaryAudit() {
     "decryptWorkflowContent",
     "openWorkflowGateWithContext",
     "protectWorkflowGateDecision",
+    'field: "pause-reason"',
+    'field: "cancel-reason"',
   ]) {
     if (!clientEncryptionText.includes(marker)) {
       failures.push(`Client workflow encryption is missing ${marker}.`);
@@ -2197,6 +2249,28 @@ async function workflowCatalogContentBoundaryAudit() {
     );
   }
   for (const marker of [
+    "minimizeWorkflowEventPayload(input.type, input.payload)",
+    "publicPayload:",
+    "protectedPayload:",
+  ]) {
+    if (!runTransitionsText.includes(marker)) {
+      failures.push(`Workflow event minimization is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "input.reason",
+    "jsonObject({ event })",
+    "canonicalJson(event)",
+    "schema.workflowRunEvents.payload",
+    "textPreview:",
+  ]) {
+    if (runRepositoryText.includes(marker)) {
+      failures.push(
+        `Workflow event/control plaintext path returned: ${marker}.`,
+      );
+    }
+  }
+  for (const marker of [
     "AgentInteractionPanel",
     "workflowRunId: selectedRunId!",
     'queryKey: ["workflow-interactions", selectedRunId, "pending"]',
@@ -2246,11 +2320,11 @@ async function workflowCatalogContentBoundaryAudit() {
       "workflow-agent-interactions:interaction-content-client-worker-only",
       "workflow-gate-request-response:workflow-content-client-worker-only",
       "workflow-gate-semantics:worker-authenticated",
+      "workflow-control-reasons:workflow-content-client-only",
+      "workflow-event-content:protected-or-minimized-public-metadata",
       "trigger-ingress:fail-closed-until-worker-runtime",
     ],
-    remainingPlaintextContent: [
-      "content-bearing events, triggers, and deliveries",
-    ],
+    remainingPlaintextContent: ["triggers and deliveries"],
   };
 }
 

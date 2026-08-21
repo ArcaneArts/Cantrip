@@ -5418,223 +5418,223 @@
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 734,
+      "line": 730,
       "method": "listRuns",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 762,
+      "line": 758,
       "method": "createRun",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1002,
+      "line": 999,
       "method": "getRun",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1157,
+      "line": 1154,
       "method": "reserveWorktreeLease",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1344,
+      "line": 1341,
       "method": "activateWorktreeLease",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1509,
+      "line": 1506,
       "method": "failWorktreeLeaseAllocation",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1575,
+      "line": 1572,
       "method": "preflightWorktreeLeaseOutcome",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1620,
+      "line": 1617,
       "method": "beginWorktreeLeaseOutcome",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1745,
+      "line": 1742,
       "method": "resolveWorktreeLeaseOutcome",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1870,
+      "line": 1867,
       "method": "listEvents",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1902,
+      "line": 1901,
       "method": "listDispatchableRuns",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1922,
+      "line": 1921,
       "method": "listRecoverableWorktreeLeases",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 1992,
+      "line": 1991,
       "method": "enforceRunBudget",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2228,
+      "line": 2227,
       "method": "getReadyAgentCandidates",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2400,
+      "line": 2399,
       "method": "advanceReadyCollectionNode",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2475,
+      "line": 2474,
       "method": "advanceReadyRepeatUntilNode",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2597,
+      "line": 2596,
       "method": "advanceReadyControlNode",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2666,
+      "line": 2665,
       "method": "failUnsupportedRun",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 2721,
+      "line": 2720,
       "method": "claimAgentAttempt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3035,
+      "line": 3034,
       "method": "recordAttemptWorkerEvent",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3265,
+      "line": 3264,
       "method": "completeAgentAttempt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3466,
+      "line": 3465,
       "method": "openProtectedGateAttempt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 3584,
+      "line": 3580,
       "method": "failProtectedAgentAttempt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 4566,
+      "line": 4556,
       "method": "failAgentAttempt",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5556,
+      "line": 5546,
       "method": "renewAttemptHeartbeat",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5586,
+      "line": 5576,
       "method": "recoverInterruptedAttempts",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5769,
+      "line": 5759,
       "method": "pauseRun",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5846,
+      "line": 5830,
       "method": "resumeRun",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 5933,
+      "line": 5914,
       "method": "requestCancellation",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6185,
+      "line": 6165,
       "method": "retryNode",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6466,
+      "line": 6444,
       "method": "getProtectedGateDecisionContext",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6584,
+      "line": 6562,
       "method": "decideProtectedGate",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6600,
+      "line": 6578,
       "method": "replayProtectedGateDecision",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6636,
+      "line": 6614,
       "method": "expirePendingGates",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6705,
+      "line": 6683,
       "method": "getInteractionExecutionContext",
       "ownerEvidence": "explicit-owner"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6756,
+      "line": 6734,
       "method": "terminalizeWorkflowInteractions",
       "ownerEvidence": "delegated-or-missing-review"
     },
     {
       "file": "cantrip_server/src/db/workflow-runs.ts",
-      "line": 6779,
+      "line": 6757,
       "method": "terminalizeWorkflowInteraction",
       "ownerEvidence": "delegated-or-missing-review"
     },
@@ -5916,11 +5916,11 @@
       "workflow-agent-interactions:interaction-content-client-worker-only",
       "workflow-gate-request-response:workflow-content-client-worker-only",
       "workflow-gate-semantics:worker-authenticated",
+      "workflow-control-reasons:workflow-content-client-only",
+      "workflow-event-content:protected-or-minimized-public-metadata",
       "trigger-ingress:fail-closed-until-worker-runtime"
     ],
-    "remainingPlaintextContent": [
-      "content-bearing events, triggers, and deliveries"
-    ]
+    "remainingPlaintextContent": ["triggers and deliveries"]
   },
   "policyE2eeBoundary": {
     "status": "enforced",

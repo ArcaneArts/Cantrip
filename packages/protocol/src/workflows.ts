@@ -1479,6 +1479,13 @@ export const workflowProtectedErrorSchema = z
   })
   .strict();
 
+export const workflowControlProtectedReasonSchema = z
+  .object({
+    version: z.literal(1),
+    reason: z.string().trim().min(1).max(2_000).nullable(),
+  })
+  .strict();
+
 export const encryptedWorkflowRunCreateSchema = workflowRunCreateSchema
   .omit({ structuredInput: true })
   .extend({
@@ -1893,6 +1900,7 @@ export const workflowRunEventSchema = z.object({
   eventKey: z.string().min(1).max(500),
   type: z.string().min(1).max(200),
   payload: workflowJsonObjectSchema,
+  protectedPayload: workflowContentOpaqueSchema.nullable().default(null),
   actorType: z.string().min(1).max(100),
   actorId: z.string().max(500).nullable(),
   createdAt: z.string().datetime(),
@@ -1992,10 +2000,13 @@ export const workflowApprovalGateWireSchema = workflowApprovalGateBaseSchema
   });
 
 export const workflowRunWireSchema = workflowRunSchema
+  .omit({ pauseReason: true, cancelReason: true })
   .extend({
     protectedInput: workflowContentOpaqueSchema,
     protectedResult: workflowContentOpaqueSchema.nullable(),
     protectedError: workflowContentOpaqueSchema.nullable(),
+    protectedPauseReason: workflowContentOpaqueSchema.nullable().default(null),
+    protectedCancelReason: workflowContentOpaqueSchema.nullable().default(null),
   })
   .strict();
 
@@ -2152,15 +2163,30 @@ export const workflowRunCancelSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const encryptedWorkflowRunCancelSchema = workflowRunCancelSchema
+  .omit({ reason: true })
+  .extend({ protectedReason: workflowContentOpaqueSchema })
+  .strict();
+
 export const workflowRunPauseSchema = z.object({
   reason: z.string().trim().min(1).max(2_000),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const encryptedWorkflowRunPauseSchema = workflowRunPauseSchema
+  .omit({ reason: true })
+  .extend({ protectedReason: workflowContentOpaqueSchema })
+  .strict();
+
 export const workflowRunResumeSchema = z.object({
   reason: z.string().trim().min(1).max(2_000).nullable().default(null),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
+
+export const encryptedWorkflowRunResumeSchema = workflowRunResumeSchema
+  .omit({ reason: true })
+  .extend({ protectedReason: workflowContentOpaqueSchema })
+  .strict();
 
 export const workflowRunSaveRevisionSchema = z.object({
   useRunInputAsDefaults: z.boolean().default(true),
@@ -2171,6 +2197,11 @@ export const workflowNodeRetrySchema = z.object({
   reason: z.string().trim().min(1).max(2_000).nullable().default(null),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
+
+export const encryptedWorkflowNodeRetrySchema = workflowNodeRetrySchema
+  .omit({ reason: true })
+  .extend({ protectedReason: workflowContentOpaqueSchema })
+  .strict();
 
 export const workflowGateDecisionSchema = z.object({
   decision: z.enum(["approved", "denied"]),
@@ -2637,8 +2668,17 @@ export type WorkflowRunStatusUpdate = z.infer<
   typeof workflowRunStatusUpdateSchema
 >;
 export type WorkflowRunCancel = z.infer<typeof workflowRunCancelSchema>;
+export type EncryptedWorkflowRunCancel = z.infer<
+  typeof encryptedWorkflowRunCancelSchema
+>;
 export type WorkflowRunPause = z.infer<typeof workflowRunPauseSchema>;
+export type EncryptedWorkflowRunPause = z.infer<
+  typeof encryptedWorkflowRunPauseSchema
+>;
 export type WorkflowRunResume = z.infer<typeof workflowRunResumeSchema>;
+export type EncryptedWorkflowRunResume = z.infer<
+  typeof encryptedWorkflowRunResumeSchema
+>;
 export type WorkflowRunSaveRevision = z.infer<
   typeof workflowRunSaveRevisionSchema
 >;
@@ -2646,6 +2686,9 @@ export type WorkflowWorktreeOutcomeRequest = z.infer<
   typeof workflowWorktreeOutcomeRequestSchema
 >;
 export type WorkflowNodeRetry = z.infer<typeof workflowNodeRetrySchema>;
+export type EncryptedWorkflowNodeRetry = z.infer<
+  typeof encryptedWorkflowNodeRetrySchema
+>;
 export type WorkflowGateDecision = z.infer<typeof workflowGateDecisionSchema>;
 export type EncryptedWorkflowGateDecision = z.infer<
   typeof encryptedWorkflowGateDecisionSchema

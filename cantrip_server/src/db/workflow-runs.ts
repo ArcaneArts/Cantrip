@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { ProjectRootKind, WorkerEvent } from "@cantrip/protocol";
 import {
@@ -28,7 +28,6 @@ import {
   workflowRunNodeItemWireSchema,
   workflowRunNodeSchema,
   workflowRunNodeWireSchema,
-  workflowRunSchema,
   workflowRunWireSchema,
   workflowVerifyNodeConfigurationSchema,
   workflowWorktreeLeaseSchema,
@@ -36,7 +35,11 @@ import {
   type WorkflowPermissionRequirements,
   type WorkflowAgentNodeConfiguration,
   type WorkflowBudget,
+  type EncryptedWorkflowNodeRetry,
   type EncryptedWorkflowGateDecision,
+  type EncryptedWorkflowRunCancel,
+  type EncryptedWorkflowRunPause,
+  type EncryptedWorkflowRunResume,
   type ProtectedWorkflowGateDecisionRequest,
   type ProtectedWorkflowGateDecisionResult,
   type ProtectedWorkflowNodeExecutionResult,
@@ -44,13 +47,10 @@ import {
   type WorkflowJsonObject,
   type WorkflowMeasuredUsage,
   type WorkflowMapNodeConfiguration,
-  type WorkflowNodeRetry,
   type WorkflowPipelineNodeConfiguration,
   type WorkflowPipelineStep,
   type WorkflowRepeatUntilExecutionState,
   type WorkflowRepeatUntilNodeConfiguration,
-  type WorkflowRun,
-  type WorkflowRunCancel,
   type WorkflowRunCreate,
   type EncryptedWorkflowRunCreate,
   type WorkflowRunWire,
@@ -58,8 +58,6 @@ import {
   type WorkflowRunEventPage,
   type WorkflowRunEventQuery,
   type WorkflowRunQuery,
-  type WorkflowRunPause,
-  type WorkflowRunResume,
   type WorkflowRunNode,
   type WorkflowRunNodeWire,
   type WorkflowRunNodeItem,
@@ -96,6 +94,7 @@ import {
   cancelPendingWorkflowGates,
   insertWorkflowRunEvent,
   lockWorkflowRun,
+  minimizeWorkflowEventPayload,
   recomputeWorkflowRun,
   settleWorkflowDependencies,
   type WorkflowRunTransaction,
@@ -192,6 +191,8 @@ function toRun(run: WorkflowRunRow): WorkflowRunWire {
     protectedInput: run.protectedInput,
     protectedResult: run.protectedResult,
     protectedError: run.protectedError,
+    protectedPauseReason: run.protectedPauseReason,
+    protectedCancelReason: run.protectedCancelReason,
     budget: run.budget,
     measuredUsage: run.measuredUsage,
     permissionManifest: run.permissionManifest,
@@ -202,8 +203,6 @@ function toRun(run: WorkflowRunRow): WorkflowRunWire {
     codexThreadId: run.codexThreadId,
     errorCode: run.errorCode,
     errorMessage: run.errorMessage,
-    pauseReason: run.pauseReason,
-    cancelReason: run.cancelReason,
     recoveryState: run.recoveryState,
     queuedAt: toISOString(run.queuedAt),
     startedAt: nullableISOString(run.startedAt),
@@ -399,7 +398,7 @@ export interface WorkflowRunBudgetEnforcementResult {
 }
 
 function workflowRunBudgetViolation(
-  run: WorkflowRun,
+  run: WorkflowRunWire,
   measuredUsage: WorkflowMeasuredUsage,
   terminalCostUsage: WorkflowMeasuredUsage,
   now: Date,
@@ -586,23 +585,20 @@ function expandedWorkflowNodeCount(detail: WorkflowRunWireDetail): number {
 }
 
 function workerEventIdentity(event: WorkerEvent): string {
-  const digest = createHash("sha256")
-    .update(canonicalJson(event))
-    .digest("hex")
-    .slice(0, 24);
-  return `${event.type}:${digest}`;
+  const requestKey =
+    "requestKey" in event
+      ? event.requestKey
+      : "request" in event && "requestKey" in event.request
+        ? event.request.requestKey
+        : null;
+  return `${event.type}:${requestKey ?? randomUUID()}`;
 }
 
 function workerEventPayload(event: WorkerEvent): Record<string, unknown> {
-  try {
-    return jsonObject({ event });
-  } catch {
-    return {
-      eventType: event.type,
-      attemptId: "attemptId" in event ? event.attemptId : null,
-      truncated: true,
-    };
-  }
+  return {
+    eventType: event.type,
+    attemptId: "attemptId" in event ? event.attemptId : null,
+  };
 }
 
 async function recordWorkflowChanges(
@@ -734,7 +730,7 @@ export class WorkflowRunRepository {
   async listRuns(
     ownerId: string,
     query: WorkflowRunQuery,
-  ): Promise<WorkflowRun[]> {
+  ): Promise<WorkflowRunWire[]> {
     const conditions = [eq(schema.workflowRuns.ownerId, ownerId)];
     if (query.workflowId) {
       conditions.push(eq(schema.workflowRuns.workflowId, query.workflowId));
@@ -970,14 +966,15 @@ export class WorkflowRunRepository {
           sequence: 0,
           eventKey: `run-created:${runId}`,
           type: "run.created",
-          payload: {
+          publicPayload: minimizeWorkflowEventPayload("run.created", {
             workflowId: context.definition.id,
             workflowRevisionId: context.revision.id,
             revision: context.revision.revision,
             nodeCount: revisionNodes.length,
             readyNodeCount: runNodes.filter(({ status }) => status === "ready")
               .length,
-          },
+          }),
+          protectedPayload: null,
           actorType: input.trigger.actorType,
           actorId: input.trigger.actorId,
           createdAt: now,
@@ -1600,7 +1597,7 @@ export class WorkflowRunRepository {
     if (!lease) return null;
     const eventKey = `worktree-outcome:${leaseId}:${input.idempotencyKey}`;
     const existingEvents = await this.database
-      .select({ payload: schema.workflowRunEvents.payload })
+      .select({ payload: schema.workflowRunEvents.publicPayload })
       .from(schema.workflowRunEvents)
       .where(
         and(
@@ -1655,7 +1652,7 @@ export class WorkflowRunRepository {
           const current = rows[0]?.lease;
           if (!current) return null;
           const finalEvents = await transaction
-            .select({ payload: schema.workflowRunEvents.payload })
+            .select({ payload: schema.workflowRunEvents.publicPayload })
             .from(schema.workflowRunEvents)
             .where(
               and(
@@ -1669,7 +1666,7 @@ export class WorkflowRunRepository {
             return current;
           }
           const startedEvents = await transaction
-            .select({ payload: schema.workflowRunEvents.payload })
+            .select({ payload: schema.workflowRunEvents.publicPayload })
             .from(schema.workflowRunEvents)
             .where(
               and(
@@ -1788,7 +1785,7 @@ export class WorkflowRunRepository {
           const current = rows[0]?.lease;
           if (!current) return null;
           const existingEvents = await transaction
-            .select({ payload: schema.workflowRunEvents.payload })
+            .select({ payload: schema.workflowRunEvents.publicPayload })
             .from(schema.workflowRunEvents)
             .where(
               and(
@@ -1890,6 +1887,8 @@ export class WorkflowRunRepository {
       events: pageRows.map((event) =>
         workflowRunEventSchema.parse({
           ...event,
+          payload: event.publicPayload,
+          publicPayload: undefined,
           createdAt: toISOString(event.createdAt),
         }),
       ),
@@ -2182,7 +2181,7 @@ export class WorkflowRunRepository {
               measuredUsage,
               errorCode: violation.code,
               errorMessage: violation.message,
-              pauseReason: null,
+              protectedPauseReason: null,
               pausedAt: null,
               recoveryState: "stable",
               completedAt: now,
@@ -3554,10 +3553,7 @@ export class WorkflowRunRepository {
         .update(schema.workflowRuns)
         .set({
           status: runStatus,
-          pauseReason:
-            runStatus === "waiting"
-              ? "Waiting for a protected workflow gate decision."
-              : null,
+          protectedPauseReason: null,
           pausedAt: runStatus === "waiting" ? now : null,
           startedAt: lockedRun.startedAt ?? now,
           updatedAt: now,
@@ -3970,7 +3966,7 @@ export class WorkflowRunRepository {
             ),
             errorCode: failed.code.slice(0, 200),
             errorMessage: failed.message.slice(0, 5_000),
-            pauseReason: null,
+            protectedPauseReason: null,
             pausedAt: null,
             completedAt: now,
             updatedAt: now,
@@ -4017,8 +4013,6 @@ export class WorkflowRunRepository {
         eventKey: `attempt-completed:${lease.attemptId}`,
         type: "node.attempt.completed",
         payload: {
-          textPreview: result.text.slice(0, 4_000),
-          textTruncated: result.text.length > 4_000,
           structuredResultAvailable: true,
           measuredUsage,
           threadId: result.threadId,
@@ -4344,8 +4338,6 @@ export class WorkflowRunRepository {
         eventKey: `attempt-completed:${lease.attemptId}`,
         type: "node.attempt.completed",
         payload: {
-          textPreview: result.text.slice(0, 4_000),
-          textTruncated: result.text.length > 4_000,
           structuredResultAvailable: true,
           measuredUsage,
           threadId: result.threadId,
@@ -4544,8 +4536,6 @@ export class WorkflowRunRepository {
         eventKey: `attempt-completed:${lease.attemptId}`,
         type: "node.attempt.completed",
         payload: {
-          textPreview: result.text.slice(0, 4_000),
-          textTruncated: result.text.length > 4_000,
           structuredResultAvailable: true,
           measuredUsage,
           threadId: result.threadId,
@@ -4720,7 +4710,7 @@ export class WorkflowRunRepository {
           status: runStatus,
           ...(runStatus === "paused"
             ? {}
-            : { pauseReason: null, pausedAt: null }),
+            : { protectedPauseReason: null, pausedAt: null }),
           measuredUsage: aggregateWorkflowUsage(
             nodes.map(({ measuredUsage }) => measuredUsage),
           ),
@@ -4965,7 +4955,7 @@ export class WorkflowRunRepository {
             status: "recovering",
             errorCode: input.code.slice(0, 200),
             errorMessage: message,
-            pauseReason: null,
+            protectedPauseReason: null,
             pausedAt: null,
             recoveryState: "blocked",
             updatedAt: now,
@@ -5115,7 +5105,7 @@ export class WorkflowRunRepository {
           status: input.status === "interrupted" ? "cancelled" : "failed",
           errorCode: input.code.slice(0, 200),
           errorMessage: message,
-          pauseReason: null,
+          protectedPauseReason: null,
           pausedAt: null,
           recoveryState: "stable",
           completedAt: now,
@@ -5333,7 +5323,7 @@ export class WorkflowRunRepository {
             status: "recovering",
             errorCode: input.code.slice(0, 200),
             errorMessage: message,
-            pauseReason: null,
+            protectedPauseReason: null,
             pausedAt: null,
             recoveryState: "blocked",
             updatedAt: now,
@@ -5483,7 +5473,7 @@ export class WorkflowRunRepository {
           status: input.status === "interrupted" ? "cancelled" : "failed",
           errorCode: input.code.slice(0, 200),
           errorMessage: message,
-          pauseReason: null,
+          protectedPauseReason: null,
           pausedAt: null,
           recoveryState: "stable",
           completedAt: now,
@@ -5769,13 +5759,9 @@ export class WorkflowRunRepository {
   async pauseRun(
     ownerId: string,
     runId: string,
-    input: WorkflowRunPause,
+    input: EncryptedWorkflowRunPause,
   ): Promise<WorkflowRunWireDetail | null> {
     const eventKey = `run-pause:${input.idempotencyKey}`;
-    const controlPayload = {
-      reason: input.reason,
-      idempotencyKey: input.idempotencyKey,
-    };
     const now = new Date();
     for (let retry = 0; retry < 20; retry += 1) {
       try {
@@ -5783,7 +5769,9 @@ export class WorkflowRunRepository {
           const lockedRun = await lockWorkflowRun(transaction, ownerId, runId);
           if (!lockedRun) return false;
           const existingEvents = await transaction
-            .select({ payload: schema.workflowRunEvents.payload })
+            .select({
+              protectedPayload: schema.workflowRunEvents.protectedPayload,
+            })
             .from(schema.workflowRunEvents)
             .where(
               and(
@@ -5793,14 +5781,9 @@ export class WorkflowRunRepository {
             )
             .limit(1);
           if (existingEvents[0]) {
-            const payload = workflowJsonObjectSchema.parse(
-              existingEvents[0].payload,
-            );
             if (
-              canonicalJson({
-                reason: payload.reason ?? null,
-                idempotencyKey: payload.idempotencyKey,
-              }) !== canonicalJson(controlPayload)
+              canonicalJson(existingEvents[0].protectedPayload) !==
+              canonicalJson(input.protectedReason)
             ) {
               throw new WorkflowControlConflictError(
                 "This pause idempotency key was already used with different input.",
@@ -5817,7 +5800,7 @@ export class WorkflowRunRepository {
             .update(schema.workflowRuns)
             .set({
               status: "paused",
-              pauseReason: input.reason,
+              protectedPauseReason: input.protectedReason,
               pausedAt: now,
               updatedAt: now,
             })
@@ -5828,7 +5811,8 @@ export class WorkflowRunRepository {
             attemptId: null,
             eventKey,
             type: "run.paused",
-            payload: controlPayload,
+            payload: { idempotencyKey: input.idempotencyKey },
+            protectedPayload: input.protectedReason,
             actorType: "user",
             actorId: ownerId,
           });
@@ -5846,13 +5830,9 @@ export class WorkflowRunRepository {
   async resumeRun(
     ownerId: string,
     runId: string,
-    input: WorkflowRunResume,
+    input: EncryptedWorkflowRunResume,
   ): Promise<WorkflowRunWireDetail | null> {
     const eventKey = `run-resume:${input.idempotencyKey}`;
-    const controlPayload = {
-      reason: input.reason,
-      idempotencyKey: input.idempotencyKey,
-    };
     const now = new Date();
     for (let retry = 0; retry < 20; retry += 1) {
       try {
@@ -5860,7 +5840,9 @@ export class WorkflowRunRepository {
           const lockedRun = await lockWorkflowRun(transaction, ownerId, runId);
           if (!lockedRun) return false;
           const existingEvents = await transaction
-            .select({ payload: schema.workflowRunEvents.payload })
+            .select({
+              protectedPayload: schema.workflowRunEvents.protectedPayload,
+            })
             .from(schema.workflowRunEvents)
             .where(
               and(
@@ -5870,14 +5852,9 @@ export class WorkflowRunRepository {
             )
             .limit(1);
           if (existingEvents[0]) {
-            const payload = workflowJsonObjectSchema.parse(
-              existingEvents[0].payload,
-            );
             if (
-              canonicalJson({
-                reason: payload.reason ?? null,
-                idempotencyKey: payload.idempotencyKey,
-              }) !== canonicalJson(controlPayload)
+              canonicalJson(existingEvents[0].protectedPayload) !==
+              canonicalJson(input.protectedReason)
             ) {
               throw new WorkflowControlConflictError(
                 "This resume idempotency key was already used with different input.",
@@ -5894,7 +5871,7 @@ export class WorkflowRunRepository {
             .update(schema.workflowRuns)
             .set({
               status: "queued",
-              pauseReason: null,
+              protectedPauseReason: null,
               pausedAt: null,
               updatedAt: now,
             })
@@ -5904,7 +5881,7 @@ export class WorkflowRunRepository {
             lockedRun: {
               ...lockedRun,
               status: "queued",
-              pauseReason: null,
+              protectedPauseReason: null,
               pausedAt: null,
             },
             now,
@@ -5915,7 +5892,11 @@ export class WorkflowRunRepository {
             attemptId: null,
             eventKey,
             type: "run.resumed",
-            payload: { ...controlPayload, runStatus: transition.status },
+            payload: {
+              idempotencyKey: input.idempotencyKey,
+              runStatus: transition.status,
+            },
+            protectedPayload: input.protectedReason,
             actorType: "user",
             actorId: ownerId,
           });
@@ -5933,11 +5914,13 @@ export class WorkflowRunRepository {
   async requestCancellation(
     ownerId: string,
     runId: string,
-    input: WorkflowRunCancel,
+    input: EncryptedWorkflowRunCancel,
   ): Promise<WorkflowCancellationRequestResult | null> {
     const eventKey = `run-cancel:${input.idempotencyKey}`;
     const existingEvent = await this.database
-      .select({ payload: schema.workflowRunEvents.payload })
+      .select({
+        protectedPayload: schema.workflowRunEvents.protectedPayload,
+      })
       .from(schema.workflowRunEvents)
       .innerJoin(
         schema.workflowRuns,
@@ -5953,14 +5936,10 @@ export class WorkflowRunRepository {
         ),
       )
       .limit(1);
-    const controlPayload = {
-      reason: input.reason,
-      idempotencyKey: input.idempotencyKey,
-    };
     if (existingEvent[0]) {
       if (
-        canonicalJson(existingEvent[0].payload) !==
-        canonicalJson(controlPayload)
+        canonicalJson(existingEvent[0].protectedPayload) !==
+        canonicalJson(input.protectedReason)
       ) {
         throw new WorkflowControlConflictError(
           "This cancellation idempotency key was already used with different input.",
@@ -5996,7 +5975,7 @@ export class WorkflowRunRepository {
             status: "interrupted",
             structuredResult: null,
             errorCode: "cancelled-by-user",
-            errorMessage: input.reason,
+            errorMessage: "Workflow cancelled by the user.",
             heartbeatAt: now,
             completedAt: now,
             updatedAt: now,
@@ -6080,7 +6059,7 @@ export class WorkflowRunRepository {
             status: "interrupted",
             structuredResult: null,
             errorCode: "cancelled-by-user",
-            errorMessage: input.reason,
+            errorMessage: "Workflow cancelled by the user.",
             heartbeatAt: now,
             completedAt: now,
             updatedAt: now,
@@ -6114,10 +6093,10 @@ export class WorkflowRunRepository {
           status: "cancelled",
           structuredResult: null,
           errorCode: "cancelled-by-user",
-          errorMessage: input.reason,
-          cancelReason: input.reason,
+          errorMessage: "Workflow cancelled by the user.",
+          protectedCancelReason: input.protectedReason,
           cancelRequestedAt: now,
-          pauseReason: null,
+          protectedPauseReason: null,
           pausedAt: null,
           recoveryState: "stable",
           completedAt: now,
@@ -6153,7 +6132,8 @@ export class WorkflowRunRepository {
       attemptId: null,
       eventKey,
       type: "run.cancelled",
-      payload: controlPayload,
+      payload: { idempotencyKey: input.idempotencyKey },
+      protectedPayload: input.protectedReason,
       actorType: "user",
       actorId: ownerId,
     });
@@ -6166,7 +6146,7 @@ export class WorkflowRunRepository {
         type: "node.attempt.interrupted",
         payload: {
           code: "cancelled-by-user",
-          message: input.reason,
+          message: "Workflow cancelled by the user.",
           retryScheduled: false,
           nextAttempt: null,
         },
@@ -6186,11 +6166,13 @@ export class WorkflowRunRepository {
     ownerId: string,
     runId: string,
     runNodeId: string,
-    input: WorkflowNodeRetry,
+    input: EncryptedWorkflowNodeRetry,
   ): Promise<WorkflowRunWireDetail | null> {
     const eventKey = `node-retry:${runNodeId}:${input.idempotencyKey}`;
     const existingEvent = await this.database
-      .select({ payload: schema.workflowRunEvents.payload })
+      .select({
+        protectedPayload: schema.workflowRunEvents.protectedPayload,
+      })
       .from(schema.workflowRunEvents)
       .innerJoin(
         schema.workflowRuns,
@@ -6206,15 +6188,10 @@ export class WorkflowRunRepository {
         ),
       )
       .limit(1);
-    const controlPayload = {
-      runNodeId,
-      reason: input.reason,
-      idempotencyKey: input.idempotencyKey,
-    };
     if (existingEvent[0]) {
       if (
-        canonicalJson(existingEvent[0].payload) !==
-        canonicalJson(controlPayload)
+        canonicalJson(existingEvent[0].protectedPayload) !==
+        canonicalJson(input.protectedReason)
       ) {
         throw new WorkflowControlConflictError(
           "This retry idempotency key was already used with different input.",
@@ -6426,7 +6403,7 @@ export class WorkflowRunRepository {
           status: "queued",
           errorCode: null,
           errorMessage: null,
-          cancelReason: null,
+          protectedCancelReason: null,
           cancelRequestedAt: null,
           recoveryState: "stable",
           completedAt: null,
@@ -6456,7 +6433,8 @@ export class WorkflowRunRepository {
       attemptId: null,
       eventKey,
       type: "node.retry.requested",
-      payload: controlPayload,
+      payload: { idempotencyKey: input.idempotencyKey },
+      protectedPayload: input.protectedReason,
       actorType: "user",
       actorId: ownerId,
     });
@@ -6608,7 +6586,7 @@ export class WorkflowRunRepository {
     if (!run || !gate) return null;
     const eventKey = `gate-decision:${gateId}:${input.idempotencyKey}`;
     const events = await this.database
-      .select({ payload: schema.workflowRunEvents.payload })
+      .select({ payload: schema.workflowRunEvents.publicPayload })
       .from(schema.workflowRunEvents)
       .where(
         and(
@@ -7422,7 +7400,7 @@ export class WorkflowRunRepository {
       const lockedRun = await lockWorkflowRun(transaction, ownerId, runId);
       if (!lockedRun) return null;
       const existingEvents = await transaction
-        .select({ payload: schema.workflowRunEvents.payload })
+        .select({ payload: schema.workflowRunEvents.publicPayload })
         .from(schema.workflowRunEvents)
         .where(
           and(
@@ -7579,7 +7557,7 @@ export class WorkflowRunRepository {
               structuredResult: {},
               protectedResult: result.protectedRunResult,
               protectedError: null,
-              pauseReason: null,
+              protectedPauseReason: null,
               pausedAt: null,
               updatedAt: now,
             })
@@ -7613,7 +7591,7 @@ export class WorkflowRunRepository {
             protectedError: result.protectedRunError,
             errorCode: "gate-denied",
             errorMessage: "Protected workflow gate denied.",
-            pauseReason: null,
+            protectedPauseReason: null,
             pausedAt: null,
             completedAt: now,
             updatedAt: now,
@@ -7777,7 +7755,7 @@ export class WorkflowRunRepository {
             status: "failed",
             errorCode: "gate-expired",
             errorMessage: "Protected workflow gate expired.",
-            pauseReason: null,
+            protectedPauseReason: null,
             pausedAt: null,
             completedAt: now,
             updatedAt: now,
@@ -7928,7 +7906,7 @@ export class WorkflowRunRepository {
                   errorCode: "condition-no-match",
                   errorMessage:
                     "No condition branch matched and the node requires a match.",
-                  pauseReason: null,
+                  protectedPauseReason: null,
                   pausedAt: null,
                   completedAt: now,
                   updatedAt: now,
@@ -8200,6 +8178,7 @@ export class WorkflowRunRepository {
     attemptId: string | null;
     eventKey: string;
     payload: unknown;
+    protectedPayload?: WorkflowContentOpaque | null;
     runId: string;
     runNodeId: string | null;
     type: string;
@@ -8231,7 +8210,11 @@ export class WorkflowRunRepository {
           sequence,
           eventKey: input.eventKey.slice(0, 500),
           type: input.type.slice(0, 200),
-          payload: jsonObject(input.payload),
+          publicPayload: minimizeWorkflowEventPayload(
+            input.type,
+            input.payload,
+          ),
+          protectedPayload: input.protectedPayload ?? null,
           actorType: input.actorType.slice(0, 100),
           actorId: input.actorId?.slice(0, 500) ?? null,
         });

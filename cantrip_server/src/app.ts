@@ -479,7 +479,9 @@ import {
   encryptedWorkflowDefinitionCreateSchema,
   encryptedWorkflowDefinitionUpdateSchema,
   encryptedWorkflowGateDecisionSchema,
+  encryptedWorkflowNodeRetrySchema,
   encryptedWorkflowRevisionCreateSchema,
+  encryptedWorkflowRunCancelSchema,
   workflowAutomationTriggerCreateSchema,
   workflowAutomationTriggerListSchema,
   workflowAutomationTriggerQuerySchema,
@@ -494,15 +496,13 @@ import {
   workflowRevisionWireListSchema,
   workflowRevisionWireSchema,
   encryptedWorkflowRunCreateSchema,
-  workflowRunCancelSchema,
+  encryptedWorkflowRunPauseSchema,
+  encryptedWorkflowRunResumeSchema,
   workflowRunWireDetailSchema,
   workflowRunEventPageSchema,
   workflowRunEventQuerySchema,
   workflowRunWireListSchema,
-  workflowNodeRetrySchema,
-  workflowRunPauseSchema,
   workflowRunQuerySchema,
-  workflowRunResumeSchema,
   workflowTriggerDeliveryCreateSchema,
   workflowTriggerDeliveryResultSchema,
   workflowTriggerProvenanceSchema,
@@ -14112,7 +14112,7 @@ export async function buildApp({
   app.post<{ Params: { runId: string } }>(
     "/api/workflow-runs/:runId/pause",
     async (request, reply) => {
-      const input = workflowRunPauseSchema.safeParse(request.body);
+      const input = encryptedWorkflowRunPauseSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -14137,7 +14137,7 @@ export async function buildApp({
   app.post<{ Params: { runId: string } }>(
     "/api/workflow-runs/:runId/resume",
     async (request, reply) => {
-      const input = workflowRunResumeSchema.safeParse(request.body);
+      const input = encryptedWorkflowRunResumeSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -14162,7 +14162,7 @@ export async function buildApp({
   app.post<{ Params: { runId: string } }>(
     "/api/workflow-runs/:runId/cancel",
     async (request, reply) => {
-      const input = workflowRunCancelSchema.safeParse(request.body);
+      const input = encryptedWorkflowRunCancelSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -14218,7 +14218,7 @@ export async function buildApp({
   app.post<{ Params: { runId: string; runNodeId: string } }>(
     "/api/workflow-runs/:runId/nodes/:runNodeId/retry",
     async (request, reply) => {
-      const input = workflowNodeRetrySchema.safeParse(request.body);
+      const input = encryptedWorkflowNodeRetrySchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }

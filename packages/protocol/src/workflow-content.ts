@@ -41,6 +41,8 @@ export const workflowContentFieldSchema = z.enum([
   "payload",
   "request",
   "response",
+  "pause-reason",
+  "cancel-reason",
 ]);
 
 export const workflowContentContextSchema = z

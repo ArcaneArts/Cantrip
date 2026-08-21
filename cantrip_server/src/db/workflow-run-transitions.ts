@@ -6,6 +6,7 @@ import {
   type WorkflowMeasuredUsage,
   type WorkflowRunStatus,
 } from "@cantrip/protocol/workflows";
+import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
@@ -85,6 +86,120 @@ function jsonObject(value: unknown): Record<string, unknown> {
   return workflowJsonObjectSchema.parse(
     JSON.parse(JSON.stringify(value)) as unknown,
   );
+}
+
+const workflowEventPublicFields = new Set([
+  "action",
+  "attempt",
+  "attemptId",
+  "baseRevision",
+  "branchName",
+  "checkpointAvailable",
+  "code",
+  "collectionItemId",
+  "collectionItemPosition",
+  "collectionKind",
+  "currentIteration",
+  "decision",
+  "denialPolicy",
+  "endingRevision",
+  "eventType",
+  "executionMode",
+  "expiresAt",
+  "failurePolicy",
+  "gateId",
+  "idempotencyKey",
+  "itemCount",
+  "leaseId",
+  "logicalExecutionCount",
+  "mapItemId",
+  "mapItemPosition",
+  "maxConcurrency",
+  "nextAttempt",
+  "nextIteration",
+  "nextUnitAttempt",
+  "nodeCount",
+  "outcome",
+  "pipelineStepPosition",
+  "progressChanged",
+  "protectedResultAvailable",
+  "readyNodeIds",
+  "readyNodeCount",
+  "recoverable",
+  "repeatUntilIteration",
+  "repeatUntilSatisfied",
+  "requestedWorktreeId",
+  "revision",
+  "resolvedAt",
+  "retryScheduled",
+  "rootId",
+  "rootKind",
+  "runNodeItemId",
+  "runStatus",
+  "satisfied",
+  "selectedDependencyId",
+  "selectedDependencyIds",
+  "selectedTargetNodeId",
+  "skippedNodeIds",
+  "startingRevision",
+  "startedAt",
+  "state",
+  "structuredResultAvailable",
+  "threadId",
+  "timeoutAt",
+  "truncated",
+  "turnId",
+  "unchangedIterations",
+  "unitAttempt",
+  "workerId",
+  "workflowId",
+  "workflowRevisionId",
+  "worktreeDirty",
+  "worktreeId",
+  "worktreeRemoved",
+]);
+
+/**
+ * Workflow events are an operational index, not a second content store. Keep
+ * only an explicit set of scheduling/routing fields and place semantic values
+ * in protectedPayload instead.
+ */
+export function minimizeWorkflowEventPayload(
+  type: string,
+  payload: unknown,
+): Record<string, unknown> {
+  const source = jsonObject(payload);
+  const minimized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (workflowEventPublicFields.has(key)) minimized[key] = value;
+  }
+  if (source.measuredUsage !== undefined) {
+    minimized.measuredUsage = workflowMeasuredUsageSchema.parse(
+      source.measuredUsage,
+    );
+  }
+  if (source.request !== undefined) {
+    const request = workflowJsonObjectSchema.parse(source.request);
+    minimized.request = Object.fromEntries(
+      Object.entries(request).filter(([key]) =>
+        [
+          "action",
+          "decision",
+          "expectedEndingRevision",
+          "gateId",
+          "idempotencyKey",
+        ].includes(key),
+      ),
+    );
+  }
+  if (type.startsWith("workflow.node.")) {
+    return Object.fromEntries(
+      Object.entries(minimized).filter(([key]) =>
+        ["attemptId", "eventType", "truncated"].includes(key),
+      ),
+    );
+  }
+  return minimized;
 }
 
 function mappedWorkflowValue(
@@ -168,6 +283,7 @@ export async function insertWorkflowRunEvent(
     attemptId: string | null;
     eventKey: string;
     payload: unknown;
+    protectedPayload?: WorkflowContentOpaque | null;
     runId: string;
     runNodeId: string | null;
     type: string;
@@ -197,7 +313,8 @@ export async function insertWorkflowRunEvent(
     sequence: (latest.at(-1)?.sequence ?? -1) + 1,
     eventKey: input.eventKey.slice(0, 500),
     type: input.type.slice(0, 200),
-    payload: jsonObject(input.payload),
+    publicPayload: minimizeWorkflowEventPayload(input.type, input.payload),
+    protectedPayload: input.protectedPayload ?? null,
     actorType: input.actorType.slice(0, 100),
     actorId: input.actorId?.slice(0, 500) ?? null,
   });
@@ -500,22 +617,6 @@ export async function recomputeWorkflowRun(
     : null;
   const terminal = status === "completed" || status === "failed";
   const deadlocked = status === "failed";
-  const pendingGate =
-    status === "waiting"
-      ? (
-          await transaction
-            .select({ id: schema.workflowApprovalGates.id })
-            .from(schema.workflowApprovalGates)
-            .where(
-              and(
-                eq(schema.workflowApprovalGates.runId, input.lockedRun.id),
-                eq(schema.workflowApprovalGates.status, "pending"),
-              ),
-            )
-            .orderBy(asc(schema.workflowApprovalGates.createdAt))
-            .limit(1)
-        )[0]
-      : null;
   const runs = await transaction
     .update(schema.workflowRuns)
     .set({
@@ -529,14 +630,8 @@ export async function recomputeWorkflowRun(
       errorMessage: deadlocked
         ? "No workflow node can make durable progress."
         : null,
-      pauseReason:
-        status === "paused"
-          ? input.lockedRun.pauseReason
-          : status === "waiting"
-            ? pendingGate
-              ? "Waiting for a protected workflow gate decision."
-              : input.lockedRun.pauseReason
-            : null,
+      protectedPauseReason:
+        status === "paused" ? input.lockedRun.protectedPauseReason : null,
       pausedAt:
         status === "paused" || status === "waiting"
           ? (input.lockedRun.pausedAt ?? input.now)
