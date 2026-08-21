@@ -1,0 +1,7 @@
+{
+  "created_at_utc": "2026-08-21T12:09:14.539008+00:00",
+  "session": "20260821-070914-production-macos-1-1-724-aborts-in-tao-d",
+  "root": "/Users/cyberpwn/development/workspace/ArcaneArts/Cantrip",
+  "issue": "Production macOS 1.1.724 aborts in tao did_finish_launching after updater relaunch",
+  "status": "open"
+}
