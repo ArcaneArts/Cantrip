@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { InlineAlert } from "@/components/ui/inline-alert";
 
 export function confirmDialogAllowsOpenChange(
   open: boolean,
@@ -59,11 +60,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {error ? (
-          <p className="text-sm text-destructive" role="alert">
-            {error}
-          </p>
-        ) : null}
+        {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
         <DialogFooter>
           <Button
             disabled={pending}

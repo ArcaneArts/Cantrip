@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { cn } from "@/lib/utils";
 
 export interface ReviewedOperationContext<TRequest, TPreview> {
@@ -254,17 +255,17 @@ export function ReviewedOperationDialog<TRequest, TPreview, TResult>({
               <Loader2 className="size-4 animate-spin" /> {loadingLabel}
             </div>
           ) : operation.preview.error ? (
-            <p className={cn("text-sm text-destructive", errorClassName)}>
+            <InlineAlert className={errorClassName} tone="error">
               {operationError(operation.preview.error, previewErrorFallback)}
-            </p>
+            </InlineAlert>
           ) : operation.preview.data !== undefined &&
             operation.request !== null ? (
             children(operation.preview.data, operation.request)
           ) : null}
           {operation.apply.error ? (
-            <p className={cn("text-sm text-destructive", errorClassName)}>
+            <InlineAlert className={errorClassName} tone="error">
               {operationError(operation.apply.error, applyErrorFallback)}
-            </p>
+            </InlineAlert>
           ) : null}
         </div>
         <DialogFooter className={footerClassName}>

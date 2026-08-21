@@ -26,6 +26,8 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ContentEmpty, ContentLoading } from "@/components/ui/content-state";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
@@ -449,9 +451,12 @@ export function GitRepositoryPanel({
       <div className="min-h-0 flex-1 overflow-auto">
         {section === "remotes" ? (
           remotes.isLoading ? (
-            <Loading />
+            <ContentLoading label="Loading remotes…" />
           ) : remotes.error ? (
-            <ErrorText
+            <InlineAlert
+              className="m-4"
+              size="sm"
+              tone="error"
               error={remotes.error}
               fallback="Remotes could not be loaded."
             />
@@ -546,7 +551,7 @@ export function GitRepositoryPanel({
               </div>
             ))
           ) : (
-            <Empty>No remotes are configured.</Empty>
+            <ContentEmpty description="No remotes are configured." />
           )
         ) : section === "submodules" ? (
           <GitSubmodulePanel projectId={projectId} worktreeId={worktreeId} />
@@ -554,9 +559,12 @@ export function GitRepositoryPanel({
           <GitLfsPanel projectId={projectId} worktreeId={worktreeId} />
         ) : section === "tags" ? (
           tags.isLoading ? (
-            <Loading />
+            <ContentLoading label="Loading tags…" />
           ) : tags.error ? (
-            <ErrorText
+            <InlineAlert
+              className="m-4"
+              size="sm"
+              tone="error"
               error={tags.error}
               fallback="Tags could not be loaded."
             />
@@ -588,12 +596,15 @@ export function GitRepositoryPanel({
               </button>
             ))
           ) : (
-            <Empty>No tags match this search.</Empty>
+            <ContentEmpty description="No tags match this search." />
           )
         ) : releases.isLoading ? (
-          <Loading />
+          <ContentLoading label="Loading releases…" />
         ) : releases.error ? (
-          <ErrorText
+          <InlineAlert
+            className="m-4"
+            size="sm"
+            tone="error"
             error={releases.error}
             fallback="Releases could not be loaded."
           />
@@ -632,7 +643,7 @@ export function GitRepositoryPanel({
             </div>
           ))
         ) : (
-          <Empty>No GitHub releases exist for this repository.</Empty>
+          <ContentEmpty description="No GitHub releases exist for this repository." />
         )}
       </div>
 
@@ -828,9 +839,11 @@ export function GitRepositoryPanel({
             </DialogDescription>
           </DialogHeader>
           {tagDetail.isLoading ? (
-            <Loading />
+            <ContentLoading className="min-h-36" label="Loading tag details…" />
           ) : tagDetail.error ? (
-            <ErrorText
+            <InlineAlert
+              size="sm"
+              tone="error"
               error={tagDetail.error}
               fallback="Tag details could not be loaded."
             />
@@ -944,9 +957,14 @@ export function GitRepositoryPanel({
             </DialogDescription>
           </DialogHeader>
           {releaseDetail.isLoading ? (
-            <Loading />
+            <ContentLoading
+              className="min-h-36"
+              label="Loading release details…"
+            />
           ) : releaseDetail.error ? (
-            <ErrorText
+            <InlineAlert
+              size="sm"
+              tone="error"
               error={releaseDetail.error}
               fallback="Release details could not be loaded."
             />
@@ -1064,7 +1082,9 @@ export function GitRepositoryPanel({
                 </label>
               </div>
               {createRelease.error ? (
-                <ErrorText
+                <InlineAlert
+                  size="sm"
+                  tone="error"
                   error={createRelease.error}
                   fallback="Release could not be created."
                 />
@@ -1113,9 +1133,14 @@ export function GitRepositoryPanel({
             </DialogDescription>
           </DialogHeader>
           {currentPreview.isPending ? (
-            <Loading />
+            <ContentLoading
+              className="min-h-36"
+              label="Preparing action preview…"
+            />
           ) : currentPreview.error ? (
-            <ErrorText
+            <InlineAlert
+              size="sm"
+              tone="error"
               error={currentPreview.error}
               fallback="Action preview failed."
             />
@@ -1130,7 +1155,9 @@ export function GitRepositoryPanel({
             </div>
           ) : null}
           {apply.error ? (
-            <ErrorText
+            <InlineAlert
+              size="sm"
+              tone="error"
               error={apply.error}
               fallback="Repository action failed."
             />
@@ -1159,30 +1186,6 @@ export function GitRepositoryPanel({
         </DialogContent>
       </Dialog>
     </aside>
-  );
-}
-
-function Loading() {
-  return (
-    <div className="grid h-36 place-items-center">
-      <Loader2 className="size-4 animate-spin" />
-    </div>
-  );
-}
-
-function ErrorText({ error, fallback }: { error: unknown; fallback: string }) {
-  return (
-    <p className="p-4 text-xs text-destructive">
-      {error instanceof Error ? error.message : fallback}
-    </p>
-  );
-}
-
-function Empty({ children }: { children: string }) {
-  return (
-    <div className="grid h-48 place-items-center p-5 text-center text-xs text-muted-foreground">
-      {children}
-    </div>
   );
 }
 

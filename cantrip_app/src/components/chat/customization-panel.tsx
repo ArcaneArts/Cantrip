@@ -37,6 +37,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ContentEmpty, ContentLoading } from "@/components/ui/content-state";
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import {
   applyChatExternalImport,
   configureChatSkill,
@@ -252,14 +254,6 @@ function Section({
   );
 }
 
-function Empty({ children }: { children: ReactNode }) {
-  return (
-    <p className="border-y px-3 py-5 text-center text-sm text-muted-foreground">
-      {children}
-    </p>
-  );
-}
-
 function Diagnostics({
   warnings = [],
   errors = [],
@@ -269,23 +263,20 @@ function Diagnostics({
 }) {
   if (warnings.length === 0 && errors.length === 0) return null;
   return (
-    <div className="mb-3 divide-y border-y">
+    <div className="mb-3 grid gap-2">
       {warnings.map((warning) => (
-        <div
-          key={warning}
-          className="flex gap-2 border-l-2 border-amber-500 px-3 py-2 text-xs leading-5"
-        >
-          <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+        <InlineAlert key={warning} size="sm" tone="warning">
           {warning}
-        </div>
+        </InlineAlert>
       ))}
       {errors.map((error) => (
-        <div
+        <InlineAlert
           key={`${error.path}:${error.message}`}
-          className="border-l-2 border-destructive px-3 py-2 text-xs leading-5 text-destructive"
+          size="sm"
+          tone="error"
         >
           <strong>{error.path || "Inventory"}:</strong> {error.message}
-        </div>
+        </InlineAlert>
       ))}
     </div>
   );
@@ -346,7 +337,10 @@ function SkillInventory({
     <>
       <Diagnostics errors={inventory.skills.errors} />
       {inventory.skills.items.length === 0 ? (
-        <Empty>No skills were reported for this agent runtime.</Empty>
+        <ContentEmpty
+          className="min-h-0 border-y py-5"
+          description="No skills were reported for this agent runtime."
+        />
       ) : (
         <div className="divide-y border-y">
           {inventory.skills.items.map((skill) => (
@@ -406,9 +400,9 @@ function SkillInventory({
         </div>
       )}
       {configuration.isError ? (
-        <p className="mt-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
+        <InlineAlert className="mt-3" size="sm" tone="error">
           {errorText(configuration.error)}
-        </p>
+        </InlineAlert>
       ) : null}
     </>
   );
@@ -509,7 +503,10 @@ function HookInventory({
         errors={inventory.hooks.errors}
       />
       {inventory.hooks.items.length === 0 ? (
-        <Empty>No project or managed hooks were reported.</Empty>
+        <ContentEmpty
+          className="min-h-0 border-y py-5"
+          description="No project or managed hooks were reported."
+        />
       ) : (
         <div className="divide-y border-y">
           {inventory.hooks.items.map((hook) => (
@@ -547,7 +544,12 @@ function HookInventory({
 
 function ResourceResult({ result }: { result: CodexMcpResourceRead }) {
   if (result.contents.length === 0) {
-    return <Empty>The MCP server returned no content.</Empty>;
+    return (
+      <ContentEmpty
+        className="min-h-0 border-y py-5"
+        description="The MCP server returned no content."
+      />
+    );
   }
   return (
     <div className="divide-y border-y">
@@ -608,7 +610,10 @@ function McpInventory({
   return (
     <div className="grid gap-3">
       {inventory.mcpServers.length === 0 ? (
-        <Empty>No MCP servers are connected to this agent runtime.</Empty>
+        <ContentEmpty
+          className="min-h-0 border-y py-5"
+          description="No MCP servers are connected to this agent runtime."
+        />
       ) : (
         <div className="divide-y border-y">
           {inventory.mcpServers.map((server) => (
@@ -770,9 +775,9 @@ function McpInventory({
         </div>
       )}
       {resource.isError ? (
-        <p className="border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
+        <InlineAlert size="sm" tone="error">
           {errorText(resource.error)}
-        </p>
+        </InlineAlert>
       ) : null}
       {resource.data ? <ResourceResult result={resource.data} /> : null}
     </div>
@@ -1119,20 +1124,18 @@ export function CustomizationPanel({
           </div>
 
           {inventory.isPending ? (
-            <div className="grid min-h-56 place-items-center text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Loader2 className="size-4 animate-spin" /> Inspecting the Codex
-                runtime…
-              </div>
-            </div>
+            <ContentLoading
+              className="min-h-56"
+              label="Inspecting the Codex runtime…"
+            />
           ) : inventory.isError ? (
             <div className="border-b px-4 py-5 sm:px-6">
-              <p className="font-medium text-destructive">
-                Customization inventory unavailable
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {errorText(inventory.error)}
-              </p>
+              <InlineAlert
+                title="Customization inventory unavailable"
+                tone="error"
+                error={inventory.error}
+                fallback="The request failed."
+              />
               <Button
                 className="mt-3"
                 size="sm"
@@ -1145,9 +1148,13 @@ export function CustomizationPanel({
           ) : inventory.data ? (
             <div className="divide-y border-b">
               {refresh.isError ? (
-                <p className="mx-4 my-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive sm:mx-6">
+                <InlineAlert
+                  className="mx-4 my-3 sm:mx-6"
+                  size="sm"
+                  tone="error"
+                >
                   Refresh failed: {errorText(refresh.error)}
-                </p>
+                </InlineAlert>
               ) : null}
 
               <Section
@@ -1219,9 +1226,9 @@ export function CustomizationPanel({
                   ) : null}
                 </div>
                 {mcpReload.isError ? (
-                  <p className="mb-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
+                  <InlineAlert className="mb-3" size="sm" tone="error">
                     Reload failed: {errorText(mcpReload.error)}
-                  </p>
+                  </InlineAlert>
                 ) : null}
                 {mcpReload.isSuccess ? (
                   <p className="mb-3 flex items-center gap-2 border-l-2 border-emerald-500 px-3 py-2 text-xs">
@@ -1250,9 +1257,9 @@ export function CustomizationPanel({
                   </div>
                 ) : null}
                 {oauthStatus.isError ? (
-                  <p className="mb-3 border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
+                  <InlineAlert className="mb-3" size="sm" tone="error">
                     Authorization status failed: {errorText(oauthStatus.error)}
-                  </p>
+                  </InlineAlert>
                 ) : null}
                 {mcpOauth.isError ? (
                   <div className="mb-3 border-l-2 border-destructive px-3 py-2 text-xs">
@@ -1378,10 +1385,10 @@ export function CustomizationPanel({
                       </Button>
                     </div>
                     {externalPreview.data.items.length === 0 ? (
-                      <Empty>
-                        No external configuration candidates were detected in
-                        this project.
-                      </Empty>
+                      <ContentEmpty
+                        className="min-h-0 border-y py-5"
+                        description="No external configuration candidates were detected in this project."
+                      />
                     ) : (
                       <div className="divide-y border-y">
                         {externalPreview.data.items.map((item) => {
@@ -1505,15 +1512,15 @@ export function CustomizationPanel({
                       </p>
                     ) : null}
                     {externalImport.isError ? (
-                      <p className="border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
+                      <InlineAlert size="sm" tone="error">
                         Import failed: {errorText(externalImport.error)}
-                      </p>
+                      </InlineAlert>
                     ) : null}
                     {externalImportStatus.isError ? (
-                      <p className="border-l-2 border-destructive px-3 py-2 text-xs text-destructive">
+                      <InlineAlert size="sm" tone="error">
                         Import status failed:{" "}
                         {errorText(externalImportStatus.error)}
-                      </p>
+                      </InlineAlert>
                     ) : null}
                     {externalImportStatus.data ? (
                       <ExternalImportProgress
