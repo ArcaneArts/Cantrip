@@ -24,13 +24,14 @@ const config: EliteRevealConfig = {
 };
 
 describe("Elite reveal sequencing", () => {
-  it("uses the intentionally brief default cadence", () => {
+  it("uses the requested default cadence", () => {
     expect(DEFAULT_ELITE_REVEAL_CONFIG).toMatchObject({
-      glitchCountMax: 3,
-      glitchCountMin: 1,
-      glitchShowMs: 9,
+      glitchCountMax: 8,
+      glitchCountMin: 4,
+      glitchShowMs: 16,
       staggerSpreadMs: 50,
     });
+    expect(DEFAULT_ELITE_REVEAL_CONFIG.variants).toEqual(ELITE_GLITCH_VARIANTS);
   });
 
   it("normalizes timing and count boundaries", () => {
@@ -80,11 +81,11 @@ describe("Elite reveal sequencing", () => {
   it("uses the requested default weights", () => {
     expect(ELITE_GLITCH_VARIANT_WEIGHTS).toMatchObject({
       chromatic: 0.25,
-      "full-frame": 0.1,
-      "left-frame": 0.1,
+      "full-frame": 0.01,
+      "left-frame": 0.01,
       outline: 1,
-      "right-frame": 0.1,
-      scanline: 0.5,
+      "right-frame": 0.01,
+      scanline: 0.33,
       "spatial-shift": 1,
       "text-jitter": 1,
     });
@@ -100,7 +101,7 @@ describe("Elite reveal sequencing", () => {
       selectEliteGlitchVariant(
         variants,
         DEFAULT_ELITE_REVEAL_CONFIG.variantWeights,
-        () => 0.76,
+        () => 0.797,
       ),
     ).toBe("full-frame");
     expect(
@@ -114,21 +115,21 @@ describe("Elite reveal sequencing", () => {
     const selectionCounts = Object.fromEntries(
       ELITE_GLITCH_VARIANTS.map((variant) => [variant, 0]),
     ) as Record<(typeof ELITE_GLITCH_VARIANTS)[number], number>;
-    for (let index = 0; index < 4_050; index += 1) {
+    for (let index = 0; index < 3_610; index += 1) {
       const variant = selectEliteGlitchVariant(
         ELITE_GLITCH_VARIANTS,
         DEFAULT_ELITE_REVEAL_CONFIG.variantWeights,
-        () => (index + 0.5) / 4_050,
+        () => (index + 0.5) / 3_610,
       );
       if (variant) selectionCounts[variant] += 1;
     }
     expect(selectionCounts).toMatchObject({
-      "full-frame": 100,
-      "left-frame": 100,
-      "right-frame": 100,
+      "full-frame": 10,
+      "left-frame": 10,
+      "right-frame": 10,
       chromatic: 250,
       outline: 1_000,
-      scanline: 500,
+      scanline: 330,
       "spatial-shift": 1_000,
       "text-jitter": 1_000,
     });

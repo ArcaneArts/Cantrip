@@ -136,8 +136,6 @@ import {
   useProviderCatalog,
 } from "./use-provider-catalog";
 
-import "@/components/elite/elite-secret-entry.css";
-
 export type SettingsSection =
   | "general"
   | "elite"
@@ -231,11 +229,11 @@ export function changedAccountLabel(
   return label && label !== savedLabel ? label : null;
 }
 
-export function EliteModeSecretButton({ onOpen }: { onOpen(): void }) {
+export function EliteModeButton({ onOpen }: { onOpen(): void }) {
   return (
     <Button
       aria-label="Open Elite Mode"
-      className="elite-secret-entry sm:mr-auto"
+      className="sm:mr-auto"
       onClick={onOpen}
       type="button"
       variant="ghost"
@@ -1627,7 +1625,7 @@ export function SettingsPage({
                 </p>
               ) : null}
               <DialogFooter>
-                <EliteModeSecretButton
+                <EliteModeButton
                   onOpen={() => {
                     setProModeOpacityDialogOpen(false);
                     setSection("elite");
