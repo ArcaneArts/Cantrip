@@ -11396,6 +11396,17 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       }),
     ]),
   }),
+  z
+    .object({
+      type: z.literal("chat.thread.changed"),
+      threadId: z.string().min(1).max(200),
+      revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      changes: z
+        .array(z.enum(["turn", "goal", "queue", "plan"]))
+        .min(1)
+        .max(4),
+    })
+    .strict(),
   z.object({
     type: z.literal("worktree.inventory.observed"),
     sourcePath: worktreeObservationTargetSchema.shape.sourcePath,

@@ -581,6 +581,10 @@ import {
 } from "./chats/execution-helpers.js";
 import { canonicalMessagesFromThreadSync } from "./chats/thread-sync.js";
 import {
+  ChatThreadChangeReconciler,
+  type ChatThreadChangeNotification,
+} from "./chats/thread-change-reconciliation.js";
+import {
   ChatTurnOutcomeRecoveryScheduler,
   chatTurnOutcomeRecoveryKey,
   outcomeBelongsToLatestLaneTurn,
@@ -1340,6 +1344,20 @@ export async function buildApp({
   >();
   const chatTurnOutcomeRecoveryScheduler =
     new ChatTurnOutcomeRecoveryScheduler();
+  const chatThreadChangeReconciler = new ChatThreadChangeReconciler(
+    (error, key) => {
+      app.log.warn(
+        { err: error, observationKey: key },
+        "Could not reconcile an observed Codex thread change",
+      );
+    },
+  );
+  let reconcileObservedChatThread: (
+    chatId: string,
+    workerId: string,
+    threadId: string,
+    changes: ChatThreadChangeNotification["changes"],
+  ) => Promise<void> = async () => undefined;
   const cancelChatTurnOutcomeRecovery = (
     workerId: string,
     chatId: string,
@@ -1540,6 +1558,41 @@ export async function buildApp({
           "Ignored a durable outcome for a turn already settled normally",
         );
       }
+      return;
+    }
+    if (notification.type === "chat.thread.changed") {
+      const contexts = await repository.listChatExecutionContextsByThreadId(
+        ownerId,
+        workerId,
+        notification.threadId,
+      );
+      if (contexts.length !== 1 || contexts[0]?.experience !== "agent") {
+        return;
+      }
+      const context = contexts[0];
+      const key = `${ownerId}:${workerId}:${notification.threadId}`;
+      chatThreadChangeReconciler.schedule(key, notification, (observation) =>
+        runAsOwner(ownerId, async () => {
+          const current = await repository.getChatExecutionContext(
+            ownerId,
+            context.chatId,
+          );
+          if (
+            !current ||
+            current.experience !== "agent" ||
+            current.workerId !== workerId ||
+            current.threadId !== observation.threadId
+          ) {
+            return;
+          }
+          await reconcileObservedChatThread(
+            current.chatId,
+            workerId,
+            observation.threadId,
+            observation.changes,
+          );
+        }),
+      );
       return;
     }
     if (notification.type === "worktree.inventory.observed") {
@@ -22331,6 +22384,126 @@ export async function buildApp({
     },
   );
 
+  const reconcileChatThread = async (
+    context: ChatExecutionContext,
+    resolvedRuntime?: ModelRuntime,
+  ) => {
+    if (!context.threadId) {
+      return agentThreadSyncSchema.parse({
+        threadId: "unavailable",
+        status: "idle",
+        turns: [],
+      });
+    }
+    if (!bridge.isConnected(context.workerId)) {
+      throw new WorkerUnavailableError("Project worker is offline.");
+    }
+    const runtime = resolvedRuntime ?? (await runtimeForContext(context));
+    if (!runtime) throw new Error("Selected model was not found.");
+    const sync = agentThreadSyncSchema.parse(
+      await bridge.request(context.workerId, {
+        type: "chat.sync",
+        chatId: context.chatId,
+        cwd: context.cwd,
+        threadId: context.threadId,
+        model: runtime.model,
+        provider: runtime.provider,
+      }),
+    );
+    let syncExecution = context;
+    if (sync.status === "running" && !context.executionLaneId) {
+      const acquired = await repository.startChatExecutionLane(
+        applicationOwnerId(),
+        context.chatId,
+        "agent",
+        "Linked Codex console turn",
+      );
+      if (acquired) {
+        syncExecution = acquired;
+        publishChatSummary(acquired.chatId, acquired.projectId);
+      }
+    }
+    const syncAttribution = syncExecution.executionLaneId
+      ? {
+          executionLaneId: syncExecution.executionLaneId,
+          worktreeId: syncExecution.worktreeId,
+        }
+      : undefined;
+    const canonicalMessages = canonicalMessagesFromThreadSync(sync, {
+      idempotencyPrefix: "codex-sync",
+      interruptedMessage: "Turn interrupted in the Codex console.",
+      failedMessage: "The Codex console turn failed.",
+    });
+    for (const entry of canonicalMessages) {
+      if (entry.activity?.type === "usage") {
+        const usageTurnId = entry.activity.correlation?.turnId ?? entry.turnId;
+        await recordRuntimeTokenUsage(
+          `chat:${context.chatId}:${usageTurnId}`,
+          context.projectId,
+          context.chatId,
+          runtime,
+          entry.activity.last,
+          {
+            workerId: context.workerId,
+            turnId: usageTurnId,
+            executionAttemptId: `console-sync:${context.chatId}:${usageTurnId}`,
+            attemptKind: "console-sync",
+            attemptStatus: sync.status === "running" ? "running" : "completed",
+          },
+        );
+      }
+      await upsertLiveChatMessage(
+        applicationOwnerId(),
+        context.chatId,
+        entry.message,
+        syncAttribution,
+      );
+    }
+    if (sync.turns.length > 0) {
+      if (syncExecution.executionLaneId && sync.status !== "running") {
+        await repository.finishChatExecutionLane(
+          context.chatId,
+          syncExecution.executionLaneId,
+          sync.status,
+        );
+      } else {
+        await repository.setChatStatus(context.chatId, sync.status);
+      }
+      publishChatSummary(context.chatId, context.projectId);
+      if (sync.status === "idle") {
+        if (!(await continuePendingWorktreeTransition(context.chatId))) {
+          void dispatchNextQueuedPrompt(context.chatId);
+        }
+      }
+    }
+    return sync;
+  };
+
+  reconcileObservedChatThread = async (chatId, workerId, threadId, changes) => {
+    const context = await repository.getChatExecutionContext(
+      applicationOwnerId(),
+      chatId,
+    );
+    if (
+      !context ||
+      context.experience !== "agent" ||
+      context.workerId !== workerId ||
+      context.threadId !== threadId
+    ) {
+      return;
+    }
+    await reconcileChatThread(context);
+    if (changes.includes("goal")) {
+      publishChatInvalidation(chatId, "chat-goal");
+    }
+    if (changes.includes("queue")) {
+      publishChatInvalidation(chatId, "chat-queue");
+    }
+    if (changes.includes("plan")) {
+      publishChatInvalidation(chatId, "chat-plan");
+    }
+  };
+
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/sync",
     async (request, reply) => {
@@ -22347,13 +22520,7 @@ export async function buildApp({
         });
       }
       if (!context.threadId) {
-        return reply.send(
-          agentThreadSyncSchema.parse({
-            threadId: "unavailable",
-            status: "idle",
-            turns: [],
-          }),
-        );
+        return reply.send(await reconcileChatThread(context));
       }
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
@@ -22362,85 +22529,7 @@ export async function buildApp({
       if (!runtime) {
         return reply.code(400).send({ error: "Selected model was not found." });
       }
-      const sync = agentThreadSyncSchema.parse(
-        await bridge.request(context.workerId, {
-          type: "chat.sync",
-          chatId: context.chatId,
-          cwd: context.cwd,
-          threadId: context.threadId,
-          model: runtime.model,
-          provider: runtime.provider,
-        }),
-      );
-      let syncExecution = context;
-      if (sync.status === "running" && !context.executionLaneId) {
-        const acquired = await repository.startChatExecutionLane(
-          applicationOwnerId(),
-          context.chatId,
-          "agent",
-          "Linked Codex console turn",
-        );
-        if (acquired) {
-          syncExecution = acquired;
-          publishChatSummary(acquired.chatId, acquired.projectId);
-        }
-      }
-      const syncAttribution = syncExecution.executionLaneId
-        ? {
-            executionLaneId: syncExecution.executionLaneId,
-            worktreeId: syncExecution.worktreeId,
-          }
-        : undefined;
-      const canonicalMessages = canonicalMessagesFromThreadSync(sync, {
-        idempotencyPrefix: "codex-sync",
-        interruptedMessage: "Turn interrupted in the Codex console.",
-        failedMessage: "The Codex console turn failed.",
-      });
-      for (const entry of canonicalMessages) {
-        if (entry.activity?.type === "usage") {
-          const usageTurnId =
-            entry.activity.correlation?.turnId ?? entry.turnId;
-          await recordRuntimeTokenUsage(
-            `chat:${context.chatId}:${usageTurnId}`,
-            context.projectId,
-            context.chatId,
-            runtime,
-            entry.activity.last,
-            {
-              workerId: context.workerId,
-              turnId: usageTurnId,
-              executionAttemptId: `console-sync:${context.chatId}:${usageTurnId}`,
-              attemptKind: "console-sync",
-              attemptStatus:
-                sync.status === "running" ? "running" : "completed",
-            },
-          );
-        }
-        await upsertLiveChatMessage(
-          applicationOwnerId(),
-          context.chatId,
-          entry.message,
-          syncAttribution,
-        );
-      }
-      if (sync.turns.length > 0) {
-        if (syncExecution.executionLaneId && sync.status !== "running") {
-          await repository.finishChatExecutionLane(
-            context.chatId,
-            syncExecution.executionLaneId,
-            sync.status,
-          );
-        } else {
-          await repository.setChatStatus(context.chatId, sync.status);
-        }
-        publishChatSummary(context.chatId, context.projectId);
-        if (sync.status === "idle") {
-          if (!(await continuePendingWorktreeTransition(context.chatId))) {
-            void dispatchNextQueuedPrompt(context.chatId);
-          }
-        }
-      }
-      return reply.send(sync);
+      return reply.send(await reconcileChatThread(context, runtime));
     },
   );
 
@@ -25069,6 +25158,7 @@ export async function buildApp({
     for (const timer of worktreeObservationTimers.values()) clearTimeout(timer);
     worktreeObservationTimers.clear();
     chatTurnOutcomeRecoveryScheduler.clear();
+    chatThreadChangeReconciler.clear();
     for (const unsubscribe of workerNotificationSubscriptions.values()) {
       unsubscribe();
     }

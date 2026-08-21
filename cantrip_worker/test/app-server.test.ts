@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
 
@@ -14,6 +14,7 @@ import {
   codexChatThreadSecurityParams,
   codexResultForAgentInteraction,
   CodexAppServer,
+  CodexExternalThreadChangeCoalescer,
   codexEndpointFromLine,
   codexReasoningEffortParams,
   codexStartupExitMessage,
@@ -48,6 +49,50 @@ import {
   workflowMeasuredUsage,
   workflowDeveloperInstructions,
 } from "../src/codex/app-server.js";
+
+describe("external Codex thread change coalescing", () => {
+  it("emits one bounded metadata-only revision for a noisy thread burst", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
+    try {
+      const observed: Array<{
+        changes: string[];
+        revision: number;
+        threadId: string;
+      }> = [];
+      const coalescer = new CodexExternalThreadChangeCoalescer(
+        (change) => observed.push(change),
+        50,
+      );
+
+      coalescer.observe("thread-1", "turn");
+      coalescer.observe("thread-1", "turn");
+      coalescer.observe("thread-1", "goal");
+      vi.advanceTimersByTime(49);
+      expect(observed).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(observed).toEqual([
+        {
+          changes: ["turn", "goal"],
+          revision: expect.any(Number),
+          threadId: "thread-1",
+        },
+      ]);
+
+      coalescer.observe("thread-1", "queue");
+      vi.advanceTimersByTime(50);
+      expect(observed[1]?.revision).toBeGreaterThan(observed[0]!.revision);
+      expect(Object.keys(observed[0]!)).toEqual([
+        "changes",
+        "revision",
+        "threadId",
+      ]);
+      coalescer.clear();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("active chat turn selection", () => {
   it("finds a live first turn by chat ID before its thread ID is persisted", () => {

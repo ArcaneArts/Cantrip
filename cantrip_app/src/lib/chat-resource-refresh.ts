@@ -2,7 +2,6 @@ import type { ChatMessage, ChatSummary } from "@cantrip/protocol";
 
 const ACTIVE_CHAT_REFRESH_MS = 3_000;
 const DEGRADED_CHAT_REFRESH_MS = 10_000;
-const LIVE_CHAT_SAFETY_REFRESH_MS = 30_000;
 const RECENT_TURN_WINDOW_MS = 10 * 60_000;
 
 function isTerminalTurnMessage(message: ChatMessage): boolean {
@@ -43,7 +42,8 @@ export function chatResourceRefreshIntervalMs(
   status: ChatSummary["status"],
   live: boolean,
   awaitingDurableResult = false,
-): number {
+): number | false {
+  if (live) return false;
   if (
     awaitingDurableResult ||
     status === "running" ||
@@ -51,5 +51,5 @@ export function chatResourceRefreshIntervalMs(
   ) {
     return ACTIVE_CHAT_REFRESH_MS;
   }
-  return live ? LIVE_CHAT_SAFETY_REFRESH_MS : DEGRADED_CHAT_REFRESH_MS;
+  return DEGRADED_CHAT_REFRESH_MS;
 }
