@@ -36,15 +36,7 @@ import {
   ScanLine,
   Tag,
 } from "lucide-react";
-import {
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createProjectWorktree,
@@ -64,6 +56,7 @@ import {
   NavigationTabBar,
   type NavigationTab,
 } from "@/components/ui/navigation-tab-bar";
+import { ResizablePanel } from "@/components/ui/resizable-panel";
 import {
   Dialog,
   DialogContent,
@@ -105,9 +98,6 @@ import {
   GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY,
   MAX_GIT_HISTORY_DRAWER_WIDTH,
   MIN_GIT_HISTORY_DRAWER_WIDTH,
-  clampGitHistoryDrawerWidth,
-  gitHistoryDrawerWidthFromKey,
-  gitHistoryDrawerWidthFromPointer,
   toggleGitHistoryToolDrawer,
   type GitHistoryDrawer,
   type GitHistoryToolDrawer,
@@ -483,25 +473,12 @@ export function GitHistoryView({
   const gitResourcesLive = useAppLiveStatus() === "live";
   const compactLayout = useCompactLayout();
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const drawerShellRef = useRef<HTMLDivElement>(null);
-  const drawerWidthRef = useRef(DEFAULT_GIT_HISTORY_DRAWER_WIDTH);
-  const drawerResizePointerIdRef = useRef<number | null>(null);
-  const drawerResizeRightRef = useRef(0);
-  const drawerResizeStartWidthRef = useRef(DEFAULT_GIT_HISTORY_DRAWER_WIDTH);
-  const drawerResizeBodyStyleRef = useRef<{
-    cursor: string;
-    userSelect: string;
-  } | null>(null);
   const [section, setSection] = useState<GitViewSection>(view);
   const [activeDrawer, setActiveDrawer] = useState<GitHistoryDrawer | null>(
     null,
   );
   const [presentedDrawer, setPresentedDrawer] =
     useState<GitHistoryDrawer | null>(null);
-  const [drawerWidth, setDrawerWidth] = useState(
-    DEFAULT_GIT_HISTORY_DRAWER_WIDTH,
-  );
-  const [drawerResizing, setDrawerResizing] = useState(false);
   const [forcePushOpen, setForcePushOpen] = useState(false);
   const [fileHistoryOpen, setFileHistoryOpen] = useState(false);
   const [commitSearchOpen, setCommitSearchOpen] = useState(false);
@@ -813,23 +790,6 @@ export function GitHistoryView({
   }, [project.id, worktreeId]);
 
   useEffect(() => {
-    const stored = Number(
-      window.localStorage.getItem(GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY),
-    );
-    if (Number.isFinite(stored) && stored > 0) {
-      const next = clampGitHistoryDrawerWidth(stored);
-      drawerWidthRef.current = next;
-      setDrawerWidth(next);
-    }
-    return () => {
-      const previous = drawerResizeBodyStyleRef.current;
-      if (!previous) return;
-      document.body.style.cursor = previous.cursor;
-      document.body.style.userSelect = previous.userSelect;
-    };
-  }, []);
-
-  useEffect(() => {
     return () => onHeaderChange(null);
   }, [onHeaderChange, project.id]);
 
@@ -847,90 +807,6 @@ export function GitHistoryView({
     observer.observe(node);
     return () => observer.disconnect();
   }, [history.fetchNextPage, history.hasNextPage, history.isFetchingNextPage]);
-
-  const applyDrawerWidth = (width: number) => {
-    const next = clampGitHistoryDrawerWidth(width);
-    drawerWidthRef.current = next;
-    setDrawerWidth(next);
-    return next;
-  };
-
-  const persistDrawerWidth = (width: number) => {
-    window.localStorage.setItem(
-      GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY,
-      String(width),
-    );
-  };
-
-  const restoreDrawerResizeBodyStyle = () => {
-    const previous = drawerResizeBodyStyleRef.current;
-    if (!previous) return;
-    document.body.style.cursor = previous.cursor;
-    document.body.style.userSelect = previous.userSelect;
-    drawerResizeBodyStyleRef.current = null;
-  };
-
-  const beginDrawerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    drawerResizePointerIdRef.current = event.pointerId;
-    drawerResizeRightRef.current =
-      drawerShellRef.current?.getBoundingClientRect().right ??
-      window.innerWidth;
-    drawerResizeStartWidthRef.current = drawerWidthRef.current;
-    drawerResizeBodyStyleRef.current = {
-      cursor: document.body.style.cursor,
-      userSelect: document.body.style.userSelect,
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setDrawerResizing(true);
-  };
-
-  const moveDrawerResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (drawerResizePointerIdRef.current !== event.pointerId) return;
-    applyDrawerWidth(
-      gitHistoryDrawerWidthFromPointer(
-        event.clientX,
-        drawerResizeRightRef.current,
-      ),
-    );
-  };
-
-  const finishDrawerResize = (
-    event: ReactPointerEvent<HTMLDivElement>,
-    persist: boolean,
-  ) => {
-    if (drawerResizePointerIdRef.current !== event.pointerId) return;
-    drawerResizePointerIdRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    restoreDrawerResizeBodyStyle();
-    setDrawerResizing(false);
-    if (!persist) {
-      applyDrawerWidth(drawerResizeStartWidthRef.current);
-      return;
-    }
-    if (drawerWidthRef.current !== drawerResizeStartWidthRef.current) {
-      persistDrawerWidth(drawerWidthRef.current);
-    }
-  };
-
-  const resizeDrawerWithKeyboard = (
-    event: ReactKeyboardEvent<HTMLDivElement>,
-  ) => {
-    const next = gitHistoryDrawerWidthFromKey(
-      drawerWidthRef.current,
-      event.key,
-    );
-    if (next === null) return;
-    event.preventDefault();
-    if (next === drawerWidthRef.current) return;
-    applyDrawerWidth(next);
-    persistDrawerWidth(next);
-  };
 
   const renderDrawerContent = (drawer: GitHistoryDrawer) => (
     <>
@@ -1598,60 +1474,22 @@ export function GitHistoryView({
                 : null}
             </GitHistoryMobileDrawer>
           ) : (
-            <div
-              ref={drawerShellRef}
-              data-slot="git-history-drawer-shell"
-              data-state={drawerOpen ? "open" : "closed"}
-              className={cn(
-                "group/history-drawer relative h-full shrink-0",
-                drawerResizing
-                  ? "transition-none"
-                  : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
-              )}
-              style={{ width: drawerOpen ? drawerWidth : 0 }}
+            <ResizablePanel
+              ariaLabel="Resize Git details drawer"
+              defaultWidth={DEFAULT_GIT_HISTORY_DRAWER_WIDTH}
+              handleDataSlot="git-history-drawer-resize-handle"
+              maxWidth={MAX_GIT_HISTORY_DRAWER_WIDTH}
+              minWidth={MIN_GIT_HISTORY_DRAWER_WIDTH}
+              open={drawerOpen}
+              shellDataSlot="git-history-drawer-shell"
+              storageKey={GIT_HISTORY_DRAWER_WIDTH_STORAGE_KEY}
+              surfaceClassName="bg-background [&>aside]:!relative [&>aside]:!inset-auto [&>aside]:!z-auto [&>aside]:!h-full [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!border-l-0 [&>aside]:!shadow-none"
+              surfaceData={{ "data-kind": activeDrawer?.kind }}
+              surfaceDataSlot="git-history-drawer"
+              title="Drag to resize Git details drawer"
             >
-              <div className="absolute inset-0 overflow-hidden">
-                {activeDrawer ? (
-                  <div
-                    data-slot="git-history-drawer"
-                    data-kind={activeDrawer.kind}
-                    className={cn(
-                      "absolute inset-y-0 right-0 h-full bg-background transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
-                      "[&>aside]:!relative [&>aside]:!inset-auto [&>aside]:!z-auto [&>aside]:!h-full [&>aside]:!w-full [&>aside]:!max-w-none [&>aside]:!border-l-0 [&>aside]:!shadow-none",
-                      drawerOpen
-                        ? "translate-x-0 opacity-100"
-                        : "translate-x-2 opacity-0",
-                    )}
-                    style={{ width: drawerWidth }}
-                  >
-                    {renderDrawerContent(activeDrawer)}
-                  </div>
-                ) : null}
-              </div>
-              <div
-                data-slot="git-history-drawer-resize-handle"
-                role="separator"
-                aria-label="Resize Git details drawer"
-                aria-orientation="vertical"
-                aria-valuemin={MIN_GIT_HISTORY_DRAWER_WIDTH}
-                aria-valuemax={MAX_GIT_HISTORY_DRAWER_WIDTH}
-                aria-valuenow={drawerWidth}
-                tabIndex={drawerOpen ? 0 : -1}
-                title="Drag to resize Git details drawer"
-                className={cn(
-                  "absolute inset-y-0 -left-1 z-40 w-2 cursor-col-resize touch-none outline-none",
-                  "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
-                  "group-hover/history-drawer:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
-                  !drawerOpen && "pointer-events-none opacity-0",
-                  drawerResizing && "after:opacity-100",
-                )}
-                onKeyDown={resizeDrawerWithKeyboard}
-                onPointerDown={beginDrawerResize}
-                onPointerMove={moveDrawerResize}
-                onPointerUp={(event) => finishDrawerResize(event, true)}
-                onPointerCancel={(event) => finishDrawerResize(event, false)}
-              />
-            </div>
+              {activeDrawer ? renderDrawerContent(activeDrawer) : null}
+            </ResizablePanel>
           )}
         </div>
       )}
