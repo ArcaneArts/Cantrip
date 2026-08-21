@@ -118,6 +118,20 @@ function initialProfile(clientId: string): AccountEncryptionProfileInitialize {
   };
 }
 
+function localInitialProfile(
+  clientId: string,
+): AccountEncryptionProfileInitialize {
+  const initialization = initialProfile(clientId);
+  return {
+    ...initialization,
+    profile: {
+      ...initialization.profile,
+      passwordKdf: null,
+      passwordWrappedMasterKey: null,
+    },
+  };
+}
+
 function workerHeartbeat(workerId: string): WorkerHeartbeat {
   return {
     workerId,
@@ -198,6 +212,76 @@ afterAll(async () => {
 });
 
 describe("opaque encryption registry", () => {
+  it("registers an authenticated local bootstrap worker without a credential row", async () => {
+    const hostedConfig = await createConfig();
+    const config: ServerConfig = {
+      ...hostedConfig,
+      adminBootstrapToken: undefined,
+      authMode: "none",
+      bootstrapMode: "pnpm-dev",
+      cookieSameSite: "lax",
+      cookieSecure: false,
+      deploymentMode: "local",
+      host: "127.0.0.1",
+      publicRegistration: false,
+      workerToken: "local-development-token",
+    };
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/encryption/profile/initialize",
+            payload: localInitialProfile(
+              "11111111-1111-4111-8111-111111111111",
+            ),
+          })
+        ).statusCode,
+      ).toBe(201);
+
+      const workerId = "local-encryption-worker";
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: "/api/internal/workers/heartbeat",
+            headers: {
+              authorization: `Bearer ${config.workerToken}`,
+            },
+            payload: workerHeartbeat(workerId),
+          })
+        ).statusCode,
+      ).toBe(202);
+
+      const principalId = "33333333-3333-4333-8333-333333333333";
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/encryption/bootstrap",
+        headers: {
+          authorization: `Bearer ${config.workerToken}`,
+          "x-cantrip-worker-id": workerId,
+        },
+        payload: { principalId, publicKey },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        workerEncryptionBootstrapResultSchema.parse(response.json()),
+      ).toMatchObject({
+        principal: {
+          id: principalId,
+          state: "pending",
+          workerId,
+        },
+        grants: [],
+      });
+    } finally {
+      await app.close();
+    }
+  }, 30_000);
+
   it("uses race-safe initialization and isolates opaque principals and grants", async () => {
     const config = await createConfig();
     const database = await connectDatabase(config);

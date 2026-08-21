@@ -355,6 +355,7 @@ export class EncryptionRegistryRepository {
   async createPrincipal(
     ownerId: string,
     input: EncryptionPrincipalCreate,
+    options: { developmentBootstrapWorkerId?: string } = {},
   ): Promise<EncryptionPrincipal | null> {
     const profiles = await this.database
       .select({ ownerId: schema.accountEncryptionProfiles.ownerId })
@@ -364,29 +365,42 @@ export class EncryptionRegistryRepository {
     if (!profiles[0]) return null;
     if (input.kind === "worker") {
       const now = new Date();
-      const workers = await this.database
-        .select({ id: schema.workers.id })
-        .from(schema.workers)
-        .innerJoin(
-          schema.workerCredentials,
-          and(
-            eq(schema.workerCredentials.workerId, schema.workers.id),
-            eq(schema.workerCredentials.ownerId, schema.workers.ownerId),
-          ),
-        )
-        .where(
-          and(
-            eq(schema.workers.id, input.workerId),
-            eq(schema.workers.ownerId, ownerId),
-            isNull(schema.workers.unlinkedAt),
-            isNull(schema.workerCredentials.revokedAt),
-            or(
-              isNull(schema.workerCredentials.expiresAt),
-              gt(schema.workerCredentials.expiresAt, now),
-            ),
-          ),
-        )
-        .limit(1);
+      const baseWorkerConditions = and(
+        eq(schema.workers.id, input.workerId),
+        eq(schema.workers.ownerId, ownerId),
+        isNull(schema.workers.unlinkedAt),
+      );
+      // The bootstrap route supplies this only after loopback development
+      // authentication. Hosted and account-managed workers still require an
+      // active persisted credential below.
+      const workers =
+        options.developmentBootstrapWorkerId === input.workerId
+          ? await this.database
+              .select({ id: schema.workers.id })
+              .from(schema.workers)
+              .where(baseWorkerConditions)
+              .limit(1)
+          : await this.database
+              .select({ id: schema.workers.id })
+              .from(schema.workers)
+              .innerJoin(
+                schema.workerCredentials,
+                and(
+                  eq(schema.workerCredentials.workerId, schema.workers.id),
+                  eq(schema.workerCredentials.ownerId, schema.workers.ownerId),
+                ),
+              )
+              .where(
+                and(
+                  baseWorkerConditions,
+                  isNull(schema.workerCredentials.revokedAt),
+                  or(
+                    isNull(schema.workerCredentials.expiresAt),
+                    gt(schema.workerCredentials.expiresAt, now),
+                  ),
+                ),
+              )
+              .limit(1);
       if (!workers[0]) return null;
     }
     const rows = await this.database

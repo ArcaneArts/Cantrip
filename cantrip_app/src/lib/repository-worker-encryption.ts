@@ -93,7 +93,7 @@ export async function ensureRepositoryWorkerEncryption(input: {
   ) {
     throw new RepositoryWorkerReadinessError(
       readiness === "ready" ? "unavailable" : readiness,
-      "Repository encryption is unavailable for this worker.",
+      "The worker's protected server connection is unavailable.",
     );
   }
   const session = (input.session ?? getClientSession)();
@@ -141,7 +141,7 @@ export async function ensureRepositoryWorkerEncryption(input: {
   if (refreshedReadiness !== "ready") {
     throw new RepositoryWorkerReadinessError(
       refreshedReadiness,
-      "The worker did not accept the repository-content grant.",
+      "The worker did not activate its protected server connection.",
     );
   }
   return refreshed.status;
