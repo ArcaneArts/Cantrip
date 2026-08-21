@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
 import { GitConflictResolver } from "./git-conflict-resolver";
+import { useReviewedOperation } from "./reviewed-operation";
 
 type GitInteractiveRebaseAction = Extract<
   GitMergeRebaseAction,
@@ -172,8 +173,6 @@ export function GitOperationPanel({
   const [editor, setEditor] = useState<GitManagedOperationAction | null>(
     initialAction,
   );
-  const [reviewedAction, setReviewedAction] =
-    useState<GitManagedOperationAction | null>(null);
   const [amendMessage, setAmendMessage] = useState("");
   useEffect(() => {
     if (initialAction) setEditor(initialAction);
@@ -190,34 +189,32 @@ export function GitOperationPanel({
     queryKey: ["worktree-revision-candidates", projectId, worktreeId],
     queryFn: () => getProjectWorktreeRevisionCandidates(projectId, worktreeId),
   });
-  const preview = useMutation({
-    mutationFn: (action: GitManagedOperationAction) =>
+  const reviewedOperation = useReviewedOperation({
+    preview: (action: GitManagedOperationAction) =>
       previewProjectWorktreeGitOperation(projectId, worktreeId, action),
-    onSuccess: (result) => setReviewedAction(result.action),
-  });
-  const start = useMutation({
-    mutationFn: async () => {
-      if (!reviewedAction || !preview.data) {
-        throw new Error("Review the operation first.");
-      }
-      return startProjectWorktreeGitOperation(
+    apply: ({ preview, request }) =>
+      startProjectWorktreeGitOperation(
         projectId,
         worktreeId,
-        reviewedAction,
-        preview.data.token,
-      );
-    },
+        request,
+        preview.token,
+      ),
+    missingReviewMessage: "Review the operation first.",
+    requestsEqual: (left, right) =>
+      JSON.stringify(left) === JSON.stringify(right),
+    resolveReviewedRequest: (_request, preview) => preview.action,
     onSuccess: (result) => {
       queryClient.setQueryData(
         ["git-operation", projectId, worktreeId],
         result,
       );
-      setReviewedAction(null);
       setEditor(null);
-      preview.reset();
       invalidateGitQueries();
     },
   });
+  const reviewedAction = reviewedOperation.request;
+  const preview = reviewedOperation.preview;
+  const start = reviewedOperation.apply;
   const control = useMutation({
     mutationFn: (
       action: "continue" | "skip" | "abort" | "good" | "bad" | "reset",
@@ -292,32 +289,22 @@ export function GitOperationPanel({
     event.preventDefault();
     if (editor?.type === "bisect") {
       if (!editor.goodRef.trim() || !editor.badRef.trim()) return;
-      setReviewedAction(editor);
-      preview.reset();
-      start.reset();
-      preview.mutate(editor);
+      reviewedOperation.review(editor);
       return;
     }
     const selectedRef = gitOperationEditorRef(editor).trim();
     if (!editor || !selectedRef) return;
     const action = withGitOperationEditorRef(editor, selectedRef);
-    setReviewedAction(action);
-    preview.reset();
-    start.reset();
-    preview.mutate(action);
+    reviewedOperation.review(action);
   };
   const updateInteractiveTodo = (
     update: (action: GitInteractiveRebaseAction) => GitInteractiveRebaseAction,
   ) => {
     if (reviewedAction?.type === "interactiveRebase") {
-      setReviewedAction(update(reviewedAction));
-      start.reset();
+      reviewedOperation.updateRequest(update(reviewedAction));
     }
   };
-  const previewMatchesAction =
-    reviewedAction !== null &&
-    preview.data !== undefined &&
-    JSON.stringify(reviewedAction) === JSON.stringify(preview.data.action);
+  const previewMatchesAction = reviewedOperation.previewMatchesRequest;
 
   return (
     <aside className="absolute inset-y-0 right-0 z-20 flex w-full min-w-0 flex-col border-l bg-background shadow-2xl md:w-[min(48rem,78vw)]">
@@ -557,7 +544,7 @@ export function GitOperationPanel({
         onOpenChange={(open) => {
           if (!open && !start.isPending) {
             setEditor(null);
-            setReviewedAction(null);
+            reviewedOperation.reset();
           }
         }}
       >
@@ -689,10 +676,7 @@ export function GitOperationPanel({
                   : "Operation preview failed."}
               </p>
               <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setReviewedAction(null)}
-                >
+                <Button variant="outline" onClick={reviewedOperation.reset}>
                   Back
                 </Button>
               </DialogFooter>
@@ -728,7 +712,7 @@ export function GitOperationPanel({
                         size="sm"
                         className="h-7 text-xs"
                         disabled={preview.isPending}
-                        onClick={() => preview.mutate(reviewedAction)}
+                        onClick={() => reviewedOperation.review(reviewedAction)}
                       >
                         Validate plan
                       </Button>
@@ -912,7 +896,7 @@ export function GitOperationPanel({
                 <Button
                   variant="outline"
                   disabled={start.isPending}
-                  onClick={() => setReviewedAction(null)}
+                  onClick={reviewedOperation.reset}
                 >
                   Back
                 </Button>
@@ -923,7 +907,7 @@ export function GitOperationPanel({
                       ? "bg-destructive text-white hover:bg-destructive/90"
                       : undefined
                   }
-                  onClick={() => start.mutate()}
+                  onClick={reviewedOperation.applyReviewed}
                 >
                   {start.isPending ? (
                     <Loader2 className="size-4 animate-spin" />

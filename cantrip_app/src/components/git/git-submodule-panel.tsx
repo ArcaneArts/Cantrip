@@ -2,7 +2,7 @@ import type {
   GitSubmoduleAction,
   GitSubmoduleSummary,
 } from "@cantrip/protocol";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Boxes,
   Check,
@@ -15,13 +15,9 @@ import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ReviewedOperationDialog,
+  useReviewedOperation,
+} from "./reviewed-operation";
 import {
   applyProjectWorktreeSubmoduleAction,
   getProjectWorktreeSubmodules,
@@ -57,20 +53,17 @@ export function GitSubmodulePanel({
     queryKey,
     queryFn: () => getProjectWorktreeSubmodules(projectId, worktreeId),
   });
-  const preview = useMutation({
-    mutationFn: (action: GitSubmoduleAction) =>
+  const operation = useReviewedOperation({
+    preview: (action: GitSubmoduleAction) =>
       previewProjectWorktreeSubmoduleAction(projectId, worktreeId, action),
-  });
-  const apply = useMutation({
-    mutationFn: async () => {
-      if (!preview.data) throw new Error("Review a submodule action first.");
-      return applyProjectWorktreeSubmoduleAction(
+    apply: ({ preview }) =>
+      applyProjectWorktreeSubmoduleAction(
         projectId,
         worktreeId,
-        preview.data.action,
-        preview.data.token,
-      );
-    },
+        preview.action,
+        preview.token,
+      ),
+    missingReviewMessage: "Review a submodule action first.",
     onSuccess: (result) => {
       queryClient.setQueryData(queryKey, result.submodules);
       queryClient.setQueryData(
@@ -80,15 +73,9 @@ export function GitSubmodulePanel({
       void queryClient.invalidateQueries({
         queryKey: ["worktree-history", projectId, worktreeId],
       });
-      preview.reset();
     },
   });
-  const review = (action: GitSubmoduleAction) => {
-    apply.reset();
-    preview.reset();
-    preview.mutate(action);
-  };
-  const busy = preview.isPending || apply.isPending;
+  const busy = operation.busy;
 
   if (submodules.isLoading) {
     return (
@@ -122,7 +109,7 @@ export function GitSubmodulePanel({
           className="h-7 gap-1 px-2 text-[10px]"
           disabled={!items.length || busy}
           onClick={() =>
-            review({
+            operation.review({
               type: "sync",
               path: null,
               recursive: true,
@@ -137,7 +124,7 @@ export function GitSubmodulePanel({
           className="h-7 gap-1 px-2 text-[10px]"
           disabled={!items.length || busy}
           onClick={() =>
-            review({
+            operation.review({
               type: "initialize",
               path: null,
               recursive: true,
@@ -177,7 +164,7 @@ export function GitSubmodulePanel({
                   className="h-7 gap-1 px-2 text-[10px]"
                   disabled={busy}
                   onClick={() =>
-                    review({
+                    operation.review({
                       type: "initialize",
                       path: module.path,
                       recursive: true,
@@ -194,7 +181,7 @@ export function GitSubmodulePanel({
                     className="h-7 gap-1 px-2 text-[10px]"
                     disabled={busy}
                     onClick={() =>
-                      review({
+                      operation.review({
                         type: "update",
                         path: module.path,
                         recursive: true,
@@ -210,7 +197,7 @@ export function GitSubmodulePanel({
                     className="h-7 px-2 text-[10px]"
                     disabled={busy}
                     onClick={() =>
-                      review({
+                      operation.review({
                         type: "update",
                         path: module.path,
                         recursive: true,
@@ -231,7 +218,7 @@ export function GitSubmodulePanel({
                         : "Deinitialize submodule"
                     }
                     onClick={() =>
-                      review({
+                      operation.review({
                         type: "deinitialize",
                         path: module.path,
                         force: module.dirty,
@@ -251,86 +238,36 @@ export function GitSubmodulePanel({
         </div>
       )}
 
-      <Dialog
-        open={
-          preview.isPending || Boolean(preview.data) || Boolean(preview.error)
+      <ReviewedOperationDialog
+        operation={operation}
+        title="Review submodule action"
+        description="This action runs only in the selected worktree on its assigned worker."
+        loadingLabel="Inspecting exact submodule state…"
+        loadingClassName="justify-start"
+        bodyClassName="grid gap-3 py-3 text-sm"
+        previewErrorFallback="The action could not be reviewed."
+        applyErrorFallback="The submodule action failed."
+        applyLabel="Apply"
+        applyClassName={
+          operation.preview.data?.destructive
+            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            : undefined
         }
-        onOpenChange={(open) => {
-          if (!open && !apply.isPending) {
-            preview.reset();
-            apply.reset();
-          }
-        }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Review submodule action</DialogTitle>
-            <DialogDescription>
-              This action runs only in the selected worktree on its assigned
-              worker.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-3 text-sm">
-            {preview.isPending ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Inspecting exact
-                submodule state…
-              </div>
-            ) : preview.error ? (
-              <p className="text-destructive">
-                {preview.error instanceof Error
-                  ? preview.error.message
-                  : "The action could not be reviewed."}
+        {(preview) => (
+          <>
+            <p>{preview.summary}</p>
+            <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              {preview.targets.map((target) => target.path).join(", ")}
+            </div>
+            {preview.warnings.map((warning) => (
+              <p key={warning} className="text-xs text-amber-600">
+                {warning}
               </p>
-            ) : preview.data ? (
-              <>
-                <p>{preview.data.summary}</p>
-                <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                  {preview.data.targets.map((target) => target.path).join(", ")}
-                </div>
-                {preview.data.warnings.map((warning) => (
-                  <p key={warning} className="text-xs text-amber-600">
-                    {warning}
-                  </p>
-                ))}
-              </>
-            ) : null}
-            {apply.error ? (
-              <p className="text-sm text-destructive">
-                {apply.error instanceof Error
-                  ? apply.error.message
-                  : "The submodule action failed."}
-              </p>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={apply.isPending}
-              onClick={() => {
-                preview.reset();
-                apply.reset();
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              className={
-                preview.data?.destructive
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : undefined
-              }
-              disabled={!preview.data || apply.isPending}
-              onClick={() => apply.mutate()}
-            >
-              {apply.isPending ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : null}
-              Apply
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            ))}
+          </>
+        )}
+      </ReviewedOperationDialog>
     </>
   );
 }

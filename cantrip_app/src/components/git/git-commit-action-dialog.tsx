@@ -1,5 +1,5 @@
 import type { GitCommitAction, GitCommitActionResult } from "@cantrip/protocol";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 
@@ -20,6 +20,7 @@ import {
 } from "@/lib/api";
 
 import { GitPatchView } from "./git-patch-view";
+import { useReviewedOperation } from "./reviewed-operation";
 
 export type CommitActionKind = "cherryPick" | "revert" | "amend" | "fixup";
 
@@ -110,40 +111,18 @@ export function GitCommitActionDialog({
     mainlineParent: null,
     message: "",
   });
-  const [reviewedAction, setReviewedAction] = useState<GitCommitAction | null>(
-    null,
-  );
   const [result, setResult] = useState<GitCommitActionResult | null>(null);
-  useEffect(() => {
-    setEditor({
-      range: false,
-      fromRevision: request?.target.hash ?? "",
-      toRevision: request?.target.hash ?? "",
-      mainlineParent:
-        request?.kind === "revert" && request.target.parents.length > 1
-          ? 1
-          : null,
-      message: "",
-    });
-    setReviewedAction(null);
-    setResult(null);
-  }, [request]);
-  const preview = useMutation({
-    mutationFn: (action: GitCommitAction) =>
+  const reviewedOperation = useReviewedOperation({
+    preview: (action: GitCommitAction) =>
       previewProjectWorktreeCommitAction(projectId, worktreeId, action),
-  });
-  const apply = useMutation({
-    mutationFn: async () => {
-      if (!reviewedAction || !preview.data) {
-        throw new Error("Review the commit action first.");
-      }
-      return applyProjectWorktreeCommitAction(
+    apply: ({ preview, request: action }) =>
+      applyProjectWorktreeCommitAction(
         projectId,
         worktreeId,
-        reviewedAction,
-        preview.data.token,
-      );
-    },
+        action,
+        preview.token,
+      ),
+    missingReviewMessage: "Review the commit action first.",
     onSuccess: (next) => {
       queryClient.setQueryData(
         ["worktree-status", projectId, worktreeId],
@@ -169,15 +148,29 @@ export function GitCommitActionDialog({
       }
     },
   });
+  useEffect(() => {
+    setEditor({
+      range: false,
+      fromRevision: request?.target.hash ?? "",
+      toRevision: request?.target.hash ?? "",
+      mainlineParent:
+        request?.kind === "revert" && request.target.parents.length > 1
+          ? 1
+          : null,
+      message: "",
+    });
+    reviewedOperation.reset();
+    setResult(null);
+  }, [request]);
+  const reviewedAction = reviewedOperation.request;
+  const preview = reviewedOperation.preview;
+  const apply = reviewedOperation.apply;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!request) return;
     const action = commitActionFromEditor(request, editor);
-    setReviewedAction(action);
     setResult(null);
-    preview.reset();
-    apply.reset();
-    preview.mutate(action);
+    reviewedOperation.review(action);
   };
   const invalidRange =
     editor.range &&
@@ -297,10 +290,7 @@ export function GitCommitActionDialog({
               <Button
                 variant="outline"
                 disabled={apply.isPending}
-                onClick={() => {
-                  setReviewedAction(null);
-                  preview.reset();
-                }}
+                onClick={reviewedOperation.reset}
               >
                 Back
               </Button>
@@ -311,7 +301,7 @@ export function GitCommitActionDialog({
                     ? "bg-destructive text-white hover:bg-destructive/90"
                     : undefined
                 }
-                onClick={() => apply.mutate()}
+                onClick={reviewedOperation.applyReviewed}
               >
                 {apply.isPending ? (
                   <Loader2 className="size-4 animate-spin" />
