@@ -372,11 +372,13 @@ async function protectMcpConfiguration(
 
 export async function protectMcpServerCreate(
   raw: McpServerConfiguration,
+  workerId: string | null = null,
   options: TrustedOptions = {},
 ): Promise<EncryptedMcpServerCreate> {
   const id = crypto.randomUUID();
   return encryptedMcpServerCreateSchema.parse({
     id,
+    workerId,
     ...(await protectMcpConfiguration(id, raw, options)),
   });
 }
@@ -384,11 +386,13 @@ export async function protectMcpServerCreate(
 export async function protectMcpServerUpdate(
   id: string,
   raw: McpServerConfiguration,
+  workerId: string | null = null,
   options: TrustedOptions = {},
 ): Promise<EncryptedMcpServerUpdate> {
-  return encryptedMcpServerUpdateSchema.parse(
-    await protectMcpConfiguration(id, raw, options),
-  );
+  return encryptedMcpServerUpdateSchema.parse({
+    workerId,
+    ...(await protectMcpConfiguration(id, raw, options)),
+  });
 }
 
 export async function openMcpServerWireSummary(
@@ -422,6 +426,7 @@ export async function openMcpServerWireSummary(
       id: wire.id,
       scope: wire.scope,
       projectId: wire.projectId,
+      workerId: wire.workerId,
       createdAt: wire.createdAt,
       updatedAt: wire.updatedAt,
     });

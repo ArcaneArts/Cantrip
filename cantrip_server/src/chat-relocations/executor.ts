@@ -893,6 +893,7 @@ export class ChatRelocationJobExecutor {
     const mcpServers = await this.repository.listEffectiveMcpServers(
       claimed.ownerId,
       claimed.job.projectId,
+      target.workerId,
     );
     try {
       const hydrated = await hydrateCanonicalChat({

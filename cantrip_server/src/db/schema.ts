@@ -1511,6 +1511,9 @@ export const mcpServers = pgTable(
     projectId: text("project_id").references(() => projects.id, {
       onDelete: "cascade",
     }),
+    workerId: text("worker_id").references(() => workers.id, {
+      onDelete: "cascade",
+    }),
     nameBlindIndex: text("name_blind_index").notNull(),
     protectedConfiguration: jsonb("protected_configuration")
       .$type<ProtectedSecretEnvelope>()
@@ -1524,13 +1527,25 @@ export const mcpServers = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("mcp_servers_owner_global_name_blind_unique")
+    uniqueIndex("mcp_servers_owner_global_unbound_name_blind_unique")
       .on(table.ownerId, table.nameBlindIndex)
-      .where(sql`${table.projectId} IS NULL`),
-    uniqueIndex("mcp_servers_project_name_blind_unique")
+      .where(sql`${table.projectId} IS NULL AND ${table.workerId} IS NULL`),
+    uniqueIndex("mcp_servers_owner_global_worker_name_blind_unique")
+      .on(table.ownerId, table.workerId, table.nameBlindIndex)
+      .where(sql`${table.projectId} IS NULL AND ${table.workerId} IS NOT NULL`),
+    uniqueIndex("mcp_servers_project_unbound_name_blind_unique")
       .on(table.projectId, table.nameBlindIndex)
-      .where(sql`${table.projectId} IS NOT NULL`),
-    index("mcp_servers_owner_scope_index").on(table.ownerId, table.projectId),
+      .where(sql`${table.projectId} IS NOT NULL AND ${table.workerId} IS NULL`),
+    uniqueIndex("mcp_servers_project_worker_name_blind_unique")
+      .on(table.projectId, table.workerId, table.nameBlindIndex)
+      .where(
+        sql`${table.projectId} IS NOT NULL AND ${table.workerId} IS NOT NULL`,
+      ),
+    index("mcp_servers_owner_scope_index").on(
+      table.ownerId,
+      table.projectId,
+      table.workerId,
+    ),
     check(
       "mcp_servers_name_blind_index_length_check",
       sql`length(${table.nameBlindIndex}) = 43`,

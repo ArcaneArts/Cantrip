@@ -586,6 +586,7 @@ export class ChatImportJobExecutor {
     const mcpServers = await this.repository.listEffectiveMcpServers(
       claimed.ownerId,
       claimed.job.projectId,
+      context.workerId,
     );
     const hydrated = await hydrateCanonicalChat({
       bridge: this.bridge,

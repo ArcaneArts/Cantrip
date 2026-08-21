@@ -57,6 +57,7 @@ interface ServerDraft {
   headers: string;
   environmentHeaders: string;
   enabled: boolean;
+  workerId: string;
 }
 
 const emptyDraft: ServerDraft = {
@@ -70,6 +71,7 @@ const emptyDraft: ServerDraft = {
   headers: "",
   environmentHeaders: "",
   enabled: true,
+  workerId: "",
 };
 
 const textareaClass =
@@ -128,6 +130,7 @@ function draftFor(server: McpServerSummary | null): ServerDraft {
       args: server.args.join("\n"),
       environment: formatMapping(server.environment),
       enabled: server.enabled,
+      workerId: server.workerId ?? "",
     };
   }
   return {
@@ -139,7 +142,32 @@ function draftFor(server: McpServerSummary | null): ServerDraft {
     headers: formatMapping(server.headers),
     environmentHeaders: formatMapping(server.environmentHeaders),
     enabled: server.enabled,
+    workerId: server.workerId ?? "",
   };
+}
+
+function configurationFromSummary(
+  server: McpServerSummary,
+  enabled: boolean,
+): McpServerConfiguration {
+  return server.transport === "stdio"
+    ? {
+        name: server.name,
+        enabled,
+        transport: "stdio",
+        command: server.command,
+        args: server.args,
+        environment: server.environment,
+      }
+    : {
+        name: server.name,
+        enabled,
+        transport: "http",
+        url: server.url,
+        bearerTokenEnvironmentVariable: server.bearerTokenEnvironmentVariable,
+        headers: server.headers,
+        environmentHeaders: server.environmentHeaders,
+      };
 }
 
 function configurationFor(draft: ServerDraft): McpServerConfiguration {
@@ -171,13 +199,19 @@ function configurationFor(draft: ServerDraft): McpServerConfiguration {
 function ServerRow({
   server,
   removing,
+  toggling,
+  workerName,
   onEdit,
   onRemove,
+  onToggle,
 }: {
   server: McpServerSummary;
   removing: boolean;
+  toggling: boolean;
+  workerName: string | null;
   onEdit(): void;
   onRemove(): void;
+  onToggle(enabled: boolean): void;
 }) {
   const detail =
     server.transport === "stdio"
@@ -196,9 +230,24 @@ function ServerRow({
           <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
             {detail}
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {workerName ? `Only on ${workerName}` : "All workers"}
+          </p>
         </div>
       </div>
-      <div className="flex items-center">
+      <div className="flex items-center gap-1">
+        <label className="mr-1 flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            className="size-4 accent-primary"
+            checked={server.enabled}
+            disabled={toggling}
+            onChange={(event) => onToggle(event.target.checked)}
+          />
+          <span className="sr-only">
+            {server.enabled ? "Disable" : "Enable"} {server.name}
+          </span>
+        </label>
         <Button
           type="button"
           size="icon"
@@ -274,15 +323,26 @@ export function McpServerSettings({
     await queryClient.invalidateQueries({ queryKey });
   };
   const save = useMutation({
-    mutationFn: (input: McpServerConfiguration) => {
+    mutationFn: ({
+      configuration,
+      workerId,
+    }: {
+      configuration: McpServerConfiguration;
+      workerId: string | null;
+    }) => {
       if (projectId) {
         return editing
-          ? updateProjectMcpServer(projectId, editing.id, input)
-          : createProjectMcpServer(projectId, input);
+          ? updateProjectMcpServer(
+              projectId,
+              editing.id,
+              configuration,
+              workerId,
+            )
+          : createProjectMcpServer(projectId, configuration, workerId);
       }
       return editing
-        ? updateGlobalMcpServer(editing.id, input)
-        : createGlobalMcpServer(input);
+        ? updateGlobalMcpServer(editing.id, configuration, workerId)
+        : createGlobalMcpServer(configuration, workerId);
     },
     onSuccess: async () => {
       setDialogOpen(false);
@@ -294,6 +354,26 @@ export function McpServerSettings({
       projectId
         ? deleteProjectMcpServer(projectId, serverId)
         : deleteGlobalMcpServer(serverId),
+    onSuccess: refresh,
+  });
+  const toggle = useMutation({
+    mutationFn: ({
+      server,
+      enabled,
+    }: {
+      server: McpServerSummary;
+      enabled: boolean;
+    }) => {
+      const configuration = configurationFromSummary(server, enabled);
+      return projectId
+        ? updateProjectMcpServer(
+            projectId,
+            server.id,
+            configuration,
+            server.workerId,
+          )
+        : updateGlobalMcpServer(server.id, configuration, server.workerId);
+    },
     onSuccess: refresh,
   });
   const copy = useMutation({
@@ -319,6 +399,13 @@ export function McpServerSettings({
     () =>
       (workers.data ?? []).filter(
         ({ codegraph }) => codegraph.mcpInjectionAvailable,
+      ),
+    [workers.data],
+  );
+  const workerNames = useMemo(
+    () =>
+      new Map(
+        (workers.data ?? []).map(({ workerId, name }) => [workerId, name]),
       ),
     [workers.data],
   );
@@ -349,7 +436,10 @@ export function McpServerSettings({
     event.preventDefault();
     try {
       setDraftError(null);
-      save.mutate(configurationFor(draft));
+      save.mutate({
+        configuration: configurationFor(draft),
+        workerId: draft.workerId || null,
+      });
     } catch (error) {
       setDraftError(errorText(error));
     }
@@ -442,8 +532,17 @@ export function McpServerSettings({
               key={server.id}
               server={server}
               removing={remove.isPending && remove.variables === server.id}
+              toggling={
+                toggle.isPending && toggle.variables?.server.id === server.id
+              }
+              workerName={
+                server.workerId
+                  ? (workerNames.get(server.workerId) ?? server.workerId)
+                  : null
+              }
               onEdit={() => openEditor(server)}
               onRemove={() => remove.mutate(server.id)}
+              onToggle={(enabled) => toggle.mutate({ server, enabled })}
             />
           ))}
         </div>
@@ -458,6 +557,11 @@ export function McpServerSettings({
       {remove.isError ? (
         <p className="px-3 py-3 text-sm text-destructive">
           {errorText(remove.error)}
+        </p>
+      ) : null}
+      {toggle.isError ? (
+        <p className="px-3 py-3 text-sm text-destructive">
+          {errorText(toggle.error)}
         </p>
       ) : null}
 
@@ -504,6 +608,29 @@ export function McpServerSettings({
                 >
                   <option value="stdio">Local command (stdio)</option>
                   <option value="http">Streamable HTTP</option>
+                </NativeSelect>
+              </Field>
+              <Field
+                label="Worker availability"
+                hint="Worker-local servers should be bound to the machine where they are installed."
+              >
+                <NativeSelect
+                  className="w-full"
+                  value={draft.workerId}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      workerId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">All workers</option>
+                  {(workers.data ?? []).map((worker) => (
+                    <option key={worker.workerId} value={worker.workerId}>
+                      {worker.name}
+                      {worker.online ? "" : " · offline"}
+                    </option>
+                  ))}
                 </NativeSelect>
               </Field>
             </div>

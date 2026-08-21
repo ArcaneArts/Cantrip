@@ -1258,15 +1258,24 @@ describe("codexMcpConfigOverride", () => {
           env: { TOKEN: "secret" },
           enabled: true,
         },
-        remote_tools: {
-          url: "https://example.com/mcp",
-          bearer_token_env_var: "MCP_TOKEN",
-          http_headers: { "X-Team": "Cantrip" },
-          env_http_headers: { Authorization: "MCP_AUTH_HEADER" },
-          enabled: false,
-        },
       },
     });
+  });
+
+  it("omits disabled servers so Codex cannot observe their configuration", () => {
+    expect(
+      codexMcpConfigOverride([
+        {
+          name: "disabled_private_tools",
+          transport: "http",
+          url: "https://private.example.test/mcp",
+          bearerTokenEnvironmentVariable: "PRIVATE_TOKEN",
+          headers: { "X-Private": "configuration" },
+          environmentHeaders: {},
+          enabled: false,
+        },
+      ]),
+    ).toEqual({ mcp_servers: {} });
   });
 
   it("makes managed CodeGraph a required model-facing tool", () => {
