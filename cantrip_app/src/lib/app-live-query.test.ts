@@ -102,7 +102,28 @@ describe("application live query bridge", () => {
     ).toEqual([
       ["chat-sync", "chat-one"],
       ["messages", "chat-one"],
+      ["task-dashboard", "chat-one"],
     ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          entityId: "replica-job-one",
+          resource: "project-replica-job",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([
+      ["project-replica-jobs", "project-one"],
+      ["project-replica-job", "replica-job-one"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "project-github-conversion-job",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toContainEqual(["project-github-conversion", "project-one"]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -110,7 +131,24 @@ describe("application live query bridge", () => {
           scope: { kind: "chat", chatId: "chat-one" },
         }),
       ),
-    ).toEqual([["task", "chat-one"]]);
+    ).toEqual([
+      ["task", "chat-one"],
+      ["task-dashboard", "chat-one"],
+    ]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "chat-goal",
+          scope: { kind: "chat", chatId: "chat-one" },
+        }),
+      ),
+    ).toEqual([
+      ["goal", "chat-one"],
+      ["task-dashboard", "chat-one"],
+    ]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
+    ).toContainEqual(["task-dashboard", "chat-one"]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -179,6 +217,12 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
     ).toContainEqual(["project-repository-stats", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["project-replica-jobs", "project-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "project", projectId: "project-one" }),
+    ).toContainEqual(["project-github-conversion", "project-one"]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -704,7 +748,13 @@ describe("application live query bridge", () => {
     );
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["projects"] });
     expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["worker-management"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["messages", "chat-one"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["task-dashboard", "chat-one"],
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["chat-customizations", "chat-one", "inventory"],

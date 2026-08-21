@@ -37,6 +37,8 @@ import {
   synchronizeProjectReplica,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { updateProjectPreferredWorker } from "@/lib/project-encryption";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +113,7 @@ export function ProjectReplicaSettings({
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
+  const replicaResourcesLive = useAppLiveStatus() === "live";
   const [removeTarget, setRemoveTarget] =
     useState<ProjectReplicaSummary | null>(null);
   const [deleteLocalFiles, setDeleteLocalFiles] = useState(true);
@@ -121,9 +124,12 @@ export function ProjectReplicaSettings({
     queryFn: () => getProjectReplicaJobs(project.id),
     queryKey: ["project-replica-jobs", project.id],
     refetchInterval: (query) =>
-      query.state.data?.some((job) => activeJobStates.has(job.state))
-        ? 2_000
-        : false,
+      liveResourceRefreshInterval(
+        replicaResourcesLive,
+        query.state.data?.some((job) => activeJobStates.has(job.state))
+          ? 2_000
+          : false,
+      ),
   });
   const refreshProject = async () => {
     await Promise.all([

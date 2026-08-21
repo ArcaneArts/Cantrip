@@ -39,6 +39,8 @@ import {
   startProjectGithubConversion,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 
 function errorText(error: unknown): string {
   return errorMessage(error, "The GitHub conversion could not continue.");
@@ -89,6 +91,7 @@ export function ProjectGithubConversion({
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
+  const conversionResourcesLive = useAppLiveStatus() === "live";
   const [open, setOpen] = useState(false);
   const [createRepositoryOpen, setCreateRepositoryOpen] = useState(false);
   const [selectedRepositoryId, setSelectedRepositoryId] = useState("");
@@ -106,7 +109,10 @@ export function ProjectGithubConversion({
     queryKey: ["project-github-conversion", project.id],
     refetchInterval: (query) => {
       const job = query.state.data;
-      return job && ["queued", "running"].includes(job.state) ? 2_000 : false;
+      return liveResourceRefreshInterval(
+        conversionResourcesLive,
+        job && ["queued", "running"].includes(job.state) ? 2_000 : false,
+      );
     },
     retry: false,
   });
