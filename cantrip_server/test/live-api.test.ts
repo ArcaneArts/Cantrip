@@ -377,11 +377,24 @@ describe.sequential("application live WebSocket", () => {
       }),
     );
 
+    const workerConnectionEventStart = messages.length;
     const workerSocket = await app.injectWS(
       `/api/internal/workers/connect?workerId=${liveTestHeartbeat.workerId}`,
       { headers: { authorization: `Bearer ${config.workerToken}` } },
     );
     await vi.waitFor(() => expect(workerNotificationListener).not.toBeNull());
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(workerConnectionEventStart)
+          .some(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "worker" &&
+              message.scope.kind === "current-user",
+          ),
+      ).toBe(true),
+    );
 
     const codeGraphStatus = {
       projectId,

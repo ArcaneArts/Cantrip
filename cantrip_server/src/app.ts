@@ -4091,19 +4091,30 @@ export async function buildApp({
   const workerOfflineTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const workerPresenceFingerprints = new Map<string, string>();
 
-  const publishWorkerPresence = (worker: WorkerSummary): void => {
-    const fingerprint = workerPresenceFingerprint(worker);
-    if (workerPresenceFingerprints.get(worker.workerId) === fingerprint) return;
-    workerPresenceFingerprints.set(worker.workerId, fingerprint);
-    publishLiveInvalidation("worker", { entityId: worker.workerId });
+  const publishWorkerPresence = (
+    ownerId: string,
+    worker: WorkerSummary,
+  ): void => {
+    runAsOwner(ownerId, () => {
+      const fingerprint = workerPresenceFingerprint(worker);
+      if (workerPresenceFingerprints.get(worker.workerId) === fingerprint)
+        return;
+      workerPresenceFingerprints.set(worker.workerId, fingerprint);
+      publishLiveInvalidation("worker", { entityId: worker.workerId });
+    });
   };
-  const scheduleWorkerOfflineInvalidation = (workerId: string): void => {
+  const scheduleWorkerOfflineInvalidation = (
+    ownerId: string,
+    workerId: string,
+  ): void => {
     const existing = workerOfflineTimers.get(workerId);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
       workerOfflineTimers.delete(workerId);
       workerPresenceFingerprints.delete(workerId);
-      publishLiveInvalidation("worker", { entityId: workerId });
+      runAsOwner(ownerId, () =>
+        publishLiveInvalidation("worker", { entityId: workerId }),
+      );
     }, WORKER_ONLINE_WINDOW_MS + 50);
     timer.unref();
     workerOfflineTimers.set(workerId, timer);
@@ -10162,7 +10173,12 @@ export async function buildApp({
   });
 
   app.get("/api/workers", { logLevel: "warn" }, async (request, reply) => {
-    const workers = await repository.listWorkers(principalOwnerId(request));
+    const workers = (
+      await repository.listWorkers(principalOwnerId(request))
+    ).map((worker) => ({
+      ...worker,
+      online: bridge.isConnected(worker.workerId),
+    }));
     return reply.send(workerListSchema.parse(workers));
   });
 
@@ -25081,8 +25097,11 @@ export async function buildApp({
           resourceType: "worker",
           result: "succeeded",
         });
-        publishWorkerPresence(provision.worker);
-        scheduleWorkerOfflineInvalidation(provision.worker.workerId);
+        publishWorkerPresence(provision.ownerId, provision.worker);
+        scheduleWorkerOfflineInvalidation(
+          provision.ownerId,
+          provision.worker.workerId,
+        );
         serverLogger.info("Worker enrollment completed", {
           event: "worker.enrollment.completed",
           subsystem: "worker-auth",
@@ -25833,8 +25852,8 @@ export async function buildApp({
         workerAuth.ownerId,
         heartbeat.data,
       );
-      publishWorkerPresence(worker);
-      scheduleWorkerOfflineInvalidation(worker.workerId);
+      publishWorkerPresence(workerAuth.ownerId, worker);
+      scheduleWorkerOfflineInvalidation(workerAuth.ownerId, worker.workerId);
       void resumePendingWorktreeTransitionsForWorker(
         workerAuth.ownerId,
         heartbeat.data.workerId,
@@ -25952,6 +25971,9 @@ export async function buildApp({
         socket.close(1013, "Worker relay coordination is unavailable");
         return;
       }
+      runAsOwner(workerAuth.ownerId, () =>
+        publishLiveInvalidation("worker", { entityId: workerId }),
+      );
       serverLogger.event("info", "Worker command channel authenticated", {
         event: "worker.authentication.completed",
         subsystem: "worker-connection",

@@ -2,13 +2,19 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  unprobedCodexRuntimeReport,
+  workerListSchema,
+} from "@cantrip/protocol";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
+import {
+  LOCAL_USER_ID,
+  WORKER_ONLINE_WINDOW_MS,
+} from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
 const dataDirectory = await mkdtemp(
@@ -87,13 +93,35 @@ afterAll(async () => {
 });
 
 describe("worker notification connection order", () => {
-  it("subscribes to durable outcomes before the reconnecting worker can flush them", async () => {
+  it("subscribes before attachment and trusts the live command connection", async () => {
     const socket = await app.injectWS(
       "/api/internal/workers/connect?workerId=notification-order-worker",
       { headers: { authorization: "Bearer test-worker-token" } },
     );
 
     await expect.poll(() => subscribedBeforeAttach).toBe(true);
-    socket.terminate();
+    const worker = await database.repository.getWorker(
+      LOCAL_USER_ID,
+      "notification-order-worker",
+    );
+    if (!worker) throw new Error("Notification order worker was not found.");
+    const now = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(
+        new Date(worker.lastSeenAt).getTime() + WORKER_ONLINE_WINDOW_MS + 1,
+      );
+    try {
+      const workers = workerListSchema.parse(
+        (await app.inject({ method: "GET", url: "/api/workers" })).json(),
+      );
+      expect(
+        workers.find(
+          ({ workerId }) => workerId === "notification-order-worker",
+        ),
+      ).toMatchObject({ online: true });
+    } finally {
+      now.mockRestore();
+      socket.terminate();
+    }
   });
 });
