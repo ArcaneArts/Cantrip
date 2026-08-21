@@ -123,6 +123,13 @@ function harness(overrides: Partial<RemoteSurfaceTransportClientOptions> = {}) {
     onReady,
     onTransportState,
     ...overrides,
+    streamKind: overrides.streamKind ?? "browser",
+    protectPayload:
+      overrides.protectPayload ??
+      (async ({ payload }) => new Uint8Array([0xa5, ...payload])),
+    openPayload:
+      overrides.openPayload ??
+      (async ({ protectedPayload }) => Uint8Array.from(protectedPayload)),
   });
   client.start();
   return {
@@ -163,7 +170,7 @@ describe("remoteSurfaceReconnectDelay", () => {
 });
 
 describe("RemoteSurfaceTransportClient", () => {
-  it("attaches, sequences outbound frames, and rejects stale inbound frames", () => {
+  it("attaches, sequences outbound frames, and rejects stale inbound frames", async () => {
     const run = harness();
     expect(run.sockets).toHaveLength(1);
     expect(run.sockets[0]!.url).toBe("ws://surface.test");
@@ -179,19 +186,23 @@ describe("RemoteSurfaceTransportClient", () => {
 
     expect(run.client.send("control", new Uint8Array([1, 2]))).toBe(true);
     expect(run.client.send("clipboard", new Uint8Array([3]))).toBe(true);
+    await vi.waitFor(() =>
+      expect(run.sockets[0]!.send).toHaveBeenCalledTimes(2),
+    );
     const sent = run.sockets[0]!.send.mock.calls.map(([value]) =>
       decodeRemoteSurfaceFrame(new Uint8Array(value)),
     );
-    expect(sent.map((frame) => frame.header.sequence)).toEqual([0, 1]);
+    expect(sent.map((frame) => frame.header.sequence)).toEqual([0, 0]);
     expect(sent[0]!.header.attachmentId).toBe("attachment-1");
-    expect(sent[0]!.payload).toEqual(new Uint8Array([1, 2]));
+    expect(sent[0]!.payload).toEqual(new Uint8Array([0xa5, 1, 2]));
+    expect(sent[0]!.payload).not.toEqual(new Uint8Array([1, 2]));
 
     run.sockets[0]!.message(encodedFrame({ sequence: 4 }));
     run.sockets[0]!.message(encodedFrame({ sequence: 3 }));
     run.sockets[0]!.message(
       encodedFrame({ sequence: 5, surfaceId: "another-surface" }),
     );
-    expect(run.onFrame).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(run.onFrame).toHaveBeenCalledOnce());
     expect(run.onFrame.mock.calls[0]![0].payload).toEqual(new Uint8Array([9]));
     run.client.close();
   });
@@ -216,11 +227,11 @@ describe("RemoteSurfaceTransportClient", () => {
     expect(run.onActiveTransport).toHaveBeenLastCalledWith("webrtc-direct");
 
     expect(run.client.send("control", new Uint8Array([7]))).toBe(true);
-    expect(webRtc.send).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(webRtc.send).toHaveBeenCalledOnce());
     expect(run.sockets[0]!.send).not.toHaveBeenCalled();
 
     webRtcOptions!.onSignal({ type: "end-of-candidates" });
-    expect(run.sockets[0]!.send).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(run.sockets[0]!.send).toHaveBeenCalledOnce());
     const signalFrame = decodeRemoteSurfaceFrame(
       new Uint8Array(run.sockets[0]!.send.mock.calls[0]![0]),
     );

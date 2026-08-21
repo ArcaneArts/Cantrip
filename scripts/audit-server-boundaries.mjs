@@ -15,6 +15,22 @@ const surfaceStreamProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/surface-stream.ts",
 );
+const remoteSurfaceStreamProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/remote-surface-stream.ts",
+);
+const remoteSurfaceTransportPath = resolve(
+  repositoryRoot,
+  "cantrip_app/src/lib/use-remote-surface-transport.ts",
+);
+const remoteSurfaceManagerPath = resolve(
+  repositoryRoot,
+  "cantrip_worker/src/remote-surface-manager.ts",
+);
+const remoteSurfaceRelayPath = resolve(
+  repositoryRoot,
+  "cantrip_server/src/remote-surfaces/relay.ts",
+);
 const repositoryFiles = [
   "encryption-registry.ts",
   "project-automations.ts",
@@ -564,6 +580,49 @@ async function surfaceStreamProductionDependencyAudit() {
   return {
     prohibitedTrustedSurfaceStreamImports: 0,
     opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
+  };
+}
+
+async function remoteSurfaceStreamProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    for (const match of sourceText.matchAll(
+      /(?:from\s*|import\s*\(\s*)["']([^"']+)["']/gu,
+    )) {
+      const target = match[1];
+      if (
+        target === "@cantrip/protocol/remote-surface-stream" ||
+        /(?:^|\/)packages\/protocol\/src\/remote-surface-stream(?:\.js|\.ts)?$/u.test(
+          target,
+        ) ||
+        /(?:^|\/)cantrip_(?:app|worker)\/src\/remote-surface-stream-encryption/u.test(
+          target,
+        )
+      ) {
+        failures.push(
+          `${relativeFile}:${lineForOffset(sourceText, match.index)} imports trusted Remote Surface stream code (${target})`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\b(?:decodeRemoteSurfaceProtectedPayload|decryptRemoteSurfaceStreamPayload|encodeRemoteSurfaceProtectedPayload|encryptRemoteSurfaceStreamPayload|openRemoteSurfaceStreamPayload|openWorkerRemoteSurfaceStreamPayload|protectRemoteSurfaceStreamPayload|protectWorkerRemoteSurfaceStreamPayload|remoteSurfaceStreamAssociatedData)\b/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references trusted Remote Surface stream code (${match[0]})`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the Remote Surface stream E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    productionCryptoImports: 0,
+    prohibitedTrustedRemoteSurfaceStreamImports: 0,
   };
 }
 function routeBoundary(path) {
@@ -1975,6 +2034,92 @@ function surfaceStreamProtocolBoundaryAudit(protocolText, streamProtocolText) {
   };
 }
 
+function remoteSurfaceStreamProtocolBoundaryAudit(
+  streamProtocolText,
+  transportText,
+  managerText,
+  relayText,
+) {
+  const failures = [];
+  for (const marker of [
+    "remoteSurfaceStreamContextSchema",
+    "surfaceKind: remoteSurfaceStreamKindSchema",
+    "attachmentId:",
+    "direction: remoteSurfaceStreamDirectionSchema",
+    "channel: remoteSurfaceStreamChannelSchema",
+    "sequence:",
+    "encodeRemoteSurfaceProtectedPayload",
+    "decodeRemoteSurfaceProtectedPayload",
+  ]) {
+    if (!streamProtocolText.includes(marker)) {
+      failures.push(`Remote Surface stream protocol is missing ${marker}`);
+    }
+  }
+  for (const marker of [
+    "protectRemoteSurfaceStreamPayload",
+    "openRemoteSurfaceStreamPayload",
+    'direction: "client-to-worker"',
+    'direction: "worker-to-client"',
+    "#sequences = new Map<RemoteSurfaceChannel, number>()",
+    "#lastInboundSequences = new Map<RemoteSurfaceChannel, number>()",
+  ]) {
+    if (!transportText.includes(marker)) {
+      failures.push(`client Remote Surface transport is missing ${marker}`);
+    }
+  }
+  for (const marker of [
+    "protectWorkerRemoteSurfaceStreamPayload",
+    "openWorkerRemoteSurfaceStreamPayload",
+    'direction: "client-to-worker"',
+    'direction: "worker-to-client"',
+    "lastInboundSequences: Map<RemoteSurfaceChannel, number>",
+    "this.streamKey(surfaceId, attachmentId, channel)",
+  ]) {
+    if (!managerText.includes(marker)) {
+      failures.push(`worker Remote Surface manager is missing ${marker}`);
+    }
+  }
+  for (const marker of [
+    "lastClientSequences = new Map",
+    "lastWorkerSequences = new Map",
+    "decodeRemoteSurfaceFrame",
+  ]) {
+    if (!relayText.includes(marker)) {
+      failures.push(`server Remote Surface relay is missing ${marker}`);
+    }
+  }
+  if (
+    /\b(?:TextDecoder|JSON\.parse\s*\(\s*(?:frame\.)?payload|remoteBrowserClientMessageSchema|remoteBrowserServerMessageSchema|remoteDesktopClientMessageSchema|remoteDesktopServerMessageSchema)\b/u.test(
+      relayText,
+    )
+  ) {
+    failures.push(
+      "server Remote Surface relay inspects protected payload content",
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Remote Surface stream boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    guards: [
+      "browser-and-desktop-payloads:opaque",
+      "websocket-and-webrtc:protected-before-relay",
+      "attachment-direction-channel-sequence-bound",
+      "per-channel-replay-guards",
+      "server-payload-decoding:absent",
+    ],
+    protectedChannels: [
+      "control",
+      "frame",
+      "cursor",
+      "clipboard",
+      "webrtc-signal",
+    ],
+  };
+}
+
 async function surfacePrivateStateRepositoryBoundaryAudit(protocolText) {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
@@ -2203,6 +2348,10 @@ async function buildInventory() {
     protocolText,
     liveProtocolText,
     surfaceStreamProtocolText,
+    remoteSurfaceStreamProtocolText,
+    remoteSurfaceTransportText,
+    remoteSurfaceManagerText,
+    remoteSurfaceRelayText,
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
@@ -2214,11 +2363,16 @@ async function buildInventory() {
     privateDisplayLabelRepository,
     surfacePrivateStateDependencies,
     surfaceStreamDependencies,
+    remoteSurfaceStreamDependencies,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
     readFile(protocolPath, "utf8"),
     readFile(liveProtocolPath, "utf8"),
     readFile(surfaceStreamProtocolPath, "utf8"),
+    readFile(remoteSurfaceStreamProtocolPath, "utf8"),
+    readFile(remoteSurfaceTransportPath, "utf8"),
+    readFile(remoteSurfaceManagerPath, "utf8"),
+    readFile(remoteSurfaceRelayPath, "utf8"),
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
@@ -2230,12 +2384,19 @@ async function buildInventory() {
     privateDisplayLabelRepositoryBoundaryAudit(),
     surfacePrivateStateProductionDependencyAudit(),
     surfaceStreamProductionDependencyAudit(),
+    remoteSurfaceStreamProductionDependencyAudit(),
   ]);
   const surfacePrivateStateRepository =
     await surfacePrivateStateRepositoryBoundaryAudit(protocolText);
   const surfaceStreamProtocol = surfaceStreamProtocolBoundaryAudit(
     protocolText,
     surfaceStreamProtocolText,
+  );
+  const remoteSurfaceStreamProtocol = remoteSurfaceStreamProtocolBoundaryAudit(
+    remoteSurfaceStreamProtocolText,
+    remoteSurfaceTransportText,
+    remoteSurfaceManagerText,
+    remoteSurfaceRelayText,
   );
   const parsedRoutes = parseRoutes(sourceText);
   const taskRouteContracts = taskRouteBoundaryAudit(parsedRoutes);
@@ -2293,6 +2454,8 @@ async function buildInventory() {
     sources: {
       applicationRoutes: "cantrip_server/src/app.ts",
       liveProtocol: "packages/protocol/src/live.ts",
+      remoteSurfaceStreamProtocol:
+        "packages/protocol/src/remote-surface-stream.ts",
       workerCommands: "packages/protocol/src/index.ts",
     },
     summary: {
@@ -2364,6 +2527,11 @@ async function buildInventory() {
       ...surfaceStreamDependencies,
       ...surfaceStreamProtocol,
       routeContracts: surfaceStreamRouteContracts,
+    },
+    remoteSurfaceStreamE2eeBoundary: {
+      status: "enforced",
+      ...remoteSurfaceStreamDependencies,
+      ...remoteSurfaceStreamProtocol,
     },
     externalTransports: [
       {

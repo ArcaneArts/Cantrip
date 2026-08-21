@@ -5,6 +5,10 @@ import {
   type RemoteSurfaceChannel,
   type RemoteSurfaceFrameHeader,
 } from "@cantrip/protocol";
+import type {
+  RemoteSurfaceStreamContext,
+  RemoteSurfaceStreamKind,
+} from "@cantrip/protocol/remote-surface-stream";
 import {
   useCallback,
   useEffect,
@@ -15,6 +19,10 @@ import {
 } from "react";
 
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
+import {
+  openRemoteSurfaceStreamPayload,
+  protectRemoteSurfaceStreamPayload,
+} from "@/lib/remote-surface-stream-encryption";
 
 import {
   RemoteSurfaceWebRtcClient,
@@ -65,6 +73,15 @@ export interface RemoteSurfaceTransportClientOptions {
   onReady?(): void;
   onActiveTransport?(transport: RemoteSurfaceActiveTransport): void;
   onTransportState?(state: RemoteSurfaceWebRtcState): void;
+  openPayload?(input: {
+    context: Omit<RemoteSurfaceStreamContext, "serverId">;
+    protectedPayload: Uint8Array;
+  }): Promise<Uint8Array>;
+  protectPayload?(input: {
+    context: Omit<RemoteSurfaceStreamContext, "serverId">;
+    payload: Uint8Array;
+  }): Promise<Uint8Array>;
+  streamKind: RemoteSurfaceStreamKind;
   surfaceId: string;
   surfaceKind?: string;
   webSocketUrl(): string;
@@ -77,12 +94,15 @@ export function remoteSurfaceReconnectDelay(attempt: number): number {
 export class RemoteSurfaceTransportClient {
   readonly #options: RemoteSurfaceTransportClientOptions;
   #attachmentId: string | null = null;
+  #connectionRevision = 0;
   #disposed = false;
-  #lastInboundSequence = -1;
+  readonly #inboundQueues = new Map<RemoteSurfaceChannel, Promise<void>>();
+  readonly #lastInboundSequences = new Map<RemoteSurfaceChannel, number>();
+  readonly #outboundQueues = new Map<RemoteSurfaceChannel, Promise<void>>();
+  readonly #sequences = new Map<RemoteSurfaceChannel, number>();
   #reconnectAttempt = 0;
   #reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   #socketOpenTimer: ReturnType<typeof setTimeout> | null = null;
-  #sequence = 0;
   #socket: WebSocket | null = null;
   #started = false;
   #webRtc: RemoteSurfaceWebRtcTransport | null = null;
@@ -116,28 +136,63 @@ export class RemoteSurfaceTransportClient {
     payload: Uint8Array,
     webSocketOnly = false,
   ): boolean {
-    if (!this.#attachmentId) return false;
-    const header = {
-      protocolVersion: 1 as const,
-      surfaceId: this.#options.surfaceId,
-      attachmentId: this.#attachmentId,
-      sequence: this.#sequence,
-      channel,
-    };
-    if (!webSocketOnly && this.#webRtc?.send(header, payload)) {
-      this.#sequence += 1;
-      return true;
-    }
+    const attachmentId = this.#attachmentId;
+    if (!attachmentId) return false;
     const socket = this.#socket;
-    if (!socket || socket.readyState !== 1) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
+    if ((!socket || socket.readyState !== 1) && !this.#webRtc) return false;
+    if (socket && socket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
       socket.close(1013, this.#options.messages.congestionReason);
       return false;
     }
-    socket.send(
-      Uint8Array.from(encodeRemoteSurfaceFrame(header, payload)).buffer,
-    );
-    this.#sequence += 1;
+    const sequence = this.#sequences.get(channel) ?? 0;
+    this.#sequences.set(channel, sequence + 1);
+    const header = {
+      protocolVersion: 1 as const,
+      surfaceId: this.#options.surfaceId,
+      attachmentId,
+      sequence,
+      channel,
+    };
+    const connectionRevision = this.#connectionRevision;
+    const previous = this.#outboundQueues.get(channel) ?? Promise.resolve();
+    const queued = previous
+      .then(async () => {
+        const protectedPayload = await (
+          this.#options.protectPayload ?? protectRemoteSurfaceStreamPayload
+        )({
+          context: {
+            surfaceKind: this.#options.streamKind,
+            surfaceId: this.#options.surfaceId,
+            attachmentId,
+            direction: "client-to-worker",
+            channel,
+            sequence,
+          },
+          payload,
+        });
+        if (
+          this.#disposed ||
+          this.#connectionRevision !== connectionRevision ||
+          this.#attachmentId !== attachmentId
+        ) {
+          return;
+        }
+        if (!webSocketOnly && this.#webRtc?.send(header, protectedPayload)) {
+          return;
+        }
+        const activeSocket = this.#socket;
+        if (!activeSocket || activeSocket.readyState !== 1) return;
+        if (activeSocket.bufferedAmount > MAX_BUFFERED_SURFACE_BYTES) {
+          activeSocket.close(1013, this.#options.messages.congestionReason);
+          return;
+        }
+        activeSocket.send(
+          Uint8Array.from(encodeRemoteSurfaceFrame(header, protectedPayload))
+            .buffer,
+        );
+      })
+      .catch(() => this.failProtectedStream());
+    this.#outboundQueues.set(channel, queued);
     return true;
   }
 
@@ -158,9 +213,12 @@ export class RemoteSurfaceTransportClient {
   private connect(): void {
     if (this.#disposed) return;
     this.teardownConnection();
+    this.#connectionRevision += 1;
     this.#attachmentId = null;
-    this.#sequence = 0;
-    this.#lastInboundSequence = -1;
+    this.#inboundQueues.clear();
+    this.#lastInboundSequences.clear();
+    this.#outboundQueues.clear();
+    this.#sequences.clear();
     const state = this.#reconnectAttempt ? "reconnecting" : "connecting";
     this.#connectStartedAt = performance.now();
     this.#options.onConnectionState(state);
@@ -380,22 +438,51 @@ export class RemoteSurfaceTransportClient {
       const frame = decodeRemoteSurfaceFrame(bytes);
       if (
         frame.header.surfaceId !== this.#options.surfaceId ||
-        frame.header.sequence <= this.#lastInboundSequence
+        frame.header.attachmentId !== this.#attachmentId ||
+        frame.header.sequence <=
+          (this.#lastInboundSequences.get(frame.header.channel) ?? -1)
       ) {
         return;
       }
-      this.#lastInboundSequence = frame.header.sequence;
-      if (frame.header.channel === "webrtc-signal") {
-        void this.#webRtc
-          ?.handleSignal(frame.payload)
-          .catch(() =>
-            this.#options.onError(this.#options.messages.invalidFrame),
-          );
-        return;
-      }
-      this.#options.onFrame(frame);
+      this.#lastInboundSequences.set(
+        frame.header.channel,
+        frame.header.sequence,
+      );
+      const connectionRevision = this.#connectionRevision;
+      const previous =
+        this.#inboundQueues.get(frame.header.channel) ?? Promise.resolve();
+      const queued = previous
+        .then(async () => {
+          const payload = await (
+            this.#options.openPayload ?? openRemoteSurfaceStreamPayload
+          )({
+            context: {
+              surfaceKind: this.#options.streamKind,
+              surfaceId: frame.header.surfaceId,
+              attachmentId: frame.header.attachmentId,
+              direction: "worker-to-client",
+              channel: frame.header.channel,
+              sequence: frame.header.sequence,
+            },
+            protectedPayload: frame.payload,
+          });
+          if (
+            this.#disposed ||
+            this.#connectionRevision !== connectionRevision ||
+            this.#attachmentId !== frame.header.attachmentId
+          ) {
+            return;
+          }
+          if (frame.header.channel === "webrtc-signal") {
+            await this.#webRtc?.handleSignal(payload);
+            return;
+          }
+          this.#options.onFrame({ header: frame.header, payload });
+        })
+        .catch(() => this.failProtectedStream());
+      this.#inboundQueues.set(frame.header.channel, queued);
     } catch {
-      this.#options.onError(this.#options.messages.invalidFrame);
+      this.failProtectedStream();
       clientLogger.rateLimited(
         `surface-frame:${this.#options.surfaceKind ?? "remote"}:${this.#options.surfaceId}`,
         "warn",
@@ -409,6 +496,12 @@ export class RemoteSurfaceTransportClient {
         },
       );
     }
+  }
+
+  private failProtectedStream(): void {
+    if (this.#disposed) return;
+    this.#options.onError(this.#options.messages.invalidFrame);
+    this.#socket?.close(1008, "Protected Remote Surface frame is invalid");
   }
 
   private scheduleReconnect(): void {
@@ -488,6 +581,7 @@ export interface UseRemoteSurfaceTransportOptions {
     context: RemoteSurfaceFrameContext,
   ): void;
   onReady?(): void;
+  streamKind: RemoteSurfaceStreamKind;
   surfaceId: string;
   surfaceKind?: string;
   webSocketUrl(): string;
@@ -533,6 +627,7 @@ export function useRemoteSurfaceTransport(
     client = new RemoteSurfaceTransportClient({
       surfaceId: options.surfaceId,
       surfaceKind: options.surfaceKind,
+      streamKind: options.streamKind,
       webSocketUrl: () => optionsRef.current.webSocketUrl(),
       messages: options.messages,
       onConnecting: () => {

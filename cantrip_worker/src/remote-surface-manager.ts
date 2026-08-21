@@ -12,7 +12,12 @@ import {
   WorkerWebRtcAttachment,
   type WorkerWebRtcAttachmentOptions,
 } from "./remote-surfaces/webrtc.js";
+import {
+  openWorkerRemoteSurfaceStreamPayload,
+  protectWorkerRemoteSurfaceStreamPayload,
+} from "./remote-surface-stream-encryption.js";
 import { workerLogError, workerLogger } from "./logger.js";
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 type AttachCommand = Extract<WorkerCommand, { type: "surface.attach" }>;
 type ConfigureCommand = Extract<WorkerCommand, { type: "surface.configure" }>;
@@ -43,6 +48,13 @@ function privateState(
 }
 
 const MAX_ATTACHMENTS_PER_SURFACE = 4;
+const REMOTE_SURFACE_CHANNELS = [
+  "control",
+  "frame",
+  "cursor",
+  "clipboard",
+  "webrtc-signal",
+] as const satisfies readonly RemoteSurfaceChannel[];
 
 export interface RemoteSurfaceAttachment {
   id: string;
@@ -79,14 +91,15 @@ export interface RemoteSurfaceAdapter {
   ): Promise<RemoteSurfaceSession>;
 }
 
+interface ManagedAttachment {
+  inboundQueues: Map<RemoteSurfaceChannel, Promise<void>>;
+  lastInboundSequences: Map<RemoteSurfaceChannel, number>;
+  serverId: string;
+  webrtc: WorkerWebRtcAttachment | null;
+}
+
 interface ManagedSession {
-  attachments: Map<
-    string,
-    {
-      lastInboundSequence: number;
-      webrtc: WorkerWebRtcAttachment | null;
-    }
-  >;
+  attachments: Map<string, ManagedAttachment>;
   session: RemoteSurfaceSession;
   startedAtMs: number;
 }
@@ -107,6 +120,7 @@ export class RemoteSurfaceManager {
   readonly #outboundSequences = new Map<string, number>();
   readonly #openingSessions = new Map<string, Promise<ManagedSession>>();
   readonly #sessions = new Map<string, ManagedSession>();
+  #encryption: WorkerEncryptionService | null = null;
   #emitFrame: RemoteSurfaceFrameEmitter = () => false;
 
   constructor(
@@ -123,6 +137,10 @@ export class RemoteSurfaceManager {
 
   setFrameEmitter(emitFrame: RemoteSurfaceFrameEmitter): void {
     this.#emitFrame = emitFrame;
+  }
+
+  setEncryptionService(service: WorkerEncryptionService): void {
+    this.#encryption = service;
   }
 
   async attach(command: AttachCommand): Promise<{
@@ -173,7 +191,9 @@ export class RemoteSurfaceManager {
       viewport: command.viewport,
     };
     managed.attachments.set(command.attachmentId, {
-      lastInboundSequence: -1,
+      inboundQueues: new Map(),
+      lastInboundSequences: new Map(),
+      serverId: command.serverId,
       webrtc: null,
     });
     try {
@@ -247,7 +267,11 @@ export class RemoteSurfaceManager {
     if (!managed || !attachment) return;
     managed.attachments.delete(attachmentId);
     await attachment.webrtc?.close(false);
-    this.#outboundSequences.delete(`${surfaceId}:${attachmentId}`);
+    for (const channel of REMOTE_SURFACE_CHANNELS) {
+      this.#outboundSequences.delete(
+        this.streamKey(surfaceId, attachmentId, channel),
+      );
+    }
     await managed.session.detach(attachmentId);
     workerLogger.event("info", "Remote surface detached", {
       event: "surface.attachment.detached",
@@ -317,7 +341,11 @@ export class RemoteSurfaceManager {
     if (!managed) return;
     this.#sessions.delete(surfaceId);
     for (const attachmentId of managed.attachments.keys()) {
-      this.#outboundSequences.delete(`${surfaceId}:${attachmentId}`);
+      for (const channel of REMOTE_SURFACE_CHANNELS) {
+        this.#outboundSequences.delete(
+          this.streamKey(surfaceId, attachmentId, channel),
+        );
+      }
     }
     await Promise.allSettled(
       [...managed.attachments.values()].map((attachment) =>
@@ -428,19 +456,6 @@ export class RemoteSurfaceManager {
     header: RemoteSurfaceFrameHeader,
     payload: Uint8Array,
   ): Promise<void> {
-    const attachment = this.#sessions
-      .get(header.surfaceId)
-      ?.attachments.get(header.attachmentId);
-    if (header.channel === "webrtc-signal" && attachment?.webrtc) {
-      if (header.sequence <= attachment.lastInboundSequence) return;
-      attachment.lastInboundSequence = header.sequence;
-      try {
-        await attachment.webrtc.handleSignal(payload);
-      } catch {
-        await attachment.webrtc.close();
-      }
-      return;
-    }
     await this.acceptFrame(header, payload);
   }
 
@@ -452,7 +467,7 @@ export class RemoteSurfaceManager {
   ): boolean {
     const managed = this.#sessions.get(surfaceId);
     if (!managed?.attachments.has(attachmentId)) return false;
-    const key = `${surfaceId}:${attachmentId}`;
+    const key = this.streamKey(surfaceId, attachmentId, channel);
     const sequence = (this.#outboundSequences.get(key) ?? -1) + 1;
     const header: RemoteSurfaceFrameHeader = {
       protocolVersion: 1,
@@ -462,15 +477,23 @@ export class RemoteSurfaceManager {
       channel,
     };
     const attachment = managed.attachments.get(attachmentId)!;
+    const protectedPayload = this.protectPayload(
+      managed,
+      attachmentId,
+      attachment,
+      header,
+      payload,
+    );
+    if (!protectedPayload) return false;
     const rtcResult = attachment.webrtc?.send(
       channel,
-      encodeRemoteSurfaceFrame(header, payload),
+      encodeRemoteSurfaceFrame(header, protectedPayload),
     );
     if (rtcResult === "sent" || rtcResult === "dropped") {
       this.#outboundSequences.set(key, sequence);
       return rtcResult === "sent";
     }
-    if (this.#emitFrame(header, payload)) {
+    if (this.#emitFrame(header, protectedPayload)) {
       this.#outboundSequences.set(key, sequence);
       return true;
     }
@@ -484,13 +507,55 @@ export class RemoteSurfaceManager {
     const managed = this.#sessions.get(header.surfaceId);
     const attachment = managed?.attachments.get(header.attachmentId);
     if (!managed || !attachment) return;
-    if (header.sequence <= attachment.lastInboundSequence) return;
-    attachment.lastInboundSequence = header.sequence;
-    await managed.session.handleFrame(
-      header.attachmentId,
-      header.channel,
-      payload,
-    );
+    const lastSequence =
+      attachment.lastInboundSequences.get(header.channel) ?? -1;
+    if (header.sequence <= lastSequence) return;
+    attachment.lastInboundSequences.set(header.channel, header.sequence);
+    const previous =
+      attachment.inboundQueues.get(header.channel) ?? Promise.resolve();
+    const queued = previous
+      .catch(() => undefined)
+      .then(async () => {
+        const encryption = this.#encryption;
+        if (!encryption) {
+          throw new Error("Remote Surface stream encryption is unavailable.");
+        }
+        const plaintext = openWorkerRemoteSurfaceStreamPayload({
+          context: {
+            serverId: attachment.serverId,
+            surfaceKind: managed.session.configuration.kind,
+            surfaceId: header.surfaceId,
+            attachmentId: header.attachmentId,
+            direction: "client-to-worker",
+            channel: header.channel,
+            sequence: header.sequence,
+          },
+          protectedPayload: payload,
+          service: encryption,
+        });
+        if (managed.attachments.get(header.attachmentId) !== attachment) return;
+        if (header.channel === "webrtc-signal" && attachment.webrtc) {
+          try {
+            await attachment.webrtc.handleSignal(plaintext);
+          } catch {
+            await attachment.webrtc.close();
+          }
+          return;
+        }
+        await managed.session.handleFrame(
+          header.attachmentId,
+          header.channel,
+          plaintext,
+        );
+      });
+    attachment.inboundQueues.set(header.channel, queued);
+    try {
+      await queued;
+    } finally {
+      if (attachment.inboundQueues.get(header.channel) === queued) {
+        attachment.inboundQueues.delete(header.channel);
+      }
+    }
   }
 
   private async acceptWebRtcFrame(
@@ -527,22 +592,62 @@ export class RemoteSurfaceManager {
   ): void {
     const managed = this.#sessions.get(surfaceId);
     if (!managed?.attachments.has(attachmentId)) return;
-    const key = `${surfaceId}:${attachmentId}`;
+    const key = this.streamKey(surfaceId, attachmentId, channel);
     const sequence = (this.#outboundSequences.get(key) ?? -1) + 1;
-    if (
-      this.#emitFrame(
-        {
-          protocolVersion: 1,
-          surfaceId,
-          attachmentId,
-          sequence,
-          channel,
-        },
-        payload,
-      )
-    ) {
+    const header: RemoteSurfaceFrameHeader = {
+      protocolVersion: 1,
+      surfaceId,
+      attachmentId,
+      sequence,
+      channel,
+    };
+    const attachment = managed.attachments.get(attachmentId)!;
+    const protectedPayload = this.protectPayload(
+      managed,
+      attachmentId,
+      attachment,
+      header,
+      payload,
+    );
+    if (protectedPayload && this.#emitFrame(header, protectedPayload)) {
       this.#outboundSequences.set(key, sequence);
     }
+  }
+
+  private protectPayload(
+    managed: ManagedSession,
+    attachmentId: string,
+    attachment: ManagedAttachment,
+    header: RemoteSurfaceFrameHeader,
+    payload: Uint8Array,
+  ): Uint8Array | null {
+    const encryption = this.#encryption;
+    if (!encryption) return null;
+    try {
+      return protectWorkerRemoteSurfaceStreamPayload({
+        context: {
+          serverId: attachment.serverId,
+          surfaceKind: managed.session.configuration.kind,
+          surfaceId: header.surfaceId,
+          attachmentId,
+          direction: "worker-to-client",
+          channel: header.channel,
+          sequence: header.sequence,
+        },
+        payload,
+        service: encryption,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private streamKey(
+    surfaceId: string,
+    attachmentId: string,
+    channel: RemoteSurfaceChannel,
+  ): string {
+    return JSON.stringify([surfaceId, attachmentId, channel]);
   }
 
   private requiredSession(surfaceId: string): ManagedSession {

@@ -534,6 +534,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     browser: browserAdapter,
     desktop: desktopAdapter,
   });
+  remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
   let codegraphNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;

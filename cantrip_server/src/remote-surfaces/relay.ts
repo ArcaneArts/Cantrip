@@ -67,8 +67,14 @@ export class RemoteSurfaceRelay {
     let framesFromClient = 0;
     let framesFromWorker = 0;
     let droppedFrames = 0;
-    let lastClientSequence = -1;
-    let lastWorkerSequence = -1;
+    const lastClientSequences = new Map<
+      RemoteSurfaceFrameHeader["channel"],
+      number
+    >();
+    const lastWorkerSequences = new Map<
+      RemoteSurfaceFrameHeader["channel"],
+      number
+    >();
     let unsubscribeDisconnect: () => void = () => undefined;
 
     const unsubscribe = this.bridge.subscribeSurfaceFrames(
@@ -78,7 +84,7 @@ export class RemoteSurfaceRelay {
           closed ||
           header.surfaceId !== binding.surfaceId ||
           header.attachmentId !== binding.attachmentId ||
-          header.sequence <= lastWorkerSequence ||
+          header.sequence <= (lastWorkerSequences.get(header.channel) ?? -1) ||
           socket.readyState !== 1
         ) {
           return;
@@ -109,7 +115,7 @@ export class RemoteSurfaceRelay {
         });
         framesFromWorker += 1;
         bytesFromWorker += payload.byteLength;
-        lastWorkerSequence = header.sequence;
+        lastWorkerSequences.set(header.channel, header.sequence);
       },
     );
 
@@ -174,7 +180,12 @@ export class RemoteSurfaceRelay {
         cleanup();
         return;
       }
-      if (frame.header.sequence <= lastClientSequence) return;
+      if (
+        frame.header.sequence <=
+        (lastClientSequences.get(frame.header.channel) ?? -1)
+      ) {
+        return;
+      }
       if (
         !this.consumeRelayBytes(
           binding.ownerId,
@@ -208,7 +219,7 @@ export class RemoteSurfaceRelay {
       }
       framesFromClient += 1;
       bytesFromClient += frame.payload.byteLength;
-      lastClientSequence = frame.header.sequence;
+      lastClientSequences.set(frame.header.channel, frame.header.sequence);
     });
     socket.on("close", cleanup);
     serverLogger.info("Remote Surface relay active", {

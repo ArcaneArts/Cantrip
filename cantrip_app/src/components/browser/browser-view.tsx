@@ -421,6 +421,7 @@ export function BrowserView({
     setError,
   } = useRemoteSurfaceTransport({
     enabled: encryptionReady,
+    streamKind: "browser",
     surfaceKind: "browser",
     surfaceId: browser.id,
     webSocketUrl: () =>

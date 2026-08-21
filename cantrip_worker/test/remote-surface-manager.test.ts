@@ -1,4 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  decryptRemoteSurfaceStreamPayload,
+  encryptRemoteSurfaceStreamPayload,
+  randomBytes,
+} from "@cantrip/crypto";
 
 import {
   RemoteSurfaceManager,
@@ -8,6 +13,7 @@ import {
 } from "../src/remote-surface-manager.js";
 import type { WorkerWebRtcAttachment } from "../src/remote-surfaces/webrtc.js";
 import { readWorkerLogs } from "../src/logger.js";
+import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
 const attachCommand = {
   type: "surface.attach" as const,
@@ -39,6 +45,20 @@ const attachCommand = {
   viewport: { width: 1_280, height: 720, devicePixelRatio: 2 },
   desktopStream: null,
 };
+
+function streamEncryption(): {
+  componentKey: Uint8Array;
+  ownerId: string;
+  service: WorkerEncryptionService;
+} {
+  const key = randomBytes(32);
+  const ownerId = "remote-surface-owner";
+  const service = {
+    componentKey: () => ({ key: new Uint8Array(key), keyRevision: 1 }),
+    ownerId: () => ownerId,
+  } as unknown as WorkerEncryptionService;
+  return { componentKey: key, ownerId, service };
+}
 
 describe("RemoteSurfaceManager", () => {
   it("isolates rejected WebRTC control input from the worker process", async () => {
@@ -114,7 +134,7 @@ describe("RemoteSurfaceManager", () => {
     });
   });
 
-  it("routes ordered frames through a reusable worker-owned session", async () => {
+  it("routes only protected ordered frames through a reusable worker-owned session", async () => {
     const handleFrame = vi.fn();
     const attach = vi.fn();
     const detach = vi.fn();
@@ -144,6 +164,8 @@ describe("RemoteSurfaceManager", () => {
       },
     };
     const manager = new RemoteSurfaceManager({ browser: adapter });
+    const encryption = streamEncryption();
+    manager.setEncryptionService(encryption.service);
     const outbound = vi.fn(() => true);
     manager.setFrameEmitter(outbound);
 
@@ -156,27 +178,56 @@ describe("RemoteSurfaceManager", () => {
       viewport: attachCommand.viewport,
     });
 
+    const firstHeader = {
+      protocolVersion: 1,
+      surfaceId: "surface-1",
+      attachmentId: "attachment-1",
+      sequence: 4,
+      channel: "control" as const,
+    };
     await manager.handleFrame(
-      {
-        protocolVersion: 1,
-        surfaceId: "surface-1",
-        attachmentId: "attachment-1",
-        sequence: 4,
-        channel: "control",
-      },
-      new Uint8Array([1]),
+      firstHeader,
+      await encryptRemoteSurfaceStreamPayload({
+        ownerId: encryption.ownerId,
+        context: {
+          serverId: attachCommand.serverId,
+          surfaceKind: "browser",
+          surfaceId: firstHeader.surfaceId,
+          attachmentId: firstHeader.attachmentId,
+          direction: "client-to-worker",
+          channel: firstHeader.channel,
+          sequence: firstHeader.sequence,
+        },
+        keyRevision: 1,
+        componentKey: encryption.componentKey,
+        plaintext: new Uint8Array([1]),
+      }),
     );
+    const staleHeader = { ...firstHeader, sequence: 3 };
     await manager.handleFrame(
-      {
-        protocolVersion: 1,
-        surfaceId: "surface-1",
-        attachmentId: "attachment-1",
-        sequence: 3,
-        channel: "control",
-      },
-      new Uint8Array([2]),
+      staleHeader,
+      await encryptRemoteSurfaceStreamPayload({
+        ownerId: encryption.ownerId,
+        context: {
+          serverId: attachCommand.serverId,
+          surfaceKind: "browser",
+          surfaceId: staleHeader.surfaceId,
+          attachmentId: staleHeader.attachmentId,
+          direction: "client-to-worker",
+          channel: staleHeader.channel,
+          sequence: staleHeader.sequence,
+        },
+        keyRevision: 1,
+        componentKey: encryption.componentKey,
+        plaintext: new Uint8Array([2]),
+      }),
     );
     expect(handleFrame).toHaveBeenCalledTimes(1);
+    expect(handleFrame.mock.calls[0]![0]).toBe("attachment-1");
+    expect(handleFrame.mock.calls[0]![1]).toBe("control");
+    expect(Uint8Array.from(handleFrame.mock.calls[0]![2])).toEqual(
+      new Uint8Array([1]),
+    );
 
     await manager.configure({
       type: "surface.configure",
@@ -193,15 +244,32 @@ describe("RemoteSurfaceManager", () => {
     );
 
     emit?.("attachment-1", "frame", new Uint8Array([9, 8]));
-    expect(outbound).toHaveBeenCalledWith(
-      expect.objectContaining({
-        surfaceId: "surface-1",
-        attachmentId: "attachment-1",
-        sequence: 0,
-        channel: "frame",
+    expect(outbound).toHaveBeenCalledOnce();
+    const [outboundHeader, outboundPayload] = outbound.mock.calls[0]!;
+    expect(outboundHeader).toMatchObject({
+      surfaceId: "surface-1",
+      attachmentId: "attachment-1",
+      sequence: 0,
+      channel: "frame",
+    });
+    expect(outboundPayload).not.toEqual(new Uint8Array([9, 8]));
+    await expect(
+      decryptRemoteSurfaceStreamPayload({
+        ownerId: encryption.ownerId,
+        context: {
+          serverId: attachCommand.serverId,
+          surfaceKind: "browser",
+          surfaceId: "surface-1",
+          attachmentId: "attachment-1",
+          direction: "worker-to-client",
+          channel: "frame",
+          sequence: 0,
+        },
+        keyRevision: 1,
+        componentKey: encryption.componentKey,
+        protectedPayload: outboundPayload,
       }),
-      new Uint8Array([9, 8]),
-    );
+    ).resolves.toEqual(new Uint8Array([9, 8]));
 
     await manager.detach("surface-1", "attachment-1");
     expect(detach).toHaveBeenCalledWith("attachment-1");
