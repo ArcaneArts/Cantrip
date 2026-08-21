@@ -49,7 +49,7 @@ describe("AgentInspectPanel", () => {
     expect(markup).toContain('aria-label="Resize Inspect sidebar"');
     expect(markup).toContain('aria-orientation="vertical"');
     expect(markup).toContain("motion-reduce:transition-none");
-    expect(markup).toContain("group-focus-within/agent-inspect");
+    expect(markup).toContain("group-focus-within/resizable-panel");
   });
 });
 

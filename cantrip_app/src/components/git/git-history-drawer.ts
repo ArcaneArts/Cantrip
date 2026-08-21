@@ -18,10 +18,11 @@ export function toggleGitHistoryToolDrawer(
 }
 
 export function clampGitHistoryDrawerWidth(width: number): number {
-  if (!Number.isFinite(width)) return DEFAULT_GIT_HISTORY_DRAWER_WIDTH;
-  return Math.min(
+  return clampResizablePanelWidth(
+    width,
+    DEFAULT_GIT_HISTORY_DRAWER_WIDTH,
+    MIN_GIT_HISTORY_DRAWER_WIDTH,
     MAX_GIT_HISTORY_DRAWER_WIDTH,
-    Math.max(MIN_GIT_HISTORY_DRAWER_WIDTH, Math.round(width)),
   );
 }
 
@@ -29,20 +30,31 @@ export function gitHistoryDrawerWidthFromPointer(
   clientX: number,
   drawerRight: number,
 ): number {
-  return clampGitHistoryDrawerWidth(drawerRight - clientX);
+  return resizablePanelWidthFromPointer({
+    boundary: drawerRight,
+    clientX,
+    defaultWidth: DEFAULT_GIT_HISTORY_DRAWER_WIDTH,
+    edge: "left",
+    maxWidth: MAX_GIT_HISTORY_DRAWER_WIDTH,
+    minWidth: MIN_GIT_HISTORY_DRAWER_WIDTH,
+  });
 }
 
 export function gitHistoryDrawerWidthFromKey(
   currentWidth: number,
   key: string,
 ): number | null {
-  if (key === "Home") return MIN_GIT_HISTORY_DRAWER_WIDTH;
-  if (key === "End") return MAX_GIT_HISTORY_DRAWER_WIDTH;
-  if (key === "ArrowLeft") {
-    return clampGitHistoryDrawerWidth(currentWidth + 16);
-  }
-  if (key === "ArrowRight") {
-    return clampGitHistoryDrawerWidth(currentWidth - 16);
-  }
-  return null;
+  return resizablePanelWidthFromKey({
+    currentWidth,
+    defaultWidth: DEFAULT_GIT_HISTORY_DRAWER_WIDTH,
+    edge: "left",
+    key,
+    maxWidth: MAX_GIT_HISTORY_DRAWER_WIDTH,
+    minWidth: MIN_GIT_HISTORY_DRAWER_WIDTH,
+  });
 }
+import {
+  clampResizablePanelWidth,
+  resizablePanelWidthFromKey,
+  resizablePanelWidthFromPointer,
+} from "@/components/ui/resizable-panel";

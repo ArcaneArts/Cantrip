@@ -18,15 +18,7 @@ import {
   Table2,
   Text,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   DEFAULT_ELITE_REVEAL_CONFIG,
@@ -53,6 +45,12 @@ import {
   type NavigationTab,
 } from "@/components/ui/navigation-tab-bar";
 import { NativeSelect } from "@/components/ui/native-select";
+import {
+  ResizablePanel,
+  clampResizablePanelWidth,
+  resizablePanelWidthFromKey,
+  resizablePanelWidthFromPointer,
+} from "@/components/ui/resizable-panel";
 import { cn } from "@/lib/utils";
 
 type EliteLabView = "cards" | "list" | "table" | "text" | "widgets";
@@ -90,16 +88,12 @@ export const MAX_ELITE_CONFIGURATOR_WIDTH = 640;
 export const ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY =
   "cantrip:elite-configurator-width";
 
-interface WidthStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
 export function clampEliteConfiguratorWidth(width: number): number {
-  if (!Number.isFinite(width)) return DEFAULT_ELITE_CONFIGURATOR_WIDTH;
-  return Math.min(
+  return clampResizablePanelWidth(
+    width,
+    DEFAULT_ELITE_CONFIGURATOR_WIDTH,
+    MIN_ELITE_CONFIGURATOR_WIDTH,
     MAX_ELITE_CONFIGURATOR_WIDTH,
-    Math.max(MIN_ELITE_CONFIGURATOR_WIDTH, Math.round(width)),
   );
 }
 
@@ -107,51 +101,28 @@ export function eliteConfiguratorWidthFromPointer(
   clientX: number,
   panelRight: number,
 ): number {
-  return clampEliteConfiguratorWidth(panelRight - clientX);
+  return resizablePanelWidthFromPointer({
+    boundary: panelRight,
+    clientX,
+    defaultWidth: DEFAULT_ELITE_CONFIGURATOR_WIDTH,
+    edge: "left",
+    maxWidth: MAX_ELITE_CONFIGURATOR_WIDTH,
+    minWidth: MIN_ELITE_CONFIGURATOR_WIDTH,
+  });
 }
 
 export function eliteConfiguratorWidthFromKey(
   currentWidth: number,
   key: string,
 ): number | null {
-  if (key === "Home") return MIN_ELITE_CONFIGURATOR_WIDTH;
-  if (key === "End") return MAX_ELITE_CONFIGURATOR_WIDTH;
-  if (key === "ArrowLeft") {
-    return clampEliteConfiguratorWidth(currentWidth + 16);
-  }
-  if (key === "ArrowRight") {
-    return clampEliteConfiguratorWidth(currentWidth - 16);
-  }
-  return null;
-}
-
-function readEliteConfiguratorWidth(storage?: WidthStorage | null): number {
-  try {
-    const target =
-      storage ?? (typeof window === "undefined" ? null : window.localStorage);
-    const stored = target?.getItem(ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY);
-    return stored === null || stored === undefined
-      ? DEFAULT_ELITE_CONFIGURATOR_WIDTH
-      : clampEliteConfiguratorWidth(Number(stored));
-  } catch {
-    return DEFAULT_ELITE_CONFIGURATOR_WIDTH;
-  }
-}
-
-function persistEliteConfiguratorWidth(
-  width: number,
-  storage?: WidthStorage | null,
-): void {
-  try {
-    const target =
-      storage ?? (typeof window === "undefined" ? null : window.localStorage);
-    target?.setItem(
-      ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY,
-      String(clampEliteConfiguratorWidth(width)),
-    );
-  } catch {
-    // A blocked local-storage write should not break panel resizing.
-  }
+  return resizablePanelWidthFromKey({
+    currentWidth,
+    defaultWidth: DEFAULT_ELITE_CONFIGURATOR_WIDTH,
+    edge: "left",
+    key,
+    maxWidth: MAX_ELITE_CONFIGURATOR_WIDTH,
+    minWidth: MIN_ELITE_CONFIGURATOR_WIDTH,
+  });
 }
 
 function emitEliteQaEvent(
@@ -877,135 +848,21 @@ function EliteConfiguratorSidebar({
   children: ReactNode;
   open: boolean;
 }) {
-  const [width, setWidth] = useState(readEliteConfiguratorWidth);
-  const [resizing, setResizing] = useState(false);
-  const shellRef = useRef<HTMLDivElement>(null);
-  const widthRef = useRef(width);
-  const resizePointerIdRef = useRef<number | null>(null);
-  const resizeRightRef = useRef(0);
-  const resizeStartWidthRef = useRef(width);
-  const resizeBodyStyleRef = useRef<{
-    cursor: string;
-    userSelect: string;
-  } | null>(null);
-
-  const applyWidth = (nextWidth: number) => {
-    const next = clampEliteConfiguratorWidth(nextWidth);
-    widthRef.current = next;
-    setWidth(next);
-  };
-  const restoreBodyStyle = () => {
-    const previous = resizeBodyStyleRef.current;
-    if (!previous || typeof document === "undefined") return;
-    document.body.style.cursor = previous.cursor;
-    document.body.style.userSelect = previous.userSelect;
-    resizeBodyStyleRef.current = null;
-  };
-  useEffect(() => restoreBodyStyle, []);
-
-  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    resizePointerIdRef.current = event.pointerId;
-    resizeRightRef.current =
-      shellRef.current?.getBoundingClientRect().right ?? window.innerWidth;
-    resizeStartWidthRef.current = widthRef.current;
-    resizeBodyStyleRef.current = {
-      cursor: document.body.style.cursor,
-      userSelect: document.body.style.userSelect,
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setResizing(true);
-  };
-  const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (resizePointerIdRef.current !== event.pointerId) return;
-    applyWidth(
-      eliteConfiguratorWidthFromPointer(event.clientX, resizeRightRef.current),
-    );
-  };
-  const finishResize = (
-    event: ReactPointerEvent<HTMLDivElement>,
-    persist: boolean,
-  ) => {
-    if (resizePointerIdRef.current !== event.pointerId) return;
-    resizePointerIdRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    restoreBodyStyle();
-    setResizing(false);
-    if (!persist) {
-      applyWidth(resizeStartWidthRef.current);
-      return;
-    }
-    if (widthRef.current !== resizeStartWidthRef.current) {
-      persistEliteConfiguratorWidth(widthRef.current);
-    }
-  };
-  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const next = eliteConfiguratorWidthFromKey(widthRef.current, event.key);
-    if (next === null) return;
-    event.preventDefault();
-    if (next === widthRef.current) return;
-    applyWidth(next);
-    persistEliteConfiguratorWidth(next);
-  };
-
   return (
-    <div
-      className={cn(
-        "group/elite-configurator relative h-full shrink-0",
-        resizing
-          ? "transition-none"
-          : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
-      )}
-      data-slot="elite-configurator-sidebar-shell"
-      data-state={open ? "open" : "closed"}
-      ref={shellRef}
-      style={{ width: open ? width : 0 }}
+    <ResizablePanel
+      ariaLabel="Resize Elite effect options sidebar"
+      defaultWidth={DEFAULT_ELITE_CONFIGURATOR_WIDTH}
+      handleDataSlot="elite-configurator-resize-handle"
+      maxWidth={MAX_ELITE_CONFIGURATOR_WIDTH}
+      minWidth={MIN_ELITE_CONFIGURATOR_WIDTH}
+      open={open}
+      shellDataSlot="elite-configurator-sidebar-shell"
+      storageKey={ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY}
+      surfaceDataSlot="elite-configurator-sidebar-surface"
+      title="Drag to resize Elite effect options sidebar"
     >
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          aria-hidden={!open}
-          className={cn(
-            "absolute inset-y-0 right-0 h-full transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
-            open
-              ? "translate-x-0 opacity-100"
-              : "pointer-events-none translate-x-2 opacity-0",
-          )}
-          data-slot="elite-configurator-sidebar-surface"
-          inert={!open}
-          style={{ width }}
-        >
-          {children}
-        </div>
-      </div>
-      <div
-        aria-label="Resize Elite effect options sidebar"
-        aria-orientation="vertical"
-        aria-valuemax={MAX_ELITE_CONFIGURATOR_WIDTH}
-        aria-valuemin={MIN_ELITE_CONFIGURATOR_WIDTH}
-        aria-valuenow={width}
-        className={cn(
-          "absolute inset-y-0 -left-1 z-40 w-2 cursor-col-resize touch-none outline-none",
-          "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
-          "group-hover/elite-configurator:after:opacity-100 group-focus-within/elite-configurator:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
-          !open && "pointer-events-none opacity-0",
-          resizing && "after:opacity-100",
-        )}
-        data-slot="elite-configurator-resize-handle"
-        onKeyDown={resizeWithKeyboard}
-        onPointerCancel={(event) => finishResize(event, false)}
-        onPointerDown={beginResize}
-        onPointerMove={moveResize}
-        onPointerUp={(event) => finishResize(event, true)}
-        role="separator"
-        tabIndex={open ? 0 : -1}
-        title="Drag to resize Elite effect options sidebar"
-      />
-    </div>
+      {children}
+    </ResizablePanel>
   );
 }
 

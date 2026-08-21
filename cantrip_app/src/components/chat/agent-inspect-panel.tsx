@@ -1,15 +1,17 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Info, X } from "lucide-react";
-import {
-  useEffect,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react";
+import { type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  ResizablePanel,
+  clampResizablePanelWidth,
+  persistResizablePanelWidth,
+  readResizablePanelWidth,
+  resizablePanelWidthFromKey,
+  resizablePanelWidthFromPointer,
+  type ResizablePanelStorage,
+} from "@/components/ui/resizable-panel";
 import { cn } from "@/lib/utils";
 
 export const DEFAULT_AGENT_INSPECT_WIDTH = 384;
@@ -18,16 +20,12 @@ export const MAX_AGENT_INSPECT_WIDTH = 720;
 export const AGENT_INSPECT_WIDTH_STORAGE_KEY =
   "cantrip:agent-inspect-panel-width";
 
-interface WidthStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
 export function clampAgentInspectWidth(width: number): number {
-  if (!Number.isFinite(width)) return DEFAULT_AGENT_INSPECT_WIDTH;
-  return Math.min(
+  return clampResizablePanelWidth(
+    width,
+    DEFAULT_AGENT_INSPECT_WIDTH,
+    MIN_AGENT_INSPECT_WIDTH,
     MAX_AGENT_INSPECT_WIDTH,
-    Math.max(MIN_AGENT_INSPECT_WIDTH, Math.round(width)),
   );
 }
 
@@ -35,51 +33,54 @@ export function agentInspectWidthFromPointer(
   clientX: number,
   panelRight: number,
 ): number {
-  return clampAgentInspectWidth(panelRight - clientX);
+  return resizablePanelWidthFromPointer({
+    boundary: panelRight,
+    clientX,
+    defaultWidth: DEFAULT_AGENT_INSPECT_WIDTH,
+    edge: "left",
+    maxWidth: MAX_AGENT_INSPECT_WIDTH,
+    minWidth: MIN_AGENT_INSPECT_WIDTH,
+  });
 }
 
 export function agentInspectWidthFromKey(
   currentWidth: number,
   key: string,
 ): number | null {
-  if (key === "Home") return MIN_AGENT_INSPECT_WIDTH;
-  if (key === "End") return MAX_AGENT_INSPECT_WIDTH;
-  if (key === "ArrowLeft") {
-    return clampAgentInspectWidth(currentWidth + 16);
-  }
-  if (key === "ArrowRight") {
-    return clampAgentInspectWidth(currentWidth - 16);
-  }
-  return null;
+  return resizablePanelWidthFromKey({
+    currentWidth,
+    defaultWidth: DEFAULT_AGENT_INSPECT_WIDTH,
+    edge: "left",
+    key,
+    maxWidth: MAX_AGENT_INSPECT_WIDTH,
+    minWidth: MIN_AGENT_INSPECT_WIDTH,
+  });
 }
 
-export function readAgentInspectWidth(storage?: WidthStorage | null): number {
-  try {
-    const target =
-      storage ?? (typeof window === "undefined" ? null : window.localStorage);
-    const stored = target?.getItem(AGENT_INSPECT_WIDTH_STORAGE_KEY);
-    return stored === null || stored === undefined
-      ? DEFAULT_AGENT_INSPECT_WIDTH
-      : clampAgentInspectWidth(Number(stored));
-  } catch {
-    return DEFAULT_AGENT_INSPECT_WIDTH;
-  }
+export function readAgentInspectWidth(
+  storage?: ResizablePanelStorage | null,
+): number {
+  return readResizablePanelWidth({
+    defaultWidth: DEFAULT_AGENT_INSPECT_WIDTH,
+    maxWidth: MAX_AGENT_INSPECT_WIDTH,
+    minWidth: MIN_AGENT_INSPECT_WIDTH,
+    storage,
+    storageKey: AGENT_INSPECT_WIDTH_STORAGE_KEY,
+  });
 }
 
 export function persistAgentInspectWidth(
   width: number,
-  storage?: WidthStorage | null,
+  storage?: ResizablePanelStorage | null,
 ): void {
-  try {
-    const target =
-      storage ?? (typeof window === "undefined" ? null : window.localStorage);
-    target?.setItem(
-      AGENT_INSPECT_WIDTH_STORAGE_KEY,
-      String(clampAgentInspectWidth(width)),
-    );
-  } catch {
-    // A blocked local-storage write should not break panel resizing.
-  }
+  persistResizablePanelWidth({
+    defaultWidth: DEFAULT_AGENT_INSPECT_WIDTH,
+    maxWidth: MAX_AGENT_INSPECT_WIDTH,
+    minWidth: MIN_AGENT_INSPECT_WIDTH,
+    storage,
+    storageKey: AGENT_INSPECT_WIDTH_STORAGE_KEY,
+    width,
+  });
 }
 
 export function updateAgentInspectOpenChats(
@@ -195,33 +196,6 @@ export function AgentInspectPanelShell({
   open: boolean;
   overlay: boolean;
 }) {
-  const [width, setWidth] = useState(readAgentInspectWidth);
-  const [resizing, setResizing] = useState(false);
-  const shellRef = useRef<HTMLDivElement>(null);
-  const widthRef = useRef(width);
-  const resizePointerIdRef = useRef<number | null>(null);
-  const resizeRightRef = useRef(0);
-  const resizeStartWidthRef = useRef(width);
-  const resizeBodyStyleRef = useRef<{
-    cursor: string;
-    userSelect: string;
-  } | null>(null);
-
-  const applyWidth = (nextWidth: number) => {
-    const next = clampAgentInspectWidth(nextWidth);
-    widthRef.current = next;
-    setWidth(next);
-    onWidthChange?.(next);
-  };
-  const restoreBodyStyle = () => {
-    const previous = resizeBodyStyleRef.current;
-    if (!previous || typeof document === "undefined") return;
-    document.body.style.cursor = previous.cursor;
-    document.body.style.userSelect = previous.userSelect;
-    resizeBodyStyleRef.current = null;
-  };
-  useEffect(() => restoreBodyStyle, []);
-
   if (overlay) {
     return (
       <AgentInspectMobilePanel
@@ -234,114 +208,25 @@ export function AgentInspectPanelShell({
     );
   }
 
-  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    resizePointerIdRef.current = event.pointerId;
-    resizeRightRef.current =
-      shellRef.current?.getBoundingClientRect().right ?? window.innerWidth;
-    resizeStartWidthRef.current = widthRef.current;
-    resizeBodyStyleRef.current = {
-      cursor: document.body.style.cursor,
-      userSelect: document.body.style.userSelect,
-    };
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setResizing(true);
-  };
-  const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (resizePointerIdRef.current !== event.pointerId) return;
-    applyWidth(
-      agentInspectWidthFromPointer(event.clientX, resizeRightRef.current),
-    );
-  };
-  const finishResize = (
-    event: ReactPointerEvent<HTMLDivElement>,
-    persist: boolean,
-  ) => {
-    if (resizePointerIdRef.current !== event.pointerId) return;
-    resizePointerIdRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    restoreBodyStyle();
-    setResizing(false);
-    if (!persist) {
-      applyWidth(resizeStartWidthRef.current);
-      return;
-    }
-    if (widthRef.current !== resizeStartWidthRef.current) {
-      persistAgentInspectWidth(widthRef.current);
-    }
-  };
-  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const next = agentInspectWidthFromKey(widthRef.current, event.key);
-    if (next === null) return;
-    event.preventDefault();
-    if (next === widthRef.current) return;
-    applyWidth(next);
-    persistAgentInspectWidth(next);
-  };
-
   return (
-    <div
-      className={cn(
-        "group/agent-inspect relative h-full shrink-0",
-        resizing
-          ? "transition-none"
-          : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
-        className,
-      )}
-      data-slot="agent-inspect-panel-shell"
-      data-state={open ? "open" : "closed"}
-      ref={shellRef}
-      style={{ width: open ? width : 0 }}
+    <ResizablePanel
+      ariaLabel="Resize Inspect sidebar"
+      className={className}
+      defaultWidth={DEFAULT_AGENT_INSPECT_WIDTH}
+      handleDataSlot="agent-inspect-resize-handle"
+      maxWidth={MAX_AGENT_INSPECT_WIDTH}
+      minWidth={MIN_AGENT_INSPECT_WIDTH}
+      onWidthChange={onWidthChange}
+      open={open}
+      shellDataSlot="agent-inspect-panel-shell"
+      storageKey={AGENT_INSPECT_WIDTH_STORAGE_KEY}
+      surfaceClassName="bg-background"
+      surfaceDataSlot="agent-inspect-panel-surface"
+      title="Drag to resize Inspect sidebar"
     >
-      <div className="absolute inset-0 overflow-hidden">
-        <div
-          aria-hidden={!open}
-          className={cn(
-            "absolute inset-y-0 right-0 h-full bg-background transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
-            open
-              ? "translate-x-0 opacity-100"
-              : "pointer-events-none translate-x-2 opacity-0",
-          )}
-          data-slot="agent-inspect-panel-surface"
-          inert={!open}
-          style={{ width }}
-        >
-          <AgentInspectPanel
-            active={active}
-            onClose={() => onOpenChange(false)}
-          >
-            {children}
-          </AgentInspectPanel>
-        </div>
-      </div>
-      <div
-        aria-label="Resize Inspect sidebar"
-        aria-orientation="vertical"
-        aria-valuemax={MAX_AGENT_INSPECT_WIDTH}
-        aria-valuemin={MIN_AGENT_INSPECT_WIDTH}
-        aria-valuenow={width}
-        className={cn(
-          "absolute inset-y-0 -left-1 z-40 w-2 cursor-col-resize touch-none outline-none",
-          "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
-          "group-hover/agent-inspect:after:opacity-100 group-focus-within/agent-inspect:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
-          !open && "pointer-events-none opacity-0",
-          resizing && "after:opacity-100",
-        )}
-        data-slot="agent-inspect-resize-handle"
-        onKeyDown={resizeWithKeyboard}
-        onPointerCancel={(event) => finishResize(event, false)}
-        onPointerDown={beginResize}
-        onPointerMove={moveResize}
-        onPointerUp={(event) => finishResize(event, true)}
-        role="separator"
-        tabIndex={open ? 0 : -1}
-        title="Drag to resize Inspect sidebar"
-      />
-    </div>
+      <AgentInspectPanel active={active} onClose={() => onOpenChange(false)}>
+        {children}
+      </AgentInspectPanel>
+    </ResizablePanel>
   );
 }
