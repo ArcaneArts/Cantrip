@@ -1,0 +1,380 @@
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import {
+  chmodSync,
+  mkdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import type { AddressInfo } from "node:net";
+import path from "node:path";
+
+import {
+  cantripAgentOperationResultSchema,
+  cantripMcpBindingSchema,
+  cantripMcpBrokerOperationRequestSchema,
+  cantripMcpConnectionDocumentSchema,
+  type CantripAgentOperationRequest,
+  type CantripAgentOperationResult,
+  type CantripMcpBinding,
+  type CantripMcpConnectionDocument,
+} from "@cantrip/protocol";
+
+import { CantripServerRequestError } from "../cli-client.js";
+import type { WorkerConfig } from "../config.js";
+import { workerLogError, workerLogger } from "../logger.js";
+import { invokeCantripMcpOperation } from "./client.js";
+
+export const CANTRIP_MCP_BINDING_DIRECTORY = "agent-mcp-bindings";
+export const CANTRIP_MCP_BINDING_TTL_MS = 6 * 60 * 60 * 1_000;
+export const CANTRIP_MCP_CONNECTION_FILE = "connection.json";
+
+type McpOperationExecutor = (
+  binding: CantripMcpBinding,
+  request: CantripAgentOperationRequest,
+  requestId: string,
+) => Promise<CantripAgentOperationResult>;
+
+type BindingInput = Omit<
+  CantripMcpBinding,
+  "bindingId" | "expiresAt" | "issuedAt"
+>;
+
+interface StoredBinding {
+  binding: CantripMcpBinding;
+  connectionPath: string;
+  credential: string;
+}
+
+export interface CantripMcpAttachment {
+  binding: CantripMcpBinding;
+  connection: CantripMcpConnectionDocument;
+  connectionPath: string;
+}
+
+function authorized(requestValue: string | undefined, expected: string) {
+  if (!requestValue?.startsWith("Bearer ")) return false;
+  const provided = Buffer.from(requestValue.slice("Bearer ".length));
+  const wanted = Buffer.from(expected);
+  return provided.length === wanted.length && timingSafeEqual(provided, wanted);
+}
+
+function sendJson(response: ServerResponse, status: number, payload: unknown) {
+  const body = `${JSON.stringify(payload)}\n`;
+  response.setHeader("cache-control", "no-store");
+  response.setHeader("content-type", "application/json; charset=utf-8");
+  response.setHeader("content-length", Buffer.byteLength(body));
+  response.writeHead(status);
+  response.end(body);
+}
+
+async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+  const maximum = 256 * 1_024;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maximum) throw new Error("MCP broker request is too large.");
+    chunks.push(buffer);
+  }
+  if (!chunks.length) throw new Error("MCP broker request body is required.");
+  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+}
+
+function writeConnectionDocument(
+  pathname: string,
+  document: CantripMcpConnectionDocument,
+) {
+  const directory = path.dirname(pathname);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  chmodSync(directory, 0o700);
+  const temporary = `${pathname}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(document, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  renameSync(temporary, pathname);
+  chmodSync(pathname, 0o600);
+}
+
+export class CantripMcpBroker {
+  readonly #bindingDirectory: string;
+  readonly #bindings = new Map<string, StoredBinding>();
+  readonly #config: Pick<
+    WorkerConfig,
+    "dataDirectory" | "serverUrl" | "token" | "workerId"
+  >;
+  readonly #execute: McpOperationExecutor;
+  readonly #now: () => number;
+  readonly #ttlMs: number;
+  #endpoint: string | null = null;
+  #server: Server | null = null;
+  #sweepTimer: ReturnType<typeof setInterval> | null = null;
+
+  constructor(
+    config: Pick<
+      WorkerConfig,
+      "dataDirectory" | "serverUrl" | "token" | "workerId"
+    >,
+    options: {
+      execute?: McpOperationExecutor;
+      now?: () => number;
+      ttlMs?: number;
+    } = {},
+  ) {
+    this.#config = config;
+    this.#bindingDirectory = path.join(
+      config.dataDirectory,
+      CANTRIP_MCP_BINDING_DIRECTORY,
+    );
+    this.#execute =
+      options.execute ??
+      ((binding, request, requestId) =>
+        invokeCantripMcpOperation({
+          binding,
+          request,
+          requestId,
+          serverUrl: this.#config.serverUrl,
+          token: this.#config.token,
+        }));
+    this.#now = options.now ?? Date.now;
+    this.#ttlMs = options.ttlMs ?? CANTRIP_MCP_BINDING_TTL_MS;
+    if (this.#ttlMs < 1 || this.#ttlMs > 24 * 60 * 60 * 1_000) {
+      throw new Error("Cantrip MCP binding TTL is out of range.");
+    }
+  }
+
+  get endpoint(): string | null {
+    return this.#endpoint;
+  }
+
+  createBinding(input: BindingInput): CantripMcpAttachment {
+    if (!this.#server || !this.#endpoint) {
+      throw new Error("Cantrip MCP broker is not running.");
+    }
+    for (const stored of this.#bindings.values()) {
+      if (stored.binding.chatId === input.chatId) {
+        this.revokeBinding(stored.binding.bindingId);
+      }
+    }
+    const issuedAtMs = this.#now();
+    const binding = cantripMcpBindingSchema.parse({
+      ...input,
+      bindingId: randomUUID(),
+      issuedAt: new Date(issuedAtMs).toISOString(),
+      expiresAt: new Date(issuedAtMs + this.#ttlMs).toISOString(),
+    });
+    if (binding.workerId !== this.#config.workerId) {
+      throw new Error("Cantrip MCP binding belongs to a different worker.");
+    }
+    const credential = randomBytes(32).toString("base64url");
+    const connectionPath = path.join(
+      this.#bindingDirectory,
+      binding.bindingId,
+      CANTRIP_MCP_CONNECTION_FILE,
+    );
+    const connection = cantripMcpConnectionDocumentSchema.parse({
+      protocolVersion: 1,
+      endpoint: this.#endpoint,
+      bindingId: binding.bindingId,
+      credential,
+      expiresAt: binding.expiresAt,
+    });
+    writeConnectionDocument(connectionPath, connection);
+    this.#bindings.set(binding.bindingId, {
+      binding,
+      connectionPath,
+      credential,
+    });
+    workerLogger.event("debug", "Cantrip MCP binding created", {
+      event: "mcp.binding.created",
+      subsystem: "mcp-broker",
+      operation: "create-binding",
+      status: "completed",
+      workerId: binding.workerId,
+      projectId: binding.projectId,
+      chatId: binding.chatId,
+      counts: { allowedOperations: binding.allowedOperations.length },
+    });
+    return { binding, connection, connectionPath };
+  }
+
+  revokeBinding(bindingId: string): boolean {
+    const stored = this.#bindings.get(bindingId);
+    if (!stored) return false;
+    this.#bindings.delete(bindingId);
+    rmSync(path.dirname(stored.connectionPath), {
+      force: true,
+      recursive: true,
+    });
+    return true;
+  }
+
+  private bindingFor(
+    bindingId: string,
+    authorization: string | undefined,
+  ): StoredBinding | null {
+    const stored = this.#bindings.get(bindingId);
+    if (!stored || !authorized(authorization, stored.credential)) return null;
+    if (Date.parse(stored.binding.expiresAt) <= this.#now()) {
+      this.revokeBinding(bindingId);
+      return null;
+    }
+    return stored;
+  }
+
+  async start(): Promise<string> {
+    if (this.#server) throw new Error("Cantrip MCP broker is already running.");
+    rmSync(this.#bindingDirectory, { force: true, recursive: true });
+    const server = createServer((request, response) => {
+      const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+      const handshake = /^\/v1\/bindings\/([0-9a-f-]+)$/u.exec(
+        requestUrl.pathname,
+      );
+      if (request.method === "GET" && handshake) {
+        const stored = this.bindingFor(
+          handshake[1]!,
+          request.headers.authorization,
+        );
+        if (!stored) {
+          sendJson(response, 401, { error: "Unauthorized" });
+          return;
+        }
+        sendJson(response, 200, {
+          protocolVersion: 1,
+          bindingId: stored.binding.bindingId,
+          expiresAt: stored.binding.expiresAt,
+        });
+        return;
+      }
+      if (request.method !== "POST" || requestUrl.pathname !== "/v1/execute") {
+        sendJson(response, 404, { error: "Not found" });
+        return;
+      }
+      void (async () => {
+        let requestId = randomUUID();
+        let bindingId: string | null = null;
+        try {
+          const parsed = cantripMcpBrokerOperationRequestSchema.parse(
+            await readJsonBody(request),
+          );
+          bindingId = parsed.bindingId;
+          requestId = randomUUID();
+          const stored = this.bindingFor(
+            parsed.bindingId,
+            request.headers.authorization,
+          );
+          if (!stored) {
+            sendJson(response, 401, { error: "Unauthorized" });
+            return;
+          }
+          if (
+            !stored.binding.allowedOperations.includes(parsed.request.operation)
+          ) {
+            sendJson(response, 403, {
+              code: "forbidden",
+              error: "This MCP binding does not allow that operation.",
+            });
+            return;
+          }
+          const result = cantripAgentOperationResultSchema.parse(
+            await this.#execute(stored.binding, parsed.request, requestId),
+          );
+          sendJson(response, 200, result);
+        } catch (error) {
+          if (error instanceof CantripServerRequestError) {
+            if (
+              bindingId &&
+              (error.code === "stale-binding" || error.code === "expired")
+            ) {
+              this.revokeBinding(bindingId);
+            }
+            sendJson(response, error.status, {
+              ...(error.code ? { code: error.code } : {}),
+              error: error.message,
+            });
+            return;
+          }
+          workerLogger.event("warn", "Cantrip MCP broker request failed", {
+            event: "mcp.request.failed",
+            subsystem: "mcp-broker",
+            operation: "execute",
+            reasonCode: "request-failed",
+            status: "failed",
+            requestId,
+            error: workerLogError(error),
+          });
+          sendJson(response, 400, {
+            code: "invalid",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      })();
+    });
+    server.on("clientError", (_error, socket) => {
+      socket.end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    });
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: Error) => {
+        server.off("listening", onListening);
+        reject(error);
+      };
+      const onListening = () => {
+        server.off("error", onError);
+        resolve();
+      };
+      server.once("error", onError);
+      server.once("listening", onListening);
+      server.listen(0, "127.0.0.1");
+    });
+    this.#server = server;
+    const address = server.address() as AddressInfo;
+    this.#endpoint = `http://127.0.0.1:${address.port}`;
+    this.#sweepTimer = setInterval(() => {
+      for (const stored of this.#bindings.values()) {
+        if (Date.parse(stored.binding.expiresAt) <= this.#now()) {
+          this.revokeBinding(stored.binding.bindingId);
+        }
+      }
+    }, 60_000);
+    this.#sweepTimer.unref();
+    workerLogger.event("info", "Cantrip MCP broker started", {
+      event: "mcp.broker.started",
+      subsystem: "mcp-broker",
+      operation: "start",
+      status: "completed",
+      workerId: this.#config.workerId,
+    });
+    return this.#endpoint;
+  }
+
+  async close(): Promise<void> {
+    if (this.#sweepTimer) clearInterval(this.#sweepTimer);
+    this.#sweepTimer = null;
+    for (const bindingId of [...this.#bindings.keys()]) {
+      this.revokeBinding(bindingId);
+    }
+    const server = this.#server;
+    this.#server = null;
+    this.#endpoint = null;
+    if (server) {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+    workerLogger.event("info", "Cantrip MCP broker stopped", {
+      event: "mcp.broker.stopped",
+      subsystem: "mcp-broker",
+      operation: "stop",
+      status: "completed",
+      workerId: this.#config.workerId,
+    });
+  }
+}

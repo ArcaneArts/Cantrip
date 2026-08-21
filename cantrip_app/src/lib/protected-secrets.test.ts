@@ -30,18 +30,21 @@ function unlockedOptions() {
 }
 
 describe("protected MCP adapter", () => {
-  it("rejects the managed CodeGraph name before encryption", async () => {
-    await expect(
-      protectMcpServerCreate({
-        name: "CodeGraph",
-        enabled: true,
-        transport: "stdio",
-        command: "codegraph",
-        args: [],
-        environment: {},
-      }),
-    ).rejects.toThrow("reserved");
-  });
+  it.each(["CodeGraph", "CANTRIP"])(
+    "rejects the managed %s name before encryption",
+    async (name) => {
+      await expect(
+        protectMcpServerCreate({
+          name,
+          enabled: true,
+          transport: "stdio",
+          command: "codegraph",
+          args: [],
+          environment: {},
+        }),
+      ).rejects.toThrow("reserved");
+    },
+  );
 });
 
 describe("protected provider payloads", () => {

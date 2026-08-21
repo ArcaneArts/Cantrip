@@ -39,6 +39,7 @@ import {
   normalizeRateLimitActivity,
   normalizeTokenUsageActivity,
   latestChangedLine,
+  managedMcpToolRequirements,
   parseCodexRpcMessage,
   parseCodexSkills,
   parsePermissionProfileList,
@@ -1302,6 +1303,32 @@ describe("codexMcpConfigOverride", () => {
         },
       },
     });
+  });
+
+  it("makes the worker-owned Cantrip MCP required and readiness-checkable", () => {
+    const server = {
+      name: "CANTRIP",
+      transport: "stdio" as const,
+      command: "/worker/runtime/node",
+      args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
+      environment: {},
+      enabled: true,
+    };
+    expect(codexMcpConfigOverride([server])).toEqual({
+      mcp_servers: {
+        CANTRIP: {
+          command: "/worker/runtime/node",
+          args: ["/worker/dist/mcp/stdio.js", "--connection", "/binding.json"],
+          env: {},
+          enabled: true,
+          required: true,
+          enabled_tools: ["context_get"],
+        },
+      },
+    });
+    expect(managedMcpToolRequirements([server])).toEqual([
+      { name: "cantrip", tool: "context_get" },
+    ]);
   });
 });
 

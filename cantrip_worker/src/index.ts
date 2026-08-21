@@ -95,10 +95,13 @@ import { CodeDirectEndpointManager } from "./code/direct-endpoint.js";
 import { CodeGraphRuntimeManager } from "./codegraph/runtime.js";
 import { CodeGraphProjectSupervisor } from "./codegraph/supervisor.js";
 import { codeGraphWorkerStatus } from "./codegraph/status.js";
+import { managedCodeGraphMcpServer } from "./codegraph/mcp.js";
+import { CantripMcpBroker } from "./mcp/broker.js";
 import {
-  managedCodeGraphMcpServer,
-  mergeManagedCodeGraphMcpServer,
-} from "./codegraph/mcp.js";
+  cantripMcpHostInvocation,
+  managedCantripMcpServer,
+  mergeManagedMcpServers,
+} from "./mcp/managed.js";
 import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
@@ -523,6 +526,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const codeTunnel = new CodeTunnelProxy(code);
   const codeDirectEndpoints = new CodeDirectEndpointManager(code);
   const cliBroker = new CantripCliBroker(config);
+  const mcpBroker = new CantripMcpBroker(config);
+  const mcpHost = cantripMcpHostInvocation();
   const terminals = new TerminalManager({
     environment: cliBroker.childEnvironment(),
   });
@@ -754,13 +759,22 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const agentMcpServers = async (
     cwd: string,
     configured: McpServerOpaqueRuntime[],
+    attachment?: {
+      chatId: string;
+      executionLaneId: string;
+      permissionProfileId: string;
+      projectId: string;
+      rootKind: "folder-root" | "git-worktree";
+      workerId: string;
+      worktreeId: string;
+    },
   ): Promise<McpServerConfiguration[]> => {
-    let managed: McpServerConfiguration | null = null;
+    let managedCodeGraph: McpServerConfiguration | null = null;
     if (codegraphProjects && codegraphInvocation) {
       try {
         const canonicalRoot = await codegraphProjects.prepareForAgent(cwd);
         if (canonicalRoot) {
-          managed = managedCodeGraphMcpServer(
+          managedCodeGraph = managedCodeGraphMcpServer(
             codegraphInvocation.command,
             codegraphInvocation.arguments,
             canonicalRoot,
@@ -794,9 +808,37 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       }
     }
-    return mergeManagedCodeGraphMcpServer(
+    const cantripAttachment = attachment
+      ? mcpBroker.createBinding({
+          ownerId: workerEncryption.ownerId(),
+          projectId: attachment.projectId,
+          chatId: attachment.chatId,
+          executionLaneId: attachment.executionLaneId,
+          workerId: attachment.workerId,
+          worktreeId: attachment.worktreeId,
+          canonicalRoot: cwd,
+          rootKind: attachment.rootKind,
+          permissionProfileId: attachment.permissionProfileId,
+          allowedOperations: ["context.get"],
+        })
+      : null;
+    const managedCantrip = cantripAttachment
+      ? managedCantripMcpServer(mcpHost, cantripAttachment.connectionPath)
+      : null;
+    if (managedCantrip) {
+      workerLogger.event("debug", "Cantrip agent MCP injected", {
+        event: "mcp.injected",
+        subsystem: "mcp-broker",
+        operation: "prepare-agent-mcp",
+        status: "completed",
+        projectId: attachment!.projectId,
+        chatId: attachment!.chatId,
+        worktreePath: cwd,
+      });
+    }
+    return mergeManagedMcpServers(
       await openMcpServers({ servers: configured, service: workerEncryption }),
-      managed,
+      [managedCodeGraph, managedCantrip],
     );
   };
   const automationScheduler = new ProjectAutomationScheduler({
@@ -2891,6 +2933,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         const resolvedMcpServers = await agentMcpServers(
           command.cwd,
           command.mcpServers,
+          command.resultMode.kind === "task-encrypted"
+            ? undefined
+            : {
+                chatId: command.chatId,
+                executionLaneId: command.executionLaneId,
+                permissionProfileId: command.permissionProfileId,
+                projectId: command.policyProjectId,
+                rootKind: command.rootKind,
+                workerId: config.workerId,
+                worktreeId: command.worktreeId,
+              },
         );
         const openedAttachments = await openWorkerAttachments(
           command.attachments,
@@ -3577,6 +3630,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       (await directBroker.waitForTunnelCapacity(attachmentId)) ??
       commandConnection.waitForTunnelDataPlaneCapacity(),
   );
+  const mcpEndpoint = await workerStartupPhase(
+    "start-mcp-broker",
+    () => mcpBroker.start(),
+    { workerId: config.workerId },
+  );
   const cliConnection = await workerStartupPhase(
     "start-cli-broker",
     () => cliBroker.start(),
@@ -3593,6 +3651,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     serverOrigin,
     runtime: {
       cliAvailable: Boolean(cliConnection.endpoint),
+      mcpAvailable: Boolean(mcpEndpoint),
       codegraphAvailable: codegraphStatus?.cliAvailable ?? false,
       codegraphState: codegraphStatus?.state ?? "unavailable",
       codegraphVersion: codegraphStatus?.installedVersion ?? null,
@@ -3760,6 +3819,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     await code.close();
     await remoteSurfaces.closeAll();
     await desktopAdapter.shutdown();
+    await mcpBroker.close();
     await cliBroker.close();
     for (const runtime of codexRuntimes.values()) {
       runtime.close();

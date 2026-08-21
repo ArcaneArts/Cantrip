@@ -23,6 +23,7 @@ import {
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
   codexMcpReloadResultSchema,
+  isManagedCantripMcpName,
   isManagedCodeGraphMcpName,
   pendingPlanQuestionSchema,
   permissionProfileCapabilitySchema,
@@ -1640,12 +1641,16 @@ export function codexMcpConfigOverride(
         .filter(({ enabled }) => enabled)
         .map((server) => {
           const isManagedCodeGraph = isManagedCodeGraphMcpName(server.name);
-          const managedOverrides = isManagedCodeGraph
-            ? {
-                required: true,
-                enabled_tools: ["codegraph_explore"],
-              }
-            : {};
+          const isManagedCantrip = isManagedCantripMcpName(server.name);
+          const managedOverrides =
+            isManagedCodeGraph || isManagedCantrip
+              ? {
+                  required: true,
+                  enabled_tools: isManagedCodeGraph
+                    ? ["codegraph_explore"]
+                    : ["context_get"],
+                }
+              : {};
           return [
             server.name,
             server.transport === "stdio"
@@ -1669,6 +1674,21 @@ export function codexMcpConfigOverride(
         }),
     ),
   };
+}
+
+export function managedMcpToolRequirements(
+  servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
+) {
+  return servers.flatMap((server) => {
+    if (!server.enabled) return [];
+    if (isManagedCodeGraphMcpName(server.name)) {
+      return [{ name: "codegraph", tool: "codegraph_explore" }];
+    }
+    if (isManagedCantripMcpName(server.name)) {
+      return [{ name: "cantrip", tool: "context_get" }];
+    }
+    return [];
+  });
 }
 
 export function codexRuntimeId(
@@ -4298,10 +4318,8 @@ export class CodexAppServer implements CodexRuntime {
     servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
     fingerprint: string,
   ): Promise<void> {
-    const managed = servers.find(
-      (server) => server.enabled && isManagedCodeGraphMcpName(server.name),
-    );
-    if (!managed) return;
+    const requirements = managedMcpToolRequirements(servers);
+    if (!requirements.length) return;
     if (
       this.#readyMcpConfigFingerprintsByThread.get(threadId) === fingerprint
     ) {
@@ -4309,7 +4327,7 @@ export class CodexAppServer implements CodexRuntime {
     }
     if (!this.methodAvailable("mcpServerStatus/list")) {
       throw new Error(
-        "The installed Codex runtime cannot verify the managed CodeGraph MCP server.",
+        "The installed Codex runtime cannot verify required managed MCP servers.",
       );
     }
 
@@ -4320,6 +4338,7 @@ export class CodexAppServer implements CodexRuntime {
       try {
         let cursor: string | null = null;
         const seenCursors = new Set<string>();
+        const available = new Map<string, Set<string>>();
         do {
           const page = parseMcpServerPage(
             await this.request("mcpServerStatus/list", {
@@ -4329,19 +4348,27 @@ export class CodexAppServer implements CodexRuntime {
               threadId,
             }),
           );
-          const status = page.servers.find((server) =>
-            isManagedCodeGraphMcpName(server.name),
-          );
-          if (status?.tools.some(({ name }) => name === "codegraph_explore")) {
+          for (const status of page.servers) {
+            const key = status.name.trim().toLowerCase();
+            if (!available.has(key)) available.set(key, new Set());
+            for (const tool of status.tools) {
+              available.get(key)!.add(tool.name);
+            }
+          }
+          if (
+            requirements.every(({ name, tool }) =>
+              available.get(name)?.has(tool),
+            )
+          ) {
             this.#readyMcpConfigFingerprintsByThread.set(threadId, fingerprint);
-            workerLogger.event("info", "Managed CodeGraph MCP is ready", {
+            workerLogger.event("info", "Managed MCP servers are ready", {
               event: "codex.mcp.ready",
               subsystem: "codex",
               operation: "prepare-managed-mcp",
               status: "ready",
               threadId,
               durationMs: Date.now() - startedAtMs,
-              counts: { tools: status.tools.length },
+              counts: { tools: requirements.length },
             });
             return;
           }
@@ -4357,7 +4384,7 @@ export class CodexAppServer implements CodexRuntime {
       }
     } while (Date.now() < deadline);
 
-    workerLogger.event("error", "Managed CodeGraph MCP did not become ready", {
+    workerLogger.event("error", "Managed MCP servers did not become ready", {
       event: "codex.mcp.ready",
       subsystem: "codex",
       operation: "prepare-managed-mcp",
@@ -4368,7 +4395,9 @@ export class CodexAppServer implements CodexRuntime {
       error: lastError ? workerLogError(lastError) : undefined,
     });
     throw new Error(
-      "The managed CodeGraph MCP server did not expose codegraph_explore for this agent task.",
+      `Required managed MCP tools did not become ready: ${requirements
+        .map(({ name, tool }) => `${name}/${tool}`)
+        .join(", ")}.`,
       lastError ? { cause: lastError } : undefined,
     );
   }
