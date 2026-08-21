@@ -23,6 +23,10 @@ const automationProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/automations.ts",
 );
+const workflowProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/workflows.ts",
+);
 const clientApiPath = resolve(repositoryRoot, "cantrip_app/src/lib/api.ts");
 const clientAutomationEncryptionPath = resolve(
   repositoryRoot,
@@ -31,6 +35,14 @@ const clientAutomationEncryptionPath = resolve(
 const clientAutomationSettingsPath = resolve(
   repositoryRoot,
   "cantrip_app/src/components/projects/project-automations-settings.tsx",
+);
+const clientWorkflowApiPath = resolve(
+  repositoryRoot,
+  "cantrip_app/src/lib/workflow-api.ts",
+);
+const clientWorkflowEncryptionPath = resolve(
+  repositoryRoot,
+  "cantrip_app/src/lib/workflow-encryption.ts",
 );
 const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
 const workerAutomationEncryptionPath = resolve(
@@ -1807,6 +1819,174 @@ async function projectAutomationContentBoundaryAudit() {
   };
 }
 
+async function workflowCatalogContentBoundaryAudit() {
+  const schemaPath = resolve(serverSourcePath, "db/schema.ts");
+  const repositoryPath = resolve(serverSourcePath, "db/workflows.ts");
+  const [
+    schemaText,
+    repositoryText,
+    applicationText,
+    protocolText,
+    clientApiText,
+    clientEncryptionText,
+  ] = await Promise.all([
+    readFile(schemaPath, "utf8"),
+    readFile(repositoryPath, "utf8"),
+    readFile(appPath, "utf8"),
+    readFile(workflowProtocolPath, "utf8"),
+    readFile(clientWorkflowApiPath, "utf8"),
+    readFile(clientWorkflowEncryptionPath, "utf8"),
+  ]);
+  const failures = [];
+  const definitionTable = tableInitializer(schemaText, "workflowDefinitions");
+  const revisionTable = tableInitializer(schemaText, "workflowRevisions");
+  for (const [property, column] of [
+    ["slugBlindIndex", "slug_blind_index"],
+    ["protectedSlug", "protected_slug"],
+    ["protectedName", "protected_name"],
+    ["protectedDescription", "protected_description"],
+    ["protectedProvenance", "protected_provenance"],
+  ]) {
+    if (
+      !new RegExp(
+        `\\b${property}\\s*:\\s*(?:text|jsonb)\\(["']${column}["']\\)[\\s\\S]*?\\.notNull\\(\\)`,
+        "u",
+      ).test(definitionTable)
+    ) {
+      failures.push(`workflowDefinitions: missing required ${column}`);
+    }
+  }
+  for (const [property, column] of [
+    ["protectedProvenance", "protected_provenance"],
+    ["contentBlindIndex", "content_blind_index"],
+    ["protectedContentHash", "protected_content_hash"],
+  ]) {
+    if (
+      !new RegExp(
+        `\\b${property}\\s*:\\s*(?:text|jsonb)\\(["']${column}["']\\)[\\s\\S]*?\\.notNull\\(\\)`,
+        "u",
+      ).test(revisionTable)
+    ) {
+      failures.push(`workflowRevisions: missing required ${column}`);
+    }
+  }
+  for (const field of ["slug", "name", "description", "provenance"]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(definitionTable)) {
+      failures.push(
+        `workflowDefinitions: legacy plaintext ${field} storage returned`,
+      );
+    }
+  }
+  for (const field of ["definition", "provenance", "contentHash"]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(revisionTable)) {
+      failures.push(
+        `workflowRevisions: legacy plaintext ${field} storage returned`,
+      );
+    }
+  }
+  for (const reference of [
+    "schema.workflowDefinitions.slug",
+    "schema.workflowDefinitions.name",
+    "schema.workflowDefinitions.description",
+    "schema.workflowDefinitions.provenance",
+    "schema.workflowRevisions.definition",
+    "schema.workflowRevisions.provenance",
+    "schema.workflowRevisions.contentHash",
+  ]) {
+    if (
+      new RegExp(`${reference.replaceAll(".", "\\.")}\\b`, "u").test(
+        repositoryText,
+      )
+    ) {
+      failures.push(`workflow repository: legacy reference ${reference}`);
+    }
+  }
+  const trustedServerImports = namedImportsFrom(
+    applicationText,
+    "@cantrip/protocol/workflows",
+  );
+  for (const symbol of [
+    "workflowDefinitionCreateSchema",
+    "workflowDefinitionUpdateSchema",
+    "workflowRevisionCreateSchema",
+    "workflowDefinitionGenerationCreateSchema",
+    "workflowRepositoryImportSchema",
+    "workflowRepositoryExportSchema",
+    "workflowRunSaveRevisionSchema",
+  ]) {
+    if (trustedServerImports.includes(symbol)) {
+      failures.push(`Server application imports trusted ${symbol}.`);
+    }
+  }
+  for (const marker of [
+    "encryptedWorkflowDefinitionCreateSchema",
+    "encryptedWorkflowDefinitionUpdateSchema",
+    "encryptedWorkflowRevisionCreateSchema",
+    "workflowDefinitionWireSummarySchema",
+    "workflowDefinitionWireDetailSchema",
+    "workflowRevisionWireSchema",
+  ]) {
+    if (!protocolText.includes(marker)) {
+      failures.push(`Workflow protocol is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "protectWorkflowDefinitionCreate",
+    "protectWorkflowDefinitionUpdate",
+    "protectWorkflowRevisionCreate",
+    "openWorkflowDefinitionWireSummary",
+    "openWorkflowDefinitionWireDetail",
+    "openWorkflowRevisionWire",
+  ]) {
+    if (!clientApiText.includes(marker)) {
+      failures.push(`Client workflow API is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    'const component = "workflow-content"',
+    'field: "slug"',
+    'field: "content-hash"',
+    "deriveLookupKey",
+    "computeBlindLookupTag",
+    "encryptWorkflowContent",
+    "decryptWorkflowContent",
+  ]) {
+    if (!clientEncryptionText.includes(marker)) {
+      failures.push(`Client workflow encryption is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "This plaintext workflow generation path was removed",
+    "This plaintext workflow repository scan path was removed",
+    "This plaintext workflow repository import path was removed",
+    "This plaintext workflow repository export path was removed",
+    "This plaintext workflow revision path was removed",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`Workflow fail-closed boundary is missing ${marker}.`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Workflow-catalog content boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["workflow_definitions", "workflow_revisions"],
+    guards: [
+      "definition-slug-name-description-provenance:opaque-only",
+      "revision-provenance-and-content-hash:opaque-only",
+      "slug-and-content-hash-equality:keyed-blind-index",
+      "duplicated-revision-graph:removed",
+      "legacy-generation-repository-and-save-routes:fail-closed",
+    ],
+    remainingPlaintextContent: [
+      "workflow revision node names, configurations, prompts, schemas, and edge predicates",
+      "workflow run, node, item, attempt, event, interaction, gate, trigger, and delivery payloads",
+    ],
+  };
+}
+
 function tableInitializer(sourceText, declarationName) {
   const declaration = sourceText.indexOf(`export const ${declarationName}`);
   if (declaration < 0) throw new Error(`Missing ${declarationName}.`);
@@ -2734,6 +2914,7 @@ async function buildInventory() {
     taskDependencies,
     taskRepositoryGuards,
     projectAutomationContent,
+    workflowCatalogContent,
     policyDependencies,
     policyRepository,
     providerSecretRepository,
@@ -2761,6 +2942,7 @@ async function buildInventory() {
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
     projectAutomationContentBoundaryAudit(),
+    workflowCatalogContentBoundaryAudit(),
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
@@ -2893,6 +3075,10 @@ async function buildInventory() {
     projectAutomationContentE2eeBoundary: {
       status: "enforced",
       ...projectAutomationContent,
+    },
+    workflowCatalogContentE2eeBoundary: {
+      status: "partial-content-boundary-enforced",
+      ...workflowCatalogContent,
     },
     policyE2eeBoundary: {
       status: "enforced",

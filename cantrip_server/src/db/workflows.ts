@@ -1,18 +1,21 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
-  workflowDefinitionDetailSchema,
-  workflowDefinitionSummarySchema,
-  workflowRevisionSchema,
-  workflowRevisionSummarySchema,
-  type WorkflowDefinitionCreate,
-  type WorkflowDefinitionDetail,
+  encryptedWorkflowDefinitionCreateSchema,
+  encryptedWorkflowDefinitionUpdateSchema,
+  encryptedWorkflowRevisionCreateSchema,
+  workflowDefinitionWireDetailSchema,
+  workflowDefinitionWireSummarySchema,
+  workflowRevisionWireSchema,
+  workflowRevisionWireSummarySchema,
+  type EncryptedWorkflowDefinitionCreate,
+  type EncryptedWorkflowDefinitionUpdate,
+  type EncryptedWorkflowRevisionCreate,
   type WorkflowDefinitionQuery,
-  type WorkflowDefinitionSummary,
-  type WorkflowDefinitionUpdate,
-  type WorkflowRevision,
-  type WorkflowRevisionCreate,
-  type WorkflowRevisionSummary,
+  type WorkflowDefinitionWireDetail,
+  type WorkflowDefinitionWireSummary,
+  type WorkflowRevisionWire,
+  type WorkflowRevisionWireSummary,
 } from "@cantrip/protocol/workflows";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
@@ -31,25 +34,6 @@ export class WorkflowConflictError extends Error {}
 
 function toISOString(value: Date): string {
   return value.toISOString();
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (value !== null && typeof value === "object") {
-    return `{${Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function revisionContentHash(input: WorkflowRevisionCreate): string {
-  return `sha256:${createHash("sha256")
-    .update(canonicalJson(input))
-    .digest("hex")}`;
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -74,41 +58,47 @@ function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-function toRevisionSummary(
+function toRevisionWireSummary(
   revision: WorkflowRevisionRow,
-): WorkflowRevisionSummary {
-  return workflowRevisionSummarySchema.parse({
+): WorkflowRevisionWireSummary {
+  return workflowRevisionWireSummarySchema.parse({
     id: revision.id,
     workflowId: revision.workflowId,
     revision: revision.revision,
     source: revision.source,
-    provenance: revision.provenance,
     trustState: revision.trustState,
-    contentHash: revision.contentHash,
+    content: {
+      protectedProvenance: revision.protectedProvenance,
+      protectedContentHash: revision.protectedContentHash,
+    },
     createdByUserId: revision.createdByUserId,
     createdAt: toISOString(revision.createdAt),
   });
 }
 
-function toDefinitionSummary(
+function toDefinitionWireSummary(
   definition: WorkflowDefinitionRow,
   latestRevision: WorkflowRevisionRow | null,
-): WorkflowDefinitionSummary {
-  return workflowDefinitionSummarySchema.parse({
+): WorkflowDefinitionWireSummary {
+  return workflowDefinitionWireSummarySchema.parse({
     id: definition.id,
     ownerId: definition.ownerId,
     projectId: definition.projectId,
     scope: definition.scope,
-    slug: definition.slug,
-    name: definition.name,
-    description: definition.description,
     source: definition.source,
-    provenance: definition.provenance,
+    content: {
+      protectedSlug: definition.protectedSlug,
+      protectedName: definition.protectedName,
+      protectedDescription: definition.protectedDescription,
+      protectedProvenance: definition.protectedProvenance,
+    },
     trustState: definition.trustState,
     archivedAt: definition.archivedAt
       ? toISOString(definition.archivedAt)
       : null,
-    latestRevision: latestRevision ? toRevisionSummary(latestRevision) : null,
+    latestRevision: latestRevision
+      ? toRevisionWireSummary(latestRevision)
+      : null,
     createdAt: toISOString(definition.createdAt),
     updatedAt: toISOString(definition.updatedAt),
   });
@@ -120,7 +110,7 @@ export class WorkflowRepository {
   async listDefinitions(
     ownerId: string,
     query: WorkflowDefinitionQuery,
-  ): Promise<WorkflowDefinitionSummary[]> {
+  ): Promise<WorkflowDefinitionWireSummary[]> {
     const conditions = [eq(schema.workflowDefinitions.ownerId, ownerId)];
     if (query.scope) {
       conditions.push(eq(schema.workflowDefinitions.scope, query.scope));
@@ -137,16 +127,13 @@ export class WorkflowRepository {
       .select()
       .from(schema.workflowDefinitions)
       .where(and(...conditions))
-      .orderBy(
-        desc(schema.workflowDefinitions.updatedAt),
-        asc(schema.workflowDefinitions.name),
-      )
+      .orderBy(desc(schema.workflowDefinitions.updatedAt))
       .limit(query.limit);
     const latestByWorkflow = await this.latestRevisions(
       definitions.map(({ id }) => id),
     );
     return definitions.map((definition) =>
-      toDefinitionSummary(
+      toDefinitionWireSummary(
         definition,
         latestByWorkflow.get(definition.id) ?? null,
       ),
@@ -155,8 +142,9 @@ export class WorkflowRepository {
 
   async createDefinition(
     ownerId: string,
-    input: WorkflowDefinitionCreate,
-  ): Promise<WorkflowDefinitionDetail | null> {
+    rawInput: EncryptedWorkflowDefinitionCreate,
+  ): Promise<WorkflowDefinitionWireDetail | null> {
+    const input = encryptedWorkflowDefinitionCreateSchema.parse(rawInput);
     if (
       input.scope === "project" &&
       !(await this.projectBelongsToOwner(ownerId, input.projectId!))
@@ -170,7 +158,7 @@ export class WorkflowRepository {
         and(
           eq(schema.workflowDefinitions.ownerId, ownerId),
           eq(schema.workflowDefinitions.scope, input.scope),
-          eq(schema.workflowDefinitions.slug, input.slug),
+          eq(schema.workflowDefinitions.slugBlindIndex, input.slugBlindIndex),
           input.scope === "personal"
             ? isNull(schema.workflowDefinitions.projectId)
             : eq(schema.workflowDefinitions.projectId, input.projectId!),
@@ -183,7 +171,7 @@ export class WorkflowRepository {
       );
     }
 
-    const workflowId = randomUUID();
+    const workflowId = input.id;
     try {
       await this.database.transaction(async (transaction) => {
         await transaction.insert(schema.workflowDefinitions).values({
@@ -191,20 +179,20 @@ export class WorkflowRepository {
           ownerId,
           projectId: input.projectId,
           scope: input.scope,
-          slug: input.slug,
-          name: input.name,
-          description: input.description,
+          slugBlindIndex: input.slugBlindIndex,
+          protectedSlug: input.content.protectedSlug,
+          protectedName: input.content.protectedName,
+          protectedDescription: input.content.protectedDescription,
           source: input.source,
-          provenance: input.provenance,
+          protectedProvenance: input.content.protectedProvenance,
           trustState: input.trustState,
         });
         await this.insertRevision(
           transaction,
           workflowId,
-          1,
           ownerId,
           input.revision,
-          revisionContentHash(input.revision),
+          1,
         );
       });
     } catch (error) {
@@ -221,7 +209,7 @@ export class WorkflowRepository {
   async getDefinition(
     ownerId: string,
     workflowId: string,
-  ): Promise<WorkflowDefinitionDetail | null> {
+  ): Promise<WorkflowDefinitionWireDetail | null> {
     const definition = await this.definitionRow(ownerId, workflowId);
     if (!definition) return null;
     const revisionRows = await this.database
@@ -233,8 +221,8 @@ export class WorkflowRepository {
     const revision = revisionRows[0]
       ? await this.loadRevision(revisionRows[0])
       : null;
-    return workflowDefinitionDetailSchema.parse({
-      workflow: toDefinitionSummary(definition, revisionRows[0] ?? null),
+    return workflowDefinitionWireDetailSchema.parse({
+      workflow: toDefinitionWireSummary(definition, revisionRows[0] ?? null),
       revision,
     });
   }
@@ -242,17 +230,20 @@ export class WorkflowRepository {
   async updateDefinition(
     ownerId: string,
     workflowId: string,
-    input: WorkflowDefinitionUpdate,
-  ): Promise<WorkflowDefinitionSummary | null> {
+    rawInput: EncryptedWorkflowDefinitionUpdate,
+  ): Promise<WorkflowDefinitionWireSummary | null> {
+    const input = encryptedWorkflowDefinitionUpdateSchema.parse(rawInput);
     const definition = await this.definitionRow(ownerId, workflowId);
     if (!definition) return null;
     const now = new Date();
     const rows = await this.database
       .update(schema.workflowDefinitions)
       .set({
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.description !== undefined
-          ? { description: input.description }
+        ...(input.content?.protectedName !== undefined
+          ? { protectedName: input.content.protectedName }
+          : {}),
+        ...(input.content?.protectedDescription !== undefined
+          ? { protectedDescription: input.content.protectedDescription }
           : {}),
         ...(input.trustState !== undefined
           ? { trustState: input.trustState }
@@ -276,27 +267,27 @@ export class WorkflowRepository {
     const updated = rows[0];
     if (!updated) return null;
     const latest = await this.latestRevisions([workflowId]);
-    return toDefinitionSummary(updated, latest.get(workflowId) ?? null);
+    return toDefinitionWireSummary(updated, latest.get(workflowId) ?? null);
   }
 
   async listRevisions(
     ownerId: string,
     workflowId: string,
-  ): Promise<WorkflowRevisionSummary[] | null> {
+  ): Promise<WorkflowRevisionWireSummary[] | null> {
     if (!(await this.definitionRow(ownerId, workflowId))) return null;
     const rows = await this.database
       .select()
       .from(schema.workflowRevisions)
       .where(eq(schema.workflowRevisions.workflowId, workflowId))
       .orderBy(desc(schema.workflowRevisions.revision));
-    return rows.map(toRevisionSummary);
+    return rows.map(toRevisionWireSummary);
   }
 
   async getRevision(
     ownerId: string,
     workflowId: string,
     revisionNumber: number,
-  ): Promise<WorkflowRevision | null> {
+  ): Promise<WorkflowRevisionWire | null> {
     if (!(await this.definitionRow(ownerId, workflowId))) return null;
     const rows = await this.database
       .select()
@@ -315,7 +306,7 @@ export class WorkflowRepository {
     ownerId: string,
     workflowId: string,
     revisionId: string,
-  ): Promise<WorkflowRevision | null> {
+  ): Promise<WorkflowRevisionWire | null> {
     if (!(await this.definitionRow(ownerId, workflowId))) return null;
     const rows = await this.database
       .select()
@@ -333,11 +324,14 @@ export class WorkflowRepository {
   async appendRevision(
     ownerId: string,
     workflowId: string,
-    input: WorkflowRevisionCreate,
-  ): Promise<WorkflowRevision | null> {
+    rawInput: EncryptedWorkflowRevisionCreate,
+  ): Promise<WorkflowRevisionWire | null> {
+    const input = encryptedWorkflowRevisionCreateSchema.parse(rawInput);
     if (!(await this.definitionRow(ownerId, workflowId))) return null;
-    const contentHash = revisionContentHash(input);
-    const existing = await this.revisionByHash(workflowId, contentHash);
+    const existing = await this.revisionByHash(
+      workflowId,
+      input.contentBlindIndex,
+    );
     if (existing) return this.loadRevision(existing);
 
     let revisionNumber = 1;
@@ -349,7 +343,10 @@ export class WorkflowRepository {
           .where(
             and(
               eq(schema.workflowRevisions.workflowId, workflowId),
-              eq(schema.workflowRevisions.contentHash, contentHash),
+              eq(
+                schema.workflowRevisions.contentBlindIndex,
+                input.contentBlindIndex,
+              ),
             ),
           )
           .limit(1);
@@ -367,15 +364,17 @@ export class WorkflowRepository {
         await this.insertRevision(
           transaction,
           workflowId,
-          revisionNumber,
           ownerId,
           input,
-          contentHash,
+          revisionNumber,
         );
       });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      const duplicate = await this.revisionByHash(workflowId, contentHash);
+      const duplicate = await this.revisionByHash(
+        workflowId,
+        input.contentBlindIndex,
+      );
       if (duplicate) return this.loadRevision(duplicate);
       throw new WorkflowConflictError(
         "Another revision was appended concurrently; retry this request.",
@@ -436,7 +435,7 @@ export class WorkflowRepository {
 
   private async revisionByHash(
     workflowId: string,
-    contentHash: string,
+    contentBlindIndex: string,
   ): Promise<WorkflowRevisionRow | null> {
     const rows = await this.database
       .select()
@@ -444,7 +443,7 @@ export class WorkflowRepository {
       .where(
         and(
           eq(schema.workflowRevisions.workflowId, workflowId),
-          eq(schema.workflowRevisions.contentHash, contentHash),
+          eq(schema.workflowRevisions.contentBlindIndex, contentBlindIndex),
         ),
       )
       .limit(1);
@@ -454,25 +453,24 @@ export class WorkflowRepository {
   private async insertRevision(
     transaction: WorkflowTransaction,
     workflowId: string,
-    revisionNumber: number,
     createdByUserId: string,
-    input: WorkflowRevisionCreate,
-    contentHash: string,
+    input: EncryptedWorkflowRevisionCreate,
+    revisionNumber: number,
   ): Promise<void> {
-    const revisionId = randomUUID();
+    const revisionId = input.id;
     await transaction.insert(schema.workflowRevisions).values({
       id: revisionId,
       workflowId,
       revision: revisionNumber,
-      definition: input.graph,
       declaredInputs: input.declaredInputs,
       declaredOutputs: input.declaredOutputs,
       defaults: input.defaults,
       permissionRequirements: input.permissionRequirements,
       source: input.source,
-      provenance: input.provenance,
+      protectedProvenance: input.content.protectedProvenance,
       trustState: input.trustState,
-      contentHash,
+      contentBlindIndex: input.contentBlindIndex,
+      protectedContentHash: input.content.protectedContentHash,
       createdByUserId,
     });
     const nodeRows = input.graph.nodes.map((node, position) => ({
@@ -511,7 +509,7 @@ export class WorkflowRepository {
 
   private async loadRevision(
     revision: WorkflowRevisionRow,
-  ): Promise<WorkflowRevision> {
+  ): Promise<WorkflowRevisionWire> {
     const [nodes, edges] = await Promise.all([
       this.database
         .select()
@@ -525,42 +523,66 @@ export class WorkflowRepository {
         .orderBy(asc(schema.workflowRevisionEdges.position)),
     ]);
     const nodeKeyById = new Map(nodes.map((node) => [node.id, node.nodeKey]));
-    return workflowRevisionSchema.parse({
-      ...toRevisionSummary(revision),
-      graph: revision.definition,
+    const revisionNodes = nodes.map((node) => ({
+      id: node.id,
+      revisionId: node.revisionId,
+      key: node.nodeKey,
+      type: node.nodeType,
+      name: node.name,
+      position: node.position,
+      configuration: node.configuration,
+      inputSchema: node.inputSchema,
+      outputSchema: node.outputSchema,
+      permissionRequirements: node.permissionRequirements,
+      mutationMode: node.mutationMode,
+      modelRouteId: node.modelRouteId,
+      permissionProfileId: node.permissionProfileId,
+      createdAt: toISOString(node.createdAt),
+    }));
+    const revisionEdges = edges.map((edge) => ({
+      id: edge.id,
+      revisionId: edge.revisionId,
+      fromNodeId: edge.fromNodeId,
+      toNodeId: edge.toNodeId,
+      from: nodeKeyById.get(edge.fromNodeId),
+      to: nodeKeyById.get(edge.toNodeId),
+      sourceOutput: edge.sourceOutput,
+      targetInput: edge.targetInput,
+      condition: edge.condition,
+      position: edge.position,
+      createdAt: toISOString(edge.createdAt),
+    }));
+    return workflowRevisionWireSchema.parse({
+      ...toRevisionWireSummary(revision),
+      graph: {
+        version: 1,
+        nodes: revisionNodes.map(
+          ({
+            id: _id,
+            revisionId: _revisionId,
+            position: _position,
+            createdAt: _createdAt,
+            ...node
+          }) => node,
+        ),
+        edges: revisionEdges.map(
+          ({
+            id: _id,
+            revisionId: _revisionId,
+            fromNodeId: _fromNodeId,
+            toNodeId: _toNodeId,
+            position: _position,
+            createdAt: _createdAt,
+            ...edge
+          }) => edge,
+        ),
+      },
       declaredInputs: revision.declaredInputs,
       declaredOutputs: revision.declaredOutputs,
       defaults: revision.defaults,
       permissionRequirements: revision.permissionRequirements,
-      nodes: nodes.map((node) => ({
-        id: node.id,
-        revisionId: node.revisionId,
-        key: node.nodeKey,
-        type: node.nodeType,
-        name: node.name,
-        position: node.position,
-        configuration: node.configuration,
-        inputSchema: node.inputSchema,
-        outputSchema: node.outputSchema,
-        permissionRequirements: node.permissionRequirements,
-        mutationMode: node.mutationMode,
-        modelRouteId: node.modelRouteId,
-        permissionProfileId: node.permissionProfileId,
-        createdAt: toISOString(node.createdAt),
-      })),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        revisionId: edge.revisionId,
-        fromNodeId: edge.fromNodeId,
-        toNodeId: edge.toNodeId,
-        from: nodeKeyById.get(edge.fromNodeId),
-        to: nodeKeyById.get(edge.toNodeId),
-        sourceOutput: edge.sourceOutput,
-        targetInput: edge.targetInput,
-        condition: edge.condition,
-        position: edge.position,
-        createdAt: toISOString(edge.createdAt),
-      })),
+      nodes: revisionNodes,
+      edges: revisionEdges,
     });
   }
 }

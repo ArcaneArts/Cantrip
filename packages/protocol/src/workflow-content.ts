@@ -25,6 +25,10 @@ export const workflowContentRecordKindSchema = z.enum([
 
 export const workflowContentFieldSchema = z.enum([
   "name",
+  "slug",
+  "description",
+  "provenance",
+  "content-hash",
   "prompt",
   "condition",
   "metadata",

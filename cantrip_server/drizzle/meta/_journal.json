@@ -883,6 +883,13 @@
       "when": 1787283645706,
       "tag": "0125_protected_project_automations",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1787285726718,
+      "tag": "0126_slow_bastion",
+      "breakpoints": true
     }
   ]
 }

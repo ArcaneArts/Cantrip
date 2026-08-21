@@ -476,26 +476,23 @@ import {
   projectAutomationWireSchema,
 } from "@cantrip/protocol/automations";
 import {
+  encryptedWorkflowDefinitionCreateSchema,
+  encryptedWorkflowDefinitionUpdateSchema,
+  encryptedWorkflowRevisionCreateSchema,
   workflowAutomationTriggerCreateSchema,
   workflowAutomationTriggerListSchema,
   workflowAutomationTriggerQuerySchema,
   workflowAutomationTriggerSchema,
   workflowAutomationTriggerUpdateSchema,
-  workflowDefinitionCreateSchema,
-  workflowDefinitionDetailSchema,
-  workflowDefinitionGenerationCreateSchema,
-  workflowDefinitionGenerationModelOutputSchema,
-  workflowDefinitionGenerationResultSchema,
-  workflowDefinitionListSchema,
+  workflowDefinitionWireDetailSchema,
+  workflowDefinitionWireListSchema,
   workflowDefinitionQuerySchema,
-  workflowDefinitionSummarySchema,
-  workflowDefinitionUpdateSchema,
+  workflowDefinitionWireSummarySchema,
   workflowGateDecisionSchema,
   workflowGitEventDeliveryCreateSchema,
   workflowJsonObjectSchema,
-  workflowRevisionCreateSchema,
-  workflowRevisionListSchema,
-  workflowRevisionSchema,
+  workflowRevisionWireListSchema,
+  workflowRevisionWireSchema,
   workflowRunCreateSchema,
   workflowRunCancelSchema,
   workflowRunDetailSchema,
@@ -503,19 +500,12 @@ import {
   workflowRunEventQuerySchema,
   workflowRunListSchema,
   workflowNodeRetrySchema,
-  workflowNodeExecutionResultSchema,
   workflowRunPauseSchema,
   workflowRunQuerySchema,
   workflowRunResumeSchema,
-  workflowRunSaveRevisionSchema,
   workflowTriggerDeliveryCreateSchema,
   workflowTriggerDeliveryResultSchema,
   workflowTriggerProvenanceSchema,
-  workflowRepositoryDocumentSchema,
-  workflowRepositoryExportSchema,
-  workflowRepositoryImportSchema,
-  workflowRepositoryInventorySchema,
-  workflowRepositoryWriteResultSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
@@ -706,10 +696,6 @@ import {
   type WorkflowRunLiveChange,
 } from "./workflows/executor.js";
 import {
-  parseGeneratedJson,
-  workflowGenerationTranscript,
-} from "./workflows/generation-helpers.js";
-import {
   gitBranchMatches,
   safeCredentialMatch,
   sensitiveTriggerInputPath,
@@ -831,7 +817,6 @@ const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
   "Continue working toward the active goal. Reassess progress, make the next useful scoped change, validate it, and update the goal status when it is complete or genuinely blocked.";
-const WORKFLOW_GENERATION_TIMEOUT_MS = 2 * 60 * 1_000;
 const WORKFLOW_SCHEDULE_POLL_MS = 1_000;
 const CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS = 1_000;
 const CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS = 10_000;
@@ -1026,39 +1011,6 @@ function workerPresenceFingerprint(worker: WorkerSummary): string {
   const { lastSeenAt: _lastSeenAt, ...presence } = worker;
   return JSON.stringify(presence);
 }
-
-const WORKFLOW_GENERATION_OUTPUT_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    slug: { type: "string" },
-    name: { type: "string" },
-    description: { type: "string" },
-    graphJson: { type: "string" },
-    declaredInputsJson: { type: "string" },
-    declaredOutputsJson: { type: "string" },
-    defaultsJson: { type: "string" },
-    permissionRequirementsJson: { type: "string" },
-  },
-  required: [
-    "slug",
-    "name",
-    "description",
-    "graphJson",
-    "declaredInputsJson",
-    "declaredOutputsJson",
-    "defaultsJson",
-    "permissionRequirementsJson",
-  ],
-};
-
-const WORKFLOW_GENERATION_INSTRUCTIONS = `You generate preview-only Cantrip workflow definitions. Return only the requested structured output. Never write files, run mutation-capable commands, use the network, or execute source material.
-
-The graph is constrained JSON data with {"version":1,"nodes":[],"edges":[]}. It must be an acyclic graph with unique lowercase node keys. Supported node types are agent, map, pipeline, reduce, verify, condition, repeatUntil, and gate. Prefer simple agent nodes unless the requested process genuinely needs collection fan-out, verification, branching, bounded repetition, or human approval.
-
-Every node needs key, type, name, configuration, inputSchema, outputSchema, permissionRequirements, mutationMode, modelRouteId, and permissionProfileId. Agent configuration has prompt, developerInstructions, includeStructuredInput, and automaticRetries. Read-only nodes must request filesystem read-only; write nodes must request workspace-write. Network defaults to none. Do not request skills, MCP servers, native subagents, unrestricted network, preauthorization, or workspace writes unless the source explicitly requires them. Condition and gate nodes are always read-only. Every repeatUntil node must have successCondition, progressPath, maxUnchangedIterations, maxIterations, and maxDurationMs.
-
-Edges need from, to, sourceOutput, targetInput, and condition. Only condition nodes may have conditional outgoing edges. Schemas, defaults, and permissions are JSON objects. Encode graphJson, declaredInputsJson, declaredOutputsJson, defaultsJson, and permissionRequirementsJson as complete JSON strings. Use an empty description string when no description is useful. The server will reject any output that does not pass the canonical Cantrip workflow schemas.`;
 
 const CONFIGURABLE_PERMISSION_PROFILES = [
   { id: ":read-only", description: "Inspection only", allowed: true },
@@ -12988,183 +12940,11 @@ export async function buildApp({
 
   app.post<{ Params: { chatId: string } }>(
     "/api/chats/:chatId/workflow-generation",
-    async (request, reply) => {
-      const input = workflowDefinitionGenerationCreateSchema.safeParse(
-        request.body,
-      );
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const context = await repository.getChatExecutionContext(
-        applicationOwnerId(),
-        request.params.chatId,
-      );
-      if (!context) {
-        return reply.code(404).send({ error: "Chat source not found." });
-      }
-      if (!bridge.isConnected(context.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-
-      try {
-        const runtime = await runtimeForContext(context);
-        if (!runtime) {
-          return reply
-            .code(409)
-            .send({ error: "Choose a model before generating a workflow." });
-        }
-        if (input.data.sourceType === "chat") {
-          return reply.code(409).send({
-            error:
-              "Chat-sourced workflow generation requires the encrypted workflow execution path.",
-          });
-        }
-        const messages: ChatMessage[] = [];
-        const transcript = workflowGenerationTranscript(messages);
-        const prompt = [
-          `Generate a ${input.data.scope} Cantrip workflow from this ${input.data.sourceType} source.`,
-          `Author request:\n${input.data.prompt}`,
-          transcript ? `Selected chat transcript:\n${transcript}` : null,
-        ]
-          .filter((value): value is string => Boolean(value))
-          .join("\n\n");
-        const generationId = randomUUID();
-        const mcpServers = await repository.listEffectiveMcpServers(
-          applicationOwnerId(),
-          context.projectId,
-        );
-        const workflowUsageKey = `workflow-definition:${generationId}`;
-        await recordRuntimeTokenUsage(
-          workflowUsageKey,
-          context.projectId,
-          context.chatId,
-          runtime,
-          undefined,
-          {
-            workerId: context.workerId,
-            executionAttemptId: generationId,
-            attemptKind: "workflow-definition",
-            attemptStatus: "running",
-            startedAt: new Date(),
-          },
-        );
-        let result;
-        try {
-          result = workflowNodeExecutionResultSchema.parse(
-            await bridge.request(
-              context.workerId,
-              {
-                type: "workflow.definition.generate",
-                generationId,
-                cwd: context.cwd,
-                prompt,
-                developerInstructions: WORKFLOW_GENERATION_INSTRUCTIONS,
-                outputSchema: WORKFLOW_GENERATION_OUTPUT_SCHEMA,
-                timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS,
-                model: runtime.model,
-                provider: runtime.provider,
-                mcpServers,
-              },
-              { timeoutMs: WORKFLOW_GENERATION_TIMEOUT_MS + 10_000 },
-            ),
-          );
-        } catch (error) {
-          const failedAt = new Date();
-          await recordRuntimeTokenUsage(
-            workflowUsageKey,
-            context.projectId,
-            context.chatId,
-            runtime,
-            undefined,
-            {
-              workerId: context.workerId,
-              executionAttemptId: generationId,
-              attemptKind: "workflow-definition",
-              attemptStatus: "failed",
-              completedAt: failedAt,
-              finalizedAt: failedAt,
-            },
-          );
-          throw error;
-        }
-        await recordRuntimeTokenUsage(
-          workflowUsageKey,
-          context.projectId,
-          context.chatId,
-          runtime,
-          result.measuredUsage,
-          {
-            workerId: context.workerId,
-            turnId: result.turnId,
-            executionAttemptId: generationId,
-            attemptKind: "workflow-definition",
-            attemptStatus: "completed",
-          },
-        );
-        const generated = workflowDefinitionGenerationModelOutputSchema.parse(
-          result.structuredResult,
-        );
-        const provenance = {
-          origin: "generated" as const,
-          sourceId: generationId,
-          sourceRevision: null,
-          reference: `chat:${context.chatId}`,
-          importedAt: null,
-          metadata: {
-            sourceType: input.data.sourceType,
-            model: runtime.model.name,
-            modelRouteId: runtime.routeId,
-            provider: runtime.provider.name,
-            codexThreadId: result.threadId,
-            codexTurnId: result.turnId,
-          },
-        };
-        const definition = workflowDefinitionCreateSchema.parse({
-          scope: input.data.scope,
-          projectId: input.data.scope === "project" ? context.projectId : null,
-          slug: generated.slug,
-          name: generated.name,
-          description: generated.description.trim() || null,
-          source: "generated",
-          provenance,
-          trustState: "untrusted",
-          revision: {
-            graph: parseGeneratedJson(generated.graphJson, "graph"),
-            declaredInputs: parseGeneratedJson(
-              generated.declaredInputsJson,
-              "declared input schema",
-            ),
-            declaredOutputs: parseGeneratedJson(
-              generated.declaredOutputsJson,
-              "declared output schema",
-            ),
-            defaults: parseGeneratedJson(generated.defaultsJson, "defaults"),
-            permissionRequirements: parseGeneratedJson(
-              generated.permissionRequirementsJson,
-              "permission requirements",
-            ),
-            source: "generated",
-            provenance,
-            trustState: "untrusted",
-          },
-        });
-        return reply.send(
-          workflowDefinitionGenerationResultSchema.parse({
-            generationId,
-            definition,
-            codexThreadId: result.threadId,
-            codexTurnId: result.turnId,
-            measuredUsage: result.measuredUsage,
-          }),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(
-          reply,
-          error,
-          `Codex could not generate a valid workflow: ${errorMessage(error)}`,
-        );
-      }
-    },
+    async (_request, reply) =>
+      reply.code(410).send({
+        error:
+          "This plaintext workflow generation path was removed pending the protected worker relay.",
+      }),
   );
 
   app.post<{
@@ -13997,7 +13777,7 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(query.error.issues));
     }
     return reply.send(
-      workflowDefinitionListSchema.parse(
+      workflowDefinitionWireListSchema.parse(
         await repository.workflows.listDefinitions(
           applicationOwnerId(),
           query.data,
@@ -14008,122 +13788,26 @@ export async function buildApp({
 
   app.get<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/workflow-repository",
-    async (request, reply) => {
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
-      }
-      if (!bridge.isConnected(source.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      try {
-        return reply.send(
-          workflowRepositoryInventorySchema.parse(
-            await bridge.request(source.workerId, {
-              type: "workflow.repository.scan",
-              cwd: source.cwd,
-            }),
-          ),
-        );
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
+    async (_request, reply) =>
+      reply.code(410).send({
+        error:
+          "This plaintext workflow repository scan path was removed pending the protected worker relay.",
+      }),
   );
 
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/workflow-repository/import",
-    async (request, reply) => {
-      const input = workflowRepositoryImportSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        request.params.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
-      }
-      if (!bridge.isConnected(source.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      try {
-        const inventory = workflowRepositoryInventorySchema.parse(
-          await bridge.request(source.workerId, {
-            type: "workflow.repository.scan",
-            cwd: source.cwd,
-          }),
-        );
-        const item = inventory.items.find(({ id }) => id === input.data.itemId);
-        if (!item || item.status !== "ready" || !item.definition) {
-          return reply.code(409).send({
-            error:
-              "The reviewed workflow source changed or is no longer importable. Refresh the repository preview.",
-          });
-        }
-        const importedAt = new Date().toISOString();
-        const workflowSource =
-          item.source === "cantrip"
-            ? ("repository" as const)
-            : ("imported" as const);
-        const provenance = {
-          origin:
-            item.source === "cantrip"
-              ? ("repository" as const)
-              : ("claude-code" as const),
-          sourceId: item.path,
-          sourceRevision: item.contentHash,
-          reference: item.path,
-          importedAt,
-          metadata: {
-            repositoryConvention: inventory.convention,
-            translator:
-              item.source === "cantrip"
-                ? "cantrip-workflow-v1"
-                : "claude-workflow-bridge-v1",
-          },
-        };
-        const definition = workflowDefinitionCreateSchema.parse({
-          scope: "project",
-          projectId: request.params.projectId,
-          slug: item.definition.slug,
-          name: item.definition.name,
-          description: item.definition.description,
-          source: workflowSource,
-          provenance,
-          trustState: "untrusted",
-          revision: {
-            ...item.definition.revision,
-            source: workflowSource,
-            provenance,
-            trustState: "untrusted",
-          },
-        });
-        const created = await repository.workflows.createDefinition(
-          applicationOwnerId(),
-          definition,
-        );
-        if (created) {
-          publishWorkflowDefinitionChange(created.workflow.id);
-        }
-        return created
-          ? reply.code(201).send(workflowDefinitionDetailSchema.parse(created))
-          : reply.code(404).send({ error: "Project not found." });
-      } catch (error) {
-        if (error instanceof WorkflowConflictError) {
-          return reply.code(409).send({ error: error.message });
-        }
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
+    async (_request, reply) =>
+      reply.code(410).send({
+        error:
+          "This plaintext workflow repository import path was removed pending the protected worker relay.",
+      }),
   );
 
   app.post("/api/workflows", async (request, reply) => {
-    const input = workflowDefinitionCreateSchema.safeParse(request.body);
+    const input = encryptedWorkflowDefinitionCreateSchema.safeParse(
+      request.body,
+    );
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -14136,7 +13820,9 @@ export async function buildApp({
         publishWorkflowDefinitionChange(workflow.workflow.id);
       }
       return workflow
-        ? reply.code(201).send(workflowDefinitionDetailSchema.parse(workflow))
+        ? reply
+            .code(201)
+            .send(workflowDefinitionWireDetailSchema.parse(workflow))
         : reply.code(404).send({ error: "Project not found." });
     } catch (error) {
       if (error instanceof WorkflowConflictError) {
@@ -14154,95 +13840,26 @@ export async function buildApp({
         request.params.workflowId,
       );
       return workflow
-        ? reply.send(workflowDefinitionDetailSchema.parse(workflow))
+        ? reply.send(workflowDefinitionWireDetailSchema.parse(workflow))
         : reply.code(404).send({ error: "Workflow not found." });
     },
   );
 
   app.post<{ Params: { workflowId: string } }>(
     "/api/workflows/:workflowId/repository-export",
-    async (request, reply) => {
-      const input = workflowRepositoryExportSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const workflow = await repository.workflows.getDefinition(
-        applicationOwnerId(),
-        request.params.workflowId,
-      );
-      if (!workflow) {
-        return reply.code(404).send({ error: "Workflow not found." });
-      }
-      if (
-        workflow.workflow.scope !== "project" ||
-        !workflow.workflow.projectId ||
-        !workflow.revision
-      ) {
-        return reply.code(409).send({
-          error:
-            "Only project workflows with a revision can be exported to a repository.",
-        });
-      }
-      const source = await repository.getProjectSource(
-        applicationOwnerId(),
-        workflow.workflow.projectId,
-      );
-      if (!source) {
-        return reply.code(404).send({ error: "Project source not found." });
-      }
-      if (!bridge.isConnected(source.workerId)) {
-        return reply.code(503).send({ error: "Project worker is offline." });
-      }
-      const document = workflowRepositoryDocumentSchema.parse({
-        format: "cantrip.workflow",
-        version: 1,
-        definition: {
-          slug: workflow.workflow.slug,
-          name: workflow.workflow.name,
-          description: workflow.workflow.description,
-          revision: {
-            graph: workflow.revision.graph,
-            declaredInputs: workflow.revision.declaredInputs,
-            declaredOutputs: workflow.revision.declaredOutputs,
-            defaults: workflow.revision.defaults,
-            permissionRequirements: workflow.revision.permissionRequirements,
-          },
-        },
-        exportedAt: workflow.revision.createdAt,
-        sourceWorkflowId: workflow.workflow.id,
-        sourceRevision: workflow.revision.contentHash,
-      });
-      try {
-        const result = workflowRepositoryWriteResultSchema.parse(
-          await bridge.request(source.workerId, {
-            type: "workflow.repository.write",
-            cwd: source.cwd,
-            document,
-            overwrite: input.data.overwrite,
-          }),
-        );
-        publishLiveInvalidation("workflow-definition", {
-          entityId: workflow.workflow.id,
-          projectId: workflow.workflow.projectId,
-        });
-        return reply.send(result);
-      } catch (error) {
-        const message = errorMessage(error);
-        const status =
-          error instanceof WorkerUnavailableError
-            ? 503
-            : /already exists with different content/u.test(message)
-              ? 409
-              : 502;
-        return reply.code(status).send({ error: message });
-      }
-    },
+    async (_request, reply) =>
+      reply.code(410).send({
+        error:
+          "This plaintext workflow repository export path was removed pending the protected worker relay.",
+      }),
   );
 
   app.patch<{ Params: { workflowId: string } }>(
     "/api/workflows/:workflowId",
     async (request, reply) => {
-      const input = workflowDefinitionUpdateSchema.safeParse(request.body);
+      const input = encryptedWorkflowDefinitionUpdateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -14255,7 +13872,7 @@ export async function buildApp({
         publishWorkflowDefinitionChange(workflow.id);
       }
       return workflow
-        ? reply.send(workflowDefinitionSummarySchema.parse(workflow))
+        ? reply.send(workflowDefinitionWireSummarySchema.parse(workflow))
         : reply.code(404).send({ error: "Workflow not found." });
     },
   );
@@ -14268,7 +13885,7 @@ export async function buildApp({
         request.params.workflowId,
       );
       return revisions
-        ? reply.send(workflowRevisionListSchema.parse(revisions))
+        ? reply.send(workflowRevisionWireListSchema.parse(revisions))
         : reply.code(404).send({ error: "Workflow not found." });
     },
   );
@@ -14276,7 +13893,9 @@ export async function buildApp({
   app.post<{ Params: { workflowId: string } }>(
     "/api/workflows/:workflowId/revisions",
     async (request, reply) => {
-      const input = workflowRevisionCreateSchema.safeParse(request.body);
+      const input = encryptedWorkflowRevisionCreateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -14290,7 +13909,7 @@ export async function buildApp({
           publishWorkflowDefinitionChange(revision.workflowId);
         }
         return revision
-          ? reply.send(workflowRevisionSchema.parse(revision))
+          ? reply.send(workflowRevisionWireSchema.parse(revision))
           : reply.code(404).send({ error: "Workflow not found." });
       } catch (error) {
         if (error instanceof WorkflowConflictError) {
@@ -14314,7 +13933,7 @@ export async function buildApp({
         revisionNumber,
       );
       return revision
-        ? reply.send(workflowRevisionSchema.parse(revision))
+        ? reply.send(workflowRevisionWireSchema.parse(revision))
         : reply.code(404).send({ error: "Workflow revision not found." });
     },
   );
@@ -14397,94 +14016,11 @@ export async function buildApp({
 
   app.post<{ Params: { runId: string } }>(
     "/api/workflow-runs/:runId/save-revision",
-    async (request, reply) => {
-      const input = workflowRunSaveRevisionSchema.safeParse(request.body);
-      if (!input.success) {
-        return reply.code(400).send(invalidBody(input.error.issues));
-      }
-      const run = await repository.workflowRuns.getRun(
-        applicationOwnerId(),
-        request.params.runId,
-      );
-      if (!run) {
-        return reply.code(404).send({ error: "Workflow run not found." });
-      }
-      if (run.run.status !== "completed" || !run.run.completedAt) {
-        return reply
-          .code(409)
-          .send({ error: "Only a completed workflow run can be saved." });
-      }
-      const [definition, executedRevision] = await Promise.all([
-        repository.workflows.getDefinition(
-          applicationOwnerId(),
-          run.run.workflowId,
-        ),
-        repository.workflows.getRevisionById(
-          applicationOwnerId(),
-          run.run.workflowId,
-          run.run.workflowRevisionId,
-        ),
-      ]);
-      if (!definition || !executedRevision) {
-        return reply
-          .code(409)
-          .send({ error: "The executed workflow revision is unavailable." });
-      }
-      if (definition.workflow.archivedAt) {
-        return reply
-          .code(409)
-          .send({ error: "Archived workflows cannot accept new revisions." });
-      }
-      const structuredInput = run.run.structuredInput;
-      const runDefaults =
-        structuredInput &&
-        typeof structuredInput === "object" &&
-        !Array.isArray(structuredInput)
-          ? structuredInput
-          : executedRevision.defaults;
-      const savedRevision = await repository.workflows.appendRevision(
-        applicationOwnerId(),
-        run.run.workflowId,
-        {
-          graph: executedRevision.graph,
-          declaredInputs: executedRevision.declaredInputs,
-          declaredOutputs: executedRevision.declaredOutputs,
-          defaults: input.data.useRunInputAsDefaults
-            ? runDefaults
-            : executedRevision.defaults,
-          permissionRequirements: executedRevision.permissionRequirements,
-          source: "saved-run",
-          provenance: {
-            origin: "workflow-run",
-            sourceId: run.run.id,
-            sourceRevision: run.run.workflowRevisionId,
-            reference: null,
-            importedAt: run.run.completedAt,
-            metadata: {
-              completedAt: run.run.completedAt,
-              useRunInputAsDefaults: input.data.useRunInputAsDefaults,
-            },
-          },
-          trustState: input.data.trustState,
-        },
-      );
-      const savedWorkflow = await repository.workflows.updateDefinition(
-        applicationOwnerId(),
-        run.run.workflowId,
-        { trustState: input.data.trustState },
-      );
-      if (savedWorkflow && savedRevision) {
-        publishWorkflowDefinitionChange(savedWorkflow.id);
-      }
-      return savedWorkflow && savedRevision
-        ? reply.send(
-            workflowDefinitionDetailSchema.parse({
-              workflow: savedWorkflow,
-              revision: savedRevision,
-            }),
-          )
-        : reply.code(404).send({ error: "Workflow not found." });
-    },
+    async (_request, reply) =>
+      reply.code(410).send({
+        error:
+          "This plaintext workflow revision path was removed pending the protected run-content cutover.",
+      }),
   );
 
   app.post<{ Params: { leaseId: string; runId: string } }>(
