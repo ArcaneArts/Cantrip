@@ -9,6 +9,7 @@ const iconDirectory = join(repositoryRoot, "cantrip_app", "src-tauri", "icons");
 const appIconSource = join(iconDirectory, "source.svg");
 const trayIconSource = join(iconDirectory, "tray-icon-macos.svg");
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "cantrip-glint-icons-"));
+let opaqueRenderSequence = 0;
 
 function run(command, arguments_) {
   const result = spawnSync(command, arguments_, {
@@ -32,6 +33,26 @@ function render(source, output, size) {
     String(size),
     source,
     "-o",
+    output,
+  ]);
+}
+
+function renderOpaque(source, output, size) {
+  const intermediate = join(
+    temporaryDirectory,
+    `opaque-${opaqueRenderSequence}.png`,
+  );
+  opaqueRenderSequence += 1;
+  render(source, intermediate, size);
+  run("magick", [
+    intermediate,
+    "-background",
+    "#111113",
+    "-alpha",
+    "remove",
+    "-alpha",
+    "off",
+    "-strip",
     output,
   ]);
 }
@@ -91,8 +112,53 @@ try {
   });
   run("magick", [...icoInputs, join(iconDirectory, "icon.ico")]);
 
+  const iosIconDirectory = join(iconDirectory, "ios");
+  const iosOutputs = new Map([
+    ["AppIcon-20x20@1x.png", 20],
+    ["AppIcon-20x20@2x-1.png", 40],
+    ["AppIcon-20x20@2x.png", 40],
+    ["AppIcon-20x20@3x.png", 60],
+    ["AppIcon-29x29@1x.png", 29],
+    ["AppIcon-29x29@2x-1.png", 58],
+    ["AppIcon-29x29@2x.png", 58],
+    ["AppIcon-29x29@3x.png", 87],
+    ["AppIcon-40x40@1x.png", 40],
+    ["AppIcon-40x40@2x-1.png", 80],
+    ["AppIcon-40x40@2x.png", 80],
+    ["AppIcon-40x40@3x.png", 120],
+    ["AppIcon-512@2x.png", 1024],
+    ["AppIcon-60x60@2x.png", 120],
+    ["AppIcon-60x60@3x.png", 180],
+    ["AppIcon-76x76@1x.png", 76],
+    ["AppIcon-76x76@2x.png", 152],
+    ["AppIcon-83.5x83.5@2x.png", 167],
+  ]);
+  for (const [filename, size] of iosOutputs) {
+    renderOpaque(appIconSource, join(iosIconDirectory, filename), size);
+  }
+  renderOpaque(
+    appIconSource,
+    join(
+      repositoryRoot,
+      "cantrip_app",
+      "ios",
+      "App",
+      "App",
+      "Assets.xcassets",
+      "AppIcon.appiconset",
+      "AppIcon-512@2x.png",
+    ),
+    1024,
+  );
+  for (const output of [
+    join(repositoryRoot, "cantrip_app", "public", "apple-touch-icon.png"),
+    join(repositoryRoot, "cantrip_site", "public", "apple-touch-icon.png"),
+  ]) {
+    renderOpaque(appIconSource, output, 180);
+  }
+
   const trayPng = join(iconDirectory, "tray-icon-macos.png");
-  render(trayIconSource, trayPng, 72);
+  render(trayIconSource, trayPng, 36);
   run("magick", [
     trayPng,
     "-depth",
