@@ -100,7 +100,6 @@ describe("application live query bridge", () => {
         }),
       ),
     ).toEqual([
-      ["chat-sync", "chat-one"],
       ["messages", "chat-one"],
       ["task-dashboard", "chat-one"],
     ]);
@@ -149,6 +148,9 @@ describe("application live query bridge", () => {
     expect(
       appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
     ).toContainEqual(["task-dashboard", "chat-one"]);
+    expect(
+      appLiveScopeQueryKeys({ kind: "chat", chatId: "chat-one" }),
+    ).toContainEqual(["chat-sync", "chat-one"]);
     expect(
       appLiveEventQueryKeys(
         event({
@@ -336,7 +338,7 @@ describe("application live query bridge", () => {
     }
   });
 
-  it("reconciles durable messages when a turn boundary follows lost live events", async () => {
+  it("does not feed a live turn boundary back into chat sync", async () => {
     const queryClient = new QueryClient();
     const invalidate = vi
       .spyOn(queryClient, "invalidateQueries")
@@ -353,7 +355,7 @@ describe("application live query bridge", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(invalidate).toHaveBeenCalledWith({
+    expect(invalidate).not.toHaveBeenCalledWith({
       queryKey: ["chat-sync", "chat-one"],
     });
     expect(invalidate).toHaveBeenCalledWith({

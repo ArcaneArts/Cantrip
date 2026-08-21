@@ -33,18 +33,20 @@ const message = (
 });
 
 describe("chatResourceRefreshIntervalMs", () => {
-  it("keeps active turns fresh even while the live event stream is healthy", () => {
-    expect(chatResourceRefreshIntervalMs("running", true)).toBe(3_000);
+  it("disables active polling while the live event stream is healthy", () => {
+    expect(chatResourceRefreshIntervalMs("running", true)).toBe(false);
     expect(chatResourceRefreshIntervalMs("waiting-for-approval", true)).toBe(
-      3_000,
+      false,
     );
   });
 
-  it("uses a slow safety refresh for idle live chats", () => {
-    expect(chatResourceRefreshIntervalMs("idle", true)).toBe(30_000);
+  it("disables idle polling while the live event stream is healthy", () => {
+    expect(chatResourceRefreshIntervalMs("idle", true)).toBe(false);
   });
 
   it("refreshes more often while the live event stream is degraded", () => {
+    expect(chatResourceRefreshIntervalMs("running", false)).toBe(3_000);
+    expect(chatResourceRefreshIntervalMs("idle", false, true)).toBe(3_000);
     expect(chatResourceRefreshIntervalMs("idle", false)).toBe(10_000);
     expect(chatResourceRefreshIntervalMs("failed", false)).toBe(10_000);
   });
@@ -53,7 +55,7 @@ describe("chatResourceRefreshIntervalMs", () => {
     const now = Date.parse("2026-08-16T14:01:00.000Z");
     const pending = [message(1, "user", "Hello")];
     expect(chatTranscriptNeedsFastRefresh(pending, now)).toBe(true);
-    expect(chatResourceRefreshIntervalMs("idle", true, true)).toBe(3_000);
+    expect(chatResourceRefreshIntervalMs("idle", true, true)).toBe(false);
 
     expect(
       chatTranscriptNeedsFastRefresh(

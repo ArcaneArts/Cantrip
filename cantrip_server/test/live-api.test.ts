@@ -26,7 +26,7 @@ import type { WebSocket } from "ws";
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
 import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
-import { LOCAL_USER_ID } from "../src/db/repository.js";
+import { DEFAULT_MODEL_ROUTE_ID, LOCAL_USER_ID } from "../src/db/repository.js";
 import type {
   WorkerCommandBus,
   WorkerNotificationListener,
@@ -97,6 +97,7 @@ const opaqueWorkflowContent = () => ({
   },
 });
 let oauthStatusReads = 0;
+let chatSyncReads = 0;
 let workerNotificationListener: WorkerNotificationListener | null = null;
 const workerBridge: WorkerCommandBus = {
   attach() {},
@@ -139,6 +140,13 @@ const workerBridge: WorkerCommandBus = {
         return { server: command.server, status: "succeeded", error: null };
       case "customization.skill.configure":
         return { path: command.path, effectiveEnabled: command.enabled };
+      case "chat.sync":
+        chatSyncReads += 1;
+        return {
+          threadId: command.threadId,
+          status: "idle",
+          turns: [],
+        };
       case "worktree.observation.configure":
         return { accepted: true };
       case "workflow.trigger.prepare.protected":
@@ -389,6 +397,68 @@ describe.sequential("application live WebSocket", () => {
       releaseOlderContextRead?.();
       contextRead.mockRestore();
     }
+
+    const chatContext = await database.repository.getChatExecutionContext(
+      LOCAL_USER_ID,
+      chatId,
+    );
+    if (!chatContext) throw new Error("Could not resolve the live test chat.");
+    await database.repository.updateChatRuntime(
+      chatId,
+      chatContext.workerId,
+      chatContext.worktreeId,
+      "thread-live-observed",
+      DEFAULT_MODEL_ROUTE_ID,
+    );
+    const syncReadStart = chatSyncReads;
+    await notificationListener({
+      type: "chat.thread.changed",
+      threadId: "thread-live-observed",
+      revision: 20,
+      changes: ["turn"],
+    });
+    await notificationListener({
+      type: "chat.thread.changed",
+      threadId: "thread-live-observed",
+      revision: 20,
+      changes: ["turn"],
+    });
+    await notificationListener({
+      type: "chat.thread.changed",
+      threadId: "thread-live-observed",
+      revision: 19,
+      changes: ["turn"],
+    });
+    await notificationListener({
+      type: "chat.thread.changed",
+      threadId: "unowned-thread",
+      revision: 21,
+      changes: ["turn"],
+    });
+    await vi.waitFor(() => expect(chatSyncReads).toBe(syncReadStart + 1));
+
+    const threadResourceEventStart = messages.length;
+    await notificationListener({
+      type: "chat.thread.changed",
+      threadId: "thread-live-observed",
+      revision: 21,
+      changes: ["goal", "queue", "plan"],
+    });
+    await vi.waitFor(() => expect(chatSyncReads).toBe(syncReadStart + 2));
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(threadResourceEventStart)
+          .filter(
+            (message) =>
+              message.type === "event" &&
+              ["chat-goal", "chat-queue", "chat-plan"].includes(
+                message.resource,
+              ),
+          )
+          .map((message) => (message.type === "event" ? message.resource : "")),
+      ).toEqual(["chat-goal", "chat-queue", "chat-plan"]),
+    );
 
     for (const [requestId, scope] of [
       ["missing-project", { kind: "project", projectId: "missing-project" }],

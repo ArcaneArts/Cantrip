@@ -462,6 +462,74 @@ export function isKnownCodexNotificationMethod(method: string): boolean {
   return KNOWN_CODEX_NOTIFICATION_METHODS.has(method);
 }
 
+export type CodexExternalThreadChangeKind = "turn" | "goal" | "queue" | "plan";
+
+export interface CodexExternalThreadChange {
+  changes: CodexExternalThreadChangeKind[];
+  revision: number;
+  threadId: string;
+}
+
+const EXTERNAL_THREAD_CHANGE_LIMIT = 4_096;
+const EXTERNAL_THREAD_CHANGE_DEBOUNCE_MS = 75;
+
+export class CodexExternalThreadChangeCoalescer {
+  readonly #delayMs: number;
+  readonly #emit: (change: CodexExternalThreadChange) => void;
+  readonly #pending = new Map<
+    string,
+    {
+      changes: Set<CodexExternalThreadChangeKind>;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+  #revision = Date.now() * 1_000;
+
+  constructor(
+    emit: (change: CodexExternalThreadChange) => void,
+    delayMs = EXTERNAL_THREAD_CHANGE_DEBOUNCE_MS,
+  ) {
+    this.#emit = emit;
+    this.#delayMs = delayMs;
+  }
+
+  observe(threadId: string, change: CodexExternalThreadChangeKind): void {
+    const existing = this.#pending.get(threadId);
+    if (existing) {
+      existing.changes.add(change);
+      return;
+    }
+    if (this.#pending.size >= EXTERNAL_THREAD_CHANGE_LIMIT) {
+      const oldestThreadId = this.#pending.keys().next().value;
+      if (oldestThreadId !== undefined) {
+        const oldest = this.#pending.get(oldestThreadId);
+        if (oldest) clearTimeout(oldest.timer);
+        this.#pending.delete(oldestThreadId);
+      }
+    }
+    const pending = {
+      changes: new Set<CodexExternalThreadChangeKind>([change]),
+      timer: setTimeout(() => {
+        if (this.#pending.get(threadId) !== pending) return;
+        this.#pending.delete(threadId);
+        this.#revision = Math.max(this.#revision + 1, Date.now() * 1_000);
+        this.#emit({
+          changes: [...pending.changes],
+          revision: this.#revision,
+          threadId,
+        });
+      }, this.#delayMs),
+    };
+    pending.timer.unref();
+    this.#pending.set(threadId, pending);
+  }
+
+  clear(): void {
+    for (const pending of this.#pending.values()) clearTimeout(pending.timer);
+    this.#pending.clear();
+  }
+}
+
 export function parseCodexRpcMessage(raw: string): RpcMessage | null {
   let parsed: unknown;
   try {
@@ -2581,6 +2649,11 @@ export class CodexAppServer implements CodexRuntime {
     CodexExternalImportStatus
   >();
   readonly #externalTurnBaselines = new Map<string, Set<string>>();
+  readonly #externalThreadChanges = new CodexExternalThreadChangeCoalescer(
+    (change) => this.#externalThreadChangeObserver?.(change),
+  );
+  #externalThreadChangeObserver:
+    ((change: CodexExternalThreadChange) => void) | null = null;
   readonly #goals = new Map<string, ThreadGoal>();
   readonly #imageSupport = new Map<string, boolean>();
   readonly #loadedThreads = new Set<string>();
@@ -2630,6 +2703,25 @@ export class CodexAppServer implements CodexRuntime {
 
   diagnostics(): CodexRuntimeDiagnostic[] {
     return [...this.#runtimeDiagnostics];
+  }
+
+  setExternalThreadChangeObserver(
+    observer: ((change: CodexExternalThreadChange) => void) | null,
+  ): void {
+    this.#externalThreadChangeObserver = observer;
+  }
+
+  private observeExternalThreadChange(
+    threadId: string,
+    change: CodexExternalThreadChangeKind,
+  ): void {
+    if (
+      this.hasActiveThread(threadId) ||
+      !this.#externalTurnBaselines.has(threadId)
+    ) {
+      return;
+    }
+    this.#externalThreadChanges.observe(threadId, change);
   }
 
   private rememberExternalImportStatus(
@@ -3977,6 +4069,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#workflowThreadOwners.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
+    this.#externalThreadChanges.clear();
     this.#mcpOauthStatuses.clear();
     this.#goals.clear();
     this.#imageSupport.clear();
@@ -4181,6 +4274,7 @@ export class CodexAppServer implements CodexRuntime {
     this.#collaborationModes.clear();
     this.#externalImportStatuses.clear();
     this.#externalTurnBaselines.clear();
+    this.#externalThreadChanges.clear();
     this.#mcpOauthStatuses.clear();
     this.#skillRoots = [];
     socket?.close();
@@ -4848,6 +4942,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#collaborationModes.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
+      this.#externalThreadChanges.clear();
       this.#mcpOauthStatuses.clear();
       this.#goals.clear();
       this.#skillRoots = [];
@@ -4900,6 +4995,7 @@ export class CodexAppServer implements CodexRuntime {
       this.#workflowThreadOwners.clear();
       this.#externalImportStatuses.clear();
       this.#externalTurnBaselines.clear();
+      this.#externalThreadChanges.clear();
       this.#mcpOauthStatuses.clear();
       this.#skillRoots = [];
     });
@@ -5169,6 +5265,7 @@ export class CodexAppServer implements CodexRuntime {
         params.threadId,
         params.threadSettings.collaborationMode.mode,
       );
+      this.observeExternalThreadChange(params.threadId, "plan");
       return;
     }
 
@@ -5197,6 +5294,8 @@ export class CodexAppServer implements CodexRuntime {
             ),
           ),
         );
+      } else {
+        this.observeExternalThreadChange(params.threadId, "turn");
       }
       return;
     }
@@ -5233,6 +5332,8 @@ export class CodexAppServer implements CodexRuntime {
             ),
           }),
         );
+      } else {
+        this.observeExternalThreadChange(params.threadId, "turn");
       }
       return;
     }
@@ -5413,12 +5514,14 @@ export class CodexAppServer implements CodexRuntime {
     if (message.method === "thread/goal/updated") {
       const params = message.params as ThreadGoalUpdatedParams;
       this.#goals.set(params.threadId, threadGoalSchema.parse(params.goal));
+      this.observeExternalThreadChange(params.threadId, "goal");
       return;
     }
 
     if (message.method === "thread/goal/cleared") {
       const params = message.params as ThreadGoalClearedParams;
       this.#goals.delete(params.threadId);
+      this.observeExternalThreadChange(params.threadId, "goal");
       return;
     }
 
@@ -5765,6 +5868,7 @@ export class CodexAppServer implements CodexRuntime {
         params.turn.id,
       );
       if (!active) {
+        this.observeExternalThreadChange(params.threadId, "turn");
         return;
       }
       const correlation = eventCorrelation(
@@ -5846,6 +5950,14 @@ export class CodexAppServer implements CodexRuntime {
         return;
       }
       void this.completeTurn(active, params.turn.id);
+      return;
+    }
+
+    if (message.method === "thread/queue/changed") {
+      const params = message.params as { threadId?: unknown };
+      if (typeof params.threadId === "string") {
+        this.observeExternalThreadChange(params.threadId, "queue");
+      }
       return;
     }
 

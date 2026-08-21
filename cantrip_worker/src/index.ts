@@ -85,7 +85,6 @@ import { CodexAuthClient } from "./codex/auth-client.js";
 import { verifyCodexInstallation } from "./codex/bundled-runtime.js";
 import { discoverCodexRuntime } from "./codex/discovery.js";
 import { chatGptExternalAuthCapabilityError } from "./codex/external-chatgpt-auth.js";
-import type { CodexRuntime } from "./codex/runtime.js";
 import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
@@ -663,7 +662,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     workerEncryption,
   );
   const serverManagedGrokClients = new Map<string, GrokSubscriptionClient>();
-  const codexRuntimes = new Map<string, CodexRuntime>();
+  const codexRuntimes = new Map<string, CodexAppServer>();
   const codexCatalogRuntimes = new Map<string, CodexAppServer>();
   const pausedChats = new Set<string>();
   const projectShares = new ProjectShareManager();
@@ -684,6 +683,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
   let codegraphNotificationEmitter:
+    ((notification: WorkerNotification) => boolean) | null = null;
+  let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
   let codegraphProjects: CodeGraphProjectSupervisor | null = null;
@@ -947,6 +948,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             : provider,
         providerAccessTokens,
       );
+      runtime.setExternalThreadChangeObserver((change) => {
+        workerNotificationEmitter?.({
+          type: "chat.thread.changed",
+          ...change,
+        });
+      });
       codexRuntimes.set(runtimeId, runtime);
     }
     return runtime;
@@ -3503,6 +3510,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   worktrees.setObservationEmitter((notification) =>
     commandConnection.sendNotification(notification),
   );
+  workerNotificationEmitter = (notification) =>
+    commandConnection.sendNotification(notification);
   codegraphNotificationEmitter = (notification) =>
     commandConnection.sendNotification(notification);
   remoteSurfaces.setFrameEmitter((header, payload) =>

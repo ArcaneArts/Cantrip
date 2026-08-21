@@ -353,6 +353,33 @@ describe("worker channel JSON codec", () => {
     ).toEqual({ data: notification, success: true });
   });
 
+  it("round-trips bounded external thread change notifications", () => {
+    const notification = workerNotificationEnvelopeSchema.parse({
+      kind: "notification",
+      notification: {
+        type: "chat.thread.changed",
+        threadId: "thread-1",
+        revision: 42,
+        changes: ["turn", "goal"],
+      },
+    });
+
+    expect(
+      decodeWorkerServerEnvelope(encodeWorkerServerEnvelope(notification)),
+    ).toEqual({ data: notification, success: true });
+    expect(() =>
+      workerNotificationEnvelopeSchema.parse({
+        kind: "notification",
+        notification: {
+          type: "chat.thread.changed",
+          threadId: "thread-1",
+          revision: 43,
+          changes: ["turn", "goal", "queue", "plan", "turn"],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("distinguishes invalid JSON from an invalid worker envelope", () => {
     expect(decodeWorkerServerEnvelope("{")).toEqual({
       reason: "invalid-json",
