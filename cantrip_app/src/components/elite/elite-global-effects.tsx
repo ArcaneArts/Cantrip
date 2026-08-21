@@ -4,6 +4,7 @@ import {
   createEliteGlitchFrame,
   createEliteGlitchSequence,
   eliteGlitchFrameStyle,
+  eliteRevealConfigSignature,
   eliteStaggerDelayForVisibleRank,
   isEliteRevealVisible,
   normalizeEliteRevealConfig,
@@ -129,14 +130,17 @@ export function EliteGlobalEffects({
       config.glitchShowMs,
       config.staggerSpreadMs,
       config.variants,
+      config.variantWeights,
     ],
   );
-  const configSignature = `${normalized.glitchCountMin}:${normalized.glitchCountMax}:${normalized.glitchShowMs}:${normalized.staggerSpreadMs}:${normalized.variants.join(",")}`;
+  const configSignature = eliteRevealConfigSignature(normalized);
   const normalizedRef = useRef(normalized);
   useEffect(() => {
     normalizedRef.current = normalized;
   }, [configSignature, normalized]);
-  const hasVariants = normalized.variants.length > 0;
+  const hasVariants = normalized.variants.some(
+    (variant) => normalized.variantWeights[variant] > 0,
+  );
 
   useEffect(() => {
     if (!enabled || !hasVariants) return;

@@ -4661,8 +4661,39 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({
       eliteMode: true,
-      eliteRevealConfig: { variants: ["chromatic"] },
+      eliteRevealConfig: {
+        variants: ["chromatic"],
+        variantWeights: {
+          chromatic: 0.25,
+          "full-frame": 0.1,
+          "left-frame": 0.1,
+          "right-frame": 0.1,
+          scanline: 0.5,
+        },
+      },
     });
+    expect(
+      userSettingsUpdateSchema.parse({
+        eliteRevealConfig: {
+          glitchCountMax: 3,
+          glitchCountMin: 1,
+          glitchShowMs: 9,
+          staggerSpreadMs: 50,
+          variants: ["outline"],
+        },
+      }).eliteRevealConfig?.variantWeights,
+    ).toEqual(DEFAULT_ELITE_REVEAL_CONFIG.variantWeights);
+    expect(
+      userSettingsUpdateSchema.safeParse({
+        eliteRevealConfig: {
+          ...DEFAULT_ELITE_REVEAL_CONFIG,
+          variantWeights: {
+            ...DEFAULT_ELITE_REVEAL_CONFIG.variantWeights,
+            chromatic: 10.01,
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("validates revisioned project tab layouts and unique order mutations", () => {
