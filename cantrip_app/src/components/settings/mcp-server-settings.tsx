@@ -8,9 +8,11 @@ import {
   Cable,
   Braces,
   Copy,
+  Download,
   Loader2,
   Pencil,
   Plus,
+  RefreshCw,
   Server,
   Trash2,
 } from "lucide-react";
@@ -29,13 +31,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
+  addGlobalDiscoveredMcpServer,
+  addProjectDiscoveredMcpServer,
   copyProjectMcpServer,
   createGlobalMcpServer,
   createProjectMcpServer,
   deleteGlobalMcpServer,
   deleteProjectMcpServer,
+  discoverGlobalMcpServers,
+  discoverProjectMcpServers,
   getGlobalMcpServers,
   getProjectMcpServers,
+  getProjectReplicas,
   getWorkers,
   updateGlobalMcpServer,
   updateProjectMcpServer,
@@ -296,6 +303,11 @@ export function McpServerSettings({
       projectId ? getProjectMcpServers(projectId) : getGlobalMcpServers(),
   });
   const workers = useQuery({ queryKey: ["workers"], queryFn: getWorkers });
+  const replicas = useQuery({
+    enabled: Boolean(projectId),
+    queryKey: ["project-replicas", projectId],
+    queryFn: () => getProjectReplicas(projectId!),
+  });
   const inherited = useQuery({
     enabled: Boolean(projectId),
     queryKey: ["mcp-servers", "global"],
@@ -313,6 +325,7 @@ export function McpServerSettings({
   const [copyOpen, setCopyOpen] = useState(false);
   const [sourceProjectId, setSourceProjectId] = useState("");
   const [sourceServerId, setSourceServerId] = useState("");
+  const [scanWorkerId, setScanWorkerId] = useState("");
   const sourceServers = useQuery({
     enabled: Boolean(copyOpen && sourceProjectId),
     queryKey: ["mcp-servers", "project", sourceProjectId],
@@ -387,6 +400,29 @@ export function McpServerSettings({
       await refresh();
     },
   });
+  const discovery = useMutation({
+    mutationFn: (workerId: string) =>
+      projectId
+        ? discoverProjectMcpServers(projectId, workerId)
+        : discoverGlobalMcpServers(workerId),
+  });
+  type DiscoveredCandidate = NonNullable<
+    typeof discovery.data
+  >["candidates"][number];
+  const addCandidate = (candidate: DiscoveredCandidate) =>
+    projectId
+      ? addProjectDiscoveredMcpServer(projectId, candidate.encrypted)
+      : addGlobalDiscoveredMcpServer(candidate.encrypted);
+  const addDiscovered = useMutation({
+    mutationFn: addCandidate,
+    onSuccess: refresh,
+  });
+  const addAllDiscovered = useMutation({
+    mutationFn: async (candidates: DiscoveredCandidate[]) => {
+      for (const candidate of candidates) await addCandidate(candidate);
+    },
+    onSuccess: refresh,
+  });
 
   const sourceProjects = useMemo(
     () =>
@@ -409,6 +445,41 @@ export function McpServerSettings({
       ),
     [workers.data],
   );
+  const scannableWorkers = useMemo(() => {
+    const replicaWorkers = projectId
+      ? new Set(
+          (replicas.data ?? [])
+            .filter(({ ready }) => ready)
+            .map(({ workerId }) => workerId),
+        )
+      : null;
+    return (workers.data ?? []).filter(
+      (worker) =>
+        worker.online &&
+        (!replicaWorkers || replicaWorkers.has(worker.workerId)),
+    );
+  }, [projectId, replicas.data, workers.data]);
+  const selectedScanWorkerId =
+    scanWorkerId &&
+    scannableWorkers.some(({ workerId }) => workerId === scanWorkerId)
+      ? scanWorkerId
+      : (scannableWorkers[0]?.workerId ?? "");
+  const candidateAdded = (candidate: DiscoveredCandidate) =>
+    (servers.data ?? []).some(
+      (server) =>
+        server.workerId === candidate.encrypted.workerId &&
+        server.name.toLowerCase() ===
+          candidate.configuration.name.toLowerCase(),
+    );
+  const addAllCandidates = useMemo(() => {
+    const names = new Set<string>();
+    return (discovery.data?.candidates ?? []).filter((candidate) => {
+      const key = `${candidate.encrypted.workerId}\0${candidate.configuration.name.toLowerCase()}`;
+      if (candidateAdded(candidate) || names.has(key)) return false;
+      names.add(key);
+      return true;
+    });
+  }, [discovery.data?.candidates, servers.data]);
   const codeGraphWorkerDetail = useMemo(() => {
     if (readyCodeGraphWorkers.length === 0) {
       return "No worker currently has managed MCP injection available";
@@ -496,6 +567,30 @@ export function McpServerSettings({
         </div>
       ) : null}
 
+      <div className="px-3 py-2.5">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Configured
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-3">
+        <div className="flex min-w-0 items-start gap-2.5">
+          <Cable className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <p className="truncate text-sm font-medium">Cantrip</p>
+              <Badge variant="secondary">Managed</Badge>
+              <Badge variant="outline">Required</Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Injected securely for each Cantrip chat; it cannot be edited,
+              disabled, or removed.
+            </p>
+          </div>
+        </div>
+        <Badge variant="secondary">Available</Badge>
+      </div>
+
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-3">
         <div className="flex min-w-0 items-start gap-2.5">
           <Braces className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -564,6 +659,162 @@ export function McpServerSettings({
           {errorText(toggle.error)}
         </p>
       ) : null}
+
+      <div className="grid gap-3 px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Available
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Scan a worker&apos;s Codex and Claude Code configuration. Nothing
+              is activated until you add it here.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <NativeSelect
+              aria-label="Worker to scan for MCP servers"
+              className="min-w-44"
+              value={selectedScanWorkerId}
+              disabled={scannableWorkers.length === 0 || discovery.isPending}
+              onChange={(event) => setScanWorkerId(event.target.value)}
+            >
+              {scannableWorkers.length === 0 ? (
+                <option value="">No online worker available</option>
+              ) : null}
+              {scannableWorkers.map((worker) => (
+                <option key={worker.workerId} value={worker.workerId}>
+                  {worker.name}
+                </option>
+              ))}
+            </NativeSelect>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!selectedScanWorkerId || discovery.isPending}
+              onClick={() => discovery.mutate(selectedScanWorkerId)}
+            >
+              <RefreshCw
+                className={cn(
+                  "size-3.5",
+                  discovery.isPending && "animate-spin",
+                )}
+              />
+              Scan worker
+            </Button>
+            {discovery.data?.candidates.length ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={
+                  addAllCandidates.length === 0 || addAllDiscovered.isPending
+                }
+                onClick={() => addAllDiscovered.mutate(addAllCandidates)}
+              >
+                {addAllDiscovered.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                Add all
+              </Button>
+            ) : null}
+          </div>
+        </div>
+
+        {discovery.isError ? (
+          <p className="text-sm text-destructive">
+            {errorText(discovery.error)}
+          </p>
+        ) : null}
+        {addDiscovered.isError || addAllDiscovered.isError ? (
+          <p className="text-sm text-destructive">
+            {errorText(addDiscovered.error ?? addAllDiscovered.error)}
+          </p>
+        ) : null}
+        {discovery.data ? (
+          <>
+            {discovery.data.candidates.length ? (
+              <div className="divide-y rounded-md border">
+                {discovery.data.candidates.map((candidate) => {
+                  const added = candidateAdded(candidate);
+                  const detail =
+                    candidate.configuration.transport === "stdio"
+                      ? [
+                          candidate.configuration.command,
+                          ...candidate.configuration.args,
+                        ].join(" ")
+                      : candidate.configuration.url;
+                  return (
+                    <div
+                      key={`${candidate.source}:${candidate.sourceScope}:${candidate.encrypted.id}`}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-3"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate text-sm font-medium">
+                            {candidate.configuration.name}
+                          </p>
+                          <Badge variant="secondary">
+                            {candidate.configuration.transport}
+                          </Badge>
+                          <Badge variant="outline">
+                            {candidate.source === "codex"
+                              ? "Codex"
+                              : "Claude Code"}
+                          </Badge>
+                          <Badge variant="outline">
+                            {candidate.sourceScope === "project"
+                              ? "Project config"
+                              : "User config"}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                          {detail}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={added ? "outline" : "default"}
+                        disabled={
+                          added ||
+                          addDiscovered.isPending ||
+                          addAllDiscovered.isPending
+                        }
+                        onClick={() => addDiscovered.mutate(candidate)}
+                      >
+                        {addDiscovered.isPending &&
+                        addDiscovered.variables?.encrypted.id ===
+                          candidate.encrypted.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : null}
+                        {added ? "Added" : "Add"}
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No importable MCP servers were found in standard Codex or Claude
+                Code config files on this worker.
+              </p>
+            )}
+            {discovery.data.issues.length ? (
+              <div className="grid gap-1 text-xs text-muted-foreground">
+                {discovery.data.issues.map((issue, index) => (
+                  <p key={`${issue.source}:${issue.sourceScope}:${index}`}>
+                    {issue.source === "codex" ? "Codex" : "Claude Code"} ·{" "}
+                    {issue.message}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-2xl">

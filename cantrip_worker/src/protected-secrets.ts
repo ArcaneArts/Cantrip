@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   clearSensitiveBytes,
   computeBlindLookupTag,
@@ -6,7 +8,10 @@ import {
   encryptProtectedSecret,
 } from "@cantrip/crypto";
 import {
+  encryptedMcpServerCreateSchema,
+  isManagedMcpName,
   mcpServerConfigurationSchema,
+  type EncryptedMcpServerCreate,
   type McpServerConfiguration,
   type McpServerOpaqueRuntime,
   type ProviderLegacyCredential,
@@ -88,6 +93,56 @@ export async function openMcpServers(input: {
         }
       }),
   );
+}
+
+export async function protectDiscoveredMcpServer(input: {
+  configuration: McpServerConfiguration;
+  workerId: string;
+  service: WorkerEncryptionService;
+}): Promise<EncryptedMcpServerCreate> {
+  const configuration = mcpServerConfigurationSchema.parse({
+    ...input.configuration,
+    enabled: true,
+  });
+  if (isManagedMcpName(configuration.name)) {
+    throw new Error("Managed MCP server names cannot be imported.");
+  }
+  const id = randomUUID();
+  const component = input.service.componentKey("mcp-secret");
+  const lookupKey = deriveLookupKey({
+    componentKey: component.key,
+    ownerId: input.service.ownerId(),
+    component: "mcp-secret",
+    table: "mcp_servers",
+    field: "name",
+    keyRevision: component.keyRevision,
+  });
+  try {
+    return encryptedMcpServerCreateSchema.parse({
+      id,
+      enabled: true,
+      workerId: input.workerId,
+      nameBlindIndex: computeBlindLookupTag(
+        lookupKey,
+        configuration.name.toLowerCase(),
+      ),
+      protectedConfiguration: await encryptProtectedSecret({
+        ownerId: input.service.ownerId(),
+        component: "mcp-secret",
+        table: "mcp_servers",
+        rowId: id,
+        field: "protected_configuration",
+        keyRevision: component.keyRevision,
+        componentKey: component.key,
+        content: configuration,
+        contentSchema: mcpServerConfigurationSchema,
+        maximumBytes: 1024 * 1024,
+      }),
+    });
+  } finally {
+    clearSensitiveBytes(lookupKey);
+    clearSensitiveBytes(component.key);
+  }
 }
 
 function providerSubject(credential: ProviderLegacyCredential): string {

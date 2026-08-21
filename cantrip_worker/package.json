@@ -23,6 +23,7 @@
     "node-pty": "^1.1.0",
     "node-screenshots": "0.2.8",
     "sharp": "0.34.4",
+    "smol-toml": "^1.8.0",
     "tar": "^7.5.11",
     "webdav-server": "2.6.3",
     "werift": "^0.24.3",

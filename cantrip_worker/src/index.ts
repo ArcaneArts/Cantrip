@@ -88,6 +88,7 @@ import { chatGptExternalAuthCapabilityError } from "./codex/external-chatgpt-aut
 import { CantripCliBroker } from "./cli-broker.js";
 import { BrowserRemoteSurfaceAdapter } from "./browser/browser-adapter.js";
 import { discoverBrowserServices } from "./browser/service-discovery.js";
+import { discoverMcpConfigurations } from "./mcp/discovery.js";
 import { discoverCantripCode } from "./code/installation.js";
 import { CodeSupervisor } from "./code/supervisor.js";
 import { CodeTunnelProxy } from "./code/tunnel-proxy.js";
@@ -1573,6 +1574,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return { accepted: true };
       case "browser.services.discover":
         return discoverBrowserServices({ workerId: config.workerId });
+      case "mcp.configurations.discover":
+        return discoverMcpConfigurations({
+          workerId: config.workerId,
+          projectRoot: command.projectRoot,
+          service: workerEncryption,
+        });
       case "project.share.open":
         return projectShares.open(command);
       case "project.share.close":

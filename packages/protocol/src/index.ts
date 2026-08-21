@@ -1941,6 +1941,44 @@ export const encryptedMcpServerUpdateSchema = encryptedMcpServerCreateSchema
   .omit({ id: true })
   .strict();
 
+export const mcpServerDiscoverySourceSchema = z.enum(["codex", "claude"]);
+export const mcpServerDiscoveryScopeSchema = z.enum(["user", "project"]);
+
+export const mcpServerDiscoveryCandidateSchema = z
+  .object({
+    source: mcpServerDiscoverySourceSchema,
+    sourceScope: mcpServerDiscoveryScopeSchema,
+    configuration: encryptedMcpServerCreateSchema,
+  })
+  .strict()
+  .superRefine((candidate, context) => {
+    if (!candidate.configuration.workerId) {
+      context.addIssue({
+        code: "custom",
+        message: "Discovered MCP servers must be bound to their worker.",
+        path: ["configuration", "workerId"],
+      });
+    }
+  });
+
+export const mcpServerDiscoveryIssueSchema = z
+  .object({
+    source: mcpServerDiscoverySourceSchema,
+    sourceScope: mcpServerDiscoveryScopeSchema,
+    code: z.enum(["invalid-config", "unsupported-transport"]),
+    message: z.string().min(1).max(500),
+  })
+  .strict();
+
+export const mcpServerDiscoveryResultSchema = z
+  .object({
+    workerId: z.string().min(1).max(255),
+    observedAt: z.string().datetime(),
+    candidates: z.array(mcpServerDiscoveryCandidateSchema).max(200),
+    issues: z.array(mcpServerDiscoveryIssueSchema).max(200),
+  })
+  .strict();
+
 export const mcpServerScopeSchema = z.enum(["global", "project"]);
 
 export const mcpServerSummarySchema = mcpServerConfigurationSchema.and(
@@ -10497,6 +10535,12 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     sourceThreadId: externalChatThreadMetadataSchema.shape.sourceThreadId,
   }),
   z.object({ type: z.literal("browser.services.discover") }),
+  z
+    .object({
+      type: z.literal("mcp.configurations.discover"),
+      projectRoot: z.string().min(1).max(8_192).nullable().default(null),
+    })
+    .strict(),
   z.object({
     type: z.literal("project.share.open"),
     shareId: z.string().min(1).max(200),
@@ -12105,6 +12149,21 @@ export type EncryptedMcpServerCreate = z.infer<
 >;
 export type EncryptedMcpServerUpdate = z.infer<
   typeof encryptedMcpServerUpdateSchema
+>;
+export type McpServerDiscoverySource = z.infer<
+  typeof mcpServerDiscoverySourceSchema
+>;
+export type McpServerDiscoveryScope = z.infer<
+  typeof mcpServerDiscoveryScopeSchema
+>;
+export type McpServerDiscoveryCandidate = z.infer<
+  typeof mcpServerDiscoveryCandidateSchema
+>;
+export type McpServerDiscoveryIssue = z.infer<
+  typeof mcpServerDiscoveryIssueSchema
+>;
+export type McpServerDiscoveryResult = z.infer<
+  typeof mcpServerDiscoveryResultSchema
 >;
 export type McpServerWireSummary = z.infer<typeof mcpServerWireSummarySchema>;
 export type McpServerCopy = z.infer<typeof mcpServerCopySchema>;

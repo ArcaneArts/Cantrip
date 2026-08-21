@@ -383,6 +383,61 @@ export async function protectMcpServerCreate(
   });
 }
 
+export async function openDiscoveredMcpServerCreate(
+  raw: unknown,
+  options: TrustedOptions = {},
+): Promise<{
+  encrypted: EncryptedMcpServerCreate;
+  configuration: McpServerConfiguration;
+}> {
+  const encrypted = encryptedMcpServerCreateSchema.parse(raw);
+  if (!encrypted.workerId) {
+    throw new Error("A discovered MCP server is missing its worker binding.");
+  }
+  const encryption = context(options);
+  const keyRevision = encrypted.protectedConfiguration.keyRevision;
+  const componentKey = encryption.service.componentKey({
+    component: "mcp-secret",
+    identity: encryption.service.getSnapshot().identity!,
+    keyRevision,
+  });
+  const lookupKey = deriveLookupKey({
+    componentKey,
+    ownerId: encryption.ownerId,
+    component: "mcp-secret",
+    table: "mcp_servers",
+    field: "name",
+    keyRevision,
+  });
+  try {
+    const configuration = await decryptProtectedSecret({
+      ownerId: encryption.ownerId,
+      component: "mcp-secret",
+      table: "mcp_servers",
+      rowId: encrypted.id,
+      field: "protected_configuration",
+      keyRevision,
+      componentKey,
+      encrypted: encrypted.protectedConfiguration,
+      contentSchema: mcpServerConfigurationSchema,
+      maximumBytes: 1024 * 1024,
+    });
+    if (
+      computeBlindLookupTag(lookupKey, configuration.name.toLowerCase()) !==
+      encrypted.nameBlindIndex
+    ) {
+      throw new Error("Discovered MCP server identity binding is invalid.");
+    }
+    if (isManagedMcpName(configuration.name)) {
+      throw new Error("Managed MCP servers cannot be imported.");
+    }
+    return { encrypted, configuration };
+  } finally {
+    clearSensitiveBytes(lookupKey);
+    clearSensitiveBytes(componentKey);
+  }
+}
+
 export async function protectMcpServerUpdate(
   id: string,
   raw: McpServerConfiguration,

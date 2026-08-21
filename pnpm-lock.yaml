@@ -308,6 +308,9 @@ importers:
       sharp:
         specifier: 0.34.4
         version: 0.34.4
+      smol-toml:
+        specifier: ^1.8.0
+        version: 1.8.0
       tar:
         specifier: ^7.5.11
         version: 7.5.22

@@ -177,6 +177,7 @@ import {
   modelProviderSummarySchema,
   encryptedManagedFolderProjectCreateSchema,
   mcpServerCopySchema,
+  mcpServerDiscoveryResultSchema,
   orderedIdsSchema,
   effectivePolicyWireListSchema,
   encryptedPolicyBootstrapSchema,
@@ -384,6 +385,7 @@ import type {
   PolicyUpdate,
   McpServerConfiguration,
   McpServerCopy,
+  EncryptedMcpServerCreate,
   ProjectViewKind,
   ProjectReplicaJobCancel,
   ProjectReplicaJobRetry,
@@ -485,6 +487,7 @@ import {
 import {
   openMcpServerWireList,
   openMcpServerWireSummary,
+  openDiscoveredMcpServerCreate,
   openModelProviderAccountWireList,
   openModelProviderAccountWireSummary,
   openModelProviderWireSummary,
@@ -1140,6 +1143,32 @@ export async function getGlobalMcpServers() {
   return openMcpServerWireList(await request("/api/settings/mcp-servers"));
 }
 
+export async function discoverGlobalMcpServers(workerId: string) {
+  const discovered = mcpServerDiscoveryResultSchema.parse(
+    await request(
+      `/api/settings/mcp-discovery/${encodeURIComponent(workerId)}`,
+    ),
+  );
+  return {
+    ...discovered,
+    candidates: await Promise.all(
+      discovered.candidates.map(async (candidate) => ({
+        source: candidate.source,
+        sourceScope: candidate.sourceScope,
+        ...(await openDiscoveredMcpServerCreate(candidate.configuration)),
+      })),
+    ),
+  };
+}
+
+export async function addGlobalDiscoveredMcpServer(
+  input: EncryptedMcpServerCreate,
+) {
+  return openMcpServerWireSummary(
+    await post("/api/settings/mcp-servers", input),
+  );
+}
+
 export async function createGlobalMcpServer(
   input: McpServerConfiguration,
   workerId: string | null = null,
@@ -1386,6 +1415,39 @@ export async function getProjectWireList() {
 export async function getProjectMcpServers(projectId: string) {
   return openMcpServerWireList(
     await request(`/api/projects/${encodeURIComponent(projectId)}/mcp-servers`),
+  );
+}
+
+export async function discoverProjectMcpServers(
+  projectId: string,
+  workerId: string,
+) {
+  const discovered = mcpServerDiscoveryResultSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/mcp-discovery/${encodeURIComponent(workerId)}`,
+    ),
+  );
+  return {
+    ...discovered,
+    candidates: await Promise.all(
+      discovered.candidates.map(async (candidate) => ({
+        source: candidate.source,
+        sourceScope: candidate.sourceScope,
+        ...(await openDiscoveredMcpServerCreate(candidate.configuration)),
+      })),
+    ),
+  };
+}
+
+export async function addProjectDiscoveredMcpServer(
+  projectId: string,
+  input: EncryptedMcpServerCreate,
+) {
+  return openMcpServerWireSummary(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/mcp-servers`,
+      input,
+    ),
   );
 }
 
