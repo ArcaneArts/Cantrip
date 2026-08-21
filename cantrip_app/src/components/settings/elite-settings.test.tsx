@@ -15,7 +15,7 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain("Text</button>");
     expect(markup).toContain("Table</button>");
     expect(markup).toContain("Widgets</button>");
-    expect(markup).toContain("1–3 glitches · 9 ms · 7 ms stagger");
+    expect(markup).toContain("1–3 glitches · 9 ms · 50 ms spread");
   });
 
   it("marks fixture items with explicit reveal semantics", () => {

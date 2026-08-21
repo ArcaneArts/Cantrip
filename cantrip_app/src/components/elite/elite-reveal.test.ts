@@ -4,8 +4,12 @@ import {
   createEliteGlitchFrame,
   createEliteGlitchSequence,
   DEFAULT_ELITE_REVEAL_CONFIG,
+  ELITE_CHROMATIC_PAIRS,
   ELITE_GLITCH_VARIANTS,
+  ELITE_GLITCH_VARIANT_WEIGHTS,
+  eliteStaggerDelayForVisibleRank,
   normalizeEliteRevealConfig,
+  selectEliteGlitchVariant,
   variantsForEliteContent,
   type EliteRevealConfig,
 } from "./elite-reveal";
@@ -14,7 +18,7 @@ const config: EliteRevealConfig = {
   glitchCountMax: 4,
   glitchCountMin: 2,
   glitchShowMs: 15,
-  staggerDelayMs: 25,
+  staggerSpreadMs: 50,
   variants: ["outline", "chromatic", "text-jitter"],
 };
 
@@ -24,7 +28,7 @@ describe("Elite reveal sequencing", () => {
       glitchCountMax: 3,
       glitchCountMin: 1,
       glitchShowMs: 9,
-      staggerDelayMs: 7,
+      staggerSpreadMs: 50,
     });
   });
 
@@ -34,14 +38,14 @@ describe("Elite reveal sequencing", () => {
         glitchCountMax: -10,
         glitchCountMin: 99,
         glitchShowMs: 2,
-        staggerDelayMs: 999,
+        staggerSpreadMs: 999,
         variants: ["outline", "outline"],
       }),
     ).toEqual({
       glitchCountMax: 8,
       glitchCountMin: 8,
       glitchShowMs: 5,
-      staggerDelayMs: 250,
+      staggerSpreadMs: 250,
       variants: ["outline"],
     });
   });
@@ -60,6 +64,49 @@ describe("Elite reveal sequencing", () => {
       "text-jitter",
       "outline",
     ]);
+  });
+
+  it("weights disruptive block frames at half the other variants", () => {
+    expect(ELITE_GLITCH_VARIANT_WEIGHTS).toMatchObject({
+      chromatic: 1,
+      "full-frame": 0.5,
+      "left-frame": 0.5,
+      outline: 1,
+      "right-frame": 0.5,
+    });
+    const variants = ["outline", "full-frame", "chromatic"] as const;
+    expect(selectEliteGlitchVariant(variants, () => 0.39)).toBe("outline");
+    expect(selectEliteGlitchVariant(variants, () => 0.45)).toBe("full-frame");
+    expect(selectEliteGlitchVariant(variants, () => 0.9)).toBe("chromatic");
+
+    const selectionCounts = Object.fromEntries(
+      ELITE_GLITCH_VARIANTS.map((variant) => [variant, 0]),
+    ) as Record<(typeof ELITE_GLITCH_VARIANTS)[number], number>;
+    for (let index = 0; index < 6_500; index += 1) {
+      const variant = selectEliteGlitchVariant(
+        ELITE_GLITCH_VARIANTS,
+        () => (index + 0.5) / 6_500,
+      );
+      if (variant) selectionCounts[variant] += 1;
+    }
+    expect(selectionCounts).toMatchObject({
+      "full-frame": 500,
+      "left-frame": 500,
+      "right-frame": 500,
+      chromatic: 1_000,
+      outline: 1_000,
+      scanline: 1_000,
+      "spatial-shift": 1_000,
+      "text-jitter": 1_000,
+    });
+  });
+
+  it("spreads every visible density through the configured time window", () => {
+    expect(eliteStaggerDelayForVisibleRank(0, 100, 50)).toBe(0);
+    expect(eliteStaggerDelayForVisibleRank(49, 100, 50)).toBe(25);
+    expect(eliteStaggerDelayForVisibleRank(99, 100, 50)).toBe(50);
+    expect(eliteStaggerDelayForVisibleRank(0, 1, 50)).toBe(0);
+    expect(eliteStaggerDelayForVisibleRank(-1, 100, 50)).toBe(50);
   });
 
   it("keeps text-only variants away from boxes and controls", () => {
@@ -83,7 +130,7 @@ describe("Elite reveal sequencing", () => {
   });
 
   it("randomizes chromatic split angle and distance", () => {
-    const randomValues = [0.25, 0.5];
+    const randomValues = [0.25, 0.5, 0.6];
     const frame = createEliteGlitchFrame(
       "chromatic",
       () => randomValues.shift() ?? 0,
@@ -93,6 +140,15 @@ describe("Elite reveal sequencing", () => {
     expect(frame.chromaticDistancePx).toBe(3.5);
     expect(frame.chromaticOffsetXPx).toBeCloseTo(0);
     expect(frame.chromaticOffsetYPx).toBe(3.5);
+    expect(frame.chromaticChannelA).toBe(ELITE_CHROMATIC_PAIRS[3].channelA);
+    expect(frame.chromaticChannelB).toBe(ELITE_CHROMATIC_PAIRS[3].channelB);
+  });
+
+  it("offers several contrasting chromatic palettes", () => {
+    expect(ELITE_CHROMATIC_PAIRS.length).toBeGreaterThanOrEqual(5);
+    expect(
+      new Set(ELITE_CHROMATIC_PAIRS.map((pair) => pair.channelA)).size,
+    ).toBe(ELITE_CHROMATIC_PAIRS.length);
   });
 
   it("limits spatial displacement to seven and a half percent", () => {
