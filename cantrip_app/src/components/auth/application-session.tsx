@@ -643,8 +643,10 @@ function AuthenticatedApplication({
         queries: {
           refetchOnWindowFocus: false,
           retry: (failureCount, error) =>
-            !(error instanceof CantripApiError && error.status === 429) &&
-            failureCount < 3,
+            !(
+              error instanceof CantripApiError &&
+              [429, 503].includes(error.status)
+            ) && failureCount < 3,
         },
       },
     });

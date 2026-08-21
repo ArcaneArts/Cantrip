@@ -300,6 +300,7 @@ import {
   type ExplorerOperationResultContent,
 } from "@cantrip/protocol/surface-stream";
 import {
+  repositoryOperationAccess,
   repositoryMetadataResultSchema,
   repositoryMetadataValuesSchema,
   repositoryRoutingHandleSchema,
@@ -1523,6 +1524,8 @@ const repositoryOperationTargetCache =
   new ShortLivedRequestCache<RepositoryOperationTarget>(2_000);
 const repositoryWorkerReadinessCache =
   new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
+const repositoryWorktreeStatusCache =
+  new ShortLivedRequestCache<WorktreeStatusResult>(1_000);
 
 function repositoryOperationCacheNamespace(): string {
   const session = getClientSession();
@@ -1616,6 +1619,7 @@ async function runProtectedRepositoryOperation<T>(input: {
           body: JSON.stringify({
             operationId,
             protectedRequest,
+            access: repositoryOperationAccess(input.type),
             agent: input.agent ?? false,
             ...(input.modelId ? { modelId: input.modelId } : {}),
           }),
@@ -1640,6 +1644,24 @@ async function runProtectedRepositoryOperation<T>(input: {
   });
   if (!outcome.ok) throw new CantripApiError(outcome.error, 422);
   return input.resultSchema.parse(outcome.result);
+}
+
+function getProtectedWorktreeStatus(input: {
+  projectId: string;
+  target?: RepositoryOperationTarget;
+  worktreeId: string;
+}): Promise<WorktreeStatusResult> {
+  const key = `${repositoryOperationCacheNamespace()}\0${input.projectId}\0${input.worktreeId}`;
+  return repositoryWorktreeStatusCache.get(key, () =>
+    runProtectedRepositoryOperation({
+      projectId: input.projectId,
+      worktreeId: input.worktreeId,
+      target: input.target,
+      type: "worktree.status",
+      arguments: {},
+      resultSchema: worktreeStatusResultSchema,
+    }),
+  );
 }
 
 async function runProtectedWorkerRepositoryOperation<T>(input: {
@@ -1670,7 +1692,12 @@ async function runProtectedWorkerRepositoryOperation<T>(input: {
   const wire = repositoryOperationWireResponseSchema.parse(
     await post(
       `/api/workers/${encodeURIComponent(input.workerId)}/repository-operation`,
-      { scopeId: input.scopeId, operationId, protectedRequest },
+      {
+        scopeId: input.scopeId,
+        operationId,
+        protectedRequest,
+        access: repositoryOperationAccess(input.type),
+      },
     ),
   );
   const outcome = await openRepositoryOperationContent({
@@ -1796,7 +1823,7 @@ export async function getProjectWorktrees(
         };
       }
       try {
-        const status = await runProtectedRepositoryOperation({
+        const status = await getProtectedWorktreeStatus({
           projectId,
           worktreeId: worktree.id,
           target: {
@@ -1805,9 +1832,6 @@ export async function getProjectWorktrees(
               ({ workerId }) => workerId === worktree.workerId,
             ),
           },
-          type: "worktree.status",
-          arguments: {},
-          resultSchema: worktreeStatusResultSchema,
         });
         options.onStatus?.(worktree.id, status);
         const privateState = status.worktree;
@@ -1843,12 +1867,9 @@ export async function getProjectWorktreeStatus(
   projectId: string,
   worktreeId: string,
 ) {
-  return runProtectedRepositoryOperation({
+  return getProtectedWorktreeStatus({
     projectId,
     worktreeId,
-    type: "worktree.status",
-    arguments: {},
-    resultSchema: worktreeStatusResultSchema,
   });
 }
 

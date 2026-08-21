@@ -156,6 +156,106 @@ export const repositoryOperationTypeSchema = z.enum([
   "github.release.create",
 ]);
 
+export type RepositoryOperationType = z.infer<
+  typeof repositoryOperationTypeSchema
+>;
+
+export const repositoryOperationAccessSchema = z.enum(["read", "write"]);
+
+export type RepositoryOperationAccess = z.infer<
+  typeof repositoryOperationAccessSchema
+>;
+
+const repositoryOperationAccessByType = {
+  "git.history": "read",
+  "git.graph.snapshot": "read",
+  "git.graph.metrics": "read",
+  "git.graph.commit-overlay": "read",
+  "git.file.history": "read",
+  "git.file.blame": "read",
+  "git.commit.search": "read",
+  "git.recovery.list": "read",
+  "git.recovery.preview": "read",
+  "git.recovery.apply": "write",
+  "git.commit.get": "read",
+  "git.commit.signature.get": "read",
+  "git.refs.list": "read",
+  "git.compare": "read",
+  "git.revision.diff": "read",
+  "git.status": "read",
+  "git.diff": "read",
+  "git.patch.preview": "read",
+  "git.patch.apply": "write",
+  "git.stash.list": "read",
+  "git.stash.create": "write",
+  "git.stash.diff": "read",
+  "git.stash.action.preview": "read",
+  "git.stash.action.apply": "write",
+  "git.branch.list": "read",
+  "git.branch.action.preview": "read",
+  "git.branch.action.apply": "write",
+  "git.remote.list": "read",
+  "git.remote.action.preview": "read",
+  "git.remote.action.apply": "write",
+  "git.submodule.list": "read",
+  "git.submodule.action.preview": "read",
+  "git.submodule.action.apply": "write",
+  "git.lfs.status": "read",
+  "git.lfs.action.preview": "read",
+  "git.lfs.action.apply": "write",
+  "git.tag.list": "read",
+  "git.tag.get": "read",
+  "git.tag.action.preview": "read",
+  "git.tag.action.apply": "write",
+  "git.commit.action.preview": "read",
+  "git.commit.action.apply": "write",
+  "git.operation.current": "read",
+  "git.operation.preview": "read",
+  "git.operation.start": "write",
+  "git.operation.control": "write",
+  "git.operation.amend": "write",
+  "git.conflicts.list": "read",
+  "git.conflicts.get": "read",
+  "git.conflicts.preview": "read",
+  "git.conflicts.apply": "write",
+  "git.action": "write",
+  "git.force-push.preview": "read",
+  "git.force-push.apply": "write",
+  "git.agent.generate": "read",
+  "worktree.status": "read",
+  "repository.metadata.register": "write",
+  "repository.metadata.resolve": "read",
+  "github.auth.status": "read",
+  "github.repositories.cached": "read",
+  "github.repositories.list": "read",
+  "github.repository-owners.list": "read",
+  "github.repositories.create": "write",
+  "github.issues.list": "read",
+  "github.issue.get": "read",
+  "github.issue.create": "write",
+  "github.issue.comment": "write",
+  "github.issue.close": "write",
+  "github.pull-requests.list": "read",
+  "github.pull-request.get": "read",
+  "github.pull-request.create": "write",
+  "github.pull-request.comment": "write",
+  "github.pull-request.review.submit": "write",
+  "github.pull-request.review.comment": "write",
+  "github.pull-request.review.reply": "write",
+  "github.pull-request.lifecycle.preview": "read",
+  "github.pull-request.lifecycle.apply": "write",
+  "github.pull-request.checkout.prepare": "read",
+  "github.releases.list": "read",
+  "github.release.get": "read",
+  "github.release.create": "write",
+} as const satisfies Record<RepositoryOperationType, RepositoryOperationAccess>;
+
+export function repositoryOperationAccess(
+  type: RepositoryOperationType,
+): RepositoryOperationAccess {
+  return repositoryOperationAccessByType[type];
+}
+
 export const repositoryOperationDirectionSchema = z.enum([
   "request",
   "response",
@@ -203,6 +303,7 @@ export const repositoryOperationWireRequestSchema = z
   .object({
     operationId: repositoryOperationContextSchema.shape.operationId,
     protectedRequest: repositoryOperationOpaqueSchema,
+    access: repositoryOperationAccessSchema.default("write"),
     agent: z.boolean().default(false),
     modelId: z.string().min(1).max(200).optional(),
   })
@@ -246,9 +347,6 @@ export type RepositoryOperationRequestContent = z.infer<
 >;
 export type RepositoryOperationOutcomeContent = z.infer<
   typeof repositoryOperationOutcomeContentSchema
->;
-export type RepositoryOperationType = z.infer<
-  typeof repositoryOperationTypeSchema
 >;
 export type RepositoryMetadataValues = z.infer<
   typeof repositoryMetadataValuesSchema

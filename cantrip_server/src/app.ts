@@ -9463,32 +9463,36 @@ export async function buildApp({
               request.params.projectId,
             )
           : [];
+        const dispatch = () =>
+          bridge.request(
+            context.workerId,
+            {
+              type: "repository.operation" as const,
+              serverId,
+              projectId: request.params.projectId,
+              worktreeId: request.params.worktreeId,
+              cwd: context.worktree.path,
+              sourcePath: context.sourcePath,
+              repository:
+                githubContext?.workerId === context.workerId
+                  ? githubContext.nameWithOwner
+                  : null,
+              ...input.data,
+              modelId: agentModelId ?? undefined,
+              agentRuntimes: agentRuntimes.map((runtime) => ({
+                routeId: runtime.routeId,
+                model: runtime.model,
+                provider: runtime.provider,
+              })),
+              mcpServers,
+            },
+            { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+          );
         const result = repositoryOperationWireResponseSchema.parse(
-          await worktreeCoordinator.serialize(request.params.projectId, () =>
-            bridge.request(
-              context.workerId,
-              {
-                type: "repository.operation",
-                serverId,
-                projectId: request.params.projectId,
-                worktreeId: request.params.worktreeId,
-                cwd: context.worktree.path,
-                sourcePath: context.sourcePath,
-                repository:
-                  githubContext?.workerId === context.workerId
-                    ? githubContext.nameWithOwner
-                    : null,
-                ...input.data,
-                modelId: agentModelId ?? undefined,
-                agentRuntimes: agentRuntimes.map((runtime) => ({
-                  routeId: runtime.routeId,
-                  model: runtime.model,
-                  provider: runtime.provider,
-                })),
-                mcpServers,
-              },
-              { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
-            ),
+          await worktreeCoordinator.serialize(
+            request.params.projectId,
+            dispatch,
+            { notifyProjectChanged: input.data.access === "write" },
           ),
         );
         if (result.agentExecution) {
