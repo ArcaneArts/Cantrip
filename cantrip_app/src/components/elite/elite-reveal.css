@@ -1,0 +1,143 @@
+.elite-reveal {
+  --elite-reveal-accent: color-mix(
+    in oklab,
+    var(--foreground) 94%,
+    transparent
+  );
+  isolation: isolate;
+  min-width: 0;
+  position: relative;
+}
+
+.elite-reveal__content {
+  min-width: 0;
+}
+
+.elite-reveal__signal {
+  inset: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
+}
+
+.elite-reveal[data-state="waiting"] > .elite-reveal__content {
+  opacity: 0;
+}
+
+.elite-reveal[data-state="glitch"] > .elite-reveal__signal {
+  opacity: 1;
+}
+
+.elite-reveal[data-variant="outline"] > .elite-reveal__content,
+.elite-reveal[data-variant="full-frame"] > .elite-reveal__content,
+.elite-reveal[data-variant="left-frame"] > .elite-reveal__content,
+.elite-reveal[data-variant="right-frame"] > .elite-reveal__content {
+  opacity: 0;
+}
+
+.elite-reveal[data-variant="outline"] > .elite-reveal__signal {
+  border: 1px solid var(--elite-reveal-accent);
+  box-shadow:
+    0 0 7px color-mix(in oklab, var(--foreground) 45%, transparent),
+    inset 0 0 5px color-mix(in oklab, var(--foreground) 24%, transparent);
+}
+
+.elite-reveal[data-variant="full-frame"] > .elite-reveal__signal {
+  background: var(--elite-reveal-accent);
+  box-shadow: 0 0 9px color-mix(in oklab, var(--foreground) 45%, transparent);
+}
+
+.elite-reveal[data-variant="left-frame"] > .elite-reveal__signal {
+  background: var(--elite-reveal-accent);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 38%, transparent);
+  clip-path: inset(0 48% 0 0);
+}
+
+.elite-reveal[data-variant="right-frame"] > .elite-reveal__signal {
+  background: var(--elite-reveal-accent);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 38%, transparent);
+  clip-path: inset(0 0 0 48%);
+}
+
+.elite-reveal[data-variant="chromatic"] > .elite-reveal__content {
+  filter: drop-shadow(2px 0 0 rgb(0 224 255 / 85%))
+    drop-shadow(-2px 0 0 rgb(255 34 122 / 78%));
+  opacity: 0.88;
+  transform: translateX(1px) skewX(-0.45deg);
+}
+
+.elite-reveal[data-variant="chromatic"] > .elite-reveal__signal {
+  background: linear-gradient(
+    90deg,
+    rgb(0 224 255 / 12%),
+    transparent 38%,
+    rgb(255 34 122 / 14%)
+  );
+  mix-blend-mode: screen;
+}
+
+.elite-reveal[data-variant="noise"] > .elite-reveal__content {
+  filter: contrast(1.7) saturate(0.25);
+  opacity: 0.42;
+}
+
+.elite-reveal[data-variant="noise"] > .elite-reveal__signal {
+  background:
+    repeating-linear-gradient(
+      93deg,
+      transparent 0 3px,
+      color-mix(in oklab, var(--foreground) 44%, transparent) 3px 4px,
+      transparent 4px 9px
+    ),
+    repeating-linear-gradient(
+      0deg,
+      color-mix(in oklab, var(--foreground) 9%, transparent) 0 1px,
+      transparent 1px 3px
+    );
+  clip-path: polygon(
+    0 4%,
+    100% 0,
+    100% 24%,
+    3% 30%,
+    0 62%,
+    98% 55%,
+    100% 92%,
+    0 100%
+  );
+}
+
+.elite-reveal[data-variant="scanline"] > .elite-reveal__content {
+  filter: brightness(1.35) contrast(1.2);
+  opacity: 0.72;
+}
+
+.elite-reveal[data-variant="scanline"] > .elite-reveal__signal {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0 2px,
+    color-mix(in oklab, var(--foreground) 36%, transparent) 2px 3px,
+    transparent 3px 5px
+  );
+  box-shadow: inset 0 1px var(--elite-reveal-accent);
+}
+
+.elite-reveal[data-variant="text-jitter"] > .elite-reveal__content {
+  filter: contrast(1.4);
+  letter-spacing: 0.035em;
+  opacity: 0.76;
+  text-shadow:
+    1px 0 rgb(0 224 255 / 80%),
+    -1px 0 rgb(255 34 122 / 72%);
+  transform: translate(1px, -0.5px) skewX(-1deg);
+}
+
+.elite-reveal[data-variant="text-jitter"] > .elite-reveal__signal {
+  background: linear-gradient(
+    transparent 42%,
+    color-mix(in oklab, var(--foreground) 38%, transparent) 43% 48%,
+    transparent 49%
+  );
+  clip-path: inset(24% 0 29% 0);
+}
