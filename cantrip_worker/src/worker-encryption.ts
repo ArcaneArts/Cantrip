@@ -67,7 +67,10 @@ export class WorkerEncryptionError extends Error {
   }
 }
 
-function canonicalServerId(serverUrl: string): string {
+function canonicalServerId(
+  serverUrl: string,
+  allowLoopbackServerPortChange = false,
+): string {
   const parsed = new URL(serverUrl);
   if (
     !["http:", "https:"].includes(parsed.protocol) ||
@@ -82,6 +85,12 @@ function canonicalServerId(serverUrl: string): string {
       "Worker encryption requires an HTTP(S) server origin.",
     );
   }
+  if (
+    allowLoopbackServerPortChange &&
+    ["127.0.0.1", "localhost", "[::1]", "::1"].includes(parsed.hostname)
+  ) {
+    parsed.port = "";
+  }
   return parsed.origin;
 }
 
@@ -95,7 +104,11 @@ function readRecord(pathname: string): unknown {
 
 function parseRecord(
   value: unknown,
-  expected: { serverId: string; workerId: string },
+  expected: {
+    allowLoopbackServerPortChange: boolean;
+    serverId: string;
+    workerId: string;
+  },
 ): StoredWorkerEncryptionKey {
   if (!value || typeof value !== "object") {
     throw new WorkerEncryptionError(
@@ -115,6 +128,7 @@ function parseRecord(
   }
   if (
     record.version !== 1 ||
+    typeof record.serverId !== "string" ||
     typeof record.principalId !== "string" ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
       record.principalId,
@@ -129,8 +143,20 @@ function parseRecord(
       "The stored worker encryption key is invalid.",
     );
   }
+  let storedServerId: string;
+  try {
+    storedServerId = canonicalServerId(
+      record.serverId,
+      expected.allowLoopbackServerPortChange,
+    );
+  } catch {
+    throw new WorkerEncryptionError(
+      "corrupt-key-record",
+      "The stored worker encryption server identity is invalid.",
+    );
+  }
   if (
-    record.serverId !== expected.serverId ||
+    storedServerId !== expected.serverId ||
     record.workerId !== expected.workerId
   ) {
     throw new WorkerEncryptionError(
@@ -182,6 +208,7 @@ export class WorkerEncryptionService {
 
   private constructor(
     private readonly pathname: string,
+    private readonly serverUrl: string,
     private readonly serverId: string,
     private readonly workerId: string,
     private readonly principalId: string,
@@ -213,14 +240,22 @@ export class WorkerEncryptionService {
   }
 
   static async open(input: {
+    allowLoopbackServerPortChange?: boolean;
     dataDirectory: string;
     serverUrl: string;
     workerId: string;
   }): Promise<WorkerEncryptionService> {
-    const serverId = canonicalServerId(input.serverUrl);
+    const serverUrl = canonicalServerId(input.serverUrl);
+    const allowLoopbackServerPortChange =
+      input.allowLoopbackServerPortChange ?? false;
+    const serverId = canonicalServerId(
+      serverUrl,
+      allowLoopbackServerPortChange,
+    );
     const pathname = workerEncryptionKeyPath(input.dataDirectory);
     if (existsSync(pathname)) {
       const record = parseRecord(readRecord(pathname), {
+        allowLoopbackServerPortChange,
         serverId,
         workerId: input.workerId,
       });
@@ -264,8 +299,12 @@ export class WorkerEncryptionService {
             "The stored worker encryption keypair does not match.",
           );
         }
+        if (record.serverId !== serverId) {
+          writeRecord(pathname, { ...record, serverId });
+        }
         return new WorkerEncryptionService(
           pathname,
+          serverUrl,
           serverId,
           input.workerId,
           record.principalId,
@@ -300,6 +339,7 @@ export class WorkerEncryptionService {
     }
     return new WorkerEncryptionService(
       pathname,
+      serverUrl,
       serverId,
       input.workerId,
       principalId,
@@ -354,7 +394,7 @@ export class WorkerEncryptionService {
     let response: Response;
     try {
       response = await fetcher(
-        `${this.serverId}/api/internal/workers/encryption/bootstrap`,
+        `${this.serverUrl}/api/internal/workers/encryption/bootstrap`,
         {
           body: JSON.stringify(this.registration()),
           headers: {

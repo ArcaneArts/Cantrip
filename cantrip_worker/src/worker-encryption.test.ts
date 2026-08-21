@@ -114,14 +114,38 @@ describe("persistent worker encryption", () => {
     } satisfies Partial<WorkerEncryptionError>);
     await expect(
       WorkerEncryptionService.open({
+        allowLoopbackServerPortChange: true,
         dataDirectory,
-        serverUrl: "https://other.test",
+        serverUrl: "https://cantrip.test:8443",
         workerId: "worker-a",
       }),
     ).rejects.toMatchObject({
       code: "identity-mismatch",
     } satisfies Partial<WorkerEncryptionError>);
     expect(service.status().state).toBe("pending-approval");
+  });
+
+  it("reuses a bundled local identity when the server port changes", async () => {
+    const dataDirectory = await directory();
+    const original = await WorkerEncryptionService.open({
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:62586",
+      workerId: "desktop-local",
+    });
+    const originalRegistration = original.registration();
+
+    const reopened = await WorkerEncryptionService.open({
+      allowLoopbackServerPortChange: true,
+      dataDirectory,
+      serverUrl: "http://127.0.0.1:63891",
+      workerId: "desktop-local",
+    });
+
+    expect(reopened.registration()).toEqual(originalRegistration);
+    const record = JSON.parse(
+      await readFile(workerEncryptionKeyPath(dataDirectory), "utf8"),
+    ) as { serverId: string };
+    expect(record.serverId).toBe("http://127.0.0.1");
   });
 
   it("opens client-created scoped grants, restores after restart, and fails closed", async () => {
