@@ -9,6 +9,7 @@ import type {
   ChatRelocationJobSummary,
   ChatSummary,
   ChatTurnMode,
+  ClientControlCommand,
   CodeAppearance,
   CodeTabSummary,
   ExecutionTarget,
@@ -242,7 +243,11 @@ import {
   shouldUseDesktopSidebarDrawer,
   useNarrowViewport,
 } from "@/lib/use-compact-layout";
-import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
+import {
+  useAppLiveClientControl,
+  useAppLiveScope,
+  useAppLiveStatus,
+} from "@/lib/app-live-react";
 import {
   chatResourceRefreshIntervalMs,
   chatTranscriptNeedsFastRefresh,
@@ -3076,6 +3081,16 @@ export function App() {
   const [workspaceDragError, setWorkspaceDragError] = useState<string | null>(
     null,
   );
+  const [clientControlNotice, setClientControlNotice] = useState<{
+    level: "info" | "warning" | "error";
+    title: string;
+    message: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!clientControlNotice) return;
+    const timer = window.setTimeout(() => setClientControlNotice(null), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [clientControlNotice]);
   const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
   const selectedChatId = projectSurfaceTabId(selectedTabKey, "chat");
   const selectedTerminalId = projectSurfaceTabId(selectedTabKey, "terminal");
@@ -5620,6 +5635,52 @@ export function App() {
     }
     selectProjectFromSidebar(projectId);
   };
+  const handleClientControl = useCallback(
+    (command: ClientControlCommand) => {
+      if (!projects.data?.some(({ id }) => id === command.projectId)) {
+        return {
+          status: "declined" as const,
+          detail: "The requested project is not available in this client.",
+        };
+      }
+      window.focus();
+      switch (command.kind) {
+        case "notify":
+          setClientControlNotice({
+            level: command.level,
+            title: command.title,
+            message: command.message,
+          });
+          return { status: "applied" as const };
+        case "focus-project":
+          selectProjectFromCommandBar(command.projectId);
+          return { status: "applied" as const };
+        case "focus-surface":
+          selectProjectFromCommandBar(command.projectId);
+          openCreatedTab(
+            command.projectId,
+            command.surfaceKind,
+            command.surfaceId,
+          );
+          return { status: "applied" as const };
+        case "show-interaction":
+          selectProjectFromCommandBar(command.projectId);
+          openCreatedTab(command.projectId, "chat", command.chatId);
+          void queryClient.invalidateQueries({
+            queryKey: ["agent-requests", command.chatId, "pending"],
+          });
+          return { status: "applied" as const };
+      }
+    },
+    [
+      activeProjectWorkspace,
+      activeProjectWorkspaceStorageKey,
+      projectWorkspaces.data,
+      projects.data,
+      queryClient,
+    ],
+  );
+  useAppLiveClientControl(handleClientControl);
   const closeCompactProject = () => {
     setSelectedProjectId(null);
     setWorkspaceSelection(emptyWorkspaceSelection());
@@ -6348,6 +6409,31 @@ export function App() {
         ref={contentRootRef}
         className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
+        {clientControlNotice ? (
+          <button
+            type="button"
+            className={cn(
+              "absolute right-3 top-3 z-50 flex max-w-sm items-start gap-2 rounded-lg border bg-background/95 px-3 py-2 text-left text-xs shadow-lg backdrop-blur-xl",
+              clientControlNotice.level === "error"
+                ? "border-destructive/40 text-destructive"
+                : clientControlNotice.level === "warning"
+                  ? "border-amber-500/40 text-amber-700 dark:text-amber-300"
+                  : "border-primary/30 text-foreground",
+            )}
+            onClick={() => setClientControlNotice(null)}
+            title="Dismiss"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <span className="min-w-0">
+              <span className="block font-medium">
+                {clientControlNotice.title}
+              </span>
+              <span className="mt-0.5 block break-words text-muted-foreground">
+                {clientControlNotice.message}
+              </span>
+            </span>
+          </button>
+        ) : null}
         {workspaceDragError ? (
           <button
             type="button"

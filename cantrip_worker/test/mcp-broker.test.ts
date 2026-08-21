@@ -255,7 +255,7 @@ describe("Cantrip MCP worker broker", () => {
             worktreeId: "worktree-one",
           },
         });
-        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(8);
+        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(12);
       } finally {
         await client.close();
         await broker.close();
