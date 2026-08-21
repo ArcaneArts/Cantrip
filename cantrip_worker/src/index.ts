@@ -2991,7 +2991,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return executeProtectedWorkflowNode({
           command,
           service: workerEncryption,
-          execute: async (protectedOptions) =>
+          execute: async ({ executionKey, threadId, ...protectedOptions }) =>
             runtimeFor({
               model: command.model,
               provider: provider(),
@@ -2999,11 +2999,15 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               workflowRunId: command.workflowRunId,
               runNodeId: command.runNodeId,
               attemptId: command.attemptId,
-              idempotencyKey: command.idempotencyKey,
+              idempotencyKey: createHash("sha256")
+                .update(command.idempotencyKey)
+                .update("\0")
+                .update(executionKey)
+                .digest("hex"),
               worktreeId: command.worktreeId,
               rootKind: command.rootKind,
               cwd: command.cwd,
-              threadId: command.threadId,
+              threadId,
               ...protectedOptions,
               mutationMode: command.mutationMode,
               permissionProfileId: command.permissionProfileId,

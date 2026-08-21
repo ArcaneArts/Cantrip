@@ -2160,6 +2160,7 @@ export const protectedWorkflowNodeExecutionRequestSchema = z.object({
   workflowRevisionId: idSchema,
   revisionNodeId: idSchema,
   nodePosition: z.number().int().nonnegative().max(999),
+  nodeType: workflowNodeTypeSchema,
   runNodeId: idSchema,
   attemptId: idSchema,
   idempotencyKey: z.string().trim().min(1).max(200),
@@ -2182,8 +2183,20 @@ export const protectedWorkflowNodeExecutionRequestSchema = z.object({
     )
     .max(1_000)
     .default([]),
+  outgoingDependencies: z
+    .array(
+      z
+        .object({
+          edgePosition: z.number().int().nonnegative().max(2_047),
+          dependencyId: idSchema,
+        })
+        .strict(),
+    )
+    .max(2_048)
+    .default([]),
   mutationMode: workflowMutationModeSchema,
   permissionProfileId: optionalIdSchema,
+  maxNodeExecutions: z.number().int().min(1).max(1_000),
   timeoutMs: z
     .number()
     .int()
@@ -2197,9 +2210,11 @@ export const protectedWorkflowNodeExecutionResultSchema = z.discriminatedUnion(
     z
       .object({
         status: z.literal("completed"),
-        threadId: idSchema,
-        turnId: idSchema,
+        threadId: optionalIdSchema,
+        turnId: optionalIdSchema,
         measuredUsage: workflowMeasuredUsageSchema,
+        logicalExecutionCount: z.number().int().min(1).max(1_000),
+        selectedDependencyIds: z.array(idSchema).max(2_048).nullable(),
         protectedNodeInput: workflowContentOpaqueSchema,
         protectedNodeResult: workflowContentOpaqueSchema,
         protectedAttemptInput: workflowContentOpaqueSchema,

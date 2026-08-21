@@ -623,36 +623,6 @@ export class WorkflowExecutor {
         );
         break;
       }
-      const collectionAdvanced =
-        await this.repository.workflowRuns.advanceReadyCollectionNode(
-          this.#ownerId(),
-          runId,
-        );
-      if (collectionAdvanced === null) break;
-      if (collectionAdvanced) {
-        this.notifyRunChanged(runId, projectId, "workflow-node");
-        continue;
-      }
-      const repeatUntilAdvanced =
-        await this.repository.workflowRuns.advanceReadyRepeatUntilNode(
-          this.#ownerId(),
-          runId,
-        );
-      if (repeatUntilAdvanced === null) break;
-      if (repeatUntilAdvanced) {
-        this.notifyRunChanged(runId, projectId, "workflow-node");
-        continue;
-      }
-      const controlAdvanced =
-        await this.repository.workflowRuns.advanceReadyControlNode(
-          this.#ownerId(),
-          runId,
-        );
-      if (controlAdvanced === null) break;
-      if (controlAdvanced) {
-        this.notifyRunChanged(runId, projectId, "workflow-node");
-        continue;
-      }
       const candidates =
         await this.repository.workflowRuns.getReadyAgentCandidates(
           this.#ownerId(),
@@ -860,6 +830,7 @@ export class WorkflowExecutor {
           workflowRevisionId: lease.candidate.run.workflowRevisionId,
           revisionNodeId: lease.candidate.node.revisionNodeId,
           nodePosition: lease.candidate.nodePosition,
+          nodeType: lease.candidate.node.nodeType,
           runNodeId: lease.candidate.node.id,
           attemptId: lease.attemptId,
           idempotencyKey: lease.idempotencyKey,
@@ -872,10 +843,12 @@ export class WorkflowExecutor {
           protectedDefinition: lease.candidate.protectedDefinition,
           protectedRunInput: lease.candidate.protectedRunInput,
           predecessorResults: lease.candidate.predecessorResults,
+          outgoingDependencies: lease.candidate.outgoingDependencies,
           mutationMode: lease.candidate.node.writeCapable
             ? "write"
             : "read-only",
           permissionProfileId: lease.candidate.node.permissionProfileId,
+          maxNodeExecutions: lease.candidate.maxNodeExecutions,
           timeoutMs: lease.timeoutMs,
           model: runtime.model,
           provider: runtime.provider,
