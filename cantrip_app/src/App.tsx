@@ -3360,7 +3360,15 @@ export function App() {
     enabled: Boolean(
       selectedProjectId && selectedProject?.capabilities.worktrees,
     ),
-    queryFn: () => getProjectWorktrees(selectedProjectId!),
+    queryFn: () =>
+      getProjectWorktrees(selectedProjectId!, {
+        onStatus: (worktreeId, result) => {
+          queryClient.setQueryData(
+            ["worktree-status", selectedProjectId!, worktreeId],
+            result.status,
+          );
+        },
+      }),
     queryKey: ["worktrees", selectedProjectId],
     refetchInterval: projectResourcesLive ? false : 15_000,
   });
@@ -3381,6 +3389,7 @@ export function App() {
           ? false
           : 15_000,
       retry: false,
+      staleTime: 15_000,
     })),
   });
   const worktreeStatuses = useMemo<WorktreeStatusMap>(

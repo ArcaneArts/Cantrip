@@ -32,6 +32,7 @@ import {
   login,
   registerAccount,
 } from "@/lib/api";
+import { CantripApiError } from "@/lib/api-client";
 import { AppLiveClient, appLiveWebSocketUrl } from "@/lib/app-live-client";
 import { AppLiveQueryBridge } from "@/lib/app-live-query";
 import { AppLiveProvider } from "@/lib/app-live-react";
@@ -638,7 +639,14 @@ function AuthenticatedApplication({
   const serverUrl = getActiveServerConnection()?.url ?? "";
   const queryClient = useMemo(() => {
     const client = new QueryClient({
-      defaultOptions: { queries: { refetchOnWindowFocus: false } },
+      defaultOptions: {
+        queries: {
+          refetchOnWindowFocus: false,
+          retry: (failureCount, error) =>
+            !(error instanceof CantripApiError && error.status === 429) &&
+            failureCount < 3,
+        },
+      },
     });
     client.setQueryData(["server-bootstrap"], bootstrap);
     return client;

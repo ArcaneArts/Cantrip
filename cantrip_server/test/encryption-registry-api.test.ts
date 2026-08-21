@@ -267,9 +267,10 @@ describe("opaque encryption registry", () => {
       });
 
       expect(response.statusCode).toBe(200);
-      expect(
-        workerEncryptionBootstrapResultSchema.parse(response.json()),
-      ).toMatchObject({
+      const initialBootstrap = workerEncryptionBootstrapResultSchema.parse(
+        response.json(),
+      );
+      expect(initialBootstrap).toMatchObject({
         principal: {
           id: principalId,
           state: "pending",
@@ -277,6 +278,60 @@ describe("opaque encryption registry", () => {
         },
         grants: [],
       });
+
+      expect(
+        (
+          await app.inject({
+            method: "POST",
+            url: `/api/encryption/principals/${principalId}/approve`,
+            payload: { expectedRevision: initialBootstrap.principal.revision },
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      const replacementPrincipalId = "44444444-4444-4444-8444-444444444444";
+      const replacementPublicKey: EncryptionPublicKey = {
+        ...publicKey,
+        value: Buffer.alloc(65, 1).toString("base64url"),
+      };
+      const replacementResponse = await app.inject({
+        method: "POST",
+        url: "/api/internal/workers/encryption/bootstrap",
+        headers: {
+          authorization: `Bearer ${config.workerToken}`,
+          "x-cantrip-worker-id": workerId,
+        },
+        payload: {
+          principalId: replacementPrincipalId,
+          publicKey: replacementPublicKey,
+        },
+      });
+      expect(replacementResponse.statusCode).toBe(200);
+      expect(
+        workerEncryptionBootstrapResultSchema.parse(replacementResponse.json()),
+      ).toMatchObject({
+        principal: {
+          id: replacementPrincipalId,
+          state: "pending",
+          workerId,
+        },
+        grants: [],
+      });
+
+      const principals = encryptionPrincipalListSchema.parse(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/api/encryption/principals",
+          })
+        ).json(),
+      );
+      expect(principals.find(({ id }) => id === principalId)).toMatchObject({
+        state: "revoked",
+      });
+      expect(
+        principals.find(({ id }) => id === replacementPrincipalId),
+      ).toMatchObject({ state: "pending", publicKey: replacementPublicKey });
     } finally {
       await app.close();
     }
