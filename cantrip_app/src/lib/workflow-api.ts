@@ -1,7 +1,7 @@
 import {
   workflowAutomationTriggerCreateSchema,
-  workflowAutomationTriggerListSchema,
-  workflowAutomationTriggerSchema,
+  workflowAutomationTriggerWireListSchema,
+  workflowAutomationTriggerWireSchema,
   workflowAutomationTriggerUpdateSchema,
   workflowDefinitionCreateSchema,
   workflowDefinitionDetailSchema,
@@ -27,7 +27,6 @@ import {
   workflowRunResumeSchema,
   workflowRunSaveRevisionSchema,
   workflowTriggerDeliveryCreateSchema,
-  workflowTriggerDeliveryResultSchema,
   workflowWorktreeOutcomeRequestSchema,
   type WorkflowAutomationTriggerCreate,
   type WorkflowAutomationTriggerQuery,
@@ -69,6 +68,14 @@ import {
   protectWorkflowRunPause,
   protectWorkflowRunResume,
 } from "@/lib/workflow-encryption";
+import {
+  openWorkflowAutomationTriggerWire,
+  openWorkflowTriggerDeliveryResult,
+  protectWorkflowAutomationTriggerCreate,
+  protectWorkflowAutomationTriggerUpdate,
+  protectWorkflowGitEventDelivery,
+  protectWorkflowTriggerDelivery,
+} from "@/lib/workflow-trigger-encryption";
 
 export async function getWorkflows(
   input: Partial<WorkflowDefinitionQuery> = {},
@@ -187,7 +194,7 @@ export async function exportWorkflowToRepository(
 export async function getWorkflowAutomationTriggers(
   input: Partial<WorkflowAutomationTriggerQuery> = {},
 ) {
-  return workflowAutomationTriggerListSchema.parse(
+  const wire = workflowAutomationTriggerWireListSchema.parse(
     await request(
       withQuery("/api/workflow-triggers", {
         projectId: input.projectId,
@@ -197,15 +204,21 @@ export async function getWorkflowAutomationTriggers(
       }),
     ),
   );
+  return Promise.all(
+    wire.map((trigger) => openWorkflowAutomationTriggerWire(trigger)),
+  );
 }
 
 export async function createWorkflowAutomationTrigger(
   input: WorkflowAutomationTriggerCreate,
 ) {
-  return workflowAutomationTriggerSchema.parse(
-    await post(
-      "/api/workflow-triggers",
-      workflowAutomationTriggerCreateSchema.parse(input),
+  const trusted = workflowAutomationTriggerCreateSchema.parse(input);
+  return openWorkflowAutomationTriggerWire(
+    workflowAutomationTriggerWireSchema.parse(
+      await post(
+        "/api/workflow-triggers",
+        await protectWorkflowAutomationTriggerCreate(trusted),
+      ),
     ),
   );
 }
@@ -214,11 +227,29 @@ export async function updateWorkflowAutomationTrigger(
   triggerId: string,
   input: WorkflowAutomationTriggerUpdate,
 ) {
-  return workflowAutomationTriggerSchema.parse(
-    await request(`/api/workflow-triggers/${encodeURIComponent(triggerId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(workflowAutomationTriggerUpdateSchema.parse(input)),
-    }),
+  const trusted = workflowAutomationTriggerUpdateSchema.parse(input);
+  return openWorkflowAutomationTriggerWire(
+    workflowAutomationTriggerWireSchema.parse(
+      await request(`/api/workflow-triggers/${encodeURIComponent(triggerId)}`, {
+        method: "PATCH",
+        body: JSON.stringify(
+          await protectWorkflowAutomationTriggerUpdate(triggerId, trusted),
+        ),
+      }),
+    ),
+  );
+}
+
+export async function deliverWorkflowApiTrigger(
+  triggerId: string,
+  input: WorkflowTriggerDeliveryCreate,
+) {
+  const trusted = workflowTriggerDeliveryCreateSchema.parse(input);
+  return openWorkflowTriggerDeliveryResult(
+    await post(
+      `/api/workflow-triggers/${encodeURIComponent(triggerId)}/deliver`,
+      await protectWorkflowTriggerDelivery(triggerId, "api", trusted),
+    ),
   );
 }
 
@@ -226,10 +257,11 @@ export async function invokeSavedWorkflowCommand(
   triggerId: string,
   input: WorkflowTriggerDeliveryCreate,
 ) {
-  return workflowTriggerDeliveryResultSchema.parse(
+  const trusted = workflowTriggerDeliveryCreateSchema.parse(input);
+  return openWorkflowTriggerDeliveryResult(
     await post(
       `/api/workflow-triggers/${encodeURIComponent(triggerId)}/invoke`,
-      workflowTriggerDeliveryCreateSchema.parse(input),
+      await protectWorkflowTriggerDelivery(triggerId, "saved-command", trusted),
     ),
   );
 }
@@ -238,10 +270,13 @@ export async function deliverWorkflowGitEvent(
   triggerId: string,
   input: WorkflowGitEventDeliveryCreate,
 ) {
-  return workflowTriggerDeliveryResultSchema.parse(
+  return openWorkflowTriggerDeliveryResult(
     await post(
       `/api/workflow-triggers/${encodeURIComponent(triggerId)}/git-event`,
-      workflowGitEventDeliveryCreateSchema.parse(input),
+      await protectWorkflowGitEventDelivery(
+        triggerId,
+        workflowGitEventDeliveryCreateSchema.parse(input),
+      ),
     ),
   );
 }

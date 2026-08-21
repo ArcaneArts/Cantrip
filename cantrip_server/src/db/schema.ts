@@ -3800,17 +3800,22 @@ export const workflowAutomationTriggers = pgTable(
     projectId: text("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "cascade" }),
-    name: text("name").notNull(),
     type: text("type").notNull(),
     enabled: boolean("enabled").notNull().default(false),
-    configuration: jsonb("configuration")
+    publicConfiguration: jsonb("public_configuration")
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
-    structuredInput: jsonb("structured_input")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
+    credentialHash: text("credential_hash"),
+    protectedName: jsonb("protected_name")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
+    protectedConfiguration: jsonb("protected_configuration")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
+    protectedInput: jsonb("protected_input")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     budget: jsonb("budget")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -3829,7 +3834,7 @@ export const workflowAutomationTriggers = pgTable(
     lastRunId: text("last_run_id").references(() => workflowRuns.id, {
       onDelete: "set null",
     }),
-    lastError: text("last_error"),
+    lastErrorCode: text("last_error_code"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -3869,12 +3874,12 @@ export const workflowTriggerDeliveries = pgTable(
     }),
     status: text("status").notNull().default("pending"),
     idempotencyKey: text("idempotency_key").notNull(),
-    triggerProvenance: jsonb("trigger_provenance")
+    publicProvenance: jsonb("public_provenance")
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    protectedPayload: jsonb("protected_payload").$type<WorkflowContentOpaque>(),
     errorCode: text("error_code"),
-    errorMessage: text("error_message"),
     dispatchInstanceId: text("dispatch_instance_id"),
     leaseToken: text("lease_token"),
     fencingToken: integer("fencing_token").notNull().default(0),

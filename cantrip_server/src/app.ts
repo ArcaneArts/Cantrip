@@ -482,17 +482,18 @@ import {
   encryptedWorkflowNodeRetrySchema,
   encryptedWorkflowRevisionCreateSchema,
   encryptedWorkflowRunCancelSchema,
-  workflowAutomationTriggerCreateSchema,
-  workflowAutomationTriggerListSchema,
+  encryptedWorkflowAutomationTriggerCreateSchema,
+  encryptedWorkflowAutomationTriggerUpdateSchema,
+  encryptedWorkflowGitEventDeliveryCreateSchema,
+  encryptedWorkflowTriggerDeliveryCreateSchema,
+  protectedWorkflowTriggerPrepareResultSchema,
   workflowAutomationTriggerQuerySchema,
-  workflowAutomationTriggerSchema,
-  workflowAutomationTriggerUpdateSchema,
+  workflowAutomationTriggerWireListSchema,
+  workflowAutomationTriggerWireSchema,
   workflowDefinitionWireDetailSchema,
   workflowDefinitionWireListSchema,
   workflowDefinitionQuerySchema,
   workflowDefinitionWireSummarySchema,
-  workflowGitEventDeliveryCreateSchema,
-  workflowJsonObjectSchema,
   workflowRevisionWireListSchema,
   workflowRevisionWireSchema,
   encryptedWorkflowRunCreateSchema,
@@ -503,12 +504,13 @@ import {
   workflowRunEventQuerySchema,
   workflowRunWireListSchema,
   workflowRunQuerySchema,
-  workflowTriggerDeliveryCreateSchema,
-  workflowTriggerDeliveryResultSchema,
+  workflowTriggerDeliveryWireResultSchema,
   workflowTriggerProvenanceSchema,
+  workflowWebhookDeliveryCreateSchema,
   workflowWorktreeOutcomeRequestSchema,
 } from "@cantrip/protocol/workflows";
 import type { WorkflowJsonObject } from "@cantrip/protocol/workflows";
+import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import {
   effectivePolicyWireListSchema,
   encryptedPolicyBootstrapSchema,
@@ -696,9 +698,7 @@ import {
   type WorkflowRunLiveChange,
 } from "./workflows/executor.js";
 import {
-  gitBranchMatches,
   safeCredentialMatch,
-  sensitiveTriggerInputPath,
   triggerDeliveryIdempotencyKey,
 } from "./workflows/trigger-helpers.js";
 import { ProjectWorktreeCoordinator } from "./worktrees/coordinator.js";
@@ -828,9 +828,6 @@ const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
 const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
 
-function workflowRuntimeCutover(): boolean {
-  return true;
-}
 const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
 const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
 const EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS = 20_000;
@@ -3591,14 +3588,14 @@ export async function buildApp({
     projectId: string,
     expected: Date,
     next: Date,
-    lastError: string | null = null,
+    lastErrorCode: string | null = null,
   ): Promise<boolean> => {
     const advanced = await repository.workflowTriggers.advanceSchedule(
       applicationOwnerId(),
       triggerId,
       expected,
       next,
-      lastError,
+      lastErrorCode,
     );
     if (advanced) publishWorkflowTriggerChange(triggerId, projectId);
     return advanced;
@@ -3610,9 +3607,8 @@ export async function buildApp({
     allowOfflineQueue,
     allowedType,
     idempotencyKey,
-    metadata,
     preclaimed,
-    structuredInput,
+    protectedPayload,
     triggerId,
   }: {
     actorId: string | null;
@@ -3620,12 +3616,11 @@ export async function buildApp({
     allowOfflineQueue: boolean;
     allowedType: "api" | "schedule" | "webhook" | "git" | "saved-command";
     idempotencyKey: string;
-    metadata: Record<string, unknown>;
     preclaimed?: {
       claim: Extract<WorkflowTriggerClaim, { kind: "claimed" | "replay" }>;
       lease: WorkflowScheduleDispatchLease;
     };
-    structuredInput: Record<string, unknown>;
+    protectedPayload: WorkflowContentOpaque | null;
     triggerId: string;
   }) => {
     const context =
@@ -3648,18 +3643,8 @@ export async function buildApp({
         "Workflow trigger project source is unavailable.",
       );
     }
-    if (!allowOfflineQueue && !bridge.isConnected(source.workerId)) {
+    if (!bridge.isConnected(source.workerId)) {
       throw new WorkerUnavailableError("Project worker is offline.");
-    }
-    const mergedInput = workflowJsonObjectSchema.parse({
-      ...context.trigger.structuredInput,
-      ...structuredInput,
-    });
-    const sensitivePath = sensitiveTriggerInputPath(mergedInput);
-    if (sensitivePath) {
-      throw new WorkflowTriggerConflictError(
-        "Trigger input cannot contain secret-bearing fields.",
-      );
     }
     const deliveredAt = new Date().toISOString();
     const provenance = preclaimed
@@ -3670,11 +3655,7 @@ export async function buildApp({
           actorType,
           actorId,
           deliveredAt,
-          metadata: {
-            ...metadata,
-            triggerName: context.trigger.name,
-            projectId: context.trigger.projectId,
-          },
+          metadata: {},
         });
     const claim =
       preclaimed?.claim ??
@@ -3683,6 +3664,7 @@ export async function buildApp({
         triggerId,
         idempotencyKey,
         provenance,
+        protectedPayload,
       ));
     if (!claim || claim.kind === "disabled") {
       throw new WorkflowTriggerConflictError(
@@ -3691,7 +3673,7 @@ export async function buildApp({
     }
     if (claim.kind === "replay" && claim.delivery.status === "failed") {
       throw new WorkflowTriggerConflictError(
-        claim.delivery.errorMessage ?? "Workflow trigger delivery failed.",
+        `Workflow trigger delivery failed (${claim.delivery.errorCode ?? "delivery-failed"}).`,
       );
     }
     if (claim.kind === "replay" && claim.delivery.runId) {
@@ -3700,7 +3682,7 @@ export async function buildApp({
         claim.delivery.runId,
       );
       if (existingRun) {
-        return workflowTriggerDeliveryResultSchema.parse({
+        return workflowTriggerDeliveryWireResultSchema.parse({
           delivery: claim.delivery,
           run: existingRun,
           replayed: true,
@@ -3708,12 +3690,34 @@ export async function buildApp({
       }
     }
     try {
+      const runId = randomUUID();
+      const prepared = protectedWorkflowTriggerPrepareResultSchema.parse(
+        await bridge.request(source.workerId, {
+          type: "workflow.trigger.prepare.protected",
+          triggerId,
+          workflowRunId: runId,
+          triggerType: context.trigger.type,
+          publicConfiguration: context.trigger.publicConfiguration,
+          protectedConfiguration: context.trigger.protectedConfiguration,
+          protectedBaseInput: context.trigger.protectedInput,
+          deliveryOperationId: claim.delivery.protectedPayload
+            ? claim.delivery.idempotencyKey
+            : null,
+          protectedDeliveryPayload: claim.delivery.protectedPayload,
+        }),
+      );
+      if (prepared.status === "rejected") {
+        throw new WorkflowTriggerConflictError(
+          `Protected workflow trigger was rejected (${prepared.code}).`,
+        );
+      }
       const runResult = await repository.workflowRuns.createRun(
         applicationOwnerId(),
         {
+          id: runId,
           workflowRevisionId: context.trigger.workflowRevisionId,
           projectId: context.trigger.projectId,
-          structuredInput: mergedInput,
+          protectedInput: prepared.protectedRunInput,
           budget: context.trigger.budget,
           permissionManifest: context.trigger.permissionManifest,
           selectedModelRouteId: context.trigger.selectedModelRouteId,
@@ -3724,7 +3728,7 @@ export async function buildApp({
             triggerId,
             idempotencyKey,
           ),
-        } as never,
+        },
       );
       if (!runResult) {
         throw new WorkflowTriggerConflictError(
@@ -3751,18 +3755,24 @@ export async function buildApp({
         runId: runResult.run.run.id,
       });
       workflowExecutor.queueRun(runResult.run.run.id, applicationOwnerId());
-      return workflowTriggerDeliveryResultSchema.parse({
+      return workflowTriggerDeliveryWireResultSchema.parse({
         delivery,
         run: runResult.run,
         replayed: claim.kind === "replay" || !runResult.created,
       });
     } catch (error) {
+      if (
+        allowOfflineQueue &&
+        preclaimed &&
+        error instanceof WorkerUnavailableError
+      ) {
+        throw error;
+      }
       const failed = await repository.workflowTriggers.failDelivery(
         applicationOwnerId(),
         claim.delivery.id,
         triggerId,
         "workflow-trigger-delivery-failed",
-        errorMessage(error),
         preclaimed?.lease,
       );
       if (preclaimed && !failed) {
@@ -3793,7 +3803,12 @@ export async function buildApp({
       const due = await repository.workflowTriggers.listDueSchedules(now);
       dueOccurrences = due.length;
       for (const candidate of due) {
-        if (candidate.trigger.type !== "schedule" || !candidate.row.nextRunAt) {
+        const publicConfiguration = candidate.trigger.publicConfiguration;
+        if (
+          candidate.trigger.type !== "schedule" ||
+          publicConfiguration.type !== "schedule" ||
+          !candidate.row.nextRunAt
+        ) {
           continue;
         }
         const trigger = candidate.trigger;
@@ -3803,17 +3818,15 @@ export async function buildApp({
           now.getTime() - expected.getTime(),
         );
         await runAsOwner(trigger.ownerId, async () => {
-          const intervalMs = trigger.configuration.intervalSeconds * 1_000;
+          const configuration = publicConfiguration;
+          const intervalMs = configuration.intervalSeconds * 1_000;
           const provenance = workflowTriggerProvenanceSchema.parse({
             type: "schedule",
             sourceId: trigger.id,
             actorType: "schedule",
             actorId: null,
             deliveredAt: now.toISOString(),
-            metadata: {
-              triggerName: trigger.name,
-              projectId: trigger.projectId,
-            },
+            metadata: {},
           });
           const occurrence =
             await repository.workflowTriggers.claimScheduleOccurrence(
@@ -3851,24 +3864,18 @@ export async function buildApp({
                 trigger.projectId,
                 expected,
                 new Date(Date.now() + Math.min(intervalMs, 30_000)),
-                occurrence.delivery.errorMessage ??
-                  "Scheduled delivery failed before the schedule advanced.",
+                occurrence.delivery.errorCode ?? "schedule-delivery-failed",
               );
             }
             return;
           }
           if (occurrence.lease.fencingToken > 1) leaseRecoveries += 1;
-          const failClaimedOccurrence = async (
-            code: string,
-            message: string,
-            next: Date,
-          ) => {
+          const failClaimedOccurrence = async (code: string, next: Date) => {
             const failed = await repository.workflowTriggers.failDelivery(
               trigger.ownerId,
               occurrence.claim.delivery.id,
               trigger.id,
               code,
-              message,
               occurrence.lease,
             );
             if (failed) {
@@ -3877,17 +3884,16 @@ export async function buildApp({
                 trigger.projectId,
                 expected,
                 next,
-                message,
+                code,
               );
             }
           };
           if (
-            trigger.configuration.catchUpPolicy === "skip" &&
+            configuration.catchUpPolicy === "skip" &&
             now.getTime() - expected.getTime() > intervalMs
           ) {
             await failClaimedOccurrence(
               "schedule-overdue-skipped",
-              "Skipped an overdue scheduled delivery by policy.",
               new Date(now.getTime() + intervalMs),
             );
             return;
@@ -3896,28 +3902,24 @@ export async function buildApp({
             applicationOwnerId(),
             trigger.projectId,
           );
-          if (
-            trigger.configuration.offlinePolicy === "pause" &&
-            (!source || !bridge.isConnected(source.workerId))
-          ) {
-            await failClaimedOccurrence(
-              "schedule-worker-offline",
-              "Project worker is offline; scheduled delivery is paused.",
-              new Date(now.getTime() + Math.min(intervalMs, 30_000)),
-            );
+          if (!source || !bridge.isConnected(source.workerId)) {
+            if (configuration.offlinePolicy === "pause") {
+              await failClaimedOccurrence(
+                "schedule-worker-offline",
+                new Date(now.getTime() + Math.min(intervalMs, 30_000)),
+              );
+            }
             return;
           }
           try {
             await deliverWorkflowTrigger({
               actorId: null,
               actorType: "schedule",
-              allowOfflineQueue:
-                trigger.configuration.offlinePolicy === "queue",
+              allowOfflineQueue: configuration.offlinePolicy === "queue",
               allowedType: "schedule",
               idempotencyKey: expected.toISOString(),
-              metadata: {},
               preclaimed: occurrence,
-              structuredInput: {},
+              protectedPayload: null,
               triggerId: trigger.id,
             });
             dispatches += 1;
@@ -3935,6 +3937,12 @@ export async function buildApp({
               );
               return;
             }
+            if (
+              error instanceof WorkerUnavailableError &&
+              configuration.offlinePolicy === "queue"
+            ) {
+              return;
+            }
             dispatchFailures += 1;
             app.log.warn(
               { err: error, workflowTriggerId: trigger.id },
@@ -3945,7 +3953,7 @@ export async function buildApp({
               trigger.projectId,
               expected,
               new Date(Date.now() + Math.min(intervalMs, 30_000)),
-              errorMessage(error),
+              "schedule-delivery-failed",
             );
           }
         });
@@ -12665,7 +12673,7 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(query.error.issues));
     }
     return reply.send(
-      workflowAutomationTriggerListSchema.parse(
+      workflowAutomationTriggerWireListSchema.parse(
         await repository.workflowTriggers.list(
           applicationOwnerId(),
           query.data,
@@ -12675,20 +12683,11 @@ export async function buildApp({
   });
 
   app.post("/api/workflow-triggers", async (request, reply) => {
-    if (workflowRuntimeCutover())
-      return reply.code(410).send({
-        error:
-          "Workflow trigger mutations are unavailable during the protected runtime cutover.",
-      });
-    const input = workflowAutomationTriggerCreateSchema.safeParse(request.body);
+    const input = encryptedWorkflowAutomationTriggerCreateSchema.safeParse(
+      request.body,
+    );
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
-    }
-    const sensitivePath = sensitiveTriggerInputPath(input.data.structuredInput);
-    if (sensitivePath) {
-      return reply.code(400).send({
-        error: "Trigger input cannot contain secret-bearing fields.",
-      });
     }
     if (input.data.type === "git") {
       const project = await repository.getProject(
@@ -12709,7 +12708,9 @@ export async function buildApp({
         publishWorkflowTriggerChange(trigger.id, trigger.projectId);
       }
       return trigger
-        ? reply.code(201).send(workflowAutomationTriggerSchema.parse(trigger))
+        ? reply
+            .code(201)
+            .send(workflowAutomationTriggerWireSchema.parse(trigger))
         : reply
             .code(404)
             .send({ error: "Workflow revision or project not found." });
@@ -12724,12 +12725,7 @@ export async function buildApp({
   app.patch<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId",
     async (request, reply) => {
-      if (workflowRuntimeCutover())
-        return reply.code(410).send({
-          error:
-            "Workflow trigger mutations are unavailable during the protected runtime cutover.",
-        });
-      const input = workflowAutomationTriggerUpdateSchema.safeParse(
+      const input = encryptedWorkflowAutomationTriggerUpdateSchema.safeParse(
         request.body,
       );
       if (!input.success) {
@@ -12745,7 +12741,7 @@ export async function buildApp({
           publishWorkflowTriggerChange(trigger.id, trigger.projectId);
         }
         return trigger
-          ? reply.send(workflowAutomationTriggerSchema.parse(trigger))
+          ? reply.send(workflowAutomationTriggerWireSchema.parse(trigger))
           : reply.code(404).send({ error: "Workflow trigger not found." });
       } catch (error) {
         if (error instanceof WorkflowTriggerConflictError) {
@@ -12759,12 +12755,9 @@ export async function buildApp({
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/deliver",
     async (request, reply) => {
-      if (workflowRuntimeCutover())
-        return reply.code(410).send({
-          error:
-            "Workflow trigger delivery is unavailable during the protected runtime cutover.",
-        });
-      const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
+      const input = encryptedWorkflowTriggerDeliveryCreateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -12775,13 +12768,12 @@ export async function buildApp({
           allowOfflineQueue: false,
           allowedType: "api",
           idempotencyKey: input.data.idempotencyKey,
-          metadata: {},
-          structuredInput: input.data.structuredInput,
+          protectedPayload: input.data.protectedPayload,
           triggerId: request.params.triggerId,
         });
         return reply
           .code(result.replayed ? 200 : 201)
-          .send(workflowTriggerDeliveryResultSchema.parse(result));
+          .send(workflowTriggerDeliveryWireResultSchema.parse(result));
       } catch (error) {
         if (error instanceof WorkflowTriggerRateLimitError) {
           return reply
@@ -12805,11 +12797,6 @@ export async function buildApp({
     Headers: { "x-cantrip-webhook-token"?: string };
     Params: { triggerId: string };
   }>("/api/workflow-hooks/:triggerId", async (request, reply) => {
-    if (workflowRuntimeCutover())
-      return reply.code(410).send({
-        error:
-          "Workflow webhook delivery is unavailable during the protected runtime cutover.",
-      });
     const context = await repository.workflowTriggers.getWebhookDeliveryContext(
       request.params.triggerId,
     );
@@ -12823,7 +12810,7 @@ export async function buildApp({
     ) {
       return reply.code(404).send({ error: "Webhook not found." });
     }
-    const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
+    const input = workflowWebhookDeliveryCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -12835,14 +12822,13 @@ export async function buildApp({
           allowOfflineQueue: false,
           allowedType: "webhook",
           idempotencyKey: input.data.idempotencyKey,
-          metadata: {},
-          structuredInput: input.data.structuredInput,
+          protectedPayload: null,
           triggerId: request.params.triggerId,
         }),
       );
       return reply
         .code(result.replayed ? 200 : 201)
-        .send(workflowTriggerDeliveryResultSchema.parse(result));
+        .send(workflowTriggerDeliveryWireResultSchema.parse(result));
     } catch (error) {
       if (error instanceof WorkflowTriggerRateLimitError) {
         return reply
@@ -12864,12 +12850,7 @@ export async function buildApp({
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/git-event",
     async (request, reply) => {
-      if (workflowRuntimeCutover())
-        return reply.code(410).send({
-          error:
-            "Workflow trigger delivery is unavailable during the protected runtime cutover.",
-        });
-      const input = workflowGitEventDeliveryCreateSchema.safeParse(
+      const input = encryptedWorkflowGitEventDeliveryCreateSchema.safeParse(
         request.body,
       );
       if (!input.success) {
@@ -12882,11 +12863,8 @@ export async function buildApp({
       if (
         !context ||
         context.trigger.type !== "git" ||
-        context.trigger.configuration.event !== input.data.event ||
-        !gitBranchMatches(
-          context.trigger.configuration.branchPattern,
-          input.data.branch,
-        )
+        context.trigger.publicConfiguration.type !== "git" ||
+        context.trigger.publicConfiguration.event !== input.data.event
       ) {
         return reply
           .code(409)
@@ -12907,17 +12885,12 @@ export async function buildApp({
           allowOfflineQueue: false,
           allowedType: "git",
           idempotencyKey: input.data.deliveryId,
-          metadata: {
-            event: input.data.event,
-            branch: input.data.branch,
-            deliveryId: input.data.deliveryId,
-          },
-          structuredInput: input.data.structuredInput,
+          protectedPayload: input.data.protectedPayload,
           triggerId: request.params.triggerId,
         });
         return reply
           .code(result.replayed ? 200 : 201)
-          .send(workflowTriggerDeliveryResultSchema.parse(result));
+          .send(workflowTriggerDeliveryWireResultSchema.parse(result));
       } catch (error) {
         if (error instanceof WorkflowTriggerRateLimitError) {
           return reply
@@ -12940,12 +12913,9 @@ export async function buildApp({
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/invoke",
     async (request, reply) => {
-      if (workflowRuntimeCutover())
-        return reply.code(410).send({
-          error:
-            "Workflow trigger delivery is unavailable during the protected runtime cutover.",
-        });
-      const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
+      const input = encryptedWorkflowTriggerDeliveryCreateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -12963,13 +12933,12 @@ export async function buildApp({
           allowOfflineQueue: false,
           allowedType: "saved-command",
           idempotencyKey: input.data.idempotencyKey,
-          metadata: { command: context.trigger.configuration.command },
-          structuredInput: input.data.structuredInput,
+          protectedPayload: input.data.protectedPayload,
           triggerId: request.params.triggerId,
         });
         return reply
           .code(result.replayed ? 200 : 201)
-          .send(workflowTriggerDeliveryResultSchema.parse(result));
+          .send(workflowTriggerDeliveryWireResultSchema.parse(result));
       } catch (error) {
         if (error instanceof WorkflowTriggerRateLimitError) {
           return reply

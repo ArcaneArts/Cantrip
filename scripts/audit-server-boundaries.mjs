@@ -44,6 +44,10 @@ const clientWorkflowEncryptionPath = resolve(
   repositoryRoot,
   "cantrip_app/src/lib/workflow-encryption.ts",
 );
+const clientWorkflowTriggerEncryptionPath = resolve(
+  repositoryRoot,
+  "cantrip_app/src/lib/workflow-trigger-encryption.ts",
+);
 const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
 const workerAutomationEncryptionPath = resolve(
   repositoryRoot,
@@ -1823,6 +1827,10 @@ async function workflowCatalogContentBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/workflows.ts");
   const runRepositoryPath = resolve(serverSourcePath, "db/workflow-runs.ts");
+  const triggerRepositoryPath = resolve(
+    serverSourcePath,
+    "db/workflow-triggers.ts",
+  );
   const executorPath = resolve(serverSourcePath, "workflows/executor.ts");
   const runTransitionsPath = resolve(
     serverSourcePath,
@@ -1844,7 +1852,9 @@ async function workflowCatalogContentBoundaryAudit() {
     interactionProtocolText,
     clientApiText,
     clientEncryptionText,
+    clientTriggerEncryptionText,
     runRepositoryText,
+    triggerRepositoryText,
     runTransitionsText,
     executorText,
     workerExecutionText,
@@ -1858,7 +1868,9 @@ async function workflowCatalogContentBoundaryAudit() {
     readFile(protocolPath, "utf8"),
     readFile(clientWorkflowApiPath, "utf8"),
     readFile(clientWorkflowEncryptionPath, "utf8"),
+    readFile(clientWorkflowTriggerEncryptionPath, "utf8"),
     readFile(runRepositoryPath, "utf8"),
+    readFile(triggerRepositoryPath, "utf8"),
     readFile(runTransitionsPath, "utf8"),
     readFile(executorPath, "utf8"),
     readFile(workerExecutionPath, "utf8"),
@@ -1871,6 +1883,14 @@ async function workflowCatalogContentBoundaryAudit() {
   const gateTable = tableInitializer(schemaText, "workflowApprovalGates");
   const runTable = tableInitializer(schemaText, "workflowRuns");
   const eventTable = tableInitializer(schemaText, "workflowRunEvents");
+  const triggerTable = tableInitializer(
+    schemaText,
+    "workflowAutomationTriggers",
+  );
+  const deliveryTable = tableInitializer(
+    schemaText,
+    "workflowTriggerDeliveries",
+  );
   for (const table of [
     "workflowRuns",
     "workflowRunNodes",
@@ -1917,6 +1937,50 @@ async function workflowCatalogContentBoundaryAudit() {
   }
   if (/\\bpayload\\s*:\s*jsonb\(["']payload["']\)/u.test(eventTable)) {
     failures.push("workflowRunEvents: unrestricted plaintext payload returned");
+  }
+  for (const [property, column] of [
+    ["protectedName", "protected_name"],
+    ["protectedConfiguration", "protected_configuration"],
+    ["protectedInput", "protected_input"],
+  ]) {
+    if (
+      !new RegExp(
+        `\\b${property}\\s*:\\s*(?:text|jsonb)\\(["']${column}["']\\)[\\s\\S]*?\\.notNull\\(\\)`,
+        "u",
+      ).test(triggerTable)
+    ) {
+      failures.push(`workflowAutomationTriggers: missing required ${column}`);
+    }
+  }
+  for (const field of [
+    "name",
+    "configuration",
+    "structuredInput",
+    "lastError",
+  ]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(triggerTable)) {
+      failures.push(
+        `workflowAutomationTriggers: legacy plaintext ${field} storage returned`,
+      );
+    }
+  }
+  for (const [property, column] of [
+    ["publicProvenance", "public_provenance"],
+    ["protectedPayload", "protected_payload"],
+  ]) {
+    if (
+      !deliveryTable.includes(`${property}:`) ||
+      !deliveryTable.includes(`"${column}"`)
+    ) {
+      failures.push(`workflowTriggerDeliveries: missing ${column}`);
+    }
+  }
+  for (const field of ["triggerProvenance", "errorMessage"]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(deliveryTable)) {
+      failures.push(
+        `workflowTriggerDeliveries: legacy plaintext ${field} storage returned`,
+      );
+    }
   }
   for (const [property, column] of [
     ["slugBlindIndex", "slug_blind_index"],
@@ -2057,6 +2121,12 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRunResumeSchema",
     "workflowRunCancelSchema",
     "workflowNodeRetrySchema",
+    "workflowAutomationTriggerCreateSchema",
+    "workflowAutomationTriggerUpdateSchema",
+    "workflowTriggerDeliveryCreateSchema",
+    "workflowGitEventDeliveryCreateSchema",
+    "workflowAutomationTriggerSchema",
+    "workflowAutomationTriggerListSchema",
   ]) {
     if (trustedServerImports.includes(symbol)) {
       failures.push(`Server application imports trusted ${symbol}.`);
@@ -2108,6 +2178,14 @@ async function workflowCatalogContentBoundaryAudit() {
     "outgoingDependencies",
     "selectedDependencyIds",
     "logicalExecutionCount",
+    "encryptedWorkflowAutomationTriggerCreateSchema",
+    "encryptedWorkflowAutomationTriggerUpdateSchema",
+    "workflowAutomationTriggerWireSchema",
+    "encryptedWorkflowTriggerDeliveryCreateSchema",
+    "encryptedWorkflowGitEventDeliveryCreateSchema",
+    "workflowTriggerDeliveryWireResultSchema",
+    "protectedWorkflowTriggerPrepareRequestSchema",
+    "protectedWorkflowTriggerPrepareResultSchema",
   ]) {
     if (!protocolText.includes(marker)) {
       failures.push(`Workflow protocol is missing ${marker}.`);
@@ -2135,6 +2213,12 @@ async function workflowCatalogContentBoundaryAudit() {
     "protectWorkflowNodeRetry",
     "openWorkflowRunWireDetail",
     "protectWorkflowGateDecision",
+    "protectWorkflowAutomationTriggerCreate",
+    "protectWorkflowAutomationTriggerUpdate",
+    "openWorkflowAutomationTriggerWire",
+    "protectWorkflowTriggerDelivery",
+    "protectWorkflowGitEventDelivery",
+    "openWorkflowTriggerDeliveryResult",
   ]) {
     if (!clientApiText.includes(marker)) {
       failures.push(`Client workflow API is missing ${marker}.`);
@@ -2160,17 +2244,73 @@ async function workflowCatalogContentBoundaryAudit() {
     }
   }
   for (const marker of [
+    "encryptWorkflowContent",
+    "decryptWorkflowContent",
+    'recordKind: "workflow-trigger"',
+    'recordKind: "workflow-delivery"',
+    "protectedName",
+    "protectedConfiguration",
+    "protectedInput",
+    "protectedPayload",
+    "clearSensitiveBytes",
+    "publicConfigurationMatches",
+  ]) {
+    if (!clientTriggerEncryptionText.includes(marker)) {
+      failures.push(`Client workflow trigger encryption is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
     "This plaintext workflow generation path was removed",
     "This plaintext workflow repository scan path was removed",
     "This plaintext workflow repository import path was removed",
     "This plaintext workflow repository export path was removed",
     "This plaintext workflow revision path was removed",
-    "Workflow trigger mutations are unavailable during the protected runtime cutover.",
-    "Workflow trigger delivery is unavailable during the protected runtime cutover.",
-    "Workflow webhook delivery is unavailable during the protected runtime cutover.",
   ]) {
     if (!applicationText.includes(marker)) {
       failures.push(`Workflow fail-closed boundary is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "encryptedWorkflowAutomationTriggerCreateSchema",
+    "encryptedWorkflowAutomationTriggerUpdateSchema",
+    "encryptedWorkflowTriggerDeliveryCreateSchema",
+    "encryptedWorkflowGitEventDeliveryCreateSchema",
+    "workflowWebhookDeliveryCreateSchema",
+    "workflowAutomationTriggerWireSchema",
+    "workflowTriggerDeliveryWireResultSchema",
+    'type: "workflow.trigger.prepare.protected"',
+    "protectedConfiguration: context.trigger.protectedConfiguration",
+    "protectedBaseInput: context.trigger.protectedInput",
+    "protectedDeliveryPayload: claim.delivery.protectedPayload",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`Protected workflow trigger ingress is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "publicConfiguration: input.publicConfiguration",
+    "protectedName: input.protectedName",
+    "protectedConfiguration: input.protectedConfiguration",
+    "protectedInput: input.protectedInput",
+    "publicProvenance: provenance",
+    "protectedPayload",
+    "lastErrorCode",
+  ]) {
+    if (!triggerRepositoryText.includes(marker)) {
+      failures.push(`Workflow trigger repository is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "row.configuration",
+    "row.structuredInput",
+    "row.name",
+    "triggerProvenance:",
+    "errorMessage:",
+  ]) {
+    if (triggerRepositoryText.includes(marker)) {
+      failures.push(
+        `Workflow trigger repository restored plaintext content path ${marker}.`,
+      );
     }
   }
   for (const marker of [
@@ -2214,6 +2354,14 @@ async function workflowCatalogContentBoundaryAudit() {
     "evaluatePredicate",
     "protectedAttemptResult",
     "protectedRunResult",
+    "prepareProtectedWorkflowTrigger",
+    "workflowTriggerProtectedConfigurationSchema",
+    "workflowTriggerProtectedDeliverySchema",
+    "workflowTriggerProtectedInputSchema",
+    "workflowTriggerBranchMatches",
+    "protectedWorkflowTriggerPrepareResultSchema",
+    'recordKind: "workflow-delivery"',
+    'recordKind: "workflow-run"',
   ]) {
     if (!workerExecutionText.includes(marker)) {
       failures.push(`Worker workflow execution is missing ${marker}.`);
@@ -2305,6 +2453,8 @@ async function workflowCatalogContentBoundaryAudit() {
       "workflow_run_node_items",
       "workflow_node_attempts",
       "agent_interaction_requests",
+      "workflow_automation_triggers",
+      "workflow_trigger_deliveries",
     ],
     guards: [
       "definition-slug-name-description-provenance:opaque-only",
@@ -2322,9 +2472,11 @@ async function workflowCatalogContentBoundaryAudit() {
       "workflow-gate-semantics:worker-authenticated",
       "workflow-control-reasons:workflow-content-client-only",
       "workflow-event-content:protected-or-minimized-public-metadata",
-      "trigger-ingress:fail-closed-until-worker-runtime",
+      "workflow-trigger-content:workflow-content-client-worker-only",
+      "workflow-delivery-input:operation-bound-client-worker-only",
+      "workflow-trigger-routing:minimized-public-scheduling-metadata",
     ],
-    remainingPlaintextContent: ["triggers and deliveries"],
+    remainingPlaintextContent: [],
   };
 }
 

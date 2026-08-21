@@ -122,6 +122,7 @@ import { projectAutomationOpaqueContentSchema } from "./automations.js";
 import {
   protectedWorkflowGateDecisionRequestSchema,
   protectedWorkflowNodeExecutionRequestSchema,
+  protectedWorkflowTriggerPrepareRequestSchema,
   workflowJsonObjectSchema,
   workflowNodeExecutionResultSchema,
   workflowRepositoryDocumentSchema,
@@ -10919,6 +10920,9 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   protectedWorkflowGateDecisionRequestSchema.extend({
     type: z.literal("workflow.gate.decide.protected"),
+  }),
+  protectedWorkflowTriggerPrepareRequestSchema.extend({
+    type: z.literal("workflow.trigger.prepare.protected"),
   }),
   z.object({
     type: z.literal("workflow.definition.generate"),
