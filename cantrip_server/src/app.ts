@@ -24285,6 +24285,15 @@ export async function buildApp({
                 ? { developmentBootstrapWorkerId: workerId }
                 : undefined,
             );
+        // Another bootstrap request can complete the same rotation while this
+        // request is waiting on the registry transaction. Treat that outcome
+        // as an idempotent success instead of reporting an identity conflict.
+        principal ??=
+          await repository.encryptionRegistry.findWorkerPrincipalById(
+            workerAuth.ownerId,
+            workerId,
+            input.data.principalId,
+          );
       }
       if (
         !principal ||
