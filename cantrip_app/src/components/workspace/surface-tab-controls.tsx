@@ -28,6 +28,7 @@ export function InlineRenameLabel({
     <input
       autoFocus
       aria-label={ariaLabel}
+      data-elite-ignore=""
       className={cn(
         "h-7 rounded border bg-background px-2 text-xs text-foreground outline-none ring-ring focus:ring-2",
         className,
