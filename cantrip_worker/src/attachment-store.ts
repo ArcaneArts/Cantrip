@@ -16,17 +16,19 @@ export const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
 export const MAX_ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
 
 interface PendingUpload {
+  ended: boolean;
+  expectedSha256: string;
   expectedSize: number;
   finalPath: string;
   nextChunkIndex: number;
+  operationId: string;
   partPath: string;
   receivedSize: number;
 }
 
 export interface AttachmentUploadResult {
-  path: string;
-  sha256: string;
   sizeBytes: number;
+  verified: true;
 }
 
 export interface AttachmentReadResult {
@@ -67,6 +69,8 @@ export class AttachmentStore {
     attachmentId: string,
     fileName: string,
     sizeBytes: number,
+    operationId: string,
+    expectedSha256: string,
   ): Promise<void> {
     const startedAtMs = Date.now();
     this.validateSize(sizeBytes);
@@ -81,9 +85,12 @@ export class AttachmentStore {
     await rm(partPath, { force: true });
     await writeFile(partPath, new Uint8Array());
     this.#uploads.set(key, {
+      ended: false,
+      expectedSha256,
       expectedSize: sizeBytes,
       finalPath,
       nextChunkIndex: 0,
+      operationId,
       partPath,
       receivedSize: 0,
     });
@@ -104,6 +111,8 @@ export class AttachmentStore {
     attachmentId: string,
     chunkIndex: number,
     bytes: Uint8Array,
+    operationId: string,
+    eof: boolean,
   ): Promise<void> {
     if (
       !Number.isInteger(chunkIndex) ||
@@ -114,6 +123,12 @@ export class AttachmentStore {
     }
     const upload = this.#uploads.get(this.uploadKey(chatId, attachmentId));
     if (!upload) throw new Error("Attachment upload was not started.");
+    if (upload.operationId !== operationId) {
+      throw new Error("Attachment upload operation does not match.");
+    }
+    if (upload.ended) {
+      throw new Error("Attachment upload stream has already ended.");
+    }
     if (chunkIndex !== upload.nextChunkIndex) {
       throw new Error(
         `Expected attachment chunk ${upload.nextChunkIndex}, received ${chunkIndex}.`,
@@ -122,30 +137,50 @@ export class AttachmentStore {
     if (upload.receivedSize + bytes.byteLength > upload.expectedSize) {
       throw new Error("Attachment upload exceeds its declared size.");
     }
+    if (
+      eof !==
+      (upload.receivedSize + bytes.byteLength === upload.expectedSize)
+    ) {
+      throw new Error("Attachment upload end marker is invalid.");
+    }
     await appendFile(upload.partPath, bytes);
     upload.nextChunkIndex += 1;
     upload.receivedSize += bytes.byteLength;
+    upload.ended = eof;
   }
 
   async complete(
     chatId: string,
     attachmentId: string,
+    operationId: string,
   ): Promise<AttachmentUploadResult> {
     const key = this.uploadKey(chatId, attachmentId);
     const upload = this.#uploads.get(key);
     if (!upload) throw new Error("Attachment upload was not started.");
+    if (upload.operationId !== operationId) {
+      throw new Error("Attachment upload operation does not match.");
+    }
     if (upload.receivedSize !== upload.expectedSize) {
       throw new Error(
         `Attachment upload is incomplete (${upload.receivedSize}/${upload.expectedSize} bytes).`,
       );
     }
+    if (!upload.ended) {
+      throw new Error("Attachment upload stream did not end.");
+    }
     const bytes = await readFile(upload.partPath);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    bytes.fill(0);
+    if (sha256 !== upload.expectedSha256) {
+      await rm(upload.partPath, { force: true });
+      this.#uploads.delete(key);
+      throw new Error("Attachment content verification failed.");
+    }
     await rename(upload.partPath, upload.finalPath);
     this.#uploads.delete(key);
     const result = {
-      path: upload.finalPath,
-      sha256: createHash("sha256").update(bytes).digest("hex"),
-      sizeBytes: bytes.byteLength,
+      sizeBytes: upload.expectedSize,
+      verified: true as const,
     };
     workerLogger.event("info", "Attachment upload completed", {
       event: "attachment.upload.completed",

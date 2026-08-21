@@ -27,6 +27,7 @@ import type { ClientSessionContext } from "./client-session";
 import { getClientSession } from "./client-session";
 import type { ClientEncryptionService } from "./client-encryption";
 import { ClientEncryptionError, clientEncryption } from "./client-encryption";
+import { openAttachmentOpaqueList } from "./attachment-encryption";
 
 type TrustedOptions = {
   service?: ClientEncryptionService;
@@ -197,7 +198,7 @@ export async function openQueuedPromptOpaqueSummary(
       id: prompt.id,
       chatId: prompt.chatId,
       text: opened.text,
-      attachments: prompt.attachments,
+      attachments: await openAttachmentOpaqueList(prompt.attachments, options),
       mode: prompt.classification.mode,
       modelId: prompt.modelId,
       reasoningEffort: prompt.reasoningEffort,

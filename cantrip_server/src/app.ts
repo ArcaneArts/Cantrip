@@ -73,10 +73,6 @@ import {
   codexSkillRootsResultSchema,
   codexSkillRootsUpdateSchema,
   chatCompactAcceptedSchema,
-  chatAttachmentKindSchema,
-  chatAttachmentSourceSchema,
-  chatAttachmentListSchema,
-  chatAttachmentSummarySchema,
   archivedChatCleanupResultSchema,
   archivedChatWireListSchema,
   chatGoalClearSchema,
@@ -415,6 +411,12 @@ import {
   worktreeSelectionSchema,
   worktreeStatusResultSchema,
 } from "@cantrip/protocol";
+import {
+  attachmentDownloadOpaqueSchema,
+  attachmentUploadOpaqueSchema,
+  chatAttachmentOpaqueListSchema,
+  chatAttachmentOpaqueSummarySchema,
+} from "@cantrip/protocol/attachment-content";
 import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
@@ -1103,6 +1105,8 @@ export async function buildApp({
     config.apiBodyLimitBytes ?? DEFAULT_API_BODY_LIMIT_BYTES;
   const uploadLimitBytes =
     config.uploadLimitBytes ?? DEFAULT_UPLOAD_LIMIT_BYTES;
+  const encryptedAttachmentUploadLimitBytes =
+    Math.ceil(uploadLimitBytes * 1.5) + 1024 * 1024;
   const websocketMaxPayloadBytes =
     config.websocketMaxPayloadBytes ?? DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES;
   const app = Fastify({
@@ -1125,7 +1129,7 @@ export async function buildApp({
   });
   app.addContentTypeParser(
     "application/octet-stream",
-    { bodyLimit: uploadLimitBytes, parseAs: "buffer" },
+    { bodyLimit: encryptedAttachmentUploadLimitBytes, parseAs: "buffer" },
     (_request, body, done) => done(null, body),
   );
   const repository = database.repository;
@@ -1959,6 +1963,7 @@ export async function buildApp({
           id: randomUUID(),
           idempotencyKey: content.idempotencyKey,
         },
+        attachments: [],
       }),
     );
     const message = await repository.appendEncryptedMessage(
@@ -1992,6 +1997,7 @@ export async function buildApp({
           id: existing?.id ?? randomUUID(),
           idempotencyKey: content.idempotencyKey,
         },
+        attachments: [],
       }),
     );
     const message = await repository.upsertEncryptedMessage(
@@ -6753,11 +6759,25 @@ export async function buildApp({
                 : []),
               ...attachments.map((attachment) => ({
                 type: "attachment" as const,
-                attachment: chatAttachmentSummarySchema.parse(attachment),
+                attachment: {
+                  id: attachment.id,
+                  chatId: attachment.chatId,
+                  fileName: "Protected attachment",
+                  mimeType: "application/octet-stream",
+                  sizeBytes: attachment.sizeBytes,
+                  kind: "file" as const,
+                  source: "file" as const,
+                  status: attachment.status,
+                  previewText: null,
+                  createdAt: attachment.createdAt,
+                },
               })),
             ],
             idempotencyKey: input.idempotencyKey,
           },
+          attachments: attachments.map((attachment) =>
+            chatAttachmentOpaqueSummarySchema.parse(attachment),
+          ),
         }),
       );
       encryptedChatMessages = {
@@ -7065,13 +7085,9 @@ export async function buildApp({
                       protectedHistory: [],
                       protectedPlan: null,
                     }),
-                attachments: attachments.map((attachment) => ({
-                  id: attachment.id,
-                  fileName: attachment.fileName,
-                  mimeType: attachment.mimeType,
-                  sizeBytes: attachment.sizeBytes,
-                  kind: attachment.kind,
-                })),
+                attachments: attachments.map((attachment) =>
+                  chatAttachmentOpaqueSummarySchema.parse(attachment),
+                ),
                 skillNames:
                   options.structuredResult || encryptedChatMessages
                     ? []
@@ -18716,7 +18732,7 @@ export async function buildApp({
         request.params.chatId,
         task.draftAttachmentIds,
       );
-      return reply.send(chatAttachmentListSchema.parse(attachments));
+      return reply.send(chatAttachmentOpaqueListSchema.parse(attachments));
     },
   );
 
@@ -23517,66 +23533,53 @@ export async function buildApp({
       if (!bridge.isConnected(context.workerId)) {
         return reply.code(503).send({ error: "Project worker is offline." });
       }
-      const encodedFileName = request.headers["x-cantrip-file-name"];
-      let fileName: string;
+      let raw: unknown;
       try {
-        fileName = decodeURIComponent(
-          typeof encodedFileName === "string" ? encodedFileName : "",
-        ).trim();
+        raw = JSON.parse(
+          Buffer.isBuffer(request.body) ? request.body.toString("utf8") : "",
+        );
       } catch {
-        fileName = "";
+        raw = null;
       }
-      const mimeHeader = request.headers["x-cantrip-mime-type"];
-      const mimeType =
-        typeof mimeHeader === "string" &&
-        /^[A-Za-z0-9!#$&^_.+-]+\/[A-Za-z0-9!#$&^_.+-]+$/u.test(mimeHeader)
-          ? mimeHeader
-          : "application/octet-stream";
-      const kind = chatAttachmentKindSchema.safeParse(
-        request.headers["x-cantrip-attachment-kind"],
-      );
-      const source = chatAttachmentSourceSchema.safeParse(
-        request.headers["x-cantrip-attachment-source"],
-      );
+      const input = attachmentUploadOpaqueSchema.safeParse(raw);
       if (
-        !fileName ||
-        fileName.length > 200 ||
-        !kind.success ||
-        !source.success ||
+        !input.success ||
         !Buffer.isBuffer(request.body) ||
-        request.body.byteLength > uploadLimitBytes
+        request.body.byteLength > encryptedAttachmentUploadLimitBytes ||
+        input.data.sizeBytes > uploadLimitBytes
       ) {
         return reply.code(400).send({ error: "Invalid attachment upload." });
       }
 
+      const attachmentId = input.data.attachmentId;
+      if (
+        await repository.getChatAttachment(applicationOwnerId(), attachmentId)
+      ) {
+        return reply.code(409).send({ error: "Attachment already exists." });
+      }
       relayQuotas.consumeUpload(
         applicationOwnerId(),
         context.workerId,
-        request.body.byteLength,
+        input.data.sizeBytes,
       );
-
-      const attachmentId = randomUUID();
       try {
         await bridge.request(context.workerId, {
           type: "attachment.upload.begin",
           chatId: context.chatId,
           attachmentId,
-          fileName,
-          sizeBytes: request.body.byteLength,
+          operationId: input.data.operationId,
+          direction: "upload",
+          protectedMetadata: input.data.protectedMetadata,
+          sizeBytes: input.data.sizeBytes,
         });
-        for (
-          let offset = 0, chunkIndex = 0;
-          offset < request.body.byteLength;
-          offset += ATTACHMENT_CHUNK_BYTES, chunkIndex += 1
-        ) {
+        for (const chunk of input.data.chunks) {
           await bridge.request(context.workerId, {
             type: "attachment.upload.chunk",
             chatId: context.chatId,
             attachmentId,
-            chunkIndex,
-            data: request.body
-              .subarray(offset, offset + ATTACHMENT_CHUNK_BYTES)
-              .toString("base64"),
+            operationId: input.data.operationId,
+            direction: "upload",
+            chunk,
           });
         }
         const uploaded = workerAttachmentUploadResultSchema.parse(
@@ -23584,31 +23587,26 @@ export async function buildApp({
             type: "attachment.upload.complete",
             chatId: context.chatId,
             attachmentId,
+            operationId: input.data.operationId,
           }),
         );
-        const previewText =
-          kind.data === "text"
-            ? request.body.toString("utf8", 0, 16_000).slice(0, 8_000)
-            : null;
+        if (uploaded.sizeBytes !== input.data.sizeBytes || !uploaded.verified) {
+          throw new Error("Attachment worker rejected the protected upload.");
+        }
         const attachment = await repository.createChatAttachment(
           applicationOwnerId(),
           context.chatId,
           {
             id: attachmentId,
             workerId: context.workerId,
-            fileName,
-            mimeType,
+            protectedMetadata: input.data.protectedMetadata,
             sizeBytes: uploaded.sizeBytes,
-            kind: kind.data,
-            source: source.data,
-            previewText,
-            sha256: uploaded.sha256,
           },
         );
         if (!attachment) throw new Error("Chat not found.");
         return reply
           .code(201)
-          .send(chatAttachmentSummarySchema.parse(attachment));
+          .send(chatAttachmentOpaqueSummarySchema.parse(attachment));
       } catch (error) {
         try {
           await bridge.request(context.workerId, {
@@ -23624,89 +23622,110 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { attachmentId: string } }>(
-    "/api/attachments/:attachmentId/content",
-    async (request, reply) => {
-      const attachment = await repository.getChatAttachment(
-        applicationOwnerId(),
-        request.params.attachmentId,
+  app.get<{
+    Params: { attachmentId: string };
+    Querystring: { operationId?: string };
+  }>("/api/attachments/:attachmentId/content", async (request, reply) => {
+    const attachment = await repository.getChatAttachment(
+      applicationOwnerId(),
+      request.params.attachmentId,
+    );
+    if (!attachment) {
+      return reply.code(404).send({ error: "Attachment not found." });
+    }
+    if (attachment.status === "failed") {
+      return reply.code(409).send({
+        error: "The attachment content is unavailable.",
+      });
+    }
+    const operationId = request.query.operationId?.trim() ?? "";
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        operationId,
+      )
+    ) {
+      return reply.code(400).send({ error: "Invalid attachment operation." });
+    }
+    const replicaWorkerIds = await repository.getChatAttachmentReplicaWorkerIds(
+      applicationOwnerId(),
+      attachment.id,
+    );
+    const contentWorkerId = [attachment.workerId, ...replicaWorkerIds].find(
+      (workerId, index, workerIds) => {
+        return (
+          workerIds.indexOf(workerId) === index && bridge.isConnected(workerId)
+        );
+      },
+    );
+    if (!contentWorkerId) {
+      return reply.code(503).send({ error: "Attachment worker is offline." });
+    }
+    try {
+      const chunks = [];
+      let offset = 0;
+      let sequence = 0;
+      const expectedSize = attachment.sizeBytes;
+      while (offset < expectedSize || (expectedSize === 0 && offset === 0)) {
+        const chunk = workerAttachmentReadResultSchema.parse(
+          await bridge.request(contentWorkerId, {
+            type: "attachment.read",
+            chatId: attachment.chatId,
+            attachmentId: attachment.id,
+            operationId,
+            direction: "download",
+            protectedMetadata: attachment.protectedMetadata,
+            sequence,
+            offset,
+            limit: ATTACHMENT_CHUNK_BYTES,
+          }),
+        );
+        if (chunk.sizeBytes !== expectedSize) {
+          throw new Error(
+            "Attachment worker returned an inconsistent content size.",
+          );
+        }
+        const remainingBytes = expectedSize - offset;
+        const maximumChunkBytes = Math.min(
+          ATTACHMENT_CHUNK_BYTES,
+          Math.max(remainingBytes, 0),
+        );
+        if (
+          chunk.chunk.sequence !== sequence ||
+          chunk.chunk.plaintextBytes > maximumChunkBytes
+        ) {
+          throw new Error("Attachment worker returned an oversized chunk.");
+        }
+        chunks.push(chunk.chunk);
+        offset += chunk.chunk.plaintextBytes;
+        sequence += 1;
+        if (chunk.chunk.eof) {
+          if (offset !== expectedSize) {
+            throw new Error("Attachment content was truncated.");
+          }
+          break;
+        }
+        if (offset === expectedSize) {
+          throw new Error(
+            "Attachment worker did not terminate the content stream.",
+          );
+        }
+        if (chunk.chunk.plaintextBytes === 0) {
+          throw new Error("Attachment worker returned an empty chunk.");
+        }
+      }
+      return reply.header("cache-control", "no-store").send(
+        attachmentDownloadOpaqueSchema.parse({
+          attachmentId: attachment.id,
+          operationId,
+          sizeBytes: attachment.sizeBytes,
+          protectedMetadata: attachment.protectedMetadata,
+          chunks,
+        }),
       );
-      if (!attachment) {
-        return reply.code(404).send({ error: "Attachment not found." });
-      }
-      if (attachment.status === "failed") {
-        return reply.code(409).send({
-          error:
-            attachment.previewText ??
-            "The original attachment was unavailable during import.",
-        });
-      }
-      if (!bridge.isConnected(attachment.workerId)) {
-        return reply.code(503).send({ error: "Attachment worker is offline." });
-      }
-      try {
-        const chunks: Buffer[] = [];
-        let offset = 0;
-        const expectedSize = attachment.sizeBytes;
-        while (offset < expectedSize || (expectedSize === 0 && offset === 0)) {
-          const chunk = workerAttachmentReadResultSchema.parse(
-            await bridge.request(attachment.workerId, {
-              type: "attachment.read",
-              chatId: attachment.chatId,
-              attachmentId: attachment.id,
-              fileName: attachment.fileName,
-              offset,
-              limit: ATTACHMENT_CHUNK_BYTES,
-            }),
-          );
-          if (chunk.sizeBytes !== expectedSize) {
-            throw new Error(
-              "Attachment worker returned an inconsistent content size.",
-            );
-          }
-          const bytes = Buffer.from(chunk.data, "base64");
-          const remainingBytes = expectedSize - offset;
-          const maximumChunkBytes = Math.min(
-            ATTACHMENT_CHUNK_BYTES,
-            Math.max(remainingBytes, 0),
-          );
-          if (bytes.byteLength > maximumChunkBytes) {
-            throw new Error("Attachment worker returned an oversized chunk.");
-          }
-          chunks.push(bytes);
-          offset += bytes.byteLength;
-          if (chunk.eof) {
-            if (offset !== expectedSize) {
-              throw new Error("Attachment content was truncated.");
-            }
-            break;
-          }
-          if (offset === expectedSize) {
-            throw new Error(
-              "Attachment worker did not terminate the content stream.",
-            );
-          }
-          if (bytes.byteLength === 0) {
-            throw new Error("Attachment worker returned an empty chunk.");
-          }
-        }
-        const content = Buffer.concat(chunks, expectedSize);
-        if (content.byteLength !== expectedSize) {
-          throw new Error("Attachment content was truncated.");
-        }
-        return reply
-          .header("cache-control", "private, max-age=60")
-          .header(
-            "content-disposition",
-            `inline; filename*=UTF-8''${encodeURIComponent(attachment.fileName)}`,
-          )
-          .type(attachment.mimeType)
-          .send(content);
-      } catch (error) {
-        return sendWorkerRequestFailure(reply, error);
-      }
-    },
-  );
+    } catch (error) {
+      return sendWorkerRequestFailure(reply, error);
+    }
+  });
 
   app.delete<{ Params: { attachmentId: string } }>(
     "/api/attachments/:attachmentId",
@@ -23718,13 +23737,26 @@ export async function buildApp({
       if (!attachment) {
         return reply.code(404).send({ error: "Attachment not found." });
       }
-      if (bridge.isConnected(attachment.workerId)) {
-        await bridge.request(attachment.workerId, {
-          type: "attachment.delete",
-          chatId: attachment.chatId,
-          attachmentId: attachment.id,
-        });
-      }
+      const replicaWorkerIds =
+        await repository.getChatAttachmentReplicaWorkerIds(
+          applicationOwnerId(),
+          attachment.id,
+        );
+      await Promise.all(
+        [attachment.workerId, ...replicaWorkerIds]
+          .filter(
+            (workerId, index, workerIds) =>
+              workerIds.indexOf(workerId) === index &&
+              bridge.isConnected(workerId),
+          )
+          .map((workerId) =>
+            bridge.request(workerId, {
+              type: "attachment.delete",
+              chatId: attachment.chatId,
+              attachmentId: attachment.id,
+            }),
+          ),
+      );
       await repository.deleteChatAttachment(
         applicationOwnerId(),
         attachment.id,
@@ -23992,7 +24024,7 @@ export async function buildApp({
         context.chatId,
         input.data,
         attachments.map((attachment) =>
-          chatAttachmentSummarySchema.parse(attachment),
+          chatAttachmentOpaqueSummarySchema.parse(attachment),
         ),
       );
       if (!prompt) return reply.code(404).send({ error: "Chat not found." });
@@ -24071,7 +24103,7 @@ export async function buildApp({
         request.params.promptId,
         input.data.prompt,
         attachments.map((attachment) =>
-          chatAttachmentSummarySchema.parse(attachment),
+          chatAttachmentOpaqueSummarySchema.parse(attachment),
         ),
       );
       if (!prompt) {
@@ -24143,13 +24175,9 @@ export async function buildApp({
             chatId: context.chatId,
             threadId: context.threadId,
             protectedPrompt: queued.pendingMessage,
-            attachments: attachments.map((attachment) => ({
-              id: attachment.id,
-              fileName: attachment.fileName,
-              mimeType: attachment.mimeType,
-              sizeBytes: attachment.sizeBytes,
-              kind: attachment.kind,
-            })),
+            attachments: attachments.map((attachment) =>
+              chatAttachmentOpaqueSummarySchema.parse(attachment),
+            ),
             model: runtime.model,
             provider: runtime.provider,
           });
@@ -24287,7 +24315,7 @@ export async function buildApp({
           context.chatId,
           input.data.queuedPrompt,
           attachments.map((attachment) =>
-            chatAttachmentSummarySchema.parse(attachment),
+            chatAttachmentOpaqueSummarySchema.parse(attachment),
           ),
         );
         if (prompt) {

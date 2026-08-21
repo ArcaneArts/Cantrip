@@ -10,7 +10,7 @@ export function workflowGenerationTranscript(messages: ChatMessage[]): string {
         .flatMap((item) => {
           if (item.type === "text") return [item.text];
           if (item.type === "attachment") {
-            return [`[attachment: ${item.attachment.fileName}]`];
+            return ["[attachment]"];
           }
           return [];
         })

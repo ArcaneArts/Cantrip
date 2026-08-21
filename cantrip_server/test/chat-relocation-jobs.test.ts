@@ -22,6 +22,7 @@ import {
   protectedChatFields,
   protectedProjectFields,
 } from "./private-label-fixture.js";
+import { protectedAttachmentMetadataFixture } from "./protected-attachment-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-chat-relocation-jobs-"),
@@ -246,13 +247,8 @@ describe.sequential("durable chat relocation jobs", () => {
       {
         id: "attachment-relocation-one",
         workerId: "worker-alpha",
-        fileName: "context.txt",
-        mimeType: "text/plain",
+        protectedMetadata: protectedAttachmentMetadataFixture("context"),
         sizeBytes: 7,
-        kind: "text",
-        source: "file",
-        previewText: "context",
-        sha256: "a".repeat(64),
       },
     );
     expect(attachment).not.toBeNull();
@@ -327,7 +323,9 @@ describe.sequential("durable chat relocation jobs", () => {
         ],
         attachments: [
           expect.objectContaining({
-            sha256: "a".repeat(64),
+            attachment: expect.objectContaining({
+              protectedMetadata: protectedAttachmentMetadataFixture("context"),
+            }),
             sourceWorkerId: "worker-alpha",
             availableWorkerIds: ["worker-alpha"],
           }),
@@ -397,13 +395,8 @@ describe.sequential("durable chat relocation jobs", () => {
       {
         id: "task-draft-relocation-attachment",
         workerId: "worker-alpha",
-        fileName: "task-context.md",
-        mimeType: "text/markdown",
+        protectedMetadata: protectedAttachmentMetadataFixture("task-context"),
         sizeBytes: 14,
-        kind: "text",
-        source: "file",
-        previewText: "# Task context",
-        sha256: "b".repeat(64),
       },
     );
     expect(attachment).not.toBeNull();

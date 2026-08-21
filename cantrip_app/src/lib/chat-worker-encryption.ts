@@ -60,6 +60,7 @@ export function chatWorkerEncryptionReadiness(
   }
   if (worker.encryption.state === "error") return "unavailable";
   const requiredComponents = [
+    "attachment-content",
     "chat-content",
     "interaction-content",
     "mcp-secret",
@@ -131,6 +132,7 @@ export async function ensureChatWorkerEncryption(input: {
     await authorizeWorkerEncryption({
       api: input.api,
       components: [
+        "attachment-content",
         "chat-content",
         "interaction-content",
         "mcp-secret",

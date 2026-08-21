@@ -22,8 +22,6 @@ import {
   browserTunnelRequestSchema,
   agentThreadSyncSchema,
   chatWireListSchema,
-  chatAttachmentListSchema,
-  chatAttachmentSummarySchema,
   chatGoalClearSchema,
   chatGoalCreateSchema,
   chatGoalResponseSchema,
@@ -274,6 +272,12 @@ import {
   workerSummarySchema,
   workerUpdateSchema,
 } from "@cantrip/protocol";
+import {
+  attachmentDownloadOpaqueSchema,
+  attachmentUploadOpaqueSchema,
+  chatAttachmentOpaqueListSchema,
+  chatAttachmentOpaqueSummarySchema,
+} from "@cantrip/protocol/attachment-content";
 import type {
   AccountRegistration,
   AuthLogin,
@@ -420,6 +424,12 @@ import {
   openEncryptedAgentInteractionRequest,
 } from "@/lib/interaction-encryption";
 import { openEncryptedChatPlanWireState } from "@/lib/chat-plan-encryption";
+import {
+  openAttachmentDownload,
+  openAttachmentOpaqueList,
+  openAttachmentOpaqueSummary,
+  protectAttachmentUpload,
+} from "@/lib/attachment-encryption";
 import {
   openEffectivePolicyWireList,
   openPolicyAssignmentWireList,
@@ -3020,8 +3030,10 @@ export async function getTaskImplementationDashboard(chatId: string) {
 }
 
 export async function getTaskAttachments(chatId: string) {
-  return chatAttachmentListSchema.parse(
-    await request(`/api/tasks/${encodeURIComponent(chatId)}/attachments`),
+  return openAttachmentOpaqueList(
+    chatAttachmentOpaqueListSchema.parse(
+      await request(`/api/tasks/${encodeURIComponent(chatId)}/attachments`),
+    ),
   );
 }
 
@@ -4553,23 +4565,45 @@ export async function uploadChatAttachment(
   kind: ChatAttachmentKind,
   source: ChatAttachmentSource,
 ) {
-  const response = await requestResponse(
-    `/api/chats/${encodeURIComponent(chatId)}/attachments`,
-    {
-      method: "POST",
-      body: file,
-      credentials: "include",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/octet-stream",
-        "x-cantrip-attachment-kind": kind,
-        "x-cantrip-attachment-source": source,
-        "x-cantrip-file-name": encodeURIComponent(file.name),
-        "x-cantrip-mime-type": file.type || "application/octet-stream",
+  const attachmentId = crypto.randomUUID();
+  const operationId = crypto.randomUUID();
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  try {
+    const previewText =
+      kind === "text"
+        ? new TextDecoder("utf-8", { fatal: false })
+            .decode(bytes.subarray(0, 16_000))
+            .slice(0, 8_000)
+        : null;
+    const upload = await protectAttachmentUpload({
+      attachmentId,
+      operationId,
+      chatId,
+      bytes,
+      fileName: file.name,
+      mimeType: file.type || "application/octet-stream",
+      kind,
+      source,
+      previewText,
+    });
+    const response = await requestResponse(
+      `/api/chats/${encodeURIComponent(chatId)}/attachments`,
+      {
+        method: "POST",
+        body: JSON.stringify(attachmentUploadOpaqueSchema.parse(upload)),
+        credentials: "include",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/octet-stream",
+        },
       },
-    },
-  );
-  return chatAttachmentSummarySchema.parse(await response.json());
+    );
+    return openAttachmentOpaqueSummary(
+      chatAttachmentOpaqueSummarySchema.parse(await response.json()),
+    );
+  } finally {
+    bytes.fill(0);
+  }
 }
 
 export async function deleteChatAttachment(attachmentId: string) {
@@ -4580,6 +4614,25 @@ export async function deleteChatAttachment(attachmentId: string) {
 
 export function chatAttachmentContentUrl(attachmentId: string): string {
   return `${getActiveServerUrl()}/api/attachments/${encodeURIComponent(attachmentId)}/content`;
+}
+
+export async function loadChatAttachmentContent(
+  attachment: ChatAttachmentSummary,
+): Promise<Blob> {
+  const operationId = crypto.randomUUID();
+  const download = attachmentDownloadOpaqueSchema.parse(
+    await request(
+      `/api/attachments/${encodeURIComponent(attachment.id)}/content?operationId=${encodeURIComponent(operationId)}`,
+    ),
+  );
+  const bytes = await openAttachmentDownload(attachment, download);
+  try {
+    return new Blob([bytes.slice().buffer as ArrayBuffer], {
+      type: attachment.mimeType,
+    });
+  } finally {
+    bytes.fill(0);
+  }
 }
 
 export async function deleteQueuedPrompt(promptId: string) {

@@ -113,7 +113,6 @@ import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
 import { ChatRunStatus } from "@/components/chat/chat-run-status";
-import { requestResponse } from "@/lib/api-client";
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import {
   imageInputCapabilityMessage,
@@ -313,6 +312,7 @@ import {
   getWorkflowAutomationTriggers,
   invokeSavedWorkflowCommand,
   interruptChat,
+  loadChatAttachmentContent,
   renameChat,
   renameExplorer,
   renameProjectView,
@@ -1361,6 +1361,11 @@ function ChatTranscript({
       pending.map(async (pendingItem, index) => {
         const file = accepted[index]!;
         try {
+          await ensureChatWorkerEncryption({
+            worker: workers.data?.find(
+              ({ workerId }) => workerId === chat.activeWorkerId,
+            ),
+          });
           const uploaded = await uploadChatAttachment(
             chat.id,
             file,
@@ -1407,11 +1412,14 @@ function ChatTranscript({
   const restoreDraftAttachmentText = async (item: ComposerAttachmentState) => {
     setAttachmentNotice(null);
     try {
-      const response = item.localPreview
-        ? await fetch(item.contentUrl)
-        : await requestResponse(item.contentUrl);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const pastedText = await response.text();
+      const pastedText = item.localPreview
+        ? await fetch(item.contentUrl).then((response) => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.text();
+          })
+        : await loadChatAttachmentContent(item.attachment).then((blob) =>
+            blob.text(),
+          );
       const textarea = composerRef.current;
       const currentDraft = textarea?.value ?? draft;
       const selectionStart = textarea?.selectionStart ?? currentDraft.length;

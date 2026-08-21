@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   agentThreadSyncSchema,
@@ -19,7 +19,6 @@ import {
 import {
   ChatImportJobConflictError,
   ChatImportJobStaleAttemptError,
-  chatImportAttachmentId,
   type ClaimedChatImportJob,
   type ImportedChatAttachment,
 } from "../db/chat-import-jobs.js";
@@ -371,7 +370,7 @@ export class ChatImportJobExecutor {
         claimed.job.attempt,
         result.transcript,
         importedAttachments,
-        async (messages) => {
+        async (messages, attachments) => {
           const protectedMessages: unknown[] = [];
           for (let offset = 0; offset < messages.length; offset += 100) {
             protectedMessages.push(
@@ -381,6 +380,7 @@ export class ChatImportJobExecutor {
                   {
                     type: "chat.messages.protect",
                     messages: messages.slice(offset, offset + 100),
+                    attachments,
                   },
                   { timeoutMs: CHAT_IMPORT_READ_TIMEOUT_MS },
                 ),
@@ -414,7 +414,7 @@ export class ChatImportJobExecutor {
   ): Promise<ImportedChatAttachment[]> {
     const imported: ImportedChatAttachment[] = [];
     for (const descriptor of descriptors) {
-      const id = chatImportAttachmentId(claimed.job.id, descriptor.id);
+      const id = descriptor.id;
       if (descriptor.status !== "available") {
         imported.push({ descriptor, id });
         continue;
@@ -422,20 +422,21 @@ export class ChatImportJobExecutor {
       if (!this.bridge.isConnected(claimed.job.targetPlacement.workerId)) {
         throw new WorkerUnavailableError("Destination worker is offline.");
       }
+      const operationId = randomUUID();
       let uploadStarted = false;
       try {
         await this.bridge.request(claimed.job.targetPlacement.workerId, {
           type: "attachment.upload.begin",
           chatId: claimed.job.id,
           attachmentId: id,
-          fileName: descriptor.fileName,
+          operationId,
+          direction: "relay",
+          protectedMetadata: descriptor.protectedMetadata,
           sizeBytes: descriptor.sizeBytes,
         });
         uploadStarted = true;
-        const digest = createHash("sha256");
         let offset = 0;
-        let chunkIndex = 0;
-        let unavailableWarning: string | null = null;
+        let sequence = 0;
         while (
           offset < descriptor.sizeBytes ||
           (descriptor.sizeBytes === 0 && offset === 0)
@@ -443,94 +444,68 @@ export class ChatImportJobExecutor {
           const source = externalChatAttachmentReadResultSchema.parse(
             await this.bridge.request(claimed.job.sourceWorkerId, {
               type: "external.chat-history.attachment.read",
+              ownerId: claimed.ownerId,
+              chatId: claimed.job.id,
               sourceKind: claimed.job.sourceKind,
               sourceId: claimed.job.sourceId,
               sourceThreadId: claimed.job.sourceThreadId,
-              attachmentId: descriptor.id,
+              attachmentId: descriptor.sourceAttachmentId,
+              targetAttachmentId: id,
+              operationId,
+              sequence,
               offset,
               limit: ATTACHMENT_CHUNK_BYTES,
             }),
           );
           if (source.status === "unavailable") {
-            unavailableWarning = source.warning;
-            break;
+            throw new Error("The source attachment became unavailable.");
           }
-          if (
-            source.sizeBytes !== descriptor.sizeBytes ||
-            source.sha256 !== descriptor.sha256
-          ) {
-            unavailableWarning =
-              "The attachment changed after the source transcript was read.";
-            break;
+          if (source.sizeBytes !== descriptor.sizeBytes) {
+            throw new Error("The source attachment changed during import.");
           }
-          const bytes = Buffer.from(source.data, "base64");
           const remaining = descriptor.sizeBytes - offset;
           if (
-            bytes.byteLength > Math.min(ATTACHMENT_CHUNK_BYTES, remaining) ||
-            (!source.eof && bytes.byteLength === 0)
+            source.chunk.sequence !== sequence ||
+            source.chunk.plaintextBytes >
+              Math.min(ATTACHMENT_CHUNK_BYTES, remaining) ||
+            (!source.chunk.eof && source.chunk.plaintextBytes === 0)
           ) {
-            unavailableWarning =
-              "The source worker returned an invalid attachment stream.";
-            break;
+            throw new Error(
+              "The source worker returned an invalid attachment stream.",
+            );
           }
-          digest.update(bytes);
           await this.bridge.request(claimed.job.targetPlacement.workerId, {
             type: "attachment.upload.chunk",
             chatId: claimed.job.id,
             attachmentId: id,
-            chunkIndex,
-            data: bytes.toString("base64"),
+            operationId,
+            direction: "relay",
+            chunk: source.chunk,
           });
-          offset += bytes.byteLength;
-          chunkIndex += 1;
-          if (source.eof) {
+          offset += source.chunk.plaintextBytes;
+          sequence += 1;
+          if (source.chunk.eof) {
             if (offset !== descriptor.sizeBytes) {
-              unavailableWarning = "The source attachment was truncated.";
+              throw new Error("The source attachment was truncated.");
             }
             break;
           }
           if (offset === descriptor.sizeBytes) {
-            unavailableWarning =
-              "The source worker did not terminate the attachment stream.";
-            break;
+            throw new Error(
+              "The source worker did not terminate the attachment stream.",
+            );
           }
-        }
-        if (
-          unavailableWarning ||
-          offset !== descriptor.sizeBytes ||
-          digest.digest("hex") !== descriptor.sha256
-        ) {
-          await this.bridge.request(claimed.job.targetPlacement.workerId, {
-            type: "attachment.delete",
-            chatId: claimed.job.id,
-            attachmentId: id,
-          });
-          uploadStarted = false;
-          imported.push({
-            id,
-            descriptor: {
-              ...descriptor,
-              status: "missing",
-              sha256: null,
-              warning:
-                unavailableWarning ??
-                "The source attachment failed content verification.",
-            },
-          });
-          continue;
         }
         const uploaded = workerAttachmentUploadResultSchema.parse(
           await this.bridge.request(claimed.job.targetPlacement.workerId, {
             type: "attachment.upload.complete",
             chatId: claimed.job.id,
             attachmentId: id,
+            operationId,
           }),
         );
         uploadStarted = false;
-        if (
-          uploaded.sizeBytes !== descriptor.sizeBytes ||
-          uploaded.sha256 !== descriptor.sha256
-        ) {
+        if (uploaded.sizeBytes !== descriptor.sizeBytes || !uploaded.verified) {
           await this.bridge.request(claimed.job.targetPlacement.workerId, {
             type: "attachment.delete",
             chatId: claimed.job.id,

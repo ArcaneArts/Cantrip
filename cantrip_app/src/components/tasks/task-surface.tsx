@@ -54,6 +54,7 @@ import {
   getMessages,
   getTask,
   getTaskAttachments,
+  loadChatAttachmentContent,
   startTaskPlanning,
   updateChatModel,
   updateChatPermissionProfile,
@@ -62,7 +63,6 @@ import {
   uploadChatAttachment,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
-import { requestResponse } from "@/lib/api-client";
 import { clientEncryption } from "@/lib/client-encryption";
 import {
   ensureTaskWorkerEncryption,
@@ -440,6 +440,7 @@ export function TaskSurface({
     await Promise.all(
       pending.map(async (item) => {
         try {
+          await ensureTaskWorkerEncryption({ worker });
           const uploaded = await uploadChatAttachment(
             chat.id,
             item.file,
@@ -482,11 +483,9 @@ export function TaskSurface({
   ) => {
     setAttachmentNotice(null);
     try {
-      const response = await requestResponse(
-        chatAttachmentContentUrl(attachment.id),
+      const pastedText = await loadChatAttachmentContent(attachment).then(
+        (blob) => blob.text(),
       );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const pastedText = await response.text();
       setBrief(
         (current) =>
           insertComposerText(current, pastedText, current.length).text,

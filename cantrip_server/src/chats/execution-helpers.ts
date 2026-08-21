@@ -93,9 +93,7 @@ export function continuationPrompt(
         .flatMap((item) => {
           if (item.type === "text") return [item.text];
           if (item.type === "attachment") {
-            return [
-              `[attachment: ${item.attachment.fileName} (${item.attachment.mimeType})]`,
-            ];
+            return ["[attachment]"];
           }
           return [activityContinuationSummary(item.activity)];
         })

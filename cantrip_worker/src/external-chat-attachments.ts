@@ -14,13 +14,6 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import {
-  externalChatAttachmentReadResultSchema,
-  externalChatAttachmentSchema,
-  type ExternalChatAttachment,
-  type ExternalChatAttachmentReadResult,
-} from "@cantrip/protocol";
-
 const MAX_ATTACHMENT_BYTES = 25 * 1_024 * 1_024;
 export const MAX_EXTERNAL_CHAT_ATTACHMENT_BYTES = 100 * 1_024 * 1_024;
 const STAGING_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -34,9 +27,30 @@ export interface ExternalChatAttachmentCandidate {
 }
 
 interface StoredExternalChatAttachment {
-  descriptor: ExternalChatAttachment;
+  descriptor: ExternalChatAttachmentStagedDescriptor;
   stagedAt: string;
 }
+
+export interface ExternalChatAttachmentStagedDescriptor {
+  id: string;
+  itemId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  kind: "audio" | "image";
+  status: "available" | "missing" | "unsafe" | "unsupported";
+  sha256: string | null;
+  warning: string | null;
+}
+
+export type ExternalChatAttachmentStagedReadResult =
+  | {
+      status: "available";
+      bytes: Uint8Array;
+      eof: boolean;
+      sizeBytes: number;
+    }
+  | { status: "unavailable"; reasonCode: "missing" | "changed" | "invalid" };
 
 function safeHash(value: string, label: string): string {
   if (!/^[0-9a-f]{64}$/u.test(value)) {
@@ -121,8 +135,8 @@ function unavailable(
   status: "missing" | "unsafe" | "unsupported",
   warning: string,
   fileName = `imported-${candidate.kind}`,
-): ExternalChatAttachment {
-  return externalChatAttachmentSchema.parse({
+): ExternalChatAttachmentStagedDescriptor {
+  return {
     id: candidate.id,
     itemId: candidate.itemId,
     fileName,
@@ -135,7 +149,7 @@ function unavailable(
     status,
     sha256: null,
     warning,
-  });
+  };
 }
 
 export class ExternalChatAttachmentStagingStore {
@@ -151,7 +165,7 @@ export class ExternalChatAttachmentStagingStore {
     candidate: ExternalChatAttachmentCandidate,
     allowedRoots: string[],
     remainingBytes: number,
-  ): Promise<ExternalChatAttachment> {
+  ): Promise<ExternalChatAttachmentStagedDescriptor> {
     if (candidate.remoteUrl) {
       let remoteFileName = `imported-${candidate.kind}`;
       try {
@@ -280,7 +294,7 @@ export class ExternalChatAttachmentStagingStore {
       );
       await writeFile(temporaryPath, bytes, { mode: 0o600 });
       await rename(temporaryPath, contentPath);
-      const descriptor = externalChatAttachmentSchema.parse({
+      const descriptor: ExternalChatAttachmentStagedDescriptor = {
         id: candidate.id,
         itemId: candidate.itemId,
         fileName,
@@ -290,7 +304,7 @@ export class ExternalChatAttachmentStagingStore {
         status: "available",
         sha256,
         warning: null,
-      });
+      };
       await writeFile(
         path.join(directory, "metadata.json"),
         `${JSON.stringify({ descriptor, stagedAt: new Date().toISOString() } satisfies StoredExternalChatAttachment)}\n`,
@@ -315,7 +329,7 @@ export class ExternalChatAttachmentStagingStore {
     attachmentId: string,
     offset: number,
     limit: number,
-  ): Promise<ExternalChatAttachmentReadResult> {
+  ): Promise<ExternalChatAttachmentStagedReadResult> {
     try {
       const directory = this.attachmentDirectory(
         sourceId,
@@ -325,7 +339,7 @@ export class ExternalChatAttachmentStagingStore {
       const stored = JSON.parse(
         await readFile(path.join(directory, "metadata.json"), "utf8"),
       ) as StoredExternalChatAttachment;
-      const descriptor = externalChatAttachmentSchema.parse(stored.descriptor);
+      const descriptor = stored.descriptor;
       if (descriptor.status !== "available" || !descriptor.sha256) {
         throw new Error("The staged attachment is unavailable.");
       }
@@ -355,22 +369,20 @@ export class ExternalChatAttachmentStagingStore {
         if (bytesRead !== expectedBytes) {
           throw new Error("The staged attachment was truncated.");
         }
-        return externalChatAttachmentReadResultSchema.parse({
+        return {
           status: "available",
-          data: bytes.toString("base64"),
+          bytes: bytes.subarray(0, bytesRead),
           eof: offset + bytesRead >= descriptor.sizeBytes,
           sizeBytes: descriptor.sizeBytes,
-          sha256: descriptor.sha256,
-        });
+        };
       } finally {
         await handle.close();
       }
     } catch {
-      return externalChatAttachmentReadResultSchema.parse({
+      return {
         status: "unavailable",
-        warning:
-          "The staged attachment is no longer available on the source worker.",
-      });
+        reasonCode: "missing",
+      };
     }
   }
 

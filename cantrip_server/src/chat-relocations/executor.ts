@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   workerAttachmentReadResultSchema,
@@ -708,21 +708,23 @@ export class ChatRelocationJobExecutor {
       if (!sourceWorkerId) {
         throw executionError(
           "attachment-unavailable",
-          `No online worker has ${item.attachment.fileName}.`,
+          "No online worker has the required attachment content.",
           true,
         );
       }
+      const operationId = randomUUID();
       try {
         await this.bridge.request(targetWorkerId, {
           type: "attachment.upload.begin",
           chatId: claimed.job.chatId,
           attachmentId: item.attachment.id,
-          fileName: item.attachment.fileName,
+          operationId,
+          direction: "relay",
+          protectedMetadata: item.attachment.protectedMetadata,
           sizeBytes: item.attachment.sizeBytes,
         });
         let offset = 0;
-        let chunkIndex = 0;
-        const hash = createHash("sha256");
+        let sequence = 0;
         while (
           offset < item.attachment.sizeBytes ||
           (item.attachment.sizeBytes === 0 && offset === 0)
@@ -732,7 +734,10 @@ export class ChatRelocationJobExecutor {
               type: "attachment.read",
               chatId: claimed.job.chatId,
               attachmentId: item.attachment.id,
-              fileName: item.attachment.fileName,
+              operationId,
+              direction: "relay",
+              protectedMetadata: item.attachment.protectedMetadata,
+              sequence,
               offset,
               limit: ATTACHMENT_CHUNK_BYTES,
             }),
@@ -740,53 +745,51 @@ export class ChatRelocationJobExecutor {
           if (chunk.sizeBytes !== item.attachment.sizeBytes) {
             throw new Error("Attachment size changed during relocation.");
           }
-          const bytes = Buffer.from(chunk.data, "base64");
+          const plaintextBytes = chunk.chunk.plaintextBytes;
           if (
-            bytes.byteLength >
-            Math.min(
-              ATTACHMENT_CHUNK_BYTES,
-              Math.max(item.attachment.sizeBytes - offset, 0),
-            )
+            chunk.chunk.sequence !== sequence ||
+            plaintextBytes >
+              Math.min(
+                ATTACHMENT_CHUNK_BYTES,
+                Math.max(item.attachment.sizeBytes - offset, 0),
+              ) ||
+            (!chunk.chunk.eof && plaintextBytes === 0)
           ) {
-            throw new Error("Attachment source returned an oversized chunk.");
+            throw new Error("Attachment source returned an invalid chunk.");
           }
-          hash.update(bytes);
-          if (bytes.byteLength) {
-            await this.bridge.request(targetWorkerId, {
-              type: "attachment.upload.chunk",
-              chatId: claimed.job.chatId,
-              attachmentId: item.attachment.id,
-              chunkIndex,
-              data: bytes.toString("base64"),
-            });
-            chunkIndex += 1;
-          }
-          offset += bytes.byteLength;
-          if (chunk.eof) {
+          await this.bridge.request(targetWorkerId, {
+            type: "attachment.upload.chunk",
+            chatId: claimed.job.chatId,
+            attachmentId: item.attachment.id,
+            operationId,
+            direction: "relay",
+            chunk: chunk.chunk,
+          });
+          offset += plaintextBytes;
+          sequence += 1;
+          if (chunk.chunk.eof) {
             if (offset !== item.attachment.sizeBytes) {
               throw new Error("Attachment source truncated the content.");
             }
             break;
           }
-          if (bytes.byteLength === 0 || offset >= item.attachment.sizeBytes) {
+          if (offset >= item.attachment.sizeBytes) {
             throw new Error("Attachment source did not terminate the stream.");
           }
-        }
-        if (hash.digest("hex") !== item.sha256) {
-          throw new Error("Attachment source digest verification failed.");
         }
         const uploaded = workerAttachmentUploadResultSchema.parse(
           await this.bridge.request(targetWorkerId, {
             type: "attachment.upload.complete",
             chatId: claimed.job.chatId,
             attachmentId: item.attachment.id,
+            operationId,
           }),
         );
         if (
-          uploaded.sha256 !== item.sha256 ||
+          !uploaded.verified ||
           uploaded.sizeBytes !== item.attachment.sizeBytes
         ) {
-          throw new Error("Target attachment digest verification failed.");
+          throw new Error("Target attachment verification failed.");
         }
         await this.repository.chatRelocationJobs.markAttachmentAvailable(
           item.attachment.id,
@@ -803,7 +806,7 @@ export class ChatRelocationJobExecutor {
         if (error instanceof WorkerUnavailableError) throw error;
         throw executionError(
           "attachment-unavailable",
-          `Could not transfer ${item.attachment.fileName}: ${error instanceof Error ? error.message : "unknown attachment error"}`,
+          `Could not transfer attachment content: ${error instanceof Error ? error.message : "unknown attachment error"}`,
           true,
         );
       }

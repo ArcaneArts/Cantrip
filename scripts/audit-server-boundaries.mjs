@@ -1470,6 +1470,157 @@ async function providerSecretRepositoryBoundaryAudit() {
   };
 }
 
+async function attachmentContentRepositoryBoundaryAudit() {
+  const paths = [
+    resolve(serverSourcePath, "db/schema.ts"),
+    resolve(serverSourcePath, "db/repository.ts"),
+    appPath,
+    resolve(serverSourcePath, "chat-imports/executor.ts"),
+    resolve(serverSourcePath, "chat-relocations/executor.ts"),
+    resolve(serverSourcePath, "chats/execution-helpers.ts"),
+    resolve(serverSourcePath, "workflows/generation-helpers.ts"),
+    protocolPath,
+    resolve(repositoryRoot, "cantrip_worker/src/index.ts"),
+  ];
+  const [
+    schemaText,
+    repositoryText,
+    applicationText,
+    importExecutorText,
+    relocationExecutorText,
+    chatExecutionHelpersText,
+    workflowGenerationHelpersText,
+    protocolText,
+    workerText,
+  ] = await Promise.all(paths.map((path) => readFile(path, "utf8")));
+  const failures = [];
+  const initializer = tableInitializer(schemaText, "chatAttachments");
+  if (
+    !/\bprotectedMetadata\s*:\s*jsonb\(["']protected_metadata["']\)/u.test(
+      initializer,
+    )
+  ) {
+    failures.push("chatAttachments: missing protected_metadata JSONB storage");
+  }
+  for (const field of [
+    "fileName",
+    "mimeType",
+    "kind",
+    "source",
+    "previewText",
+    "sha256",
+    "error",
+  ]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(initializer)) {
+      failures.push(
+        `chatAttachments: legacy plaintext ${field} storage returned`,
+      );
+    }
+  }
+  for (const reference of [
+    "fileName",
+    "mimeType",
+    "kind",
+    "source",
+    "previewText",
+    "sha256",
+    "error",
+  ]) {
+    if (
+      new RegExp(`schema\\.chatAttachments\\.${reference}\\b`, "u").test(
+        repositoryText,
+      )
+    ) {
+      failures.push(`repository: legacy attachment reference ${reference}`);
+    }
+  }
+  for (const marker of [
+    "x-cantrip-file-name",
+    "x-cantrip-mime-type",
+    "x-cantrip-attachment-kind",
+    "x-cantrip-attachment-source",
+  ]) {
+    if (applicationText.includes(marker)) {
+      failures.push(
+        `application: obsolete plaintext attachment header ${marker}`,
+      );
+    }
+  }
+  for (const marker of [
+    "attachmentUploadOpaqueSchema",
+    "attachmentDownloadOpaqueSchema",
+    "chatAttachmentOpaqueListSchema",
+    "protectedMetadata: input.data.protectedMetadata",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(
+        `application: missing opaque attachment contract ${marker}`,
+      );
+    }
+  }
+  const jobText = `${importExecutorText}\n${relocationExecutorText}`;
+  for (const marker of [
+    "fileName: descriptor.fileName",
+    "fileName: item.attachment.fileName",
+    "Buffer.from(source.data",
+    "Buffer.from(chunk.data",
+    "descriptor.sha256",
+    "item.sha256",
+  ]) {
+    if (jobText.includes(marker)) {
+      failures.push(`attachment jobs: plaintext relay returned (${marker})`);
+    }
+  }
+  const contentBuilderText = `${chatExecutionHelpersText}\n${workflowGenerationHelpersText}`;
+  for (const field of ["fileName", "mimeType", "previewText", "sha256"]) {
+    if (
+      new RegExp(`\\bitem\\.attachment\\.${field}\\b`, "u").test(
+        contentBuilderText,
+      )
+    ) {
+      failures.push(
+        `server content builders: protected attachment ${field} returned`,
+      );
+    }
+  }
+  for (const marker of [
+    'direction: z.enum(["upload", "relay"])',
+    'direction: z.enum(["download", "relay"])',
+    "protectedMetadata: attachmentProtectedMetadataSchema",
+    "chunk: attachmentChunkOpaqueSchema",
+  ]) {
+    if (!protocolText.includes(marker)) {
+      failures.push(
+        `worker commands: missing opaque stream contract ${marker}`,
+      );
+    }
+  }
+  for (const marker of [
+    "openWorkerAttachmentMetadata",
+    "openWorkerAttachmentChunk",
+    "protectWorkerAttachmentChunk",
+  ]) {
+    if (!workerText.includes(marker)) {
+      failures.push(`worker: missing trusted attachment operation ${marker}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Attachment-content repository boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["chat_attachments", "queued_prompts"],
+    guards: [
+      "attachment-metadata:opaque-jsonb-only",
+      "attachment-upload-and-download:ciphertext-only",
+      "attachment-import-and-relocation:ciphertext-relay",
+      "attachment-digest:trusted-endpoint-only",
+      "legacy-attachment-columns-and-headers:absent",
+    ],
+  };
+}
+
 async function privateDisplayLabelRepositoryBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
@@ -1827,6 +1978,7 @@ async function buildInventory() {
     policyDependencies,
     policyRepository,
     providerSecretRepository,
+    attachmentContentRepository,
     privateDisplayLabelDependencies,
     privateDisplayLabelRepository,
     surfacePrivateStateDependencies,
@@ -1840,6 +1992,7 @@ async function buildInventory() {
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
+    attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
     privateDisplayLabelRepositoryBoundaryAudit(),
     surfacePrivateStateProductionDependencyAudit(),
@@ -1947,6 +2100,10 @@ async function buildInventory() {
     providerSecretE2eeBoundary: {
       status: "enforced",
       ...providerSecretRepository,
+    },
+    attachmentContentE2eeBoundary: {
+      status: "enforced",
+      ...attachmentContentRepository,
     },
     privateDisplayLabelE2eeBoundary: {
       status: "enforced",

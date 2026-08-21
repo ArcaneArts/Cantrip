@@ -28,6 +28,10 @@
       "types": "./src/communication-content.ts",
       "import": "./dist/communication-content.js"
     },
+    "./attachment-content": {
+      "types": "./src/attachment-content.ts",
+      "import": "./dist/attachment-content.js"
+    },
     "./encryption": {
       "types": "./src/encryption.ts",
       "import": "./dist/encryption.js"
