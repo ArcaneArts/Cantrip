@@ -113,6 +113,7 @@ import {
 import { GithubClient } from "./github.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
+import { ProviderAuthObserver } from "./provider-auth-observer.js";
 import { GrokAuthClient } from "./grok-auth-client.js";
 import type { GrokSubscriptionClient } from "./grok-subscription-client.js";
 import {
@@ -688,6 +689,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ((notification: WorkerNotification) => boolean) | null = null;
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
+  const providerAuthObserver = new ProviderAuthObserver({
+    emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
+  });
   const workerLogStreams = new WorkerLogStreamManager({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
     read: readWorkerLogs,
@@ -810,6 +814,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       client = new CodexAuthClient(
         config.codexBinary,
         accountHomeFor(credentialHomeKey),
+        () => providerAuthObserver.wake(credentialHomeKey),
       );
       codexAuthClients.set(credentialHomeKey, client);
     }
@@ -819,7 +824,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const grokFor = (credentialHomeKey: string) => {
     let client = grokAuthClients.get(credentialHomeKey);
     if (!client) {
-      client = new GrokAuthClient(accountHomeFor(credentialHomeKey));
+      client = new GrokAuthClient(accountHomeFor(credentialHomeKey), {
+        onStatusChanged: () => providerAuthObserver.wake(credentialHomeKey),
+      });
       grokAuthClients.set(credentialHomeKey, client);
     }
     return client;
@@ -1178,26 +1185,36 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return command.providerKind === "grok"
           ? grokFor(command.credentialHomeKey ?? command.providerId).status()
           : authFor(command.credentialHomeKey ?? command.providerId).status();
-      case "codex.auth.login.start":
-        return command.providerKind === "grok"
-          ? grokFor(
-              command.credentialHomeKey ?? command.providerId,
-            ).startDeviceLogin()
-          : authFor(
-              command.credentialHomeKey ?? command.providerId,
-            ).startDeviceLogin();
-      case "codex.auth.logout":
-        closeAccountRuntimes(command.credentialHomeKey ?? command.providerId);
+      case "codex.auth.login.start": {
+        const credentialHomeKey =
+          command.credentialHomeKey ?? command.providerId;
+        const client =
+          command.providerKind === "grok"
+            ? grokFor(credentialHomeKey)
+            : authFor(credentialHomeKey);
+        const login = await client.startDeviceLogin();
+        providerAuthObserver.start({
+          credentialHomeKey,
+          observationId: command.observationId,
+          providerAccountId: command.providerAccountId,
+          providerId: command.providerId,
+          providerKind: command.providerKind,
+          readStatus: () => client.status(),
+        });
+        return login;
+      }
+      case "codex.auth.logout": {
+        const credentialHomeKey =
+          command.credentialHomeKey ?? command.providerId;
+        providerAuthObserver.cancel(credentialHomeKey);
+        closeAccountRuntimes(credentialHomeKey);
         if (command.providerKind === "grok") {
-          await grokFor(
-            command.credentialHomeKey ?? command.providerId,
-          ).logout();
+          await grokFor(credentialHomeKey).logout();
         } else {
-          await authFor(
-            command.credentialHomeKey ?? command.providerId,
-          ).logout();
+          await authFor(credentialHomeKey).logout();
         }
         return { accepted: true };
+      }
       case "provider.auth.legacy.capture": {
         const captured = await captureLegacyProviderCredential(
           accountHomeFor(command.credentialHomeKey),
@@ -1248,6 +1265,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         };
       }
       case "provider.auth.account.clear":
+        providerAuthObserver.cancel(command.credentialHomeKey);
         closeProviderAccountRuntime(command);
         await discardLegacyProviderCredential(
           accountHomeFor(command.credentialHomeKey),
@@ -3516,6 +3534,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       tunnelDestinations.disconnect();
       directBroker.revokeAll();
     },
+    undefined,
+    () => providerAuthObserver.reemitAll(),
   );
   directBroker.setTunnelFrameHandler((header, payload) =>
     tunnelDestinations.handleFrame(header, payload),
@@ -3710,6 +3730,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     automationScheduler.close();
     codegraphProjects?.close();
     worktrees.close();
+    providerAuthObserver.close();
     commandConnection.close();
     await directBroker.close();
     terminalDirectEndpoints.close();

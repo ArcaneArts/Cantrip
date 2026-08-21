@@ -19,6 +19,8 @@ import {
 interface RpcMessage {
   error?: { message: string };
   id?: number;
+  method?: string;
+  params?: unknown;
   result?: unknown;
 }
 
@@ -34,6 +36,12 @@ export class CodexAuthClient {
   #child: ChildProcessWithoutNullStreams | null = null;
   #nextId = 1;
   #pending = new Map<number, PendingRequest>();
+  #pendingLoginId: string | null = null;
+  #loginError: string | null = null;
+  #loginCompletions = new Map<
+    string,
+    { loginError: string | null; success: boolean }
+  >();
   #starting: Promise<void> | null = null;
   #weeklyUsageCache: {
     fetchedAt: number;
@@ -43,6 +51,7 @@ export class CodexAuthClient {
   constructor(
     private readonly codexBinary: string,
     private readonly codexHome: string,
+    private readonly onStatusChanged: () => void = () => undefined,
   ) {}
 
   async status(): Promise<CodexAuthStatus> {
@@ -79,6 +88,8 @@ export class CodexAuthClient {
           ? account.planType
           : null,
       weeklyUsage,
+      loginPending: this.#pendingLoginId !== null,
+      loginError: this.#loginError,
     });
     workerLogger.sampled(
       `codex-auth-status:${this.codexHome}`,
@@ -124,14 +135,37 @@ export class CodexAuthClient {
       status: "pending",
       durationMs: Date.now() - startedAtMs,
     });
-    return codexDeviceLoginSchema.parse(result);
+    const login = codexDeviceLoginSchema.parse(result);
+    this.#pendingLoginId = login.loginId;
+    this.#loginError = null;
+    const completed = this.#loginCompletions.get(login.loginId);
+    if (completed !== undefined) {
+      this.#loginCompletions.delete(login.loginId);
+      this.#completeLogin(
+        login.loginId,
+        completed.success,
+        completed.loginError,
+      );
+    } else {
+      this.onStatusChanged();
+    }
+    return login;
   }
 
   async logout(): Promise<void> {
     const startedAtMs = Date.now();
     await this.ensureStarted();
+    const pendingLoginId = this.#pendingLoginId;
+    if (pendingLoginId) {
+      await this.request("account/login/cancel", {
+        loginId: pendingLoginId,
+      }).catch(() => undefined);
+    }
     await this.request("account/logout", undefined);
+    this.#pendingLoginId = null;
+    this.#loginError = null;
     this.#weeklyUsageCache = null;
+    this.onStatusChanged();
     workerLogger.event("info", "Codex account signed out", {
       event: "codex.auth.logout",
       subsystem: "codex-auth",
@@ -176,6 +210,8 @@ export class CodexAuthClient {
     }
     this.#child?.kill("SIGTERM");
     this.#child = null;
+    this.#pendingLoginId = null;
+    this.#loginCompletions.clear();
     this.rejectPending(new Error("Codex authentication service stopped."));
   }
 
@@ -296,6 +332,34 @@ export class CodexAuthClient {
     } catch {
       return;
     }
+    if (message.method === "account/login/completed") {
+      const params = message.params as
+        { error?: unknown; loginId?: unknown; success?: unknown } | undefined;
+      if (
+        typeof params?.loginId === "string" &&
+        typeof params.success === "boolean"
+      ) {
+        const loginError = this.#safeLoginError(params.error);
+        if (params.loginId === this.#pendingLoginId) {
+          this.#completeLogin(params.loginId, params.success, loginError);
+        } else {
+          this.#loginCompletions.set(params.loginId, {
+            loginError,
+            success: params.success,
+          });
+          while (this.#loginCompletions.size > 8) {
+            const oldest = this.#loginCompletions.keys().next().value;
+            if (oldest === undefined) break;
+            this.#loginCompletions.delete(oldest);
+          }
+        }
+      }
+      return;
+    }
+    if (message.method === "account/updated") {
+      this.onStatusChanged();
+      return;
+    }
     if (message.id === undefined) return;
     const pending = this.#pending.get(message.id);
     if (!pending) return;
@@ -303,6 +367,31 @@ export class CodexAuthClient {
     clearTimeout(pending.timeout);
     if (message.error) pending.reject(new Error(message.error.message));
     else pending.resolve(message.result);
+  }
+
+  #completeLogin(
+    loginId: string,
+    success: boolean,
+    loginError: string | null,
+  ): void {
+    if (this.#pendingLoginId !== loginId) return;
+    this.#pendingLoginId = null;
+    this.#loginError = success
+      ? null
+      : (loginError ?? "ChatGPT sign-in failed.");
+    this.#weeklyUsageCache = null;
+    this.onStatusChanged();
+  }
+
+  #safeLoginError(error: unknown): string | null {
+    if (typeof error !== "string") return null;
+    const normalized = error.toLowerCase();
+    if (normalized.includes("expired")) {
+      return "The ChatGPT sign-in code expired.";
+    }
+    if (normalized.includes("cancel")) return "ChatGPT sign-in was cancelled.";
+    if (normalized.includes("denied")) return "ChatGPT sign-in was denied.";
+    return "ChatGPT sign-in failed.";
   }
 
   private rejectPending(error: Error): void {

@@ -92,6 +92,8 @@ import {
 } from "@/lib/api";
 import { isMacosDesktopRuntime } from "@/lib/desktop-popout";
 import { errorMessage as errorText } from "@/lib/error-message";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import {
   SettingsSearchField,
   SettingsTabBar,
@@ -582,6 +584,7 @@ export function SettingsPage({
     initialPolicyId,
   );
   const queryClient = useQueryClient();
+  const providerAuthResourcesLive = useAppLiveStatus() === "live";
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const desktopUpdateCapability = useDesktopUpdateCapability();
   const desktopUpdatesAvailable =
@@ -650,7 +653,10 @@ export function SettingsPage({
         authCaptureWorkerId,
       ),
     queryKey: ["codex-auth", accountProvider?.id, selectedAccount?.id],
-    refetchInterval: deviceLogin ? 1_500 : 10_000,
+    refetchInterval: liveResourceRefreshInterval(
+      providerAuthResourcesLive,
+      deviceLogin ? 10_000 : 30_000,
+    ),
   });
   const weeklyRemainingPercent = codexAuth.data?.weeklyUsage
     ? providerWeeklyRemainingPercent(codexAuth.data.weeklyUsage.usedPercent)
@@ -800,6 +806,11 @@ export function SettingsPage({
     setDeviceLogin(null);
     void refresh();
   }, [accountProvider?.kind, codexAuth.data?.authMode]);
+
+  useEffect(() => {
+    if (!codexAuth.data?.loginError || codexAuth.data.loginPending) return;
+    setDeviceLogin(null);
+  }, [codexAuth.data?.loginError, codexAuth.data?.loginPending]);
 
   useEffect(() => {
     setAccountLabelDraft(selectedAccount?.label ?? "");

@@ -1322,6 +1322,134 @@ export const codexDeviceLoginSchema = z.object({
   userCode: z.string().min(1),
 });
 
+export const providerAuthLifecycleStateSchema = z.enum([
+  "pending",
+  "authenticated",
+  "signed-out",
+  "expired",
+  "cancelled",
+  "failed",
+]);
+
+export const providerAuthFailureCodeSchema = z.enum([
+  "authorization-cancelled",
+  "authorization-denied",
+  "authorization-expired",
+  "authorization-failed",
+  "credential-capture-failed",
+  "status-unavailable",
+]);
+
+/**
+ * Deliberately small provider-auth state that is safe to relay live. Device
+ * codes, provider-issued login identifiers, OAuth tokens, credential
+ * envelopes, and upstream error text do not belong in this shape.
+ */
+export const providerAuthSafeStatusSchema = z
+  .object({
+    state: providerAuthLifecycleStateSchema,
+    authMode: codexAuthStatusSchema.shape.authMode,
+    email: z.string().max(1_024).nullable(),
+    planType: z.string().max(1_024).nullable(),
+    weeklyUsage: providerWeeklyUsageSchema.nullable(),
+    failureCode: providerAuthFailureCodeSchema.nullable(),
+  })
+  .strict()
+  .superRefine((status, context) => {
+    const authenticated = status.state === "authenticated";
+    const failed = ["cancelled", "expired", "failed"].includes(status.state);
+    if (authenticated !== (status.authMode !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Only authenticated provider state may include an auth mode.",
+        path: ["authMode"],
+      });
+    }
+    if (failed !== (status.failureCode !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Provider auth failures require one safe failure code.",
+        path: ["failureCode"],
+      });
+    }
+    if (
+      (status.state === "cancelled" &&
+        status.failureCode !== "authorization-cancelled") ||
+      (status.state === "expired" &&
+        status.failureCode !== "authorization-expired") ||
+      (status.state === "failed" &&
+        ["authorization-cancelled", "authorization-expired"].includes(
+          status.failureCode ?? "",
+        ))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Provider auth lifecycle and failure code do not match.",
+        path: ["failureCode"],
+      });
+    }
+    if (
+      !authenticated &&
+      (status.email || status.planType || status.weeklyUsage)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Signed-out provider state may not include account details.",
+      });
+    }
+  });
+
+export const providerAuthStatusObservationSchema = z
+  .object({
+    type: z.literal("provider.auth.status.observed"),
+    observationId: z.string().uuid(),
+    providerId: z.string().min(1).max(512),
+    providerAccountId: z.string().min(1).max(512),
+    providerKind: z.enum(["chatgpt", "grok"]),
+    sequence: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    observedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+    status: providerAuthSafeStatusSchema,
+  })
+  .strict()
+  .superRefine((observation, context) => {
+    if (
+      observation.status.state === "authenticated" &&
+      observation.status.authMode !== observation.providerKind
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Provider auth mode must match the provider kind.",
+        path: ["status", "authMode"],
+      });
+    }
+  });
+
+export const providerAuthLiveStatusSchema = z
+  .object({
+    providerId: z.string().min(1).max(512),
+    providerAccountId: z.string().min(1).max(512),
+    providerKind: z.enum(["chatgpt", "grok"]),
+    workerId: z.string().min(1).max(512),
+    revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    observedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }).nullable(),
+    status: providerAuthSafeStatusSchema,
+  })
+  .strict()
+  .superRefine((status, context) => {
+    if (
+      status.status.state === "authenticated" &&
+      status.status.authMode !== status.providerKind
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Provider auth mode must match the provider kind.",
+        path: ["status", "authMode"],
+      });
+    }
+  });
+
 export const providerAccessTokenLeaseRequestSchema = z.object({
   credentialRevision: z.number().int().nonnegative().nullable().default(null),
   forceRefresh: z.boolean().default(false),
@@ -9874,12 +10002,15 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("codex.auth.login.start"),
     providerId: z.string().min(1),
+    providerAccountId: z.string().min(1).max(512),
     providerKind: z.enum(["chatgpt", "grok"]).default("chatgpt"),
     credentialHomeKey: z.string().min(1).max(500).optional(),
+    observationId: z.string().uuid(),
   }),
   z.object({
     type: z.literal("codex.auth.logout"),
     providerId: z.string().min(1),
+    providerAccountId: z.string().min(1).max(512),
     providerKind: z.enum(["chatgpt", "grok"]).default("chatgpt"),
     credentialHomeKey: z.string().min(1).max(500).optional(),
   }),
@@ -11538,6 +11669,7 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
       status: codeGraphProjectStatusSchema,
     })
     .strict(),
+  providerAuthStatusObservationSchema,
 ]);
 
 export const workerNotificationEnvelopeSchema = z.object({
@@ -11658,6 +11790,21 @@ export type ModelProviderKind = z.infer<typeof modelProviderKindSchema>;
 export type ProviderWeeklyUsage = z.infer<typeof providerWeeklyUsageSchema>;
 export type CodexAuthStatus = z.infer<typeof codexAuthStatusSchema>;
 export type CodexDeviceLogin = z.infer<typeof codexDeviceLoginSchema>;
+export type ProviderAuthFailureCode = z.infer<
+  typeof providerAuthFailureCodeSchema
+>;
+export type ProviderAuthLifecycleState = z.infer<
+  typeof providerAuthLifecycleStateSchema
+>;
+export type ProviderAuthLiveStatus = z.infer<
+  typeof providerAuthLiveStatusSchema
+>;
+export type ProviderAuthSafeStatus = z.infer<
+  typeof providerAuthSafeStatusSchema
+>;
+export type ProviderAuthStatusObservation = z.infer<
+  typeof providerAuthStatusObservationSchema
+>;
 export type ProviderAccessTokenLeaseRequest = z.infer<
   typeof providerAccessTokenLeaseRequestSchema
 >;

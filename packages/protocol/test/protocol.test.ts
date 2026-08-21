@@ -57,6 +57,8 @@ import {
   providerAccessTokenLeaseRequestSchema,
   providerAccessTokenLeaseSchema,
   providerLegacyCredentialCaptureResultSchema,
+  providerAuthLiveStatusSchema,
+  providerAuthStatusObservationSchema,
   settingsBundleSchema,
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
@@ -3464,6 +3466,75 @@ describe("Cantrip protocol", () => {
     ).toBe("ABCD-1234");
   });
 
+  it("keeps provider auth live status strictly free of secret material", () => {
+    const safeStatus = {
+      state: "pending" as const,
+      authMode: null,
+      email: null,
+      planType: null,
+      weeklyUsage: null,
+      failureCode: null,
+    };
+    const observation = {
+      type: "provider.auth.status.observed" as const,
+      observationId: "00000000-0000-4000-8000-000000000001",
+      providerId: "provider-1",
+      providerAccountId: "account-1",
+      providerKind: "chatgpt" as const,
+      sequence: 1,
+      observedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T12:15:00.000Z",
+      status: safeStatus,
+    };
+    expect(providerAuthStatusObservationSchema.parse(observation)).toEqual(
+      observation,
+    );
+    const liveStatus = {
+      providerId: observation.providerId,
+      providerAccountId: observation.providerAccountId,
+      providerKind: observation.providerKind,
+      workerId: "worker-1",
+      revision: 1,
+      observedAt: observation.observedAt,
+      expiresAt: observation.expiresAt,
+      status: safeStatus,
+    };
+    expect(providerAuthLiveStatusSchema.parse(liveStatus).status).toEqual(
+      safeStatus,
+    );
+    for (const secret of [
+      "accessToken",
+      "refreshToken",
+      "deviceCode",
+      "userCode",
+      "privateKey",
+      "protectedCredential",
+    ]) {
+      expect(
+        providerAuthStatusObservationSchema.safeParse({
+          ...observation,
+          status: { ...safeStatus, [secret]: "must-not-cross-live" },
+        }).success,
+      ).toBe(false);
+      expect(
+        providerAuthLiveStatusSchema.safeParse({
+          ...liveStatus,
+          [secret]: "must-not-cross-live",
+        }).success,
+      ).toBe(false);
+    }
+    expect(
+      providerAuthStatusObservationSchema.safeParse({
+        ...observation,
+        status: {
+          ...safeStatus,
+          state: "authenticated",
+          authMode: "grok",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("scopes Codex authentication commands to a provider", () => {
     expect(
       workerCommandSchema.parse({
@@ -3483,6 +3554,16 @@ describe("Cantrip protocol", () => {
         credentialHomeKey: "account-home-1",
       }).type,
     ).toBe("provider.auth.account.clear");
+    expect(
+      workerCommandSchema.parse({
+        type: "codex.auth.login.start",
+        providerId: "chatgpt-provider-1",
+        providerAccountId: "account-1",
+        providerKind: "chatgpt",
+        credentialHomeKey: "account-home-1",
+        observationId: "00000000-0000-4000-8000-000000000001",
+      }).type,
+    ).toBe("codex.auth.login.start");
   });
 
   it("validates worker-backed chat compaction", () => {

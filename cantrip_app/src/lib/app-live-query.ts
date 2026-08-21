@@ -3,6 +3,7 @@ import {
   codeGraphProjectStatusSchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
+  providerAuthLiveStatusSchema,
   gitConflictListSchema,
   gitManagedOperationResponseSchema,
   gitStatusSchema,
@@ -15,6 +16,7 @@ import type {
   CodeGraphProjectStatus,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
+  CodexAuthStatus,
   GitConflictList,
   GitManagedOperationResponse,
   GitStatus,
@@ -38,6 +40,7 @@ export interface AppLiveQueryBridgeStats {
 
 const MAX_TRACKED_WORKFLOW_SEQUENCES = 4_096;
 const MAX_TRACKED_CODEGRAPH_REVISIONS = 4_096;
+const MAX_TRACKED_PROVIDER_AUTH_REVISIONS = 4_096;
 
 function projectScopeId(scope: AppLiveScope): string | null {
   return scope.kind === "project" ? scope.projectId : null;
@@ -50,6 +53,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return [["server-bootstrap"]];
     case "settings":
       return [["settings"]];
+    case "provider-auth":
+      return [["codex-auth"]];
     case "policy":
       return [
         ["policies"],
@@ -302,6 +307,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       return [
         ["server-bootstrap"],
         ["settings"],
+        ["codex-auth"],
         ["policies"],
         ["policy-templates"],
         ["workspace-policy-assignments"],
@@ -379,6 +385,7 @@ export class AppLiveQueryBridge {
   readonly #gitConflictRevisions = new Map<string, number>();
   readonly #gitOperationRevisions = new Map<string, number>();
   readonly #messageCursors = new Map<string, number>();
+  readonly #providerAuthRevisions = new Map<string, number>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
   readonly #workflowRunSequences = new Map<string, number>();
@@ -401,6 +408,7 @@ export class AppLiveQueryBridge {
     const directlyApplied =
       this.#applyChatMessageEvent(event) ||
       this.#applyCodeGraphStatusEvent(event) ||
+      this.#applyProviderAuthEvent(event) ||
       this.#applyGitOperationEvent(event) ||
       this.#applyGitConflictEvent(event) ||
       worktreeStatus.applied ||
@@ -739,6 +747,74 @@ export class AppLiveQueryBridge {
     return true;
   }
 
+  #applyProviderAuthEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "provider-auth" ||
+      event.action !== "status" ||
+      event.scope.kind !== "current-user" ||
+      !event.entityId ||
+      event.revision === null
+    ) {
+      return false;
+    }
+    const parsed = providerAuthLiveStatusSchema.safeParse(event.payload);
+    if (
+      !parsed.success ||
+      parsed.data.providerAccountId !== event.entityId ||
+      parsed.data.revision !== event.revision
+    ) {
+      return false;
+    }
+    const revisionKey = `${parsed.data.providerId}:${parsed.data.providerAccountId}`;
+    const latestRevision = this.#providerAuthRevisions.get(revisionKey);
+    if (latestRevision !== undefined && event.revision <= latestRevision) {
+      return true;
+    }
+    const loginError = (() => {
+      switch (parsed.data.status.failureCode) {
+        case "authorization-cancelled":
+          return "Provider sign-in was cancelled.";
+        case "authorization-denied":
+          return "Provider sign-in was denied.";
+        case "authorization-expired":
+          return "The provider sign-in code expired.";
+        case "credential-capture-failed":
+          return "The worker could not protect and save provider authentication.";
+        case "status-unavailable":
+          return "Provider sign-in status is temporarily unavailable.";
+        case "authorization-failed":
+          return "Provider sign-in failed.";
+        case null:
+          return null;
+      }
+    })();
+    const status: CodexAuthStatus = {
+      authenticated: parsed.data.status.state === "authenticated",
+      authMode: parsed.data.status.authMode,
+      email: parsed.data.status.email,
+      planType: parsed.data.status.planType,
+      weeklyUsage: parsed.data.status.weeklyUsage,
+      loginPending: parsed.data.status.state === "pending",
+      loginError,
+    };
+    const queryKey = [
+      "codex-auth",
+      parsed.data.providerId,
+      parsed.data.providerAccountId,
+    ] as const;
+    void this.#queryClient.cancelQueries({ queryKey, exact: true });
+    this.#queryClient.setQueryData<CodexAuthStatus>(queryKey, status);
+    this.#providerAuthRevisions.delete(revisionKey);
+    this.#providerAuthRevisions.set(revisionKey, event.revision);
+    if (
+      this.#providerAuthRevisions.size > MAX_TRACKED_PROVIDER_AUTH_REVISIONS
+    ) {
+      const oldest = this.#providerAuthRevisions.keys().next().value;
+      if (oldest !== undefined) this.#providerAuthRevisions.delete(oldest);
+    }
+    return true;
+  }
+
   #rememberGitRevision(
     revisions: Map<string, number>,
     key: string,
@@ -822,6 +898,9 @@ export class AppLiveQueryBridge {
       }
     }
     for (const scope of scopes) {
+      if (scope.kind === "current-user") {
+        this.#providerAuthRevisions.clear();
+      }
       const prefix =
         scope.kind === "workflow-run"
           ? `workflow-run:${scope.runId}:`
