@@ -21,9 +21,16 @@ import {
   cantripAgentOperationResultSchema,
   cantripMcpBindingSchema,
   cantripMcpConnectionDocumentSchema,
+  cantripMcpContextGetResultSchema,
+  cantripMcpExplorerReadInputSchema,
+  cantripMcpExplorerReadResultSchema,
+  cantripMcpTargetListInputSchema,
+  cantripMcpTerminalReadInputSchema,
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
+  CANTRIP_MCP_READ_OPERATIONS,
+  CANTRIP_MCP_READ_TOOL_NAMES,
   chatAttachmentSummarySchema,
   chatGptModelInventorySchema,
   chatCreateSchema,
@@ -646,6 +653,84 @@ describe("Cantrip protocol", () => {
       cantripMcpBindingSchema.safeParse({
         ...binding,
         expiresAt: "2026-08-23T12:00:00.000Z",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds the read-only MCP catalog with operation-specific schemas", () => {
+    expect(CANTRIP_MCP_READ_OPERATIONS).toHaveLength(
+      CANTRIP_MCP_READ_TOOL_NAMES.length,
+    );
+    expect(cantripMcpTargetListInputSchema.parse({})).toEqual({
+      cursor: 0,
+      limit: 100,
+    });
+    expect(
+      cantripMcpTargetListInputSchema.safeParse({ limit: 201 }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpExplorerReadInputSchema.safeParse({
+        target: {
+          kind: "surface",
+          projectId: "project-one",
+          surfaceKind: "explorer",
+          surfaceId: "explorer-one",
+        },
+        path: "README.md",
+        maxChars: 200_001,
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpTerminalReadInputSchema.safeParse({
+        target: {
+          kind: "surface",
+          projectId: "project-one",
+          surfaceKind: "terminal",
+          surfaceId: "terminal-one",
+        },
+        maxChars: 100_001,
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpContextGetResultSchema.safeParse({
+        summary: "Context is current.",
+        data: {
+          worker: { id: "worker-one", name: "Worker", online: true },
+          context: {
+            chatId: "chat-one",
+            executionLaneId: "lane-one",
+            permissionProfileId: ":read-only",
+            projectId: "project-one",
+            rootKind: "git-worktree",
+            terminalId: null,
+            workerId: "worker-one",
+            worktreeId: "worktree-one",
+            worktreeMode: "agent-managed",
+            canonicalRoot: "/private/worktree/path",
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpExplorerReadResultSchema.safeParse({
+        summary: "Read README.md.",
+        target: {
+          kind: "surface",
+          projectId: "project-one",
+          surfaceKind: "explorer",
+          surfaceId: "explorer-one",
+        },
+        worktreeId: "worktree-one",
+        continuationScheduled: false,
+        mutated: true,
+        data: {
+          path: "README.md",
+          content: "content",
+          size: 7,
+          markdown: true,
+          version: "a".repeat(64),
+          truncated: false,
+        },
       }).success,
     ).toBe(false);
   });

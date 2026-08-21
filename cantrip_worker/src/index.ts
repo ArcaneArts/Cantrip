@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   chatAttachmentSummarySchema,
+  CANTRIP_MCP_READ_OPERATIONS,
   gitAgentDraftCreateSchema,
   gitAgentDraftModelOutputSchema,
   gitAgentDraftResultSchema,
@@ -639,6 +640,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     });
   cliBroker.setSurfacePrivateStateService(workerEncryption);
   cliBroker.setPolicyEncryptionService(workerEncryption);
+  mcpBroker.setEncryptionService(workerEncryption);
   browserAdapter.setSurfacePrivateStateService(workerEncryption);
   desktopAdapter.setSurfacePrivateStateService(
     workerEncryption,
@@ -820,7 +822,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           canonicalRoot: cwd,
           rootKind: attachment.rootKind,
           permissionProfileId: attachment.permissionProfileId,
-          allowedOperations: ["context.get"],
+          allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],
         })
       : null;
     const managedCantrip = cantripAttachment

@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { unprobedCodexRuntimeReport } from "@cantrip/protocol";
+import {
+  CANTRIP_MCP_READ_TOOL_NAMES,
+  unprobedCodexRuntimeReport,
+} from "@cantrip/protocol";
 
 import {
   CANTRIP_CLI_DEVELOPER_INSTRUCTIONS,
@@ -1322,13 +1325,13 @@ describe("codexMcpConfigOverride", () => {
           env: {},
           enabled: true,
           required: true,
-          enabled_tools: ["context_get"],
+          enabled_tools: [...CANTRIP_MCP_READ_TOOL_NAMES],
         },
       },
     });
-    expect(managedMcpToolRequirements([server])).toEqual([
-      { name: "cantrip", tool: "context_get" },
-    ]);
+    expect(managedMcpToolRequirements([server])).toEqual(
+      CANTRIP_MCP_READ_TOOL_NAMES.map((tool) => ({ name: "cantrip", tool })),
+    );
   });
 });
 

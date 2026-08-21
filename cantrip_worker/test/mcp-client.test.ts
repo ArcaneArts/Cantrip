@@ -54,6 +54,7 @@ describe("Cantrip MCP server client", () => {
     expect(init.headers).toMatchObject({
       authorization: "Bearer worker-secret",
     });
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(JSON.parse(String(init.body))).toEqual({
       binding,
       request: { operation: "context.get", arguments: {} },
@@ -84,5 +85,27 @@ describe("Cantrip MCP server client", () => {
       status: 409,
       code: "stale-binding",
     });
+  });
+
+  it("rejects oversized server responses before reading their body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("{}", {
+            headers: { "content-length": String(9 * 1_024 * 1_024) },
+          }),
+      ),
+    );
+
+    await expect(
+      invokeCantripMcpOperation({
+        binding,
+        request: { operation: "context.get", arguments: {} },
+        requestId: "request-three",
+        serverUrl: "https://cantrip.example",
+        token: "worker-secret",
+      }),
+    ).rejects.toThrow("too large");
   });
 });

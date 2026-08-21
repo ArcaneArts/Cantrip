@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { CantripMcpBinding } from "@cantrip/protocol";
+import {
+  CANTRIP_MCP_READ_OPERATIONS,
+  type CantripMcpBinding,
+} from "@cantrip/protocol";
 
 import {
   assertCantripMcpBinding,
@@ -43,11 +46,11 @@ const binding: CantripMcpBinding = {
   canonicalRoot: context.cwd,
   rootKind: context.rootKind,
   permissionProfileId: ":workspace-write",
-  allowedOperations: ["context.get"],
+  allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],
   issuedAt: "2026-08-21T11:59:00.000Z",
   expiresAt: "2026-08-21T13:00:00.000Z",
 };
-const serverAllowedOperations = new Set(["context.get"] as const);
+const serverAllowedOperations = new Set(CANTRIP_MCP_READ_OPERATIONS);
 
 describe("Cantrip MCP server binding", () => {
   it("accepts only the exact live lane and server-approved operation", () => {
@@ -61,6 +64,30 @@ describe("Cantrip MCP server binding", () => {
         now,
       }),
     ).not.toThrow();
+  });
+
+  it("allows the read catalog under an unchanged read-only profile", () => {
+    const readOnlyContext = {
+      ...context,
+      defaultPermissionProfileId: ":read-only",
+      permissionProfileId: ":read-only",
+    };
+    const readOnlyBinding = {
+      ...binding,
+      permissionProfileId: ":read-only",
+    };
+    for (const operation of CANTRIP_MCP_READ_OPERATIONS) {
+      expect(() =>
+        assertCantripMcpBinding({
+          binding: readOnlyBinding,
+          context: readOnlyContext,
+          operation,
+          ownerId: "owner-one",
+          serverAllowedOperations,
+          now,
+        }),
+      ).not.toThrow();
+    }
   });
 
   it.each([

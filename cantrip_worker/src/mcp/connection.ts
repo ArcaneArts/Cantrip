@@ -9,6 +9,10 @@ import {
   type CantripAgentOperationResult,
   type CantripMcpConnectionDocument,
 } from "@cantrip/protocol";
+import {
+  CANTRIP_MCP_MAX_RESPONSE_BYTES,
+  readBoundedJsonResponse,
+} from "./http.js";
 
 function localBrokerUrl(endpoint: string): URL {
   const url = new URL(endpoint);
@@ -82,7 +86,10 @@ async function brokerRequest(
     },
     signal: AbortSignal.timeout(30_000),
   });
-  const payload = (await response.json()) as unknown;
+  const payload = await readBoundedJsonResponse(
+    response,
+    CANTRIP_MCP_MAX_RESPONSE_BYTES,
+  );
   if (!response.ok) {
     const record =
       payload && typeof payload === "object"

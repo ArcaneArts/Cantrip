@@ -398,6 +398,7 @@ import {
   workerListSchema,
   workerManagementListSchema,
   workerCantripMcpOperationCallSchema,
+  CANTRIP_MCP_READ_OPERATIONS,
   workerCliCommandCallSchema,
   workerRestartAcknowledgementSchema,
   workerRestartResultSchema,
@@ -4769,6 +4770,7 @@ export async function buildApp({
   type ExecutionOperationContext = {
     chatId: string | null;
     executionLaneId: string | null;
+    permissionProfileId: string | null;
     projectId: string;
     rootKind: ChatExecutionContext["rootKind"];
     terminalId: string | null;
@@ -4856,6 +4858,7 @@ export async function buildApp({
         }
         return cantripCliCommandResultSchema.parse({
           summary: `Connected through ${worker.name}; project context is ready.`,
+          worktreeId: context.worktreeId,
           data: {
             worker: {
               id: worker.workerId,
@@ -4947,6 +4950,7 @@ export async function buildApp({
             : null;
         return cantripCliCommandResultSchema.parse({
           summary: `Found ${targets.length} authorized execution target${targets.length === 1 ? "" : "s"}${nextCursor !== null || catalog.truncated ? "; more targets are available" : ""}.`,
+          worktreeId: context.worktreeId,
           data: {
             projectId: catalog.projectId,
             targets,
@@ -5081,6 +5085,7 @@ export async function buildApp({
         return cantripCliCommandResultSchema.parse({
           summary: `Found ${services.length} browser service${services.length === 1 ? "" : "s"} on ${resolution.worker.name}.`,
           target,
+          worktreeId: resolution.placement.worktreeId,
           data: services,
         });
       }
@@ -5224,6 +5229,39 @@ export async function buildApp({
             context.projectId,
           ),
         ]);
+        if (
+          call.arguments.cursor !== undefined ||
+          call.arguments.limit !== undefined
+        ) {
+          const cursor = boundedToolCursor(call.arguments, 1_999);
+          const limit = boundedToolInteger(call.arguments, "limit", 100, 200);
+          const boundedItems = items.slice(0, 2_000);
+          const selected = boundedItems.slice(cursor, cursor + limit);
+          const selectedIds = new Set(selected.map(({ id }) => id));
+          const nextCursor =
+            cursor + selected.length < boundedItems.length
+              ? cursor + selected.length
+              : null;
+          const selectedLeases = leases.filter(({ worktreeId }) =>
+            selectedIds.has(worktreeId),
+          );
+          return cantripCliCommandResultSchema.parse({
+            summary: `Found ${selected.length} validated worktree${selected.length === 1 ? "" : "s"}${nextCursor !== null ? "; more worktrees are available" : ""}.`,
+            worktreeId: context.worktreeId,
+            data: {
+              currentWorktreeId: context.worktreeId,
+              worktrees: selected,
+              leases: selectedLeases.slice(0, 1_000),
+              cursor,
+              nextCursor,
+              total: boundedItems.length,
+              truncated:
+                items.length > boundedItems.length ||
+                selectedLeases.length > 1_000 ||
+                nextCursor !== null,
+            },
+          });
+        }
         return cantripCliCommandResultSchema.parse({
           summary: `Found ${items.length} validated worktree${items.length === 1 ? "" : "s"}.`,
           worktreeId: context.worktreeId,
@@ -5259,6 +5297,42 @@ export async function buildApp({
         );
         if (status.worktree.path !== targetContext.worktree.path) {
           throw new Error("Worker returned status for a different worktree.");
+        }
+        if (
+          call.arguments.fileLimit !== undefined ||
+          call.arguments.branchLimit !== undefined
+        ) {
+          const fileLimit = boundedToolInteger(
+            call.arguments,
+            "fileLimit",
+            500,
+            2_000,
+          );
+          const branchLimit = boundedToolInteger(
+            call.arguments,
+            "branchLimit",
+            200,
+            500,
+          );
+          return cantripCliCommandResultSchema.parse({
+            summary: `${targetContext.worktree.name} is ${status.status.files.length ? "dirty" : "clean"} on ${status.status.branch || "detached HEAD"}.`,
+            target: {
+              kind: "worktree",
+              projectId: context.projectId,
+              worktreeId,
+            },
+            worktreeId,
+            data: {
+              worktree: status.worktree,
+              status: {
+                ...status.status,
+                files: status.status.files.slice(0, fileLimit),
+                branches: status.status.branches.slice(0, branchLimit),
+              },
+              filesTruncated: status.status.files.length > fileLimit,
+              branchesTruncated: status.status.branches.length > branchLimit,
+            },
+          });
         }
         return cantripCliCommandResultSchema.parse({
           summary: `${targetContext.worktree.name} is ${status.status.files.length ? "dirty" : "clean"} on ${status.status.branch || "detached HEAD"}.`,
@@ -5452,6 +5526,7 @@ export async function buildApp({
   ): ExecutionOperationContext => ({
     chatId: context.chatId,
     executionLaneId: context.executionLaneId,
+    permissionProfileId: effectivePermissionProfile(context).effectiveId,
     projectId: context.projectId,
     rootKind: context.rootKind,
     terminalId: null,
@@ -5544,6 +5619,9 @@ export async function buildApp({
             chat.worktreeId === terminal.worktreeId
               ? chat.executionLaneId
               : null,
+          permissionProfileId: chat
+            ? effectivePermissionProfile(chat).effectiveId
+            : null,
           projectId: terminal.projectId,
           rootKind: terminal.rootKind,
           terminalId: terminal.terminalId,
@@ -5589,6 +5667,7 @@ export async function buildApp({
         return {
           chatId: null,
           executionLaneId: null,
+          permissionProfileId: null,
           projectId: best.projectId,
           rootKind: best.rootKind,
           terminalId: null,
@@ -25215,8 +25294,9 @@ export async function buildApp({
     },
   );
 
-  const mcpBootstrapOperations: ReadonlySet<CantripAgentOperationName> =
-    new Set(["context.get"]);
+  const mcpReadOperations: ReadonlySet<CantripAgentOperationName> = new Set(
+    CANTRIP_MCP_READ_OPERATIONS,
+  );
 
   app.post(
     "/api/internal/agent-operations",
@@ -25260,7 +25340,7 @@ export async function buildApp({
             context,
             operation: input.data.request.operation,
             ownerId: workerAuth.ownerId,
-            serverAllowedOperations: mcpBootstrapOperations,
+            serverAllowedOperations: mcpReadOperations,
           });
           const result = await agentOperationExecutor.execute(
             chatOperationContext(context),
@@ -25289,7 +25369,9 @@ export async function buildApp({
                 : new CantripMcpBindingError(
                     "invalid",
                     400,
-                    errorMessage(error),
+                    error instanceof Error && error.name === "ZodError"
+                      ? "Cantrip MCP operation validation failed on the server."
+                      : errorMessage(error).slice(0, 2_000),
                   );
           await appendAudit(request, {
             action: "mcp.operation.rejected",

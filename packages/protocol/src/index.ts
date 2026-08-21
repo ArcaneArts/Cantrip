@@ -82,7 +82,12 @@ export * from "./protected-secrets.js";
 export * from "./private-labels.js";
 export * from "./surface-private-state.js";
 
-import { effectivePolicyWireListSchema } from "./policies.js";
+import {
+  effectivePolicyWireListSchema,
+  policyCliListResultSchema,
+  policyCliReadResultSchema,
+  policyKeySchema,
+} from "./policies.js";
 import {
   taskGoalSyncContextSchema,
   taskGoalObjectiveOpaqueSnapshotSchema,
@@ -7043,6 +7048,34 @@ export const cantripAgentOperationNameSchema = z.enum([
   "browser.open",
 ]);
 
+export const CANTRIP_MCP_READ_OPERATIONS = [
+  "context.get",
+  "policy.list",
+  "policy.read",
+  "target.list",
+  "target.inspect",
+  "worktree.list",
+  "worktree.status",
+  "explorer.list",
+  "explorer.read",
+  "terminal.read",
+  "browser.services",
+] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
+
+export const CANTRIP_MCP_READ_TOOL_NAMES = [
+  "context_get",
+  "policy_list",
+  "policy_read",
+  "target_list",
+  "target_inspect",
+  "worktree_list",
+  "worktree_status",
+  "explorer_list",
+  "explorer_read",
+  "terminal_read",
+  "browser_services",
+] as const;
+
 export const cantripAgentOperationArgumentsSchema = z
   .record(z.string().min(1).max(100), z.unknown())
   .refine((arguments_) => Object.keys(arguments_).length <= 32, {
@@ -7131,6 +7164,211 @@ export const cantripAgentOperationResultSchema = z.object({
   mutated: z.boolean().default(false),
   data: z.unknown().optional(),
 });
+
+const cantripMcpReadResultBaseSchema = z
+  .object({
+    summary: z.string().min(1).max(2_000),
+    target: executionTargetSchema.nullable().default(null),
+    worktreeId: z.string().min(1).max(200).nullable().default(null),
+    continuationScheduled: z.literal(false).default(false),
+    mutated: z.literal(false).default(false),
+  })
+  .strict();
+
+export const cantripMcpContextGetInputSchema = z.object({}).strict();
+export const cantripMcpPolicyListInputSchema = z.object({}).strict();
+export const cantripMcpPolicyReadInputSchema = z
+  .object({ key: policyKeySchema })
+  .strict();
+export const cantripMcpTargetListInputSchema = z
+  .object({
+    kind: executionTargetResourceKindSchema.optional(),
+    cursor: z.number().int().min(0).max(1_999).default(0),
+    limit: z.number().int().min(1).max(200).default(100),
+  })
+  .strict();
+export const cantripMcpTargetInspectInputSchema = z
+  .object({ target: executionTargetSchema })
+  .strict();
+export const cantripMcpWorktreeListInputSchema = z
+  .object({
+    cursor: z.number().int().min(0).max(1_999).default(0),
+    limit: z.number().int().min(1).max(200).default(100),
+  })
+  .strict();
+export const cantripMcpWorktreeStatusInputSchema = z
+  .object({
+    target: z
+      .object({
+        kind: z.literal("worktree"),
+        projectId: z.string().min(1).max(200),
+        worktreeId: z.string().min(1).max(200),
+      })
+      .strict()
+      .optional(),
+    fileLimit: z.number().int().min(1).max(2_000).default(500),
+    branchLimit: z.number().int().min(1).max(500).default(200),
+  })
+  .strict();
+
+const cantripMcpSurfaceTargetSchema = <
+  Kind extends "browser" | "explorer" | "terminal",
+>(
+  kind: Kind,
+) =>
+  z
+    .object({
+      kind: z.literal("surface"),
+      projectId: z.string().min(1).max(200),
+      surfaceKind: z.literal(kind),
+      surfaceId: z.string().min(1).max(200),
+    })
+    .strict();
+
+export const cantripMcpExplorerListInputSchema = z
+  .object({
+    target: cantripMcpSurfaceTargetSchema("explorer"),
+    path: z.string().max(8_192).default(""),
+    cursor: z.number().int().min(0).max(999).default(0),
+    limit: z.number().int().min(1).max(200).default(100),
+  })
+  .strict();
+export const cantripMcpExplorerReadInputSchema = z
+  .object({
+    target: cantripMcpSurfaceTargetSchema("explorer"),
+    path: z.string().min(1).max(8_192),
+    maxChars: z.number().int().min(1).max(200_000).default(100_000),
+  })
+  .strict();
+export const cantripMcpTerminalReadInputSchema = z
+  .object({
+    target: cantripMcpSurfaceTargetSchema("terminal"),
+    maxChars: z.number().int().min(1).max(100_000).default(20_000),
+  })
+  .strict();
+export const cantripMcpBrowserServicesInputSchema = z
+  .object({ target: cantripMcpSurfaceTargetSchema("browser") })
+  .strict();
+
+export const cantripMcpContextGetResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    data: z
+      .object({
+        worker: z
+          .object({
+            id: z.string().min(1).max(200),
+            name: z.string().min(1).max(200),
+            online: z.boolean(),
+          })
+          .strict(),
+        context: z
+          .object({
+            chatId: z.string().min(1).max(200).nullable(),
+            executionLaneId: z.string().min(1).max(200).nullable(),
+            permissionProfileId: permissionProfileIdSchema.nullable(),
+            projectId: z.string().min(1).max(200),
+            rootKind: projectRootKindSchema,
+            terminalId: z.string().min(1).max(200).nullable(),
+            workerId: z.string().min(1).max(200),
+            worktreeId: z.string().min(1).max(200),
+            worktreeMode: z.enum(["agent-managed", "pinned"]).nullable(),
+          })
+          .strict(),
+      })
+      .strict(),
+  });
+export const cantripMcpPolicyListResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    data: policyCliListResultSchema,
+  });
+export const cantripMcpPolicyReadResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    data: policyCliReadResultSchema,
+  });
+export const cantripMcpTargetListResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    data: z
+      .object({
+        projectId: z.string().min(1).max(200),
+        targets: z.array(executionTargetDescriptorSchema).max(200),
+        cursor: z.number().int().min(0).max(1_999),
+        nextCursor: z.number().int().positive().max(2_000).nullable(),
+        total: z.number().int().nonnegative().max(2_000),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  });
+export const cantripMcpTargetInspectResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: executionTargetSchema,
+    data: executionTargetResolutionSchema
+      .extend({
+        stateRevision: z.number().int().positive().nullable(),
+      })
+      .strict(),
+  });
+
+export const cantripMcpWorktreeSummarySchema = projectWorktreeSummarySchema
+  .omit({ path: true, displayPath: true })
+  .strict();
+export const cantripMcpWorktreeListResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    data: z
+      .object({
+        currentWorktreeId: z.string().min(1).max(200),
+        worktrees: z.array(cantripMcpWorktreeSummarySchema).max(200),
+        leases: z.array(chatExecutionLaneSummarySchema).max(1_000),
+        cursor: z.number().int().min(0).max(1_999),
+        nextCursor: z.number().int().positive().max(2_000).nullable(),
+        total: z.number().int().nonnegative().max(2_000),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  });
+export const cantripMcpExplorerListResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("explorer"),
+    data: z
+      .object({
+        path: z.string().max(8_192),
+        entries: z.array(explorerEntrySchema).max(200),
+        cursor: z.number().int().min(0).max(999),
+        nextCursor: z.number().int().positive().max(1_000).nullable(),
+        total: z.number().int().nonnegative().max(1_000),
+        truncated: z.boolean(),
+      })
+      .strict(),
+  });
+export const cantripMcpExplorerReadResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("explorer"),
+    data: explorerFileSchema.extend({
+      content: z.string().max(200_000),
+      truncated: z.boolean(),
+    }),
+  });
+export const cantripMcpTerminalReadResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("terminal"),
+    data: z
+      .object({
+        status: z.enum(["running", "restarting", "exited", "not-running"]),
+        data: z.string().max(100_000),
+        truncated: z.boolean(),
+        exitCode: z.number().int().nullable(),
+      })
+      .strict(),
+  });
+export const cantripMcpBrowserServicesResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("browser"),
+    data: browserServiceListSchema,
+  });
 
 // The human CLI is a compatibility adapter over the same operation result
 // contract used by worker-owned agent transports.
@@ -9441,6 +9679,32 @@ export const worktreeStatusResultSchema = z.object({
   worktree: workerWorktreeSummarySchema,
   status: gitStatusSchema,
 });
+
+const cantripMcpWorkerWorktreeSummarySchema = workerWorktreeSummarySchema
+  .omit({ path: true })
+  .strict();
+const cantripMcpGitStatusSchema = gitStatusSchema.extend({
+  files: gitStatusSchema.shape.files.max(2_000),
+  branches: gitStatusSchema.shape.branches.max(500),
+});
+export const cantripMcpWorktreeStatusResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z
+      .object({
+        kind: z.literal("worktree"),
+        projectId: z.string().min(1).max(200),
+        worktreeId: z.string().min(1).max(200),
+      })
+      .strict(),
+    data: z
+      .object({
+        worktree: cantripMcpWorkerWorktreeSummarySchema,
+        status: cantripMcpGitStatusSchema,
+        filesTruncated: z.boolean(),
+        branchesTruncated: z.boolean(),
+      })
+      .strict(),
+  });
 
 export const worktreeObservationTargetSchema = z.object({
   projectId: z.string().uuid().optional(),
