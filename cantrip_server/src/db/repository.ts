@@ -8402,21 +8402,11 @@ export class ServerRepository {
         );
       }
       const offlineAllowed = strict && allowOfflineExplicit;
-      if (
-        !offlineAllowed &&
-        Date.now() - worker.lastSeenAt.getTime() > WORKER_ONLINE_WINDOW_MS
-      ) {
-        if (!strict) return null;
-        throw new ExecutionPlacementUnavailableError(
-          "worker-offline",
-          `Worker ${worker.displayName ?? worker.name} is offline.`,
-        );
-      }
-      if (
-        !offlineAllowed &&
-        isWorkerConnected &&
-        !isWorkerConnected(worker.id)
-      ) {
+      const workerIsOnline = workerIsOnlineForPlacement(
+        worker,
+        isWorkerConnected,
+      );
+      if (!offlineAllowed && !workerIsOnline) {
         if (!strict) return null;
         throw new ExecutionPlacementUnavailableError(
           "worker-offline",
@@ -15931,4 +15921,13 @@ export class ServerRepository {
         ),
       );
   }
+}
+
+export function workerIsOnlineForPlacement(
+  worker: Pick<WorkerRow, "id" | "lastSeenAt">,
+  isWorkerConnected?: (workerId: string) => boolean,
+): boolean {
+  return isWorkerConnected
+    ? isWorkerConnected(worker.id)
+    : Date.now() - worker.lastSeenAt.getTime() <= WORKER_ONLINE_WINDOW_MS;
 }
