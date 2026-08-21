@@ -212,7 +212,7 @@ function StructuredRows({
       const count = countStructuredScalarValues(entry);
       const CollectionIcon = Array.isArray(entry) ? Brackets : Braces;
       return (
-        <div key={id} role="rowgroup">
+        <div data-elite-ignore="" key={id} role="rowgroup">
           <button
             aria-expanded={open}
             className="grid w-full min-w-[36rem] grid-cols-[minmax(12rem,0.8fr)_minmax(18rem,1.4fr)] border-b border-border/45 text-left transition-colors hover:bg-muted/20"

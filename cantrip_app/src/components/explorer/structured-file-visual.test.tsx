@@ -19,6 +19,7 @@ describe("StructuredFileVisual", () => {
     expect(markup).toContain("Values only · keys and structure are locked");
     expect(markup).toContain('aria-label="Edit name"');
     expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain('data-elite-ignore=""');
     expect(markup).toContain("scripts");
   });
 
