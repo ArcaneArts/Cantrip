@@ -7,6 +7,8 @@ import {
   openModelProviderAccountWireSummary,
   protectMcpServerCreate,
   protectModelProviderAccountCreate,
+  protectModelProviderCreate,
+  protectModelProviderUpdate,
 } from "./protected-secrets";
 
 const ownerId = "provider-label-owner";
@@ -39,6 +41,42 @@ describe("protected MCP adapter", () => {
         environment: {},
       }),
     ).rejects.toThrow("reserved");
+  });
+});
+
+describe("protected provider payloads", () => {
+  it("creates an Ollama provider without retaining a plaintext API-key field", async () => {
+    const encrypted = await protectModelProviderCreate({
+      name: "Ollama",
+      kind: "ollama",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      apiKey: null,
+    });
+
+    expect(encrypted).toMatchObject({
+      name: "Ollama",
+      kind: "ollama",
+      protectedApiKey: null,
+    });
+    expect(Object.hasOwn(encrypted, "apiKey")).toBe(false);
+  });
+
+  it("encrypts provider API-key updates without retaining plaintext", async () => {
+    const apiKey = "provider-secret-value";
+    const encrypted = await protectModelProviderUpdate(
+      crypto.randomUUID(),
+      {
+        name: "OpenAI-compatible",
+        kind: "openai-compatible",
+        baseUrl: "https://api.example.test/v1",
+        apiKey,
+      },
+      unlockedOptions(),
+    );
+
+    expect(Object.hasOwn(encrypted, "apiKey")).toBe(false);
+    expect(encrypted.protectedApiKey).not.toBeNull();
+    expect(JSON.stringify(encrypted)).not.toContain(apiKey);
   });
 });
 

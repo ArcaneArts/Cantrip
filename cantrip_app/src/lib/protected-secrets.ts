@@ -274,6 +274,7 @@ export async function protectModelProviderCreate(
   options: TrustedOptions = {},
 ): Promise<EncryptedModelProviderCreate> {
   const input = modelProviderCreateSchema.parse(raw);
+  const { apiKey, ...provider } = input;
   const id = crypto.randomUUID();
   const initialAccount =
     input.kind === "chatgpt" || input.kind === "grok"
@@ -283,13 +284,12 @@ export async function protectModelProviderCreate(
         )
       : null;
   return encryptedModelProviderCreateSchema.parse({
-    ...input,
+    ...provider,
     id,
     initialAccount,
-    apiKey: undefined,
-    protectedApiKey: input.apiKey
+    protectedApiKey: apiKey
       ? await protectProviderApiKey({
-          apiKey: input.apiKey,
+          apiKey,
           providerId: id,
           options,
         })
@@ -303,15 +303,15 @@ export async function protectModelProviderUpdate(
   options: TrustedOptions = {},
 ): Promise<EncryptedModelProviderUpdate> {
   const input = modelProviderUpdateSchema.parse(raw);
+  const { apiKey, ...provider } = input;
   return encryptedModelProviderUpdateSchema.parse({
-    ...input,
-    apiKey: undefined,
-    ...(input.apiKey === undefined
+    ...provider,
+    ...(apiKey === undefined
       ? {}
       : {
-          protectedApiKey: input.apiKey
+          protectedApiKey: apiKey
             ? await protectProviderApiKey({
-                apiKey: input.apiKey,
+                apiKey,
                 providerId,
                 options,
               })
