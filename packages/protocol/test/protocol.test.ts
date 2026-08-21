@@ -210,6 +210,10 @@ function terminalStateFixture() {
   };
 }
 
+function workflowContentFixture() {
+  return terminalStateFixture().protectedState;
+}
+
 function browserStateFixture() {
   return {
     classification: { recordKind: "browser-state" as const },
@@ -3497,20 +3501,23 @@ describe("Cantrip protocol", () => {
     const command = workerCommandSchema.parse({
       type: "workflow.node.execute",
       workflowRunId: "run-1",
+      workflowRevisionId: "revision-1",
+      revisionNodeId: "revision-node-1",
+      nodePosition: 0,
+      nodeType: "agent",
       runNodeId: "run-node-1",
       attemptId: "attempt-1",
       idempotencyKey: "execute-1",
       worktreeId: null,
       cwd: "/workspace",
       threadId: null,
-      prompt: "Review this project.",
-      developerInstructions: "Return only the requested JSON.",
-      skillNames: ["review"],
-      outputSchema: { type: "object" },
+      protectedDefinition: workflowContentFixture(),
+      protectedRunInput: workflowContentFixture(),
+      predecessorResults: [],
+      outgoingDependencies: [],
       mutationMode: "read-only",
-      networkAccess: "none",
-      approvalMode: "interactive",
       permissionProfileId: ":read-only",
+      maxNodeExecutions: 100,
       timeoutMs: 60_000,
       model: {
         id: "model-1",

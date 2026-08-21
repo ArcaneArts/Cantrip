@@ -259,6 +259,11 @@ export interface WorkflowAgentCandidate {
     runNodeId: string;
     protectedResult: WorkflowContentOpaque;
   }>;
+  outgoingDependencies: Array<{
+    edgePosition: number;
+    dependencyId: string;
+  }>;
+  maxNodeExecutions: number;
   nodePosition: number;
   structuredInput: WorkflowJsonValue;
   unsupportedReason: string | null;
@@ -2229,10 +2234,8 @@ export class WorkflowRunRepository {
     const activeCount =
       detail.nodes.filter(
         ({ nodeType, status }) =>
-          nodeType !== "map" &&
-          nodeType !== "pipeline" &&
-          (status === "running" ||
-            (status === "waiting-for-approval" && nodeType !== "gate")),
+          status === "running" ||
+          (status === "waiting-for-approval" && nodeType !== "gate"),
       ).length +
       detail.items.filter(({ status }) =>
         ["running", "waiting-for-approval"].includes(status),
@@ -2242,190 +2245,69 @@ export class WorkflowRunRepository {
       detail.run.budget.maxParallelism - activeCount,
     );
     if (capacity === 0) return [];
-    const revisionRows = await this.database
-      .select()
-      .from(schema.workflowRevisionNodes)
-      .where(
-        inArray(
-          schema.workflowRevisionNodes.id,
-          detail.nodes.map(({ revisionNodeId }) => revisionNodeId),
-        ),
-      )
-      .orderBy(asc(schema.workflowRevisionNodes.position));
-    const protectedRevisionRows = await this.database
-      .select({
-        protectedDefinition: schema.workflowRevisions.protectedDefinition,
-      })
-      .from(schema.workflowRevisions)
-      .where(eq(schema.workflowRevisions.id, detail.run.workflowRevisionId))
-      .limit(1);
+    const [revisionRows, revisionEdgeRows, protectedRevisionRows] =
+      await Promise.all([
+        this.database
+          .select()
+          .from(schema.workflowRevisionNodes)
+          .where(
+            inArray(
+              schema.workflowRevisionNodes.id,
+              detail.nodes.map(({ revisionNodeId }) => revisionNodeId),
+            ),
+          )
+          .orderBy(asc(schema.workflowRevisionNodes.position)),
+        this.database
+          .select({
+            id: schema.workflowRevisionEdges.id,
+            position: schema.workflowRevisionEdges.position,
+          })
+          .from(schema.workflowRevisionEdges)
+          .where(
+            eq(
+              schema.workflowRevisionEdges.revisionId,
+              detail.run.workflowRevisionId,
+            ),
+          ),
+        this.database
+          .select({
+            protectedDefinition: schema.workflowRevisions.protectedDefinition,
+          })
+          .from(schema.workflowRevisions)
+          .where(eq(schema.workflowRevisions.id, detail.run.workflowRevisionId))
+          .limit(1),
+      ]);
     const protectedDefinition = protectedRevisionRows[0]?.protectedDefinition;
     const revisionById = new Map(revisionRows.map((row) => [row.id, row]));
     const positionByRevisionId = new Map(
       revisionRows.map((row) => [row.id, row.position]),
     );
-    const candidates: Array<{
-      item: WorkflowRunNodeItem | null;
-      node: WorkflowRunNodeWire;
-    }> = detail.nodes
-      .filter(
-        ({ nodeType, status }) =>
-          status === "ready" &&
-          nodeType !== "condition" &&
-          nodeType !== "gate" &&
-          nodeType !== "map" &&
-          nodeType !== "pipeline",
-      )
+    const edgePositionById = new Map(
+      revisionEdgeRows.map(({ id, position }) => [id, position]),
+    );
+    const candidates = detail.nodes
+      .filter(({ status }) => status === "ready")
       .map((node) => ({ item: null, node }));
-    for (const node of detail.nodes.filter(
-      ({ nodeType, status }) =>
-        (nodeType === "map" || nodeType === "pipeline") &&
-        (status === "running" || status === "waiting-for-approval"),
-    )) {
-      const rawConfiguration = revisionById.get(
-        node.revisionNodeId,
-      )?.configuration;
-      const configuration =
-        node.nodeType === "map"
-          ? workflowMapNodeConfigurationSchema.safeParse(rawConfiguration)
-          : workflowPipelineNodeConfigurationSchema.safeParse(rawConfiguration);
-      const nodeItems = detail.items.filter(
-        ({ runNodeId }) => runNodeId === node.id,
-      );
-      const activeItems = nodeItems.filter(({ status }) =>
-        ["running", "waiting-for-approval"].includes(status),
-      ).length;
-      const itemCapacity = configuration.success
-        ? Math.max(0, configuration.data.maxConcurrency - activeItems)
-        : 1;
-      candidates.push(
-        ...nodeItems
-          .filter(({ status }) => status === "ready")
-          .slice(0, itemCapacity)
-          .map((item) => ({ item, node })),
-      );
-    }
     candidates.sort((left, right) => {
       const nodeOrder =
         (positionByRevisionId.get(left.node.revisionNodeId) ?? 0) -
         (positionByRevisionId.get(right.node.revisionNodeId) ?? 0);
-      if (nodeOrder !== 0) return nodeOrder;
-      return (left.item?.position ?? -1) - (right.item?.position ?? -1);
+      return nodeOrder;
     });
-    return candidates.slice(0, capacity).map(({ item, node }) => {
+    return candidates.slice(0, Math.min(capacity, 1)).map(({ item, node }) => {
       const revisionNode = revisionById.get(node.revisionNodeId);
-      const nodeInput = workflowJsonValueSchema.parse(
-        item?.structuredInput ?? node.structuredInput,
-      );
-      let configuration: WorkflowAgentNodeConfiguration | null = null;
-      let outputSchema = workflowJsonObjectSchema.parse(
-        revisionNode?.outputSchema ?? {},
-      );
-      let pipeline: WorkflowAgentCandidate["pipeline"] = null;
-      let repeatUntil: WorkflowAgentCandidate["repeatUntil"] = null;
-      let structuredInput = nodeInput;
-      let verification: WorkflowVerifyNodeConfiguration | null = null;
+      const configuration = workflowAgentNodeConfigurationSchema.parse({
+        prompt: "Protected workflow node",
+        developerInstructions: null,
+        includeStructuredInput: false,
+        automaticRetries: null,
+      });
       let unsupportedReason: string | null = null;
       if (!revisionNode) {
         unsupportedReason = "The workflow revision node is unavailable.";
-      } else if (node.nodeType === "agent") {
-        configuration = workflowAgentNodeConfigurationSchema.parse({
-          prompt: "Protected workflow node",
-          developerInstructions: null,
-          includeStructuredInput: false,
-          automaticRetries: null,
-        });
-      } else if (node.nodeType === "reduce") {
-        const parsed = workflowReduceNodeConfigurationSchema.safeParse(
-          revisionNode.configuration,
-        );
-        configuration = parsed.success ? parsed.data : null;
-        if (parsed.success) {
-          const selected = workflowValueAtPointer(
-            nodeInput,
-            parsed.data.collectionPath,
-          );
-          if (!selected.found) {
-            unsupportedReason = `The reduce collection path ${parsed.data.collectionPath || "<root>"} did not match its structured input.`;
-          } else if (
-            selected.value === null ||
-            typeof selected.value !== "object"
-          ) {
-            unsupportedReason =
-              "A reduce collection must be a JSON array or object.";
-          } else {
-            structuredInput = selected.value;
-            const empty = Array.isArray(selected.value)
-              ? selected.value.length === 0
-              : Object.keys(selected.value).length === 0;
-            if (empty && parsed.data.emptyCollection === "fail") {
-              unsupportedReason =
-                "The reduce collection is empty and its empty-collection policy is fail.";
-            }
-          }
-        }
-      } else if (node.nodeType === "verify") {
-        const parsed = workflowVerifyNodeConfigurationSchema.safeParse(
-          revisionNode.configuration,
-        );
-        configuration = parsed.success ? parsed.data : null;
-        verification = parsed.success ? parsed.data : null;
-      } else if (node.nodeType === "map" && item) {
-        const parsed = workflowMapNodeConfigurationSchema.safeParse(
-          revisionNode.configuration,
-        );
-        configuration = parsed.success ? parsed.data : null;
-      } else if (node.nodeType === "pipeline" && item) {
-        const parsed = workflowPipelineNodeConfigurationSchema.safeParse(
-          revisionNode.configuration,
-        );
-        const state = workflowRunNodeItemExecutionStateSchema.safeParse(
-          item.executionState,
-        );
-        if (
-          !parsed.success ||
-          !state.success ||
-          state.data.kind !== "pipeline"
-        ) {
-          unsupportedReason = "The pipeline item state is invalid.";
-        } else {
-          const step = parsed.data.steps[state.data.currentStepPosition];
-          if (!step) {
-            unsupportedReason = "The pipeline item has no executable step.";
-          } else {
-            configuration = step;
-            outputSchema = step.outputSchema;
-            pipeline = {
-              configuration: parsed.data,
-              step,
-              stepPosition: state.data.currentStepPosition,
-            };
-          }
-        }
-      } else if (node.nodeType === "repeatUntil") {
-        const parsed = workflowRepeatUntilNodeConfigurationSchema.safeParse(
-          revisionNode.configuration,
-        );
-        const dependencyState = workflowJsonObjectSchema.parse(
-          node.dependencyState,
-        );
-        const state = workflowRepeatUntilExecutionStateSchema.safeParse(
-          dependencyState.repeatUntil,
-        );
-        if (!parsed.success || !state.success) {
-          unsupportedReason = "The repeat-until execution state is invalid.";
-        } else {
-          configuration = parsed.data;
-          repeatUntil = {
-            configuration: parsed.data,
-            state: state.data,
-          };
-        }
-      } else {
-        unsupportedReason = `The ${node.nodeType} workflow primitive is not available in the static DAG runtime.`;
-      }
-      if (!configuration && !unsupportedReason) {
-        unsupportedReason = `The ${node.nodeType} node configuration is invalid.`;
+      } else if (node.nodeType === "gate") {
+        unsupportedReason =
+          "Protected workflow gates require the encrypted interaction runtime.";
       }
       if (!unsupportedReason && !detail.run.projectId) {
         unsupportedReason =
@@ -2460,22 +2342,58 @@ export class WorkflowRunRepository {
               ]
             : [];
         });
+      const outgoingDependencies = detail.dependencies.flatMap((dependency) => {
+        if (
+          dependency.fromNodeId !== node.id ||
+          dependency.revisionEdgeId === null
+        ) {
+          return [];
+        }
+        const edgePosition = edgePositionById.get(dependency.revisionEdgeId);
+        return edgePosition === undefined
+          ? []
+          : [{ edgePosition, dependencyId: dependency.id }];
+      });
+      const usedExpansion = detail.nodes.reduce((total, candidate) => {
+        if (candidate.id === node.id) return total;
+        const state = workflowJsonObjectSchema.parse(candidate.dependencyState);
+        const protectedRuntime = state.protectedRuntime;
+        if (
+          protectedRuntime === null ||
+          typeof protectedRuntime !== "object" ||
+          Array.isArray(protectedRuntime) ||
+          !Number.isSafeInteger(protectedRuntime.logicalExecutionCount) ||
+          (protectedRuntime.logicalExecutionCount as number) < 1
+        ) {
+          return total;
+        }
+        return (
+          total +
+          Math.max(0, (protectedRuntime.logicalExecutionCount as number) - 1)
+        );
+      }, 0);
+      const maxNodeExecutions = Math.max(
+        1,
+        detail.run.budget.maxNodes - detail.nodes.length - usedExpansion + 1,
+      );
       return {
         configuration,
         item,
         node,
-        outputSchema,
-        pipeline,
+        outputSchema: {},
+        pipeline: null,
         projectId: detail.run.projectId,
-        repeatUntil,
+        repeatUntil: null,
         run: detail.run,
         protectedDefinition: protectedDefinition!,
         protectedRunInput: detail.run.protectedInput,
         predecessorResults,
+        outgoingDependencies,
+        maxNodeExecutions,
         nodePosition: positionByRevisionId.get(node.revisionNodeId) ?? 0,
-        structuredInput,
+        structuredInput: {},
         unsupportedReason,
-        verification,
+        verification: null,
       };
     });
   }
@@ -3355,8 +3273,10 @@ export class WorkflowRunRepository {
     lease: WorkflowAttemptLease,
     result: {
       measuredUsage: WorkflowMeasuredUsage;
-      threadId: string;
-      turnId: string;
+      threadId: string | null;
+      turnId: string | null;
+      logicalExecutionCount: number;
+      selectedDependencyIds: string[] | null;
       protectedNodeInput: WorkflowContentOpaque;
       protectedNodeResult: WorkflowContentOpaque;
       protectedAttemptInput: WorkflowContentOpaque;
@@ -3382,6 +3302,38 @@ export class WorkflowRunRepository {
     ) {
       throw new Error(
         "Protected collection workflow execution is not available yet.",
+      );
+    }
+    if (
+      (lease.candidate.node.nodeType === "condition" &&
+        (result.selectedDependencyIds === null ||
+          result.selectedDependencyIds.length > 1)) ||
+      (lease.candidate.node.nodeType !== "condition" &&
+        result.selectedDependencyIds !== null)
+    ) {
+      throw new Error(
+        "Protected workflow branch selection does not match its node type.",
+      );
+    }
+    if (result.selectedDependencyIds !== null) {
+      const outgoing = new Set(
+        lease.candidate.outgoingDependencies.map(
+          ({ dependencyId }) => dependencyId,
+        ),
+      );
+      if (
+        new Set(result.selectedDependencyIds).size !==
+          result.selectedDependencyIds.length ||
+        result.selectedDependencyIds.some((id) => !outgoing.has(id))
+      ) {
+        throw new Error(
+          "Protected workflow branch selection is not valid for this node.",
+        );
+      }
+    }
+    if (result.logicalExecutionCount > lease.candidate.maxNodeExecutions) {
+      throw new Error(
+        "Protected workflow execution exceeded its logical node budget.",
       );
     }
     const now = new Date();
@@ -3434,6 +3386,14 @@ export class WorkflowRunRepository {
           protectedInput: result.protectedNodeInput,
           protectedResult: result.protectedNodeResult,
           protectedError: null,
+          dependencyState: {
+            ...workflowJsonObjectSchema.parse(
+              lease.candidate.node.dependencyState,
+            ),
+            protectedRuntime: {
+              logicalExecutionCount: result.logicalExecutionCount,
+            },
+          },
           measuredUsage,
           codexThreadId: result.threadId,
           codexTurnId: result.turnId,
@@ -3457,7 +3417,10 @@ export class WorkflowRunRepository {
         {
           now,
           runId: lease.candidate.run.id,
-          selectedDependencyIds: null,
+          selectedDependencyIds:
+            result.selectedDependencyIds === null
+              ? null
+              : new Set(result.selectedDependencyIds),
           sourceNodeId: lease.candidate.node.id,
         },
       );
@@ -5591,65 +5554,26 @@ export class WorkflowRunRepository {
         )
         .where(eq(schema.workflowRevisionNodes.id, node.revisionNodeId))
         .limit(1);
-      const pipelineConfiguration =
-        node.nodeType === "pipeline"
-          ? workflowPipelineNodeConfigurationSchema.parse(
-              revisionRows[0]?.configuration,
-            )
-          : null;
-      const repeatUntilConfiguration =
-        node.nodeType === "repeatUntil"
-          ? workflowRepeatUntilNodeConfigurationSchema.parse(
-              revisionRows[0]?.configuration,
-            )
-          : null;
-      const nodeDependencyState = workflowJsonObjectSchema.parse(
-        node.dependencyState,
-      );
-      const repeatUntilState = repeatUntilConfiguration
-        ? repeatUntilExecutionState(nodeDependencyState.repeatUntil)
-        : null;
-      const itemState = item?.executionState
-        ? workflowRunNodeItemExecutionStateSchema.parse(item.executionState)
-        : null;
-      const pipelineStep =
-        pipelineConfiguration && itemState?.kind === "pipeline"
-          ? pipelineConfiguration.steps[itemState.currentStepPosition]
-          : null;
-      const configuration =
-        node.nodeType === "map"
-          ? workflowMapNodeConfigurationSchema.parse(
-              revisionRows[0]?.configuration,
-            )
-          : (repeatUntilConfiguration ?? pipelineStep ?? null);
-      const pipeline =
-        pipelineConfiguration && pipelineStep && itemState?.kind === "pipeline"
-          ? {
-              configuration: pipelineConfiguration,
-              step: pipelineStep,
-              stepPosition: itemState.currentStepPosition,
-            }
-          : null;
+      const configuration = workflowAgentNodeConfigurationSchema.parse({
+        prompt: "Protected workflow node",
+        developerInstructions: null,
+        includeStructuredInput: false,
+        automaticRetries: null,
+      });
       const candidate: WorkflowAgentCandidate = {
         configuration,
         item,
         node,
-        outputSchema:
-          pipelineStep?.outputSchema ??
-          workflowJsonObjectSchema.parse(revisionRows[0]?.outputSchema ?? {}),
-        pipeline,
+        outputSchema: {},
+        pipeline: null,
         projectId: detail.run.projectId,
-        repeatUntil:
-          repeatUntilConfiguration && repeatUntilState
-            ? {
-                configuration: repeatUntilConfiguration,
-                state: repeatUntilState,
-              }
-            : null,
+        repeatUntil: null,
         run: detail.run,
         protectedDefinition: revisionRows[0]!.protectedDefinition,
         protectedRunInput: detail.run.protectedInput,
         predecessorResults: [],
+        outgoingDependencies: [],
+        maxNodeExecutions: node.budget.maxNodes,
         nodePosition: revisionRows[0]!.position,
         structuredInput: item?.structuredInput ?? node.structuredInput,
         unsupportedReason: null,
@@ -5674,12 +5598,7 @@ export class WorkflowRunRepository {
           idempotencyKey: row.attempt.idempotencyKey,
           recoveryHeartbeatAt: row.attempt.heartbeatAt ?? undefined,
           timeoutMs: node.budget.maxNodeDurationMs,
-          unitAttempt:
-            itemState?.kind === "pipeline"
-              ? itemState.currentStepAttemptCount
-              : repeatUntilState
-                ? repeatUntilState.currentIterationAttemptCount
-                : row.attempt.attempt,
+          unitAttempt: row.attempt.attempt,
           worktreeLeaseId:
             detail.worktreeLeases.find(
               (worktreeLease) =>

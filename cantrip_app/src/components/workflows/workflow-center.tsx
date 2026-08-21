@@ -362,15 +362,15 @@ export function WorkflowCenter({
       const revision = workflow.data?.revision;
       if (!revision) throw new Error("This workflow has no runnable revision.");
       if (
+        revision.permissionRequirements.approvalMode !== "preauthorized" ||
         revision.nodes.some(
           (node) =>
-            node.type !== "agent" ||
+            node.type === "gate" ||
             node.permissionRequirements.approvalMode !== "preauthorized",
-        ) ||
-        revision.edges.some((edge) => edge.condition !== null)
+        )
       ) {
         throw new Error(
-          "Protected execution currently supports preauthorized agent-only workflows without conditional edges.",
+          "Protected execution requires preauthorized nodes; gates remain unavailable until encrypted interactions are enabled.",
         );
       }
       await ensureChatWorkerEncryption({ worker });

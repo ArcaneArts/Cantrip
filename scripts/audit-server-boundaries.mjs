@@ -1999,6 +1999,9 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRunWireDetailSchema",
     "protectedWorkflowNodeExecutionRequestSchema",
     "protectedWorkflowNodeExecutionResultSchema",
+    "outgoingDependencies",
+    "selectedDependencyIds",
+    "logicalExecutionCount",
   ]) {
     if (!protocolText.includes(marker)) {
       failures.push(`Workflow protocol is missing ${marker}.`);
@@ -2050,16 +2053,35 @@ async function workflowCatalogContentBoundaryAudit() {
   for (const marker of [
     "protectedDefinition: lease.candidate.protectedDefinition",
     "protectedRunInput: lease.candidate.protectedRunInput",
+    "outgoingDependencies: lease.candidate.outgoingDependencies",
     "protectedWorkflowNodeExecutionResultSchema.parse",
   ]) {
     if (!executorText.includes(marker)) {
       failures.push(`Protected workflow executor is missing ${marker}.`);
     }
   }
+  for (const legacyAdvance of [
+    ".advanceReadyCollectionNode(",
+    ".advanceReadyRepeatUntilNode(",
+    ".advanceReadyControlNode(",
+  ]) {
+    if (executorText.includes(legacyAdvance)) {
+      failures.push(
+        `Protected workflow executor still calls legacy semantic runtime ${legacyAdvance}.`,
+      );
+    }
+  }
   for (const marker of [
     "decryptWorkflowContent",
     "workflowRevisionProtectedDefinitionSchema",
     "workflowRunProtectedInputSchema",
+    "workflowMapNodeConfigurationSchema",
+    "workflowPipelineNodeConfigurationSchema",
+    "workflowReduceNodeConfigurationSchema",
+    "workflowRepeatUntilNodeConfigurationSchema",
+    "workflowVerifyNodeConfigurationSchema",
+    "workflowConditionNodeConfigurationSchema",
+    "evaluatePredicate",
     "protectedAttemptResult",
     "protectedRunResult",
   ]) {
@@ -2100,10 +2122,12 @@ async function workflowCatalogContentBoundaryAudit() {
       "duplicated-revision-graph:removed",
       "legacy-generation-repository-and-save-routes:fail-closed",
       "agent-run-input-result-error:opaque-client-worker-runtime",
-      "collection-interaction-and-trigger-ingress:fail-closed-until-worker-runtime",
+      "map-pipeline-reduce-repeat-verify-condition:worker-only-semantics",
+      "collection-values-and-branch-predicates:opaque-to-server",
+      "gate-interaction-and-trigger-ingress:fail-closed-until-worker-runtime",
     ],
     remainingPlaintextContent: [
-      "collection item state, events, interactions, gates, triggers, and deliveries",
+      "events, interactions, gates, triggers, and deliveries",
     ],
   };
 }
@@ -3198,7 +3222,7 @@ async function buildInventory() {
       ...projectAutomationContent,
     },
     workflowCatalogContentE2eeBoundary: {
-      status: "definition-and-agent-runtime-boundary-enforced",
+      status: "definition-and-noninteractive-runtime-boundary-enforced",
       ...workflowCatalogContent,
     },
     policyE2eeBoundary: {

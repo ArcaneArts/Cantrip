@@ -65,9 +65,10 @@ Some data is already protected, but it is not end-to-end encrypted:
   predicates, schemas, defaults, and permission requirements are
   client-encrypted under `workflow-content`. Manual preauthorized agent DAG
   inputs/results, node/attempt payloads, and private worker errors now use the
-  same client/worker-only boundary. Collection/control primitives,
-  interactions, triggers, deliveries, and content-bearing events still require
-  the remaining worker-runtime cutover.
+  same client/worker-only boundary. Map, pipeline, reduce, repeat-until,
+  verification, and condition semantics now execute wholly on an authorized
+  worker. Gates, interactions, triggers, deliveries, and content-bearing events
+  still require the remaining worker-runtime cutover.
 - Repository and Git operations, including Git-agent tasks, locally gathered
   evidence, and generated drafts, use protected client-to-worker envelopes or
   worker-local opaque routing handles.
@@ -440,9 +441,10 @@ database-compromise guarantee is described.
 | MCP names, commands, URLs, headers, environment, and configuration                                                          | Complete row-bound AES-256-GCM configuration under `mcp-secret`; keyed name blind index                                                                                                   | E2EE complete                                    | Implemented          | High                                                       | Server can route by scope and blind override key but cannot validate or describe configuration                                    |
 | Project automation names, prompts, and conditions                                                                           | Row-bound `workflow-content`; client-only presentation; worker-only condition evaluation and chat-turn sealing                                                                            | E2EE complete                                    | Implemented          | Medium                                                     | Server can schedule and route automations but cannot inspect their name, prompt, or condition                                     |
 | Workflow catalog slugs, names, descriptions, provenance, and revision hashes                                                | Row-bound `workflow-content`; client-only presentation; keyed blind indexes for slug uniqueness and revision deduplication                                                                | E2EE complete                                    | Implemented          | Medium                                                     | Server loses catalog presentation and provenance; equality within an account remains visible through blind indexes                |
-| Workflow revision graphs, node names/prompts/configuration, edge predicates, schemas, defaults, and permission requirements | One row-bound opaque revision definition plus a minimized public scheduling manifest of random IDs, topology, primitive type, read/write mode, and routing IDs                            | E2EE complete; agent execution enabled           | Implemented          | High                                                       | Server cannot inspect or validate authoring semantics; it retains only the topology and classifications needed by the scheduler   |
-| Workflow run inputs/results, agent-node inputs/results, attempts, and private worker errors                                 | Client-sealed run input; worker-opened definitions and predecessor outputs; separately row-bound run/node/attempt result and error envelopes                                              | Agent DAG runtime E2EE complete                  | Implemented          | Very high                                                  | Server schedules preauthorized agent DAGs but cannot compose prompts, apply mappings, inspect results, or read private failures   |
-| Workflow collection items, interactions, gates, content-bearing events, triggers, and deliveries                            | Collection/control primitives and all trigger mutation/delivery ingress remain fail-closed; legacy runtime rows are reset and receive no new protected-path plaintext                     | Protected runtime closure pending                | Good when split      | Very high                                                  | Advanced semantic evaluation and interactive/unattended execution must move to authorized workers                                 |
+| Workflow revision graphs, node names/prompts/configuration, edge predicates, schemas, defaults, and permission requirements | One row-bound opaque revision definition plus a minimized public scheduling manifest of random IDs, topology, primitive type, read/write mode, and routing IDs                            | E2EE complete; noninteractive execution enabled  | Implemented          | High                                                       | Server cannot inspect or validate authoring semantics; it retains only the topology and classifications needed by the scheduler   |
+| Workflow run inputs/results, noninteractive node inputs/results, attempts, and private worker errors                        | Client-sealed run input; worker-opened definitions and predecessor outputs; separately row-bound run/node/attempt result and error envelopes                                              | Noninteractive runtime E2EE complete             | Implemented          | Very high                                                  | Server schedules preauthorized DAGs but cannot compose prompts, apply mappings, inspect results, or read private failures         |
+| Workflow map, pipeline, reduce, repeat-until, verify, and condition semantics                                               | Authorized-worker-only collection expansion, iteration, predicate evaluation, and branch selection; one opaque top-level result with public aggregate usage and logical execution count   | E2EE complete                                    | Implemented          | Very high                                                  | Server sees random-ID topology, selected branch, aggregate usage/counts, and lifecycle, but never collection values or predicates |
+| Workflow interactions, gates, content-bearing events, triggers, and deliveries                                              | Interactive and unattended ingress remain fail-closed; legacy runtime rows receive no new protected-path plaintext                                                                        | Protected runtime closure pending                | Good when split      | Very high                                                  | Encrypted request/response and trigger/delivery relays must still move to authorized clients and workers                          |
 | Repository identities and names, remotes, paths, branch names, and Git output                                               | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts | E2EE complete                                    | Implemented          | High                                                       | Repository/Git content, identity, paths, branches, status, errors, GitHub catalogs, and Git-agent prose; equality leakage remains |
 | Token usage, quotas, and model-behavior analytics                                                                           | Plaintext/queryable                                                                                                                                                                       | Planned minimization                             | Partial              | Medium-High                                                | Fully encrypting numbers removes server dashboards, budgets, and historical analysis                                              |
 | Diagnostic logs and audit metadata                                                                                          | Redacted but server-readable                                                                                                                                                              | Planned minimization                             | Partial              | Medium                                                     | Fully encrypted logs prevent server-side operations and security investigation                                                    |
@@ -1588,8 +1590,9 @@ all unrelated account, key-custody, worker, project, chat, project-automation,
 provider, policy, and workspace data and is not a remote or production reset
 mechanism.
 
-Manual execution is open again for preauthorized, agent-only DAGs without
-conditional edges. The client allocates the run UUID and encrypts structured
+Manual execution is open for preauthorized DAGs containing agent, map,
+pipeline, reduce, repeat-until, verify, and condition nodes. The client
+allocates the run UUID and encrypts structured
 input before mutation and ensures the assigned project worker has the current
 `workflow-content` grant. It also removes private skill and MCP names from the
 plaintext run permission manifest, retaining only coarse execution controls.
@@ -1599,12 +1602,23 @@ relays the revision envelope, run input, and encrypted predecessor results to
 the assigned worker.
 
 The worker authenticates and opens the complete revision, reconstructs each
-node's input mappings, validates the private node route and permission mode,
-composes the prompt, executes it, and separately encrypts the run, node, and
-attempt inputs/results. Worker failures are also sealed separately for their
-attempt, node, and run rows; the server retains only a coarse failure code.
-Plaintext workflow activity, message, plan, and interaction events are not
-emitted by this runtime. Interactive approval mode remains fail-closed.
+node's input mappings, validates the private node type, route, permission mode,
+preauthorization, predecessor set, and outgoing dependency positions, then
+executes its semantics. It composes agent prompts; expands map and pipeline
+collections; selects reduce inputs; evaluates verification, repeat progress,
+repeat success, and conditional branch predicates; and aggregates results
+without returning those values to the server. Condition nodes return only the
+selected random dependency ID. Collection items and repeat iterations stay in
+worker memory and do not create semantic item rows on the server.
+
+Every completed top-level node separately encrypts its run, node, and attempt
+inputs/results. Worker failures are also sealed separately for their attempt,
+node, and run rows; the server retains only a coarse failure code. Plaintext
+workflow activity, message, plan, and interaction events are not emitted by
+this runtime. The server retains aggregate token/cost usage and a logical
+execution count so it can enforce the public run budget without learning item
+values or predicates. Protected advanced nodes are dispatched serially so
+prior logical expansion is accounted before the next node starts.
 
 [Migration 0128](../cantrip_server/drizzle/0128_aromatic_slapstick.sql) resets
 only legacy workflow runs and dependent runtime rows before adding the
@@ -1615,19 +1629,19 @@ topology, budgets, aggregate token usage, worker/worktree/model routing,
 leases, deadlines, attempt counts, and timestamps remain intentionally
 plaintext because scheduling and recovery require them.
 
-Map, pipeline, reduce, repeat-until, verify, condition, and gate semantics plus
-workflow interactions, content-bearing events, trigger configuration/input,
-delivery payloads, and their private errors remain the next protected-runtime
-slice. Every trigger mutation and delivery route still returns `410`, and the
-client and worker reject unsupported manual graphs before any plaintext
-fallback can run.
+Gate semantics, workflow interactions, content-bearing events, trigger
+configuration/input, delivery payloads, and their private errors remain the
+next protected-runtime slice. Every trigger mutation and delivery route still
+returns `410`, and the client and worker reject gates or interactive nodes
+before any plaintext fallback can run.
 
 The focused client and worker encryption tests cover client-side run sealing,
-permission-manifest minimization, worker-only prompt construction, row-bound
-result opening, and ciphertext-only transport. The server relay and migration
-tests prove opaque persistence, empty legacy semantic placeholders, and the
-runtime-only destructive reset. The generated server-boundary audit records
-the protected command/result contract and the still fail-closed advanced
+permission-manifest minimization, worker-only prompt construction and
+collection expansion, row-bound result opening, and ciphertext-only transport.
+The server relay and migration tests prove opaque persistence, empty legacy
+semantic placeholders, and the runtime-only destructive reset. The generated
+server-boundary audit records the protected command/result contract and the
+still fail-closed interactive and trigger
 surfaces.
 
 ## Projects, worktrees, and Git
@@ -1904,18 +1918,18 @@ counts, worker presence, model-route choices, and traffic patterns.
     automation names, prompts, and conditions under `workflow-content`; the
     assigned worker evaluates conditions and seals allowed chat turns; the
     server retains only scheduling, routing, lifecycle, and opaque payloads.
-21. **Core workflow definitions and agent DAG runtime — complete; advanced
-    runtime ongoing:** definition
+21. **Core workflow definitions and noninteractive DAG runtime — complete;
+    interactive/unattended closure ongoing:** definition
     catalog fields, revision provenance/hashes, graphs, node prose and
     configuration, edge predicates/mappings, schemas, defaults, and permissions
     are client-encrypted. The server retains only opaque envelopes, blind
     indexes, and a minimized random-ID scheduling manifest. Legacy plaintext
     generation/repository/save paths and all trigger ingress fail closed.
-    Manual preauthorized agent DAGs now use client-sealed run inputs and
-    worker-sealed run/node/attempt results and errors; prompt composition and
-    dependency mappings occur only on the worker. Collections, conditions,
-    verification, gates, interactions, events, and triggers remain the next
-    protected-runtime phases.
+    Manual preauthorized DAGs now use client-sealed run inputs and worker-sealed
+    run/node/attempt results and errors. Prompt composition, dependency
+    mappings, collection expansion, iteration, verification, and conditional
+    predicates occur only on the worker. Gates, interactions, content-bearing
+    events, triggers, and deliveries remain the next protected-runtime phases.
 22. **Optional private analytics:** after workflow runtime content is opaque,
     minimize or relocate analytics according to the selected privacy mode.
 
