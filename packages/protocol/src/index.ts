@@ -7076,6 +7076,54 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "browser_services",
 ] as const;
 
+export const CANTRIP_MCP_MUTATION_OPERATIONS = [
+  "worktree.create",
+  "worktree.switch",
+  "worktree.release",
+  "worktree.remove",
+  "explorer.write",
+  "terminal.send",
+  "terminal.restart",
+  "browser.open",
+] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
+
+export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
+  "worktree_create",
+  "worktree_switch",
+  "worktree_release",
+  "worktree_remove",
+  "explorer_write",
+  "terminal_send",
+  "terminal_restart",
+  "browser_navigate",
+] as const;
+
+export const CANTRIP_MCP_OPERATIONS = [
+  ...CANTRIP_MCP_READ_OPERATIONS,
+  ...CANTRIP_MCP_MUTATION_OPERATIONS,
+] as const;
+
+export const CANTRIP_MCP_TOOL_NAMES = [
+  ...CANTRIP_MCP_READ_TOOL_NAMES,
+  ...CANTRIP_MCP_MUTATION_TOOL_NAMES,
+] as const;
+
+export function isCantripMcpMutationOperation(
+  operation: z.infer<typeof cantripAgentOperationNameSchema>,
+): boolean {
+  return (CANTRIP_MCP_MUTATION_OPERATIONS as readonly string[]).includes(
+    operation,
+  );
+}
+
+export function cantripMcpOperationsForPermissionProfile(
+  permissionProfileId: string,
+): readonly z.infer<typeof cantripAgentOperationNameSchema>[] {
+  return permissionProfileId === ":read-only"
+    ? CANTRIP_MCP_READ_OPERATIONS
+    : CANTRIP_MCP_OPERATIONS;
+}
+
 export const cantripAgentOperationArgumentsSchema = z
   .record(z.string().min(1).max(100), z.unknown())
   .refine((arguments_) => Object.keys(arguments_).length <= 32, {
@@ -7250,6 +7298,77 @@ export const cantripMcpBrowserServicesInputSchema = z
   .object({ target: cantripMcpSurfaceTargetSchema("browser") })
   .strict();
 
+const cantripMcpWorktreeTargetSchema = z
+  .object({
+    kind: z.literal("worktree"),
+    projectId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+  })
+  .strict();
+
+export const cantripMcpWorktreeCreateInputSchema = z.discriminatedUnion(
+  "intent",
+  [
+    z
+      .object({
+        intent: z.literal("newBranch"),
+        name: z.string().trim().min(1).max(200),
+        branch: z.string().trim().min(1).max(255),
+        baseRevision: z.string().trim().min(1).max(1_024).optional(),
+      })
+      .strict(),
+    z
+      .object({
+        intent: z.literal("existingBranch"),
+        name: z.string().trim().min(1).max(200),
+        branch: z.string().trim().min(1).max(255),
+      })
+      .strict(),
+    z
+      .object({
+        intent: z.literal("detached"),
+        name: z.string().trim().min(1).max(200),
+        baseRevision: z.string().trim().min(1).max(1_024),
+      })
+      .strict(),
+  ],
+);
+export const cantripMcpWorktreeSwitchInputSchema = z
+  .object({
+    target: cantripMcpWorktreeTargetSchema,
+    purpose: z.string().trim().min(1).max(500),
+  })
+  .strict();
+export const cantripMcpWorktreeReleaseInputSchema = z
+  .object({ purpose: z.string().trim().min(1).max(500) })
+  .strict();
+export const cantripMcpWorktreeRemoveInputSchema = z
+  .object({ target: cantripMcpWorktreeTargetSchema })
+  .strict();
+export const cantripMcpExplorerWriteInputSchema = z
+  .object({
+    target: cantripMcpSurfaceTargetSchema("explorer"),
+    path: explorerFileWriteSchema.shape.path,
+    content: z.string().max(200_000),
+    version: explorerFileWriteSchema.shape.version,
+  })
+  .strict();
+export const cantripMcpTerminalSendInputSchema = z
+  .object({
+    target: cantripMcpSurfaceTargetSchema("terminal"),
+    data: z.string().max(100_000),
+  })
+  .strict();
+export const cantripMcpTerminalRestartInputSchema = z
+  .object({ target: cantripMcpSurfaceTargetSchema("terminal") })
+  .strict();
+export const cantripMcpBrowserNavigateInputSchema = z
+  .object({
+    target: cantripMcpSurfaceTargetSchema("browser"),
+    url: browserHttpUrlSchema,
+  })
+  .strict();
+
 export const cantripMcpContextGetResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: z.null().default(null),
@@ -7368,6 +7487,87 @@ export const cantripMcpBrowserServicesResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: cantripMcpSurfaceTargetSchema("browser"),
     data: browserServiceListSchema,
+  });
+
+const cantripMcpMutationResultBaseSchema = z
+  .object({
+    summary: z.string().min(1).max(2_000),
+    target: executionTargetSchema,
+    worktreeId: z.string().min(1).max(200).nullable().default(null),
+    continuationScheduled: z.literal(false).default(false),
+    mutated: z.literal(true),
+  })
+  .strict();
+const cantripMcpContinuationResultBaseSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    continuationScheduled: z.literal(true),
+  });
+const cantripMcpTransitionDataSchema = z
+  .object({
+    lane: z
+      .object({
+        id: z.string().min(1).max(200),
+        state: chatExecutionLaneStateSchema,
+        transitionKind: z.enum(["switch", "release"]),
+      })
+      .strict(),
+    worktree: cantripMcpWorktreeSummarySchema,
+  })
+  .strict();
+
+export const cantripMcpWorktreeCreateResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: z.object({ worktree: cantripMcpWorktreeSummarySchema }).strict(),
+  });
+export const cantripMcpWorktreeSwitchResultSchema =
+  cantripMcpContinuationResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: cantripMcpTransitionDataSchema,
+  });
+export const cantripMcpWorktreeReleaseResultSchema =
+  cantripMcpContinuationResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: cantripMcpTransitionDataSchema,
+  });
+export const cantripMcpWorktreeRemoveResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    data: z
+      .object({
+        removedWorktreeId: z.string().min(1).max(200),
+        branchRetained: z.literal(true),
+      })
+      .strict(),
+  });
+export const cantripMcpExplorerWriteResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("explorer"),
+    data: explorerFileSchema.omit({ content: true }).strict(),
+  });
+export const cantripMcpTerminalSendResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("terminal"),
+    data: z.object({ accepted: z.literal(true) }).strict(),
+  });
+export const cantripMcpTerminalRestartResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("terminal"),
+    data: z.object({ status: z.literal("running") }).strict(),
+  });
+export const cantripMcpBrowserNavigateResultSchema =
+  cantripMcpMutationResultBaseSchema.extend({
+    target: cantripMcpSurfaceTargetSchema("browser"),
+    data: z
+      .object({
+        url: browserHttpUrlSchema,
+        stateRevision: z.number().int().positive().safe(),
+      })
+      .strict(),
   });
 
 // The human CLI is a compatibility adapter over the same operation result

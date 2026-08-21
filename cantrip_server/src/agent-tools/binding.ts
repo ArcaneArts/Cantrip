@@ -2,6 +2,7 @@ import type {
   CantripAgentOperationName,
   CantripMcpBinding,
 } from "@cantrip/protocol";
+import { cantripMcpOperationsForPermissionProfile } from "@cantrip/protocol";
 
 import {
   chatIsExecuting,
@@ -11,7 +12,13 @@ import type { ChatExecutionContext } from "../db/repository.js";
 
 export class CantripMcpBindingError extends Error {
   constructor(
-    readonly code: "expired" | "forbidden" | "invalid" | "stale-binding",
+    readonly code:
+      | "conflict"
+      | "expired"
+      | "forbidden"
+      | "invalid"
+      | "stale-binding"
+      | "unavailable",
     readonly status: number,
     message: string,
   ) {
@@ -85,6 +92,17 @@ export function assertCantripMcpBinding(options: {
       "stale-binding",
       409,
       "The MCP binding no longer matches the active Cantrip chat lane.",
+    );
+  }
+  if (
+    !cantripMcpOperationsForPermissionProfile(
+      currentPermissionProfile,
+    ).includes(operation)
+  ) {
+    throw new CantripMcpBindingError(
+      "forbidden",
+      403,
+      "The active permission profile does not authorize that MCP operation.",
     );
   }
 }

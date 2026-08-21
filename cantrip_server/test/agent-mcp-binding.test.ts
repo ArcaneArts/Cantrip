@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CANTRIP_MCP_READ_OPERATIONS,
+  CANTRIP_MCP_OPERATIONS,
   type CantripMcpBinding,
 } from "@cantrip/protocol";
 
@@ -88,6 +89,45 @@ describe("Cantrip MCP server binding", () => {
         }),
       ).not.toThrow();
     }
+  });
+
+  it("independently denies mutations under read-only permission", () => {
+    const readOnlyContext = {
+      ...context,
+      defaultPermissionProfileId: ":read-only",
+      permissionProfileId: ":read-only",
+    };
+    const readOnlyBinding = {
+      ...binding,
+      permissionProfileId: ":read-only",
+      allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+    };
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: readOnlyBinding,
+        context: readOnlyContext,
+        operation: "explorer.write",
+        ownerId: "owner-one",
+        serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
+        now,
+      }),
+    ).toThrow("permission profile");
+  });
+
+  it("allows mutations for an unchanged write-capable profile", () => {
+    expect(() =>
+      assertCantripMcpBinding({
+        binding: {
+          ...binding,
+          allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+        },
+        context,
+        operation: "explorer.write",
+        ownerId: "owner-one",
+        serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
+        now,
+      }),
+    ).not.toThrow();
   });
 
   it.each([

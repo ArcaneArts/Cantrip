@@ -398,7 +398,8 @@ import {
   workerListSchema,
   workerManagementListSchema,
   workerCantripMcpOperationCallSchema,
-  CANTRIP_MCP_READ_OPERATIONS,
+  CANTRIP_MCP_OPERATIONS,
+  isCantripMcpMutationOperation,
   workerCliCommandCallSchema,
   workerRestartAcknowledgementSchema,
   workerRestartResultSchema,
@@ -5353,6 +5354,7 @@ export async function buildApp({
         return cantripCliCommandResultSchema.parse({
           summary: `Created ${created.name} on ${created.branch ?? "detached HEAD"}.`,
           worktreeId: created.id,
+          mutated: true,
           data: created,
         });
       }
@@ -5375,11 +5377,23 @@ export async function buildApp({
           summary: `Created ${created.name}; continuation is scheduled in that worktree. Finish this turn now.`,
           worktreeId: created.id,
           continuationScheduled: true,
+          mutated: true,
           data: { worktree: created, lane: pending.lane },
         });
       }
       case "worktree.switch": {
-        const worktreeId = requiredToolString(call.arguments, "worktreeId");
+        const requestedTarget = call.arguments.target
+          ? executionTargetArgument(call.arguments)
+          : {
+              kind: "worktree" as const,
+              projectId: context.projectId,
+              worktreeId: requiredToolString(call.arguments, "worktreeId"),
+            };
+        if (requestedTarget.kind !== "worktree") {
+          throw new Error("Worktree switching requires a worktree target.");
+        }
+        const resolution = await resolveTarget(requestedTarget);
+        const worktreeId = resolution.placement.worktreeId!;
         const pending = await schedule(
           worktreeId,
           "switch",
@@ -5389,6 +5403,7 @@ export async function buildApp({
           summary: `Continuation is scheduled in ${pending.worktree.name}. Finish this turn now.`,
           worktreeId,
           continuationScheduled: true,
+          mutated: true,
           data: { lane: pending.lane, worktree: pending.worktree },
         });
       }
@@ -5422,11 +5437,23 @@ export async function buildApp({
           summary: `Release is scheduled; continuation will return to ${primary.name}. Finish this turn now.`,
           worktreeId: primary.id,
           continuationScheduled: true,
+          mutated: true,
           data: { lane: pending.lane, worktree: pending.worktree },
         });
       }
       case "worktree.remove": {
-        const worktreeId = requiredToolString(call.arguments, "worktreeId");
+        const requestedTarget = call.arguments.target
+          ? executionTargetArgument(call.arguments)
+          : {
+              kind: "worktree" as const,
+              projectId: context.projectId,
+              worktreeId: requiredToolString(call.arguments, "worktreeId"),
+            };
+        if (requestedTarget.kind !== "worktree") {
+          throw new Error("Worktree removal requires a worktree target.");
+        }
+        const resolution = await resolveTarget(requestedTarget);
+        const worktreeId = resolution.placement.worktreeId!;
         const target = await worktreeContext(worktreeId);
         if (target.worktree.isPrimary) {
           throw new Error("Primary cannot be removed as a worktree.");
@@ -5490,6 +5517,7 @@ export async function buildApp({
         return cantripCliCommandResultSchema.parse({
           summary: `Removed ${target.worktree.name}; its Git branch was retained.`,
           worktreeId,
+          mutated: true,
           data: removed,
         });
       }
@@ -25294,10 +25322,9 @@ export async function buildApp({
     },
   );
 
-  const mcpReadOperations: ReadonlySet<CantripAgentOperationName> = new Set(
-    CANTRIP_MCP_READ_OPERATIONS,
+  const mcpOperations: ReadonlySet<CantripAgentOperationName> = new Set(
+    CANTRIP_MCP_OPERATIONS,
   );
-
   app.post(
     "/api/internal/agent-operations",
     { logLevel: "warn" },
@@ -25340,14 +25367,16 @@ export async function buildApp({
             context,
             operation: input.data.request.operation,
             ownerId: workerAuth.ownerId,
-            serverAllowedOperations: mcpReadOperations,
+            serverAllowedOperations: mcpOperations,
           });
           const result = await agentOperationExecutor.execute(
             chatOperationContext(context),
             input.data.request,
           );
           await appendAudit(request, {
-            action: "mcp.operation.executed",
+            action: isCantripMcpMutationOperation(input.data.request.operation)
+              ? "mcp.operation.mutated"
+              : "mcp.operation.executed",
             actorSessionId: null,
             actorUserId: null,
             ownerId: workerAuth.ownerId,
@@ -25362,17 +25391,41 @@ export async function buildApp({
               ? error
               : error instanceof WorkerUnavailableError
                 ? new CantripMcpBindingError(
-                    "stale-binding",
+                    "unavailable",
                     503,
                     errorMessage(error),
                   )
-                : new CantripMcpBindingError(
-                    "invalid",
-                    400,
-                    error instanceof Error && error.name === "ZodError"
-                      ? "Cantrip MCP operation validation failed on the server."
-                      : errorMessage(error).slice(0, 2_000),
-                  );
+                : error instanceof ExecutionPlacementUnavailableError
+                  ? new CantripMcpBindingError(
+                      error.code === "worker-offline" ||
+                        error.code === "capability-unavailable"
+                        ? "unavailable"
+                        : "conflict",
+                      error.code === "worker-offline" ||
+                        error.code === "capability-unavailable"
+                        ? 503
+                        : 409,
+                      errorMessage(error),
+                    )
+                  : error instanceof ExecutionLaneConflictError
+                    ? new CantripMcpBindingError(
+                        "stale-binding",
+                        409,
+                        errorMessage(error),
+                      )
+                    : error instanceof SurfacePrivateStateConflictError
+                      ? new CantripMcpBindingError(
+                          "conflict",
+                          409,
+                          "Browser state changed before this operation.",
+                        )
+                      : new CantripMcpBindingError(
+                          "invalid",
+                          400,
+                          error instanceof Error && error.name === "ZodError"
+                            ? "Cantrip MCP operation validation failed on the server."
+                            : errorMessage(error).slice(0, 2_000),
+                        );
           await appendAudit(request, {
             action: "mcp.operation.rejected",
             actorSessionId: null,

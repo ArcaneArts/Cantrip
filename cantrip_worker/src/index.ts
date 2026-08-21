@@ -5,7 +5,7 @@ import path from "node:path";
 
 import {
   chatAttachmentSummarySchema,
-  CANTRIP_MCP_READ_OPERATIONS,
+  cantripMcpOperationsForPermissionProfile,
   gitAgentDraftCreateSchema,
   gitAgentDraftModelOutputSchema,
   gitAgentDraftResultSchema,
@@ -822,7 +822,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           canonicalRoot: cwd,
           rootKind: attachment.rootKind,
           permissionProfileId: attachment.permissionProfileId,
-          allowedOperations: [...CANTRIP_MCP_READ_OPERATIONS],
+          allowedOperations: [
+            ...cantripMcpOperationsForPermissionProfile(
+              attachment.permissionProfileId,
+            ),
+          ],
         })
       : null;
     const managedCantrip = cantripAttachment

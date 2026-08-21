@@ -64,7 +64,7 @@ export type CantripMcpRawOperationExecutor = (
   requestId: string,
 ) => Promise<CantripAgentOperationResult>;
 
-interface ReadOperationOptions {
+export interface CantripMcpOperationOptions {
   binding: CantripMcpBinding;
   execute: CantripMcpRawOperationExecutor;
   request: CantripAgentOperationRequest;
@@ -72,25 +72,27 @@ interface ReadOperationOptions {
   service: WorkerEncryptionService;
 }
 
-function dataRecord(result: CantripAgentOperationResult) {
+export function dataRecord(result: CantripAgentOperationResult) {
   if (!result.data || typeof result.data !== "object") {
     throw new Error("Cantrip returned a malformed operation result.");
   }
   return result.data as Record<string, unknown>;
 }
 
-function safeWorktree(worktree: Record<string, unknown>) {
+export function safeWorktree<
+  T extends { displayPath?: unknown; path?: unknown },
+>(worktree: T): Omit<T, "displayPath" | "path"> {
   const { path: _path, displayPath: _displayPath, ...safe } = worktree;
   return safe;
 }
 
-async function resolveSurfaceContext(
-  options: ReadOperationOptions,
+export async function resolveSurfaceContext(
+  options: CantripMcpOperationOptions,
   target: {
     kind: "surface";
     projectId: string;
     surfaceId: string;
-    surfaceKind: "explorer" | "terminal";
+    surfaceKind: "browser" | "explorer" | "terminal";
   },
 ) {
   const inspected = await options.execute(
@@ -120,10 +122,19 @@ async function resolveSurfaceContext(
       `The ${target.surfaceKind} target cannot receive protected operations.`,
     );
   }
-  return { serverId, target: resolvedTarget };
+  return {
+    serverId,
+    stateRevision:
+      Number.isSafeInteger(details.stateRevision) &&
+      Number(details.stateRevision) > 0
+        ? Number(details.stateRevision)
+        : null,
+    target: resolvedTarget,
+    worktreeId: resolution.placement.worktreeId,
+  };
 }
 
-async function executePolicyOperation(options: ReadOperationOptions) {
+async function executePolicyOperation(options: CantripMcpOperationOptions) {
   const listResult = await options.execute(
     options.binding,
     { operation: "policy.list", arguments: {} },
@@ -171,7 +182,7 @@ async function executePolicyOperation(options: ReadOperationOptions) {
   });
 }
 
-async function executeTargetList(options: ReadOperationOptions) {
+async function executeTargetList(options: CantripMcpOperationOptions) {
   const arguments_ = cantripMcpTargetListInputSchema.parse(
     options.request.arguments,
   );
@@ -222,7 +233,7 @@ async function executeTargetList(options: ReadOperationOptions) {
   });
 }
 
-async function executeTargetInspect(options: ReadOperationOptions) {
+async function executeTargetInspect(options: CantripMcpOperationOptions) {
   const arguments_ = cantripMcpTargetInspectInputSchema.parse(
     options.request.arguments,
   );
@@ -247,7 +258,7 @@ async function executeTargetInspect(options: ReadOperationOptions) {
   });
 }
 
-async function executeWorktreeList(options: ReadOperationOptions) {
+async function executeWorktreeList(options: CantripMcpOperationOptions) {
   const arguments_ = cantripMcpWorktreeListInputSchema.parse(
     options.request.arguments,
   );
@@ -273,7 +284,7 @@ async function executeWorktreeList(options: ReadOperationOptions) {
   });
 }
 
-async function executeWorktreeStatus(options: ReadOperationOptions) {
+async function executeWorktreeStatus(options: CantripMcpOperationOptions) {
   const arguments_ = cantripMcpWorktreeStatusInputSchema.parse(
     options.request.arguments,
   );
@@ -295,7 +306,7 @@ async function executeWorktreeStatus(options: ReadOperationOptions) {
   });
 }
 
-async function executeExplorerOperation(options: ReadOperationOptions) {
+async function executeExplorerOperation(options: CantripMcpOperationOptions) {
   const list = options.request.operation === "explorer.list";
   const arguments_ = list
     ? cantripMcpExplorerListInputSchema.parse(options.request.arguments)
@@ -393,7 +404,7 @@ async function executeExplorerOperation(options: ReadOperationOptions) {
   });
 }
 
-async function executeTerminalRead(options: ReadOperationOptions) {
+async function executeTerminalRead(options: CantripMcpOperationOptions) {
   const arguments_ = cantripMcpTerminalReadInputSchema.parse(
     options.request.arguments,
   );
@@ -455,7 +466,7 @@ async function executeTerminalRead(options: ReadOperationOptions) {
 }
 
 export async function executeCantripMcpReadOperation(
-  options: ReadOperationOptions,
+  options: CantripMcpOperationOptions,
 ): Promise<CantripAgentOperationResult> {
   if (options.service.ownerId() !== options.binding.ownerId) {
     throw new Error("Worker encryption belongs to a different MCP owner.");

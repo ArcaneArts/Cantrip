@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { CANTRIP_MCP_READ_TOOL_NAMES } from "@cantrip/protocol";
+import {
+  CANTRIP_MCP_MUTATION_TOOL_NAMES,
+  CANTRIP_MCP_READ_TOOL_NAMES,
+  CANTRIP_MCP_TOOL_NAMES,
+} from "@cantrip/protocol";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CantripServerRequestError } from "../src/cli-client.js";
@@ -213,15 +217,29 @@ describe("Cantrip MCP worker broker", () => {
         expect(transport.pid).not.toBeNull();
         const catalog = await client.listTools();
         expect(catalog.tools.map(({ name }) => name)).toEqual([
-          ...CANTRIP_MCP_READ_TOOL_NAMES,
+          ...CANTRIP_MCP_TOOL_NAMES,
         ]);
         for (const tool of catalog.tools) {
+          const readOnly = CANTRIP_MCP_READ_TOOL_NAMES.includes(
+            tool.name as (typeof CANTRIP_MCP_READ_TOOL_NAMES)[number],
+          );
+          const destructive = new Set([
+            "worktree_release",
+            "worktree_remove",
+            "explorer_write",
+            "terminal_send",
+          ]).has(tool.name);
+          const openWorld = new Set([
+            "browser_services",
+            "terminal_send",
+            "browser_navigate",
+          ]).has(tool.name);
           expect(tool).toMatchObject({
             annotations: {
-              readOnlyHint: true,
-              destructiveHint: false,
-              idempotentHint: true,
-              openWorldHint: tool.name === "browser_services",
+              readOnlyHint: readOnly,
+              destructiveHint: destructive,
+              idempotentHint: readOnly,
+              openWorldHint: openWorld,
             },
             inputSchema: { type: "object" },
             outputSchema: { type: "object" },
@@ -237,6 +255,7 @@ describe("Cantrip MCP worker broker", () => {
             worktreeId: "worktree-one",
           },
         });
+        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(8);
       } finally {
         await client.close();
         await broker.close();
@@ -392,6 +411,61 @@ describe("Cantrip MCP worker broker", () => {
         }),
       });
       expect(response.status).toBe(409);
+      await expect(access(attachment.connectionPath)).rejects.toThrow();
+      const retry = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: { operation: "context.get", arguments: {} },
+        }),
+      });
+      expect(retry.status).toBe(401);
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("revokes a binding immediately after continuation is scheduled", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker(
+      {
+        dataDirectory,
+        serverUrl: "https://cantrip.example",
+        token: "worker-token",
+        workerId: "worker-one",
+      },
+      {
+        execute: async (binding) => ({
+          summary: "Continuation is scheduled. Finish this turn now.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          continuationScheduled: true,
+          mutated: true,
+        }),
+      },
+    );
+    await broker.start();
+    const attachment = broker.createBinding(bindingInput());
+    try {
+      const response = await fetch(`${broker.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${attachment.connection.credential}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          bindingId: attachment.binding.bindingId,
+          request: { operation: "context.get", arguments: {} },
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        continuationScheduled: true,
+      });
       await expect(access(attachment.connectionPath)).rejects.toThrow();
       const retry = await fetch(`${broker.endpoint}/v1/execute`, {
         method: "POST",

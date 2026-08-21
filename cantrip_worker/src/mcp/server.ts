@@ -9,12 +9,16 @@ import type {
 import {
   cantripMcpBrowserServicesInputSchema,
   cantripMcpBrowserServicesResultSchema,
+  cantripMcpBrowserNavigateInputSchema,
+  cantripMcpBrowserNavigateResultSchema,
   cantripMcpContextGetInputSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerListInputSchema,
   cantripMcpExplorerListResultSchema,
   cantripMcpExplorerReadInputSchema,
   cantripMcpExplorerReadResultSchema,
+  cantripMcpExplorerWriteInputSchema,
+  cantripMcpExplorerWriteResultSchema,
   cantripMcpPolicyListInputSchema,
   cantripMcpPolicyListResultSchema,
   cantripMcpPolicyReadInputSchema,
@@ -25,10 +29,22 @@ import {
   cantripMcpTargetListResultSchema,
   cantripMcpTerminalReadInputSchema,
   cantripMcpTerminalReadResultSchema,
+  cantripMcpTerminalRestartInputSchema,
+  cantripMcpTerminalRestartResultSchema,
+  cantripMcpTerminalSendInputSchema,
+  cantripMcpTerminalSendResultSchema,
+  cantripMcpWorktreeCreateInputSchema,
+  cantripMcpWorktreeCreateResultSchema,
   cantripMcpWorktreeListInputSchema,
   cantripMcpWorktreeListResultSchema,
   cantripMcpWorktreeStatusInputSchema,
   cantripMcpWorktreeStatusResultSchema,
+  cantripMcpWorktreeReleaseInputSchema,
+  cantripMcpWorktreeReleaseResultSchema,
+  cantripMcpWorktreeRemoveInputSchema,
+  cantripMcpWorktreeRemoveResultSchema,
+  cantripMcpWorktreeSwitchInputSchema,
+  cantripMcpWorktreeSwitchResultSchema,
 } from "@cantrip/protocol";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
@@ -69,6 +85,24 @@ const readAnnotations = {
 } as const;
 const browserDiscoveryAnnotations = {
   ...readAnnotations,
+  openWorldHint: true,
+} as const;
+const mutationAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+} as const;
+const destructiveMutationAnnotations = {
+  ...mutationAnnotations,
+  destructiveHint: true,
+} as const;
+const openWorldMutationAnnotations = {
+  ...mutationAnnotations,
+  openWorldHint: true,
+} as const;
+const destructiveOpenWorldMutationAnnotations = {
+  ...destructiveMutationAnnotations,
   openWorldHint: true,
 } as const;
 
@@ -341,6 +375,206 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
           cantripMcpBrowserServicesResultSchema.parse(
             await gateway({
               operation: "browser.services",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "worktree_create",
+    {
+      title: "Create a Cantrip worktree",
+      description:
+        "Create an agent-owned worktree in the bound project. Use worktree_switch separately to schedule continuation there.",
+      inputSchema: cantripMcpWorktreeCreateInputSchema,
+      outputSchema: cantripMcpWorktreeCreateResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWorktreeCreateResultSchema.parse(
+            await gateway({
+              operation: "worktree.create",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "worktree_switch",
+    {
+      title: "Switch the Cantrip worktree",
+      description:
+        "Schedule continuation in an exact authorized worktree. End the current turn immediately when continuation is scheduled.",
+      inputSchema: cantripMcpWorktreeSwitchInputSchema,
+      outputSchema: cantripMcpWorktreeSwitchResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWorktreeSwitchResultSchema.parse(
+            await gateway({
+              operation: "worktree.switch",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "worktree_release",
+    {
+      title: "Release the current Cantrip worktree",
+      description:
+        "Release a clean secondary worktree lease and schedule continuation on Primary. End this turn immediately after success.",
+      inputSchema: cantripMcpWorktreeReleaseInputSchema,
+      outputSchema: cantripMcpWorktreeReleaseResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWorktreeReleaseResultSchema.parse(
+            await gateway({
+              operation: "worktree.release",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "worktree_remove",
+    {
+      title: "Remove a Cantrip worktree",
+      description:
+        "Remove an exact clean, unused, agent-created secondary worktree while retaining its Git branch.",
+      inputSchema: cantripMcpWorktreeRemoveInputSchema,
+      outputSchema: cantripMcpWorktreeRemoveResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpWorktreeRemoveResultSchema.parse(
+            await gateway({
+              operation: "worktree.remove",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "explorer_write",
+    {
+      title: "Write a Cantrip Explorer file",
+      description:
+        "Replace one bounded text file through an exact Explorer target and an expected version from explorer_read.",
+      inputSchema: cantripMcpExplorerWriteInputSchema,
+      outputSchema: cantripMcpExplorerWriteResultSchema,
+      annotations: destructiveMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpExplorerWriteResultSchema.parse(
+            await gateway({
+              operation: "explorer.write",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "terminal_send",
+    {
+      title: "Send input to a Cantrip terminal",
+      description:
+        "Send bounded protected input to an exact Terminal target. The input may cause commands or external effects in that terminal.",
+      inputSchema: cantripMcpTerminalSendInputSchema,
+      outputSchema: cantripMcpTerminalSendResultSchema,
+      annotations: destructiveOpenWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpTerminalSendResultSchema.parse(
+            await gateway({
+              operation: "terminal.send",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "terminal_restart",
+    {
+      title: "Restart a Cantrip terminal service",
+      description:
+        "Restart the service process owned by an exact Terminal target after revalidating its placement and service capability.",
+      inputSchema: cantripMcpTerminalRestartInputSchema,
+      outputSchema: cantripMcpTerminalRestartResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpTerminalRestartResultSchema.parse(
+            await gateway({
+              operation: "terminal.restart",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "browser_navigate",
+    {
+      title: "Navigate a Cantrip browser",
+      description:
+        "Navigate an exact Browser target to a bounded HTTP or HTTPS URL using revision-checked protected browser state.",
+      inputSchema: cantripMcpBrowserNavigateInputSchema,
+      outputSchema: cantripMcpBrowserNavigateResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpBrowserNavigateResultSchema.parse(
+            await gateway({
+              operation: "browser.open",
               arguments: arguments_,
             }),
           ),

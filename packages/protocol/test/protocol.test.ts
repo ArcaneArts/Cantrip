@@ -20,17 +20,27 @@ import {
   cantripAgentOperationRequestSchema,
   cantripAgentOperationResultSchema,
   cantripMcpBindingSchema,
+  cantripMcpBrowserNavigateInputSchema,
   cantripMcpConnectionDocumentSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerReadInputSchema,
   cantripMcpExplorerReadResultSchema,
+  cantripMcpExplorerWriteInputSchema,
+  cantripMcpExplorerWriteResultSchema,
   cantripMcpTargetListInputSchema,
   cantripMcpTerminalReadInputSchema,
+  cantripMcpWorktreeSwitchResultSchema,
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
   CANTRIP_MCP_READ_OPERATIONS,
   CANTRIP_MCP_READ_TOOL_NAMES,
+  CANTRIP_MCP_MUTATION_OPERATIONS,
+  CANTRIP_MCP_MUTATION_TOOL_NAMES,
+  CANTRIP_MCP_OPERATIONS,
+  CANTRIP_MCP_TOOL_NAMES,
+  cantripMcpOperationsForPermissionProfile,
+  isCantripMcpMutationOperation,
   chatAttachmentSummarySchema,
   chatGptModelInventorySchema,
   chatCreateSchema,
@@ -731,6 +741,72 @@ describe("Cantrip protocol", () => {
           version: "a".repeat(64),
           truncated: false,
         },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds mutation tools and gates their operation catalog by permission", () => {
+    expect(CANTRIP_MCP_MUTATION_OPERATIONS).toHaveLength(
+      CANTRIP_MCP_MUTATION_TOOL_NAMES.length,
+    );
+    expect(CANTRIP_MCP_OPERATIONS).toHaveLength(CANTRIP_MCP_TOOL_NAMES.length);
+    expect(cantripMcpOperationsForPermissionProfile(":read-only")).toEqual(
+      CANTRIP_MCP_READ_OPERATIONS,
+    );
+    expect(cantripMcpOperationsForPermissionProfile(":workspace")).toEqual(
+      CANTRIP_MCP_OPERATIONS,
+    );
+    expect(
+      CANTRIP_MCP_MUTATION_OPERATIONS.every(isCantripMcpMutationOperation),
+    ).toBe(true);
+    expect(isCantripMcpMutationOperation("context.get")).toBe(false);
+    const target = {
+      kind: "surface" as const,
+      projectId: "project-one",
+      surfaceKind: "explorer" as const,
+      surfaceId: "explorer-one",
+    };
+    expect(
+      cantripMcpExplorerWriteInputSchema.safeParse({
+        target,
+        path: "README.md",
+        content: "x".repeat(200_001),
+        version: "a".repeat(64),
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpBrowserNavigateInputSchema.safeParse({
+        target: { ...target, surfaceKind: "browser" },
+        url: "file:///private/secret",
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpExplorerWriteResultSchema.safeParse({
+        summary: "Saved README.md.",
+        target,
+        worktreeId: "worktree-one",
+        continuationScheduled: false,
+        mutated: false,
+        data: {
+          path: "README.md",
+          size: 7,
+          markdown: true,
+          version: "b".repeat(64),
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpWorktreeSwitchResultSchema.safeParse({
+        summary: "Continuation scheduled.",
+        target: {
+          kind: "worktree",
+          projectId: "project-one",
+          worktreeId: "worktree-two",
+        },
+        worktreeId: "worktree-two",
+        continuationScheduled: false,
+        mutated: true,
+        data: {},
       }).success,
     ).toBe(false);
   });
