@@ -436,6 +436,9 @@ restarted worker restores compatible session identities from its data directory
 without launching them until the server authorizes a new attachment. A packaged
 worker also guards every editor process group, so an abruptly terminated worker
 cannot leave editor, extension-host, watcher, or terminal processes behind.
+Codex app-server, authentication, discovery, and import subprocesses use the
+same owner-death guard, preventing abandoned Codex servers when a worker or the
+desktop shell terminates unexpectedly.
 
 ## Packaged desktop lifecycle
 

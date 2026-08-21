@@ -1,5 +1,7 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import readline from "node:readline";
+
+import { spawnGuardedProcess } from "../code/process-guard.js";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -108,9 +110,10 @@ export function spawnCodexRpcClient(
   options: { requestTimeoutMs?: number } = {},
 ): CodexRpcClient {
   return new CodexRpcClient(
-    spawn(binary, ["app-server", "--listen", "stdio://"], {
+    spawnGuardedProcess(binary, ["app-server", "--listen", "stdio://"], {
+      cwd: process.cwd(),
       env: { ...process.env, CODEX_HOME: codexHome },
-      stdio: ["pipe", "pipe", "pipe"],
+      stdin: "pipe",
     }),
     options.requestTimeoutMs,
   );
