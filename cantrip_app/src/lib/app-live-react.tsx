@@ -7,7 +7,11 @@ import {
   type PropsWithChildren,
 } from "react";
 
-import { AppLiveClient, type AppLiveClientStatus } from "@/lib/app-live-client";
+import {
+  AppLiveClient,
+  type AppLiveClientStatus,
+  type ClientControlHandler,
+} from "@/lib/app-live-client";
 
 const AppLiveContext = createContext<AppLiveClient | null>(null);
 
@@ -43,4 +47,12 @@ export function useAppLiveStatus(): AppLiveClientStatus {
     });
   }, [client]);
   return status;
+}
+
+export function useAppLiveClientControl(handler: ClientControlHandler): void {
+  const client = useContext(AppLiveContext);
+  useEffect(() => {
+    if (!client) return;
+    return client.registerClientControlHandler(handler);
+  }, [client, handler]);
 }

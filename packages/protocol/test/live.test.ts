@@ -185,6 +185,64 @@ describe("application live protocol", () => {
     ).toBe("cursor-expired");
   });
 
+  it("models capability-negotiated expiring client controls separately from events", () => {
+    expect(
+      appLiveClientMessageSchema.parse({
+        type: "initialize",
+        protocolVersion: 1,
+        client: {
+          id: "client-1",
+          name: "Cantrip App",
+          version: "0.0.0",
+          controlCapabilities: ["notify", "focus-surface"],
+        },
+      }),
+    ).toMatchObject({
+      client: { controlCapabilities: ["notify", "focus-surface"] },
+    });
+    const request = appLiveServerMessageSchema.parse({
+      type: "client-control-request",
+      correlationId: "00000000-0000-4000-8000-000000000001",
+      issuedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T12:00:05.000Z",
+      command: {
+        kind: "focus-surface",
+        projectId: "project-1",
+        surfaceKind: "terminal",
+        surfaceId: "terminal-1",
+      },
+    });
+    expect(request).toMatchObject({
+      type: "client-control-request",
+      command: { kind: "focus-surface" },
+    });
+    expect(
+      appLiveClientMessageSchema.parse({
+        type: "client-control-ack",
+        correlationId: "00000000-0000-4000-8000-000000000001",
+        status: "applied",
+      }),
+    ).toMatchObject({ status: "applied", detail: null });
+    expect(() =>
+      appLiveServerMessageSchema.parse({
+        ...request,
+        expiresAt: "2026-08-21T12:00:11.000Z",
+      }),
+    ).toThrow(/ten seconds/);
+    expect(() =>
+      appLiveClientMessageSchema.parse({
+        type: "initialize",
+        protocolVersion: 1,
+        client: {
+          id: "client-1",
+          name: "Cantrip App",
+          version: "0.0.0",
+          controlCapabilities: ["notify", "notify"],
+        },
+      }),
+    ).toThrow(/unique/);
+  });
+
   it("validates typed events and structured errors", () => {
     expect(
       appLiveServerMessageSchema.parse({

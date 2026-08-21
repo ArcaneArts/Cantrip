@@ -21,6 +21,12 @@ import {
   cantripAgentOperationResultSchema,
   cantripMcpBindingSchema,
   cantripMcpBrowserNavigateInputSchema,
+  cantripMcpClientFocusProjectInputSchema,
+  cantripMcpClientFocusProjectResultSchema,
+  cantripMcpClientFocusSurfaceInputSchema,
+  cantripMcpClientNotifyInputSchema,
+  cantripMcpClientNotifyResultSchema,
+  cantripMcpClientShowInteractionInputSchema,
   cantripMcpConnectionDocumentSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerReadInputSchema,
@@ -35,6 +41,7 @@ import {
   cantripVersionSchema,
   CANTRIP_MCP_READ_OPERATIONS,
   CANTRIP_MCP_READ_TOOL_NAMES,
+  CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS,
   CANTRIP_MCP_MUTATION_OPERATIONS,
   CANTRIP_MCP_MUTATION_TOOL_NAMES,
   CANTRIP_MCP_OPERATIONS,
@@ -760,6 +767,12 @@ describe("Cantrip protocol", () => {
       CANTRIP_MCP_MUTATION_OPERATIONS.every(isCantripMcpMutationOperation),
     ).toBe(true);
     expect(isCantripMcpMutationOperation("context.get")).toBe(false);
+    expect(CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS).toEqual([
+      "client.notify",
+      "client.focus-project",
+      "client.focus-surface",
+      "client.show-interaction",
+    ]);
     const target = {
       kind: "surface" as const,
       projectId: "project-one",
@@ -807,6 +820,51 @@ describe("Cantrip protocol", () => {
         continuationScheduled: false,
         mutated: true,
         data: {},
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds client-control inputs and status-specific mutation results", () => {
+    expect(cantripMcpClientFocusProjectInputSchema.parse({})).toEqual({});
+    expect(
+      cantripMcpClientNotifyInputSchema.safeParse({
+        level: "info",
+        title: "Ready",
+        message: "x".repeat(2_001),
+      }).success,
+    ).toBe(false);
+    const target = {
+      kind: "surface" as const,
+      projectId: "project-one",
+      surfaceKind: "terminal" as const,
+      surfaceId: "terminal-one",
+    };
+    expect(cantripMcpClientFocusSurfaceInputSchema.parse({ target })).toEqual({
+      target,
+    });
+    expect(
+      cantripMcpClientShowInteractionInputSchema.safeParse({
+        interactionId: "",
+      }).success,
+    ).toBe(false);
+    const unavailable = {
+      summary: "No compatible client is connected.",
+      target: { kind: "project" as const, projectId: "project-one" },
+      worktreeId: "worktree-one",
+      continuationScheduled: false as const,
+      mutated: false,
+      data: {
+        correlationId: "00000000-0000-4000-8000-000000000001",
+        status: "unavailable" as const,
+      },
+    };
+    expect(cantripMcpClientFocusProjectResultSchema.parse(unavailable)).toEqual(
+      unavailable,
+    );
+    expect(
+      cantripMcpClientNotifyResultSchema.safeParse({
+        ...unavailable,
+        mutated: true,
       }).success,
     ).toBe(false);
   });

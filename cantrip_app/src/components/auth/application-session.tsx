@@ -662,7 +662,17 @@ function AuthenticatedApplication({
       window.localStorage.setItem(clientIdKey, clientId);
     }
     return new AppLiveClient({
-      client: { id: clientId, name: "Cantrip App", version: "0.0.0" },
+      client: {
+        id: clientId,
+        name: "Cantrip App",
+        version: "0.0.0",
+        controlCapabilities: [
+          "notify",
+          "focus-project",
+          "focus-surface",
+          "show-interaction",
+        ],
+      },
       onAuthenticationRequired: notifyAuthenticationRequired,
       onEvent: (event) => queryBridge.handleEvent(event),
       onProtocolError: (error) => {

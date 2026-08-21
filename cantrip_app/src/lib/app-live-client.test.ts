@@ -114,7 +114,17 @@ function createHarness(input?: {
   }> = [];
   const storage = input?.storage ?? new MemoryStorage();
   const client = new AppLiveClient({
-    client: { id: "client-one", name: "Test client", version: "1" },
+    client: {
+      id: "client-one",
+      name: "Test client",
+      version: "1",
+      controlCapabilities: [
+        "notify",
+        "focus-project",
+        "focus-surface",
+        "show-interaction",
+      ],
+    },
     onAuthenticationRequired: input?.onAuthenticationRequired,
     onEvent: (event) => events.push(event),
     onResync: async (scopes, reason) => {
@@ -460,5 +470,113 @@ describe("application live client", () => {
     expect(client.snapshot().status).toBe("stopped");
     await vi.runAllTimersAsync();
     expect(sockets).toHaveLength(1);
+  });
+
+  it("applies each non-replayable client control once and repeats only its acknowledgement", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
+    const { client, sockets } = createHarness();
+    let finishHandler!: () => void;
+    const handlerGate = new Promise<void>((resolve) => {
+      finishHandler = resolve;
+    });
+    const handler = vi.fn(async () => {
+      await handlerGate;
+      return { status: "applied" as const };
+    });
+    client.registerClientControlHandler(handler);
+    client.start();
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive(ready("not-requested"));
+    const request = {
+      type: "client-control-request" as const,
+      correlationId: "00000000-0000-4000-8000-000000000001",
+      issuedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T12:00:05.000Z",
+      command: {
+        kind: "focus-project" as const,
+        projectId: "project-one",
+      },
+    };
+    socket.receive(request);
+    socket.receive(request);
+    await settle();
+    expect(handler).toHaveBeenCalledTimes(1);
+    finishHandler();
+    await settle();
+    expect(socket.sent.at(-1)).toEqual({
+      type: "client-control-ack",
+      correlationId: request.correlationId,
+      status: "applied",
+      detail: null,
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(
+      socket.sent.filter(
+        (message) =>
+          message.type === "client-control-ack" &&
+          message.correlationId === request.correlationId,
+      ),
+    ).toHaveLength(2);
+
+    socket.receive(request);
+    await settle();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(
+      socket.sent.filter(
+        (message) =>
+          message.type === "client-control-ack" &&
+          message.correlationId === request.correlationId,
+      ),
+    ).toHaveLength(3);
+    client.stop();
+  });
+
+  it("declines expired controls and reports unsupported handlers", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-21T12:00:06.000Z"));
+    const { client, sockets } = createHarness();
+    client.start();
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive(ready("not-requested"));
+    socket.receive({
+      type: "client-control-request",
+      correlationId: "00000000-0000-4000-8000-000000000002",
+      issuedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T12:00:05.000Z",
+      command: {
+        kind: "notify",
+        projectId: "project-one",
+        level: "warning",
+        title: "Expired",
+        message: "This notice must not be applied.",
+      },
+    });
+    await settle();
+    expect(socket.sent.at(-1)).toMatchObject({
+      type: "client-control-ack",
+      status: "expired",
+    });
+
+    vi.setSystemTime(new Date("2026-08-21T12:00:10.000Z"));
+    socket.receive({
+      type: "client-control-request",
+      correlationId: "00000000-0000-4000-8000-000000000003",
+      issuedAt: "2026-08-21T12:00:10.000Z",
+      expiresAt: "2026-08-21T12:00:15.000Z",
+      command: {
+        kind: "focus-project",
+        projectId: "project-one",
+      },
+    });
+    await settle();
+    expect(socket.sent.at(-1)).toMatchObject({
+      type: "client-control-ack",
+      status: "unsupported",
+    });
+    client.stop();
   });
 });

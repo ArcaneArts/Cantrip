@@ -37,6 +37,10 @@ import {
   browserPrivateStateOpaqueSchema,
   encryptedBrowserUpdateSchema,
   cantripAgentOperationResultSchema,
+  cantripMcpClientFocusProjectInputSchema,
+  cantripMcpClientFocusSurfaceInputSchema,
+  cantripMcpClientNotifyInputSchema,
+  cantripMcpClientShowInteractionInputSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
   codeAttachmentCreateSchema,
@@ -5220,6 +5224,118 @@ export async function buildApp({
           target,
           mutated: true,
           data: browser,
+        });
+      }
+      case "client.notify": {
+        const input = cantripMcpClientNotifyInputSchema.parse(call.arguments);
+        const target = {
+          kind: "project" as const,
+          projectId: context.projectId,
+        };
+        const result = await liveHub.requestClientControl(
+          applicationOwnerId(),
+          {
+            kind: "notify",
+            projectId: context.projectId,
+            ...input,
+          },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Client notification ${result.status}.`,
+          target,
+          worktreeId: context.worktreeId,
+          mutated: result.status === "applied",
+          data: result,
+        });
+      }
+      case "client.focus-project": {
+        cantripMcpClientFocusProjectInputSchema.parse(call.arguments);
+        const target = {
+          kind: "project" as const,
+          projectId: context.projectId,
+        };
+        const result = await liveHub.requestClientControl(
+          applicationOwnerId(),
+          { kind: "focus-project", projectId: context.projectId },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Client project focus ${result.status}.`,
+          target,
+          worktreeId: context.worktreeId,
+          mutated: result.status === "applied",
+          data: result,
+        });
+      }
+      case "client.focus-surface": {
+        const input = cantripMcpClientFocusSurfaceInputSchema.parse(
+          call.arguments,
+        );
+        if (input.target.projectId !== context.projectId) {
+          throw new Error(
+            "The client-control target is outside the bound Cantrip project.",
+          );
+        }
+        const resolution = await resolveTarget(input.target);
+        const result = await liveHub.requestClientControl(
+          applicationOwnerId(),
+          {
+            kind: "focus-surface",
+            projectId: context.projectId,
+            surfaceKind: input.target.surfaceKind,
+            surfaceId: input.target.surfaceId,
+          },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Client surface focus ${result.status}.`,
+          target: input.target,
+          worktreeId: resolution.placement.worktreeId,
+          mutated: result.status === "applied",
+          data: result,
+        });
+      }
+      case "client.show-interaction": {
+        if (!context.chatId) {
+          throw new Error("Client interaction focus requires a chat binding.");
+        }
+        const input = cantripMcpClientShowInteractionInputSchema.parse(
+          call.arguments,
+        );
+        const interaction = await repository.getAgentInteractionRequest(
+          applicationOwnerId(),
+          input.interactionId,
+        );
+        if (
+          !interaction ||
+          interaction.projectId !== context.projectId ||
+          interaction.provenance.chatId !== context.chatId ||
+          interaction.status !== "pending"
+        ) {
+          throw new Error(
+            "The interaction is not pending in the bound Cantrip chat.",
+          );
+        }
+        const target = {
+          kind: "surface" as const,
+          projectId: context.projectId,
+          surfaceKind: "chat" as const,
+          surfaceId: context.chatId,
+        };
+        await resolveTarget(target);
+        const result = await liveHub.requestClientControl(
+          applicationOwnerId(),
+          {
+            kind: "show-interaction",
+            projectId: context.projectId,
+            chatId: context.chatId,
+            interactionId: input.interactionId,
+          },
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Client interaction focus ${result.status}.`,
+          target,
+          worktreeId: context.worktreeId,
+          mutated: result.status === "applied",
+          data: result,
         });
       }
       case "worktree.list": {

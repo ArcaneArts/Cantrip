@@ -9,6 +9,9 @@ import type {
   AppLiveResyncReason,
   AppLiveScope,
   AppLiveServerMessage,
+  ClientControlAcknowledgement,
+  ClientControlCapability,
+  ClientControlCommand,
 } from "@cantrip/protocol";
 
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
@@ -18,6 +21,7 @@ const RESUME_STORAGE_VERSION = 1;
 const MIN_RECONNECT_DELAY_MS = 500;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 15_000;
+const MAX_CONTROL_ACKNOWLEDGEMENTS = 256;
 
 type AppLiveEvent = Extract<AppLiveServerMessage, { type: "event" }>;
 type AppLiveReadyMessage = Extract<AppLiveServerMessage, { type: "ready" }>;
@@ -58,7 +62,12 @@ export interface AppLiveClientStorage {
 }
 
 export interface AppLiveClientOptions {
-  client: { id: string; name: string; version: string };
+  client: {
+    id: string;
+    name: string;
+    version: string;
+    controlCapabilities?: ClientControlCapability[];
+  };
   onAuthenticationRequired?(reason: string): void;
   onEvent(event: AppLiveEvent): void;
   onProtocolError?(error: {
@@ -76,6 +85,15 @@ export interface AppLiveClientOptions {
   url: string;
   webSocketFactory?: (url: string) => AppLiveClientSocket;
 }
+
+export interface ClientControlHandlerResult {
+  status: "applied" | "declined" | "unsupported";
+  detail?: string | null;
+}
+
+export type ClientControlHandler = (
+  command: ClientControlCommand,
+) => Promise<ClientControlHandlerResult> | ClientControlHandlerResult;
 
 interface StoredResumePoint {
   cursor: number;
@@ -147,6 +165,14 @@ export function appLiveWebSocketUrl(
 export class AppLiveClient {
   readonly #activeScopes = new Map<string, AppLiveScope>();
   readonly #blockedScopes = new Set<string>();
+  readonly #controlAcknowledgements = new Map<
+    string,
+    ClientControlAcknowledgement
+  >();
+  readonly #controlAcknowledgementPromises = new Map<
+    string,
+    Promise<ClientControlAcknowledgement>
+  >();
   readonly #listeners = new Set<(snapshot: AppLiveClientSnapshot) => void>();
   readonly #options: AppLiveClientOptions;
   readonly #pendingRequests = new Map<string, PendingRequest>();
@@ -155,6 +181,7 @@ export class AppLiveClient {
   #heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   #connectTimer: ReturnType<typeof setTimeout> | null = null;
   #connectStartedAt = 0;
+  #controlHandler: ClientControlHandler | null = null;
   #lastCursor: number | null = null;
   #lastError: string | null = null;
   #reconnectAttempt = 0;
@@ -209,6 +236,8 @@ export class AppLiveClient {
     this.#socket = null;
     if (socket) socket.close(1000, "Application live client stopped");
     this.#activeScopes.clear();
+    this.#controlAcknowledgements.clear();
+    this.#controlAcknowledgementPromises.clear();
     this.#pendingRequests.clear();
     this.#snapshotBarrierCount = 0;
     this.#lastCursor = this.#safeCursor;
@@ -229,6 +258,13 @@ export class AppLiveClient {
     this.#socket = null;
     if (socket) socket.close(1012, "Application live reconnect requested");
     this.#connect();
+  }
+
+  registerClientControlHandler(handler: ClientControlHandler): () => void {
+    this.#controlHandler = handler;
+    return () => {
+      if (this.#controlHandler === handler) this.#controlHandler = null;
+    };
   }
 
   retainScope(scope: AppLiveScope): () => void {
@@ -360,7 +396,10 @@ export class AppLiveClient {
     this.#send({
       type: "initialize",
       protocolVersion: 1,
-      client: this.#options.client,
+      client: {
+        ...this.#options.client,
+        controlCapabilities: this.#options.client.controlCapabilities ?? [],
+      },
       resume:
         this.#serverEpoch !== null && this.#safeCursor !== null
           ? {
@@ -403,6 +442,8 @@ export class AppLiveClient {
     this.#clearConnectTimer();
     this.#clearHeartbeat();
     this.#activeScopes.clear();
+    this.#controlAcknowledgements.clear();
+    this.#controlAcknowledgementPromises.clear();
     this.#pendingRequests.clear();
     this.#resumeMode = null;
     this.#snapshotBarrierCount = 0;
@@ -499,6 +540,9 @@ export class AppLiveClient {
       case "resync-required":
         this.#beginResync(message);
         return;
+      case "client-control-request":
+        void this.#handleClientControlRequest(message);
+        return;
       case "error":
         const failedRequest = message.requestId
           ? this.#pendingRequests.get(message.requestId)
@@ -535,6 +579,86 @@ export class AppLiveClient {
           this.#syncScopes();
         }
     }
+  }
+
+  async #handleClientControlRequest(
+    message: Extract<AppLiveServerMessage, { type: "client-control-request" }>,
+  ): Promise<void> {
+    const existing = this.#controlAcknowledgements.get(message.correlationId);
+    if (existing) {
+      this.#send({ type: "client-control-ack", ...existing });
+      return;
+    }
+    const socket = this.#socket;
+    const active = this.#controlAcknowledgementPromises.get(
+      message.correlationId,
+    );
+    if (active) {
+      const acknowledgement = await active;
+      if (this.#socket === socket && this.#running) {
+        this.#send({ type: "client-control-ack", ...acknowledgement });
+      }
+      return;
+    }
+    const acknowledgementPromise = (async () => {
+      if (Date.now() >= Date.parse(message.expiresAt)) {
+        return {
+          correlationId: message.correlationId,
+          status: "expired" as const,
+          detail: null,
+        };
+      }
+      if (
+        !this.#options.client.controlCapabilities?.includes(
+          message.command.kind,
+        ) ||
+        !this.#controlHandler
+      ) {
+        return {
+          correlationId: message.correlationId,
+          status: "unsupported" as const,
+          detail: null,
+        };
+      }
+      try {
+        const result = await this.#controlHandler(message.command);
+        return {
+          correlationId: message.correlationId,
+          status:
+            Date.now() >= Date.parse(message.expiresAt)
+              ? ("expired" as const)
+              : result.status,
+          detail: result.detail?.slice(0, 500) || null,
+        };
+      } catch {
+        return {
+          correlationId: message.correlationId,
+          status: "declined" as const,
+          detail: null,
+        };
+      }
+    })();
+    this.#controlAcknowledgementPromises.set(
+      message.correlationId,
+      acknowledgementPromise,
+    );
+    const acknowledgement = await acknowledgementPromise;
+    if (
+      this.#controlAcknowledgementPromises.get(message.correlationId) ===
+      acknowledgementPromise
+    ) {
+      this.#controlAcknowledgementPromises.delete(message.correlationId);
+    }
+    if (this.#socket !== socket || !this.#running) return;
+    this.#controlAcknowledgements.set(
+      acknowledgement.correlationId,
+      acknowledgement,
+    );
+    if (this.#controlAcknowledgements.size > MAX_CONTROL_ACKNOWLEDGEMENTS) {
+      const oldest = this.#controlAcknowledgements.keys().next().value;
+      if (oldest !== undefined) this.#controlAcknowledgements.delete(oldest);
+    }
+    this.#send({ type: "client-control-ack", ...acknowledgement });
   }
 
   #handleReady(message: AppLiveReadyMessage): void {

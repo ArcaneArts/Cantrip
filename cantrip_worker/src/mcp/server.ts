@@ -11,6 +11,14 @@ import {
   cantripMcpBrowserServicesResultSchema,
   cantripMcpBrowserNavigateInputSchema,
   cantripMcpBrowserNavigateResultSchema,
+  cantripMcpClientFocusProjectInputSchema,
+  cantripMcpClientFocusProjectResultSchema,
+  cantripMcpClientFocusSurfaceInputSchema,
+  cantripMcpClientFocusSurfaceResultSchema,
+  cantripMcpClientNotifyInputSchema,
+  cantripMcpClientNotifyResultSchema,
+  cantripMcpClientShowInteractionInputSchema,
+  cantripMcpClientShowInteractionResultSchema,
   cantripMcpContextGetInputSchema,
   cantripMcpContextGetResultSchema,
   cantripMcpExplorerListInputSchema,
@@ -575,6 +583,106 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
           cantripMcpBrowserNavigateResultSchema.parse(
             await gateway({
               operation: "browser.open",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "client_notify",
+    {
+      title: "Notify an active Cantrip client",
+      description:
+        "Send one bounded best-effort notice to a compatible client currently active in the bound project.",
+      inputSchema: cantripMcpClientNotifyInputSchema,
+      outputSchema: cantripMcpClientNotifyResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpClientNotifyResultSchema.parse(
+            await gateway({
+              operation: "client.notify",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "client_focus_project",
+    {
+      title: "Focus the bound Cantrip project",
+      description:
+        "Ask one compatible project-active Cantrip client to focus the bound project. The request is ephemeral and may be unavailable.",
+      inputSchema: cantripMcpClientFocusProjectInputSchema,
+      outputSchema: cantripMcpClientFocusProjectResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpClientFocusProjectResultSchema.parse(
+            await gateway({
+              operation: "client.focus-project",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "client_focus_surface",
+    {
+      title: "Focus a Cantrip surface",
+      description:
+        "Ask one compatible project-active Cantrip client to focus an exact authorized Chat, Terminal, Explorer, Code, or Browser surface.",
+      inputSchema: cantripMcpClientFocusSurfaceInputSchema,
+      outputSchema: cantripMcpClientFocusSurfaceResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpClientFocusSurfaceResultSchema.parse(
+            await gateway({
+              operation: "client.focus-surface",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "client_show_interaction",
+    {
+      title: "Show a pending Cantrip interaction",
+      description:
+        "Ask a compatible client active in the bound chat to show one exact pending interaction. This does not answer the interaction.",
+      inputSchema: cantripMcpClientShowInteractionInputSchema,
+      outputSchema: cantripMcpClientShowInteractionResultSchema,
+      annotations: mutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpClientShowInteractionResultSchema.parse(
+            await gateway({
+              operation: "client.show-interaction",
               arguments: arguments_,
             }),
           ),

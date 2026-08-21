@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   appLiveScopeKey,
   appLiveServerMessageSchema,
+  clientControlRequestSchema,
   decodeAppLiveClientMessage,
   encodeAppLiveServerMessage,
 } from "@cantrip/protocol";
@@ -12,6 +13,9 @@ import type {
   AppLiveResyncReason,
   AppLiveScope,
   AppLiveServerMessage,
+  ClientControlCapability,
+  ClientControlCommand,
+  ClientControlResultStatus,
 } from "@cantrip/protocol";
 
 const OPEN_SOCKET_STATE = 1;
@@ -22,6 +26,8 @@ const DEFAULT_MAX_REPLAY_EVENTS = 2_048;
 const DEFAULT_MAX_REPLAY_BYTES = 32 * 1_024 * 1_024;
 const MAX_PROTOCOL_VIOLATIONS = 5;
 const MAX_REQUEST_HISTORY = 256;
+const MAX_PENDING_CLIENT_CONTROL_REQUESTS = 128;
+const DEFAULT_CLIENT_CONTROL_TIMEOUT_MS = 5_000;
 
 export interface AppLiveSocket {
   bufferedAmount: number;
@@ -91,6 +97,7 @@ interface ResumeState {
 interface Connection {
   closed: boolean;
   context: AppLiveConnectionContext;
+  controlCapabilities: Set<ClientControlCapability>;
   id: string;
   initialized: boolean;
   lastSeenAt: number;
@@ -106,6 +113,18 @@ interface RetainedEvent {
   encodedBytes: number;
   event: AppLiveEvent;
   ownerId: string;
+}
+
+export interface AppLiveClientControlResult {
+  correlationId: string;
+  status: ClientControlResultStatus;
+}
+
+interface PendingClientControlRequest {
+  connection: Connection;
+  expiresAt: number;
+  resolve(result: AppLiveClientControlResult): void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 function frameByteLength(data: unknown): number {
@@ -160,6 +179,10 @@ export class AppLiveHub {
   readonly #maxReplayEvents: number;
   readonly #now: () => number;
   readonly #publishExternal?: AppLiveHubOptions["publishExternal"];
+  readonly #pendingClientControlRequests = new Map<
+    string,
+    PendingClientControlRequest
+  >();
   readonly #ownerCursors = new Map<string, number>();
   readonly #replayEvents: RetainedEvent[] = [];
   readonly #heartbeatTimer: ReturnType<typeof setInterval>;
@@ -228,6 +251,7 @@ export class AppLiveHub {
     const connection: Connection = {
       closed: false,
       context,
+      controlCapabilities: new Set(),
       id: randomUUID(),
       initialized: false,
       lastSeenAt: this.#now(),
@@ -257,6 +281,91 @@ export class AppLiveHub {
     const disconnect = () => this.#disconnect(connection);
     socket.on("close", disconnect);
     socket.on("error", disconnect);
+  }
+
+  async requestClientControl(
+    ownerId: string,
+    command: ClientControlCommand,
+    timeoutMs = DEFAULT_CLIENT_CONTROL_TIMEOUT_MS,
+  ): Promise<AppLiveClientControlResult> {
+    const correlationId = randomUUID();
+    if (
+      this.#closed ||
+      this.#pendingClientControlRequests.size >=
+        MAX_PENDING_CLIENT_CONTROL_REQUESTS
+    ) {
+      return { correlationId, status: "unavailable" };
+    }
+    const boundedTimeoutMs = Math.max(1, Math.min(timeoutMs, 10_000));
+    const issuedAt = this.#now();
+    const request = clientControlRequestSchema.parse({
+      correlationId,
+      issuedAt: new Date(issuedAt).toISOString(),
+      expiresAt: new Date(issuedAt + boundedTimeoutMs).toISOString(),
+      command,
+    });
+    const projectScopeKey = appLiveScopeKey({
+      kind: "project",
+      projectId: command.projectId,
+    });
+    const projectConnections = (
+      await Promise.all(
+        [...this.#connections].map(async (connection) =>
+          connection.context.ownerId === ownerId &&
+          connection.initialized &&
+          !connection.closed &&
+          connection.scopes.has(projectScopeKey) &&
+          (await this.#isConnectionActive(connection))
+            ? connection
+            : null,
+        ),
+      )
+    ).filter((connection): connection is Connection => connection !== null);
+    if (projectConnections.length === 0) {
+      return { correlationId, status: "unavailable" };
+    }
+    const compatible = projectConnections.filter((connection) =>
+      connection.controlCapabilities.has(command.kind),
+    );
+    if (compatible.length === 0) {
+      return { correlationId, status: "unsupported" };
+    }
+    const chatScopeKey =
+      command.kind === "show-interaction"
+        ? appLiveScopeKey({ kind: "chat", chatId: command.chatId })
+        : null;
+    const connection =
+      compatible.find(
+        (candidate) => chatScopeKey && candidate.scopes.has(chatScopeKey),
+      ) ?? compatible[0]!;
+    if (
+      this.#closed ||
+      this.#pendingClientControlRequests.size >=
+        MAX_PENDING_CLIENT_CONTROL_REQUESTS
+    ) {
+      return { correlationId, status: "unavailable" };
+    }
+
+    return new Promise<AppLiveClientControlResult>((resolve) => {
+      const timer = setTimeout(() => {
+        this.#settleClientControl(correlationId, "expired");
+      }, boundedTimeoutMs);
+      timer.unref();
+      this.#pendingClientControlRequests.set(correlationId, {
+        connection,
+        expiresAt: issuedAt + boundedTimeoutMs,
+        resolve,
+        timer,
+      });
+      if (
+        !this.#send(connection, {
+          type: "client-control-request",
+          ...request,
+        })
+      ) {
+        this.#settleClientControl(correlationId, "unavailable");
+      }
+    });
   }
 
   publish(publication: AppLivePublication): AppLiveEvent {
@@ -352,6 +461,11 @@ export class AppLiveHub {
     if (this.#closed) return;
     this.#closed = true;
     clearInterval(this.#heartbeatTimer);
+    for (const correlationId of [
+      ...this.#pendingClientControlRequests.keys(),
+    ]) {
+      this.#settleClientControl(correlationId, "unavailable");
+    }
     for (const connection of [...this.#connections]) {
       connection.closed = true;
       connection.socket.close(1001, "Live service is shutting down");
@@ -474,6 +588,17 @@ export class AppLiveHub {
       });
       return;
     }
+    if (message.type === "client-control-ack") {
+      const pending = this.#pendingClientControlRequests.get(
+        message.correlationId,
+      );
+      if (!pending || pending.connection !== connection) return;
+      this.#settleClientControl(
+        message.correlationId,
+        this.#now() >= pending.expiresAt ? "expired" : message.status,
+      );
+      return;
+    }
 
     const previous = connection.requestHistory.get(message.requestId);
     if (previous) {
@@ -509,6 +634,9 @@ export class AppLiveHub {
     }
 
     connection.initialized = true;
+    connection.controlCapabilities = new Set(
+      message.client.controlCapabilities,
+    );
     let resumeMode: Extract<AppLiveServerMessage, { type: "ready" }>["resume"] =
       "not-requested";
     if (message.resume) {
@@ -874,6 +1002,7 @@ export class AppLiveHub {
     connection.closed = true;
     this.#connections.delete(connection);
     this.#disconnectedConnectionCount += 1;
+    this.#settleClientControlForConnection(connection);
     connection.socket.close(code, reason);
   }
 
@@ -882,5 +1011,25 @@ export class AppLiveHub {
     connection.closed = true;
     this.#connections.delete(connection);
     this.#disconnectedConnectionCount += 1;
+    this.#settleClientControlForConnection(connection);
+  }
+
+  #settleClientControl(
+    correlationId: string,
+    status: ClientControlResultStatus,
+  ): void {
+    const pending = this.#pendingClientControlRequests.get(correlationId);
+    if (!pending) return;
+    this.#pendingClientControlRequests.delete(correlationId);
+    clearTimeout(pending.timer);
+    pending.resolve({ correlationId, status });
+  }
+
+  #settleClientControlForConnection(connection: Connection): void {
+    for (const [correlationId, pending] of this.#pendingClientControlRequests) {
+      if (pending.connection === connection) {
+        this.#settleClientControl(correlationId, "unavailable");
+      }
+    }
   }
 }

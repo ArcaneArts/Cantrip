@@ -70,6 +70,8 @@ import { tunnelDataPlaneCloseCodeSchema } from "./tunnel-data-plane.js";
 
 export * from "./tunnel-data-plane.js";
 
+import { clientControlResultStatusSchema } from "./live.js";
+
 export * from "./live.js";
 
 export * from "./policies.js";
@@ -7046,6 +7048,10 @@ export const cantripAgentOperationNameSchema = z.enum([
   "terminal.restart",
   "browser.services",
   "browser.open",
+  "client.notify",
+  "client.focus-project",
+  "client.focus-surface",
+  "client.show-interaction",
 ]);
 
 export const CANTRIP_MCP_READ_OPERATIONS = [
@@ -7076,7 +7082,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "browser_services",
 ] as const;
 
-export const CANTRIP_MCP_MUTATION_OPERATIONS = [
+export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "worktree.create",
   "worktree.switch",
   "worktree.release",
@@ -7087,6 +7093,18 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
   "browser.open",
 ] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
 
+export const CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS = [
+  "client.notify",
+  "client.focus-project",
+  "client.focus-surface",
+  "client.show-interaction",
+] as const satisfies readonly z.infer<typeof cantripAgentOperationNameSchema>[];
+
+export const CANTRIP_MCP_MUTATION_OPERATIONS = [
+  ...CANTRIP_MCP_WORKER_MUTATION_OPERATIONS,
+  ...CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS,
+] as const;
+
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "worktree_create",
   "worktree_switch",
@@ -7096,6 +7114,10 @@ export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "terminal_send",
   "terminal_restart",
   "browser_navigate",
+  "client_notify",
+  "client_focus_project",
+  "client_focus_surface",
+  "client_show_interaction",
 ] as const;
 
 export const CANTRIP_MCP_OPERATIONS = [
@@ -7368,6 +7390,65 @@ export const cantripMcpBrowserNavigateInputSchema = z
     url: browserHttpUrlSchema,
   })
   .strict();
+export const cantripMcpClientNotifyInputSchema = z
+  .object({
+    level: z.enum(["info", "warning", "error"]).default("info"),
+    title: z.string().trim().min(1).max(120),
+    message: z.string().trim().min(1).max(2_000),
+  })
+  .strict();
+export const cantripMcpClientFocusProjectInputSchema = z.object({}).strict();
+export const cantripMcpClientSurfaceTargetSchema = z.discriminatedUnion(
+  "surfaceKind",
+  [
+    z
+      .object({
+        kind: z.literal("surface"),
+        projectId: z.string().min(1).max(200),
+        surfaceKind: z.literal("chat"),
+        surfaceId: z.string().min(1).max(200),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("surface"),
+        projectId: z.string().min(1).max(200),
+        surfaceKind: z.literal("terminal"),
+        surfaceId: z.string().min(1).max(200),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("surface"),
+        projectId: z.string().min(1).max(200),
+        surfaceKind: z.literal("explorer"),
+        surfaceId: z.string().min(1).max(200),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("surface"),
+        projectId: z.string().min(1).max(200),
+        surfaceKind: z.literal("code"),
+        surfaceId: z.string().min(1).max(200),
+      })
+      .strict(),
+    z
+      .object({
+        kind: z.literal("surface"),
+        projectId: z.string().min(1).max(200),
+        surfaceKind: z.literal("browser"),
+        surfaceId: z.string().min(1).max(200),
+      })
+      .strict(),
+  ],
+);
+export const cantripMcpClientFocusSurfaceInputSchema = z
+  .object({ target: cantripMcpClientSurfaceTargetSchema })
+  .strict();
+export const cantripMcpClientShowInteractionInputSchema = z
+  .object({ interactionId: z.string().min(1).max(200) })
+  .strict();
 
 export const cantripMcpContextGetResultSchema =
   cantripMcpReadResultBaseSchema.extend({
@@ -7566,6 +7647,57 @@ export const cantripMcpBrowserNavigateResultSchema =
       .object({
         url: browserHttpUrlSchema,
         stateRevision: z.number().int().positive().safe(),
+      })
+      .strict(),
+  });
+
+const cantripMcpClientControlDataSchema = z
+  .object({
+    correlationId: z.string().uuid(),
+    status: clientControlResultStatusSchema,
+  })
+  .strict();
+const cantripMcpClientControlResultBaseSchema = z
+  .object({
+    summary: z.string().min(1).max(2_000),
+    target: executionTargetSchema,
+    worktreeId: z.string().min(1).max(200).nullable().default(null),
+    continuationScheduled: z.literal(false).default(false),
+    mutated: z.boolean(),
+    data: cantripMcpClientControlDataSchema,
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.mutated === (result.data.status === "applied")) return;
+    context.addIssue({
+      code: "custom",
+      path: ["mutated"],
+      message: "Client-control mutation state must match its applied status.",
+    });
+  });
+export const cantripMcpClientNotifyResultSchema =
+  cantripMcpClientControlResultBaseSchema.safeExtend({
+    target: z
+      .object({
+        kind: z.literal("project"),
+        projectId: z.string().min(1).max(200),
+      })
+      .strict(),
+  });
+export const cantripMcpClientFocusProjectResultSchema =
+  cantripMcpClientNotifyResultSchema;
+export const cantripMcpClientFocusSurfaceResultSchema =
+  cantripMcpClientControlResultBaseSchema.safeExtend({
+    target: cantripMcpClientSurfaceTargetSchema,
+  });
+export const cantripMcpClientShowInteractionResultSchema =
+  cantripMcpClientControlResultBaseSchema.safeExtend({
+    target: z
+      .object({
+        kind: z.literal("surface"),
+        projectId: z.string().min(1).max(200),
+        surfaceKind: z.literal("chat"),
+        surfaceId: z.string().min(1).max(200),
       })
       .strict(),
   });

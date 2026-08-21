@@ -13,6 +13,96 @@ const liveIdSchema = z.string().trim().min(1).max(200);
 const liveRequestIdSchema = z.string().trim().min(1).max(200);
 const liveCursorSchema = z.number().int().nonnegative().safe();
 
+export const clientControlCapabilitySchema = z.enum([
+  "notify",
+  "focus-project",
+  "focus-surface",
+  "show-interaction",
+]);
+
+export const clientControlCapabilitiesSchema = z
+  .array(clientControlCapabilitySchema)
+  .max(clientControlCapabilitySchema.options.length)
+  .refine(
+    (capabilities) => new Set(capabilities).size === capabilities.length,
+    { message: "Client-control capabilities must be unique." },
+  );
+
+export const clientControlCommandSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("notify"),
+      projectId: liveIdSchema,
+      level: z.enum(["info", "warning", "error"]),
+      title: z.string().trim().min(1).max(120),
+      message: z.string().trim().min(1).max(2_000),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("focus-project"),
+      projectId: liveIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("focus-surface"),
+      projectId: liveIdSchema,
+      surfaceKind: z.enum(["chat", "terminal", "explorer", "code", "browser"]),
+      surfaceId: liveIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("show-interaction"),
+      projectId: liveIdSchema,
+      chatId: liveIdSchema,
+      interactionId: liveIdSchema,
+    })
+    .strict(),
+]);
+
+export const clientControlRequestSchema = z
+  .object({
+    correlationId: z.string().uuid(),
+    issuedAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+    command: clientControlCommandSchema,
+  })
+  .strict()
+  .superRefine((request, context) => {
+    const issuedAt = Date.parse(request.issuedAt);
+    const expiresAt = Date.parse(request.expiresAt);
+    if (expiresAt <= issuedAt || expiresAt - issuedAt > 10_000) {
+      context.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message:
+          "Client-control requests must expire within ten seconds of issuance.",
+      });
+    }
+  });
+
+export const clientControlAcknowledgementStatusSchema = z.enum([
+  "applied",
+  "declined",
+  "unsupported",
+  "expired",
+]);
+
+export const clientControlResultStatusSchema = z.enum([
+  ...clientControlAcknowledgementStatusSchema.options,
+  "unavailable",
+]);
+
+export const clientControlAcknowledgementSchema = z
+  .object({
+    correlationId: z.string().uuid(),
+    status: clientControlAcknowledgementStatusSchema,
+    detail: z.string().trim().min(1).max(500).nullable().default(null),
+  })
+  .strict();
+
 export const appLiveScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("current-user") }).strict(),
   z
@@ -153,6 +243,7 @@ export const appLiveClientMessageSchema = z.discriminatedUnion("type", [
           id: liveIdSchema,
           name: z.string().trim().min(1).max(100),
           version: z.string().trim().min(1).max(100),
+          controlCapabilities: clientControlCapabilitiesSchema.default([]),
         })
         .strict(),
       resume: z
@@ -193,6 +284,9 @@ export const appLiveClientMessageSchema = z.discriminatedUnion("type", [
       scopes: appLiveScopesSchema,
     })
     .strict(),
+  clientControlAcknowledgementSchema.extend({
+    type: z.literal("client-control-ack"),
+  }),
 ]);
 
 export const appLiveResyncReasonSchema = z.enum([
@@ -278,6 +372,9 @@ export const appLiveServerMessageSchema = z.discriminatedUnion("type", [
       scopes: z.array(appLiveScopeSchema).max(128),
     })
     .strict(),
+  clientControlRequestSchema.safeExtend({
+    type: z.literal("client-control-request"),
+  }),
   z
     .object({
       type: z.literal("error"),
@@ -296,6 +393,17 @@ export type AppLiveClientMessage = z.infer<typeof appLiveClientMessageSchema>;
 export type AppLiveResyncReason = z.infer<typeof appLiveResyncReasonSchema>;
 export type AppLiveErrorCode = z.infer<typeof appLiveErrorCodeSchema>;
 export type AppLiveServerMessage = z.infer<typeof appLiveServerMessageSchema>;
+export type ClientControlAcknowledgement = z.infer<
+  typeof clientControlAcknowledgementSchema
+>;
+export type ClientControlCapability = z.infer<
+  typeof clientControlCapabilitySchema
+>;
+export type ClientControlCommand = z.infer<typeof clientControlCommandSchema>;
+export type ClientControlRequest = z.infer<typeof clientControlRequestSchema>;
+export type ClientControlResultStatus = z.infer<
+  typeof clientControlResultStatusSchema
+>;
 
 export function decodeAppLiveClientMessage(
   encoded: string,

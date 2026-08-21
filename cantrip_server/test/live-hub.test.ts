@@ -74,10 +74,18 @@ class FakeSocket implements AppLiveSocket {
 
 const initialize = (
   resume: { serverEpoch: string; cursor: number } | null = null,
+  controlCapabilities: Array<
+    "notify" | "focus-project" | "focus-surface" | "show-interaction"
+  > = [],
 ): AppLiveClientMessage => ({
   type: "initialize",
   protocolVersion: 1,
-  client: { id: "test-client", name: "Cantrip test", version: "1" },
+  client: {
+    id: "test-client",
+    name: "Cantrip test",
+    version: "1",
+    controlCapabilities,
+  },
   resume,
 });
 
@@ -535,6 +543,171 @@ describe("AppLiveHub", () => {
       acceptedConnectionCount: 2,
       connectionCount: 2,
       deliveredEventCount: 4,
+    });
+    hub.close();
+  });
+
+  it("dispatches one-shot client controls only to capable project-active clients", async () => {
+    const hub = new AppLiveHub({ epoch: "client-control" });
+    const inactive = new FakeSocket();
+    const active = new FakeSocket();
+    for (const socket of [inactive, active]) {
+      hub.attach(socket, {
+        ownerId: "owner-one",
+        authorizeScope: () => true,
+      });
+      socket.receive(initialize(null, ["notify"]));
+    }
+    inactive.receive({
+      type: "subscribe",
+      requestId: "inactive-scope",
+      scopes: [currentUserScope],
+    });
+    active.receive({
+      type: "subscribe",
+      requestId: "active-scope",
+      scopes: [{ kind: "project", projectId: "project-one" }],
+    });
+    await settle();
+
+    const pending = hub.requestClientControl("owner-one", {
+      kind: "notify",
+      projectId: "project-one",
+      level: "info",
+      title: "Build complete",
+      message: "The focused validation passed.",
+    });
+    await settle();
+    expect(
+      inactive.sent.some(({ type }) => type === "client-control-request"),
+    ).toBe(false);
+    const request = active.sent.find(
+      ({ type }) => type === "client-control-request",
+    );
+    expect(request).toMatchObject({
+      type: "client-control-request",
+      command: { kind: "notify", projectId: "project-one" },
+    });
+    if (request?.type !== "client-control-request") {
+      throw new Error("Active client did not receive the control request.");
+    }
+    expect(hub.stats()).toMatchObject({
+      currentCursor: 0,
+      publicationCount: 0,
+      replayEventCount: 0,
+    });
+    active.receive({
+      type: "client-control-ack",
+      correlationId: request.correlationId,
+      status: "applied",
+      detail: null,
+    });
+    await expect(pending).resolves.toEqual({
+      correlationId: request.correlationId,
+      status: "applied",
+    });
+    hub.close();
+  });
+
+  it("prefers a compatible client subscribed to the interaction chat", async () => {
+    const hub = new AppLiveHub({ epoch: "client-control-chat-target" });
+    const projectOnly = new FakeSocket();
+    const chatActive = new FakeSocket();
+    for (const socket of [projectOnly, chatActive]) {
+      hub.attach(socket, { ownerId: "owner-one", authorizeScope: () => true });
+      socket.receive(initialize(null, ["show-interaction"]));
+      socket.receive({
+        type: "subscribe",
+        requestId: `scope-${socket === projectOnly ? "project" : "chat"}`,
+        scopes:
+          socket === projectOnly
+            ? [{ kind: "project", projectId: "project-one" }]
+            : [
+                { kind: "project", projectId: "project-one" },
+                { kind: "chat", chatId: "chat-one" },
+              ],
+      });
+    }
+    await settle();
+
+    const pending = hub.requestClientControl("owner-one", {
+      kind: "show-interaction",
+      projectId: "project-one",
+      chatId: "chat-one",
+      interactionId: "interaction-one",
+    });
+    await settle();
+    expect(
+      projectOnly.sent.some(({ type }) => type === "client-control-request"),
+    ).toBe(false);
+    const request = chatActive.sent.find(
+      ({ type }) => type === "client-control-request",
+    );
+    if (request?.type !== "client-control-request") {
+      throw new Error(
+        "Chat-active client did not receive the control request.",
+      );
+    }
+    chatActive.receive({
+      type: "client-control-ack",
+      correlationId: request.correlationId,
+      status: "applied",
+      detail: null,
+    });
+    await expect(pending).resolves.toMatchObject({ status: "applied" });
+    hub.close();
+  });
+
+  it("reports unsupported, unavailable, expired, and disconnected controls", async () => {
+    const hub = new AppLiveHub({ epoch: "client-control-errors" });
+    await expect(
+      hub.requestClientControl("owner-one", {
+        kind: "focus-project",
+        projectId: "project-one",
+      }),
+    ).resolves.toMatchObject({ status: "unavailable" });
+
+    const socket = new FakeSocket();
+    hub.attach(socket, { ownerId: "owner-one", authorizeScope: () => true });
+    socket.receive(initialize());
+    socket.receive({
+      type: "subscribe",
+      requestId: "project-scope",
+      scopes: [{ kind: "project", projectId: "project-one" }],
+    });
+    await settle();
+    await expect(
+      hub.requestClientControl("owner-one", {
+        kind: "focus-project",
+        projectId: "project-one",
+      }),
+    ).resolves.toMatchObject({ status: "unsupported" });
+
+    const capable = new FakeSocket();
+    hub.attach(capable, { ownerId: "owner-one", authorizeScope: () => true });
+    capable.receive(initialize(null, ["focus-project"]));
+    capable.receive({
+      type: "subscribe",
+      requestId: "capable-project-scope",
+      scopes: [{ kind: "project", projectId: "project-one" }],
+    });
+    await settle();
+    const expiring = hub.requestClientControl(
+      "owner-one",
+      { kind: "focus-project", projectId: "project-one" },
+      10,
+    );
+    await settle();
+    await expect(expiring).resolves.toMatchObject({ status: "expired" });
+
+    const disconnecting = hub.requestClientControl("owner-one", {
+      kind: "focus-project",
+      projectId: "project-one",
+    });
+    await settle();
+    capable.close(1006, "network lost");
+    await expect(disconnecting).resolves.toMatchObject({
+      status: "unavailable",
     });
     hub.close();
   });
