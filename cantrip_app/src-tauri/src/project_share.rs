@@ -72,7 +72,7 @@ enum NativeMount {
     #[cfg(target_os = "macos")]
     MacOs(PathBuf),
     #[cfg(windows)]
-    Windows { drive: String, remote: String },
+    Windows { remote: String },
 }
 
 #[derive(Default)]
@@ -660,7 +660,6 @@ fn create_native_mount(
             WNet::{WNetAddConnection2W, CONNECT_TEMPORARY, NETRESOURCEW, RESOURCETYPE_DISK},
             WebDav::DavGetUNCFromHTTPPath,
         },
-        Storage::FileSystem::GetLogicalDrives,
     };
 
     let mut url_wide = wide(url.as_str());
@@ -696,23 +695,13 @@ fn create_native_mount(
             .position(|value| *value == 0)
             .unwrap_or(remote_wide.len())],
     );
-    let used_drives = unsafe { GetLogicalDrives() };
-    let drive_index = (2_u32..26)
-        .rev()
-        .find(|index| used_drives & (1_u32 << index) == 0)
-        .ok_or_else(|| {
-            "Windows has no available drive letter for the project share.".to_string()
-        })?;
-    let drive = format!(
-        "{}:",
-        char::from_u32(u32::from(b'A') + drive_index).unwrap_or('Z')
-    );
-    let mut drive_wide = wide(&drive);
     let mut username_wide = wide(&request.username);
     let mut password_wide = wide(&request.password);
     let resource = NETRESOURCEW {
         dwType: RESOURCETYPE_DISK,
-        lpLocalName: drive_wide.as_mut_ptr(),
+        // Drive-letter DOS devices are scoped to a Windows logon session and
+        // may not exist in the Explorer shell that handles the reveal request.
+        lpLocalName: ptr::null_mut(),
         lpRemoteName: remote_wide.as_mut_ptr(),
         ..Default::default()
     };
@@ -726,7 +715,6 @@ fn create_native_mount(
     };
     username_wide.zeroize();
     password_wide.zeroize();
-    drive_wide.zeroize();
     remote_wide.zeroize();
     if connection_result != NO_ERROR {
         return Err(windows_error(
@@ -734,38 +722,29 @@ fn create_native_mount(
             connection_result,
         ));
     }
-    Ok(NativeMount::Windows { drive, remote })
+    if let Err(error) = std::fs::metadata(&remote) {
+        let location = NativeMount::Windows { remote };
+        let _ = release_native_mount(&location);
+        return Err(format!(
+            "Windows connected to the project share but could not access it ({error})."
+        ));
+    }
+    Ok(NativeMount::Windows { remote })
 }
 
 #[cfg(windows)]
 fn native_mount_is_active(location: &NativeMount) -> bool {
-    use windows_sys::Win32::{Foundation::NO_ERROR, NetworkManagement::WNet::WNetGetConnectionW};
-
-    let NativeMount::Windows { drive, remote } = location;
-    let drive_wide = wide(drive);
-    let mut actual = vec![0_u16; 2048];
-    let mut actual_length = actual.len() as u32;
-    let result =
-        unsafe { WNetGetConnectionW(drive_wide.as_ptr(), actual.as_mut_ptr(), &mut actual_length) };
-    if result != NO_ERROR {
-        return false;
-    }
-    let actual = String::from_utf16_lossy(
-        &actual[..actual
-            .iter()
-            .position(|value| *value == 0)
-            .unwrap_or(actual.len())],
-    );
-    actual.eq_ignore_ascii_case(remote)
+    let NativeMount::Windows { remote } = location;
+    std::fs::metadata(remote).is_ok()
 }
 
 #[cfg(windows)]
 fn open_native_mount(location: &NativeMount) -> Result<(), String> {
     use std::process::{Command, Stdio};
 
-    let NativeMount::Windows { drive, .. } = location;
+    let NativeMount::Windows { remote } = location;
     let output = Command::new("explorer.exe")
-        .arg(format!("{drive}\\"))
+        .arg(remote)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
@@ -780,14 +759,15 @@ fn open_native_mount(location: &NativeMount) -> Result<(), String> {
 #[cfg(windows)]
 fn release_native_mount(location: &NativeMount) -> Result<(), String> {
     use windows_sys::Win32::{
-        Foundation::NO_ERROR, NetworkManagement::WNet::WNetCancelConnection2W,
+        Foundation::{ERROR_NOT_CONNECTED, NO_ERROR},
+        NetworkManagement::WNet::WNetCancelConnection2W,
     };
 
-    let NativeMount::Windows { drive, .. } = location;
-    let mut drive_wide = wide(drive);
-    let result = unsafe { WNetCancelConnection2W(drive_wide.as_ptr(), 0, 1) };
-    drive_wide.zeroize();
-    if result == NO_ERROR {
+    let NativeMount::Windows { remote } = location;
+    let mut remote_wide = wide(remote);
+    let result = unsafe { WNetCancelConnection2W(remote_wide.as_ptr(), 0, 1) };
+    remote_wide.zeroize();
+    if matches!(result, NO_ERROR | ERROR_NOT_CONNECTED) {
         Ok(())
     } else {
         Err(windows_error(

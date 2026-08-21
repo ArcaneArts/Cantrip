@@ -77,7 +77,11 @@ project in Finder or Explorer. Credentials must be passed without placing them
 in a URL, log line, or shell-expanded command string.
 
 Windows passes credentials in memory to the WebDAV Redirector with
-`WNetAddConnection2W`, maps a temporary drive, and opens it in Explorer. macOS
+`WNetAddConnection2W`, establishes a temporary deviceless UNC connection, and
+opens that UNC path in Explorer. Avoiding a drive letter means the reveal does
+not depend on Explorer's shell context containing a logon-scoped DOS device
+created by Cantrip. Cantrip probes the UNC path before opening it so an
+unavailable local-direct route can fall back to the server relay. macOS
 mounts with `mount_webdav` into a Cantrip-owned mount directory. Its credentials
 travel through the inherited URLMount credential descriptor, not process
 arguments, and the resulting volume opens in Finder. Native mounts are reused
