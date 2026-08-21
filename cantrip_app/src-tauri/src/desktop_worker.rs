@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    fs::{self, File, OpenOptions},
+    fs,
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -134,15 +134,7 @@ fn should_autostart_profile(profile_server_url: &str, active_local_server_url: &
     !loopback || profile_server_url == active_local_server_url
 }
 
-fn open_log(path: &Path) -> Result<File, String> {
-    OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(|error| format!("Could not open {}: {error}", path.display()))
-}
-
-fn mirror_child_output<R: Read + Send + 'static>(mut reader: R, mut log: File, use_stderr: bool) {
+fn mirror_child_output<R: Read + Send + 'static>(mut reader: R, use_stderr: bool) {
     thread::spawn(move || {
         let mut buffer = [0_u8; 8 * 1_024];
         loop {
@@ -154,9 +146,6 @@ fn mirror_child_output<R: Read + Send + 'static>(mut reader: R, mut log: File, u
                     return;
                 }
             };
-            if let Err(error) = log.write_all(&buffer[..read]) {
-                eprintln!("Could not persist linked worker output: {error}");
-            }
             let console_result = if use_stderr {
                 std::io::stderr().write_all(&buffer[..read])
             } else {
@@ -376,13 +365,6 @@ impl DesktopWorkers {
         enrollment_code: Option<&str>,
         replacement: Option<&StoredWorkerCredentialIdentity>,
     ) -> Result<Child, String> {
-        let log_path = self
-            .logs_directory
-            .join(format!("{}.log", profile.worker_id));
-        let stdout = open_log(&log_path)?;
-        let stderr = stdout
-            .try_clone()
-            .map_err(|error| format!("Could not clone worker log handle: {error}"))?;
         let mut command = match &self.launch {
             WorkerLaunch::Development { repository, tsx } => {
                 let mut command = Command::new(tsx);
@@ -399,7 +381,7 @@ impl DesktopWorkers {
             .env("CANTRIP_WORKER_ID", &profile.worker_id)
             .env("CANTRIP_WORKER_NAME", &profile.name)
             .env(
-                "CANTRIP_SERVICE_LOG_FILE",
+                "CANTRIP_SERVICE_LOG_DIR",
                 self.service_log_path(&profile.worker_id)?,
             )
             .env(
@@ -414,13 +396,7 @@ impl DesktopWorkers {
         if cfg!(debug_assertions) {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         } else {
-            command
-                .stdout(Stdio::from(stdout.try_clone().map_err(|error| {
-                    format!("Could not clone worker stdout log handle: {error}")
-                })?))
-                .stderr(Stdio::from(stderr.try_clone().map_err(|error| {
-                    format!("Could not clone worker stderr log handle: {error}")
-                })?));
+            command.stdout(Stdio::null()).stderr(Stdio::null());
         }
         if let Some(code) = enrollment_code {
             command.env("CANTRIP_WORKER_ENROLLMENT_CODE", code);
@@ -443,10 +419,10 @@ impl DesktopWorkers {
         })?;
         if cfg!(debug_assertions) {
             if let Some(child_stdout) = child.stdout.take() {
-                mirror_child_output(child_stdout, stdout, false);
+                mirror_child_output(child_stdout, false);
             }
             if let Some(child_stderr) = child.stderr.take() {
-                mirror_child_output(child_stderr, stderr, true);
+                mirror_child_output(child_stderr, true);
             }
         }
         Ok(child)
@@ -558,9 +534,15 @@ impl DesktopWorkers {
         {
             return Err("The linked worker is not managed by this installation.".into());
         }
-        Ok(self
-            .logs_directory
-            .join(format!("{worker_id}.service.jsonl")))
+        let directory = self.logs_directory.join("workers").join(worker_id);
+        crate::local_logs::migrate_legacy_archive(
+            &directory,
+            "worker",
+            &[self
+                .logs_directory
+                .join(format!("{worker_id}.service.jsonl"))],
+        )?;
+        Ok(directory)
     }
 }
 

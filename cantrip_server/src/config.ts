@@ -88,6 +88,13 @@ export interface ServerConfig {
   workerUploadBytesPerMinute?: number;
 }
 
+export function resolveServerDataDirectory(): string {
+  return path.resolve(
+    process.cwd(),
+    process.env.CANTRIP_DATA_DIR ?? "../.cantrip/dev",
+  );
+}
+
 export interface SecretEncryptionKeyConfig {
   id: string;
   key: Uint8Array;
@@ -670,10 +677,7 @@ export function readServerConfig(): ServerConfig {
       30_000,
       600_000,
     ),
-    dataDirectory: path.resolve(
-      process.cwd(),
-      process.env.CANTRIP_DATA_DIR ?? "../.cantrip/dev",
-    ),
+    dataDirectory: resolveServerDataDirectory(),
     databaseUrl,
     deploymentMode,
     agentModel: process.env.CANTRIP_AGENT_MODEL ?? "gemma4:26b",

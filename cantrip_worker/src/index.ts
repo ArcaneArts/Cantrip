@@ -100,7 +100,7 @@ import {
   managedCodeGraphMcpServer,
   mergeManagedCodeGraphMcpServer,
 } from "./codegraph/mcp.js";
-import { readWorkerConfig } from "./config.js";
+import { readWorkerConfig, resolveWorkerDataDirectory } from "./config.js";
 import { saveWorkerCredential } from "./credential-store.js";
 import { ManagedDesktopRemoteSurfaceAdapter } from "./desktop/desktop-adapter.js";
 import { DesktopApplicationIconStore } from "./desktop/desktop-icons.js";
@@ -120,7 +120,13 @@ import {
   captureLegacyProviderCredential,
   discardLegacyProviderCredential,
 } from "./legacy-provider-credentials.js";
-import { readWorkerLogs, workerLogError, workerLogger } from "./logger.js";
+import {
+  closeWorkerLogArchive,
+  initializeWorkerLogArchive,
+  readWorkerLogs,
+  workerLogError,
+  workerLogger,
+} from "./logger.js";
 import {
   EncryptedChatEventSealer,
   encryptChatTurnResult,
@@ -418,6 +424,8 @@ async function workerStartupPhase<T>(
 
 async function start(): Promise<WorkerRuntimeOutcome> {
   const startupStartedAtMs = Date.now();
+  await initializeWorkerLogArchive(resolveWorkerDataDirectory());
+  const config = readWorkerConfig();
   workerLogger.event("info", "Cantrip Worker startup began", {
     event: "worker.startup.started",
     subsystem: "worker-startup",
@@ -425,7 +433,6 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     status: "started",
     version: cantripVersion.version,
   });
-  const config = readWorkerConfig();
   const routingRegistry = new WorkerRoutingRegistry(config.dataDirectory);
   const serverOrigin = new URL(config.serverUrl).origin;
   workerLogger.event("info", "Worker configuration loaded", {
@@ -3711,6 +3718,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       trigger,
       durationMs: Date.now() - shutdownStartedAtMs,
     });
+    await closeWorkerLogArchive();
     resolveShutdown(outcome);
   };
   function handleSigint() {
@@ -3732,7 +3740,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   return await shutdownOutcome;
 }
 
-runWorkerRuntimeLoop(start).catch((error: unknown) => {
+runWorkerRuntimeLoop(start).catch(async (error: unknown) => {
   workerLogger.event("fatal", "Cantrip Worker failed to start", {
     event: "worker.startup.failed",
     subsystem: "worker-startup",
@@ -3742,5 +3750,6 @@ runWorkerRuntimeLoop(start).catch((error: unknown) => {
     error: workerLogError(error),
   });
   workerLogger.flushRepeated();
+  await closeWorkerLogArchive();
   process.exitCode = 1;
 });

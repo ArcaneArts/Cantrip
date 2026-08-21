@@ -16,6 +16,12 @@ export async function getLocalRuntimeServerUrl(): Promise<string | null> {
   return invoke<string>("local_server_url");
 }
 
+export async function openLocalLogsDirectory(): Promise<void> {
+  if (!isTauri())
+    throw new Error("Local log folders require the Cantrip desktop app.");
+  await invoke("open_local_logs_directory");
+}
+
 export async function readLocalServiceLogs(
   source: LocalServiceLogSource,
   options: {

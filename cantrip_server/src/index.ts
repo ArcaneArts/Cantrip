@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import { buildApp } from "./app.js";
-import { readServerConfig, resolveCodeSurfaceConfig } from "./config.js";
+import {
+  readServerConfig,
+  resolveCodeSurfaceConfig,
+  resolveServerDataDirectory,
+} from "./config.js";
 import {
   closeCodeSurfaceServer,
   CodeTunnelBroker,
@@ -10,7 +14,11 @@ import {
 import { connectDatabase } from "./db/index.js";
 import { RedisRelayCoordinator } from "./coordination/relay-coordinator.js";
 import { RelayQuotaManager } from "./operations/relay-quotas.js";
-import { serverLogger } from "./logger.js";
+import {
+  closeServerLogArchive,
+  initializeServerLogArchive,
+  serverLogger,
+} from "./logger.js";
 import { ProjectShareTunnelBroker } from "./project-shares/tunnel.js";
 import { WorkerBridge } from "./workers/bridge.js";
 import { CoordinatedWorkerBridge } from "./workers/coordinated-bridge.js";
@@ -37,6 +45,7 @@ async function listenCodeSurface(
 
 async function start(): Promise<void> {
   const startedAtMs = Date.now();
+  await initializeServerLogArchive(resolveServerDataDirectory());
   const config = readServerConfig();
   config.serverInstanceId ??= randomUUID();
   serverLogger.event("info", "Cantrip Server startup began", {
@@ -144,6 +153,7 @@ async function start(): Promise<void> {
         status: "stopped",
         durationMs: Date.now() - shutdownStartedAtMs,
       });
+      await closeServerLogArchive();
     }
   };
 
@@ -179,7 +189,7 @@ async function start(): Promise<void> {
   });
 }
 
-start().catch((error: unknown) => {
+start().catch(async (error: unknown) => {
   serverLogger.event("fatal", "Cantrip Server failed to start", {
     event: "server.startup.failed",
     subsystem: "server-lifecycle",
@@ -188,5 +198,6 @@ start().catch((error: unknown) => {
     reasonCode: "startup-error",
     error: error instanceof Error ? error : new Error(String(error)),
   });
+  await closeServerLogArchive();
   process.exitCode = 1;
 });

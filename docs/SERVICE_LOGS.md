@@ -8,7 +8,7 @@ and linked worker processes without granting filesystem or terminal access.
 
 Server, worker, and deliberate client events use one structured logging path.
 Each event is normalized and sanitized once, then the same safe record is sent
-to the component console, bounded service buffer, and rotated JSONL file where
+to the component console, bounded service buffer, and daily JSONL archive where
 that component has one. Settings → Logs reads those records through the
 authorized transports below. Console output may be formatted for humans, but
 it represents the same timestamp, level, message, and context as the service
@@ -87,11 +87,11 @@ Severity-filtered records still advance the source cursor and are not replayed.
 
 ## Available sources
 
-| Source                      | Where it appears                                                         | Transport                                                                  |
-| --------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| **Client · This device**    | Every client                                                             | An in-memory browser buffer; Tauri also reads its local rotated client log |
-| **Server · Local internal** | Tauri only, while connected to that installation's embedded local server | A fixed-source Tauri command reads the local rotated server log            |
-| **Worker · _name_**         | Every worker linked to the active account                                | Cursor polling through the authenticated server-to-worker command channel  |
+| Source                      | Where it appears                                                         | Transport                                                                 |
+| --------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| **Client · This device**    | Every client                                                             | An in-memory buffer; desktop and mobile also retain a local daily archive |
+| **Server · Local internal** | Tauri only, while connected to that installation's embedded local server | A fixed-source Tauri command reads the local daily server archive         |
+| **Worker · _name_**         | Every worker linked to the active account                                | Cursor polling through the authenticated server-to-worker command channel |
 
 The local server source is deliberately strict. It appears only when all of
 the following are true:
@@ -107,8 +107,8 @@ linked worker's logs because the request is owner-authorized by the server and
 routed over the worker's existing outbound command channel. The app never
 connects directly to a worker.
 
-When a worker is managed by the current Tauri installation, its local rotated
-log is used as a fallback. This preserves startup failures that occurred before
+When a worker is managed by the current Tauri installation, its local daily
+archive is used as a fallback. This preserves startup failures that occurred before
 the worker command channel came online. An unreachable remote worker cannot
 supply new lines or post-crash history; the viewer retains lines already
 received and reports the source as offline.
@@ -133,12 +133,10 @@ The console uses fixed-height row virtualization. The UI retains at most
 10,000 records and approximately 5 MiB per source. Log contents are not saved
 to browser storage or Postgres.
 
-## Approved daily archive plan
+## Daily archive behavior
 
-The current bounded rotation described below will be replaced by a shared
-daily archive system. This section is the implementation contract for that
-work; it describes approved future behavior, not behavior available in the
-current release.
+Cantrip uses the following daily archive contract for persistent service logs.
+Browser clients remain memory-only.
 
 ### Package boundary
 
@@ -260,7 +258,7 @@ uncompressed files count equally by their actual on-disk size.
 
 ### Platform placement and behavior
 
-| Runtime               | Planned archive location and adapter                                                        |
+| Runtime               | Archive location and adapter                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------- |
 | Standalone server     | `<CANTRIP_DATA_DIR>/logs`, using the Node adapter                                           |
 | Standalone worker     | `<CANTRIP_WORKER_DATA_DIR>/logs`, using the Node adapter                                    |
@@ -296,8 +294,8 @@ outside the archive. Compression and export do not weaken the redaction
 boundary.
 
 Separate packaged Tauri `server.log`, `worker.log`, and linked-worker stdout
-files will be retired after bootstrap and unexpected-exit diagnostics have
-equivalent bounded structured events. Sanitized structured JSONL becomes the
+files are retired because bootstrap and unexpected-exit diagnostics have
+equivalent bounded structured events. Sanitized structured JSONL is the
 only canonical persistent service log, preventing duplicate data from evading
 the component budget.
 
@@ -339,27 +337,14 @@ Mobile export deliberately excludes server and worker archives. Future support
 and diagnostic collection modes may add authorized multi-component gathering,
 but that is outside this plan.
 
-### Delivery phases
+### Implementation surfaces
 
-Implementation should be split into independently mergeable manual-change
-pull requests:
-
-1. **Shared archive engine:** add the pure retention coordinator, Node adapter,
-   10 MiB part handling, atomic gzip, migration planning, and deterministic
-   fake-clock/storage tests to `@cantrip/logging`.
-2. **Server and worker adoption:** enable default archives below each data
-   directory; integrate startup, rollover, overflow, flush, and shutdown; and
-   stop development startup from deleting retained logs.
-3. **Desktop integration:** implement the matching Tauri writer and reader,
-   migrate embedded and linked service paths, retire duplicate raw logs, and
-   add **Open Logs Folder**.
-4. **Mobile integration:** add Capacitor persistence, foreground maintenance,
-   streaming level-9 compression, client-only ZIP export, platform privacy
-   declarations, and Android/iOS build verification.
-
-Each phase must use its own worktree and pull request, enable squash
-auto-merge, observe the merge, and start the dependent phase only from the
-updated `main` branch.
+The environment-neutral coordinator and Node adapter live in
+`@cantrip/logging`. Server and worker startup initialize their archives before
+the first lifecycle event and flush them during orderly shutdown. Tauri uses a
+matching Rust writer/reader for native startup coverage. Capacitor uses the
+same coordinator with app-private filesystem storage and reruns maintenance
+when the app returns to the foreground.
 
 ### Acceptance criteria
 
@@ -387,7 +372,7 @@ Android, and iOS targets. A manual clock-driven smoke pass must also exercise a
 same-day restart, a simulated UTC rollover, compression eligibility, quota
 deletion, desktop folder opening, mobile background/resume, and mobile export.
 
-## Current retention and limits
+## Retention and limits
 
 Server and worker process buffers are bounded by both count and approximate
 serialized size. Defaults are:
@@ -397,10 +382,12 @@ serialized size. Defaults are:
 - 16 KiB per record; and
 - 500 records per read.
 
-Packaged Tauri diagnostics use a 5 MiB JSONL file plus three rotated files for
-each local service source. The local Tauri reader accepts a fixed source enum,
-not a path. Linked-worker paths are resolved only from workers registered to
-that installation.
+Persistent component archives retain at most 100 MiB of managed `.jsonl` and
+`.jsonl.gz` files. Active UTC-day files are split into 10 MiB parts, inactive
+parts older than 48 hours are compressed with gzip level 9, and quota cleanup
+deletes complete files oldest-first. The local Tauri reader accepts a fixed
+source enum, not a path. Linked-worker directories are resolved only from
+workers registered to that installation.
 
 Remote worker reads use monotonically increasing cursors. The viewer polls
 while open, backs off to six seconds during failures, and resumes from the last
@@ -411,7 +398,7 @@ entire buffer.
 ## Redaction boundary
 
 Structured records are sanitized before entering remotely readable buffers or
-rotated diagnostic files. Sanitization removes terminal control sequences and
+daily diagnostic archives. Sanitization removes terminal control sequences and
 redacts common secret-bearing fields and text patterns, including:
 
 - Authorization and Cookie values;
@@ -435,15 +422,16 @@ to add those payloads to service logs.
 development lanes:
 
 ```text
-.cantrip/dev/logs/client.jsonl
-.cantrip/dev/logs/server.jsonl
-.cantrip/dev/logs/worker.jsonl
+.cantrip/dev/logs/client/
+.cantrip/dev/logs/server/
+.cantrip/dev/logs/worker/
 ```
 
-The server and worker tee structured records to those files without
-suppressing their existing terminal output. The Tauri webview relay continues
-to print `[client:<window>:<level>]` records in the `desktop` lane and also
-writes the client JSONL file.
+The server and worker tee structured records to those archives without
+suppressing their development terminal output. The Tauri webview relay
+continues to print `[client:<window>:<level>]` records in the `desktop` lane and
+also writes the client archive. Startup resumes existing same-day parts rather
+than deleting development history.
 
 Plain browser `pnpm dev` keeps **Client · This device** and remote worker
 sources, but it cannot read a local server file. This is intentional: browser
@@ -469,7 +457,7 @@ they are not duplicated into the client source.
 | One sanitized record fans to console and service sinks                          | logging core/formatter tests plus server and client logger tests                 |
 | Secret, OAuth, cookie, signed-URL, nested-error, and control-sequence redaction | logging records, client relay, and Tauri `local_logs` tests                      |
 | Repetition summaries and deterministic sampling                                 | logging core tests                                                               |
-| Bounded records/buffers, filtered cursors, truncation, and JSONL rotation       | logging record/rotation and Tauri `local_logs` tests                             |
+| Bounded records/buffers, filtered cursors, truncation, and daily archives       | logging archive/record and Tauri `local_logs` tests                              |
 | Remote reads remain owner-authorized and server-routed                          | server worker-log API tests                                                      |
 | Hosted clients cannot expose server logs                                        | log viewer model and local bridge tests                                          |
 | Local worker fallback and viewer retention/deduplication                        | log viewer model tests                                                           |
@@ -493,8 +481,9 @@ source, repeated failures collapse, and no user payload appears in an export.
   installation owns that worker and can still read its fixed local log.
 - **Old records rotated:** the requested cursor fell behind the bounded source
   buffer. The viewer continues from the oldest record still available.
-- **No records in `pnpm devtop`:** inspect `.cantrip/dev/logs/` and confirm the
-  root command supplied `CANTRIP_SERVICE_LOG_FILE` to the server and worker.
+- **No records in `pnpm devtop`:** inspect the component directories below
+  `.cantrip/dev/logs/` and confirm the root command supplied
+  `CANTRIP_SERVICE_LOG_DIR` to the server and worker.
 - **A turn appears stuck:** filter available sources by `chatId`, then
   `turnId`. The last component to emit a start without completion identifies
   the failing boundary. Check nearby worker disconnect, app-server exit, and

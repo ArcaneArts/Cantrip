@@ -12,12 +12,14 @@ import {
   Clipboard,
   Cpu,
   Download,
+  FolderOpen,
   Laptop,
   Loader2,
   Pause,
   Play,
   Search,
   Server,
+  Share2,
   Trash2,
 } from "lucide-react";
 import {
@@ -47,9 +49,14 @@ import {
 } from "@/lib/desktop-worker";
 import {
   getLocalRuntimeServerUrl,
+  openLocalLogsDirectory,
   readLocalServiceLogs,
   type LocalServiceLogSource,
 } from "@/lib/local-service-logs";
+import {
+  exportMobileClientLogs,
+  isMobileNativeRuntime,
+} from "@/lib/mobile-log-archive";
 import {
   getActiveServerConnection,
   getActiveServerUrl,
@@ -330,6 +337,7 @@ function VirtualLogConsole({
 export function LogSettings() {
   const compact = useCompactLayout();
   const tauriRuntime = isTauri();
+  const mobileRuntime = isMobileNativeRuntime();
   const bootstrap = useQuery({
     queryFn: getServerBootstrap,
     queryKey: ["server-bootstrap"],
@@ -418,6 +426,12 @@ export function LogSettings() {
   const [followTail, setFollowTail] = useState(true);
   const [pausedAt, setPausedAt] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
+  const [archiveAction, setArchiveAction] = useState<"export" | "open" | null>(
+    null,
+  );
+  const [archiveActionError, setArchiveActionError] = useState<string | null>(
+    null,
+  );
 
   const currentState =
     states.current.get(selectedSource.id) ?? emptySourceState();
@@ -699,6 +713,66 @@ export function LogSettings() {
           <Download className="size-3.5" />
           <span className="sr-only">Export visible output</span>
         </Button>
+        {tauriRuntime ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-9"
+            disabled={archiveAction !== null}
+            title="Open Logs Folder"
+            onClick={() => {
+              setArchiveAction("open");
+              setArchiveActionError(null);
+              void openLocalLogsDirectory()
+                .catch((error: unknown) =>
+                  setArchiveActionError(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not open the logs folder.",
+                  ),
+                )
+                .finally(() => setArchiveAction(null));
+            }}
+          >
+            {archiveAction === "open" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <FolderOpen className="size-3.5" />
+            )}
+            <span className="sr-only">Open Logs Folder</span>
+          </Button>
+        ) : null}
+        {mobileRuntime ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-9"
+            disabled={archiveAction !== null}
+            title="Export Device Logs"
+            onClick={() => {
+              setArchiveAction("export");
+              setArchiveActionError(null);
+              void exportMobileClientLogs()
+                .catch((error: unknown) =>
+                  setArchiveActionError(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not export device logs.",
+                  ),
+                )
+                .finally(() => setArchiveAction(null));
+            }}
+          >
+            {archiveAction === "export" ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Share2 className="size-3.5" />
+            )}
+            <span className="sr-only">Export Device Logs</span>
+          </Button>
+        ) : null}
         <Button
           type="button"
           size="icon"
@@ -712,6 +786,12 @@ export function LogSettings() {
           <span className="sr-only">Clear visible buffer</span>
         </Button>
       </div>
+
+      {archiveActionError ? (
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          {archiveActionError}
+        </div>
+      ) : null}
 
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border">
         {!compact ? (
