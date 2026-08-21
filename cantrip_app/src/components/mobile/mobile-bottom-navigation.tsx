@@ -1,6 +1,7 @@
 import { LayoutDashboard, LayoutGrid, Plus } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import { performMobileNavigationHaptic } from "@/components/mobile/mobile-navigation-haptics";
 import { ProjectSurfaceIcon } from "@/components/workspace/project-surface-icon";
 import type { ProjectSurface } from "@/lib/project-surface";
 import { cn } from "@/lib/utils";
@@ -42,13 +43,20 @@ export function MobileBottomNavigation({
       longPressTimerRef.current = null;
     }
   };
+  const resetBottomTab = (itemId: string) => {
+    cancelLongPress();
+    if (longPressTriggeredRef.current) return;
+    longPressTriggeredRef.current = true;
+    void performMobileNavigationHaptic("reset");
+    onReset(itemId);
+  };
   const beginLongPress = (itemId: string) => {
     cancelLongPress();
     longPressTriggeredRef.current = false;
+    void performMobileNavigationHaptic("press");
     longPressTimerRef.current = setTimeout(() => {
       longPressTimerRef.current = null;
-      longPressTriggeredRef.current = true;
-      onReset(itemId);
+      resetBottomTab(itemId);
     }, MOBILE_BOTTOM_TAB_LONG_PRESS_MS);
   };
   useEffect(
@@ -81,6 +89,7 @@ export function MobileBottomNavigation({
               overviewSelected && "text-foreground",
             )}
             onClick={onOverview}
+            onPointerDown={() => void performMobileNavigationHaptic("press")}
             type="button"
           >
             <LayoutDashboard
@@ -117,8 +126,7 @@ export function MobileBottomNavigation({
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
-                  cancelLongPress();
-                  onReset(item.id);
+                  resetBottomTab(item.id);
                 }}
                 onPointerCancel={cancelLongPress}
                 onPointerDown={() => beginLongPress(item.id)}
@@ -159,6 +167,7 @@ export function MobileBottomNavigation({
               evenlyDivided ? "min-w-0 flex-1" : "min-w-[4.5rem] shrink-0",
             )}
             onClick={onAdd}
+            onPointerDown={() => void performMobileNavigationHaptic("press")}
             type="button"
           >
             <Plus className="size-5" />
