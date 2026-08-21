@@ -40,12 +40,14 @@ import {
 } from "@/components/git/git-graph";
 import { Button } from "@/components/ui/button";
 import {
-  explorerMediaContentUrl,
   getExplorerFile,
+  getWorkers,
+  loadExplorerMedia,
   saveExplorerFile,
   updateExplorerViewState,
 } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
+import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import { cn } from "@/lib/utils";
 
 const MonacoFileEditor = lazy(async () => {
@@ -159,13 +161,39 @@ function ExplorerMediaView({
   revision: number;
 }) {
   const [failed, setFailed] = useState(false);
-  const source = explorerMediaContentUrl(explorerId, path, revision);
+  const [source, setSource] = useState<string | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+    setFailed(false);
+    setSource(null);
+    void loadExplorerMedia(explorerId, path)
+      .then((blob) => {
+        if (disposed) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSource(objectUrl);
+      })
+      .catch(() => {
+        if (!disposed) setFailed(true);
+      });
+    return () => {
+      disposed = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [explorerId, path, revision]);
   if (failed) {
     return (
       <div className="grid h-full place-items-center p-6">
         <p className="border-y border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
           This media file could not be loaded.
         </p>
+      </div>
+    );
+  }
+  if (!source) {
+    return (
+      <div className="grid h-full place-items-center p-6">
+        <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -292,6 +320,10 @@ export function ExplorerView({
   const [mediaRevision, setMediaRevision] = useState(0);
   const [viewStatePending, setViewStatePending] = useState(0);
   const [viewStateError, setViewStateError] = useState<string | null>(null);
+  const [streamEncryptionReady, setStreamEncryptionReady] = useState(false);
+  const [streamEncryptionError, setStreamEncryptionError] = useState<
+    string | null
+  >(null);
   const queryClient = useQueryClient();
   const mountedRef = useRef(true);
   const selectedPathRef = useRef(selectedPath);
@@ -309,7 +341,9 @@ export function ExplorerView({
   });
   const file = useQuery({
     enabled: Boolean(
-      selectedPath && explorerMediaTypeForPath(selectedPath) === null,
+      streamEncryptionReady &&
+      selectedPath &&
+      explorerMediaTypeForPath(selectedPath) === null,
     ),
     queryFn: () => getExplorerFile(explorer.id, selectedPath!),
     queryKey: ["explorer-file", explorer.id, selectedPath],
@@ -351,6 +385,33 @@ export function ExplorerView({
   draftVersionRef.current = draftVersion;
   selectedPathRef.current = selectedPath;
   fileModeRef.current = fileMode;
+
+  useEffect(() => {
+    let disposed = false;
+    setStreamEncryptionReady(false);
+    setStreamEncryptionError(null);
+    void getWorkers()
+      .then((workers) =>
+        ensureSurfacePrivateStateWorkerEncryption({
+          worker: workers.find(
+            (worker) => worker.workerId === explorer.activeWorkerId,
+          ),
+        }),
+      )
+      .then(() => {
+        if (!disposed) setStreamEncryptionReady(true);
+      })
+      .catch(() => {
+        if (!disposed) {
+          setStreamEncryptionError(
+            "Explorer encryption is unavailable for this worker.",
+          );
+        }
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [explorer.activeWorkerId]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -807,7 +868,11 @@ export function ExplorerView({
       )}
       data-slot="explorer-view"
     >
-      {graphVisible ? (
+      {!streamEncryptionReady ? (
+        <div className="grid h-full flex-1 place-items-center p-6 text-sm text-muted-foreground">
+          {streamEncryptionError ?? <Loader2 className="size-5 animate-spin" />}
+        </div>
+      ) : graphVisible ? (
         <GitRepositoryGraphView
           projectId={explorer.projectId}
           refreshEpoch={graphRefreshEpoch}

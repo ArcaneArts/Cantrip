@@ -19,6 +19,17 @@ import {
   type WorkerNotification,
 } from "@cantrip/protocol";
 import { clearSensitiveBytes } from "@cantrip/crypto";
+import {
+  explorerOperationRequestContentSchema,
+  explorerOperationResultContentSchema,
+  surfaceOperationOutcomeContentSchema,
+  surfaceStreamWireResponseSchema,
+  terminalInputContentSchema,
+  terminalOutputContentSchema,
+  terminalSnapshotContentSchema,
+  terminalSnapshotRequestContentSchema,
+  type SurfaceOperationOutcomeContent,
+} from "@cantrip/protocol/surface-stream";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
@@ -66,7 +77,6 @@ import {
   listExplorerDirectory,
   readExplorerFile,
   readExplorerMediaFile,
-  statExplorerMediaFile,
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
@@ -183,9 +193,17 @@ import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-ada
 import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
-import { TerminalManager } from "./terminal-manager.js";
+import {
+  TerminalManager,
+  type TerminalRuntimeEvent,
+} from "./terminal-manager.js";
 import { openTerminalPrivateState } from "./terminal-private-state.js";
 import { TerminalDirectEndpointManager } from "./terminal-direct-endpoint.js";
+import {
+  openWorkerSurfaceStreamContent,
+  protectWorkerSurfaceStreamContent,
+  SurfaceStreamReplayGuard,
+} from "./surface-stream-encryption.js";
 import { TunnelTcpDestinationAdapter } from "./tunnel-tcp-adapter.js";
 import { TunnelDestinationRouter } from "./tunnel-destination-router.js";
 import { RemoteSurfaceManager } from "./remote-surface-manager.js";
@@ -427,6 +445,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
       }),
     { workerId: config.workerId },
   );
+  const surfaceStreamReplay = new SurfaceStreamReplayGuard();
+  const terminalStreamContexts = new Map<
+    string,
+    {
+      serverId: string;
+      surfaceKind: "terminal";
+      surfaceId: string;
+      operationId: string;
+      direction: "input";
+    }
+  >();
   const heartbeat = createHeartbeat(
     config,
     codexRuntime,
@@ -459,6 +488,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   desktopAdapter.setSurfacePrivateStateService(
     workerEncryption,
     config.workerId,
+  );
+  terminalDirectEndpoints.setEncryptionService(
+    workerEncryption,
+    surfaceStreamReplay,
   );
   let connected = false;
   let commandChannelStarted = false;
@@ -1666,28 +1699,110 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           status: "queued" as const,
         };
       }
-      case "explorer.directory.list":
-        return listExplorerDirectory(command.root, command.path);
-      case "explorer.directory.commits":
-        return listExplorerDirectoryCommits(command.root, command.path);
-      case "explorer.file.read":
-        return readExplorerFile(command.root, command.path);
-      case "explorer.media.stat":
-        return statExplorerMediaFile(command.root, command.path);
-      case "explorer.media.read":
-        return readExplorerMediaFile(
-          command.root,
-          command.path,
-          command.offset,
-          command.limit,
-        );
-      case "explorer.file.write":
-        return writeExplorerFile(
-          command.root,
-          command.path,
-          command.content,
-          command.version,
-        );
+      case "explorer.operation": {
+        const streamContext = {
+          serverId: command.serverId,
+          surfaceKind: "explorer" as const,
+          surfaceId: command.explorerId,
+          operationId: command.operationId,
+          direction: "request" as const,
+          sequence: command.sequence,
+        };
+        surfaceStreamReplay.reserve(streamContext);
+        const request = await openWorkerSurfaceStreamContent({
+          context: streamContext,
+          opaque: command.protectedRequest,
+          schema: explorerOperationRequestContentSchema,
+          service: workerEncryption,
+        });
+        let outcome: SurfaceOperationOutcomeContent;
+        let complete = true;
+        try {
+          switch (request.type) {
+            case "explorer.directory.list":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: request.type,
+                  value: await listExplorerDirectory(
+                    command.root,
+                    request.path,
+                  ),
+                },
+              };
+              break;
+            case "explorer.directory.commits":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: request.type,
+                  value: await listExplorerDirectoryCommits(
+                    command.root,
+                    request.path,
+                  ),
+                },
+              };
+              break;
+            case "explorer.file.read":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: "explorer.file" as const,
+                  value: await readExplorerFile(command.root, request.path),
+                },
+              };
+              break;
+            case "explorer.file.write":
+              outcome = {
+                ok: true as const,
+                result: {
+                  type: "explorer.file" as const,
+                  value: await writeExplorerFile(
+                    command.root,
+                    request.path,
+                    request.content,
+                    request.version,
+                  ),
+                },
+              };
+              break;
+            case "explorer.media.read": {
+              const value = await readExplorerMediaFile(
+                command.root,
+                request.path,
+                request.offset,
+                request.limit,
+              );
+              complete = value.eof;
+              outcome = {
+                ok: true as const,
+                result: { type: "explorer.media" as const, value },
+              };
+              break;
+            }
+          }
+        } catch (error) {
+          outcome = {
+            ok: false as const,
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Explorer operation failed.",
+          };
+        }
+        const protectedResponse = await protectWorkerSurfaceStreamContent({
+          context: { ...streamContext, direction: "response" },
+          content: outcome,
+          schema: surfaceOperationOutcomeContentSchema,
+          service: workerEncryption,
+        });
+        surfaceStreamReplay.accept(streamContext, complete || !outcome.ok);
+        return surfaceStreamWireResponseSchema.parse({
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse,
+        });
+      }
       case "code.probe":
         return code.probe();
       case "code.open":
@@ -1922,6 +2037,41 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         await attachments.remove(command.chatId, command.attachmentId);
         return { accepted: true };
       case "terminal.open": {
+        const inputContext = {
+          serverId: command.serverId,
+          surfaceKind: "terminal" as const,
+          surfaceId: command.terminalId,
+          operationId: command.operationId,
+          direction: "input" as const,
+        };
+        terminalStreamContexts.set(command.attachmentId, inputContext);
+        let outputSequence = 0;
+        let outputQueue = Promise.resolve();
+        const protectedEmit = (event: TerminalRuntimeEvent) => {
+          if (event.type !== "terminal.output") {
+            emit(event);
+            return;
+          }
+          const sequence = outputSequence;
+          outputSequence += 1;
+          outputQueue = outputQueue.then(async () => {
+            emit({
+              type: "terminal.output",
+              operationId: command.operationId,
+              sequence,
+              protectedData: await protectWorkerSurfaceStreamContent({
+                context: {
+                  ...inputContext,
+                  direction: "output",
+                  sequence,
+                },
+                content: event,
+                schema: terminalOutputContentSchema,
+                service: workerEncryption,
+              }),
+            });
+          });
+        };
         try {
           const { cwd } = await openTerminalPrivateState({
             serverId: command.serverId,
@@ -1952,7 +2102,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                 threadId: command.launch.threadId,
               });
             }
-            return await terminals.open(
+            const result = await terminals.open(
               command.terminalId,
               command.attachmentId,
               cwd,
@@ -1972,35 +2122,127 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                   provider(),
                 ),
               },
-              emit,
+              protectedEmit,
             );
+            await outputQueue;
+            return result;
           }
-          return await terminals.open(
+          const result = await terminals.open(
             command.terminalId,
             command.attachmentId,
             cwd,
             command.cols,
             command.rows,
             command.launch,
-            emit,
+            protectedEmit,
           );
+          await outputQueue;
+          return result;
         } catch {
           throw new Error("The terminal could not be opened.");
+        } finally {
+          terminalStreamContexts.delete(command.attachmentId);
+          surfaceStreamReplay.release(inputContext);
         }
       }
-      case "terminal.detach":
-        return terminals.detach(command.terminalId, command.attachmentId);
-      case "terminal.input":
-        terminals.input(command.terminalId, command.data);
-        return { accepted: true };
+      case "terminal.detach": {
+        const result = terminals.detach(
+          command.terminalId,
+          command.attachmentId,
+        );
+        const context = terminalStreamContexts.get(command.attachmentId);
+        if (context) {
+          surfaceStreamReplay.release(context);
+          terminalStreamContexts.delete(command.attachmentId);
+        }
+        return result;
+      }
+      case "terminal.input": {
+        const streamContext = {
+          serverId: command.serverId,
+          surfaceKind: "terminal" as const,
+          surfaceId: command.terminalId,
+          operationId: command.operationId,
+          direction: "input" as const,
+          sequence: command.sequence,
+        };
+        surfaceStreamReplay.reserve(streamContext);
+        const content = await openWorkerSurfaceStreamContent({
+          context: streamContext,
+          opaque: command.protectedData,
+          schema: terminalInputContentSchema,
+          service: workerEncryption,
+        });
+        terminals.input(command.terminalId, content.data);
+        const protectedResponse = await protectWorkerSurfaceStreamContent({
+          context: { ...streamContext, direction: "response" },
+          content: {
+            ok: true as const,
+            result: { type: "terminal.input.accepted" as const },
+          },
+          schema: surfaceOperationOutcomeContentSchema,
+          service: workerEncryption,
+        });
+        surfaceStreamReplay.accept(streamContext, command.complete);
+        return surfaceStreamWireResponseSchema.parse({
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse,
+        });
+      }
       case "terminal.resize":
         terminals.resize(command.terminalId, command.cols, command.rows);
         return { accepted: true };
       case "terminal.close":
         terminals.close(command.terminalId);
         return { accepted: true };
-      case "terminal.snapshot":
-        return terminals.snapshot(command.terminalId, command.maxChars);
+      case "terminal.snapshot": {
+        const streamContext = {
+          serverId: command.serverId,
+          surfaceKind: "terminal" as const,
+          surfaceId: command.terminalId,
+          operationId: command.operationId,
+          direction: "request" as const,
+          sequence: command.sequence,
+        };
+        surfaceStreamReplay.reserve(streamContext);
+        const request = await openWorkerSurfaceStreamContent({
+          context: streamContext,
+          opaque: command.protectedRequest,
+          schema: terminalSnapshotRequestContentSchema,
+          service: workerEncryption,
+        });
+        let outcome: SurfaceOperationOutcomeContent;
+        try {
+          outcome = {
+            ok: true as const,
+            result: {
+              type: "terminal.snapshot" as const,
+              ...terminals.snapshot(command.terminalId, request.maxChars),
+            },
+          };
+        } catch (error) {
+          outcome = {
+            ok: false as const,
+            error:
+              error instanceof Error
+                ? error.message.slice(0, 2_000)
+                : "Terminal snapshot failed.",
+          };
+        }
+        const protectedResponse = await protectWorkerSurfaceStreamContent({
+          context: { ...streamContext, direction: "response" },
+          content: outcome,
+          schema: surfaceOperationOutcomeContentSchema,
+          service: workerEncryption,
+        });
+        surfaceStreamReplay.accept(streamContext, true);
+        return surfaceStreamWireResponseSchema.parse({
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse,
+        });
+      }
       case "terminal.services.reconcile":
         try {
           terminals.reconcileServices(

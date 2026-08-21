@@ -2,6 +2,10 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import type { TerminalServerMessage, TerminalSummary } from "@cantrip/protocol";
 import { terminalServerMessageSchema } from "@cantrip/protocol";
+import {
+  terminalInputContentSchema,
+  terminalOutputContentSchema,
+} from "@cantrip/protocol/surface-stream";
 import { Loader2 } from "lucide-react";
 import {
   useEffect,
@@ -20,6 +24,10 @@ import {
   type DesktopTerminalConnection,
 } from "@/lib/desktop-terminal";
 import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
+import {
+  openSurfaceStreamContent,
+  protectSurfaceStreamContent,
+} from "@/lib/surface-stream-encryption";
 import { cn } from "@/lib/utils";
 
 import { terminalCommandInput } from "./terminal-command-palette";
@@ -129,6 +137,7 @@ export function TerminalView({
     setState(reconnectAttemptRef.current === 0 ? "connecting" : "reconnecting");
     setError(null);
     const connectionStartedAt = performance.now();
+    const operationId = crypto.randomUUID();
     clientLogger.info("Terminal surface connection started", {
       attempt: reconnectAttemptRef.current + 1,
       event: "surface.terminal.connecting",
@@ -159,6 +168,10 @@ export function TerminalView({
     let ready = false;
     let disposed = false;
     let exited = false;
+    let inputSequence = 0;
+    let inputQueue = Promise.resolve();
+    let outputSequence = 0;
+    let outputQueue = Promise.resolve();
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleReconnect = () => {
       if (disposed || reconnectTimer) return;
@@ -218,7 +231,38 @@ export function TerminalView({
     });
     const sendInput = (data: string) => {
       if (ready && socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: "input", data }));
+        const sequence = inputSequence;
+        inputSequence += 1;
+        inputQueue = inputQueue
+          .then(async () => {
+            const protectedData = await protectSurfaceStreamContent({
+              context: {
+                surfaceKind: "terminal",
+                surfaceId: terminal.id,
+                operationId,
+                direction: "input",
+                sequence,
+              },
+              content: { type: "terminal.input" as const, data },
+              schema: terminalInputContentSchema,
+            });
+            if (ready && socket?.readyState === WebSocket.OPEN) {
+              socket.send(
+                JSON.stringify({
+                  type: "input",
+                  operationId,
+                  sequence,
+                  protectedData,
+                }),
+              );
+            }
+          })
+          .catch(() => {
+            if (!disposed) {
+              setError("Terminal input encryption failed.");
+              scheduleReconnect();
+            }
+          });
         return true;
       }
       return false;
@@ -275,7 +319,40 @@ export function TerminalView({
             xterm.focus();
           });
         } else if (message.type === "output") {
-          xterm.write(message.data);
+          if (
+            message.operationId !== operationId ||
+            message.sequence !== outputSequence
+          ) {
+            setError("The protected terminal stream is out of sequence.");
+            nextSocket.close(1008, "Protected terminal stream out of sequence");
+            return;
+          }
+          const sequence = outputSequence;
+          outputSequence += 1;
+          outputQueue = outputQueue
+            .then(async () => {
+              const content = await openSurfaceStreamContent({
+                context: {
+                  surfaceKind: "terminal",
+                  surfaceId: terminal.id,
+                  operationId,
+                  direction: "output",
+                  sequence,
+                },
+                opaque: message.protectedData,
+                schema: terminalOutputContentSchema,
+              });
+              if (!disposed) xterm.write(content.data);
+            })
+            .catch(() => {
+              if (!disposed) {
+                setError("The protected terminal output could not be opened.");
+                nextSocket.close(
+                  1008,
+                  "Protected terminal output authentication failed",
+                );
+              }
+            });
         } else if (message.type === "exit") {
           ready = false;
           exited = true;
@@ -327,7 +404,11 @@ export function TerminalView({
           });
           releaseDirect();
           if (wasReady) scheduleReconnect();
-          else connectSocket(terminalWebSocketUrl(terminal.id), false);
+          else
+            connectSocket(
+              terminalWebSocketUrl(terminal.id, operationId),
+              false,
+            );
           return;
         }
         setError("Could not connect to the terminal session.");
@@ -367,10 +448,11 @@ export function TerminalView({
             surfaceId: terminal.id,
             transport: connection ? "direct" : "relay",
           });
-          connectSocket(
-            connection?.url ?? terminalWebSocketUrl(terminal.id),
-            Boolean(connection),
-          );
+          const url = connection
+            ? new URL(connection.url)
+            : new URL(terminalWebSocketUrl(terminal.id, operationId));
+          url.searchParams.set("operationId", operationId);
+          connectSocket(url.toString(), Boolean(connection));
         })
         .catch((error: unknown) => {
           clientLogger.warn("Terminal direct transport discovery failed", {
@@ -383,7 +465,10 @@ export function TerminalView({
             surfaceId: terminal.id,
           });
           if (!disposed)
-            connectSocket(terminalWebSocketUrl(terminal.id), false);
+            connectSocket(
+              terminalWebSocketUrl(terminal.id, operationId),
+              false,
+            );
         });
     };
     void getWorkers()

@@ -1,7 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes, randomUUID } from "node:crypto";
 import { isIP } from "node:net";
-import { Readable } from "node:stream";
 
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
@@ -126,12 +125,6 @@ import {
   encryptedChatUpdateSchema,
   chatWorktreeUpdateSchema,
   encryptedExplorerCreateSchema,
-  explorerDirectoryCommitsSchema,
-  explorerDirectorySchema,
-  explorerFileSchema,
-  explorerFileWriteSchema,
-  explorerMediaFileChunkSchema,
-  explorerMediaFileSchema,
   explorerWireListSchema,
   explorerWireSummarySchema,
   encryptedExplorerUpdateSchema,
@@ -372,7 +365,6 @@ import {
   encryptedLinkedConsoleCreateSchema,
   terminalWireListSchema,
   terminalOpenResultSchema,
-  terminalSnapshotResultSchema,
   encryptedTerminalServiceConfigurationSchema,
   terminalServerMessageSchema,
   terminalWireSummarySchema,
@@ -417,6 +409,10 @@ import {
   chatAttachmentOpaqueListSchema,
   chatAttachmentOpaqueSummarySchema,
 } from "@cantrip/protocol/attachment-content";
+import {
+  surfaceStreamWireRequestSchema,
+  surfaceStreamWireResponseSchema,
+} from "@cantrip/protocol/surface-stream";
 import {
   accountPasswordEncryptionChangeSchema,
   accountEncryptionProfileInitializeResultSchema,
@@ -557,7 +553,6 @@ import {
 import { cantripVersion } from "@cantrip/version";
 
 import { resolveCodeSurfaceConfig, type ServerConfig } from "./config.js";
-import { parseHttpByteRange } from "./http-byte-range.js";
 import {
   associateTaskPullRequests,
   taskAdvisoryWarnings,
@@ -830,7 +825,6 @@ const DEFAULT_API_BODY_LIMIT_BYTES = 1_024 * 1_024;
 const DEFAULT_UPLOAD_LIMIT_BYTES = 25 * 1_024 * 1_024;
 const DEFAULT_WEBSOCKET_MAX_PAYLOAD_BYTES = 8 * 1_024 * 1_024;
 const ATTACHMENT_CHUNK_BYTES = 256 * 1_024;
-const EXPLORER_MEDIA_CHUNK_BYTES = 256 * 1_024;
 const AGENT_INTERACTION_EXPIRY_SWEEP_MS = 1_000;
 const WORKFLOW_GATE_EXPIRY_SWEEP_MS = 500;
 const GOAL_RESUME_PROMPT =
@@ -4102,17 +4096,13 @@ export async function buildApp({
     }
     return target;
   };
-  const boundedToolPath = (
-    input: Record<string, unknown>,
-    allowEmpty: boolean,
-  ) => {
-    const value = input.path;
-    if (typeof value !== "string" || (!allowEmpty && !value.trim())) {
-      throw new Error("path is required.");
-    }
-    if (value.length > 8_192) throw new Error("path is too long.");
-    return value;
-  };
+
+  const surfaceStreamWireArgument = (input: Record<string, unknown>) =>
+    surfaceStreamWireRequestSchema.parse({
+      operationId: input.operationId,
+      sequence: input.sequence,
+      protectedRequest: input.protectedRequest,
+    });
   const boundedToolInteger = (
     input: Record<string, unknown>,
     key: string,
@@ -4142,24 +4132,6 @@ export async function buildApp({
       throw new Error(`cursor must be an integer from 0 to ${maximum}.`);
     }
     return Number(value);
-  };
-  const boundedToolString = (
-    input: Record<string, unknown>,
-    key: string,
-    maximum: number,
-    allowEmpty = false,
-  ) => {
-    const value = input[key];
-    if (
-      typeof value !== "string" ||
-      (!allowEmpty && value.length === 0) ||
-      value.length > maximum
-    ) {
-      throw new Error(
-        `${key} must be ${allowEmpty ? "at most" : "from 1 to"} ${maximum} characters.`,
-      );
-    }
-    return value;
   };
   type ExecutionOperationContext = {
     chatId: string | null;
@@ -4325,36 +4297,21 @@ export async function buildApp({
         ) {
           throw new Error("Explorer placement changed before the read.");
         }
-        const requestedPath = boundedToolPath(call.arguments, true);
-        const directory = explorerDirectorySchema.parse(
+        const wire = surfaceStreamWireArgument(call.arguments);
+        const result = surfaceStreamWireResponseSchema.parse(
           await bridge.request(resolution.placement.workerId, {
-            type: "explorer.directory.list",
+            type: "explorer.operation",
+            explorerId: explorer.explorerId,
+            serverId,
             root: explorer.root,
-            path: requestedPath,
+            ...wire,
           }),
         );
-        if (directory.path !== requestedPath) {
-          throw new Error("Explorer returned a stale directory response.");
-        }
-        const cursor = boundedToolCursor(call.arguments, 999);
-        const limit = boundedToolInteger(call.arguments, "limit", 100, 200);
-        const entries = directory.entries.slice(cursor, cursor + limit);
-        const nextCursor =
-          cursor + entries.length < directory.entries.length
-            ? cursor + entries.length
-            : null;
         return cantripCliCommandResultSchema.parse({
-          summary: `Found ${entries.length} entr${entries.length === 1 ? "y" : "ies"}${directory.truncated || nextCursor !== null ? "; more entries are available" : ""}.`,
+          summary: "Encrypted Explorer operation completed.",
           target,
           worktreeId: resolution.placement.worktreeId,
-          data: {
-            path: directory.path,
-            entries,
-            cursor,
-            nextCursor,
-            total: directory.entries.length,
-            truncated: directory.truncated || nextCursor !== null,
-          },
+          data: result,
         });
       }
       case "explorer.read": {
@@ -4371,58 +4328,40 @@ export async function buildApp({
         ) {
           throw new Error("Explorer placement changed before the read.");
         }
-        const requestedPath = boundedToolPath(call.arguments, false);
-        const file = explorerFileSchema.parse(
+        const wire = surfaceStreamWireArgument(call.arguments);
+        const result = surfaceStreamWireResponseSchema.parse(
           await bridge.request(resolution.placement.workerId, {
-            type: "explorer.file.read",
+            type: "explorer.operation",
+            explorerId: explorer.explorerId,
+            serverId,
             root: explorer.root,
-            path: requestedPath,
+            ...wire,
           }),
         );
-        if (file.path !== requestedPath) {
-          throw new Error("Explorer returned a stale file response.");
-        }
-        const maxChars = boundedToolInteger(
-          call.arguments,
-          "maxChars",
-          100_000,
-          200_000,
-        );
-        const truncated = file.content.length > maxChars;
         return cantripCliCommandResultSchema.parse({
-          summary: `Read ${file.path}${truncated ? " (content truncated)" : ""}.`,
+          summary: "Encrypted Explorer operation completed.",
           target,
           worktreeId: resolution.placement.worktreeId,
-          data: {
-            ...file,
-            content: file.content.slice(0, maxChars),
-            truncated,
-          },
+          data: result,
         });
       }
       case "terminal.read": {
         const target = surfaceTargetArgument(call.arguments, "terminal");
         const resolution = await resolveTarget(target);
-        const snapshot = terminalSnapshotResultSchema.parse(
+        const wire = surfaceStreamWireArgument(call.arguments);
+        const result = surfaceStreamWireResponseSchema.parse(
           await bridge.request(resolution.placement.workerId, {
             type: "terminal.snapshot",
             terminalId: target.surfaceId,
-            maxChars: boundedToolInteger(
-              call.arguments,
-              "maxChars",
-              20_000,
-              100_000,
-            ),
+            serverId,
+            ...wire,
           }),
         );
-        if (snapshot.terminalId !== target.surfaceId) {
-          throw new Error("Terminal returned a stale snapshot response.");
-        }
         return cantripCliCommandResultSchema.parse({
-          summary: `Terminal is ${snapshot.status}${snapshot.truncated ? "; scrollback was truncated" : ""}.`,
+          summary: "Encrypted terminal snapshot completed.",
           target,
           worktreeId: resolution.placement.worktreeId,
-          data: snapshot,
+          data: result,
         });
       }
       case "browser.services": {
@@ -4461,43 +4400,26 @@ export async function buildApp({
         ) {
           throw new Error("Explorer placement changed before the write.");
         }
-        const requestedPath = boundedToolPath(call.arguments, false);
-        const version = boundedToolString(call.arguments, "version", 64);
-        if (!/^[a-f0-9]{64}$/u.test(version)) {
-          throw new Error("version must be a 64-character lowercase hash.");
-        }
-        const file = explorerFileSchema.parse(
+        const wire = surfaceStreamWireArgument(call.arguments);
+        const result = surfaceStreamWireResponseSchema.parse(
           await bridge.request(resolution.placement.workerId, {
-            type: "explorer.file.write",
+            type: "explorer.operation",
+            explorerId: explorer.explorerId,
+            serverId,
             root: explorer.root,
-            path: requestedPath,
-            content: boundedToolString(
-              call.arguments,
-              "content",
-              500_000,
-              true,
-            ),
-            version,
+            ...wire,
           }),
         );
-        if (file.path !== requestedPath) {
-          throw new Error("Explorer returned a stale write response.");
-        }
         publishLiveInvalidation("explorer", {
           entityId: target.surfaceId,
           projectId: context.projectId,
         });
         return cantripCliCommandResultSchema.parse({
-          summary: `Saved ${file.path}.`,
+          summary: "Encrypted Explorer write completed.",
           target,
           worktreeId: resolution.placement.worktreeId,
           mutated: true,
-          data: {
-            path: file.path,
-            size: file.size,
-            markdown: file.markdown,
-            version: file.version,
-          },
+          data: result,
         });
       }
       case "terminal.input": {
@@ -4514,20 +4436,28 @@ export async function buildApp({
         ) {
           throw new Error("Terminal placement changed before input.");
         }
-        await bridge.request(
-          resolution.placement.workerId,
-          {
-            type: "terminal.input",
-            terminalId: target.surfaceId,
-            data: boundedToolString(call.arguments, "data", 100_000),
-          },
-          { timeoutMs: 30_000 },
+        const wire = surfaceStreamWireArgument(call.arguments);
+        const result = surfaceStreamWireResponseSchema.parse(
+          await bridge.request(
+            resolution.placement.workerId,
+            {
+              type: "terminal.input",
+              terminalId: target.surfaceId,
+              serverId,
+              operationId: wire.operationId,
+              sequence: wire.sequence,
+              protectedData: wire.protectedRequest,
+              complete: true,
+            },
+            { timeoutMs: 30_000 },
+          ),
         );
         return cantripCliCommandResultSchema.parse({
-          summary: `Sent input to the terminal on ${resolution.worker.name}.`,
+          summary: "Encrypted terminal input completed.",
           target,
           worktreeId: resolution.placement.worktreeId,
           mutated: true,
+          data: result,
         });
       }
       case "terminal.service.restart": {
@@ -5432,97 +5362,53 @@ export async function buildApp({
           arguments: { target: target.target },
         });
       }
+      case "target.resolve-explorer": {
+        const target = await selectTarget(context, "explorer", selector);
+        return executeExecutionOperation(context, {
+          operation: "target.inspect",
+          arguments: { target: target.target },
+        });
+      }
+      case "target.resolve-terminal": {
+        const target = await selectTarget(context, "terminal", selector);
+        return executeExecutionOperation(context, {
+          operation: "target.inspect",
+          arguments: { target: target.target },
+        });
+      }
       case "explorer.list": {
         const target = await selectTarget(context, "explorer", selector);
-        const entries: unknown[] = [];
-        let cursor = 0;
-        let latest: CantripCliCommandResult | null = null;
-        do {
-          latest = await executeExecutionOperation(context, {
-            operation: "explorer.list",
-            arguments: {
-              target: target.target,
-              path: requiredToolString(call.arguments, "path"),
-              cursor,
-              limit: 200,
-            },
-          });
-          const page = latest.data as
-            { entries?: unknown[]; nextCursor?: number | null } | undefined;
-          entries.push(...(page?.entries ?? []));
-          if (page?.nextCursor === null || page?.nextCursor === undefined)
-            break;
-          cursor = page.nextCursor;
-        } while (cursor <= 999);
-        return cantripCliCommandResultSchema.parse({
-          ...latest!,
-          summary: `Found ${entries.length} entr${entries.length === 1 ? "y" : "ies"}.`,
-          data: {
-            ...((latest?.data as Record<string, unknown> | undefined) ?? {}),
-            cursor: 0,
-            entries,
-            nextCursor: null,
-            total: entries.length,
-            truncated: false,
-          },
+        return executeExecutionOperation(context, {
+          operation: "explorer.list",
+          arguments: { ...call.arguments, target: target.target },
         });
       }
       case "explorer.read": {
         const target = await selectTarget(context, "explorer", selector);
         return executeExecutionOperation(context, {
           operation: "explorer.read",
-          arguments: {
-            target: target.target,
-            path: requiredToolString(call.arguments, "path"),
-            maxChars: 200_000,
-          },
+          arguments: { ...call.arguments, target: target.target },
         });
       }
       case "explorer.write": {
         const target = await selectTarget(context, "explorer", selector);
-        const path = requiredToolString(call.arguments, "path");
-        const current = await executeExecutionOperation(context, {
-          operation: "explorer.read",
-          arguments: { target: target.target, path, maxChars: 1 },
-        });
-        const version =
-          current.data &&
-          typeof current.data === "object" &&
-          "version" in current.data
-            ? String(current.data.version)
-            : null;
-        if (!version)
-          throw new Error("Explorer did not return a file version.");
         return executeExecutionOperation(context, {
           operation: "explorer.write",
-          arguments: {
-            target: target.target,
-            path,
-            content: boundedToolString(
-              call.arguments,
-              "content",
-              500_000,
-              true,
-            ),
-            version,
-          },
+          arguments: { ...call.arguments, target: target.target },
         });
       }
       case "terminal.read": {
         const target = await selectTarget(context, "terminal", selector);
         return executeExecutionOperation(context, {
           operation: "terminal.read",
-          arguments: { target: target.target, maxChars: 100_000 },
+          arguments: { ...call.arguments, target: target.target },
         });
       }
       case "terminal.send": {
         const target = await selectTarget(context, "terminal", selector);
         return executeExecutionOperation(context, {
           operation: "terminal.input",
-          arguments: {
-            target: target.target,
-            data: boundedToolString(call.arguments, "data", 100_000),
-          },
+          arguments: { ...call.arguments, target: target.target },
         });
       }
       case "terminal.restart": {
@@ -21377,190 +21263,11 @@ export async function buildApp({
         : reply.code(404).send({ error: "Explorer not found." }),
   );
 
-  app.get<{
-    Params: { explorerId: string };
-    Querystring: { path?: string };
-  }>("/api/explorers/:explorerId/directory", async (request, reply) => {
-    const context = await repository.getExplorerExecutionContext(
-      applicationOwnerId(),
-      request.params.explorerId,
-    );
-    if (!context) return reply.code(404).send({ error: "Explorer not found." });
-    try {
-      const directory = await bridge.request(context.workerId, {
-        type: "explorer.directory.list",
-        root: context.root,
-        path: request.query.path ?? "",
-      });
-      return reply.send(explorerDirectorySchema.parse(directory));
-    } catch (error) {
-      return sendWorkerRequestFailure(reply, error);
-    }
-  });
-
-  app.get<{
-    Params: { explorerId: string };
-    Querystring: { path?: string };
-  }>("/api/explorers/:explorerId/directory/commits", async (request, reply) => {
-    const context = await repository.getExplorerExecutionContext(
-      applicationOwnerId(),
-      request.params.explorerId,
-    );
-    if (!context) return reply.code(404).send({ error: "Explorer not found." });
-    try {
-      const commits = await bridge.request(context.workerId, {
-        type: "explorer.directory.commits",
-        root: context.root,
-        path: request.query.path ?? "",
-      });
-      return reply.send(explorerDirectoryCommitsSchema.parse(commits));
-    } catch (error) {
-      return sendWorkerRequestFailure(reply, error);
-    }
-  });
-
-  app.get<{
-    Params: { explorerId: string };
-    Querystring: { path?: string };
-  }>("/api/explorers/:explorerId/file", async (request, reply) => {
-    if (!request.query.path) {
-      return reply.code(400).send({ error: "A file path is required." });
-    }
-    const context = await repository.getExplorerExecutionContext(
-      applicationOwnerId(),
-      request.params.explorerId,
-    );
-    if (!context) return reply.code(404).send({ error: "Explorer not found." });
-    try {
-      const file = await bridge.request(context.workerId, {
-        type: "explorer.file.read",
-        root: context.root,
-        path: request.query.path,
-      });
-      return reply.send(explorerFileSchema.parse(file));
-    } catch (error) {
-      return sendWorkerRequestFailure(reply, error);
-    }
-  });
-
-  app.get<{
-    Params: { explorerId: string };
-    Querystring: { path?: string; revision?: string };
-  }>("/api/explorers/:explorerId/media", async (request, reply) => {
-    if (!request.query.path) {
-      return reply.code(400).send({ error: "A media path is required." });
-    }
-    const mediaPath = request.query.path;
-    const context = await repository.getExplorerExecutionContext(
-      applicationOwnerId(),
-      request.params.explorerId,
-    );
-    if (!context) return reply.code(404).send({ error: "Explorer not found." });
-    try {
-      const media = explorerMediaFileSchema.parse(
-        await bridge.request(context.workerId, {
-          type: "explorer.media.stat",
-          root: context.root,
-          path: mediaPath,
-        }),
-      );
-      if (media.path !== mediaPath) {
-        throw new Error("Explorer returned stale media metadata.");
-      }
-      const requestedRange = parseHttpByteRange(
-        request.headers.range,
-        media.size,
-      );
-      if (requestedRange.kind === "invalid") {
-        return reply
-          .code(416)
-          .header("accept-ranges", "bytes")
-          .header("content-range", `bytes */${media.size}`)
-          .send({ error: "The requested media range is not satisfiable." });
-      }
-      const partial = requestedRange.kind === "range";
-      const start = partial ? requestedRange.start : 0;
-      const end = partial ? requestedRange.end : media.size - 1;
-      const responseSize = media.size === 0 ? 0 : end - start + 1;
-      const readChunk = async (offset: number, limit: number) => {
-        const chunk = explorerMediaFileChunkSchema.parse(
-          await bridge.request(context.workerId, {
-            type: "explorer.media.read",
-            root: context.root,
-            path: mediaPath,
-            offset,
-            limit,
-          }),
-        );
-        if (
-          chunk.path !== media.path ||
-          chunk.kind !== media.kind ||
-          chunk.mimeType !== media.mimeType ||
-          chunk.size !== media.size ||
-          chunk.modifiedAt !== media.modifiedAt ||
-          chunk.offset !== offset
-        ) {
-          throw new Error("Explorer media changed while it was streaming.");
-        }
-        const bytes = Buffer.from(chunk.data, "base64");
-        const expectedBytes = Math.min(limit, media.size - offset);
-        if (
-          bytes.byteLength !== expectedBytes ||
-          chunk.eof !== offset + bytes.byteLength >= media.size
-        ) {
-          throw new Error("Explorer worker returned an invalid media chunk.");
-        }
-        return bytes;
-      };
-      const firstChunk =
-        responseSize === 0
-          ? Buffer.alloc(0)
-          : await readChunk(
-              start,
-              Math.min(EXPLORER_MEDIA_CHUNK_BYTES, responseSize),
-            );
-      const body =
-        responseSize === 0
-          ? firstChunk
-          : Readable.from(
-              (async function* () {
-                let offset = start;
-                let bytes = firstChunk;
-                for (;;) {
-                  yield bytes;
-                  offset += bytes.byteLength;
-                  if (offset > end) return;
-                  bytes = await readChunk(
-                    offset,
-                    Math.min(EXPLORER_MEDIA_CHUNK_BYTES, end - offset + 1),
-                  );
-                }
-              })(),
-            );
-      const filename = media.path.split("/").at(-1) ?? "media";
-      reply
-        .code(partial ? 206 : 200)
-        .header("accept-ranges", "bytes")
-        .header("cache-control", "private, no-store")
-        .header("content-length", String(responseSize))
-        .header(
-          "content-disposition",
-          `inline; filename*=UTF-8''${encodeURIComponent(filename)}`,
-        )
-        .type(media.mimeType);
-      if (partial) {
-        reply.header("content-range", `bytes ${start}-${end}/${media.size}`);
-      }
-      return reply.send(body);
-    } catch (error) {
-      return sendWorkerRequestFailure(reply, error);
-    }
-  });
-
-  app.put<{ Params: { explorerId: string } }>(
-    "/api/explorers/:explorerId/file",
+  app.post<{ Params: { explorerId: string } }>(
+    "/api/explorers/:explorerId/operation",
+    { bodyLimit: 4 * 1_024 * 1_024 },
     async (request, reply) => {
-      const input = explorerFileWriteSchema.safeParse(request.body);
+      const input = surfaceStreamWireRequestSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -21572,12 +21279,14 @@ export async function buildApp({
         return reply.code(404).send({ error: "Explorer not found." });
       }
       try {
-        const file = await bridge.request(context.workerId, {
-          type: "explorer.file.write",
+        const result = await bridge.request(context.workerId, {
+          type: "explorer.operation",
+          explorerId: context.explorerId,
+          serverId,
           root: context.root,
           ...input.data,
         });
-        return reply.send(explorerFileSchema.parse(file));
+        return reply.send(surfaceStreamWireResponseSchema.parse(result));
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
       }
@@ -21655,6 +21364,7 @@ export async function buildApp({
             type: "terminal.open",
             terminalId: context.terminalId,
             attachmentId: bootstrapAttachmentId,
+            operationId: randomUUID(),
             serverId,
             worktreePath: context.worktreePath,
             stateProtection: context.stateProtection,
@@ -21739,7 +21449,10 @@ export async function buildApp({
     },
   );
 
-  app.get<{ Params: { terminalId: string } }>(
+  app.get<{
+    Params: { terminalId: string };
+    Querystring: { operationId?: string };
+  }>(
     "/api/terminals/:terminalId/connect",
     { websocket: true },
     (socket, request) => {
@@ -21752,10 +21465,16 @@ export async function buildApp({
       }
       if (!registerAuthenticatedSocket(socket, request)) return;
       registerSessionSocket(socket, request);
+      const operationId = request.query.operationId;
+      if (!operationId || operationId.length > 200) {
+        socket.close(1008, "Terminal stream operation is required");
+        return;
+      }
       const attachmentId = randomUUID();
       let terminalId: string | null = null;
       let workerId: string | null = null;
       let closed = false;
+      let inputQueue = Promise.resolve();
       const send = (message: unknown) => {
         if (socket.readyState === 1) {
           socket.send(
@@ -21790,12 +21509,23 @@ export async function buildApp({
           send({ type: "error", message: "Invalid terminal message." });
           return;
         }
+        if (
+          message.data.type === "input" &&
+          message.data.operationId !== operationId
+        ) {
+          send({ type: "error", message: "Invalid terminal stream." });
+          return;
+        }
         const command =
           message.data.type === "input"
             ? {
                 type: "terminal.input" as const,
                 terminalId,
-                data: message.data.data,
+                serverId,
+                operationId,
+                sequence: message.data.sequence,
+                protectedData: message.data.protectedData,
+                complete: false,
               }
             : {
                 type: "terminal.resize" as const,
@@ -21803,11 +21533,21 @@ export async function buildApp({
                 cols: message.data.cols,
                 rows: message.data.rows,
               };
-        void bridge
-          .request(workerId, command, { timeoutMs: 30_000 })
-          .catch((error: unknown) => {
-            send({ type: "error", message: errorMessage(error) });
-          });
+        if (message.data.type === "input") {
+          inputQueue = inputQueue
+            .then(async () => {
+              await bridge.request(workerId!, command, { timeoutMs: 30_000 });
+            })
+            .catch((error: unknown) => {
+              send({ type: "error", message: errorMessage(error) });
+            });
+        } else {
+          void bridge
+            .request(workerId, command, { timeoutMs: 30_000 })
+            .catch((error: unknown) => {
+              send({ type: "error", message: errorMessage(error) });
+            });
+        }
       });
 
       void (async () => {
@@ -21868,6 +21608,7 @@ export async function buildApp({
                 type: "terminal.open",
                 terminalId,
                 attachmentId,
+                operationId,
                 serverId,
                 worktreePath: context.worktreePath,
                 stateProtection: context.stateProtection,
@@ -21890,7 +21631,7 @@ export async function buildApp({
                     await updateTerminalStatus(terminalId!, "running");
                     send({ type: "ready" });
                   } else if (event.type === "terminal.output") {
-                    send({ type: "output", data: event.data });
+                    send(event);
                   }
                 },
               },

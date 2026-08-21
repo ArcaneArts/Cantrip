@@ -154,6 +154,7 @@ describe("surface private-state contracts", () => {
         type: "terminal.open",
         terminalId: id,
         attachmentId: "attachment-1",
+        operationId: "operation-1",
         serverId: "server-a",
         worktreePath: "/opaque/worktree",
         stateProtection,

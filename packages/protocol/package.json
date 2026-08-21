@@ -32,6 +32,14 @@
       "types": "./src/attachment-content.ts",
       "import": "./dist/attachment-content.js"
     },
+    "./explorer": {
+      "types": "./src/explorer.ts",
+      "import": "./dist/explorer.js"
+    },
+    "./surface-stream": {
+      "types": "./src/surface-stream.ts",
+      "import": "./dist/surface-stream.js"
+    },
     "./encryption": {
       "types": "./src/encryption.ts",
       "import": "./dist/encryption.js"

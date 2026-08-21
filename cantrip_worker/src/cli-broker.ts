@@ -30,6 +30,13 @@ import {
   policyCliWireReadResultSchema,
   policyKeySchema,
 } from "@cantrip/protocol/policies";
+import {
+  explorerOperationRequestContentSchema,
+  surfaceOperationOutcomeContentSchema,
+  surfaceStreamWireResponseSchema,
+  terminalInputContentSchema,
+  terminalSnapshotRequestContentSchema,
+} from "@cantrip/protocol/surface-stream";
 
 import type { WorkerConfig } from "./config.js";
 import {
@@ -38,6 +45,11 @@ import {
 } from "./cli-client.js";
 import { workerLogError, workerLogger } from "./logger.js";
 import { encodeSurfacePrivateStateForWorker } from "./surface-private-state-encryption.js";
+import {
+  openWorkerSurfaceStreamContent,
+  protectWorkerSurfaceStreamContent,
+  type SurfaceStreamContentSchema,
+} from "./surface-stream-encryption.js";
 import { openPolicyCliDetail, openPolicyCliList } from "./policy-encryption.js";
 import type { WorkerEncryptionService } from "./worker-encryption.js";
 
@@ -159,7 +171,7 @@ function sendJson(
 }
 
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
-  const maximum = 600_000;
+  const maximum = 1_000_000;
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
@@ -395,6 +407,246 @@ export class CantripCliBroker {
     });
   }
 
+  private async executeProtectedSurfaceCommand(
+    command: CantripCliCommandRequest,
+    requestId: string,
+    chatContext: CantripCliChatContext | null,
+  ): Promise<CantripCliCommandResult | null> {
+    const explorer = new Set([
+      "explorer.list",
+      "explorer.read",
+      "explorer.write",
+    ]).has(command.command);
+    const terminal = new Set(["terminal.read", "terminal.send"]).has(
+      command.command,
+    );
+    if (!explorer && !terminal) return null;
+    const service = this.#surfacePrivateState;
+    if (!service) throw new Error("Surface stream encryption is unavailable.");
+    const surfaceKind = explorer
+      ? ("explorer" as const)
+      : ("terminal" as const);
+    const resolved = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: explorer
+          ? "target.resolve-explorer"
+          : "target.resolve-terminal",
+        context: command.context,
+        arguments: {
+          ...(typeof command.arguments.target === "string"
+            ? { target: command.arguments.target }
+            : {}),
+        },
+      }),
+      `${requestId}:resolve-${surfaceKind}`,
+      chatContext,
+    );
+    const target = executionTargetSchema.parse(resolved.target);
+    const details = resolved.data as { serverId?: unknown } | null;
+    if (
+      target.kind !== "surface" ||
+      target.surfaceKind !== surfaceKind ||
+      typeof details?.serverId !== "string"
+    ) {
+      throw new Error(
+        `The ${surfaceKind} target cannot receive encrypted operations.`,
+      );
+    }
+    const operationId = randomUUID();
+    const sequence = 0;
+    let content: unknown;
+    let direction: "input" | "request" = "request";
+    let schema: SurfaceStreamContentSchema<unknown> =
+      explorerOperationRequestContentSchema;
+    switch (command.command) {
+      case "explorer.list":
+        content = {
+          type: "explorer.directory.list",
+          path: String(command.arguments.path ?? ""),
+        };
+        break;
+      case "explorer.read":
+        content = {
+          type: "explorer.file.read",
+          path: command.arguments.path,
+        };
+        break;
+      case "explorer.write": {
+        const current = await this.executeProtectedSurfaceCommand(
+          cantripCliCommandRequestSchema.parse({
+            command: "explorer.read",
+            context: command.context,
+            arguments: {
+              ...(typeof command.arguments.target === "string"
+                ? { target: command.arguments.target }
+                : {}),
+              path: command.arguments.path,
+              maxChars: 1,
+            },
+          }),
+          `${requestId}:current-version`,
+          chatContext,
+        );
+        const currentData = current?.data as { version?: unknown } | undefined;
+        if (typeof currentData?.version !== "string") {
+          throw new Error("Explorer did not return a protected file version.");
+        }
+        content = {
+          type: "explorer.file.write",
+          path: command.arguments.path,
+          content: command.arguments.content,
+          version: currentData.version,
+        };
+        break;
+      }
+      case "terminal.read":
+        content = {
+          type: "terminal.snapshot",
+          maxChars: command.arguments.maxChars ?? 20_000,
+        };
+        schema = terminalSnapshotRequestContentSchema;
+        break;
+      case "terminal.send":
+        content = { type: "terminal.input", data: command.arguments.data };
+        direction = "input";
+        schema = terminalInputContentSchema;
+        break;
+      default:
+        return null;
+    }
+    const protectedRequest = await protectWorkerSurfaceStreamContent({
+      context: {
+        serverId: details.serverId,
+        surfaceKind,
+        surfaceId: target.surfaceId,
+        operationId,
+        direction,
+        sequence,
+      },
+      content,
+      schema,
+      service,
+    });
+    const relayed = await this.#execute(
+      cantripCliCommandRequestSchema.parse({
+        command: command.command,
+        context: command.context,
+        arguments: {
+          target: target.surfaceId,
+          operationId,
+          sequence,
+          protectedRequest,
+        },
+      }),
+      requestId,
+      chatContext,
+    );
+    const wire = surfaceStreamWireResponseSchema.parse(relayed.data);
+    if (wire.operationId !== operationId || wire.sequence !== sequence) {
+      throw new Error("The protected surface response is stale.");
+    }
+    const outcome = await openWorkerSurfaceStreamContent({
+      context: {
+        serverId: details.serverId,
+        surfaceKind,
+        surfaceId: target.surfaceId,
+        operationId,
+        direction: "response",
+        sequence,
+      },
+      opaque: wire.protectedResponse,
+      schema: surfaceOperationOutcomeContentSchema,
+      service,
+    });
+    if (!outcome.ok) throw new Error(outcome.error);
+    const common = {
+      ...relayed,
+      target,
+      data: undefined,
+    };
+    if (command.command === "explorer.list") {
+      if (outcome.result.type !== "explorer.directory.list") {
+        throw new Error("Explorer returned an unexpected protected result.");
+      }
+      const cursor = Number(command.arguments.cursor ?? 0);
+      const limit = Number(command.arguments.limit ?? 100);
+      if (
+        !Number.isInteger(cursor) ||
+        cursor < 0 ||
+        cursor > 999 ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 200
+      ) {
+        throw new Error("Explorer pagination is invalid.");
+      }
+      const directory = outcome.result.value;
+      const entries = directory.entries.slice(cursor, cursor + limit);
+      const nextCursor =
+        cursor + entries.length < directory.entries.length
+          ? cursor + entries.length
+          : null;
+      return cantripCliCommandResultSchema.parse({
+        ...common,
+        summary: `Found ${entries.length} encrypted Explorer entries.`,
+        data: {
+          path: directory.path,
+          entries,
+          cursor,
+          nextCursor,
+          total: directory.entries.length,
+          truncated: directory.truncated || nextCursor !== null,
+        },
+      });
+    }
+    if (command.command === "explorer.read") {
+      if (outcome.result.type !== "explorer.file") {
+        throw new Error("Explorer returned an unexpected protected file.");
+      }
+      const maxChars = Number(command.arguments.maxChars ?? 100_000);
+      if (!Number.isInteger(maxChars) || maxChars < 1 || maxChars > 200_000) {
+        throw new Error("maxChars is invalid.");
+      }
+      const file = outcome.result.value;
+      const truncated = file.content.length > maxChars;
+      return cantripCliCommandResultSchema.parse({
+        ...common,
+        summary: `Read ${file.path}${truncated ? " (content truncated)" : ""}.`,
+        data: { ...file, content: file.content.slice(0, maxChars), truncated },
+      });
+    }
+    if (command.command === "explorer.write") {
+      if (outcome.result.type !== "explorer.file") {
+        throw new Error("Explorer returned an unexpected protected file.");
+      }
+      return cantripCliCommandResultSchema.parse({
+        ...common,
+        summary: `Saved ${outcome.result.value.path}.`,
+        mutated: true,
+        data: outcome.result.value,
+      });
+    }
+    if (command.command === "terminal.read") {
+      if (outcome.result.type !== "terminal.snapshot") {
+        throw new Error("Terminal returned an unexpected protected snapshot.");
+      }
+      const { type: _type, ...snapshot } = outcome.result;
+      return cantripCliCommandResultSchema.parse({
+        ...common,
+        summary: `Terminal is ${snapshot.status}${snapshot.truncated ? "; scrollback was truncated" : ""}.`,
+        data: snapshot,
+      });
+    }
+    if (outcome.result.type !== "terminal.input.accepted") {
+      throw new Error("Terminal returned an unexpected protected result.");
+    }
+    return cantripCliCommandResultSchema.parse({
+      ...common,
+      summary: "Sent encrypted terminal input.",
+      mutated: true,
+    });
+  }
+
   async start(): Promise<CantripCliConnectionDocument> {
     if (this.#server) {
       throw new Error("Cantrip CLI broker is already running.");
@@ -490,6 +742,30 @@ export class CantripCliBroker {
                 response,
                 200,
                 cantripCliCommandResultSchema.parse(policyResult),
+              );
+              return;
+            }
+            const surfaceResult = await this.executeProtectedSurfaceCommand(
+              command,
+              requestId,
+              chatContext,
+            );
+            if (surfaceResult) {
+              workerLogger.event("debug", "Cantrip CLI command completed", {
+                event: "cli.command.completed",
+                subsystem: "cli-broker",
+                operation: command.command,
+                status: "completed",
+                requestId,
+                durationMs: Date.now() - startedAtMs,
+                mutated: surfaceResult.mutated,
+                continuationScheduled: surfaceResult.continuationScheduled,
+                ...(chatContext ? { chatId: chatContext.chatId } : {}),
+              });
+              sendJson(
+                response,
+                200,
+                cantripCliCommandResultSchema.parse(surfaceResult),
               );
               return;
             }

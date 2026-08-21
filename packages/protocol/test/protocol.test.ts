@@ -60,6 +60,7 @@ import {
   providerModelCatalogEntrySchema,
   reasoningEffortSchema,
   explorerFileWriteSchema,
+  explorerOperationRequestContentSchema,
   explorerMediaTypeForPath,
   remoteBrowserClipboardMessageSchema,
   remoteBrowserClientMessageSchema,
@@ -2580,9 +2581,8 @@ describe("Cantrip protocol", () => {
       version,
     });
     expect(
-      workerCommandSchema.parse({
+      explorerOperationRequestContentSchema.parse({
         type: "explorer.file.write",
-        root: "/workspace/Cantrip",
         path: "src/index.ts",
         content: "export {};\n",
         version,
@@ -2612,18 +2612,16 @@ describe("Cantrip protocol", () => {
     });
     expect(explorerMediaTypeForPath("src/index.ts")).toBeNull();
     expect(
-      workerCommandSchema.parse({
+      explorerOperationRequestContentSchema.parse({
         type: "explorer.media.read",
-        root: "/workspace/Cantrip",
         path: "video/demo.webm",
         offset: 1024,
         limit: 256 * 1024,
       }),
     ).toMatchObject({ type: "explorer.media.read", offset: 1024 });
     expect(() =>
-      workerCommandSchema.parse({
+      explorerOperationRequestContentSchema.parse({
         type: "explorer.media.read",
-        root: "/workspace/Cantrip",
         path: "video/demo.webm",
         offset: 0,
         limit: 256 * 1024 + 1,
@@ -3339,8 +3337,15 @@ describe("Cantrip protocol", () => {
       workerCommandSchema.parse({
         type: "terminal.snapshot",
         terminalId: "terminal-2",
+        serverId: "https://cantrip.example",
+        operationId: "snapshot-operation",
+        sequence: 0,
+        protectedRequest: terminalStateFixture().protectedState,
       }),
-    ).toMatchObject({ type: "terminal.snapshot", maxChars: 20_000 });
+    ).toMatchObject({
+      type: "terminal.snapshot",
+      operationId: "snapshot-operation",
+    });
     expect(
       browserUpdateSchema.safeParse({ url: "file:///etc/passwd" }).success,
     ).toBe(false);
@@ -4876,7 +4881,9 @@ describe("Cantrip protocol", () => {
     expect(
       terminalServerMessageSchema.parse({
         type: "output",
-        data: "\u001b[32mready\u001b[0m",
+        operationId: "terminal-operation",
+        sequence: 0,
+        protectedData: terminalStateFixture().protectedState,
       }).type,
     ).toBe("output");
     expect(
@@ -4891,6 +4898,7 @@ describe("Cantrip protocol", () => {
         type: "terminal.open",
         terminalId: "terminal-1",
         attachmentId: "attachment-1",
+        operationId: "terminal-operation",
         serverId: "server-1",
         worktreePath: "/workspace",
         stateProtection: terminalStateFixture(),

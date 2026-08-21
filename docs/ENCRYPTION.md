@@ -415,8 +415,8 @@ database-compromise guarantee is described.
 | Browser initial, current, and navigated URLs                                     | AES-256-GCM E2EE; canonical row state plus operation-bound client/worker updates                                                                    | E2EE complete                                    | Excellent            | Medium      | Server cannot search, validate, execute, or diagnose browser destinations                      |
 | Remote Desktop target selection and private inventory details                    | AES-256-GCM E2EE; canonical revisioned target plus operation-bound worker inventory                                                                 | E2EE complete                                    | Excellent            | Medium-High | Server cannot inspect targets, application names, window titles, or monitor labels             |
 | Surface private-state server boundary and lifecycle audit                        | Generated route/worker-command inventory, schema/repository guards, endpoint restart proof, full temporary-DB sentinel scan                         | Closure audit complete                           | Required             | Medium      | Server persists and relays only opaque state contracts and public routing metadata             |
-| Terminal interactive input and output                                            | Plaintext or relayed content                                                                                                                        | Planned separately                               | Excellent            | High        | Server cannot inspect shell interaction content                                                |
-| Explorer operation paths, entries, Git paths, and file/media contents            | Plaintext or relayed content                                                                                                                        | Planned separately                               | Excellent            | High        | Server cannot inspect filesystem operations or content                                         |
+| Terminal interactive input, output, and snapshots                                | Operation-, direction-, and sequence-bound AES-256-GCM under `surface-private-state`; client/worker and worker/worker CLI paths                     | E2EE complete                                    | Implemented          | High        | Server cannot inspect shell interaction content                                                |
+| Explorer operation paths, entries, Git paths, and file/media contents            | Operation-, direction-, and sequence-bound AES-256-GCM under `surface-private-state`; opaque HTTP, worker-command, and worker/worker CLI relays     | E2EE complete                                    | Implemented          | High        | Server cannot inspect filesystem operations or content                                         |
 | Browser page content, cookies, credentials, profiles, screenshots, and frames    | Plaintext or relayed content                                                                                                                        | Planned separately                               | Excellent            | High        | Server cannot inspect or diagnose browser session content                                      |
 | Remote Desktop frames, input, and clipboard                                      | Relayed content                                                                                                                                     | Planned separately                               | Excellent            | High        | Server cannot inspect or transform desktop session content                                     |
 | Surface and project-view display labels                                          | AES-256-GCM E2EE; client-created row-bound labels; canonical browser/desktop copies only                                                            | E2EE complete                                    | Implemented          | Medium      | Server retains routing and ordering but loses name-based search and synthesis                  |
@@ -828,8 +828,8 @@ the bundle immediately before use, resolves a validated repository-relative
 directory beneath the selected worktree, and keeps service reconciliation and
 fingerprinting local. Spawn failures crossing the worker boundary are generic
 so a path or command cannot be copied into server logs or terminal status
-text. Terminal interactive input and output remain a separate plaintext or
-relayed class tracked in the ledger.
+text. Terminal interactive input, output, and snapshots are protected by the
+stream boundary described below.
 
 [Migration 0109](../cantrip_server/drizzle/0109_deep_power_man.sql) is a
 pre-release narrow reset, not a legacy decrypt-and-rewrite path. It deletes all
@@ -865,9 +865,10 @@ selection value.
 The server persists `explorers.protected_state` and returns it through strict
 opaque create, list, worktree-update, and view-state contracts. It retains IDs,
 placement, ordering, file mode, and timestamps, but never searches, compares,
-copies, logs, caches, or publishes the selected path. Explorer directory and
-file operations still carry their own plaintext paths and contents and remain
-a distinct planned ledger row; this cycle does not overstate that boundary.
+copies, logs, caches, or publishes the selected path. Explorer directory,
+commit, text-file, and media operations use the protected stream boundary
+described below. The repository/worktree root remains operational server
+metadata tracked separately under projects, worktrees, and Git.
 
 [Migration 0110](../cantrip_server/drizzle/0110_graceful_triathlon.sql) is a
 narrow pre-release reset. It deletes Explorer rows and only Explorer tab
@@ -879,6 +880,57 @@ workspaces, projects, sources/worktrees, chats/Tasks, terminal and other
 surfaces, policies, workflows, and unrelated tab members remain intact.
 Focused migration and persistence tests use disposable PGlite databases only;
 no user development database is connected to or reset.
+
+### Terminal and Explorer protected streams
+
+Terminal interaction and Explorer operations reuse the independently scoped
+`surface-private-state` component key, but use a distinct ephemeral stream
+contract rather than a persistent state envelope. This adds no password,
+recovery secret, local encryption password, or server-held decryptor. The
+normal account password unlocks the client Account Master Key at login, and an
+authorized worker restores its existing scoped grant after restart without
+asking the user to enter that password again.
+
+The bounded [wire contract](../packages/protocol/src/surface-stream.ts) carries
+only an operation ID, monotonic sequence, key revision, and AES-256-GCM
+ciphertext. Authenticated associated data binds the account, hashed server
+identity, `surface-private-state` component, terminal or Explorer ID,
+operation ID, request/input/response/output direction, sequence, format, and
+key revision. Reordering, replaying, changing direction, or moving ciphertext
+between accounts, servers, surfaces, or operations therefore fails closed.
+Workers reserve each input sequence before asynchronous decryption and process
+interactive terminal frames in arrival order. Completed-operation replay
+records are bounded.
+
+For Terminal, the client encrypts each input frame and decrypts worker-encrypted
+output frames. Resize, ready, exit, routing, and byte-shape metadata remain
+visible because the server must manage the connection. CLI snapshots and input
+use the same envelope: the source worker encrypts before calling the internal
+server route, the target worker opens and executes it, and the source worker
+opens the encrypted result for local presentation. The direct terminal adapter
+uses the identical protocol, including operation binding, ordered input, and
+replay rejection. Cantrip Server never receives terminal text or scrollback.
+
+For Explorer, one opaque POST replaces the former plaintext directory, commit,
+file, and media routes. The client encrypts relative operation paths and text
+writes; the worker encrypts directory entries, commit metadata and paths, file
+contents and versions, media type, and bounded 256 KiB media chunks. The client
+assembles decrypted media chunks into a local Blob URL. Worker-originated CLI
+list/read/write operations follow the same source-worker to server to
+target-worker relay and return plaintext only to the invoking local CLI. The
+server still sees authorized Explorer and worker placement, the repository or
+worktree root required to route execution, operation IDs, sequence, status,
+sizes, and timing. Repository identity and root-path encryption remain in the
+separate projects/worktrees/Git ledger row.
+
+These streams are transient and add no database columns or migration. Focused
+crypto, protocol, client/worker type checks, direct-terminal, worker CLI, and
+server relay tests cover authenticated round trips, exact-target routing,
+tampering/context rejection, replay rejection, protected output, and removal
+of the plaintext Explorer routes. The generated server boundary inventory
+also rejects trusted stream-content schemas and crypto helpers in production
+server code and records only the opaque Explorer operation, terminal WebSocket,
+and internal CLI contracts.
 
 ### Browser private state
 
@@ -1013,12 +1065,12 @@ tables) for sentinel plaintext, and verifies the legacy columns and private
 Remote Surface configuration are rejected. No user runtime or development
 database is connected to or reset by these tests.
 
-Terminal directory/service-command state, Explorer selected state, Browser
-URLs, and Remote Desktop selection/inventory therefore earn `E2EE complete`.
-Terminal interactive I/O; Explorer operation paths, entries, Git paths, and
-file/media contents; Browser content, cookies, credentials, profiles,
-screenshots, and frames; and Remote Desktop frames, input, clipboard, and
-binary relay encryption remain distinct planned ledger rows.
+Terminal directory/service-command state and interactive streams, Explorer
+selected state and operation streams, Browser URLs, and Remote Desktop
+selection/inventory therefore earn `E2EE complete`. Browser content, cookies,
+credentials, profiles, screenshots, and frames; Remote Desktop frames, input,
+clipboard, and binary relay encryption; and repository/worktree identity and
+root paths remain distinct planned ledger rows.
 
 ### Private display-label closure audit
 
@@ -1507,7 +1559,13 @@ counts, worker presence, model-route choices, and traffic patterns.
     selection/inventory and Browser URL persistence/navigation now use the
     independently scoped component. Git output stays under its appropriate
     future component; policy bodies are complete under `policy-content`.
-16. **Workflows and optional private analytics:** split scheduling metadata
+16. **Terminal and Explorer protected streams — complete:** terminal input,
+    output, and snapshots plus Explorer directory, commit, text-file, and
+    chunked-media operations use authenticated operation/sequence envelopes.
+    Client, direct-worker, server-relayed, and worker-originated CLI paths use
+    the same endpoint-only component grant; the server retains routing and
+    traffic-shape metadata but receives no stream plaintext.
+17. **Workflows and optional private analytics:** split scheduling metadata
     from encrypted definitions, inputs, and results, then minimize or relocate
     analytics according to the selected privacy mode.
 
