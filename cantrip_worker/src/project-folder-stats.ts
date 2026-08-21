@@ -9,18 +9,16 @@ import {
 
 export interface ProjectFolderStatsLimits {
   concurrency: number;
-  directoryEntries: number;
   durationMs: number;
-  files: number;
+  scannedFiles: number;
   singleTextFileBytes: number;
   textBytes: number;
 }
 
 const DEFAULT_LIMITS: ProjectFolderStatsLimits = {
   concurrency: 16,
-  directoryEntries: 100_000,
   durationMs: 10_000,
-  files: 50_000,
+  scannedFiles: 50_000,
   singleTextFileBytes: 8 * 1_024 * 1_024,
   textBytes: 256 * 1_024 * 1_024,
 };
@@ -81,15 +79,11 @@ export async function readProjectFolderStats(
   const directories = [root];
   const files: string[] = [];
   let directoryIndex = 0;
-  let entryCount = 0;
+  let fileCount = 0;
   let excludedFileCount = 0;
   let truncated = false;
 
   while (directoryIndex < directories.length) {
-    if (expired()) {
-      truncated = true;
-      break;
-    }
     const directoryPath = directories[directoryIndex++]!;
     try {
       const canonicalDirectory = await realpath(directoryPath);
@@ -103,11 +97,6 @@ export async function readProjectFolderStats(
       }
       const directory = await opendir(directoryPath);
       for await (const entry of directory) {
-        entryCount += 1;
-        if (entryCount > limits.directoryEntries || expired()) {
-          truncated = true;
-          break;
-        }
         if (entry.name === ".git") {
           excludedFileCount += 1;
           continue;
@@ -118,7 +107,8 @@ export async function readProjectFolderStats(
         } else if (entry.isDirectory()) {
           directories.push(entryPath);
         } else if (entry.isFile()) {
-          if (files.length >= limits.files) {
+          fileCount += 1;
+          if (files.length >= limits.scannedFiles) {
             excludedFileCount += 1;
             truncated = true;
           } else {
@@ -132,7 +122,6 @@ export async function readProjectFolderStats(
       excludedFileCount += 1;
       truncated = true;
     }
-    if (entryCount > limits.directoryEntries) break;
   }
 
   let nextFile = 0;
@@ -230,7 +219,7 @@ export async function readProjectFolderStats(
 
   return projectFolderStatsSchema.parse({
     kind: "folder",
-    fileCount: files.length,
+    fileCount,
     byteCount,
     textFileCount,
     lineCount: totalLineCount,

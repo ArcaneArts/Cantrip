@@ -68,7 +68,7 @@ describe("project folder statistics", () => {
     });
   });
 
-  it("returns a bounded partial result instead of failing the project", async () => {
+  it("counts every file when the content scan budget is exhausted", async () => {
     const root = await temporaryDirectory("bounded");
     await Promise.all([
       writeFile(path.join(root, "one.txt"), "one\n"),
@@ -76,10 +76,10 @@ describe("project folder statistics", () => {
     ]);
 
     await expect(
-      readProjectFolderStats(root, { files: 1 }),
+      readProjectFolderStats(root, { scannedFiles: 1 }),
     ).resolves.toMatchObject({
       kind: "folder",
-      fileCount: 1,
+      fileCount: 2,
       excludedFileCount: 1,
       truncated: true,
     });
