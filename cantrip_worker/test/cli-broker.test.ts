@@ -23,6 +23,11 @@ import type {
   EncryptionKeyGrant,
   EncryptionPrincipal,
 } from "@cantrip/protocol/encryption";
+import {
+  explorerOperationRequestContentSchema,
+  surfaceOperationOutcomeContentSchema,
+  surfaceStreamWireResponseSchema,
+} from "@cantrip/protocol/surface-stream";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -32,6 +37,10 @@ import {
 import { readWorkerLogs } from "../src/logger.js";
 import { TerminalManager } from "../src/terminal-manager.js";
 import { WorkerEncryptionService } from "../src/worker-encryption.js";
+import {
+  openWorkerSurfaceStreamContent,
+  protectWorkerSurfaceStreamContent,
+} from "../src/surface-stream-encryption.js";
 
 const directories: string[] = [];
 const originalConnection = process.env[CANTRIP_CLI_CONNECTION_ENV];
@@ -350,6 +359,148 @@ describe("Cantrip CLI worker broker", () => {
     expect(serializedLogs).toContain("chat-one");
     expect(serializedLogs).not.toContain("/workspace/project");
     expect(serializedLogs).not.toContain("worker-token");
+  });
+
+  it("keeps Explorer paths and file content opaque to the server executor", async () => {
+    const directory = await temporaryDirectory();
+    const binary = path.join(
+      directory,
+      process.platform === "win32" ? "cantrip.exe" : "cantrip",
+    );
+    await writeFile(binary, "stub");
+    if (process.platform !== "win32") await chmod(binary, 0o755);
+    const serverId = "https://cantrip.example";
+    const ownerId = "explorer-cli-owner";
+    const surfaceId = "explorer-private";
+    const sentinelPath = "private/customer-notes.md";
+    const sentinelContent = "private Explorer file content";
+    const componentKey = randomBytes(32);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const relayed: unknown[] = [];
+    const broker = new CantripCliBroker(
+      {
+        dataDirectory: path.join(directory, "worker-data"),
+        serverUrl: serverId,
+        token: "worker-token",
+        workerId: "worker-example",
+      },
+      {
+        binary,
+        execute: async (request) => {
+          relayed.push(request);
+          if (request.command === "target.resolve-explorer") {
+            return {
+              summary: "Explorer resolved.",
+              target: {
+                kind: "surface",
+                projectId: "project-one",
+                surfaceKind: "explorer",
+                surfaceId,
+              },
+              worktreeId: "worktree-one",
+              data: { serverId },
+            };
+          }
+          if (request.command !== "explorer.read") {
+            throw new Error("Unexpected command.");
+          }
+          const operationId = String(request.arguments.operationId);
+          const sequence = Number(request.arguments.sequence);
+          const opened = await openWorkerSurfaceStreamContent({
+            context: {
+              serverId,
+              surfaceKind: "explorer",
+              surfaceId,
+              operationId,
+              direction: "request",
+              sequence,
+            },
+            opaque: request.arguments.protectedRequest,
+            schema: explorerOperationRequestContentSchema,
+            service,
+          });
+          expect(opened).toEqual({
+            type: "explorer.file.read",
+            path: sentinelPath,
+          });
+          const protectedResponse = await protectWorkerSurfaceStreamContent({
+            context: {
+              serverId,
+              surfaceKind: "explorer",
+              surfaceId,
+              operationId,
+              direction: "response",
+              sequence,
+            },
+            content: {
+              ok: true as const,
+              result: {
+                type: "explorer.file" as const,
+                value: {
+                  path: sentinelPath,
+                  content: sentinelContent,
+                  size: sentinelContent.length,
+                  markdown: true,
+                  version: "a".repeat(64),
+                },
+              },
+            },
+            schema: surfaceOperationOutcomeContentSchema,
+            service,
+          });
+          return {
+            summary: "Encrypted Explorer operation completed.",
+            target: {
+              kind: "surface",
+              projectId: "project-one",
+              surfaceKind: "explorer",
+              surfaceId,
+            },
+            worktreeId: "worktree-one",
+            data: surfaceStreamWireResponseSchema.parse({
+              operationId,
+              sequence,
+              protectedResponse,
+            }),
+          };
+        },
+      },
+    );
+    broker.setSurfacePrivateStateService(service);
+    const connection = await broker.start();
+    try {
+      const response = await fetch(`${connection.endpoint}/v1/execute`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${connection.sessionToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "explorer.read",
+          context: {
+            codexThreadId: null,
+            terminalId: null,
+            cwd: "/workspace/project",
+          },
+          arguments: { target: surfaceId, path: sentinelPath },
+        }),
+      });
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({
+        data: { path: sentinelPath, content: sentinelContent },
+      });
+      const serialized = JSON.stringify(relayed);
+      expect(serialized).not.toContain(sentinelPath);
+      expect(serialized).not.toContain(sentinelContent);
+    } finally {
+      await broker.close();
+    }
   });
 
   it("encrypts browser URLs on the worker before relaying the command", async () => {

@@ -180,6 +180,10 @@ export class WorkerEncryptionService {
   #ownerId: string | null;
   #status: WorkerEncryptionStatus;
 
+  serverIdentity(): string {
+    return this.serverId;
+  }
+
   private constructor(
     private readonly pathname: string,
     private readonly serverId: string,

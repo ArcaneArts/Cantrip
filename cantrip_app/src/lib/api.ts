@@ -278,6 +278,14 @@ import {
   chatAttachmentOpaqueListSchema,
   chatAttachmentOpaqueSummarySchema,
 } from "@cantrip/protocol/attachment-content";
+import {
+  explorerOperationRequestContentSchema,
+  explorerOperationResultContentSchema,
+  surfaceOperationOutcomeContentSchema,
+  surfaceStreamWireResponseSchema,
+  type ExplorerOperationRequestContent,
+  type ExplorerOperationResultContent,
+} from "@cantrip/protocol/surface-stream";
 import type {
   AccountRegistration,
   AuthLogin,
@@ -402,6 +410,10 @@ import {
 import { getActiveServerUrl } from "@/lib/server-connections";
 import { chatTitleEncryption } from "@/lib/chat-title-encryption";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
+import {
+  openSurfaceStreamContent,
+  protectSurfaceStreamContent,
+} from "@/lib/surface-stream-encryption";
 import {
   createInitialTaskOpaqueContent,
   openTaskOpaqueSummary,
@@ -3902,60 +3914,181 @@ export async function deleteProjectView(viewId: string) {
   });
 }
 
-export async function getExplorerDirectory(explorerId: string, path: string) {
-  return explorerDirectorySchema.parse(
+async function executeExplorerOperation(
+  explorerId: string,
+  content: ExplorerOperationRequestContent,
+  operationId = crypto.randomUUID(),
+  sequence = 0,
+): Promise<ExplorerOperationResultContent> {
+  const protectedRequest = await protectSurfaceStreamContent({
+    context: {
+      surfaceKind: "explorer",
+      surfaceId: explorerId,
+      operationId,
+      direction: "request",
+      sequence,
+    },
+    content,
+    schema: explorerOperationRequestContentSchema,
+  });
+  const wire = surfaceStreamWireResponseSchema.parse(
     await request(
-      `/api/explorers/${encodeURIComponent(explorerId)}/directory?path=${encodeURIComponent(path)}`,
+      `/api/explorers/${encodeURIComponent(explorerId)}/operation`,
+      {
+        method: "POST",
+        body: JSON.stringify({ operationId, sequence, protectedRequest }),
+      },
     ),
   );
+  if (wire.operationId !== operationId || wire.sequence !== sequence) {
+    throw new Error("Explorer returned a stale protected operation.");
+  }
+  const outcome = await openSurfaceStreamContent({
+    context: {
+      surfaceKind: "explorer",
+      surfaceId: explorerId,
+      operationId,
+      direction: "response",
+      sequence,
+    },
+    opaque: wire.protectedResponse,
+    schema: surfaceOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new Error(outcome.error);
+  return explorerOperationResultContentSchema.parse(outcome.result);
+}
+
+export async function getExplorerDirectory(explorerId: string, path: string) {
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.directory.list",
+    path,
+  });
+  if (result.type !== "explorer.directory.list") {
+    throw new Error("Explorer returned an unexpected directory result.");
+  }
+  return explorerDirectorySchema.parse(result.value);
 }
 
 export async function getExplorerDirectoryCommits(
   explorerId: string,
   path: string,
 ) {
-  return explorerDirectoryCommitsSchema.parse(
-    await request(
-      `/api/explorers/${encodeURIComponent(explorerId)}/directory/commits?path=${encodeURIComponent(path)}`,
-    ),
-  );
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.directory.commits",
+    path,
+  });
+  if (result.type !== "explorer.directory.commits") {
+    throw new Error("Explorer returned unexpected commit metadata.");
+  }
+  return explorerDirectoryCommitsSchema.parse(result.value);
 }
 
 export async function getExplorerFile(explorerId: string, path: string) {
-  return explorerFileSchema.parse(
-    await request(
-      `/api/explorers/${encodeURIComponent(explorerId)}/file?path=${encodeURIComponent(path)}`,
-    ),
-  );
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.file.read",
+    path,
+  });
+  if (result.type !== "explorer.file") {
+    throw new Error("Explorer returned an unexpected file result.");
+  }
+  return explorerFileSchema.parse(result.value);
 }
 
-export function explorerMediaContentUrl(
+function decodeExplorerMediaBytes(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+export async function loadExplorerMedia(
   explorerId: string,
   path: string,
-  revision = 0,
-): string {
-  return `${getActiveServerUrl()}/api/explorers/${encodeURIComponent(explorerId)}/media?path=${encodeURIComponent(path)}&revision=${revision}`;
+): Promise<Blob> {
+  const operationId = crypto.randomUUID();
+  const parts: BlobPart[] = [];
+  let offset = 0;
+  let sequence = 0;
+  let expected:
+    | { kind: string; mimeType: string; modifiedAt: string; size: number }
+    | undefined;
+  for (;;) {
+    const result = await executeExplorerOperation(
+      explorerId,
+      {
+        type: "explorer.media.read",
+        path,
+        offset,
+        limit: 256 * 1_024,
+      },
+      operationId,
+      sequence,
+    );
+    if (result.type !== "explorer.media") {
+      throw new Error("Explorer returned an unexpected media result.");
+    }
+    const chunk = result.value;
+    if (chunk.path !== path || chunk.offset !== offset) {
+      throw new Error("Explorer returned stale protected media content.");
+    }
+    const metadata = {
+      kind: chunk.kind,
+      mimeType: chunk.mimeType,
+      modifiedAt: chunk.modifiedAt,
+      size: chunk.size,
+    };
+    if (expected && JSON.stringify(expected) !== JSON.stringify(metadata)) {
+      throw new Error("Explorer media changed while it was loading.");
+    }
+    expected ??= metadata;
+    const bytes = decodeExplorerMediaBytes(chunk.data);
+    if (offset + bytes.byteLength > chunk.size) {
+      throw new Error("Explorer returned oversized protected media content.");
+    }
+    parts.push(new Uint8Array(bytes).buffer as ArrayBuffer);
+    offset += bytes.byteLength;
+    sequence += 1;
+    if (chunk.eof) {
+      if (offset !== chunk.size) {
+        throw new Error(
+          "Explorer returned incomplete protected media content.",
+        );
+      }
+      return new Blob(parts, { type: chunk.mimeType });
+    }
+    if (bytes.byteLength === 0) {
+      throw new Error("Explorer protected media stream stopped progressing.");
+    }
+  }
 }
 
 export async function saveExplorerFile(
   explorerId: string,
   input: ExplorerFileWrite,
 ) {
-  return explorerFileSchema.parse(
-    await request(`/api/explorers/${encodeURIComponent(explorerId)}/file`, {
-      method: "PUT",
-      body: JSON.stringify(explorerFileWriteSchema.parse(input)),
-    }),
-  );
+  const result = await executeExplorerOperation(explorerId, {
+    type: "explorer.file.write",
+    ...explorerFileWriteSchema.parse(input),
+  });
+  if (result.type !== "explorer.file") {
+    throw new Error("Explorer returned an unexpected saved file result.");
+  }
+  return explorerFileSchema.parse(result.value);
 }
 
-export function terminalWebSocketUrl(terminalId: string): string {
+export function terminalWebSocketUrl(
+  terminalId: string,
+  operationId: string,
+): string {
   const serverUrl = getActiveServerUrl();
   const url = new URL(
     `/api/terminals/${encodeURIComponent(terminalId)}/connect`,
     serverUrl || window.location.origin,
   );
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("operationId", operationId);
   return url.toString();
 }
 

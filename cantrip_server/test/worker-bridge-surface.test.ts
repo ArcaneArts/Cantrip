@@ -69,7 +69,21 @@ describe("WorkerBridge Remote Surface transport", () => {
     const response = bridge.request("worker-1", {
       type: "terminal.input",
       terminalId: "terminal-1",
-      data: secretInput,
+      serverId: "https://cantrip.example",
+      operationId: "operation-1",
+      sequence: 0,
+      complete: true,
+      protectedData: {
+        formatVersion: 1,
+        keyRevision: 1,
+        envelope: {
+          version: 1,
+          algorithm: "AES-256-GCM",
+          keyRevision: 1,
+          nonce: "AAAAAAAAAAAAAAAA",
+          ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+        },
+      },
     });
     const request = JSON.parse(String(socket.sent.at(-1))) as {
       requestId: string;

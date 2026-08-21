@@ -1,4 +1,5 @@
 import { mkdtemp, rm } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -15,6 +16,7 @@ import {
   type WorkerCommand,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { surfaceStreamOpaqueSchema } from "@cantrip/protocol/surface-stream";
 
 import { buildApp } from "../src/app.js";
 import type { ServerConfig } from "../src/config.js";
@@ -55,6 +57,25 @@ const config: ServerConfig = {
 
 const connectedWorkers = new Set(["worker-alpha", "worker-beta"]);
 const routedCommands: Array<{ workerId: string; command: WorkerCommand }> = [];
+const protectedSurfacePayload = surfaceStreamOpaqueSchema.parse({
+  formatVersion: 1,
+  keyRevision: 1,
+  envelope: {
+    version: 1,
+    algorithm: "AES-256-GCM",
+    keyRevision: 1,
+    nonce: "AAAAAAAAAAAAAAAA",
+    ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+  },
+});
+function protectedSurfaceArguments(target: string) {
+  return {
+    target,
+    operationId: randomUUID(),
+    sequence: 0,
+    protectedRequest: protectedSurfacePayload,
+  };
+}
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -73,50 +94,22 @@ const workerBridge: WorkerCommandBus = {
   async request(workerId, command) {
     routedCommands.push({ workerId, command });
     switch (command.type) {
-      case "explorer.directory.list":
+      case "explorer.operation":
         return {
-          path: command.path,
-          entries: [
-            {
-              name: "README.md",
-              path: "README.md",
-              kind: "file",
-              size: 12,
-              modifiedAt: "2026-08-12T00:00:00.000Z",
-              viewable: true,
-              markdown: true,
-            },
-          ],
-          truncated: false,
-        };
-      case "explorer.file.read":
-        return {
-          path: command.path,
-          content: "cross-worker file content",
-          size: 25,
-          markdown: true,
-          version: "a".repeat(64),
-        };
-      case "explorer.file.write":
-        return {
-          path: command.path,
-          content: command.content,
-          size: Buffer.byteLength(command.content),
-          markdown: command.path.endsWith(".md"),
-          version: "b".repeat(64),
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse: protectedSurfacePayload,
         };
       case "terminal.input":
+      case "terminal.snapshot":
+        return {
+          operationId: command.operationId,
+          sequence: command.sequence,
+          protectedResponse: protectedSurfacePayload,
+        };
       case "terminal.service.restart":
       case "surface.configure":
         return { accepted: true };
-      case "terminal.snapshot":
-        return {
-          terminalId: command.terminalId,
-          status: "running",
-          data: "cross-worker terminal output",
-          truncated: false,
-          exitCode: null,
-        };
       case "worktree.status":
         return {
           worktree: {
@@ -922,31 +915,28 @@ describe.sequential("project execution placement API", () => {
       ]),
     });
     const cliTerminal = await cli("terminal.read", {
-      target: terminal.id,
+      ...protectedSurfaceArguments(terminal.id),
     });
-    expect(cliTerminal.statusCode).toBe(200);
+    expect(cliTerminal.statusCode, JSON.stringify(cliTerminal.json())).toBe(
+      200,
+    );
     expect(
       cantripCliCommandResultSchema.parse(cliTerminal.json()).data,
-    ).toMatchObject({
-      terminalId: terminal.id,
-      data: "cross-worker terminal output",
-    });
+    ).toMatchObject({ protectedResponse: protectedSurfacePayload });
     const cliExplorerList = await cli("explorer.list", {
-      target: explorer.id,
-      path: ".",
+      ...protectedSurfaceArguments(explorer.id),
     });
     expect(cliExplorerList.statusCode).toBe(200);
     expect(
       cantripCliCommandResultSchema.parse(cliExplorerList.json()).data,
-    ).toMatchObject({ entries: [{ name: "README.md" }] });
+    ).toMatchObject({ protectedResponse: protectedSurfacePayload });
     const cliExplorerRead = await cli("explorer.read", {
-      target: explorer.id,
-      path: "README.md",
+      ...protectedSurfaceArguments(explorer.id),
     });
     expect(cliExplorerRead.statusCode).toBe(200);
     expect(
       cantripCliCommandResultSchema.parse(cliExplorerRead.json()).data,
-    ).toMatchObject({ content: "cross-worker file content" });
+    ).toMatchObject({ protectedResponse: protectedSurfacePayload });
     const cliBrowserServices = await cli("browser.services", {
       target: browser.id,
     });
@@ -967,7 +957,7 @@ describe.sequential("project execution placement API", () => {
       expect.arrayContaining([
         expect.objectContaining({
           workerId: "worker-beta",
-          command: expect.objectContaining({ type: "explorer.directory.list" }),
+          command: expect.objectContaining({ type: "explorer.operation" }),
         }),
         expect.objectContaining({
           workerId: "worker-beta",
@@ -1003,9 +993,7 @@ describe.sequential("project execution placement API", () => {
       },
     );
     const cliWrite = await cli("explorer.write", {
-      target: explorer.id,
-      path: "README.md",
-      content: "updated cross-worker content",
+      ...protectedSurfaceArguments(explorer.id),
     });
     expect(cliWrite.statusCode).toBe(200);
     expect(cantripCliCommandResultSchema.parse(cliWrite.json())).toMatchObject({
@@ -1015,14 +1003,10 @@ describe.sequential("project execution placement API", () => {
         surfaceId: explorer.id,
       },
       mutated: true,
-      data: { path: "README.md", size: 28, version: "b".repeat(64) },
+      data: { protectedResponse: protectedSurfacePayload },
     });
-    expect(JSON.stringify(cliWrite.json())).not.toContain(
-      "updated cross-worker content",
-    );
     const cliInput = await cli("terminal.send", {
-      target: terminal.id,
-      data: "status\r",
+      ...protectedSurfaceArguments(terminal.id),
     });
     expect(cliInput.statusCode).toBe(200);
     expect(cantripCliCommandResultSchema.parse(cliInput.json()).mutated).toBe(
@@ -1055,9 +1039,8 @@ describe.sequential("project execution placement API", () => {
         {
           workerId: "worker-beta",
           command: expect.objectContaining({
-            type: "explorer.file.write",
-            path: "README.md",
-            version: "a".repeat(64),
+            type: "explorer.operation",
+            protectedRequest: protectedSurfacePayload,
           }),
         },
         {
@@ -1065,7 +1048,7 @@ describe.sequential("project execution placement API", () => {
           command: expect.objectContaining({
             type: "terminal.input",
             terminalId: terminal.id,
-            data: "status\r",
+            protectedData: protectedSurfacePayload,
           }),
         },
         {

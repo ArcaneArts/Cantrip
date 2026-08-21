@@ -9,7 +9,6 @@ import {
   type TerminalOpenResult,
   type TerminalSnapshotResult,
   type WorkerCommand,
-  type WorkerEvent,
 } from "@cantrip/protocol";
 import * as pty from "node-pty";
 
@@ -44,6 +43,9 @@ function ensureSpawnHelperExecutable(): void {
   }
 }
 
+export type TerminalRuntimeEvent =
+  { type: "terminal.ready" } | { type: "terminal.output"; data: string };
+
 interface TerminalSession {
   buffer: string;
   cols: number;
@@ -57,7 +59,7 @@ interface TerminalSession {
   restartTimer: ReturnType<typeof setTimeout> | null;
   rows: number;
   startedAtMs: number | null;
-  subscribers: Map<string, (event: WorkerEvent) => void>;
+  subscribers: Map<string, (event: TerminalRuntimeEvent) => void>;
   waiters: Map<string, (result: TerminalOpenResult) => void>;
 }
 
@@ -265,7 +267,7 @@ export class TerminalManager {
     cols: number,
     rows: number,
     launch: TerminalLaunch,
-    emit: (event: WorkerEvent) => void,
+    emit: (event: TerminalRuntimeEvent) => void,
   ): Promise<TerminalOpenResult> {
     const service = this.#services.get(terminalId);
     if (service) {
@@ -347,7 +349,7 @@ export class TerminalManager {
     attachmentId: string,
     cols: number,
     rows: number,
-    emit: (event: WorkerEvent) => void,
+    emit: (event: TerminalRuntimeEvent) => void,
   ): Promise<TerminalOpenResult> {
     const session = this.#sessions.get(terminalId);
     if (!session) {
@@ -455,7 +457,7 @@ export class TerminalManager {
     attachmentId: string,
     cols: number,
     rows: number,
-    emit: (event: WorkerEvent) => void,
+    emit: (event: TerminalRuntimeEvent) => void,
   ): Promise<TerminalOpenResult> {
     session.cols = cols;
     session.rows = rows;

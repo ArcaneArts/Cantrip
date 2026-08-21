@@ -5,12 +5,24 @@ import {
   terminalClientMessageSchema,
   terminalServerMessageSchema,
   type TunnelDataPlaneTarget,
-  type WorkerEvent,
 } from "@cantrip/protocol";
+import {
+  terminalInputContentSchema,
+  terminalOutputContentSchema,
+} from "@cantrip/protocol/surface-stream";
 import WebSocket, { WebSocketServer, type RawData } from "ws";
 
-import type { TerminalManager } from "./terminal-manager.js";
+import type {
+  TerminalManager,
+  TerminalRuntimeEvent,
+} from "./terminal-manager.js";
 import { workerLogError, workerLogger } from "./logger.js";
+import {
+  openWorkerSurfaceStreamContent,
+  protectWorkerSurfaceStreamContent,
+  type SurfaceStreamReplayGuard,
+} from "./surface-stream-encryption.js";
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 interface Endpoint {
   server: HttpServer;
@@ -27,8 +39,18 @@ function rawText(data: RawData): string {
 
 export class TerminalDirectEndpointManager {
   readonly #endpoints = new Map<string, Endpoint>();
+  #encryption: WorkerEncryptionService | null = null;
+  #replay: SurfaceStreamReplayGuard | null = null;
 
   constructor(private readonly terminals: TerminalManager) {}
+
+  setEncryptionService(
+    service: WorkerEncryptionService,
+    replay: SurfaceStreamReplayGuard,
+  ): void {
+    this.#encryption = service;
+    this.#replay = replay;
+  }
 
   async prepare(
     capabilityId: string,
@@ -40,22 +62,38 @@ export class TerminalDirectEndpointManager {
     });
     const webSockets = new WebSocketServer({
       noServer: true,
-      maxPayload: 100_000,
+      maxPayload: 200_000,
     });
+    const operations = new WeakMap<WebSocket, string>();
     const endpoint: Endpoint = { server, sockets: new Set() };
     server.on("upgrade", (request, socket, head) => {
-      if (request.url !== "/terminal" || endpoint.sockets.size > 0) {
+      const requestUrl = new URL(request.url ?? "", "http://localhost");
+      const operationId = requestUrl.searchParams.get("operationId");
+      if (
+        requestUrl.pathname !== "/terminal" ||
+        !operationId ||
+        operationId.length > 200 ||
+        endpoint.sockets.size > 0 ||
+        !this.#encryption ||
+        !this.#replay
+      ) {
         socket.destroy();
         return;
       }
       webSockets.handleUpgrade(request, socket, head, (client) => {
+        operations.set(client, operationId);
         webSockets.emit("connection", client, request);
       });
     });
     webSockets.on("connection", (socket) => {
+      const operationId = operations.get(socket);
+      if (!operationId) {
+        socket.close(1008, "Terminal stream operation unavailable");
+        return;
+      }
       endpoint.sockets.add(socket);
       server.close();
-      this.#attach(terminalId, socket);
+      this.#attach(terminalId, operationId, socket);
       socket.once("close", () => endpoint.sockets.delete(socket));
     });
     await new Promise<void>((resolve, reject) => {
@@ -107,8 +145,21 @@ export class TerminalDirectEndpointManager {
     }
   }
 
-  #attach(terminalId: string, socket: WebSocket): void {
+  #attach(terminalId: string, operationId: string, socket: WebSocket): void {
+    const encryption = this.#encryption;
+    const replay = this.#replay;
+    if (!encryption || !replay) {
+      socket.close(1011, "Terminal encryption unavailable");
+      return;
+    }
     const attachmentId = `direct:${randomUUID()}`;
+    const inputContext = {
+      serverId: encryption.serverIdentity(),
+      surfaceKind: "terminal" as const,
+      surfaceId: terminalId,
+      operationId,
+      direction: "input" as const,
+    };
     const startedAtMs = Date.now();
     workerLogger.event("info", "Direct terminal client connected", {
       event: "terminal.direct.connected",
@@ -128,6 +179,7 @@ export class TerminalDirectEndpointManager {
       if (detached) return;
       detached = true;
       this.terminals.detach(terminalId, attachmentId);
+      replay.release(inputContext);
       workerLogger.event("info", "Direct terminal client disconnected", {
         event: "terminal.direct.disconnected",
         subsystem: "terminal",
@@ -138,43 +190,78 @@ export class TerminalDirectEndpointManager {
         durationMs: Date.now() - startedAtMs,
       });
     };
+    let inputQueue = Promise.resolve();
     socket.on("message", (data, isBinary) => {
       if (isBinary) {
         send({ type: "error", message: "Terminal messages must be text." });
         return;
       }
-      try {
-        const message = terminalClientMessageSchema.parse(
-          JSON.parse(rawText(data)),
-        );
-        if (message.type === "input") {
-          this.terminals.input(terminalId, message.data);
-        } else {
-          this.terminals.resize(terminalId, message.cols, message.rows);
-        }
-      } catch (error) {
-        send({
-          type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Invalid terminal message.",
+      inputQueue = inputQueue
+        .then(async () => {
+          const message = terminalClientMessageSchema.parse(
+            JSON.parse(rawText(data)),
+          );
+          if (message.type === "input") {
+            if (message.operationId !== operationId) {
+              throw new Error("Terminal stream operation does not match.");
+            }
+            const context = {
+              ...inputContext,
+              sequence: message.sequence,
+            };
+            replay.reserve(context);
+            const content = await openWorkerSurfaceStreamContent({
+              context,
+              opaque: message.protectedData,
+              schema: terminalInputContentSchema,
+              service: encryption,
+            });
+            this.terminals.input(terminalId, content.data);
+            replay.accept(context, false);
+          } else {
+            this.terminals.resize(terminalId, message.cols, message.rows);
+          }
+        })
+        .catch(() => {
+          send({
+            type: "error",
+            message: "Invalid protected terminal message.",
+          });
         });
-      }
     });
     socket.once("close", detach);
     socket.once("error", detach);
     let opened: ReturnType<TerminalManager["attachExisting"]>;
+    let outputSequence = 0;
+    let outputQueue = Promise.resolve();
     try {
       opened = this.terminals.attachExisting(
         terminalId,
         attachmentId,
         80,
         24,
-        (event: WorkerEvent) => {
+        (event: TerminalRuntimeEvent) => {
           if (event.type === "terminal.ready") send({ type: "ready" });
           else if (event.type === "terminal.output") {
-            send({ type: "output", data: event.data });
+            const sequence = outputSequence;
+            outputSequence += 1;
+            outputQueue = outputQueue.then(async () => {
+              send({
+                type: "output",
+                operationId,
+                sequence,
+                protectedData: await protectWorkerSurfaceStreamContent({
+                  context: {
+                    ...inputContext,
+                    direction: "output",
+                    sequence,
+                  },
+                  content: event,
+                  schema: terminalOutputContentSchema,
+                  service: encryption,
+                }),
+              });
+            });
           }
         },
       );
@@ -198,7 +285,8 @@ export class TerminalDirectEndpointManager {
       return;
     }
     void opened
-      .then((result) => {
+      .then(async (result) => {
+        await outputQueue;
         if (result.status === "exited") send({ type: "exit", ...result });
       })
       .catch((error: unknown) => {

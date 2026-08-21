@@ -11,6 +11,10 @@ const liveProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/live.ts",
 );
+const surfaceStreamProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/surface-stream.ts",
+);
 const repositoryFiles = [
   "encryption-registry.ts",
   "project-automations.ts",
@@ -216,6 +220,19 @@ const prohibitedSurfacePrivateStateContentSymbols = new Set([
   "remoteDesktopPrivateStateProtectedContentSchema",
   "surfacePrivateStateProtectedContentSchema",
   "terminalPrivateStateProtectedContentSchema",
+]);
+
+const prohibitedSurfaceStreamContentSymbols = new Set([
+  "ExplorerOperationRequestContent",
+  "ExplorerOperationResultContent",
+  "SurfaceOperationOutcomeContent",
+  "explorerOperationRequestContentSchema",
+  "explorerOperationResultContentSchema",
+  "surfaceOperationOutcomeContentSchema",
+  "terminalInputContentSchema",
+  "terminalOutputContentSchema",
+  "terminalSnapshotContentSchema",
+  "terminalSnapshotRequestContentSchema",
 ]);
 
 const prohibitedSurfacePrivateStateFields = [
@@ -508,6 +525,44 @@ async function surfacePrivateStateProductionDependencyAudit() {
   return {
     productionCryptoImports: 0,
     prohibitedTrustedSurfaceStateImports: 0,
+    opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
+  };
+}
+
+async function surfaceStreamProductionDependencyAudit() {
+  const files = await typescriptFiles(serverSourcePath);
+  const failures = [];
+  const opaqueProtocolSources = [];
+  for (const file of files) {
+    const sourceText = await readFile(file, "utf8");
+    const relativeFile = file.slice(repositoryRoot.length + 1);
+    const imports = namedImportsFrom(
+      sourceText,
+      "@cantrip/protocol/surface-stream",
+    );
+    if (imports.length > 0) opaqueProtocolSources.push(relativeFile);
+    for (const symbol of imports) {
+      if (prohibitedSurfaceStreamContentSymbols.has(symbol)) {
+        failures.push(
+          `${relativeFile}: prohibited trusted surface-stream content symbol ${symbol}`,
+        );
+      }
+    }
+    for (const match of sourceText.matchAll(
+      /\b(?:decryptSurfaceStreamPayload|encryptSurfaceStreamPayload|open(?:Client|Worker)SurfaceStreamContent|protect(?:Client|Worker)SurfaceStreamContent)\b/gu,
+    )) {
+      failures.push(
+        `${relativeFile}:${lineForOffset(sourceText, match.index)} references trusted surface-stream endpoint code (${match[0]})`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Cantrip Server crossed the surface-stream E2EE boundary:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    prohibitedTrustedSurfaceStreamImports: 0,
     opaqueProtocolSources: [...new Set(opaqueProtocolSources)].sort(),
   };
 }
@@ -1186,6 +1241,74 @@ function surfacePrivateStateRouteBoundaryAudit(routes) {
   );
 }
 
+function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
+  const failures = [];
+  const requirements = [
+    [
+      "POST",
+      "/api/explorers/:explorerId/operation",
+      "surfaceStreamWireRequestSchema",
+      "opaque-explorer-operation",
+    ],
+    [
+      "GET",
+      "/api/terminals/:terminalId/connect",
+      "protectedData: message.data.protectedData",
+      "opaque-terminal-websocket",
+    ],
+    [
+      "POST",
+      "/api/internal/cli",
+      "executeCliCommand",
+      "worker-encrypted-surface-cli",
+    ],
+  ];
+  const contracts = [];
+  for (const [method, path, marker, contract] of requirements) {
+    const route = routes.find(
+      (candidate) => candidate.method === method && candidate.path === path,
+    );
+    if (!route || !route.source.includes(marker)) {
+      failures.push(
+        `Surface-stream route contract is missing ${method} ${path} (${marker}).`,
+      );
+      continue;
+    }
+    contracts.push({ contract, method, path });
+  }
+  for (const path of [
+    "/api/explorers/:explorerId/directory",
+    "/api/explorers/:explorerId/directory/commits",
+    "/api/explorers/:explorerId/file",
+    "/api/explorers/:explorerId/media",
+  ]) {
+    if (routes.some((route) => route.path === path)) {
+      failures.push(`Legacy plaintext Explorer route remains: ${path}.`);
+    }
+  }
+  for (const marker of [
+    "surfaceStreamWireArgument(call.arguments)",
+    'operation: "explorer.list"',
+    'operation: "terminal.read"',
+    'operation: "terminal.input"',
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`Protected surface CLI relay is missing ${marker}.`);
+    }
+  }
+  if (/send\(\{\s*type:\s*"output",\s*data:/u.test(applicationText)) {
+    failures.push("Terminal WebSocket still sends plaintext output data.");
+  }
+  if (failures.length > 0) {
+    throw new Error(failures.join("\n"));
+  }
+  return contracts.sort(
+    (left, right) =>
+      left.path.localeCompare(right.path) ||
+      left.method.localeCompare(right.method),
+  );
+}
+
 function methodBody(sourceText, methodName) {
   const expression = new RegExp(
     `^  (?:private\\s+)?async\\s+${methodName}\\s*\\(`,
@@ -1745,6 +1868,113 @@ function declarationInitializer(sourceText, declarationName, opener) {
   return sourceText.slice(start, end + 1);
 }
 
+function surfaceStreamProtocolBoundaryAudit(protocolText, streamProtocolText) {
+  const failures = [];
+  const terminalClient = declarationInitializer(
+    protocolText,
+    "terminalClientMessageSchema",
+    "(",
+  );
+  const terminalServer = declarationInitializer(
+    protocolText,
+    "terminalServerMessageSchema",
+    "(",
+  );
+  const workerCommands = declarationInitializer(
+    protocolText,
+    "workerCommandSchema",
+    "(",
+  );
+  const workerEvents = declarationInitializer(
+    protocolText,
+    "workerEventSchema",
+    "(",
+  );
+  for (const [name, initializer, type] of [
+    ["terminal client input", terminalClient, "input"],
+    ["terminal server output", terminalServer, "output"],
+  ]) {
+    if (
+      !initializer.includes("protectedData: surfaceStreamOpaqueSchema") ||
+      new RegExp(
+        `type:\\s*z\\.literal\\(["']${type}["']\\)[\\s\\S]{0,300}\\bdata\\s*:`,
+        "u",
+      ).test(initializer)
+    ) {
+      failures.push(`${name}: plaintext or missing opaque contract`);
+    }
+  }
+  for (const [command, expression] of [
+    [
+      "explorer.operation",
+      /type:\s*z\.literal\(["']explorer\.operation["']\)[\s\S]{0,500}surfaceStreamWireRequestSchema\.shape/u,
+    ],
+    [
+      "terminal.input",
+      /type:\s*z\.literal\(["']terminal\.input["']\)[\s\S]{0,500}protectedData:\s*surfaceStreamOpaqueSchema/u,
+    ],
+    [
+      "terminal.snapshot",
+      /type:\s*z\.literal\(["']terminal\.snapshot["']\)[\s\S]{0,500}surfaceStreamWireRequestSchema\.shape/u,
+    ],
+  ]) {
+    if (!expression.test(workerCommands)) {
+      failures.push(`worker command ${command}: opaque contract regressed`);
+    }
+  }
+  if (
+    !/type:\s*z\.literal\(["']terminal\.output["']\)[\s\S]{0,300}protectedData:\s*surfaceStreamOpaqueSchema/u.test(
+      workerEvents,
+    )
+  ) {
+    failures.push("worker terminal.output event: opaque contract regressed");
+  }
+  for (const legacyCommand of [
+    "explorer.directory.list",
+    "explorer.directory.commits",
+    "explorer.file.read",
+    "explorer.file.write",
+    "explorer.media.read",
+  ]) {
+    if (workerCommands.includes(`z.literal("${legacyCommand}")`)) {
+      failures.push(
+        `legacy plaintext worker command remains: ${legacyCommand}`,
+      );
+    }
+  }
+  for (const marker of [
+    "surfaceStreamWireRequestSchema",
+    "protectedRequest: surfaceStreamOpaqueSchema",
+    "surfaceStreamWireResponseSchema",
+    "protectedResponse: surfaceStreamOpaqueSchema",
+    "surfaceStreamContextSchema",
+  ]) {
+    if (!streamProtocolText.includes(marker)) {
+      failures.push(`surface stream protocol is missing ${marker}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Surface-stream protocol boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    guards: [
+      "terminal-client-input:opaque",
+      "terminal-worker-output:opaque",
+      "explorer-operations:single-opaque-command",
+      "surface-stream:operation-direction-sequence-bound",
+      "legacy-explorer-commands:absent",
+    ],
+    workerCommandContracts: [
+      "explorer.operation",
+      "terminal.input",
+      "terminal.snapshot",
+      "terminal.output",
+    ],
+  };
+}
+
 async function surfacePrivateStateRepositoryBoundaryAudit(protocolText) {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/repository.ts");
@@ -1972,6 +2202,7 @@ async function buildInventory() {
     sourceText,
     protocolText,
     liveProtocolText,
+    surfaceStreamProtocolText,
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
@@ -1982,10 +2213,12 @@ async function buildInventory() {
     privateDisplayLabelDependencies,
     privateDisplayLabelRepository,
     surfacePrivateStateDependencies,
+    surfaceStreamDependencies,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
     readFile(protocolPath, "utf8"),
     readFile(liveProtocolPath, "utf8"),
+    readFile(surfaceStreamProtocolPath, "utf8"),
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
@@ -1996,15 +2229,24 @@ async function buildInventory() {
     privateDisplayLabelProductionDependencyAudit(),
     privateDisplayLabelRepositoryBoundaryAudit(),
     surfacePrivateStateProductionDependencyAudit(),
+    surfaceStreamProductionDependencyAudit(),
   ]);
   const surfacePrivateStateRepository =
     await surfacePrivateStateRepositoryBoundaryAudit(protocolText);
+  const surfaceStreamProtocol = surfaceStreamProtocolBoundaryAudit(
+    protocolText,
+    surfaceStreamProtocolText,
+  );
   const parsedRoutes = parseRoutes(sourceText);
   const taskRouteContracts = taskRouteBoundaryAudit(parsedRoutes);
   const privateDisplayLabelRouteContracts =
     privateDisplayLabelRouteBoundaryAudit(parsedRoutes);
   const surfacePrivateStateRouteContracts =
     surfacePrivateStateRouteBoundaryAudit(parsedRoutes);
+  const surfaceStreamRouteContracts = surfaceStreamRouteBoundaryAudit(
+    parsedRoutes,
+    sourceText,
+  );
   const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
   routes.sort(
     (left, right) =>
@@ -2116,6 +2358,12 @@ async function buildInventory() {
       ...surfacePrivateStateDependencies,
       ...surfacePrivateStateRepository,
       routeContracts: surfacePrivateStateRouteContracts,
+    },
+    surfaceStreamE2eeBoundary: {
+      status: "enforced",
+      ...surfaceStreamDependencies,
+      ...surfaceStreamProtocol,
+      routeContracts: surfaceStreamRouteContracts,
     },
     externalTransports: [
       {
