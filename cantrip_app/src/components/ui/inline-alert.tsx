@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { CircleAlert, Info } from "lucide-react";
+import { CircleAlert, Info, X } from "lucide-react";
 import * as React from "react";
 
 import { errorMessage } from "@/lib/error-message";
@@ -30,17 +30,21 @@ const inlineAlertVariants = cva(
 type InlineAlertProps = Omit<React.ComponentProps<"div">, "title"> &
   VariantProps<typeof inlineAlertVariants> & {
     error?: unknown;
+    dismissLabel?: string;
     fallback?: string;
     icon?: React.ReactNode | false;
+    onDismiss?: () => void;
     title?: React.ReactNode;
   };
 
 function InlineAlert({
   children,
   className,
+  dismissLabel = "Dismiss alert",
   error,
   fallback = "Something went wrong.",
   icon,
+  onDismiss,
   role,
   size,
   title,
@@ -71,10 +75,21 @@ function InlineAlert({
           {resolvedIcon}
         </span>
       ) : null}
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         {title ? <p className="font-medium">{title}</p> : null}
         <div>{message}</div>
       </div>
+      {onDismiss ? (
+        <button
+          type="button"
+          aria-label={dismissLabel}
+          className="-mr-1 -mt-1 grid size-7 shrink-0 place-items-center rounded-md transition-colors hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current/30 dark:hover:bg-white/10"
+          onClick={onDismiss}
+          title={dismissLabel}
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
     </div>
   );
 }

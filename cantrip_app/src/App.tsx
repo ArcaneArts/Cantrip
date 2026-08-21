@@ -256,6 +256,7 @@ import {
 import { codeGraphChatRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InlineAlert } from "@/components/ui/inline-alert";
 import {
   Card,
   CardContent,
@@ -5946,21 +5947,38 @@ export function App() {
         }
       : undefined;
   const surfaceCreationFailure = newChat.isError
-    ? { label: "Agent", error: newChat.error }
+    ? { label: "Agent", error: newChat.error, dismiss: newChat.reset }
     : newTask.isError
-      ? { label: "Task", error: newTask.error }
+      ? { label: "Task", error: newTask.error, dismiss: newTask.reset }
       : newTerminal.isError
-        ? { label: "terminal", error: newTerminal.error }
+        ? {
+            label: "terminal",
+            error: newTerminal.error,
+            dismiss: newTerminal.reset,
+          }
         : newExplorer.isError
-          ? { label: "Explorer", error: newExplorer.error }
+          ? {
+              label: "Explorer",
+              error: newExplorer.error,
+              dismiss: newExplorer.reset,
+            }
           : newBrowser.isError
-            ? { label: "Browser", error: newBrowser.error }
+            ? {
+                label: "Browser",
+                error: newBrowser.error,
+                dismiss: newBrowser.reset,
+              }
             : newCodeTab.isError
-              ? { label: "Code tab", error: newCodeTab.error }
+              ? {
+                  label: "Code tab",
+                  error: newCodeTab.error,
+                  dismiss: newCodeTab.reset,
+                }
               : newRemoteDesktop.isError
                 ? {
                     label: "Remote Desktop",
                     error: newRemoteDesktop.error,
+                    dismiss: newRemoteDesktop.reset,
                   }
                 : null;
   const handleWorkspaceDrop = (operation: WorkspaceDropOperation) => {
@@ -7733,10 +7751,16 @@ export function App() {
       />
 
       {surfaceCreationFailure ? (
-        <div className="fixed bottom-5 right-5 z-50 max-w-md rounded-lg bg-destructive px-4 py-3 text-sm text-destructive-foreground shadow-xl">
+        <InlineAlert
+          tone="error"
+          className="fixed bottom-5 right-5 z-50 max-w-md border-destructive bg-destructive px-4 py-3 text-destructive-foreground shadow-xl"
+          dismissLabel="Dismiss surface creation error"
+          icon={false}
+          onDismiss={surfaceCreationFailure.dismiss}
+        >
           Could not create {surfaceCreationFailure.label}:{" "}
           {errorText(surfaceCreationFailure.error)}
-        </div>
+        </InlineAlert>
       ) : null}
     </WorkspaceDndProvider>
   );

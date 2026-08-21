@@ -43,4 +43,20 @@ describe("InlineAlert", () => {
     expect(errorMarkup).toContain("Network unavailable");
     expect(fallbackMarkup).toContain("Request failed");
   });
+
+  it("renders an accessible close button for dismissible alerts", () => {
+    const markup = renderToStaticMarkup(
+      <InlineAlert
+        tone="error"
+        dismissLabel="Dismiss creation error"
+        onDismiss={() => undefined}
+      >
+        Could not create Agent.
+      </InlineAlert>,
+    );
+
+    expect(markup).toContain('aria-label="Dismiss creation error"');
+    expect(markup).toContain('title="Dismiss creation error"');
+    expect(markup).toContain("lucide-x");
+  });
 });
