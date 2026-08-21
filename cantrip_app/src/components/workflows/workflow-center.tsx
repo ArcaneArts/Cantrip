@@ -1,4 +1,4 @@
-import type { ChatSummary } from "@cantrip/protocol";
+import type { ChatSummary, WorkerSummary } from "@cantrip/protocol";
 import type {
   WorkflowDefinitionDetail,
   WorkflowDefinitionSummary,
@@ -69,6 +69,7 @@ import {
   updateWorkflowAutomationTrigger,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { useAppLiveScope, useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
 import { WorkflowAuthorDialog } from "./workflow-author-dialog";
@@ -246,12 +247,14 @@ export function WorkflowCenter({
   initialWorkflowId,
   onOpenHistory,
   projectId,
+  worker,
 }: {
   chats: ChatSummary[];
   directFolder: boolean;
   initialWorkflowId?: string | null;
   onOpenHistory(worktreeId: string): void;
   projectId: string;
+  worker: WorkerSummary | null;
 }) {
   const queryClient = useQueryClient();
   const liveStatus = useAppLiveStatus();
@@ -358,6 +361,19 @@ export function WorkflowCenter({
     mutationFn: async () => {
       const revision = workflow.data?.revision;
       if (!revision) throw new Error("This workflow has no runnable revision.");
+      if (
+        revision.nodes.some(
+          (node) =>
+            node.type !== "agent" ||
+            node.permissionRequirements.approvalMode !== "preauthorized",
+        ) ||
+        revision.edges.some((edge) => edge.condition !== null)
+      ) {
+        throw new Error(
+          "Protected execution currently supports preauthorized agent-only workflows without conditional edges.",
+        );
+      }
+      await ensureChatWorkerEncryption({ worker });
       return createWorkflowRun({
         workflowRevisionId: revision.id,
         projectId,

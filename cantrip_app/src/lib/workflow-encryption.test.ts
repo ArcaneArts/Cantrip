@@ -1,5 +1,12 @@
-import { generateAccountMasterKey } from "@cantrip/crypto";
-import { workflowDefinitionCreateSchema } from "@cantrip/protocol/workflows";
+import {
+  decryptWorkflowContent,
+  generateAccountMasterKey,
+} from "@cantrip/crypto";
+import {
+  workflowDefinitionCreateSchema,
+  workflowRunCreateSchema,
+  workflowRunProtectedInputSchema,
+} from "@cantrip/protocol/workflows";
 import { describe, expect, it } from "vitest";
 
 import type { ClientSessionContext } from "./client-session";
@@ -8,6 +15,7 @@ import {
   openWorkflowDefinitionWireDetail,
   openWorkflowDefinitionWireSummary,
   protectWorkflowDefinitionCreate,
+  protectWorkflowRunCreate,
 } from "./workflow-encryption";
 
 const ownerId = "workflow-owner";
@@ -148,6 +156,61 @@ describe("workflow catalog encryption", () => {
           ],
         },
       },
+    });
+  });
+
+  it("protects manual run input before it reaches the server", async () => {
+    const encryption = service();
+    const options = { service: encryption, session };
+    const protectedRun = await protectWorkflowRunCreate(
+      workflowRunCreateSchema.parse({
+        workflowRevisionId: "revision-1",
+        projectId: "project-1",
+        structuredInput: { request: "RUN_INPUT_SENTINEL" },
+        permissionManifest: {
+          filesystem: "read-only",
+          network: "none",
+          approvalMode: "preauthorized",
+          skills: ["private-skill"],
+          mcpServers: ["private-mcp"],
+          nativeSubagents: false,
+        },
+        trigger: {
+          type: "manual",
+          sourceId: null,
+          actorType: "user",
+          actorId: ownerId,
+          deliveredAt: timestamp,
+          metadata: {},
+        },
+        idempotencyKey: "run-once",
+      }),
+      options,
+    );
+    expect(JSON.stringify(protectedRun)).not.toContain("RUN_INPUT_SENTINEL");
+    expect(protectedRun.permissionManifest.skills).toEqual([]);
+    expect(protectedRun.permissionManifest.mcpServers).toEqual([]);
+    const componentKey = encryption.componentKey({
+      component: "workflow-content",
+      identity: { ownerId, serverId },
+      keyRevision: 1,
+    });
+    await expect(
+      decryptWorkflowContent({
+        ownerId,
+        context: {
+          recordKind: "workflow-run",
+          recordId: protectedRun.id,
+          field: "input",
+        },
+        keyRevision: 1,
+        componentKey,
+        encrypted: protectedRun.protectedInput,
+        schema: workflowRunProtectedInputSchema,
+      }),
+    ).resolves.toEqual({
+      version: 1,
+      input: { request: "RUN_INPUT_SENTINEL" },
     });
   });
 });

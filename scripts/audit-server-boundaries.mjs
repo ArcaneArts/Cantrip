@@ -1822,6 +1822,12 @@ async function projectAutomationContentBoundaryAudit() {
 async function workflowCatalogContentBoundaryAudit() {
   const schemaPath = resolve(serverSourcePath, "db/schema.ts");
   const repositoryPath = resolve(serverSourcePath, "db/workflows.ts");
+  const runRepositoryPath = resolve(serverSourcePath, "db/workflow-runs.ts");
+  const executorPath = resolve(serverSourcePath, "workflows/executor.ts");
+  const workerExecutionPath = resolve(
+    repositoryRoot,
+    "cantrip_worker/src/workflow-execution-encryption.ts",
+  );
   const [
     schemaText,
     repositoryText,
@@ -1829,6 +1835,9 @@ async function workflowCatalogContentBoundaryAudit() {
     protocolText,
     clientApiText,
     clientEncryptionText,
+    runRepositoryText,
+    executorText,
+    workerExecutionText,
   ] = await Promise.all([
     readFile(schemaPath, "utf8"),
     readFile(repositoryPath, "utf8"),
@@ -1836,10 +1845,30 @@ async function workflowCatalogContentBoundaryAudit() {
     readFile(workflowProtocolPath, "utf8"),
     readFile(clientWorkflowApiPath, "utf8"),
     readFile(clientWorkflowEncryptionPath, "utf8"),
+    readFile(runRepositoryPath, "utf8"),
+    readFile(executorPath, "utf8"),
+    readFile(workerExecutionPath, "utf8"),
   ]);
   const failures = [];
   const definitionTable = tableInitializer(schemaText, "workflowDefinitions");
   const revisionTable = tableInitializer(schemaText, "workflowRevisions");
+  for (const table of [
+    "workflowRuns",
+    "workflowRunNodes",
+    "workflowRunNodeItems",
+    "workflowNodeAttempts",
+  ]) {
+    const initializer = tableInitializer(schemaText, table);
+    for (const column of [
+      "protected_input",
+      "protected_result",
+      "protected_error",
+    ]) {
+      if (!initializer.includes(`\"${column}\"`)) {
+        failures.push(`${table}: missing ${column}`);
+      }
+    }
+  }
   for (const [property, column] of [
     ["slugBlindIndex", "slug_blind_index"],
     ["protectedSlug", "protected_slug"],
@@ -1966,6 +1995,10 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowRevisionProtectedDefinitionSchema",
     "workflowRevisionManifestSchema",
     "workflowRevisionWireManifestSchema",
+    "encryptedWorkflowRunCreateSchema",
+    "workflowRunWireDetailSchema",
+    "protectedWorkflowNodeExecutionRequestSchema",
+    "protectedWorkflowNodeExecutionResultSchema",
   ]) {
     if (!protocolText.includes(marker)) {
       failures.push(`Workflow protocol is missing ${marker}.`);
@@ -1978,6 +2011,8 @@ async function workflowCatalogContentBoundaryAudit() {
     "openWorkflowDefinitionWireSummary",
     "openWorkflowDefinitionWireDetail",
     "openWorkflowRevisionWire",
+    "protectWorkflowRunCreate",
+    "openWorkflowRunWireDetail",
   ]) {
     if (!clientApiText.includes(marker)) {
       failures.push(`Client workflow API is missing ${marker}.`);
@@ -2007,10 +2042,39 @@ async function workflowCatalogContentBoundaryAudit() {
     "Workflow trigger mutations are unavailable during the protected runtime cutover.",
     "Workflow trigger delivery is unavailable during the protected runtime cutover.",
     "Workflow webhook delivery is unavailable during the protected runtime cutover.",
-    "Workflow execution is unavailable during the protected runtime cutover.",
   ]) {
     if (!applicationText.includes(marker)) {
       failures.push(`Workflow fail-closed boundary is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "protectedDefinition: lease.candidate.protectedDefinition",
+    "protectedRunInput: lease.candidate.protectedRunInput",
+    "protectedWorkflowNodeExecutionResultSchema.parse",
+  ]) {
+    if (!executorText.includes(marker)) {
+      failures.push(`Protected workflow executor is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "decryptWorkflowContent",
+    "workflowRevisionProtectedDefinitionSchema",
+    "workflowRunProtectedInputSchema",
+    "protectedAttemptResult",
+    "protectedRunResult",
+  ]) {
+    if (!workerExecutionText.includes(marker)) {
+      failures.push(`Worker workflow execution is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "structuredInput: {}",
+    "protectedInput: input.protectedInput",
+    "protectedResult: result.protectedNodeResult",
+    "protectedResult: result.protectedAttemptResult",
+  ]) {
+    if (!runRepositoryText.includes(marker)) {
+      failures.push(`Workflow run repository is missing ${marker}.`);
     }
   }
   if (failures.length > 0) {
@@ -2019,7 +2083,14 @@ async function workflowCatalogContentBoundaryAudit() {
     );
   }
   return {
-    coveredTables: ["workflow_definitions", "workflow_revisions"],
+    coveredTables: [
+      "workflow_definitions",
+      "workflow_revisions",
+      "workflow_runs",
+      "workflow_run_nodes",
+      "workflow_run_node_items",
+      "workflow_node_attempts",
+    ],
     guards: [
       "definition-slug-name-description-provenance:opaque-only",
       "revision-provenance-and-content-hash:opaque-only",
@@ -2028,10 +2099,11 @@ async function workflowCatalogContentBoundaryAudit() {
       "slug-and-content-hash-equality:keyed-blind-index",
       "duplicated-revision-graph:removed",
       "legacy-generation-repository-and-save-routes:fail-closed",
-      "workflow-run-and-trigger-ingress:fail-closed-until-worker-runtime",
+      "agent-run-input-result-error:opaque-client-worker-runtime",
+      "collection-interaction-and-trigger-ingress:fail-closed-until-worker-runtime",
     ],
     remainingPlaintextContent: [
-      "workflow run, node, item, attempt, event, interaction, gate, trigger, and delivery payloads",
+      "collection item state, events, interactions, gates, triggers, and deliveries",
     ],
   };
 }
@@ -3126,7 +3198,7 @@ async function buildInventory() {
       ...projectAutomationContent,
     },
     workflowCatalogContentE2eeBoundary: {
-      status: "definition-content-boundary-enforced",
+      status: "definition-and-agent-runtime-boundary-enforced",
       ...workflowCatalogContent,
     },
     policyE2eeBoundary: {

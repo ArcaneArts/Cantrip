@@ -120,8 +120,8 @@ import {
 
 import { projectAutomationOpaqueContentSchema } from "./automations.js";
 import {
+  protectedWorkflowNodeExecutionRequestSchema,
   workflowJsonObjectSchema,
-  workflowNodeExecutionRequestSchema,
   workflowNodeExecutionResultSchema,
   workflowRepositoryDocumentSchema,
 } from "./workflows.js";
@@ -10909,7 +10909,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
         });
       }
     }),
-  workflowNodeExecutionRequestSchema.extend({
+  protectedWorkflowNodeExecutionRequestSchema.extend({
     type: z.literal("workflow.node.execute"),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,

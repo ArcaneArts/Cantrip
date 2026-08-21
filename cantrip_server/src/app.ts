@@ -493,12 +493,12 @@ import {
   workflowJsonObjectSchema,
   workflowRevisionWireListSchema,
   workflowRevisionWireSchema,
-  workflowRunCreateSchema,
+  encryptedWorkflowRunCreateSchema,
   workflowRunCancelSchema,
-  workflowRunDetailSchema,
+  workflowRunWireDetailSchema,
   workflowRunEventPageSchema,
   workflowRunEventQuerySchema,
-  workflowRunListSchema,
+  workflowRunWireListSchema,
   workflowNodeRetrySchema,
   workflowRunPauseSchema,
   workflowRunQuerySchema,
@@ -3716,7 +3716,7 @@ export async function buildApp({
             triggerId,
             idempotencyKey,
           ),
-        },
+        } as never,
       );
       if (!runResult) {
         throw new WorkflowTriggerConflictError(
@@ -13986,7 +13986,7 @@ export async function buildApp({
       return reply.code(400).send(invalidBody(query.error.issues));
     }
     return reply.send(
-      workflowRunListSchema.parse(
+      workflowRunWireListSchema.parse(
         await repository.workflowRuns.listRuns(
           applicationOwnerId(),
           query.data,
@@ -13996,12 +13996,7 @@ export async function buildApp({
   });
 
   app.post("/api/workflow-runs", async (request, reply) => {
-    if (workflowRuntimeCutover())
-      return reply.code(410).send({
-        error:
-          "Workflow execution is unavailable during the protected runtime cutover.",
-      });
-    const input = workflowRunCreateSchema.safeParse(request.body);
+    const input = encryptedWorkflowRunCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -14028,7 +14023,7 @@ export async function buildApp({
       return result
         ? reply
             .code(result.created ? 201 : 200)
-            .send(workflowRunDetailSchema.parse(result.run))
+            .send(workflowRunWireDetailSchema.parse(result.run))
         : reply
             .code(404)
             .send({ error: "Workflow revision or project not found." });
@@ -14048,7 +14043,7 @@ export async function buildApp({
         request.params.runId,
       );
       return run
-        ? reply.send(workflowRunDetailSchema.parse(run))
+        ? reply.send(workflowRunWireDetailSchema.parse(run))
         : reply.code(404).send({ error: "Workflow run not found." });
     },
   );
@@ -14087,7 +14082,7 @@ export async function buildApp({
           });
         }
         return run
-          ? reply.send(workflowRunDetailSchema.parse(run))
+          ? reply.send(workflowRunWireDetailSchema.parse(run))
           : reply
               .code(404)
               .send({ error: "Workflow run or worktree lease not found." });
@@ -14111,7 +14106,7 @@ export async function buildApp({
           input.data,
         );
         return run
-          ? reply.send(workflowRunDetailSchema.parse(run))
+          ? reply.send(workflowRunWireDetailSchema.parse(run))
           : reply.code(404).send({ error: "Workflow run not found." });
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {
@@ -14136,7 +14131,7 @@ export async function buildApp({
           input.data,
         );
         return run
-          ? reply.send(workflowRunDetailSchema.parse(run))
+          ? reply.send(workflowRunWireDetailSchema.parse(run))
           : reply.code(404).send({ error: "Workflow run not found." });
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {
@@ -14161,7 +14156,7 @@ export async function buildApp({
           input.data,
         );
         return run
-          ? reply.send(workflowRunDetailSchema.parse(run))
+          ? reply.send(workflowRunWireDetailSchema.parse(run))
           : reply.code(404).send({ error: "Workflow run not found." });
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {
@@ -14187,7 +14182,7 @@ export async function buildApp({
           input.data,
         );
         return run
-          ? reply.send(workflowRunDetailSchema.parse(run))
+          ? reply.send(workflowRunWireDetailSchema.parse(run))
           : reply.code(404).send({ error: "Workflow run or gate not found." });
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {
@@ -14213,7 +14208,7 @@ export async function buildApp({
           input.data,
         );
         return run
-          ? reply.send(workflowRunDetailSchema.parse(run))
+          ? reply.send(workflowRunWireDetailSchema.parse(run))
           : reply.code(404).send({ error: "Workflow run or node not found." });
       } catch (error) {
         if (error instanceof WorkflowControlConflictError) {

@@ -5,8 +5,10 @@ import path from "node:path";
 
 import {
   encryptedWorkflowDefinitionCreateSchema,
+  encryptedWorkflowRunCreateSchema,
   workflowDefinitionWireDetailSchema,
   workflowDefinitionWireListSchema,
+  workflowRunWireDetailSchema,
 } from "@cantrip/protocol/workflows";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -131,6 +133,46 @@ describe.sequential("workflow catalog encryption boundary", () => {
       )[0]?.content,
     ).toEqual(payload.content);
 
+    const protectedInput = opaque();
+    const runResponse = await app.inject({
+      method: "POST",
+      url: "/api/workflow-runs",
+      payload: encryptedWorkflowRunCreateSchema.parse({
+        id: randomUUID(),
+        workflowRevisionId: payload.revision.id,
+        projectId: null,
+        protectedInput,
+        permissionManifest: {
+          filesystem: "read-only",
+          network: "none",
+          approvalMode: "preauthorized",
+          skills: [],
+          mcpServers: [],
+          nativeSubagents: false,
+        },
+        trigger: {
+          type: "manual",
+          sourceId: null,
+          actorType: "user",
+          actorId: null,
+          deliveredAt: new Date().toISOString(),
+          metadata: {},
+        },
+        idempotencyKey: "protected-run-once",
+      }),
+    });
+    expect(runResponse.statusCode).toBe(201);
+    const run = workflowRunWireDetailSchema.parse(runResponse.json());
+    expect(run.run.protectedInput).toEqual(protectedInput);
+    expect(run.run.structuredInput).toEqual({});
+    expect(run.nodes[0]).toMatchObject({
+      nodeKey: "node-1",
+      structuredInput: {},
+      structuredResult: null,
+      protectedInput: null,
+      protectedResult: null,
+    });
+
     expect(
       await app.inject({
         method: "POST",
@@ -162,7 +204,6 @@ describe.sequential("workflow catalog encryption boundary", () => {
       ["POST", "/api/projects/project-one/workflow-repository/import"],
       ["POST", `/api/workflows/${payload.id}/repository-export`],
       ["POST", "/api/workflow-runs/run-one/save-revision"],
-      ["POST", "/api/workflow-runs"],
       ["POST", "/api/workflow-triggers"],
       ["PATCH", "/api/workflow-triggers/trigger-one"],
       ["POST", "/api/workflow-triggers/trigger-one/deliver"],

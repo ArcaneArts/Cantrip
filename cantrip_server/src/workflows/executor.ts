@@ -9,8 +9,7 @@ import {
 } from "@cantrip/protocol";
 import {
   workflowFolderProducedChangesSchema,
-  workflowNodeExecutionResultSchema,
-  type WorkflowAgentNodeConfiguration,
+  protectedWorkflowNodeExecutionResultSchema,
   type WorkflowGateDecision,
   type WorkflowNodeRetry,
   type WorkflowRunCancel,
@@ -53,7 +52,6 @@ export interface WorkflowRunLiveChange {
   runId: string;
 }
 
-const MAX_WORKFLOW_PROMPT_LENGTH = 100_000;
 const ATTEMPT_HEARTBEAT_INTERVAL_MS = 30_000;
 const ATTEMPT_RECOVERY_SWEEP_INTERVAL_MS = 30_000;
 export const WORKFLOW_ATTEMPT_STALE_MS = 2 * 60_000;
@@ -61,21 +59,6 @@ const MAX_WORKER_REQUEST_TIMEOUT_MS = 24 * 60 * 60_000;
 
 class WorkflowProgressPersistenceError extends Error {}
 class WorkflowVerificationError extends Error {}
-
-export function workflowAgentPrompt(
-  configuration: WorkflowAgentNodeConfiguration,
-  structuredInput: unknown,
-): string {
-  const prompt = configuration.includeStructuredInput
-    ? `${configuration.prompt}\n\nStructured workflow input (JSON):\n${JSON.stringify(structuredInput)}`
-    : configuration.prompt;
-  if (prompt.length > MAX_WORKFLOW_PROMPT_LENGTH) {
-    throw new Error(
-      `The rendered workflow prompt exceeds ${MAX_WORKFLOW_PROMPT_LENGTH} characters.`,
-    );
-  }
-  return prompt;
-}
 
 export class WorkflowExecutor {
   readonly #activeRuns = new Map<string, Promise<void>>();
@@ -874,6 +857,9 @@ export class WorkflowExecutor {
         {
           type: "workflow.node.execute",
           workflowRunId: lease.candidate.run.id,
+          workflowRevisionId: lease.candidate.run.workflowRevisionId,
+          revisionNodeId: lease.candidate.node.revisionNodeId,
+          nodePosition: lease.candidate.nodePosition,
           runNodeId: lease.candidate.node.id,
           attemptId: lease.attemptId,
           idempotencyKey: lease.idempotencyKey,
@@ -883,19 +869,12 @@ export class WorkflowExecutor {
           threadId:
             lease.candidate.item?.codexThreadId ??
             lease.candidate.node.codexThreadId,
-          prompt: workflowAgentPrompt(
-            lease.candidate.configuration!,
-            lease.candidate.structuredInput,
-          ),
-          developerInstructions:
-            lease.candidate.configuration!.developerInstructions,
-          skillNames: lease.candidate.node.permissionManifest.skills,
-          outputSchema: lease.candidate.outputSchema,
+          protectedDefinition: lease.candidate.protectedDefinition,
+          protectedRunInput: lease.candidate.protectedRunInput,
+          predecessorResults: lease.candidate.predecessorResults,
           mutationMode: lease.candidate.node.writeCapable
             ? "write"
             : "read-only",
-          networkAccess: lease.candidate.node.permissionManifest.network,
-          approvalMode: lease.candidate.node.permissionManifest.approvalMode,
           permissionProfileId: lease.candidate.node.permissionProfileId,
           timeoutMs: lease.timeoutMs,
           model: runtime.model,
@@ -918,7 +897,25 @@ export class WorkflowExecutor {
           },
         },
       );
-      const result = workflowNodeExecutionResultSchema.parse(rawResult);
+      const result =
+        protectedWorkflowNodeExecutionResultSchema.parse(rawResult);
+      if (result.status === "failed") {
+        await this.repository.workflowRuns.failProtectedAgentAttempt(
+          this.#ownerId(),
+          lease,
+          {
+            attempt: result.protectedAttemptError,
+            node: result.protectedNodeError,
+            run: result.protectedRunError,
+          },
+        );
+        this.notifyRunChanged(
+          lease.candidate.run.id,
+          lease.candidate.projectId,
+          "workflow-node",
+        );
+        return;
+      }
       observedTurnId = result.turnId;
       await this.recordWorkflowTokenUsage(
         lease,
@@ -929,18 +926,6 @@ export class WorkflowExecutor {
           turnId: result.turnId,
         },
       );
-      if (
-        lease.candidate.verification &&
-        lease.candidate.verification.failurePolicy === "fail-run" &&
-        !evaluateWorkflowPredicate(
-          result.structuredResult,
-          lease.candidate.verification.passCondition,
-        )
-      ) {
-        throw new WorkflowVerificationError(
-          "The verification result did not satisfy its pass condition.",
-        );
-      }
       await this.repository.workflowRuns.completeAgentAttempt(
         this.#ownerId(),
         lease,
@@ -982,10 +967,14 @@ export class WorkflowExecutor {
         completedAt: failedAt,
         finalizedAt: failedAt,
       });
+      const failureMetadata = this.failureFrom(error);
       const failure = await this.repository.workflowRuns.failAgentAttempt(
         this.#ownerId(),
         lease,
-        this.failureFrom(error),
+        {
+          ...failureMetadata,
+          message: "Protected workflow execution failed.",
+        },
       );
       this.notifyRunChanged(
         lease.candidate.run.id,
@@ -1008,7 +997,7 @@ export class WorkflowExecutor {
           workerId,
           projectId: lease.candidate.projectId,
           durationMs: Date.now() - startedAtMs,
-          err: error,
+          reasonCode: failureMetadata.code,
         },
         "Workflow node attempt failed",
       );

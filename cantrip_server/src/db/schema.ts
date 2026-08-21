@@ -3701,6 +3701,11 @@ export const workflowRuns = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
     structuredResult: jsonb("structured_result").$type<unknown>(),
+    protectedInput: jsonb("protected_input")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
+    protectedResult: jsonb("protected_result").$type<WorkflowContentOpaque>(),
+    protectedError: jsonb("protected_error").$type<WorkflowContentOpaque>(),
     budget: jsonb("budget")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -3916,6 +3921,9 @@ export const workflowRunNodes = pgTable(
       .default({}),
     structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
     structuredResult: jsonb("structured_result").$type<unknown>(),
+    protectedInput: jsonb("protected_input").$type<WorkflowContentOpaque>(),
+    protectedResult: jsonb("protected_result").$type<WorkflowContentOpaque>(),
+    protectedError: jsonb("protected_error").$type<WorkflowContentOpaque>(),
     budget: jsonb("budget")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -4047,6 +4055,9 @@ export const workflowRunNodeItems = pgTable(
       .default({ kind: "map" }),
     structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
     structuredResult: jsonb("structured_result").$type<unknown>(),
+    protectedInput: jsonb("protected_input").$type<WorkflowContentOpaque>(),
+    protectedResult: jsonb("protected_result").$type<WorkflowContentOpaque>(),
+    protectedError: jsonb("protected_error").$type<WorkflowContentOpaque>(),
     measuredUsage: jsonb("measured_usage")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -4126,6 +4137,9 @@ export const workflowNodeAttempts = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     structuredInput: jsonb("structured_input").$type<unknown>().notNull(),
     structuredResult: jsonb("structured_result").$type<unknown>(),
+    protectedInput: jsonb("protected_input").$type<WorkflowContentOpaque>(),
+    protectedResult: jsonb("protected_result").$type<WorkflowContentOpaque>(),
+    protectedError: jsonb("protected_error").$type<WorkflowContentOpaque>(),
     measuredUsage: jsonb("measured_usage")
       .$type<Record<string, unknown>>()
       .notNull()

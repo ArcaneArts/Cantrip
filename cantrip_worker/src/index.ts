@@ -66,6 +66,7 @@ import { ExternalChatAttachmentStagingStore } from "./external-chat-attachments.
 import { ChatRelocationHydrationStore } from "./chat-relocation-store.js";
 import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
+import { executeProtectedWorkflowNode } from "./workflow-execution-encryption.js";
 import {
   discoverExternalChatHistory,
   readExternalChatHistory,
@@ -2987,67 +2988,32 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return runTurn(command.prompt!, command.resultMode);
       }
       case "workflow.node.execute":
-        return runtimeFor({
-          model: command.model,
-          provider: provider(),
-        }).runWorkflowNode({
-          workflowRunId: command.workflowRunId,
-          runNodeId: command.runNodeId,
-          attemptId: command.attemptId,
-          idempotencyKey: command.idempotencyKey,
-          worktreeId: command.worktreeId,
-          rootKind: command.rootKind,
-          cwd: command.cwd,
-          threadId: command.threadId,
-          prompt: command.prompt,
-          developerInstructions: command.developerInstructions,
-          skillNames: command.skillNames,
-          outputSchema: command.outputSchema,
-          mutationMode: command.mutationMode,
-          networkAccess: command.networkAccess,
-          approvalMode: command.approvalMode,
-          permissionProfileId: command.permissionProfileId,
-          timeoutMs: command.timeoutMs,
-          model: command.model,
-          provider: provider(),
-          mcpServers: await agentMcpServers(command.cwd, command.mcpServers),
-          onActivity: (activity) =>
-            emit({
-              type: "workflow.node.activity",
+        return executeProtectedWorkflowNode({
+          command,
+          service: workerEncryption,
+          execute: async (protectedOptions) =>
+            runtimeFor({
+              model: command.model,
+              provider: provider(),
+            }).runWorkflowNode({
+              workflowRunId: command.workflowRunId,
+              runNodeId: command.runNodeId,
               attemptId: command.attemptId,
-              activity,
-            }),
-          onMessage: (message) =>
-            emit({
-              type: "workflow.node.message",
-              attemptId: command.attemptId,
-              message,
-            }),
-          onInteractionRequest: (request) =>
-            emit({
-              type: "workflow.node.interaction.requested",
-              attemptId: command.attemptId,
-              request,
-            }),
-          onInteractionCleared: (requestKey) =>
-            emit({
-              type: "workflow.node.interaction.cleared",
-              attemptId: command.attemptId,
-              requestKey,
-            }),
-          onInteractionExpired: (requestKey) =>
-            emit({
-              type: "workflow.node.interaction.expired",
-              attemptId: command.attemptId,
-              requestKey,
-            }),
-          onPlan: ({ explanation, steps, turnId }) =>
-            emit({
-              type: "workflow.node.plan.updated",
-              attemptId: command.attemptId,
-              explanation,
-              steps,
-              turnId,
+              idempotencyKey: command.idempotencyKey,
+              worktreeId: command.worktreeId,
+              rootKind: command.rootKind,
+              cwd: command.cwd,
+              threadId: command.threadId,
+              ...protectedOptions,
+              mutationMode: command.mutationMode,
+              permissionProfileId: command.permissionProfileId,
+              timeoutMs: command.timeoutMs,
+              model: command.model,
+              provider: provider(),
+              mcpServers: await agentMcpServers(
+                command.cwd,
+                command.mcpServers,
+              ),
             }),
         });
       case "workflow.definition.generate":

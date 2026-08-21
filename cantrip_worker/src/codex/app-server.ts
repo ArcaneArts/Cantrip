@@ -74,6 +74,7 @@ import {
 import {
   workflowJsonValueSchema,
   workflowNodeExecutionResultSchema,
+  type WorkflowNodeExecutionRequest,
   type WorkflowNodeExecutionResult,
 } from "@cantrip/protocol/workflows";
 import WebSocket, { type RawData } from "ws";
@@ -1162,9 +1163,10 @@ type WorkflowNodeExecuteCommand = Extract<
 >;
 
 export interface RunWorkflowNodeOptions extends Omit<
-  WorkflowNodeExecuteCommand,
-  "mcpServers" | "provider" | "rootKind" | "type"
+  WorkflowNodeExecutionRequest,
+  "rootKind"
 > {
+  model: WorkflowNodeExecuteCommand["model"];
   mcpServers: McpServerConfiguration[];
   provider: RuntimeProvider;
   rootKind?: WorkflowNodeExecuteCommand["rootKind"];
