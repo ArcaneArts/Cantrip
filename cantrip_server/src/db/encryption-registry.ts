@@ -352,6 +352,83 @@ export class EncryptionRegistryRepository {
     return rows[0] ? toPrincipal(rows[0]) : null;
   }
 
+  async replaceActiveWorkerPrincipal(
+    ownerId: string,
+    workerId: string,
+    input: EncryptionPrincipalCreate,
+  ): Promise<EncryptionPrincipal | null> {
+    if (input.kind !== "worker" || input.workerId !== workerId) return null;
+    const now = new Date();
+    return this.database.transaction(async (transaction) => {
+      const active = await transaction
+        .select()
+        .from(schema.encryptionPrincipals)
+        .where(
+          and(
+            eq(schema.encryptionPrincipals.ownerId, ownerId),
+            eq(schema.encryptionPrincipals.kind, "worker"),
+            eq(schema.encryptionPrincipals.workerId, workerId),
+            ne(schema.encryptionPrincipals.state, "revoked"),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const previous = active[0];
+      if (!previous || previous.id === input.id) return null;
+
+      const revoked = await transaction
+        .update(schema.encryptionPrincipals)
+        .set({
+          state: "revoked",
+          revokedAt: now,
+          revokedReason: "worker encryption identity rotated",
+          revision: sql`${schema.encryptionPrincipals.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.encryptionPrincipals.id, previous.id),
+            eq(schema.encryptionPrincipals.ownerId, ownerId),
+            ne(schema.encryptionPrincipals.state, "revoked"),
+          ),
+        )
+        .returning({ id: schema.encryptionPrincipals.id });
+      if (!revoked[0]) return null;
+
+      await transaction
+        .update(schema.encryptionKeyGrants)
+        .set({
+          state: "revoked",
+          revokedAt: now,
+          revokedReason: "principal rotated",
+          revision: sql`${schema.encryptionKeyGrants.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(schema.encryptionKeyGrants.ownerId, ownerId),
+            eq(schema.encryptionKeyGrants.principalId, previous.id),
+            eq(schema.encryptionKeyGrants.state, "active"),
+          ),
+        );
+
+      const replacements = await transaction
+        .insert(schema.encryptionPrincipals)
+        .values({
+          id: input.id,
+          ownerId,
+          kind: "worker",
+          workerId,
+          label: input.label,
+          publicKey: input.publicKey,
+          state: "pending",
+          revision: 1,
+        })
+        .returning();
+      return replacements[0] ? toPrincipal(replacements[0]) : null;
+    });
+  }
+
   async createPrincipal(
     ownerId: string,
     input: EncryptionPrincipalCreate,

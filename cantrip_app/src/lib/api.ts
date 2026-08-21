@@ -400,6 +400,7 @@ import type {
   EncryptedProjectWorkspaceCreate,
   EncryptedProjectWorkspaceUpdate,
   ProjectWorktreeCreate,
+  ProjectWorktreeSummary,
   RemoteDesktopSummary,
   RemoteDesktopTarget,
   ReasoningEffort,
@@ -423,8 +424,11 @@ import type {
   WorktreePolicy,
   WorkerCredentialRotate,
   WorkerEncryptionRefreshRequest,
+  WorkerEncryptionStatus,
   WorkerEnrollmentCodeCreate,
+  WorkerSummary,
   WorkerUpdate,
+  WorktreeStatusResult,
   ServiceLogLevel,
 } from "@cantrip/protocol";
 import {
@@ -501,6 +505,7 @@ import {
   protectRepositoryOperationContent,
 } from "@/lib/repository-operation-encryption";
 import { ensureRepositoryWorkerEncryption } from "@/lib/repository-worker-encryption";
+import { ShortLivedRequestCache } from "@/lib/short-lived-request-cache";
 
 export { CantripApiError };
 export * from "@/lib/workflow-api";
@@ -1509,16 +1514,36 @@ export async function deleteProjectWorkspace(workspaceId: string) {
 
 type RepositoryResultSchema<T> = { parse(value: unknown): T };
 
-async function runProtectedRepositoryOperation<T>(input: {
-  agent?: boolean;
-  arguments: Record<string, unknown>;
-  modelId?: string;
+interface RepositoryOperationTarget {
+  worker: WorkerSummary | undefined;
+  worktree: ProjectWorktreeSummary;
+}
+
+const repositoryOperationTargetCache =
+  new ShortLivedRequestCache<RepositoryOperationTarget>(2_000);
+const repositoryWorkerReadinessCache =
+  new ShortLivedRequestCache<WorkerEncryptionStatus>(5_000);
+
+function repositoryOperationCacheNamespace(): string {
+  const session = getClientSession();
+  return `${getActiveServerUrl()}\0${session?.user.id ?? "anonymous"}`;
+}
+
+function repositoryOperationTargetKey(input: {
   projectId: string;
-  resultSchema: RepositoryResultSchema<T>;
-  type: RepositoryOperationType;
   worktreeId?: string;
-}): Promise<T> {
-  const worktrees = await getProjectWorktreeWireList(input.projectId);
+}): string {
+  return `${repositoryOperationCacheNamespace()}\0${input.projectId}\0${input.worktreeId ?? "default"}`;
+}
+
+async function resolveRepositoryOperationTarget(input: {
+  projectId: string;
+  worktreeId?: string;
+}): Promise<RepositoryOperationTarget> {
+  const [worktrees, workers] = await Promise.all([
+    getProjectWorktreeWireList(input.projectId),
+    getWorkers(),
+  ]);
   const worktree = input.worktreeId
     ? worktrees.find(({ id }) => id === input.worktreeId)
     : (worktrees.find(({ isPrimary }) => isPrimary) ??
@@ -1526,13 +1551,47 @@ async function runProtectedRepositoryOperation<T>(input: {
   if (!worktree || worktree.lifecycleState !== "ready") {
     throw new CantripApiError("Project worktree is unavailable.", 409);
   }
-  const worker = (await getWorkers()).find(
-    ({ workerId }) => workerId === worktree.workerId,
+  return {
+    worktree,
+    worker: workers.find(({ workerId }) => workerId === worktree.workerId),
+  };
+}
+
+async function ensureRepositoryOperationWorker(
+  worker: WorkerSummary | undefined,
+): Promise<WorkerEncryptionStatus> {
+  const snapshot = clientEncryption.getSnapshot();
+  const repositoryGrants = worker?.encryption.grants
+    .filter(({ component }) => component === "repository-content")
+    .map(({ keyRevision }) => keyRevision)
+    .join(",");
+  const key = `${repositoryOperationCacheNamespace()}\0${worker?.workerId ?? "missing"}\0${worker?.encryption.principalId ?? "none"}\0${worker?.encryption.state ?? "missing"}\0${repositoryGrants ?? "none"}\0${snapshot.masterKeyRevision ?? "locked"}`;
+  return repositoryWorkerReadinessCache.get(key, () =>
+    ensureRepositoryWorkerEncryption({
+      refresh: refreshWorkerEncryption,
+      worker,
+    }),
   );
-  await ensureRepositoryWorkerEncryption({
-    refresh: refreshWorkerEncryption,
-    worker,
-  });
+}
+
+async function runProtectedRepositoryOperation<T>(input: {
+  agent?: boolean;
+  arguments: Record<string, unknown>;
+  modelId?: string;
+  projectId: string;
+  resultSchema: RepositoryResultSchema<T>;
+  target?: RepositoryOperationTarget;
+  type: RepositoryOperationType;
+  worktreeId?: string;
+}): Promise<T> {
+  const targetKey = repositoryOperationTargetKey(input);
+  if (input.target) repositoryOperationTargetCache.set(targetKey, input.target);
+  const { worker, worktree } = input.target
+    ? input.target
+    : await repositoryOperationTargetCache.get(targetKey, () =>
+        resolveRepositoryOperationTarget(input),
+      );
+  await ensureRepositoryOperationWorker(worker);
   const operationId = crypto.randomUUID();
   const protectedRequest = await protectRepositoryOperationContent({
     context: {
@@ -1547,20 +1606,28 @@ async function runProtectedRepositoryOperation<T>(input: {
     },
     schema: repositoryOperationRequestContentSchema,
   });
-  const wire = repositoryOperationWireResponseSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(input.projectId)}/worktrees/${encodeURIComponent(worktree.id)}/repository-operation`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          operationId,
-          protectedRequest,
-          agent: input.agent ?? false,
-          ...(input.modelId ? { modelId: input.modelId } : {}),
-        }),
-      },
-    ),
-  );
+  let wire: ReturnType<typeof repositoryOperationWireResponseSchema.parse>;
+  try {
+    wire = repositoryOperationWireResponseSchema.parse(
+      await request(
+        `/api/projects/${encodeURIComponent(input.projectId)}/worktrees/${encodeURIComponent(worktree.id)}/repository-operation`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            operationId,
+            protectedRequest,
+            agent: input.agent ?? false,
+            ...(input.modelId ? { modelId: input.modelId } : {}),
+          }),
+        },
+      ),
+    );
+  } catch (error) {
+    if (error instanceof CantripApiError && [404, 409].includes(error.status)) {
+      repositoryOperationTargetCache.delete(targetKey);
+    }
+    throw error;
+  }
   const outcome = await openRepositoryOperationContent({
     context: {
       projectId: input.projectId,
@@ -1708,8 +1775,14 @@ async function getProjectWorktreeWireList(projectId: string) {
   );
 }
 
-export async function getProjectWorktrees(projectId: string) {
+export async function getProjectWorktrees(
+  projectId: string,
+  options: {
+    onStatus?: (worktreeId: string, status: WorktreeStatusResult) => void;
+  } = {},
+) {
   const worktrees = await getProjectWorktreeWireList(projectId);
+  const workers = await getWorkers();
   return Promise.all(
     worktrees.map(async (worktree) => {
       if (worktree.lifecycleState !== "ready") {
@@ -1726,10 +1799,17 @@ export async function getProjectWorktrees(projectId: string) {
         const status = await runProtectedRepositoryOperation({
           projectId,
           worktreeId: worktree.id,
+          target: {
+            worktree,
+            worker: workers.find(
+              ({ workerId }) => workerId === worktree.workerId,
+            ),
+          },
           type: "worktree.status",
           arguments: {},
           resultSchema: worktreeStatusResultSchema,
         });
+        options.onStatus?.(worktree.id, status);
         const privateState = status.worktree;
         const pathSegments = privateState.path.split(/[\\/]/u).filter(Boolean);
         return projectWorktreeSummarySchema.parse({

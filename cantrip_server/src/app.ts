@@ -24246,25 +24246,40 @@ export async function buildApp({
           workerId,
           input.data.principalId,
         );
-      principal ??=
-        await repository.encryptionRegistry.findActiveWorkerPrincipal(
-          workerAuth.ownerId,
-          workerId,
-        );
       if (!principal) {
-        principal = await repository.encryptionRegistry.createPrincipal(
-          workerAuth.ownerId,
-          {
-            id: input.data.principalId,
-            kind: "worker",
+        const activePrincipal =
+          await repository.encryptionRegistry.findActiveWorkerPrincipal(
+            workerAuth.ownerId,
             workerId,
-            label: "Cantrip worker",
-            publicKey: input.data.publicKey,
-          },
-          workerAuth.development
-            ? { developmentBootstrapWorkerId: workerId }
-            : undefined,
-        );
+          );
+        // Possession of the active worker credential authorizes replacing a
+        // lost local encryption key. The registry revokes the old principal
+        // and grants atomically; a logged-in client must grant the new key.
+        principal = activePrincipal
+          ? await repository.encryptionRegistry.replaceActiveWorkerPrincipal(
+              workerAuth.ownerId,
+              workerId,
+              {
+                id: input.data.principalId,
+                kind: "worker",
+                workerId,
+                label: "Cantrip worker",
+                publicKey: input.data.publicKey,
+              },
+            )
+          : await repository.encryptionRegistry.createPrincipal(
+              workerAuth.ownerId,
+              {
+                id: input.data.principalId,
+                kind: "worker",
+                workerId,
+                label: "Cantrip worker",
+                publicKey: input.data.publicKey,
+              },
+              workerAuth.development
+                ? { developmentBootstrapWorkerId: workerId }
+                : undefined,
+            );
       }
       if (
         !principal ||
