@@ -259,7 +259,12 @@ describe("public HTTP hardening", () => {
   it("rate limits API, pairing, and upload traffic independently", async () => {
     const config = await testConfig({
       apiRateLimitPerMinute: 2,
+      deploymentMode: "hosted",
       pairingRateLimitPerMinute: 1,
+      secretEncryption: {
+        activeKeyId: "test",
+        keys: [{ id: "test", key: Buffer.alloc(32, 7) }],
+      },
       uploadRateLimitPerMinute: 1,
     });
     const database = await connectDatabase(config);
@@ -294,6 +299,43 @@ describe("public HTTP hardening", () => {
       };
       expect((await app.inject(invalidUpload)).statusCode).toBe(404);
       expect((await app.inject(invalidUpload)).statusCode).toBe(429);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("does not apply the hosted API bucket to ordinary local traffic", async () => {
+    const config = await testConfig({
+      apiRateLimitPerMinute: 1,
+      pairingRateLimitPerMinute: 1,
+      uploadRateLimitPerMinute: 1,
+    });
+    const database = await connectDatabase(config);
+    const app = await buildApp({ config, database, logger: false });
+    try {
+      for (let request = 0; request < 3; request += 1) {
+        expect(
+          (await app.inject({ method: "GET", url: "/api/bootstrap" }))
+            .statusCode,
+        ).toBe(200);
+      }
+
+      const pairing = {
+        method: "POST" as const,
+        url: "/api/workers/enrollment-codes",
+        payload: {},
+      };
+      expect((await app.inject(pairing)).statusCode).toBe(201);
+      expect((await app.inject(pairing)).statusCode).toBe(429);
+
+      const upload = {
+        method: "POST" as const,
+        url: "/api/chats/missing/attachments",
+        headers: { "content-type": "application/octet-stream" },
+        payload: Buffer.from("test"),
+      };
+      expect((await app.inject(upload)).statusCode).toBe(404);
+      expect((await app.inject(upload)).statusCode).toBe(429);
     } finally {
       await app.close();
     }
