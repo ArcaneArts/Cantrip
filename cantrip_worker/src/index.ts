@@ -5,6 +5,10 @@ import path from "node:path";
 
 import {
   chatAttachmentSummarySchema,
+  gitCommitActionResultSchema,
+  gitManagedOperationResponseSchema,
+  gitManagedOperationWorkerStateSchema,
+  gitStashMutationResultSchema,
   providerQuotaSnapshotSchema,
   mentionedSkillNames,
   workerCommandSchema,
@@ -12,6 +16,11 @@ import {
   workerProviderConnectionTestResultSchema,
   workerRestartAcknowledgementSchema,
   type AgentTurnResultMode,
+  type GitManagedOperationContext,
+  type GitManagedOperationRecord,
+  type GitManagedOperationWorkerState,
+  type GitCommitActionResult,
+  type GitStashMutationResult,
   type McpServerConfiguration,
   type McpServerOpaqueRuntime,
   type WorktreeObservationTarget,
@@ -111,6 +120,13 @@ import {
   protectWorkerRepositoryOperationContent,
   RepositoryOperationReplayGuard,
 } from "./repository-operation-encryption.js";
+import {
+  managedOperationContext,
+  managedOperationIsActive,
+  managedOperationRecord,
+  RepositoryManagedOperationStore,
+  type RepositoryManagedOperationScope,
+} from "./repository-managed-operation-store.js";
 import {
   openAgentInteractionResponse,
   protectAgentInteractionRequest,
@@ -238,6 +254,70 @@ interface GrokSubscriptionOperations {
   localProxyBaseUrl: GrokSubscriptionClient["localProxyBaseUrl"];
   quotaSnapshot?: GrokSubscriptionClient["quotaSnapshot"];
   weeklyUsage: GrokSubscriptionClient["weeklyUsage"];
+}
+
+function commitManagedOperationState(
+  result: GitCommitActionResult,
+): GitManagedOperationWorkerState | null {
+  if (!result.operation) return null;
+  const operation = result.operation;
+  const context: GitManagedOperationContext = {
+    type: operation.type,
+    originalHead: operation.originalHead,
+    sourceRef: null,
+    sourceRevision: operation.sourceRevisions[0] ?? null,
+    targetRef: result.status.branch
+      ? `refs/heads/${result.status.branch}`
+      : null,
+    targetRevision: operation.originalHead,
+    pendingCommits: operation.sourceRevisions,
+    totalSteps: operation.totalSteps,
+    checkpointRef: result.checkpointRef,
+  };
+  return gitManagedOperationWorkerStateSchema.parse({
+    ...context,
+    state: operation.state,
+    currentHead: operation.currentHead,
+    currentStep: operation.currentStep,
+    pendingCommits:
+      operation.state === "completed"
+        ? []
+        : operation.sourceRevisions.slice(
+            Math.max(0, operation.currentStep - 1),
+          ),
+    conflictedPaths: operation.conflictedPaths,
+    output: result.output,
+    status: result.status,
+  });
+}
+
+function stashManagedOperationState(
+  result: GitStashMutationResult,
+): GitManagedOperationWorkerState | null {
+  if (!result.operation) return null;
+  return gitManagedOperationWorkerStateSchema.parse({
+    ...result.operation,
+    state: "conflicted",
+    output: result.output,
+    status: result.status,
+  });
+}
+
+function repositoryMutationRequiresIdleState(type: string): boolean {
+  return (
+    type === "git.action" ||
+    type === "git.commit.action.preview" ||
+    type === "git.commit.action.apply" ||
+    type === "git.stash.create" ||
+    type === "git.stash.action.preview" ||
+    type === "git.stash.action.apply" ||
+    (type.endsWith(".apply") &&
+      ![
+        "git.conflicts.apply",
+        "git.operation.control",
+        "git.operation.amend",
+      ].includes(type))
+  );
 }
 
 async function grokQuotaSnapshot(
@@ -459,6 +539,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   );
   const surfaceStreamReplay = new SurfaceStreamReplayGuard();
   const repositoryOperationReplay = new RepositoryOperationReplayGuard();
+  const repositoryManagedOperations = new RepositoryManagedOperationStore(
+    config.dataDirectory,
+  );
   const terminalStreamContexts = new Map<
     string,
     {
@@ -1385,19 +1468,126 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
         let outcome: RepositoryOperationOutcomeContent;
         try {
-          const trustedCommand = workerCommandSchema.parse({
-            ...request.arguments,
-            type: request.type,
-            cwd: command.cwd,
-            repository: command.repository,
-          });
-          if (trustedCommand.type === "repository.operation") {
-            throw new Error("Nested repository operations are not allowed.");
-          }
-          outcome = {
-            ok: true,
-            result: await handleCommand(trustedCommand, emit),
+          const scope: RepositoryManagedOperationScope = {
+            ownerId: workerEncryption.ownerId(),
+            serverId: command.serverId,
+            projectId: command.projectId,
+            worktreeId: command.worktreeId,
+            workerId: config.workerId,
           };
+          let stored = await repositoryManagedOperations.get(scope);
+          const refreshStoredOperation = async () => {
+            if (!managedOperationIsActive(stored)) return stored;
+            const state = await inspectGitManagedOperation(
+              command.cwd,
+              managedOperationContext(stored!),
+            );
+            stored = managedOperationRecord({
+              existing: stored,
+              scope,
+              state,
+            });
+            await repositoryManagedOperations.put(scope, stored);
+            return stored;
+          };
+          if (request.type === "git.operation.current") {
+            outcome = {
+              ok: true,
+              result: gitManagedOperationResponseSchema.parse({
+                operation: await refreshStoredOperation(),
+              }),
+            };
+          } else {
+            if (
+              (repositoryMutationRequiresIdleState(request.type) ||
+                request.type === "git.operation.preview" ||
+                request.type === "git.operation.start") &&
+              managedOperationIsActive(stored)
+            ) {
+              throw new Error(
+                "Finish or abort the active Git operation first.",
+              );
+            }
+            const operationId = request.arguments.operationId;
+            if (
+              ["git.operation.control", "git.operation.amend"].includes(
+                request.type,
+              )
+            ) {
+              if (
+                !stored ||
+                !managedOperationIsActive(stored) ||
+                typeof operationId !== "string" ||
+                operationId !== stored.id
+              ) {
+                throw new Error("Git operation not found.");
+              }
+            }
+            const trustedCommand = workerCommandSchema.parse({
+              ...request.arguments,
+              type: request.type,
+              cwd: command.cwd,
+              repository: command.repository,
+              ...(["git.operation.control", "git.operation.amend"].includes(
+                request.type,
+              )
+                ? { context: managedOperationContext(stored!) }
+                : {}),
+            });
+            if (trustedCommand.type === "repository.operation") {
+              throw new Error("Nested repository operations are not allowed.");
+            }
+            let result = await handleCommand(trustedCommand, emit);
+            if (
+              [
+                "git.operation.start",
+                "git.operation.control",
+                "git.operation.amend",
+              ].includes(request.type)
+            ) {
+              stored = managedOperationRecord({
+                existing:
+                  request.type === "git.operation.start" ? null : stored,
+                id: requestContext.operationId,
+                scope,
+                state: gitManagedOperationWorkerStateSchema.parse(result),
+              });
+              await repositoryManagedOperations.put(scope, stored);
+              result = gitManagedOperationResponseSchema.parse({
+                operation: stored,
+              });
+            } else if (request.type === "git.commit.action.apply") {
+              const parsed = gitCommitActionResultSchema.parse(result);
+              const state = commitManagedOperationState(parsed);
+              if (state) {
+                stored = managedOperationRecord({
+                  id: requestContext.operationId,
+                  scope,
+                  state,
+                });
+                await repositoryManagedOperations.put(scope, stored);
+              }
+              result = parsed;
+            } else if (request.type === "git.stash.action.apply") {
+              const parsed = gitStashMutationResultSchema.parse(result);
+              const state = stashManagedOperationState(parsed);
+              if (state) {
+                stored = managedOperationRecord({
+                  id: requestContext.operationId,
+                  scope,
+                  state,
+                });
+                await repositoryManagedOperations.put(scope, stored);
+              }
+              result = parsed;
+            } else if (
+              request.type === "git.conflicts.apply" &&
+              managedOperationIsActive(stored)
+            ) {
+              await refreshStoredOperation();
+            }
+            outcome = { ok: true, result };
+          }
         } catch (error) {
           outcome = {
             ok: false,

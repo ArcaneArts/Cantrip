@@ -3148,6 +3148,30 @@ export async function buildApp({
   });
 
   app.addHook("onRequest", async (request, reply) => {
+    const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
+    const projectRoute = route.startsWith("/api/projects/:projectId/");
+    const legacyGitRoute =
+      projectRoute &&
+      route.includes("/git/") &&
+      !route.endsWith("/git/agent/drafts");
+    const legacyHistoryRoute =
+      projectRoute &&
+      (route.endsWith("/history") || route.includes("/history/"));
+    const legacyGithubContentRoute =
+      projectRoute &&
+      (route.includes("/github/issues") ||
+        route.includes("/github/releases") ||
+        (route.includes("/github/pull-requests") &&
+          !route.endsWith("/checkout")));
+    if (legacyGitRoute || legacyHistoryRoute || legacyGithubContentRoute) {
+      return reply.code(410).send({
+        error:
+          "This plaintext repository route was removed. Use the protected repository operation endpoint.",
+      });
+    }
+  });
+
+  app.addHook("onRequest", async (request, reply) => {
     if (request.method === "OPTIONS") return;
     const route = request.routeOptions.url ?? request.url.split("?", 1)[0]!;
     const internalWorkerRoute =
@@ -9478,21 +9502,25 @@ export async function buildApp({
         request.params.projectId,
       );
       try {
-        const result = await bridge.request(
-          context.workerId,
-          {
-            type: "repository.operation",
-            serverId,
-            projectId: request.params.projectId,
-            worktreeId: request.params.worktreeId,
-            cwd: context.worktree.path,
-            repository:
-              githubContext?.workerId === context.workerId
-                ? githubContext.nameWithOwner
-                : null,
-            ...input.data,
-          },
-          { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+        const result = await worktreeCoordinator.serialize(
+          request.params.projectId,
+          () =>
+            bridge.request(
+              context.workerId,
+              {
+                type: "repository.operation",
+                serverId,
+                projectId: request.params.projectId,
+                worktreeId: request.params.worktreeId,
+                cwd: context.worktree.path,
+                repository:
+                  githubContext?.workerId === context.workerId
+                    ? githubContext.nameWithOwner
+                    : null,
+                ...input.data,
+              },
+              { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
+            ),
         );
         return reply.send(repositoryOperationWireResponseSchema.parse(result));
       } catch (error) {

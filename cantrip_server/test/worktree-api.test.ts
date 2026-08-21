@@ -1651,6 +1651,20 @@ describe.sequential("server worktree control plane", () => {
     );
   });
 
+  it("fails closed on legacy plaintext Git operation routes", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${primaryId}/git/operations/preview`,
+      payload: { type: "merge", sourceRef: "private/feature-name" },
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json()).toEqual({
+      error:
+        "This plaintext repository route was removed. Use the protected repository operation endpoint.",
+    });
+  });
+
   it("renders durable Primary metadata and reconciles external worktrees", async () => {
     const initial = projectWorktreeListSchema.parse(
       (

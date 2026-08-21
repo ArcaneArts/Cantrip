@@ -1466,6 +1466,11 @@ function repositoryOperationRouteBoundaryAudit(
       failures.push(`Client protected repository path is missing ${marker}.`);
     }
   }
+  if (clientText.includes("/git/operations")) {
+    failures.push(
+      "Client still calls a plaintext managed Git operation route.",
+    );
+  }
   for (const marker of [
     'case "repository.operation"',
     "repositoryOperationReplay.reserve",
@@ -1473,9 +1478,24 @@ function repositoryOperationRouteBoundaryAudit(
     "protectWorkerRepositoryOperationContent",
     "cwd: command.cwd",
     "repository: command.repository",
+    "repositoryManagedOperations.get",
+    "repositoryManagedOperations.put",
+    'request.type === "git.operation.current"',
   ]) {
     if (!workerText.includes(marker)) {
       failures.push(`Worker protected repository path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "legacyGitRoute",
+    "legacyHistoryRoute",
+    "legacyGithubContentRoute",
+    "This plaintext repository route was removed",
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(
+        `Server plaintext repository fail-closed guard is missing ${marker}.`,
+      );
     }
   }
   if (
@@ -1494,11 +1514,14 @@ function repositoryOperationRouteBoundaryAudit(
       "repositoryOperationTypeSchema",
     ),
     pendingPlaintextPaths: [
-      "managed Git operations",
       "Git agent drafts",
       "pull-request checkout",
       "worktree status and lifecycle",
       "repository identity and paths",
+    ],
+    protectedDurableEndpointState: [
+      "managed Git operation context and output:worker-local",
+      "legacy Git, History, Issues, PR, and release content routes:fail-closed",
     ],
   };
 }
