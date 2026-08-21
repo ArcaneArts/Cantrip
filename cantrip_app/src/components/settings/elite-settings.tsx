@@ -8,6 +8,7 @@ import {
   Ellipsis,
   List,
   LoaderCircle,
+  PanelRightClose,
   PanelRightOpen,
   Radio,
   RefreshCw,
@@ -16,9 +17,16 @@ import {
   ShieldCheck,
   Table2,
   Text,
-  X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import {
   DEFAULT_ELITE_REVEAL_CONFIG,
@@ -75,6 +83,76 @@ const viewItemCounts: Record<EliteLabView, number> = {
   text: 12,
   widgets: 20,
 };
+
+export const DEFAULT_ELITE_CONFIGURATOR_WIDTH = 384;
+export const MIN_ELITE_CONFIGURATOR_WIDTH = 320;
+export const MAX_ELITE_CONFIGURATOR_WIDTH = 640;
+export const ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY =
+  "cantrip:elite-configurator-width";
+
+interface WidthStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export function clampEliteConfiguratorWidth(width: number): number {
+  if (!Number.isFinite(width)) return DEFAULT_ELITE_CONFIGURATOR_WIDTH;
+  return Math.min(
+    MAX_ELITE_CONFIGURATOR_WIDTH,
+    Math.max(MIN_ELITE_CONFIGURATOR_WIDTH, Math.round(width)),
+  );
+}
+
+export function eliteConfiguratorWidthFromPointer(
+  clientX: number,
+  panelRight: number,
+): number {
+  return clampEliteConfiguratorWidth(panelRight - clientX);
+}
+
+export function eliteConfiguratorWidthFromKey(
+  currentWidth: number,
+  key: string,
+): number | null {
+  if (key === "Home") return MIN_ELITE_CONFIGURATOR_WIDTH;
+  if (key === "End") return MAX_ELITE_CONFIGURATOR_WIDTH;
+  if (key === "ArrowLeft") {
+    return clampEliteConfiguratorWidth(currentWidth + 16);
+  }
+  if (key === "ArrowRight") {
+    return clampEliteConfiguratorWidth(currentWidth - 16);
+  }
+  return null;
+}
+
+function readEliteConfiguratorWidth(storage?: WidthStorage | null): number {
+  try {
+    const target =
+      storage ?? (typeof window === "undefined" ? null : window.localStorage);
+    const stored = target?.getItem(ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY);
+    return stored === null || stored === undefined
+      ? DEFAULT_ELITE_CONFIGURATOR_WIDTH
+      : clampEliteConfiguratorWidth(Number(stored));
+  } catch {
+    return DEFAULT_ELITE_CONFIGURATOR_WIDTH;
+  }
+}
+
+function persistEliteConfiguratorWidth(
+  width: number,
+  storage?: WidthStorage | null,
+): void {
+  try {
+    const target =
+      storage ?? (typeof window === "undefined" ? null : window.localStorage);
+    target?.setItem(
+      ELITE_CONFIGURATOR_WIDTH_STORAGE_KEY,
+      String(clampEliteConfiguratorWidth(width)),
+    );
+  } catch {
+    // A blocked local-storage write should not break panel resizing.
+  }
+}
 
 function emitEliteQaEvent(
   event: string,
@@ -590,24 +668,18 @@ function NumberOption({
 function EliteConfigurator({
   config,
   onApply,
-  onClose,
 }: {
   config: EliteRevealConfig;
   onApply(config: EliteRevealConfig): void;
-  onClose(): void;
 }) {
   const [draft, setDraft] = useState<EliteRevealConfig>(() => ({
     ...config,
     variants: [...config.variants],
   }));
-
+  const configSignature = `${config.glitchCountMin}:${config.glitchCountMax}:${config.glitchShowMs}:${config.staggerSpreadMs}:${config.variants.join(",")}`;
   useEffect(() => {
-    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose]);
+    setDraft({ ...config, variants: [...config.variants] });
+  }, [config, configSignature]);
 
   const setNumber = (
     key:
@@ -623,175 +695,309 @@ function EliteConfigurator({
     }));
 
   return (
-    <>
-      <button
-        aria-label="Close effect options"
-        className="absolute inset-0 z-30 cursor-default bg-transparent"
-        onClick={onClose}
-        type="button"
-      />
-      <aside
-        aria-label="Elite effect options"
-        aria-modal="true"
-        className="absolute inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l bg-background shadow-2xl"
-        role="dialog"
-      >
-        <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
+    <aside
+      aria-label="Elite effect options"
+      className="flex h-full min-h-0 flex-col border-l bg-background"
+    >
+      <div className="flex items-start justify-between gap-3 border-b px-5 py-4">
+        <div>
+          <h2 className="font-semibold">Effect options</h2>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Changes apply together so typing does not continuously replay the
+            screen.
+          </p>
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <section className="grid gap-4">
           <div>
-            <h2 className="font-semibold">Effect options</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Changes apply together so typing does not continuously replay the
-              screen.
+            <h3 className="text-sm font-semibold">Timing</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Each item chooses a random glitch count within the range.
             </p>
           </div>
-          <Button
-            aria-label="Close effect options"
-            onClick={onClose}
-            size="icon"
-            variant="ghost"
-          >
-            <X className="size-4" />
-          </Button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <section className="grid gap-4">
+          <NumberOption
+            label="Minimum glitches"
+            maximum={8}
+            minimum={1}
+            onChange={(value) => setNumber("glitchCountMin", value)}
+            value={draft.glitchCountMin}
+          />
+          <NumberOption
+            label="Maximum glitches"
+            maximum={8}
+            minimum={1}
+            onChange={(value) => setNumber("glitchCountMax", value)}
+            value={draft.glitchCountMax}
+          />
+          <NumberOption
+            label="Stagger spread"
+            maximum={250}
+            minimum={0}
+            onChange={(value) => setNumber("staggerSpreadMs", value)}
+            suffix="ms"
+            value={draft.staggerSpreadMs}
+          />
+          <p className="text-xs leading-5 text-muted-foreground">
+            Visible elements are distributed across this window. Off-screen
+            elements still begin by its end.
+          </p>
+          <NumberOption
+            label="Glitch exposure"
+            maximum={120}
+            minimum={5}
+            onChange={(value) => setNumber("glitchShowMs", value)}
+            suffix="ms"
+            value={draft.glitchShowMs}
+          />
+        </section>
+
+        <section className="mt-7 grid gap-3 border-t pt-6">
+          <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold">Timing</h3>
+              <h3 className="text-sm font-semibold">Variants</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Each item chooses a random glitch count within the range.
+                Text jitter is reserved for wrappers explicitly marked as text.
               </p>
             </div>
-            <NumberOption
-              label="Minimum glitches"
-              maximum={8}
-              minimum={1}
-              onChange={(value) => setNumber("glitchCountMin", value)}
-              value={draft.glitchCountMin}
-            />
-            <NumberOption
-              label="Maximum glitches"
-              maximum={8}
-              minimum={1}
-              onChange={(value) => setNumber("glitchCountMax", value)}
-              value={draft.glitchCountMax}
-            />
-            <NumberOption
-              label="Stagger spread"
-              maximum={250}
-              minimum={0}
-              onChange={(value) => setNumber("staggerSpreadMs", value)}
-              suffix="ms"
-              value={draft.staggerSpreadMs}
-            />
-            <p className="text-xs leading-5 text-muted-foreground">
-              Visible elements are distributed across this window. Off-screen
-              elements still begin by its end.
-            </p>
-            <NumberOption
-              label="Glitch exposure"
-              maximum={120}
-              minimum={5}
-              onChange={(value) => setNumber("glitchShowMs", value)}
-              suffix="ms"
-              value={draft.glitchShowMs}
-            />
-          </section>
-
-          <section className="mt-7 grid gap-3 border-t pt-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold">Variants</h3>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Text jitter is reserved for wrappers explicitly marked as
-                  text.
-                </p>
-              </div>
-              <div className="flex gap-1">
-                <Button
-                  onClick={() =>
-                    setDraft((current) => ({
-                      ...current,
-                      variants: ELITE_GLITCH_VARIANTS,
-                    }))
-                  }
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Check all
-                </Button>
-                <Button
-                  onClick={() =>
-                    setDraft((current) => ({ ...current, variants: [] }))
-                  }
-                  size="sm"
-                  type="button"
-                  variant="ghost"
-                >
-                  Check none
-                </Button>
-              </div>
+            <div className="flex gap-1">
+              <Button
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    variants: ELITE_GLITCH_VARIANTS,
+                  }))
+                }
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Check all
+              </Button>
+              <Button
+                onClick={() =>
+                  setDraft((current) => ({ ...current, variants: [] }))
+                }
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                Check none
+              </Button>
             </div>
-            <div className="grid gap-1">
-              {ELITE_GLITCH_VARIANTS.map((variant) => {
-                const checked = draft.variants.includes(variant);
-                return (
-                  <label
-                    className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/60"
-                    key={variant}
-                  >
-                    <input
-                      checked={checked}
-                      onChange={(event) =>
-                        setVariant(variant, event.target.checked)
-                      }
-                      type="checkbox"
-                    />
-                    <span className="flex-1">{variantLabels[variant]}</span>
-                    {ELITE_GLITCH_VARIANT_WEIGHTS[variant] < 1 ? (
-                      <span className="text-[10px] text-muted-foreground">
-                        {ELITE_GLITCH_VARIANT_WEIGHTS[variant]}× weight
-                      </span>
-                    ) : null}
-                    {checked ? (
-                      <Check className="size-3.5 text-muted-foreground" />
-                    ) : null}
-                  </label>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-        <div className="grid grid-cols-2 gap-2 border-t p-4">
-          <Button
-            onClick={() =>
-              setDraft({
-                ...DEFAULT_ELITE_REVEAL_CONFIG,
-                variants: [...DEFAULT_ELITE_REVEAL_CONFIG.variants],
-              })
-            }
-            type="button"
-            variant="outline"
-          >
-            Reset defaults
-          </Button>
-          <Button
-            onClick={() => onApply(normalizeEliteRevealConfig(draft))}
-            type="button"
-          >
-            <RefreshCw className="size-4" /> Apply & replay
-          </Button>
-        </div>
-      </aside>
-    </>
+          </div>
+          <div className="grid gap-1">
+            {ELITE_GLITCH_VARIANTS.map((variant) => {
+              const checked = draft.variants.includes(variant);
+              return (
+                <label
+                  className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/60"
+                  key={variant}
+                >
+                  <input
+                    checked={checked}
+                    onChange={(event) =>
+                      setVariant(variant, event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  <span className="flex-1">{variantLabels[variant]}</span>
+                  {ELITE_GLITCH_VARIANT_WEIGHTS[variant] < 1 ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      {ELITE_GLITCH_VARIANT_WEIGHTS[variant]}× weight
+                    </span>
+                  ) : null}
+                  {checked ? (
+                    <Check className="size-3.5 text-muted-foreground" />
+                  ) : null}
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+      <div className="grid grid-cols-2 gap-2 border-t p-4">
+        <Button
+          onClick={() =>
+            setDraft({
+              ...DEFAULT_ELITE_REVEAL_CONFIG,
+              variants: [...DEFAULT_ELITE_REVEAL_CONFIG.variants],
+            })
+          }
+          type="button"
+          variant="outline"
+        >
+          Reset defaults
+        </Button>
+        <Button
+          onClick={() => onApply(normalizeEliteRevealConfig(draft))}
+          type="button"
+        >
+          <RefreshCw className="size-4" /> Apply & replay
+        </Button>
+      </div>
+    </aside>
   );
 }
 
-export function EliteSettings() {
+function EliteConfiguratorSidebar({
+  children,
+  open,
+}: {
+  children: ReactNode;
+  open: boolean;
+}) {
+  const [width, setWidth] = useState(readEliteConfiguratorWidth);
+  const [resizing, setResizing] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const widthRef = useRef(width);
+  const resizePointerIdRef = useRef<number | null>(null);
+  const resizeRightRef = useRef(0);
+  const resizeStartWidthRef = useRef(width);
+  const resizeBodyStyleRef = useRef<{
+    cursor: string;
+    userSelect: string;
+  } | null>(null);
+
+  const applyWidth = (nextWidth: number) => {
+    const next = clampEliteConfiguratorWidth(nextWidth);
+    widthRef.current = next;
+    setWidth(next);
+  };
+  const restoreBodyStyle = () => {
+    const previous = resizeBodyStyleRef.current;
+    if (!previous || typeof document === "undefined") return;
+    document.body.style.cursor = previous.cursor;
+    document.body.style.userSelect = previous.userSelect;
+    resizeBodyStyleRef.current = null;
+  };
+  useEffect(() => restoreBodyStyle, []);
+
+  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizePointerIdRef.current = event.pointerId;
+    resizeRightRef.current =
+      shellRef.current?.getBoundingClientRect().right ?? window.innerWidth;
+    resizeStartWidthRef.current = widthRef.current;
+    resizeBodyStyleRef.current = {
+      cursor: document.body.style.cursor,
+      userSelect: document.body.style.userSelect,
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setResizing(true);
+  };
+  const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (resizePointerIdRef.current !== event.pointerId) return;
+    applyWidth(
+      eliteConfiguratorWidthFromPointer(event.clientX, resizeRightRef.current),
+    );
+  };
+  const finishResize = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    persist: boolean,
+  ) => {
+    if (resizePointerIdRef.current !== event.pointerId) return;
+    resizePointerIdRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    restoreBodyStyle();
+    setResizing(false);
+    if (!persist) {
+      applyWidth(resizeStartWidthRef.current);
+      return;
+    }
+    if (widthRef.current !== resizeStartWidthRef.current) {
+      persistEliteConfiguratorWidth(widthRef.current);
+    }
+  };
+  const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const next = eliteConfiguratorWidthFromKey(widthRef.current, event.key);
+    if (next === null) return;
+    event.preventDefault();
+    if (next === widthRef.current) return;
+    applyWidth(next);
+    persistEliteConfiguratorWidth(next);
+  };
+
+  return (
+    <div
+      className={cn(
+        "group/elite-configurator relative h-full shrink-0",
+        resizing
+          ? "transition-none"
+          : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
+      )}
+      data-slot="elite-configurator-sidebar-shell"
+      data-state={open ? "open" : "closed"}
+      ref={shellRef}
+      style={{ width: open ? width : 0 }}
+    >
+      <div className="absolute inset-0 overflow-hidden">
+        <div
+          aria-hidden={!open}
+          className={cn(
+            "absolute inset-y-0 right-0 h-full transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+            open
+              ? "translate-x-0 opacity-100"
+              : "pointer-events-none translate-x-2 opacity-0",
+          )}
+          data-slot="elite-configurator-sidebar-surface"
+          inert={!open}
+          style={{ width }}
+        >
+          {children}
+        </div>
+      </div>
+      <div
+        aria-label="Resize Elite effect options sidebar"
+        aria-orientation="vertical"
+        aria-valuemax={MAX_ELITE_CONFIGURATOR_WIDTH}
+        aria-valuemin={MIN_ELITE_CONFIGURATOR_WIDTH}
+        aria-valuenow={width}
+        className={cn(
+          "absolute inset-y-0 -left-1 z-40 w-2 cursor-col-resize touch-none outline-none",
+          "after:absolute after:inset-y-0 after:left-1/2 after:w-px after:bg-border after:opacity-0 after:transition-opacity after:duration-150",
+          "group-hover/elite-configurator:after:opacity-100 group-focus-within/elite-configurator:after:opacity-100 hover:after:opacity-100 focus-visible:after:opacity-100",
+          !open && "pointer-events-none opacity-0",
+          resizing && "after:opacity-100",
+        )}
+        data-slot="elite-configurator-resize-handle"
+        onKeyDown={resizeWithKeyboard}
+        onPointerCancel={(event) => finishResize(event, false)}
+        onPointerDown={beginResize}
+        onPointerMove={moveResize}
+        onPointerUp={(event) => finishResize(event, true)}
+        role="separator"
+        tabIndex={open ? 0 : -1}
+        title="Drag to resize Elite effect options sidebar"
+      />
+    </div>
+  );
+}
+
+export function EliteSettings({
+  appWideEnabled = false,
+  configSaving = false,
+  configuredEffect = DEFAULT_ELITE_REVEAL_CONFIG,
+  onAppWideEnabledChange,
+  onConfigChange,
+  saveError = null,
+}: {
+  appWideEnabled?: boolean;
+  configSaving?: boolean;
+  configuredEffect?: EliteRevealConfig;
+  onAppWideEnabledChange?(enabled: boolean): void;
+  onConfigChange?(config: EliteRevealConfig): void;
+  saveError?: string | null;
+}) {
   const [view, setView] = useState<EliteLabView>("list");
   const [config, setConfig] = useState<EliteRevealConfig>(() => ({
-    ...DEFAULT_ELITE_REVEAL_CONFIG,
-    variants: [...DEFAULT_ELITE_REVEAL_CONFIG.variants],
+    ...configuredEffect,
+    variants: [...configuredEffect.variants],
   }));
   const [replayKey, setReplayKey] = useState(0);
   const [configuratorOpen, setConfiguratorOpen] = useState(false);
@@ -808,6 +1014,14 @@ export function EliteSettings() {
       view,
     });
   }, []);
+
+  const configuredEffectSignature = `${configuredEffect.glitchCountMin}:${configuredEffect.glitchCountMax}:${configuredEffect.glitchShowMs}:${configuredEffect.staggerSpreadMs}:${configuredEffect.variants.join(",")}`;
+  useEffect(() => {
+    setConfig({
+      ...configuredEffect,
+      variants: [...configuredEffect.variants],
+    });
+  }, [configuredEffect, configuredEffectSignature]);
 
   const replay = (nextConfig = config, source = "toolbar") => {
     setReplayKey((current) => current + 1);
@@ -828,80 +1042,114 @@ export function EliteSettings() {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-background">
-      <header className="shrink-0 border-b bg-background/95 px-3 pt-3 backdrop-blur sm:px-4">
-        <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Activity className="size-4" />
-              <h1 className="font-semibold">Elite reveal laboratory</h1>
-              <Badge variant="outline">Experimental</Badge>
+    <div
+      className="relative flex h-full min-h-0 min-w-0 overflow-hidden rounded-lg border bg-background"
+      data-elite-lab=""
+    >
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="shrink-0 border-b bg-background/95 px-3 pt-3 backdrop-blur sm:px-4">
+          <div className="flex flex-wrap items-start justify-between gap-3 pb-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <Activity className="size-4" />
+                <h1 className="font-semibold">Elite reveal laboratory</h1>
+                <Badge variant="outline">Experimental</Badge>
+              </div>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+                Materialization effects for explicit text, box, and control
+                boundaries. Replays run across the full fixture, including
+                off-screen items. Saved options can run app-wide while this lab
+                stays isolated for accurate previews.
+              </p>
             </div>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-              Materialization effects for explicit text, box, and control
-              boundaries. Replays run across the full fixture, including
-              off-screen items. Settings are local to this lab and reset when it
-              closes.
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <Button
+                aria-checked={appWideEnabled}
+                disabled={configSaving}
+                onClick={() => onAppWideEnabledChange?.(!appWideEnabled)}
+                role="switch"
+                size="sm"
+                type="button"
+                variant={appWideEnabled ? "default" : "outline"}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-1.5 rounded-full",
+                    appWideEnabled ? "bg-background" : "bg-muted-foreground",
+                  )}
+                />
+                App-wide {appWideEnabled ? "on" : "off"}
+              </Button>
+              <Button onClick={() => replay()} size="sm" variant="outline">
+                <RefreshCw className="size-3.5" /> Replay
+              </Button>
+              <Button
+                aria-pressed={configuratorOpen}
+                onClick={() => setConfiguratorOpen((current) => !current)}
+                size="sm"
+              >
+                {configuratorOpen ? (
+                  <PanelRightClose className="size-3.5" />
+                ) : (
+                  <PanelRightOpen className="size-3.5" />
+                )}
+                Configure
+              </Button>
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
+            <NavigationTabBar
+              activeTab={view}
+              ariaLabel="Elite laboratory views"
+              onTabChange={changeView}
+              tabs={eliteLabTabs}
+            />
+            <p className="pb-2 text-[11px] text-muted-foreground">
+              {config.glitchCountMin}–{config.glitchCountMax} glitches ·{" "}
+              {config.glitchShowMs} ms · {config.staggerSpreadMs} ms spread ·{" "}
+              {enabledVariantSummary}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Button onClick={() => replay()} size="sm" variant="outline">
-              <RefreshCw className="size-3.5" /> Replay
-            </Button>
-            <Button onClick={() => setConfiguratorOpen(true)} size="sm">
-              <PanelRightOpen className="size-3.5" /> Configure
-            </Button>
-          </div>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-5">
+          {view === "list" ? (
+            <ListFixture config={config} replayKey={replayKey} />
+          ) : null}
+          {view === "cards" ? (
+            <CardsFixture config={config} replayKey={replayKey} />
+          ) : null}
+          {view === "text" ? (
+            <TextFixture config={config} replayKey={replayKey} />
+          ) : null}
+          {view === "table" ? (
+            <TableFixture config={config} replayKey={replayKey} />
+          ) : null}
+          {view === "widgets" ? (
+            <WidgetsFixture config={config} replayKey={replayKey} />
+          ) : null}
         </div>
-        <div className="flex min-w-0 flex-wrap items-end justify-between gap-2">
-          <NavigationTabBar
-            activeTab={view}
-            ariaLabel="Elite laboratory views"
-            onTabChange={changeView}
-            tabs={eliteLabTabs}
-          />
-          <p className="pb-2 text-[11px] text-muted-foreground">
-            {config.glitchCountMin}–{config.glitchCountMax} glitches ·{" "}
-            {config.glitchShowMs} ms · {config.staggerSpreadMs} ms spread ·{" "}
-            {enabledVariantSummary}
-          </p>
+
+        <div className="shrink-0 border-t bg-muted/25 px-4 py-2 text-[11px] text-muted-foreground">
+          React component types are not reliably inspectable after composition.
+          This lab uses explicit semantic roles; DOM type traversal is possible,
+          but intentionally avoided because it is brittle.
+          {saveError ? (
+            <span className="ml-2 text-destructive">{saveError}</span>
+          ) : null}
         </div>
-      </header>
-
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain p-3 sm:p-5">
-        {view === "list" ? (
-          <ListFixture config={config} replayKey={replayKey} />
-        ) : null}
-        {view === "cards" ? (
-          <CardsFixture config={config} replayKey={replayKey} />
-        ) : null}
-        {view === "text" ? (
-          <TextFixture config={config} replayKey={replayKey} />
-        ) : null}
-        {view === "table" ? (
-          <TableFixture config={config} replayKey={replayKey} />
-        ) : null}
-        {view === "widgets" ? (
-          <WidgetsFixture config={config} replayKey={replayKey} />
-        ) : null}
       </div>
-
-      <div className="shrink-0 border-t bg-muted/25 px-4 py-2 text-[11px] text-muted-foreground">
-        React component types are not reliably inspectable after composition.
-        This lab uses explicit semantic roles; DOM type traversal is possible,
-        but intentionally avoided because it is brittle.
-      </div>
-
-      {configuratorOpen ? (
+      <EliteConfiguratorSidebar open={configuratorOpen}>
         <EliteConfigurator
           config={config}
           onApply={(nextConfig) => {
             setConfig(nextConfig);
             replay(nextConfig, "configurator");
+            onConfigChange?.(nextConfig);
           }}
-          onClose={() => setConfiguratorOpen(false)}
         />
-      ) : null}
+      </EliteConfiguratorSidebar>
     </div>
   );
 }

@@ -2808,6 +2808,8 @@ export class ServerRepository {
         highContrast: settings.highContrast,
         proMode: settings.proMode,
         proModeOpacity: settings.proModeOpacity,
+        eliteMode: settings.eliteMode,
+        eliteRevealConfig: settings.eliteRevealConfig,
         sidebarWidth: settings.sidebarWidth,
         desktopFrameRate:
           settings.desktopFrameRate as UserSettings["desktopFrameRate"],
@@ -3273,6 +3275,8 @@ export class ServerRepository {
       highContrast: settings.highContrast,
       proMode: settings.proMode,
       proModeOpacity: settings.proModeOpacity,
+      eliteMode: settings.eliteMode,
+      eliteRevealConfig: settings.eliteRevealConfig,
       sidebarWidth: settings.sidebarWidth,
       desktopFrameRate:
         settings.desktopFrameRate as UserSettings["desktopFrameRate"],

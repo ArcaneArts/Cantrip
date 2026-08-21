@@ -1,0 +1,2 @@
+ALTER TABLE "user_settings" ADD COLUMN "elite_mode" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_settings" ADD COLUMN "elite_reveal_config" jsonb DEFAULT '{"glitchCountMax":3,"glitchCountMin":1,"glitchShowMs":9,"staggerSpreadMs":50,"variants":["outline","full-frame","left-frame","right-frame","chromatic","spatial-shift","scanline","text-jitter"]}'::jsonb NOT NULL;

@@ -161,6 +161,7 @@ import {
   encryptedTabGroupUpdateSchema,
   tabGroupUpdateSchema,
   unprobedCodexRuntimeReport,
+  DEFAULT_ELITE_REVEAL_CONFIG,
   userSettingsSchema,
   userSettingsUpdateSchema,
   workerCommandSchema,
@@ -4566,6 +4567,8 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({
       desktopFrameRate: 30,
+      eliteMode: false,
+      eliteRevealConfig: DEFAULT_ELITE_REVEAL_CONFIG,
       defaultPermissionProfileId: ":workspace",
       defaultWorkerId: null,
       automaticReplicaProvisioning: false,
@@ -4629,6 +4632,27 @@ describe("Cantrip protocol", () => {
     ).toBe(false);
     expect(userSettingsUpdateSchema.parse({ theme: "dark" })).toEqual({
       theme: "dark",
+    });
+    expect(
+      userSettingsUpdateSchema.safeParse({
+        eliteRevealConfig: {
+          ...DEFAULT_ELITE_REVEAL_CONFIG,
+          glitchCountMax: 1,
+          glitchCountMin: 2,
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      userSettingsUpdateSchema.parse({
+        eliteMode: true,
+        eliteRevealConfig: {
+          ...DEFAULT_ELITE_REVEAL_CONFIG,
+          variants: ["chromatic"],
+        },
+      }),
+    ).toMatchObject({
+      eliteMode: true,
+      eliteRevealConfig: { variants: ["chromatic"] },
     });
   });
 

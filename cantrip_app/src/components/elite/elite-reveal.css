@@ -1,5 +1,5 @@
 .elite-reveal {
-  --elite-reveal-frame: color-mix(in oklab, var(--foreground) 65%, transparent);
+  --elite-reveal-frame: color-mix(in oklab, var(--primary) 65%, transparent);
   isolation: isolate;
   min-width: 0;
   position: relative;
@@ -54,38 +54,47 @@
   visibility: hidden;
 }
 
-.elite-reveal[data-variant="outline"] > .elite-reveal__content,
-.elite-reveal[data-variant="full-frame"] > .elite-reveal__content,
-.elite-reveal[data-variant="left-frame"] > .elite-reveal__content,
-.elite-reveal[data-variant="right-frame"] > .elite-reveal__content {
+.elite-reveal[data-state="glitch"][data-variant="outline"]
+  > .elite-reveal__content,
+.elite-reveal[data-state="glitch"][data-variant="full-frame"]
+  > .elite-reveal__content,
+.elite-reveal[data-state="glitch"][data-variant="left-frame"]
+  > .elite-reveal__content,
+.elite-reveal[data-state="glitch"][data-variant="right-frame"]
+  > .elite-reveal__content {
   opacity: 0;
 }
 
-.elite-reveal[data-variant="outline"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="outline"]
+  > .elite-reveal__signal {
   border-color: var(--elite-reveal-frame);
   border-style: solid;
   border-width: var(--elite-outline-top) var(--elite-outline-right)
     var(--elite-outline-bottom) var(--elite-outline-left);
 }
 
-.elite-reveal[data-variant="full-frame"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="full-frame"]
+  > .elite-reveal__signal {
   background: var(--elite-reveal-frame);
   box-shadow: 0 0 9px color-mix(in oklab, var(--foreground) 18%, transparent);
 }
 
-.elite-reveal[data-variant="left-frame"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="left-frame"]
+  > .elite-reveal__signal {
   background: var(--elite-reveal-frame);
   box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 16%, transparent);
   clip-path: inset(0 48% 0 0);
 }
 
-.elite-reveal[data-variant="right-frame"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="right-frame"]
+  > .elite-reveal__signal {
   background: var(--elite-reveal-frame);
   box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 16%, transparent);
   clip-path: inset(0 0 0 48%);
 }
 
-.elite-reveal[data-variant="chromatic"] > .elite-reveal__content {
+.elite-reveal[data-state="glitch"][data-variant="chromatic"]
+  > .elite-reveal__content {
   filter: drop-shadow(
       var(--elite-chromatic-x) var(--elite-chromatic-y) 0
         color-mix(in oklab, var(--elite-chromatic-channel-a) 85%, transparent)
@@ -102,7 +111,8 @@
     skewX(-0.45deg);
 }
 
-.elite-reveal[data-variant="chromatic"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="chromatic"]
+  > .elite-reveal__signal {
   background: linear-gradient(
     var(--elite-chromatic-angle),
     color-mix(in oklab, var(--elite-chromatic-channel-a) 14%, transparent),
@@ -112,28 +122,33 @@
   mix-blend-mode: screen;
 }
 
-.elite-reveal[data-variant="spatial-shift"] > .elite-reveal__content {
+.elite-reveal[data-state="glitch"][data-variant="spatial-shift"]
+  > .elite-reveal__content {
   filter: brightness(1.08) contrast(1.04);
   opacity: 0.86;
   transform: translate(var(--elite-shift-x), var(--elite-shift-y));
 }
 
-.elite-reveal[data-variant="spatial-shift"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="spatial-shift"]
+  > .elite-reveal__signal {
   border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
   transform: translate(var(--elite-shift-x), var(--elite-shift-y));
 }
 
-.elite-reveal[data-variant="scanline"] > .elite-reveal__content {
+.elite-reveal[data-state="glitch"][data-variant="scanline"]
+  > .elite-reveal__content {
   filter: brightness(1.2) contrast(1.1);
   opacity: 0.8;
 }
 
-.elite-reveal[data-variant="scanline"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="scanline"]
+  > .elite-reveal__signal {
   background: var(--elite-scanline-bands);
   clip-path: var(--elite-scanline-clip);
 }
 
-.elite-reveal[data-variant="text-jitter"] > .elite-reveal__content {
+.elite-reveal[data-state="glitch"][data-variant="text-jitter"]
+  > .elite-reveal__content {
   filter: contrast(1.4);
   letter-spacing: 0.035em;
   opacity: 0.76;
@@ -143,7 +158,8 @@
   transform: translate(1px, -0.5px) skewX(-1deg);
 }
 
-.elite-reveal[data-variant="text-jitter"] > .elite-reveal__signal {
+.elite-reveal[data-state="glitch"][data-variant="text-jitter"]
+  > .elite-reveal__signal {
   background: linear-gradient(
     transparent 42%,
     color-mix(in oklab, var(--foreground) 38%, transparent) 43% 48%,

@@ -66,36 +66,37 @@ describe("Elite reveal sequencing", () => {
     ]);
   });
 
-  it("weights disruptive block frames at half the other variants", () => {
+  it("makes full frames rare and halves the other disruptive bands", () => {
     expect(ELITE_GLITCH_VARIANT_WEIGHTS).toMatchObject({
       chromatic: 1,
-      "full-frame": 0.5,
+      "full-frame": 0.1,
       "left-frame": 0.5,
       outline: 1,
       "right-frame": 0.5,
+      scanline: 0.5,
     });
     const variants = ["outline", "full-frame", "chromatic"] as const;
     expect(selectEliteGlitchVariant(variants, () => 0.39)).toBe("outline");
-    expect(selectEliteGlitchVariant(variants, () => 0.45)).toBe("full-frame");
+    expect(selectEliteGlitchVariant(variants, () => 0.5)).toBe("full-frame");
     expect(selectEliteGlitchVariant(variants, () => 0.9)).toBe("chromatic");
 
     const selectionCounts = Object.fromEntries(
       ELITE_GLITCH_VARIANTS.map((variant) => [variant, 0]),
     ) as Record<(typeof ELITE_GLITCH_VARIANTS)[number], number>;
-    for (let index = 0; index < 6_500; index += 1) {
+    for (let index = 0; index < 5_600; index += 1) {
       const variant = selectEliteGlitchVariant(
         ELITE_GLITCH_VARIANTS,
-        () => (index + 0.5) / 6_500,
+        () => (index + 0.5) / 5_600,
       );
       if (variant) selectionCounts[variant] += 1;
     }
     expect(selectionCounts).toMatchObject({
-      "full-frame": 500,
+      "full-frame": 100,
       "left-frame": 500,
       "right-frame": 500,
       chromatic: 1_000,
       outline: 1_000,
-      scanline: 1_000,
+      scanline: 500,
       "spatial-shift": 1_000,
       "text-jitter": 1_000,
     });

@@ -1,3 +1,4 @@
+import { DEFAULT_ELITE_REVEAL_CONFIG } from "@cantrip/protocol";
 import type {
   AgentInteractionResponse,
   BrowserSummary,
@@ -81,6 +82,7 @@ import {
 import { flushSync } from "react-dom";
 
 import { Activity, ActivityGroup } from "@/components/chat/activity";
+import { EliteGlobalEffects } from "@/components/elite/elite-global-effects";
 import { AppCommandBar } from "@/components/app/app-command-bar";
 import {
   AttachmentPreview,
@@ -5855,6 +5857,13 @@ export function App() {
       onOperation={handleWorkspaceDrop}
       tauriTitlebar={overlayTitlebar ? "overlay" : undefined}
     >
+      <EliteGlobalEffects
+        config={
+          settings.data?.preferences.eliteRevealConfig ??
+          DEFAULT_ELITE_REVEAL_CONFIG
+        }
+        enabled={settings.data?.preferences.eliteMode ?? false}
+      />
       {!isPopout ? (
         <div
           data-slot="app-sidebar-shell"
@@ -6648,6 +6657,7 @@ export function App() {
           <SettingsPage
             initialSection={settingsSection}
             initialPolicyId={settingsPolicyId}
+            onEliteOpen={() => setSettingsSection("elite")}
             onPolicyOpenHandled={() => setSettingsPolicyId(null)}
             onOpenTunnelOwner={openTunnelOwner}
           />
