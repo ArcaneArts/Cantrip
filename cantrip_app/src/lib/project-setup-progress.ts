@@ -1,4 +1,19 @@
-import type { ProjectReplicaJobSummary } from "@cantrip/protocol";
+import type {
+  ProjectReplicaJobSummary,
+  ProjectSummary,
+} from "@cantrip/protocol";
+
+export function projectOwningWorkerId(
+  project: Pick<ProjectSummary, "preferredWorkerId" | "source"> | undefined,
+  setupJob?: Pick<ProjectReplicaJobSummary, "workerId">,
+): string | null {
+  return (
+    project?.source?.workerId ??
+    project?.preferredWorkerId ??
+    setupJob?.workerId ??
+    null
+  );
+}
 
 export function latestProjectProvisionJob(
   jobs: readonly ProjectReplicaJobSummary[] | undefined,

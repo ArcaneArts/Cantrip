@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   latestProjectProvisionJob,
+  projectOwningWorkerId,
   projectSetupPercent,
 } from "./project-setup-progress";
 
@@ -31,5 +32,35 @@ describe("project setup progress", () => {
     expect(latest?.id).toBe("new");
     expect(projectSetupPercent(latest)).toBe(64);
     expect(projectSetupPercent(null)).toBe(5);
+  });
+
+  it("uses setup placement before the project source exists", () => {
+    expect(
+      projectOwningWorkerId(
+        { preferredWorkerId: "worker-preferred", source: null },
+        { workerId: "worker-job" },
+      ),
+    ).toBe("worker-preferred");
+    expect(
+      projectOwningWorkerId(
+        { preferredWorkerId: null, source: null },
+        { workerId: "worker-job" },
+      ),
+    ).toBe("worker-job");
+    expect(
+      projectOwningWorkerId(
+        {
+          preferredWorkerId: "worker-preferred",
+          source: {
+            id: "source-one",
+            sourceKind: "git",
+            workerId: "worker-source",
+            path: "/repo",
+            displayPath: "repo",
+          },
+        },
+        { workerId: "worker-job" },
+      ),
+    ).toBe("worker-source");
   });
 });

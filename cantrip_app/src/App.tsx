@@ -419,6 +419,7 @@ import {
 } from "@/lib/project-workspaces";
 import {
   latestProjectProvisionJob,
+  projectOwningWorkerId,
   projectSetupPercent,
 } from "@/lib/project-setup-progress";
 import type {
@@ -4670,6 +4671,10 @@ export function App() {
   const selectedProjectSetupJob = selectedProject
     ? projectSetupJobs.get(selectedProject.id)
     : undefined;
+  const selectedProjectWorkerId = projectOwningWorkerId(
+    selectedProject,
+    selectedProjectSetupJob,
+  );
   const selectedFolderSetupJob = selectedProject
     ? folderSetupJobs.get(selectedProject.id)
     : undefined;
@@ -4887,7 +4892,7 @@ export function App() {
         selectedCodeTab?.activeWorkerId ??
         selectedBrowser?.workerId ??
         activeWorktree?.workerId ??
-        selectedProject?.source?.workerId);
+        selectedProjectWorkerId);
   const selectedWorker = workers.data?.find(
     (worker) => worker.workerId === selectedWorkerId,
   );
@@ -7427,8 +7432,7 @@ export function App() {
               surfaces={projectSurfaces}
               workerOnline={Boolean(
                 workers.data?.find(
-                  ({ workerId }) =>
-                    workerId === selectedProject.source?.workerId,
+                  ({ workerId }) => workerId === selectedProjectWorkerId,
                 )?.online,
               )}
               worktrees={worktrees.data ?? []}
