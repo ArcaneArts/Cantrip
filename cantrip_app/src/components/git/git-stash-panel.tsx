@@ -41,6 +41,8 @@ import {
   getProjectWorktreeGitOperation,
   previewProjectWorktreeStashAction,
 } from "@/lib/api";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
@@ -191,6 +193,7 @@ export function GitStashPanel({
   worktreeId: string;
 }) {
   const queryClient = useQueryClient();
+  const gitResourcesLive = useAppLiveStatus() === "live";
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
@@ -217,7 +220,7 @@ export function GitStashPanel({
         ["queued", "running", "conflicted", "awaiting-user-action"].includes(
           current.state,
         )
-        ? 2_000
+        ? liveResourceRefreshInterval(gitResourcesLive, 2_000)
         : false;
     },
   });

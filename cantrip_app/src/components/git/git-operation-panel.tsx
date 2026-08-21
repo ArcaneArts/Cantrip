@@ -40,6 +40,8 @@ import {
   previewProjectWorktreeGitOperation,
   startProjectWorktreeGitOperation,
 } from "@/lib/api";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { cn } from "@/lib/utils";
 
 import { GitPatchView } from "./git-patch-view";
@@ -166,6 +168,7 @@ export function GitOperationPanel({
   worktreeId: string;
 }) {
   const queryClient = useQueryClient();
+  const gitResourcesLive = useAppLiveStatus() === "live";
   const [editor, setEditor] = useState<GitManagedOperationAction | null>(
     initialAction,
   );
@@ -179,7 +182,9 @@ export function GitOperationPanel({
     queryKey: ["git-operation", projectId, worktreeId],
     queryFn: () => getProjectWorktreeGitOperation(projectId, worktreeId),
     refetchInterval: (query) =>
-      gitOperationIsActive(query.state.data?.operation) ? 2_000 : false,
+      gitOperationIsActive(query.state.data?.operation)
+        ? liveResourceRefreshInterval(gitResourcesLive, 2_000)
+        : false,
   });
   const refs = useQuery({
     queryKey: ["worktree-revision-candidates", projectId, worktreeId],

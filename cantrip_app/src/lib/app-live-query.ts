@@ -3,6 +3,8 @@ import {
   codeGraphProjectStatusSchema,
   codexExternalImportStatusSchema,
   codexMcpOauthStatusSchema,
+  gitConflictListSchema,
+  gitManagedOperationResponseSchema,
   gitStatusSchema,
 } from "@cantrip/protocol";
 import type {
@@ -13,6 +15,8 @@ import type {
   CodeGraphProjectStatus,
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
+  GitConflictList,
+  GitManagedOperationResponse,
   GitStatus,
 } from "@cantrip/protocol";
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
@@ -146,6 +150,9 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             event.entityId
               ? ["git-conflicts", projectId, event.entityId]
               : ["git-conflicts", projectId],
+            event.entityId
+              ? ["git-conflict", projectId, event.entityId]
+              : ["git-conflict", projectId],
           ]
         : event.scope.kind === "current-user"
           ? [["git-conflicts"]]
@@ -324,6 +331,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["git-graph-commit-overlay", scope.projectId],
         ["git-operation", scope.projectId],
         ["git-conflicts", scope.projectId],
+        ["git-conflict", scope.projectId],
         ["chat-import-jobs", scope.projectId],
         ["chats", scope.projectId],
         ["terminals", scope.projectId],
@@ -368,6 +376,8 @@ function uniqueQueryKeys(keys: QueryKey[]): QueryKey[] {
 
 export class AppLiveQueryBridge {
   readonly #codeGraphRevisions = new Map<string, number>();
+  readonly #gitConflictRevisions = new Map<string, number>();
+  readonly #gitOperationRevisions = new Map<string, number>();
   readonly #messageCursors = new Map<string, number>();
   readonly #pendingKeys = new Map<string, QueryKey>();
   readonly #queryClient: QueryClient;
@@ -391,6 +401,8 @@ export class AppLiveQueryBridge {
     const directlyApplied =
       this.#applyChatMessageEvent(event) ||
       this.#applyCodeGraphStatusEvent(event) ||
+      this.#applyGitOperationEvent(event) ||
+      this.#applyGitConflictEvent(event) ||
       worktreeStatus.applied ||
       this.#applyCustomizationStatusEvent(event);
     if (directlyApplied) {
@@ -650,6 +662,96 @@ export class AppLiveQueryBridge {
     return true;
   }
 
+  #applyGitOperationEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "git-operation" ||
+      event.action !== "updated" ||
+      event.scope.kind !== "project" ||
+      !event.entityId ||
+      event.revision === null
+    ) {
+      return false;
+    }
+    const parsed = gitManagedOperationResponseSchema.safeParse(event.payload);
+    const operation = parsed.success ? parsed.data.operation : null;
+    if (
+      !operation ||
+      operation.id !== event.entityId ||
+      operation.projectId !== event.scope.projectId
+    ) {
+      return false;
+    }
+    const revisionKey = `${operation.projectId}:${operation.worktreeId}`;
+    const latestRevision = this.#gitOperationRevisions.get(revisionKey);
+    if (latestRevision !== undefined && event.revision <= latestRevision) {
+      return true;
+    }
+    const queryKey = [
+      "git-operation",
+      operation.projectId,
+      operation.worktreeId,
+    ] as const;
+    void this.#queryClient.cancelQueries({ queryKey, exact: true });
+    this.#queryClient.setQueryData<GitManagedOperationResponse>(
+      queryKey,
+      parsed.data,
+    );
+    this.#rememberGitRevision(
+      this.#gitOperationRevisions,
+      revisionKey,
+      event.revision,
+    );
+    return true;
+  }
+
+  #applyGitConflictEvent(event: AppLiveEvent): boolean {
+    if (
+      event.resource !== "git-conflict" ||
+      event.action !== "updated" ||
+      event.scope.kind !== "project" ||
+      !event.entityId ||
+      event.revision === null
+    ) {
+      return false;
+    }
+    const parsed = gitConflictListSchema.safeParse(event.payload);
+    if (!parsed.success) return false;
+    const revisionKey = `${event.scope.projectId}:${event.entityId}`;
+    const latestRevision = this.#gitConflictRevisions.get(revisionKey);
+    if (latestRevision !== undefined && event.revision <= latestRevision) {
+      return true;
+    }
+    const queryKey = [
+      "git-conflicts",
+      event.scope.projectId,
+      event.entityId,
+    ] as const;
+    void this.#queryClient.cancelQueries({ queryKey, exact: true });
+    this.#queryClient.setQueryData<GitConflictList>(queryKey, parsed.data);
+    void this.#queryClient.invalidateQueries({
+      queryKey: ["git-conflict", event.scope.projectId, event.entityId],
+    });
+    this.#rememberGitRevision(
+      this.#gitConflictRevisions,
+      revisionKey,
+      event.revision,
+    );
+    return true;
+  }
+
+  #rememberGitRevision(
+    revisions: Map<string, number>,
+    key: string,
+    revision: number,
+  ): void {
+    revisions.delete(key);
+    revisions.set(key, revision);
+    if (revisions.size > 4_096) {
+      const oldest = revisions.keys().next().value;
+      if (oldest !== undefined) revisions.delete(oldest);
+    }
+  }
+
   #applyCustomizationStatusEvent(event: AppLiveEvent): boolean {
     if (
       event.resource !== "customization" ||
@@ -709,6 +811,14 @@ export class AppLiveQueryBridge {
       const prefix = `${scope.projectId}:`;
       for (const key of this.#codeGraphRevisions.keys()) {
         if (key.startsWith(prefix)) this.#codeGraphRevisions.delete(key);
+      }
+      for (const revisions of [
+        this.#gitOperationRevisions,
+        this.#gitConflictRevisions,
+      ]) {
+        for (const key of revisions.keys()) {
+          if (key.startsWith(prefix)) revisions.delete(key);
+        }
       }
     }
     for (const scope of scopes) {

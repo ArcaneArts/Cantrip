@@ -3,6 +3,8 @@ import { generateAccountMasterKey } from "@cantrip/crypto";
 import type {
   AppLiveServerMessage,
   ChatMessage,
+  GitConflictList,
+  GitManagedOperationResponse,
   GitStatus,
 } from "@cantrip/protocol";
 import { QueryClient } from "@tanstack/react-query";
@@ -637,6 +639,135 @@ describe("application live query bridge", () => {
     expect(queryClient.getQueryData(queryKey)).toEqual({
       ...status,
       pendingChanges: 1,
+    });
+  });
+
+  it("applies ordered Git operation and conflict payloads without polling", async () => {
+    const projectId = "00000000-0000-4000-8000-000000000001";
+    const worktreeId = "00000000-0000-4000-8000-000000000002";
+    const operationId = "00000000-0000-4000-8000-000000000003";
+    const head = "a".repeat(40);
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const operation = {
+      id: operationId,
+      projectId,
+      worktreeId,
+      workerId: "worker-one",
+      type: "rebase" as const,
+      state: "conflicted" as const,
+      originalHead: head,
+      currentHead: head,
+      sourceRef: "origin/main",
+      sourceRevision: "b".repeat(40),
+      targetRef: "refs/heads/feature",
+      targetRevision: head,
+      pendingCommits: [head],
+      currentStep: 1,
+      totalSteps: 1,
+      conflictedPaths: ["src/app.ts"],
+      output: "CONFLICT",
+      error: null,
+      checkpointRef: null,
+      pausedAction: null,
+      createdAt: "2026-08-21T12:00:00.000Z",
+      updatedAt: "2026-08-21T12:01:00.000Z",
+      completedAt: null,
+    };
+    const operationEvent = (
+      revision: number,
+      state: "conflicted" | "completed",
+    ) => ({
+      ...event({
+        entityId: operationId,
+        resource: "git-operation" as const,
+        scope: { kind: "project" as const, projectId },
+      }),
+      cursor: revision,
+      revision,
+      payload: {
+        operation: {
+          ...operation,
+          state,
+          pendingCommits: state === "completed" ? [] : operation.pendingCommits,
+          conflictedPaths:
+            state === "completed" ? [] : operation.conflictedPaths,
+          completedAt:
+            state === "completed" ? "2026-08-21T12:02:00.000Z" : null,
+        },
+      },
+    });
+    const conflictPayload = {
+      files: [
+        {
+          path: "src/app.ts",
+          code: "UU",
+          kind: "both-modified" as const,
+          baseAvailable: true,
+          oursAvailable: true,
+          theirsAvailable: true,
+        },
+      ],
+      truncated: false,
+    };
+
+    bridge.handleEvent(operationEvent(5, "conflicted"));
+    bridge.handleEvent(operationEvent(4, "completed"));
+    bridge.handleEvent({
+      ...event({
+        entityId: worktreeId,
+        resource: "git-conflict",
+        scope: { kind: "project", projectId },
+      }),
+      cursor: 6,
+      revision: 6,
+      payload: conflictPayload,
+    });
+
+    expect(
+      queryClient.getQueryData<GitManagedOperationResponse>([
+        "git-operation",
+        projectId,
+        worktreeId,
+      ])?.operation?.state,
+    ).toBe("conflicted");
+    expect(
+      queryClient.getQueryData<GitConflictList>([
+        "git-conflicts",
+        projectId,
+        worktreeId,
+      ]),
+    ).toEqual(conflictPayload);
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["git-conflict", projectId, worktreeId],
+    });
+    expect(invalidate).not.toHaveBeenCalledWith({
+      queryKey: ["git-conflicts", projectId, worktreeId],
+    });
+
+    await bridge.recoverScopes(
+      [{ kind: "project", projectId }],
+      "server-epoch-changed",
+    );
+    bridge.handleEvent(operationEvent(1, "completed"));
+    expect(
+      queryClient.getQueryData<GitManagedOperationResponse>([
+        "git-operation",
+        projectId,
+        worktreeId,
+      ])?.operation?.state,
+    ).toBe("completed");
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["git-operation", projectId],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["git-conflicts", projectId],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["git-conflict", projectId],
     });
   });
 
