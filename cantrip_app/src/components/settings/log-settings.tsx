@@ -61,6 +61,8 @@ import {
   getActiveServerConnection,
   getActiveServerUrl,
 } from "@/lib/server-connections";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { useCompactLayout } from "@/lib/use-compact-layout";
 import { cn } from "@/lib/utils";
 import {
@@ -338,6 +340,7 @@ export function LogSettings() {
   const compact = useCompactLayout();
   const tauriRuntime = isTauri();
   const mobileRuntime = isMobileNativeRuntime();
+  const workerResourcesLive = useAppLiveStatus() === "live";
   const bootstrap = useQuery({
     queryFn: getServerBootstrap,
     queryKey: ["server-bootstrap"],
@@ -345,7 +348,7 @@ export function LogSettings() {
   const workers = useQuery({
     queryFn: getWorkers,
     queryKey: ["workers"],
-    refetchInterval: 5_000,
+    refetchInterval: liveResourceRefreshInterval(workerResourcesLive, 5_000),
   });
   const desktopWorkers = useQuery({
     enabled: tauriRuntime,

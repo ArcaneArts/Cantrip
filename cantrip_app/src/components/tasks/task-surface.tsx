@@ -64,6 +64,8 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { clientEncryption } from "@/lib/client-encryption";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import {
   ensureTaskWorkerEncryption,
   taskWorkerEncryptionCanAttempt,
@@ -156,6 +158,7 @@ export function TaskSurface({
   worker?: WorkerSummary;
 }) {
   const queryClient = useQueryClient();
+  const taskResourcesLive = useAppLiveStatus() === "live";
   const encryptionSnapshot = useSyncExternalStore(
     clientEncryption.subscribe,
     clientEncryption.getSnapshot,
@@ -202,7 +205,10 @@ export function TaskSurface({
   const task = useQuery({
     queryFn: () => getTask(chat.id),
     queryKey: ["task", chat.id],
-    refetchInterval: chat.status === "running" ? 2_000 : false,
+    refetchInterval: liveResourceRefreshInterval(
+      taskResourcesLive,
+      chat.status === "running" ? 2_000 : false,
+    ),
   });
   const taskAttachments = useQuery({
     enabled: Boolean(task.data),
@@ -214,7 +220,10 @@ export function TaskSurface({
       task.data?.state === "planning" || task.data?.state === "finalizing",
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
-    refetchInterval: chat.status === "running" ? 1_000 : false,
+    refetchInterval: liveResourceRefreshInterval(
+      taskResourcesLive,
+      chat.status === "running" ? 1_000 : false,
+    ),
   });
 
   useEffect(() => {

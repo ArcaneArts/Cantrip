@@ -57,6 +57,7 @@ import {
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import {
   forgetDesktopWorker,
   getDesktopAutostart,
@@ -386,7 +387,7 @@ export function WorkerSettings() {
   const workers = useQuery({
     queryFn: getWorkerManagement,
     queryKey: ["worker-management"],
-    refetchInterval: 10_000,
+    refetchInterval: liveResourceRefreshInterval(liveStatus === "live", 10_000),
   });
   const settings = useQuery({ queryFn: getSettings, queryKey: ["settings"] });
   const desktopWorkers = useQuery({

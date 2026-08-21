@@ -38,6 +38,8 @@ import {
   updateChatGoal,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { cn } from "@/lib/utils";
 
 const goalLabels: Record<TaskGoalSnapshot["status"], string> = {
@@ -131,14 +133,17 @@ export function TaskImplementationDashboard({
   workerName?: string;
 }) {
   const queryClient = useQueryClient();
+  const taskResourcesLive = useAppLiveStatus() === "live";
   const [copied, setCopied] = useState(false);
   const dashboard = useQuery({
     queryFn: () => getTaskImplementationDashboard(chat.id),
     queryKey: ["task-dashboard", chat.id],
-    refetchInterval:
+    refetchInterval: liveResourceRefreshInterval(
+      taskResourcesLive,
       chat.status === "running" || chat.status === "waiting-for-approval"
         ? 10_000
         : 30_000,
+    ),
     retry: false,
   });
   const task = dashboard.data?.task ?? initialTask;
@@ -148,7 +153,10 @@ export function TaskImplementationDashboard({
   const messages = useQuery({
     queryFn: () => getMessages(chat.id),
     queryKey: ["messages", chat.id],
-    refetchInterval: active ? 1_000 : 5_000,
+    refetchInterval: liveResourceRefreshInterval(
+      taskResourcesLive,
+      active ? 1_000 : 5_000,
+    ),
   });
 
   useEffect(() => {

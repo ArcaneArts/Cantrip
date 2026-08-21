@@ -157,16 +157,23 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
           ? [
               ["chat-sync", event.scope.chatId],
               ["messages", event.scope.chatId],
+              ["task-dashboard", event.scope.chatId],
             ]
           : event.scope.kind === "current-user"
             ? [["chats"]]
             : [];
     case "task":
       return event.scope.kind === "chat"
-        ? [["task", event.scope.chatId]]
+        ? [
+            ["task", event.scope.chatId],
+            ["task-dashboard", event.scope.chatId],
+          ]
         : event.entityId
-          ? [["task", event.entityId]]
-          : [["tasks"]];
+          ? [
+              ["task", event.entityId],
+              ["task-dashboard", event.entityId],
+            ]
+          : [["tasks"], ["task-dashboard"]];
     case "chat-import-job":
       return projectId
         ? [
@@ -195,7 +202,12 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
         ? [["prompt-queue", event.scope.chatId]]
         : [];
     case "chat-goal":
-      return event.scope.kind === "chat" ? [["goal", event.scope.chatId]] : [];
+      return event.scope.kind === "chat"
+        ? [
+            ["goal", event.scope.chatId],
+            ["task-dashboard", event.scope.chatId],
+          ]
+        : [];
     case "chat-plan":
       return event.scope.kind === "chat" ? [["plan", event.scope.chatId]] : [];
     case "agent-interaction":
@@ -300,6 +312,9 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
       return [
         ["project-policy-assignments", scope.projectId],
         ["effective-policies", scope.projectId],
+        ["project-replica-jobs", scope.projectId],
+        ["project-folder-setup", scope.projectId],
+        ["project-github-conversion", scope.projectId],
         ["project-tab-layout", scope.projectId],
         ["worktrees", scope.projectId],
         ["worktree-status", scope.projectId],
@@ -310,6 +325,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["git-graph-commit-overlay", scope.projectId],
         ["git-operation", scope.projectId],
         ["git-conflicts", scope.projectId],
+        ["chat-import-jobs", scope.projectId],
         ["chats", scope.projectId],
         ["terminals", scope.projectId],
         ["explorers", scope.projectId],
@@ -327,6 +343,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["chat-sync", scope.chatId],
         ["chat-relocation-jobs", scope.chatId],
         ["messages", scope.chatId],
+        ["task", scope.chatId],
+        ["task-dashboard", scope.chatId],
         ["prompt-queue", scope.chatId],
         ["goal", scope.chatId],
         ["plan", scope.chatId],
