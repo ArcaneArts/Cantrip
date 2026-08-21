@@ -1,7 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { EliteSettings } from "./elite-settings";
+import {
+  EliteSettings,
+  MAX_ELITE_CONFIGURATOR_WIDTH,
+  MIN_ELITE_CONFIGURATOR_WIDTH,
+  clampEliteConfiguratorWidth,
+  eliteConfiguratorWidthFromKey,
+  eliteConfiguratorWidthFromPointer,
+} from "./elite-settings";
 
 describe("Elite settings laboratory", () => {
   it("renders the replay controls and each fixture view selector", () => {
@@ -16,6 +23,15 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain("Table</button>");
     expect(markup).toContain("Widgets</button>");
     expect(markup).toContain("1–3 glitches · 9 ms · 50 ms spread");
+    expect(markup).toContain('data-elite-lab=""');
+    expect(markup).toContain('role="switch"');
+    expect(markup).toContain('aria-checked="false"');
+    expect(markup).toContain("App-wide off");
+    expect(markup).toContain(
+      'data-slot="elite-configurator-sidebar-shell" data-state="closed"',
+    );
+    expect(markup).toContain("0.1× weight");
+    expect(markup).toContain("0.5× weight");
   });
 
   it("marks fixture items with explicit reveal semantics", () => {
@@ -25,5 +41,30 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain('data-content-kind="box"');
     expect(markup).toContain('data-state="waiting"');
     expect(markup).toContain("Relay subsystem 01");
+  });
+
+  it("reflects the persisted app-wide state without applying it to the lab", () => {
+    const markup = renderToStaticMarkup(<EliteSettings appWideEnabled />);
+
+    expect(markup).toContain('data-elite-lab=""');
+    expect(markup).toContain('aria-checked="true"');
+    expect(markup).toContain("App-wide on");
+  });
+
+  it("clamps pointer and keyboard resizing to the dock limits", () => {
+    expect(clampEliteConfiguratorWidth(100)).toBe(MIN_ELITE_CONFIGURATOR_WIDTH);
+    expect(clampEliteConfiguratorWidth(2_000)).toBe(
+      MAX_ELITE_CONFIGURATOR_WIDTH,
+    );
+    expect(eliteConfiguratorWidthFromPointer(700, 1_200)).toBe(500);
+    expect(eliteConfiguratorWidthFromKey(400, "ArrowLeft")).toBe(416);
+    expect(eliteConfiguratorWidthFromKey(400, "ArrowRight")).toBe(384);
+    expect(eliteConfiguratorWidthFromKey(400, "Home")).toBe(
+      MIN_ELITE_CONFIGURATOR_WIDTH,
+    );
+    expect(eliteConfiguratorWidthFromKey(400, "End")).toBe(
+      MAX_ELITE_CONFIGURATOR_WIDTH,
+    );
+    expect(eliteConfiguratorWidthFromKey(400, "Enter")).toBeNull();
   });
 });

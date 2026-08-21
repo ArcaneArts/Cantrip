@@ -1978,11 +1978,54 @@ export const configurablePermissionProfileIdSchema = z.enum([
   ":yolo",
 ]);
 
+export const eliteGlitchVariantSchema = z.enum([
+  "outline",
+  "full-frame",
+  "left-frame",
+  "right-frame",
+  "chromatic",
+  "spatial-shift",
+  "scanline",
+  "text-jitter",
+]);
+
+export const eliteRevealConfigSchema = z
+  .object({
+    glitchCountMax: z.number().int().min(1).max(8),
+    glitchCountMin: z.number().int().min(1).max(8),
+    glitchShowMs: z.number().int().min(5).max(120),
+    staggerSpreadMs: z.number().int().min(0).max(250),
+    variants: z.array(eliteGlitchVariantSchema).max(8),
+  })
+  .refine(
+    ({ glitchCountMax, glitchCountMin }) => glitchCountMax >= glitchCountMin,
+    {
+      message:
+        "Maximum glitches must be greater than or equal to minimum glitches.",
+      path: ["glitchCountMax"],
+    },
+  );
+
+export type EliteGlitchVariant = z.infer<typeof eliteGlitchVariantSchema>;
+export type EliteRevealConfig = z.infer<typeof eliteRevealConfigSchema>;
+
+export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
+  glitchCountMax: 3,
+  glitchCountMin: 1,
+  glitchShowMs: 9,
+  staggerSpreadMs: 50,
+  variants: [...eliteGlitchVariantSchema.options],
+};
+
 export const userSettingsSchema = z.object({
   theme: themePreferenceSchema,
   highContrast: z.boolean(),
   proMode: z.boolean(),
   proModeOpacity: z.number().int().min(0).max(100),
+  eliteMode: z.boolean().default(false),
+  eliteRevealConfig: eliteRevealConfigSchema.default(
+    DEFAULT_ELITE_REVEAL_CONFIG,
+  ),
   sidebarWidth: sidebarWidthPreferenceSchema,
   desktopFrameRate: z.union([z.literal(15), z.literal(30), z.literal(60)]),
   desktopStreamQuality: z.enum(["adaptive", "data-saver", "balanced", "sharp"]),
@@ -2001,6 +2044,8 @@ export const userSettingsSchema = z.object({
 });
 
 export const userSettingsUpdateSchema = userSettingsSchema.partial().extend({
+  eliteMode: z.boolean().optional(),
+  eliteRevealConfig: eliteRevealConfigSchema.optional(),
   defaultPermissionProfileId: configurablePermissionProfileIdSchema.optional(),
   defaultWorkerId: z.string().min(1).nullable().optional(),
   automaticReplicaProvisioning: z.boolean().optional(),

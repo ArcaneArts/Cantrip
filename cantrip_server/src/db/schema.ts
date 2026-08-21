@@ -16,6 +16,7 @@ import type {
   DirectBrokerAdvertisement,
   EncryptedChatMessageProtectedContent,
   EncryptedTaskMessageProtectedContent,
+  EliteRevealConfig,
   GitManagedOperationState,
   GitManagedOperationType,
   GitInteractiveRebaseTodoAction,
@@ -873,6 +874,26 @@ export const userSettings = pgTable(
     highContrast: boolean("high_contrast").notNull().default(false),
     proMode: boolean("pro_mode").notNull().default(false),
     proModeOpacity: integer("pro_mode_opacity").notNull().default(80),
+    eliteMode: boolean("elite_mode").notNull().default(false),
+    eliteRevealConfig: jsonb("elite_reveal_config")
+      .$type<EliteRevealConfig>()
+      .notNull()
+      .default({
+        glitchCountMax: 3,
+        glitchCountMin: 1,
+        glitchShowMs: 9,
+        staggerSpreadMs: 50,
+        variants: [
+          "outline",
+          "full-frame",
+          "left-frame",
+          "right-frame",
+          "chromatic",
+          "spatial-shift",
+          "scanline",
+          "text-jitter",
+        ],
+      }),
     sidebarWidth: integer("sidebar_width").notNull().default(288),
     desktopFrameRate: integer("desktop_frame_rate").notNull().default(30),
     desktopStreamQuality: text("desktop_stream_quality")

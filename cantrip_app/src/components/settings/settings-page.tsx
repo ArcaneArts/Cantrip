@@ -136,6 +136,8 @@ import {
   useProviderCatalog,
 } from "./use-provider-catalog";
 
+import "@/components/elite/elite-secret-entry.css";
+
 export type SettingsSection =
   | "general"
   | "elite"
@@ -150,7 +152,6 @@ export type SettingsSection =
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "elite", label: "Elite", icon: ScanLine },
   { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
   { id: "logs", label: "Logs", icon: ScrollText },
@@ -228,6 +229,21 @@ export function changedAccountLabel(
 ): string | null {
   const label = draftLabel.trim();
   return label && label !== savedLabel ? label : null;
+}
+
+export function EliteModeSecretButton({ onOpen }: { onOpen(): void }) {
+  return (
+    <Button
+      aria-label="Open Elite Mode"
+      className="elite-secret-entry sm:mr-auto"
+      onClick={onOpen}
+      type="button"
+      variant="ghost"
+    >
+      <ScanLine className="size-4" />
+      Elite Mode
+    </Button>
+  );
 }
 
 function Field({ children, label }: { children: ReactNode; label: string }) {
@@ -575,11 +591,13 @@ function CatalogModelMetadata({
 export function SettingsPage({
   initialSection = "general",
   initialPolicyId = null,
+  onEliteOpen,
   onPolicyOpenHandled,
   onOpenTunnelOwner,
 }: {
   initialSection?: SettingsSection;
   initialPolicyId?: string | null;
+  onEliteOpen?(): void;
   onPolicyOpenHandled?(): void;
   onOpenTunnelOwner?(tunnel: TunnelSummary): void;
 }) {
@@ -1520,7 +1538,22 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
-        {section === "elite" ? <EliteSettings /> : null}
+        {section === "elite" ? (
+          <EliteSettings
+            appWideEnabled={settings.data?.preferences.eliteMode ?? false}
+            configuredEffect={settings.data?.preferences.eliteRevealConfig}
+            configSaving={preferences.isPending}
+            onAppWideEnabledChange={(eliteMode) =>
+              preferences.mutate({ eliteMode })
+            }
+            onConfigChange={(eliteRevealConfig) =>
+              preferences.mutate({ eliteRevealConfig })
+            }
+            saveError={
+              preferences.isError ? errorText(preferences.error) : null
+            }
+          />
+        ) : null}
         {section === "logs" ? <LogSettings /> : null}
         {section === "tunnels" ? (
           <TunnelSettings onOpenOwner={onOpenTunnelOwner} />
@@ -1594,14 +1627,13 @@ export function SettingsPage({
                 </p>
               ) : null}
               <DialogFooter>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="sm:mr-auto"
-                  onClick={() => setProModeOpacityDraft(80)}
-                >
-                  Reset to 80%
-                </Button>
+                <EliteModeSecretButton
+                  onOpen={() => {
+                    setProModeOpacityDialogOpen(false);
+                    setSection("elite");
+                    onEliteOpen?.();
+                  }}
+                />
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
                     Cancel

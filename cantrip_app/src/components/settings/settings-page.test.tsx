@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  EliteModeSecretButton,
   SettingsPage,
   changedAccountLabel,
   type SettingsSection,
@@ -31,19 +32,28 @@ describe("account settings", () => {
     expect(changedAccountLabel("Arcane", "   ")).toBeNull();
   });
 
-  it("places the Elite lab between General and Models", () => {
+  it("keeps the Elite lab out of the visible settings tabs", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");
-    const elite = markup.indexOf(">Elite<");
     const models = markup.indexOf(">Models<");
     const workers = markup.indexOf(">Workers<");
     const logs = markup.indexOf(">Logs<");
 
     expect(general).toBeGreaterThanOrEqual(0);
-    expect(elite).toBeGreaterThan(general);
-    expect(models).toBeGreaterThan(elite);
+    expect(markup).not.toContain(">Elite<");
+    expect(models).toBeGreaterThan(general);
     expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
+  });
+
+  it("keeps the Elite entry invisible until its secret button is hovered", () => {
+    const markup = renderToStaticMarkup(
+      <EliteModeSecretButton onOpen={() => undefined} />,
+    );
+
+    expect(markup).toContain("Elite Mode");
+    expect(markup).toContain("elite-secret-entry");
+    expect(markup).toContain('aria-label="Open Elite Mode"');
   });
 
   it("exposes the visual reveal laboratory as its own section", () => {

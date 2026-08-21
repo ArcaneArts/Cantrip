@@ -1,4 +1,10 @@
 import {
+  DEFAULT_ELITE_REVEAL_CONFIG as PROTOCOL_DEFAULT_ELITE_REVEAL_CONFIG,
+  eliteGlitchVariantSchema,
+  type EliteGlitchVariant,
+  type EliteRevealConfig,
+} from "@cantrip/protocol";
+import {
   useEffect,
   useMemo,
   useRef,
@@ -11,28 +17,18 @@ import { cn } from "@/lib/utils";
 
 import "./elite-reveal.css";
 
-export const ELITE_GLITCH_VARIANTS = [
-  "outline",
-  "full-frame",
-  "left-frame",
-  "right-frame",
-  "chromatic",
-  "spatial-shift",
-  "scanline",
-  "text-jitter",
-] as const;
-
-export type EliteGlitchVariant = (typeof ELITE_GLITCH_VARIANTS)[number];
+export const ELITE_GLITCH_VARIANTS = eliteGlitchVariantSchema.options;
+export type { EliteGlitchVariant, EliteRevealConfig } from "@cantrip/protocol";
 export type EliteRevealContentKind = "box" | "control" | "text";
 
 export const ELITE_GLITCH_VARIANT_WEIGHTS: Record<EliteGlitchVariant, number> =
   {
     chromatic: 1,
-    "full-frame": 0.5,
+    "full-frame": 0.1,
     "left-frame": 0.5,
     outline: 1,
     "right-frame": 0.5,
-    scanline: 1,
+    scanline: 0.5,
     "spatial-shift": 1,
     "text-jitter": 1,
   };
@@ -45,21 +41,7 @@ export const ELITE_CHROMATIC_PAIRS = [
   { channelA: "rgb(255 220 64)", channelB: "rgb(92 84 255)" },
 ] as const;
 
-export interface EliteRevealConfig {
-  glitchCountMax: number;
-  glitchCountMin: number;
-  glitchShowMs: number;
-  staggerSpreadMs: number;
-  variants: readonly EliteGlitchVariant[];
-}
-
-export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
-  glitchCountMax: 3,
-  glitchCountMin: 1,
-  glitchShowMs: 9,
-  staggerSpreadMs: 50,
-  variants: ELITE_GLITCH_VARIANTS,
-};
+export const DEFAULT_ELITE_REVEAL_CONFIG = PROTOCOL_DEFAULT_ELITE_REVEAL_CONFIG;
 
 const numericLimits = {
   glitchCount: { max: 8, min: 1 },
@@ -280,9 +262,47 @@ type RevealStage =
   | { frame: EliteGlitchFrame; state: "glitch" }
   | { frame: null; state: "ready" | "waiting" };
 
-type EliteRevealStyle = CSSProperties & {
+export type EliteRevealStyle = CSSProperties & {
   [property: `--elite-${string}`]: string;
 };
+
+export function eliteGlitchFrameStyle(
+  frame: EliteGlitchFrame,
+): EliteRevealStyle {
+  const scanlineBands = frame.scanlineBands.length
+    ? frame.scanlineBands
+        .map(
+          (band) =>
+            `linear-gradient(var(--elite-reveal-frame) 0 0) 0 ${band.topPercent}% / 100% ${band.heightPx}px no-repeat`,
+        )
+        .join(", ")
+    : "none";
+  const scanlineClip =
+    frame.scanlineSide === "left"
+      ? "inset(0 50% 0 0)"
+      : frame.scanlineSide === "right"
+        ? "inset(0 0 0 50%)"
+        : "inset(0)";
+
+  return {
+    "--elite-chromatic-angle": `${frame.chromaticAngleDeg}deg`,
+    "--elite-chromatic-channel-a": frame.chromaticChannelA,
+    "--elite-chromatic-channel-b": frame.chromaticChannelB,
+    "--elite-chromatic-distance": `${frame.chromaticDistancePx}px`,
+    "--elite-chromatic-x": `${frame.chromaticOffsetXPx}px`,
+    "--elite-chromatic-x-negative": `${-frame.chromaticOffsetXPx}px`,
+    "--elite-chromatic-y": `${frame.chromaticOffsetYPx}px`,
+    "--elite-chromatic-y-negative": `${-frame.chromaticOffsetYPx}px`,
+    "--elite-outline-bottom": frame.outlineBottom ? "1px" : "0px",
+    "--elite-outline-left": frame.outlineLeft ? "1px" : "0px",
+    "--elite-outline-right": frame.outlineRight ? "1px" : "0px",
+    "--elite-outline-top": frame.outlineTop ? "1px" : "0px",
+    "--elite-scanline-bands": scanlineBands,
+    "--elite-scanline-clip": scanlineClip,
+    "--elite-shift-x": `${frame.shiftXPercent}%`,
+    "--elite-shift-y": `${frame.shiftYPercent}%`,
+  };
+}
 
 function clipsOverflow(value: string): boolean {
   return (
@@ -293,7 +313,7 @@ function clipsOverflow(value: string): boolean {
   );
 }
 
-function isEliteRevealVisible(element: HTMLElement): boolean {
+export function isEliteRevealVisible(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return false;
 
@@ -433,19 +453,6 @@ export function EliteReveal({
       }, delayMs);
       timers.add(timer);
     };
-    let sequenceIndex = 0;
-    const showNextGlitch = () => {
-      const variant = sequence[sequenceIndex];
-      if (!variant) {
-        setStage({ frame: null, state: "ready" });
-        return;
-      }
-      setStage({ frame: createEliteGlitchFrame(variant), state: "glitch" });
-      schedule(() => {
-        sequenceIndex += 1;
-        showNextGlitch();
-      }, normalized.glitchShowMs);
-    };
     setStage({ frame: null, state: "waiting" });
     const startDelayMs = elementRef.current
       ? staggerDelayForEliteElement(
@@ -457,7 +464,20 @@ export function EliteReveal({
           Math.max(1, index + 1),
           normalized.staggerSpreadMs,
         );
-    schedule(showNextGlitch, startDelayMs);
+    sequence.forEach((variant, sequenceIndex) => {
+      schedule(
+        () =>
+          setStage({
+            frame: createEliteGlitchFrame(variant),
+            state: "glitch",
+          }),
+        startDelayMs + sequenceIndex * normalized.glitchShowMs,
+      );
+    });
+    schedule(
+      () => setStage({ frame: null, state: "ready" }),
+      startDelayMs + sequence.length * normalized.glitchShowMs + 1,
+    );
 
     return () => {
       cancelled = true;
@@ -466,40 +486,7 @@ export function EliteReveal({
   }, [configSignature, contentKind, index, normalized, replayKey]);
 
   const frame = stage.state === "glitch" ? stage.frame : null;
-  const scanlineBands = frame?.scanlineBands.length
-    ? frame.scanlineBands
-        .map(
-          (band) =>
-            `linear-gradient(var(--elite-reveal-frame) 0 0) 0 ${band.topPercent}% / 100% ${band.heightPx}px no-repeat`,
-        )
-        .join(", ")
-    : "none";
-  const scanlineClip =
-    frame?.scanlineSide === "left"
-      ? "inset(0 50% 0 0)"
-      : frame?.scanlineSide === "right"
-        ? "inset(0 0 0 50%)"
-        : "inset(0)";
-  const frameStyle: EliteRevealStyle | undefined = frame
-    ? {
-        "--elite-chromatic-angle": `${frame.chromaticAngleDeg}deg`,
-        "--elite-chromatic-channel-a": frame.chromaticChannelA,
-        "--elite-chromatic-channel-b": frame.chromaticChannelB,
-        "--elite-chromatic-distance": `${frame.chromaticDistancePx}px`,
-        "--elite-chromatic-x": `${frame.chromaticOffsetXPx}px`,
-        "--elite-chromatic-x-negative": `${-frame.chromaticOffsetXPx}px`,
-        "--elite-chromatic-y": `${frame.chromaticOffsetYPx}px`,
-        "--elite-chromatic-y-negative": `${-frame.chromaticOffsetYPx}px`,
-        "--elite-outline-bottom": frame.outlineBottom ? "1px" : "0px",
-        "--elite-outline-left": frame.outlineLeft ? "1px" : "0px",
-        "--elite-outline-right": frame.outlineRight ? "1px" : "0px",
-        "--elite-outline-top": frame.outlineTop ? "1px" : "0px",
-        "--elite-scanline-bands": scanlineBands,
-        "--elite-scanline-clip": scanlineClip,
-        "--elite-shift-x": `${frame.shiftXPercent}%`,
-        "--elite-shift-y": `${frame.shiftYPercent}%`,
-      }
-    : undefined;
+  const frameStyle = frame ? eliteGlitchFrameStyle(frame) : undefined;
 
   return (
     <div
