@@ -3163,7 +3163,14 @@ export async function buildApp({
         route.includes("/github/releases") ||
         (route.includes("/github/pull-requests") &&
           !route.endsWith("/checkout")));
-    if (legacyGitRoute || legacyHistoryRoute || legacyGithubContentRoute) {
+    const legacyWorktreeStatusRoute =
+      projectRoute && route.endsWith("/worktrees/:worktreeId/status");
+    if (
+      legacyGitRoute ||
+      legacyHistoryRoute ||
+      legacyGithubContentRoute ||
+      legacyWorktreeStatusRoute
+    ) {
       return reply.code(410).send({
         error:
           "This plaintext repository route was removed. Use the protected repository operation endpoint.",
@@ -9513,6 +9520,7 @@ export async function buildApp({
                 projectId: request.params.projectId,
                 worktreeId: request.params.worktreeId,
                 cwd: context.worktree.path,
+                sourcePath: context.sourcePath,
                 repository:
                   githubContext?.workerId === context.workerId
                     ? githubContext.nameWithOwner

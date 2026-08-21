@@ -1440,7 +1440,7 @@ async function runProtectedRepositoryOperation<T>(input: {
   type: RepositoryOperationType;
   worktreeId?: string;
 }): Promise<T> {
-  const worktrees = await getProjectWorktrees(input.projectId);
+  const worktrees = await getProjectWorktreeWireList(input.projectId);
   const worktree = input.worktreeId
     ? worktrees.find(({ id }) => id === input.worktreeId)
     : (worktrees.find(({ isPrimary }) => isPrimary) ??
@@ -1492,9 +1492,60 @@ async function runProtectedRepositoryOperation<T>(input: {
   return input.resultSchema.parse(outcome.result);
 }
 
-export async function getProjectWorktrees(projectId: string) {
+async function getProjectWorktreeWireList(projectId: string) {
   return projectWorktreeListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/worktrees`),
+  );
+}
+
+export async function getProjectWorktrees(projectId: string) {
+  const worktrees = await getProjectWorktreeWireList(projectId);
+  return Promise.all(
+    worktrees.map(async (worktree) => {
+      if (worktree.lifecycleState !== "ready") {
+        return {
+          ...worktree,
+          name: worktree.isPrimary ? "Primary" : "Protected worktree",
+          path: "Protected path unavailable",
+          displayPath: "Protected path unavailable",
+          branch: null,
+          lockReason: null,
+        };
+      }
+      try {
+        const status = await runProtectedRepositoryOperation({
+          projectId,
+          worktreeId: worktree.id,
+          type: "worktree.status",
+          arguments: {},
+          resultSchema: worktreeStatusResultSchema,
+        });
+        const privateState = status.worktree;
+        const pathSegments = privateState.path.split(/[\\/]/u).filter(Boolean);
+        return projectWorktreeSummarySchema.parse({
+          ...worktree,
+          name: worktree.isPrimary
+            ? "Primary"
+            : (pathSegments.at(-1) ?? "Worktree"),
+          path: privateState.path,
+          displayPath: privateState.path,
+          branch: privateState.branch,
+          head: privateState.head,
+          detached: privateState.detached,
+          locked: privateState.locked,
+          lockReason: privateState.lockReason,
+        });
+      } catch {
+        return projectWorktreeSummarySchema.parse({
+          ...worktree,
+          name: worktree.isPrimary ? "Primary" : "Protected worktree",
+          path: "Protected path unavailable",
+          displayPath: "Protected path unavailable",
+          branch: null,
+          lockReason: null,
+        });
+      }
+    }),
   );
 }
 
@@ -1502,11 +1553,13 @@ export async function getProjectWorktreeStatus(
   projectId: string,
   worktreeId: string,
 ) {
-  return worktreeStatusResultSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/status`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "worktree.status",
+    arguments: {},
+    resultSchema: worktreeStatusResultSchema,
+  });
 }
 
 export async function getProjectWorktreeFileDiff(
