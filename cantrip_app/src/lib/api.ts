@@ -1895,11 +1895,13 @@ export async function getProjectWorktreeGitOperation(
   projectId: string,
   worktreeId: string,
 ) {
-  return gitManagedOperationResponseSchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/current`,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.operation.current",
+    arguments: {},
+    resultSchema: gitManagedOperationResponseSchema,
+  });
 }
 
 export async function previewProjectWorktreeGitOperation(
@@ -1907,12 +1909,13 @@ export async function previewProjectWorktreeGitOperation(
   worktreeId: string,
   action: GitManagedOperationAction,
 ) {
-  return gitManagedOperationPreviewSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/preview`,
-      action,
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.operation.preview",
+    arguments: { action },
+    resultSchema: gitManagedOperationPreviewSchema,
+  });
 }
 
 export async function startProjectWorktreeGitOperation(
@@ -1921,12 +1924,13 @@ export async function startProjectWorktreeGitOperation(
   action: GitManagedOperationAction,
   token: string,
 ) {
-  return gitManagedOperationResponseSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations`,
-      { action, token },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.operation.start",
+    arguments: { action, token },
+    resultSchema: gitManagedOperationResponseSchema,
+  });
 }
 
 export async function controlProjectWorktreeGitOperation(
@@ -1935,12 +1939,13 @@ export async function controlProjectWorktreeGitOperation(
   operationId: string,
   action: "continue" | "skip" | "abort" | "good" | "bad" | "reset",
 ) {
-  return gitManagedOperationResponseSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/${encodeURIComponent(operationId)}/control`,
-      { action },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.operation.control",
+    arguments: { operationId, action },
+    resultSchema: gitManagedOperationResponseSchema,
+  });
 }
 
 export async function amendProjectWorktreeGitOperation(
@@ -1949,12 +1954,13 @@ export async function amendProjectWorktreeGitOperation(
   operationId: string,
   message: string | null,
 ) {
-  return gitManagedOperationResponseSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/git/operations/${encodeURIComponent(operationId)}/amend`,
-      { message },
-    ),
-  );
+  return runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "git.operation.amend",
+    arguments: { operationId, message },
+    resultSchema: gitManagedOperationResponseSchema,
+  });
 }
 
 export async function getProjectWorktreeGitConflicts(

@@ -855,6 +855,13 @@
       "when": 1787271393725,
       "tag": "0121_protected_attachment_content",
       "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1787278722441,
+      "tag": "0122_protected_git_operation_cutover",
+      "breakpoints": true
     }
   ]
 }
