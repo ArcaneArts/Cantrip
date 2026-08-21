@@ -26,6 +26,7 @@ import {
 
 import { terminalCommandInput } from "./terminal-command-palette";
 import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
+import { installTerminalLinkLayer } from "./terminal-link-layer";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
 import { TerminalServicePanel } from "./terminal-service-panel";
 import { terminalBackground } from "./terminal-theme";
@@ -58,6 +59,8 @@ export function TerminalView({
   servicePanelOpen = false,
   terminal,
   onExit,
+  onOpenExternalLink,
+  onOpenLink,
 }: {
   commandPaletteOpen?: boolean;
   onCommandPaletteOpenChange?(open: boolean): void;
@@ -65,6 +68,8 @@ export function TerminalView({
   servicePanelOpen?: boolean;
   terminal: TerminalSummary;
   onExit?(): void;
+  onOpenExternalLink?(url: string): void;
+  onOpenLink?(url: string): void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
@@ -72,6 +77,8 @@ export function TerminalView({
   const terminalIdRef = useRef(terminal.id);
   const xtermRef = useRef<Terminal | null>(null);
   const onExitRef = useRef(onExit);
+  const onOpenExternalLinkRef = useRef(onOpenExternalLink);
+  const onOpenLinkRef = useRef(onOpenLink);
   const [connectionKey, setConnectionKey] = useState(0);
   const [state, setState] = useState<"connecting" | "reconnecting" | "ready">(
     "connecting",
@@ -83,6 +90,8 @@ export function TerminalView({
   const hasLoaded =
     loadedTerminalId === terminal.id || loadedTerminalIds.has(terminal.id);
   onExitRef.current = onExit;
+  onOpenExternalLinkRef.current = onOpenExternalLink;
+  onOpenLinkRef.current = onOpenLink;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -118,6 +127,11 @@ export function TerminalView({
     xterm.loadAddon(fit);
     xterm.open(container);
     xtermRef.current = xterm;
+    const terminalLinks = installTerminalLinkLayer({
+      terminal: xterm,
+      onOpen: (url) => onOpenLinkRef.current?.(url),
+      onOpenExternal: (url) => onOpenExternalLinkRef.current?.(url),
+    });
 
     let socket: WebSocket | null = null;
     let directConnection: DesktopTerminalConnection | null = null;
@@ -472,6 +486,7 @@ export function TerminalView({
         surfaceId: terminal.id,
       });
       releaseDirect();
+      terminalLinks.dispose();
       xterm.dispose();
     };
   }, [connectionKey, terminal.activeWorkerId, terminal.id]);
