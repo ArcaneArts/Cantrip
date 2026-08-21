@@ -4,6 +4,7 @@
     var(--foreground) 94%,
     transparent
   );
+  --elite-reveal-frame: color-mix(in oklab, var(--foreground) 30%, transparent);
   isolation: isolate;
   min-width: 0;
   position: relative;
@@ -22,6 +23,7 @@
   z-index: 3;
 }
 
+.elite-reveal[data-state="armed"] > .elite-reveal__content,
 .elite-reveal[data-state="waiting"] > .elite-reveal__content {
   opacity: 0;
 }
@@ -38,42 +40,113 @@
 }
 
 .elite-reveal[data-variant="outline"] > .elite-reveal__signal {
-  border: 1px solid var(--elite-reveal-accent);
+  border: 1px solid var(--elite-reveal-frame);
   box-shadow:
-    0 0 7px color-mix(in oklab, var(--foreground) 45%, transparent),
-    inset 0 0 5px color-mix(in oklab, var(--foreground) 24%, transparent);
+    0 0 7px color-mix(in oklab, var(--foreground) 18%, transparent),
+    inset 0 0 5px color-mix(in oklab, var(--foreground) 12%, transparent);
 }
 
 .elite-reveal[data-variant="full-frame"] > .elite-reveal__signal {
-  background: var(--elite-reveal-accent);
-  box-shadow: 0 0 9px color-mix(in oklab, var(--foreground) 45%, transparent);
+  background: var(--elite-reveal-frame);
+  box-shadow: 0 0 9px color-mix(in oklab, var(--foreground) 18%, transparent);
 }
 
 .elite-reveal[data-variant="left-frame"] > .elite-reveal__signal {
-  background: var(--elite-reveal-accent);
-  box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 38%, transparent);
+  background: var(--elite-reveal-frame);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 16%, transparent);
   clip-path: inset(0 48% 0 0);
 }
 
 .elite-reveal[data-variant="right-frame"] > .elite-reveal__signal {
-  background: var(--elite-reveal-accent);
-  box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 38%, transparent);
+  background: var(--elite-reveal-frame);
+  box-shadow: 0 0 8px color-mix(in oklab, var(--foreground) 16%, transparent);
   clip-path: inset(0 0 0 48%);
 }
 
 .elite-reveal[data-variant="chromatic"] > .elite-reveal__content {
-  filter: drop-shadow(2px 0 0 rgb(0 224 255 / 85%))
-    drop-shadow(-2px 0 0 rgb(255 34 122 / 78%));
+  filter: drop-shadow(
+      var(--elite-chromatic-x) var(--elite-chromatic-y) 0 rgb(0 224 255 / 85%)
+    )
+    drop-shadow(
+      var(--elite-chromatic-x-negative) var(--elite-chromatic-y-negative) 0
+        rgb(255 34 122 / 78%)
+    );
   opacity: 0.88;
-  transform: translateX(1px) skewX(-0.45deg);
+  transform: translate(
+      calc(var(--elite-chromatic-x) * 0.2),
+      calc(var(--elite-chromatic-y) * 0.2)
+    )
+    skewX(-0.45deg);
 }
 
 .elite-reveal[data-variant="chromatic"] > .elite-reveal__signal {
   background: linear-gradient(
-    90deg,
+    var(--elite-chromatic-angle),
     rgb(0 224 255 / 12%),
     transparent 38%,
     rgb(255 34 122 / 14%)
+  );
+  mix-blend-mode: screen;
+}
+
+.elite-reveal[data-variant="spatial-shift"] > .elite-reveal__content {
+  filter: brightness(1.08) contrast(1.04);
+  opacity: 0.86;
+  transform: translate(var(--elite-shift-x), var(--elite-shift-y));
+}
+
+.elite-reveal[data-variant="spatial-shift"] > .elite-reveal__signal {
+  border: 1px solid color-mix(in oklab, var(--foreground) 14%, transparent);
+  transform: translate(var(--elite-shift-x), var(--elite-shift-y));
+}
+
+.elite-reveal[data-variant="pixelate"] > .elite-reveal__content {
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% 34%,
+    94% 34%,
+    94% 67%,
+    100% 67%,
+    100% 100%,
+    0 100%,
+    0 73%,
+    5% 73%,
+    5% 28%,
+    0 28%
+  );
+  filter: contrast(1.55) saturate(0.55);
+  image-rendering: pixelated;
+  opacity: 0.7;
+  transform: translate(
+    var(--elite-pixel-offset-x),
+    var(--elite-pixel-offset-y)
+  );
+}
+
+.elite-reveal[data-variant="pixelate"] > .elite-reveal__signal {
+  background:
+    repeating-conic-gradient(
+        from 45deg,
+        color-mix(in oklab, var(--foreground) 24%, transparent) 0 25%,
+        transparent 0 50%
+      )
+      0 0 / var(--elite-pixel-size) var(--elite-pixel-size),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(var(--elite-pixel-size) * 2),
+      color-mix(in oklab, var(--background) 32%, transparent)
+        calc(var(--elite-pixel-size) * 2) calc(var(--elite-pixel-size) * 3)
+    );
+  clip-path: polygon(
+    0 8%,
+    100% 2%,
+    100% 31%,
+    7% 39%,
+    7% 69%,
+    96% 61%,
+    100% 94%,
+    0 100%
   );
   mix-blend-mode: screen;
 }
