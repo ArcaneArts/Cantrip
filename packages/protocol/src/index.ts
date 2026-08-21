@@ -8759,6 +8759,18 @@ export const gitManagedOperationWorkerStateSchema =
     pausedAction: gitInteractiveRebaseTodoActionSchema.nullable().optional(),
   });
 
+export const gitOperationObservationStateSchema = z
+  .object({
+    state: gitManagedOperationStateSchema,
+    currentHead: gitCommitHashInputSchema,
+    currentStep: z.number().int().nonnegative().max(10_000),
+    totalSteps: z.number().int().positive().max(10_000),
+    pendingCommitCount: z.number().int().nonnegative().max(10_000),
+    conflictedPathCount: z.number().int().nonnegative().max(100_000),
+    pausedAction: gitInteractiveRebaseTodoActionSchema.nullable(),
+  })
+  .strict();
+
 export const gitManagedOperationPreviewSchema = z.object({
   action: gitManagedOperationActionSchema,
   token: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -9066,6 +9078,14 @@ export const worktreeObservationTargetSchema = z.object({
   worktreeId: z.string().min(1).max(200).optional(),
   sourcePath: z.string().min(1).max(8_192),
   worktreePath: z.string().min(1).max(8_192),
+  operation: z
+    .object({
+      id: z.string().uuid(),
+      context: gitManagedOperationContextSchema,
+    })
+    .strict()
+    .nullable()
+    .optional(),
 });
 
 export const worktreeObservationTargetsSchema = z
@@ -11495,6 +11515,25 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
   }),
   z
     .object({
+      type: z.literal("git.operation.observed"),
+      projectId: z.string().uuid(),
+      worktreeId: z.string().min(1).max(200),
+      operationId: z.string().uuid(),
+      sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
+      worktreePath: worktreeObservationTargetSchema.shape.worktreePath,
+      fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+      observedAt: z.string().datetime({ offset: true }),
+      state: gitOperationObservationStateSchema,
+      conflicts: z
+        .object({
+          files: z.array(gitConflictSummarySchema).max(2_000),
+          truncated: z.boolean(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal("codegraph.status.observed"),
       status: codeGraphProjectStatusSchema,
     })
@@ -12224,6 +12263,9 @@ export type GitManagedOperationContext = z.infer<
 >;
 export type GitManagedOperationWorkerState = z.infer<
   typeof gitManagedOperationWorkerStateSchema
+>;
+export type GitOperationObservationState = z.infer<
+  typeof gitOperationObservationStateSchema
 >;
 export type GitManagedOperationPreview = z.infer<
   typeof gitManagedOperationPreviewSchema

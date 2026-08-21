@@ -58,6 +58,7 @@ import {
   runProjectWorktreeGitAction,
   unlockProjectWorktree,
 } from "@/lib/api";
+import { useAppLiveStatus } from "@/lib/app-live-react";
 import { Button } from "@/components/ui/button";
 import {
   NavigationTabBar,
@@ -77,6 +78,7 @@ import {
   type WorktreeStatusMap,
 } from "@/components/worktrees/worktree-control";
 import { cn } from "@/lib/utils";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { useCompactLayout } from "@/lib/use-compact-layout";
 
 import { GitChangesPanel } from "./git-changes-panel";
@@ -478,6 +480,7 @@ export function GitHistoryView({
   worktrees: ProjectWorktreeSummary[];
 }) {
   const queryClient = useQueryClient();
+  const gitResourcesLive = useAppLiveStatus() === "live";
   const compactLayout = useCompactLayout();
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const drawerShellRef = useRef<HTMLDivElement>(null);
@@ -563,7 +566,9 @@ export function GitHistoryView({
     queryKey: ["git-operation", project.id, worktreeId],
     queryFn: () => getProjectWorktreeGitOperation(project.id, worktreeId),
     refetchInterval: (query) =>
-      gitOperationIsActive(query.state.data?.operation) ? 3_000 : false,
+      gitOperationIsActive(query.state.data?.operation)
+        ? liveResourceRefreshInterval(gitResourcesLive, 3_000)
+        : false,
   });
   const history = useInfiniteQuery({
     enabled: section === "history" && selectedAvailable,

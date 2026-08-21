@@ -15,9 +15,15 @@ import type { WorkerNotification } from "@cantrip/protocol";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildGitOperationObservation,
   parseGitWorktreePorcelain,
   WorktreeManager,
 } from "../src/worktrees.js";
+import {
+  controlGitManagedOperation,
+  previewGitManagedOperation,
+  startGitManagedOperation,
+} from "../src/git.js";
 
 const execFileAsync = promisify(execFile);
 const directories: string[] = [];
@@ -64,6 +70,192 @@ async function createRepository(prefix = "cantrip-worktrees-test-") {
 }
 
 describe("worker Git worktrees", () => {
+  it("builds bounded, stable Git operation observations", () => {
+    const head = "a".repeat(40);
+    const context = {
+      type: "rebase" as const,
+      originalHead: head,
+      sourceRef: "origin/main",
+      sourceRevision: "b".repeat(40),
+      targetRef: "refs/heads/feature",
+      targetRevision: head,
+      pendingCommits: [head],
+      totalSteps: 1,
+      checkpointRef: null,
+    };
+    const target = {
+      projectId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f3",
+      worktreeId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f4",
+      sourcePath: "/repo",
+      worktreePath: "/repo",
+      operation: {
+        id: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2",
+        context,
+      },
+    };
+    const state = {
+      ...context,
+      state: "conflicted" as const,
+      currentHead: head,
+      currentStep: 1,
+      pendingCommits: [head],
+      conflictedPaths: ["src/app.ts"],
+      output: "CONFLICT",
+      pausedAction: null,
+      status: {
+        branch: "feature",
+        head,
+        upstream: null,
+        ahead: 0,
+        behind: 0,
+        files: [],
+        branches: [],
+      },
+    };
+    const files = Array.from({ length: 2_001 }, (_, index) => ({
+      path: `src/conflict-${index}.ts`,
+      code: "UU",
+      kind: "both-modified" as const,
+      baseAvailable: true,
+      oursAvailable: true,
+      theirsAvailable: true,
+    }));
+    const first = buildGitOperationObservation({
+      conflicts: { files, truncated: false },
+      observedAt: "2026-08-21T12:00:00.000Z",
+      state,
+      target,
+    });
+    const duplicate = buildGitOperationObservation({
+      conflicts: { files, truncated: false },
+      observedAt: "2026-08-21T12:01:00.000Z",
+      state,
+      target,
+    });
+    const completed = buildGitOperationObservation({
+      conflicts: { files: [], truncated: false },
+      state: {
+        ...state,
+        state: "completed",
+        pendingCommits: [],
+        conflictedPaths: [],
+      },
+      target,
+    });
+
+    expect(first.conflicts).toMatchObject({
+      truncated: true,
+      files: expect.any(Array),
+    });
+    expect(first.conflicts.files.length).toBeGreaterThan(0);
+    expect(first.conflicts.files.length).toBeLessThanOrEqual(2_000);
+    expect(
+      Buffer.byteLength(JSON.stringify(first.conflicts.files)),
+    ).toBeLessThan(256 * 1_024);
+    expect(duplicate.fingerprint).toBe(first.fingerprint);
+    expect(completed.fingerprint).not.toBe(first.fingerprint);
+  });
+
+  it("emits conflicted and completed managed-operation transitions", async () => {
+    const { manager, repository } = await createRepository(
+      "cantrip-worktrees-operation-observation-",
+    );
+    await execFileAsync("git", ["-C", repository, "switch", "-c", "feature"]);
+    await writeFile(path.join(repository, "README.md"), "Feature\n");
+    await execFileAsync("git", ["-C", repository, "commit", "-am", "Feature"]);
+    await execFileAsync("git", ["-C", repository, "switch", "main"]);
+    await writeFile(path.join(repository, "README.md"), "Main\n");
+    await execFileAsync("git", ["-C", repository, "commit", "-am", "Main"]);
+    await execFileAsync("git", ["-C", repository, "switch", "feature"]);
+
+    const preview = await previewGitManagedOperation(repository, {
+      type: "rebase",
+      sourceRef: "main",
+    });
+    const conflicted = await startGitManagedOperation(
+      repository,
+      preview.action,
+      preview.token,
+    );
+    expect(conflicted.state).toBe("conflicted");
+
+    const notifications: WorkerNotification[] = [];
+    manager.setObservationEmitter((notification) => {
+      notifications.push(notification);
+      return true;
+    });
+    const operationId = "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+    const observationTarget = {
+      projectId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f3",
+      worktreeId: "019fdc2c-e848-7552-b2ea-6fc7ef09e9f4",
+      sourcePath: repository,
+      worktreePath: repository,
+      operation: { id: operationId, context: preview.context },
+    };
+    manager.configureObservation([observationTarget]);
+    await vi.waitFor(
+      () => {
+        expect(
+          notifications.findLast(
+            (notification) => notification.type === "git.operation.observed",
+          ),
+        ).toMatchObject({
+          type: "git.operation.observed",
+          operationId,
+          state: { state: "conflicted", conflictedPathCount: 1 },
+          conflicts: {
+            files: [expect.objectContaining({ path: "README.md" })],
+          },
+        });
+      },
+      { timeout: 10_000 },
+    );
+    const initialOperationNotifications = notifications.filter(
+      (notification) => notification.type === "git.operation.observed",
+    );
+    manager.configureObservation([observationTarget]);
+    await vi.waitFor(
+      () =>
+        expect(
+          notifications.filter(
+            (notification) => notification.type === "git.operation.observed",
+          ).length,
+        ).toBeGreaterThan(initialOperationNotifications.length),
+      { timeout: 10_000 },
+    );
+    expect(
+      notifications.findLast(
+        (notification) => notification.type === "git.operation.observed",
+      ),
+    ).toMatchObject({
+      fingerprint: initialOperationNotifications.at(-1)?.fingerprint,
+    });
+
+    await writeFile(path.join(repository, "README.md"), "Resolved\n");
+    await execFileAsync("git", ["-C", repository, "add", "README.md"]);
+    const completed = await controlGitManagedOperation(
+      repository,
+      preview.context,
+      "continue",
+    );
+    expect(completed.state).toBe("completed");
+    await vi.waitFor(
+      () => {
+        const latest = notifications.findLast(
+          (notification) => notification.type === "git.operation.observed",
+        );
+        expect(latest).toMatchObject({
+          type: "git.operation.observed",
+          operationId,
+          state: { state: "completed", conflictedPathCount: 0 },
+          conflicts: { files: [], truncated: false },
+        });
+      },
+      { timeout: 10_000 },
+    );
+    manager.close();
+  });
+
   it("parses NUL-delimited porcelain records without losing lock reasons", () => {
     expect(
       parseGitWorktreePorcelain(

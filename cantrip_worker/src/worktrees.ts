@@ -12,6 +12,8 @@ import {
   worktreePruneResultSchema,
   worktreeRemoveResultSchema,
   worktreeStatusResultSchema,
+  type GitConflictList,
+  type GitManagedOperationWorkerState,
   type WorkerNotification,
   type WorkerWorktreeSummary,
   type WorktreeCreateMode,
@@ -24,7 +26,11 @@ import {
   type WorktreeStatusResult,
 } from "@cantrip/protocol";
 
-import { readGitStatus } from "./git.js";
+import {
+  inspectGitManagedOperation,
+  listGitConflicts,
+  readGitStatus,
+} from "./git.js";
 
 const execFileAsync = promisify(execFile);
 const GIT_BUFFER = 16 * 1024 * 1024;
@@ -32,6 +38,13 @@ const OBSERVATION_DEBOUNCE_MS = 500;
 const OBSERVATION_HEAD_RECONCILE_MS = 2_000;
 const OBSERVATION_RECONCILE_MS = 30_000;
 const OBSERVATION_SCAN_CONCURRENCY = 4;
+const MAX_OBSERVED_CONFLICT_FILES = 2_000;
+const MAX_OBSERVED_CONFLICT_BYTES = 256 * 1_024;
+
+type GitOperationObservedNotification = Extract<
+  WorkerNotification,
+  { type: "git.operation.observed" }
+>;
 
 interface ObservedWorktree extends WorktreeObservationTarget {
   worktree: WorkerWorktreeSummary | null;
@@ -39,6 +52,75 @@ interface ObservedWorktree extends WorktreeObservationTarget {
 
 function observationKey(target: WorktreeObservationTarget): string {
   return `${target.sourcePath}\0${target.worktreePath}`;
+}
+
+function observationConfigurationFingerprint(
+  target: WorktreeObservationTarget,
+): string {
+  return JSON.stringify({
+    projectId: target.projectId,
+    worktreeId: target.worktreeId,
+    sourcePath: target.sourcePath,
+    worktreePath: target.worktreePath,
+    operation: target.operation,
+  });
+}
+
+export function buildGitOperationObservation(input: {
+  conflicts: GitConflictList;
+  observedAt?: string;
+  state: GitManagedOperationWorkerState;
+  target: WorktreeObservationTarget & {
+    operation: NonNullable<WorktreeObservationTarget["operation"]>;
+    projectId: string;
+    worktreeId: string;
+  };
+}): GitOperationObservedNotification {
+  const compactState = {
+    state: input.state.state,
+    currentHead: input.state.currentHead,
+    currentStep: input.state.currentStep,
+    totalSteps: input.state.totalSteps,
+    pendingCommitCount: input.state.pendingCommits.length,
+    conflictedPathCount: input.state.conflictedPaths.length,
+    pausedAction: input.state.pausedAction ?? null,
+  };
+  const conflictFiles: GitConflictList["files"] = [];
+  let conflictBytes = 2;
+  for (const file of input.conflicts.files) {
+    if (conflictFiles.length >= MAX_OBSERVED_CONFLICT_FILES) break;
+    const fileBytes = Buffer.byteLength(JSON.stringify(file), "utf8") + 1;
+    if (conflictBytes + fileBytes > MAX_OBSERVED_CONFLICT_BYTES) break;
+    conflictFiles.push(file);
+    conflictBytes += fileBytes;
+  }
+  const conflicts = {
+    files: conflictFiles,
+    truncated:
+      input.conflicts.truncated ||
+      conflictFiles.length < input.conflicts.files.length,
+  };
+  const fingerprint = createHash("sha256")
+    .update(
+      JSON.stringify({
+        operationId: input.target.operation.id,
+        state: compactState,
+        conflicts,
+      }),
+    )
+    .digest("hex");
+  return {
+    type: "git.operation.observed",
+    projectId: input.target.projectId,
+    worktreeId: input.target.worktreeId,
+    operationId: input.target.operation.id,
+    sourcePath: input.target.sourcePath,
+    worktreePath: input.target.worktreePath,
+    fingerprint,
+    observedAt: input.observedAt ?? new Date().toISOString(),
+    state: compactState,
+    conflicts,
+  };
 }
 
 async function forEachConcurrent<T>(
@@ -206,6 +288,7 @@ export class WorktreeManager {
   private readonly observationFingerprints = new Map<string, string>();
   private readonly observationHeads = new Map<string, string | null>();
   private readonly observationInventoryFingerprints = new Map<string, string>();
+  private readonly operationObservationFingerprints = new Map<string, string>();
   private readonly observationTargets = new Map<string, ObservedWorktree>();
   private readonly observationTimers = new Map<
     string,
@@ -236,8 +319,20 @@ export class WorktreeManager {
     );
     if (
       next.size === this.observationTargets.size &&
-      [...next.keys()].every((key) => this.observationTargets.has(key))
+      [...next].every(([key, target]) => {
+        const current = this.observationTargets.get(key);
+        return (
+          current !== undefined &&
+          observationConfigurationFingerprint(target) ===
+            observationConfigurationFingerprint(current)
+        );
+      })
     ) {
+      for (const [key, target] of next) {
+        if (target.operation) {
+          this.operationObservationFingerprints.delete(key);
+        }
+      }
       void this.refreshObservedSources(false);
       return;
     }
@@ -255,6 +350,13 @@ export class WorktreeManager {
       if (next.has(key)) continue;
       this.observationFingerprints.delete(key);
       this.observationHeads.delete(key);
+      this.operationObservationFingerprints.delete(key);
+    }
+    for (const [key, target] of next) {
+      const previous = this.observationTargets.get(key);
+      if (previous?.operation?.id !== target.operation?.id) {
+        this.operationObservationFingerprints.delete(key);
+      }
     }
     this.observationTargets.clear();
     for (const [key, target] of next) {
@@ -299,6 +401,7 @@ export class WorktreeManager {
     this.observationWatchers.clear();
     this.observationTargets.clear();
     this.observationHeads.clear();
+    this.operationObservationFingerprints.clear();
   }
 
   private async watchTarget(
@@ -494,6 +597,44 @@ export class WorktreeManager {
       })
     ) {
       this.observationFingerprints.set(key, fingerprint);
+    }
+    await this.emitObservedGitOperation(key, target, force).catch(
+      () => undefined,
+    );
+  }
+
+  private async emitObservedGitOperation(
+    key: string,
+    target: ObservedWorktree,
+    force: boolean,
+  ): Promise<void> {
+    if (!target.operation || !target.projectId || !target.worktreeId) return;
+    const [state, conflictList] = await Promise.all([
+      inspectGitManagedOperation(target.worktreePath, target.operation.context),
+      listGitConflicts(target.worktreePath),
+    ]);
+    const notification = buildGitOperationObservation({
+      conflicts: conflictList,
+      state,
+      target: {
+        ...target,
+        operation: target.operation,
+        projectId: target.projectId,
+        worktreeId: target.worktreeId,
+      },
+    });
+    if (
+      !force &&
+      notification.fingerprint ===
+        this.operationObservationFingerprints.get(key)
+    ) {
+      return;
+    }
+    const delivered = this.observationEmitter(notification);
+    if (delivered) {
+      this.operationObservationFingerprints.set(key, notification.fingerprint);
+    } else {
+      this.scheduleObservedTarget(key);
     }
   }
 

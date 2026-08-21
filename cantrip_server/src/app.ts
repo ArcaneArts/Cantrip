@@ -456,9 +456,11 @@ import type {
   CodexExternalImportStatus,
   CodexMcpOauthStatus,
   GitStatus,
+  GitConflictList,
   GitManagedOperationContext,
   GitManagedOperationRecord,
   GitManagedOperationWorkerState,
+  GitOperationObservationState,
   ProjectWorktreeSummary,
   ProviderQuotaSnapshot,
   ReasoningEffort,
@@ -815,6 +817,21 @@ function gitManagedOperationContext(
     totalSteps: operation.totalSteps,
     checkpointRef: operation.checkpointRef,
   };
+}
+
+function gitOperationObservationMatches(
+  state: GitManagedOperationWorkerState,
+  observation: GitOperationObservationState,
+): boolean {
+  return (
+    state.state === observation.state &&
+    state.currentHead === observation.currentHead &&
+    state.currentStep === observation.currentStep &&
+    state.totalSteps === observation.totalSteps &&
+    state.pendingCommits.length === observation.pendingCommitCount &&
+    state.conflictedPaths.length === observation.conflictedPathCount &&
+    (state.pausedAction ?? null) === observation.pausedAction
+  );
 }
 
 const ROUTE_FAILURE_COOLDOWN_MS = 60_000;
@@ -1384,6 +1401,11 @@ export async function buildApp({
     }
   >();
   let codeGraphStatusRevision = Date.now() * 1_000;
+  let gitLiveRevision = Date.now() * 1_000;
+  const nextGitLiveRevision = (): number => {
+    gitLiveRevision = Math.max(gitLiveRevision + 1, Date.now() * 1_000);
+    return gitLiveRevision;
+  };
   const publishWorktreeStatus = (
     projectId: string,
     worktreeId: string,
@@ -1433,6 +1455,64 @@ export async function buildApp({
       );
     }
   };
+  const publishGitOperation = (operation: GitManagedOperationRecord): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "project", projectId: operation.projectId },
+        resource: "git-operation",
+        action: "updated",
+        entityId: operation.id,
+        revision: nextGitLiveRevision(),
+        payload: appLiveEventPayloadSchema.parse(
+          gitManagedOperationResponseSchema.parse({ operation }),
+        ),
+      });
+    } catch (error) {
+      app.log.warn(
+        {
+          err: error,
+          operationId: operation.id,
+          projectId: operation.projectId,
+        },
+        "Could not publish exact Git operation state",
+      );
+      publishLiveInvalidation("git-operation", {
+        entityId: operation.id,
+        projectId: operation.projectId,
+      });
+    }
+  };
+  const publishGitConflicts = (
+    projectId: string,
+    worktreeId: string,
+    conflicts: GitConflictList,
+  ): void => {
+    if (!livePublishingEnabled) return;
+    try {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "project", projectId },
+        resource: "git-conflict",
+        action: "updated",
+        entityId: worktreeId,
+        revision: nextGitLiveRevision(),
+        payload: appLiveEventPayloadSchema.parse(
+          gitConflictListSchema.parse(conflicts),
+        ),
+      });
+    } catch (error) {
+      app.log.warn(
+        { err: error, projectId, worktreeId },
+        "Could not publish exact Git conflict summary",
+      );
+      publishLiveInvalidation("git-conflict", {
+        entityId: worktreeId,
+        projectId,
+      });
+    }
+  };
   const recordLiveWorktreeStatus = async (
     projectId: string,
     worktreeId: string,
@@ -1480,16 +1560,31 @@ export async function buildApp({
       applicationOwnerId(),
       workerId,
     );
+    const configuredTargets = await Promise.all(
+      targets.map(async (target) => {
+        const active = await repository.getActiveGitOperation(
+          applicationOwnerId(),
+          target.projectId,
+          target.worktreeId,
+        );
+        return {
+          projectId: target.projectId,
+          worktreeId: target.worktreeId,
+          sourcePath: target.sourcePath,
+          worktreePath: target.worktreePath,
+          operation:
+            active && active.workerId === workerId
+              ? {
+                  id: active.id,
+                  context: gitManagedOperationContext(active),
+                }
+              : null,
+        };
+      }),
+    );
     await bridge.request(workerId, {
       type: "worktree.observation.configure",
-      targets: targets.map(
-        ({ projectId, sourcePath, worktreeId, worktreePath }) => ({
-          projectId,
-          worktreeId,
-          sourcePath,
-          worktreePath,
-        }),
-      ),
+      targets: configuredTargets,
     });
   };
   const scheduleWorkerWorktreeObservation = (workerId: string): void => {
@@ -1518,6 +1613,182 @@ export async function buildApp({
       projectId,
     );
     if (source) scheduleWorkerWorktreeObservation(source.workerId);
+  };
+  type GitOperationObservedNotification = Extract<
+    WorkerNotification,
+    { type: "git.operation.observed" }
+  >;
+  type PendingGitOperationObservation = {
+    notification: GitOperationObservedNotification;
+    ownerId: string;
+    workerId: string;
+  };
+  const gitOperationObservationStates = new Map<
+    string,
+    {
+      pending: PendingGitOperationObservation | null;
+      running: boolean;
+      settledFingerprint: string | null;
+      settledObservedAt: string | null;
+    }
+  >();
+  const reconcileGitOperationObservation = async (
+    ownerId: string,
+    workerId: string,
+    notification: GitOperationObservedNotification,
+  ): Promise<boolean> => {
+    return worktreeCoordinator.serialize(notification.projectId, async () => {
+      const context = await repository.getProjectWorktreeContext(
+        ownerId,
+        notification.projectId,
+        notification.worktreeId,
+      );
+      if (
+        !context ||
+        context.workerId !== workerId ||
+        context.sourcePath !== notification.sourcePath ||
+        context.worktree.path !== notification.worktreePath
+      ) {
+        return false;
+      }
+      const durable = await repository.getGitOperation(
+        ownerId,
+        notification.projectId,
+        notification.worktreeId,
+        notification.operationId,
+      );
+      if (!durable || durable.workerId !== workerId) return false;
+      if (["completed", "failed", "aborted"].includes(durable.state)) {
+        if (
+          durable.state === notification.state.state &&
+          durable.currentHead === notification.state.currentHead
+        ) {
+          publishGitConflicts(
+            notification.projectId,
+            notification.worktreeId,
+            notification.conflicts,
+          );
+          return true;
+        }
+        return false;
+      }
+      const workerState = gitManagedOperationWorkerStateSchema.parse(
+        await bridge.request(workerId, {
+          type: "git.operation.inspect",
+          cwd: context.worktree.path,
+          context: gitManagedOperationContext(durable),
+        }),
+      );
+      const observationStillCurrent = gitOperationObservationMatches(
+        workerState,
+        notification.state,
+      );
+      const updated = await repository.updateGitOperation(
+        ownerId,
+        notification.projectId,
+        notification.worktreeId,
+        durable.id,
+        workerState,
+      );
+      if (!updated) return false;
+      await recordLiveWorktreeStatus(
+        notification.projectId,
+        notification.worktreeId,
+        worktreeStatusFromGitStatus(context.worktree, workerState.status),
+      );
+      publishGitOperation(updated);
+      if (observationStillCurrent) {
+        publishGitConflicts(
+          notification.projectId,
+          notification.worktreeId,
+          notification.conflicts,
+        );
+      } else {
+        publishLiveInvalidation("git-conflict", {
+          entityId: notification.worktreeId,
+          projectId: notification.projectId,
+        });
+      }
+      if (["completed", "failed", "aborted"].includes(updated.state)) {
+        publishLiveInvalidation("worktree", {
+          entityId: notification.worktreeId,
+          projectId: notification.projectId,
+        });
+      }
+      scheduleWorkerWorktreeObservation(workerId);
+      return true;
+    });
+  };
+  const scheduleGitOperationObservation = (
+    ownerId: string,
+    workerId: string,
+    notification: GitOperationObservedNotification,
+  ): void => {
+    const key = `${ownerId}:${workerId}:${notification.projectId}:${notification.worktreeId}:${notification.operationId}`;
+    let state = gitOperationObservationStates.get(key);
+    if (!state) {
+      state = {
+        pending: null,
+        running: false,
+        settledFingerprint: null,
+        settledObservedAt: null,
+      };
+      gitOperationObservationStates.set(key, state);
+      if (gitOperationObservationStates.size > 4_096) {
+        const oldest = [...gitOperationObservationStates].find(
+          ([candidateKey, candidate]) =>
+            candidateKey !== key && !candidate.running,
+        )?.[0];
+        if (oldest) gitOperationObservationStates.delete(oldest);
+      }
+    }
+    if (
+      state.settledFingerprint === notification.fingerprint ||
+      (state.settledObservedAt !== null &&
+        notification.observedAt < state.settledObservedAt) ||
+      (state.pending !== null &&
+        notification.observedAt < state.pending.notification.observedAt)
+    ) {
+      return;
+    }
+    state.pending = { notification, ownerId, workerId };
+    if (state.running) return;
+    state.running = true;
+    queueMicrotask(() => {
+      void (async () => {
+        while (state.pending) {
+          const pending = state.pending;
+          state.pending = null;
+          if (state.settledFingerprint === pending.notification.fingerprint) {
+            continue;
+          }
+          try {
+            const accepted = await runAsOwner(pending.ownerId, () =>
+              reconcileGitOperationObservation(
+                pending.ownerId,
+                pending.workerId,
+                pending.notification,
+              ),
+            );
+            if (accepted) {
+              state.settledFingerprint = pending.notification.fingerprint;
+              state.settledObservedAt = pending.notification.observedAt;
+            }
+          } catch (error) {
+            app.log.warn(
+              {
+                err: error,
+                operationId: pending.notification.operationId,
+                workerId: pending.workerId,
+              },
+              "Could not reconcile observed Git operation state",
+            );
+            scheduleWorkerWorktreeObservation(pending.workerId);
+          }
+        }
+        state.running = false;
+      })();
+    });
   };
   const handleWorkerNotification = async (
     ownerId: string,
@@ -1664,6 +1935,10 @@ export async function buildApp({
       }
       latestObservation.lastPublishedFingerprint = observation.fingerprint;
       publishCodeGraphStatus(status, observation.revision);
+      return;
+    }
+    if (notification.type === "git.operation.observed") {
+      scheduleGitOperationObservation(ownerId, workerId, notification);
       return;
     }
     if (notification.type === "diagnostics.logs.observed") return;
@@ -14056,17 +14331,14 @@ export async function buildApp({
                   context: gitManagedOperationContext(active),
                 }),
               );
-              await repository.updateGitOperation(
+              const updated = await repository.updateGitOperation(
                 applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
                 active.id,
                 workerState,
               );
-              publishLiveInvalidation("git-operation", {
-                entityId: active.id,
-                projectId: request.params.projectId,
-              });
+              if (updated) publishGitOperation(updated);
             }
             publishLiveInvalidation("git-conflict", {
               entityId: request.params.worktreeId,
@@ -15327,7 +15599,7 @@ export async function buildApp({
                 operationContext,
               );
               await repository.markGitOperationRunning(durable.id);
-              await repository.updateGitOperation(
+              const updated = await repository.updateGitOperation(
                 applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
@@ -15348,10 +15620,8 @@ export async function buildApp({
                   status: applied.status,
                 }),
               );
-              publishLiveInvalidation("git-operation", {
-                entityId: durable.id,
-                projectId: request.params.projectId,
-              });
+              if (updated) publishGitOperation(updated);
+              scheduleWorkerWorktreeObservation(context.workerId);
             }
             publishLiveInvalidation("worktree", {
               projectId: request.params.projectId,
@@ -15424,6 +15694,7 @@ export async function buildApp({
         return reply.code(400).send(invalidBody(input.error.issues));
       }
       let durableId: string | null = null;
+      let durableWorkerId: string | null = null;
       try {
         const operation = await worktreeCoordinator.serialize(
           request.params.projectId,
@@ -15434,6 +15705,7 @@ export async function buildApp({
               request.params.worktreeId,
             );
             if (!context) throw new Error("Worktree not found.");
+            durableWorkerId = context.workerId;
             const preview = gitManagedOperationPreviewSchema.parse(
               await bridge.request(
                 context.workerId,
@@ -15458,11 +15730,12 @@ export async function buildApp({
               preview.context,
             );
             durableId = durable.id;
-            await repository.markGitOperationRunning(durable.id);
-            publishLiveInvalidation("git-operation", {
-              entityId: durable.id,
-              projectId: request.params.projectId,
-            });
+            const running = await repository.markGitOperationRunning(
+              durable.id,
+            );
+            if (!running) throw new Error("Git operation record disappeared.");
+            publishGitOperation(running);
+            scheduleWorkerWorktreeObservation(context.workerId);
             runningGitOperationRequests.add(durable.id);
             let workerState: GitManagedOperationWorkerState;
             try {
@@ -15494,10 +15767,8 @@ export async function buildApp({
               request.params.worktreeId,
               worktreeStatusFromGitStatus(context.worktree, workerState.status),
             );
-            publishLiveInvalidation("git-operation", {
-              entityId: durable.id,
-              projectId: request.params.projectId,
-            });
+            publishGitOperation(updated);
+            scheduleWorkerWorktreeObservation(context.workerId);
             publishLiveInvalidation("worktree-status", {
               projectId: request.params.projectId,
             });
@@ -15509,17 +15780,17 @@ export async function buildApp({
           .send(gitManagedOperationResponseSchema.parse({ operation }));
       } catch (error) {
         if (durableId && !(error instanceof WorkerUnavailableError)) {
-          await repository.failGitOperation(
+          const failed = await repository.failGitOperation(
             applicationOwnerId(),
             request.params.projectId,
             request.params.worktreeId,
             durableId,
             errorMessage(error),
           );
-          publishLiveInvalidation("git-operation", {
-            entityId: durableId,
-            projectId: request.params.projectId,
-          });
+          if (failed) publishGitOperation(failed);
+          if (durableWorkerId) {
+            scheduleWorkerWorktreeObservation(durableWorkerId);
+          }
         }
         return sendWorkerConflictFailure(reply, error);
       }
@@ -15572,11 +15843,8 @@ export async function buildApp({
                 active.id,
                 workerState,
               )) ?? active;
-            if (operation.state !== active.state) {
-              publishLiveInvalidation("git-operation", {
-                entityId: operation.id,
-                projectId: request.params.projectId,
-              });
+            if (operation.updatedAt !== active.updatedAt) {
+              publishGitOperation(operation);
               if (
                 ["completed", "failed", "aborted"].includes(operation.state)
               ) {
@@ -15679,10 +15947,7 @@ export async function buildApp({
               request.params.worktreeId,
               worktreeStatusFromGitStatus(context.worktree, workerState.status),
             );
-            publishLiveInvalidation("git-operation", {
-              entityId: durable.id,
-              projectId: request.params.projectId,
-            });
+            publishGitOperation(updated);
             publishLiveInvalidation("worktree", {
               projectId: request.params.projectId,
             });
@@ -15690,6 +15955,7 @@ export async function buildApp({
               projectId: request.params.projectId,
             });
             void scheduleProjectWorktreeObservation(request.params.projectId);
+            scheduleWorkerWorktreeObservation(context.workerId);
             return updated;
           },
         );
@@ -15772,10 +16038,7 @@ export async function buildApp({
               request.params.worktreeId,
               worktreeStatusFromGitStatus(context.worktree, workerState.status),
             );
-            publishLiveInvalidation("git-operation", {
-              entityId: durable.id,
-              projectId: request.params.projectId,
-            });
+            publishGitOperation(updated);
             publishLiveInvalidation("worktree", {
               projectId: request.params.projectId,
             });
@@ -15783,6 +16046,7 @@ export async function buildApp({
               projectId: request.params.projectId,
             });
             void scheduleProjectWorktreeObservation(request.params.projectId);
+            scheduleWorkerWorktreeObservation(context.workerId);
             return updated;
           },
         );
@@ -16279,7 +16543,7 @@ export async function buildApp({
                 operationContext,
               );
               await repository.markGitOperationRunning(durable.id);
-              await repository.updateGitOperation(
+              const updated = await repository.updateGitOperation(
                 applicationOwnerId(),
                 request.params.projectId,
                 request.params.worktreeId,
@@ -16295,10 +16559,8 @@ export async function buildApp({
                   status: applied.status,
                 }),
               );
-              publishLiveInvalidation("git-operation", {
-                entityId: durable.id,
-                projectId: request.params.projectId,
-              });
+              if (updated) publishGitOperation(updated);
+              scheduleWorkerWorktreeObservation(context.workerId);
               publishLiveInvalidation("git-conflict", {
                 entityId: request.params.worktreeId,
                 projectId: request.params.projectId,
@@ -25343,6 +25605,7 @@ export async function buildApp({
     worktreeObservationTimers.clear();
     chatTurnOutcomeRecoveryScheduler.clear();
     chatThreadChangeReconciler.clear();
+    gitOperationObservationStates.clear();
     for (const unsubscribe of workerNotificationSubscriptions.values()) {
       unsubscribe();
     }

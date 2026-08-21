@@ -2662,12 +2662,37 @@ describe("Cantrip protocol", () => {
   });
 
   it("bounds and validates worker-owned worktree observation", () => {
+    const operationId = "019fdc2c-e848-7552-b2ea-6fc7ef09e9f2";
+    const projectId = "019fdc2c-e848-7552-b2ea-6fc7ef09e9f3";
+    const worktreeId = "019fdc2c-e848-7552-b2ea-6fc7ef09e9f4";
+    const operationContext = {
+      type: "rebase" as const,
+      originalHead: "a".repeat(40),
+      sourceRef: "origin/main",
+      sourceRevision: "b".repeat(40),
+      targetRef: "refs/heads/feature",
+      targetRevision: "a".repeat(40),
+      pendingCommits: ["a".repeat(40)],
+      totalSteps: 1,
+      checkpointRef: null,
+    };
     expect(
       workerCommandSchema.parse({
         type: "worktree.observation.configure",
-        targets: [{ sourcePath: "/repo", worktreePath: "/repo" }],
+        targets: [
+          {
+            projectId,
+            worktreeId,
+            sourcePath: "/repo",
+            worktreePath: "/repo",
+            operation: { id: operationId, context: operationContext },
+          },
+        ],
       }),
-    ).toMatchObject({ type: "worktree.observation.configure" });
+    ).toMatchObject({
+      type: "worktree.observation.configure",
+      targets: [{ operation: { id: operationId } }],
+    });
     expect(() =>
       workerCommandSchema.parse({
         type: "worktree.observation.configure",
@@ -2711,6 +2736,43 @@ describe("Cantrip protocol", () => {
         },
       }).notification.type,
     ).toBe("worktree.status.observed");
+    expect(
+      workerNotificationEnvelopeSchema.parse({
+        kind: "notification",
+        notification: {
+          type: "git.operation.observed",
+          projectId,
+          worktreeId,
+          operationId,
+          sourcePath: "/repo",
+          worktreePath: "/repo",
+          fingerprint: "c".repeat(64),
+          observedAt: "2026-08-21T12:00:00.000Z",
+          state: {
+            state: "conflicted",
+            currentHead: "a".repeat(40),
+            currentStep: 1,
+            totalSteps: 1,
+            pendingCommitCount: 1,
+            conflictedPathCount: 1,
+            pausedAction: null,
+          },
+          conflicts: {
+            files: [
+              {
+                path: "src/app.ts",
+                code: "UU",
+                kind: "both-modified",
+                baseAvailable: true,
+                oursAvailable: true,
+                theirsAvailable: true,
+              },
+            ],
+            truncated: false,
+          },
+        },
+      }).notification.type,
+    ).toBe("git.operation.observed");
   });
 
   it("validates project workspace names, memberships, and summaries", () => {

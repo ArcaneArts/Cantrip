@@ -29,6 +29,8 @@ import {
   getProjectWorktreeGitConflicts,
   previewProjectWorktreeGitConflictResolution,
 } from "@/lib/api";
+import { useAppLiveStatus } from "@/lib/app-live-react";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { cn } from "@/lib/utils";
 
 import { GitAgentDraftDialog } from "./git-agent-draft-dialog";
@@ -146,6 +148,7 @@ export function GitConflictResolver({
   worktreeId: string;
 }) {
   const queryClient = useQueryClient();
+  const gitResourcesLive = useAppLiveStatus() === "live";
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [view, setView] = useState<"result" | "ours" | "theirs" | "base">(
     "result",
@@ -158,7 +161,7 @@ export function GitConflictResolver({
   const conflicts = useQuery({
     queryKey: ["git-conflicts", projectId, worktreeId],
     queryFn: () => getProjectWorktreeGitConflicts(projectId, worktreeId),
-    refetchInterval: 2_000,
+    refetchInterval: liveResourceRefreshInterval(gitResourcesLive, 2_000),
   });
   useEffect(() => {
     const files = conflicts.data?.files ?? [];

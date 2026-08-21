@@ -12,6 +12,7 @@ import {
 } from "@cantrip/protocol";
 import type {
   AppLiveServerMessage,
+  GitManagedOperationWorkerState,
   WorkerNotification,
 } from "@cantrip/protocol";
 import {
@@ -99,6 +100,8 @@ const opaqueWorkflowContent = () => ({
 });
 let oauthStatusReads = 0;
 let chatSyncReads = 0;
+let gitOperationInspections = 0;
+let gitOperationInspection: GitManagedOperationWorkerState | null = null;
 let workerNotificationListener: WorkerNotificationListener | null = null;
 const workerNotificationListeners = new Set<WorkerNotificationListener>();
 let workerLogStreamStarts = 0;
@@ -171,6 +174,12 @@ const workerBridge: WorkerCommandBus = {
         return { stopped: true };
       case "worktree.observation.configure":
         return { accepted: true };
+      case "git.operation.inspect":
+        gitOperationInspections += 1;
+        if (!gitOperationInspection) {
+          throw new Error("No Git operation inspection was configured.");
+        }
+        return gitOperationInspection;
       case "workflow.trigger.prepare.protected":
         return {
           status: "accepted",
@@ -439,6 +448,169 @@ describe.sequential("application live WebSocket", () => {
       releaseOlderContextRead?.();
       contextRead.mockRestore();
     }
+
+    const gitContext = await database.repository.getProjectWorktreeContext(
+      LOCAL_USER_ID,
+      projectId,
+      worktreeId,
+    );
+    if (!gitContext) throw new Error("Could not resolve the Git worktree.");
+    const gitHead = "a".repeat(40);
+    const gitOperationContext = {
+      type: "rebase" as const,
+      originalHead: gitHead,
+      sourceRef: "origin/main",
+      sourceRevision: "b".repeat(40),
+      targetRef: "refs/heads/feature",
+      targetRevision: gitHead,
+      pendingCommits: [gitHead],
+      totalSteps: 1,
+      checkpointRef: null,
+    };
+    const durableGitOperation = await database.repository.createGitOperation(
+      LOCAL_USER_ID,
+      projectId,
+      worktreeId,
+      liveTestHeartbeat.workerId,
+      gitOperationContext,
+    );
+    await database.repository.markGitOperationRunning(durableGitOperation.id);
+    const gitStatus = {
+      branch: "feature",
+      head: gitHead,
+      upstream: null,
+      ahead: 0,
+      behind: 0,
+      files: [],
+      branches: [],
+    };
+    gitOperationInspection = {
+      ...gitOperationContext,
+      state: "conflicted",
+      currentHead: gitHead,
+      currentStep: 1,
+      pendingCommits: [gitHead],
+      conflictedPaths: ["src/app.ts"],
+      output: "CONFLICT",
+      pausedAction: null,
+      status: gitStatus,
+    };
+    const gitConflict = {
+      path: "src/app.ts",
+      code: "UU",
+      kind: "both-modified" as const,
+      baseAvailable: true,
+      oursAvailable: true,
+      theirsAvailable: true,
+    };
+    const gitEventStart = messages.length;
+    const gitInspectionStart = gitOperationInspections;
+    const conflictedNotification: WorkerNotification = {
+      type: "git.operation.observed",
+      projectId,
+      worktreeId,
+      operationId: durableGitOperation.id,
+      sourcePath: gitContext.sourcePath,
+      worktreePath: gitContext.worktree.path,
+      fingerprint: "c".repeat(64),
+      observedAt: "2026-08-21T12:00:00.000Z",
+      state: {
+        state: "conflicted",
+        currentHead: gitHead,
+        currentStep: 1,
+        totalSteps: 1,
+        pendingCommitCount: 1,
+        conflictedPathCount: 1,
+        pausedAction: null,
+      },
+      conflicts: { files: [gitConflict], truncated: false },
+    };
+    await notificationListener(conflictedNotification);
+    await vi.waitFor(() =>
+      expect(gitOperationInspections).toBe(gitInspectionStart + 1),
+    );
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(gitEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "git-operation" &&
+              message.entityId === durableGitOperation.id,
+          ),
+      ).toMatchObject({
+        type: "event",
+        action: "updated",
+        scope: { kind: "project", projectId },
+        revision: expect.any(Number),
+        payload: { operation: { state: "conflicted", worktreeId } },
+      }),
+    );
+    expect(
+      messages
+        .slice(gitEventStart)
+        .find(
+          (message) =>
+            message.type === "event" &&
+            message.resource === "git-conflict" &&
+            message.entityId === worktreeId,
+        ),
+    ).toMatchObject({ payload: { files: [gitConflict], truncated: false } });
+
+    await notificationListener(conflictedNotification);
+    await notificationListener({
+      ...conflictedNotification,
+      projectId: randomUUID(),
+      fingerprint: "d".repeat(64),
+      observedAt: "2026-08-21T12:00:01.000Z",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gitOperationInspections).toBe(gitInspectionStart + 1);
+
+    gitOperationInspection = {
+      ...gitOperationInspection,
+      state: "completed",
+      pendingCommits: [],
+      conflictedPaths: [],
+      output: "Completed",
+    };
+    const completedEventStart = messages.length;
+    await notificationListener({
+      ...conflictedNotification,
+      fingerprint: "e".repeat(64),
+      observedAt: "2026-08-21T12:00:02.000Z",
+      state: {
+        ...conflictedNotification.state,
+        state: "completed",
+        pendingCommitCount: 0,
+        conflictedPathCount: 0,
+      },
+      conflicts: { files: [], truncated: false },
+    });
+    await vi.waitFor(() =>
+      expect(gitOperationInspections).toBe(gitInspectionStart + 2),
+    );
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(completedEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "git-operation" &&
+              message.payload?.operation?.state === "completed",
+          ),
+      ).toBeDefined(),
+    );
+    const staleInspectionCount = gitOperationInspections;
+    await notificationListener({
+      ...conflictedNotification,
+      fingerprint: "f".repeat(64),
+      observedAt: "2026-08-21T12:00:01.500Z",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(gitOperationInspections).toBe(staleInspectionCount);
 
     const chatContext = await database.repository.getChatExecutionContext(
       LOCAL_USER_ID,
