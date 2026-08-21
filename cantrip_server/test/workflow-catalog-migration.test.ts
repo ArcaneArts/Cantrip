@@ -14,8 +14,8 @@ async function migrationFiles() {
     .sort();
 }
 
-describe("workflow catalog encryption migration", () => {
-  it("removes legacy workflow rows and installs only opaque catalog columns", async () => {
+describe("workflow definition encryption migrations", () => {
+  it("resets legacy rows before requiring opaque catalog and definition columns", async () => {
     const database = new PGlite();
     try {
       const files = await migrationFiles();
@@ -96,6 +96,56 @@ describe("workflow catalog encryption migration", () => {
           "workflow_revisions.provenance",
         ]),
       );
+
+      await database.exec(`
+        INSERT INTO workflow_definitions (
+          id, owner_id, scope, slug_blind_index, protected_slug,
+          protected_name, protected_description, protected_provenance,
+          source, trust_state
+        ) VALUES (
+          'catalog-workflow', 'workflow-owner', 'personal', 'blind-slug',
+          '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+          'manual', 'untrusted'
+        );
+
+        INSERT INTO workflow_revisions (
+          id, workflow_id, revision, source, protected_provenance,
+          trust_state, content_blind_index, protected_content_hash,
+          created_by_user_id
+        ) VALUES (
+          'catalog-revision', 'catalog-workflow', 1, 'manual', '{}'::jsonb,
+          'untrusted', 'blind-content', '{}'::jsonb, 'workflow-owner'
+        );
+      `);
+      const definitionMigration = files.find((name) =>
+        name.startsWith("0127_"),
+      );
+      expect(definitionMigration).toBeDefined();
+      await database.exec(
+        await readFile(
+          `${migrationsDirectory}/${definitionMigration!}`,
+          "utf8",
+        ),
+      );
+      const definitionRows = await database.query<{
+        definitions: number;
+        protected_definition: string;
+        revisions: number;
+      }>(`
+        SELECT
+          (SELECT count(*)::int FROM workflow_definitions) AS definitions,
+          (SELECT count(*)::int FROM workflow_revisions) AS revisions,
+          (SELECT data_type FROM information_schema.columns
+           WHERE table_name = 'workflow_revisions'
+             AND column_name = 'protected_definition') AS protected_definition
+      `);
+      expect(definitionRows.rows).toEqual([
+        {
+          definitions: 0,
+          protected_definition: "jsonb",
+          revisions: 0,
+        },
+      ]);
     } finally {
       await database.close();
     }

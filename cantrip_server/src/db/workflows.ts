@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import {
   encryptedWorkflowDefinitionCreateSchema,
   encryptedWorkflowDefinitionUpdateSchema,
@@ -462,46 +460,52 @@ export class WorkflowRepository {
       id: revisionId,
       workflowId,
       revision: revisionNumber,
-      declaredInputs: input.declaredInputs,
-      declaredOutputs: input.declaredOutputs,
-      defaults: input.defaults,
-      permissionRequirements: input.permissionRequirements,
+      declaredInputs: {},
+      declaredOutputs: {},
+      defaults: {},
+      permissionRequirements: {},
       source: input.source,
       protectedProvenance: input.content.protectedProvenance,
       trustState: input.trustState,
       contentBlindIndex: input.contentBlindIndex,
       protectedContentHash: input.content.protectedContentHash,
+      protectedDefinition: input.content.protectedDefinition,
       createdByUserId,
     });
-    const nodeRows = input.graph.nodes.map((node, position) => ({
-      id: randomUUID(),
+    const nodeRows = input.manifest.nodes.map((node, position) => ({
+      id: node.id,
       revisionId,
-      nodeKey: node.key,
+      nodeKey: `node-${position + 1}`,
       nodeType: node.type,
-      name: node.name,
+      name: "Encrypted workflow node",
       position,
-      configuration: node.configuration,
-      inputSchema: node.inputSchema,
-      outputSchema: node.outputSchema,
-      permissionRequirements: node.permissionRequirements,
+      configuration: {},
+      inputSchema: {},
+      outputSchema: {},
+      permissionRequirements: {
+        filesystem:
+          node.mutationMode === "write" ? "workspace-write" : "read-only",
+        network: "none",
+        approvalMode: "interactive",
+        skills: [],
+        mcpServers: [],
+        nativeSubagents: false,
+      },
       mutationMode: node.mutationMode,
       modelRouteId: node.modelRouteId,
       permissionProfileId: node.permissionProfileId,
     }));
     await transaction.insert(schema.workflowRevisionNodes).values(nodeRows);
-    if (input.graph.edges.length === 0) return;
-    const nodeIdByKey = new Map(
-      nodeRows.map((node) => [node.nodeKey, node.id]),
-    );
+    if (input.manifest.edges.length === 0) return;
     await transaction.insert(schema.workflowRevisionEdges).values(
-      input.graph.edges.map((edge, position) => ({
-        id: randomUUID(),
+      input.manifest.edges.map((edge, position) => ({
+        id: edge.id,
         revisionId,
-        fromNodeId: nodeIdByKey.get(edge.from)!,
-        toNodeId: nodeIdByKey.get(edge.to)!,
-        sourceOutput: edge.sourceOutput,
-        targetInput: edge.targetInput,
-        condition: edge.condition,
+        fromNodeId: edge.fromNodeId,
+        toNodeId: edge.toNodeId,
+        sourceOutput: null,
+        targetInput: null,
+        condition: null,
         position,
       })),
     );
@@ -522,67 +526,32 @@ export class WorkflowRepository {
         .where(eq(schema.workflowRevisionEdges.revisionId, revision.id))
         .orderBy(asc(schema.workflowRevisionEdges.position)),
     ]);
-    const nodeKeyById = new Map(nodes.map((node) => [node.id, node.nodeKey]));
-    const revisionNodes = nodes.map((node) => ({
+    const manifestNodes = nodes.map((node) => ({
       id: node.id,
-      revisionId: node.revisionId,
-      key: node.nodeKey,
       type: node.nodeType,
-      name: node.name,
-      position: node.position,
-      configuration: node.configuration,
-      inputSchema: node.inputSchema,
-      outputSchema: node.outputSchema,
-      permissionRequirements: node.permissionRequirements,
       mutationMode: node.mutationMode,
       modelRouteId: node.modelRouteId,
       permissionProfileId: node.permissionProfileId,
       createdAt: toISOString(node.createdAt),
     }));
-    const revisionEdges = edges.map((edge) => ({
+    const manifestEdges = edges.map((edge) => ({
       id: edge.id,
-      revisionId: edge.revisionId,
       fromNodeId: edge.fromNodeId,
       toNodeId: edge.toNodeId,
-      from: nodeKeyById.get(edge.fromNodeId),
-      to: nodeKeyById.get(edge.toNodeId),
-      sourceOutput: edge.sourceOutput,
-      targetInput: edge.targetInput,
-      condition: edge.condition,
-      position: edge.position,
       createdAt: toISOString(edge.createdAt),
     }));
+    const summary = toRevisionWireSummary(revision);
     return workflowRevisionWireSchema.parse({
-      ...toRevisionWireSummary(revision),
-      graph: {
-        version: 1,
-        nodes: revisionNodes.map(
-          ({
-            id: _id,
-            revisionId: _revisionId,
-            position: _position,
-            createdAt: _createdAt,
-            ...node
-          }) => node,
-        ),
-        edges: revisionEdges.map(
-          ({
-            id: _id,
-            revisionId: _revisionId,
-            fromNodeId: _fromNodeId,
-            toNodeId: _toNodeId,
-            position: _position,
-            createdAt: _createdAt,
-            ...edge
-          }) => edge,
-        ),
+      ...summary,
+      content: {
+        ...summary.content,
+        protectedDefinition: revision.protectedDefinition,
       },
-      declaredInputs: revision.declaredInputs,
-      declaredOutputs: revision.declaredOutputs,
-      defaults: revision.defaults,
-      permissionRequirements: revision.permissionRequirements,
-      nodes: revisionNodes,
-      edges: revisionEdges,
+      manifest: {
+        version: 1,
+        nodes: manifestNodes,
+        edges: manifestEdges,
+      },
     });
   }
 }

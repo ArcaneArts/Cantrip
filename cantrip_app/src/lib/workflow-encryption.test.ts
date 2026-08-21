@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { ClientSessionContext } from "./client-session";
 import { ClientEncryptionService } from "./client-encryption";
 import {
+  openWorkflowDefinitionWireDetail,
   openWorkflowDefinitionWireSummary,
   protectWorkflowDefinitionCreate,
 } from "./workflow-encryption";
@@ -28,7 +29,7 @@ function service() {
 }
 
 describe("workflow catalog encryption", () => {
-  it("protects catalog metadata and authenticates its workflow row binding", async () => {
+  it("protects catalog and definition content with authenticated row binding", async () => {
     const options = { service: service(), session };
     const encrypted = await protectWorkflowDefinitionCreate(
       workflowDefinitionCreateSchema.parse({
@@ -48,8 +49,10 @@ describe("workflow catalog encryption", () => {
               {
                 key: "inspect",
                 type: "agent",
-                name: "Inspect",
-                configuration: { prompt: "Inspect the project." },
+                name: "DEFINITION_SENTINEL inspect",
+                configuration: {
+                  prompt: "DEFINITION_SENTINEL inspect the private project.",
+                },
               },
             ],
           },
@@ -63,6 +66,7 @@ describe("workflow catalog encryption", () => {
       options,
     );
     expect(JSON.stringify(encrypted)).not.toContain("CATALOG_SENTINEL");
+    expect(JSON.stringify(encrypted)).not.toContain("DEFINITION_SENTINEL");
     expect(encrypted.slugBlindIndex).toMatch(/^[A-Za-z0-9_-]{43}$/u);
 
     const wire = {
@@ -80,7 +84,10 @@ describe("workflow catalog encryption", () => {
         revision: 1,
         source: encrypted.revision.source,
         trustState: encrypted.revision.trustState,
-        content: encrypted.revision.content,
+        content: {
+          protectedProvenance: encrypted.revision.content.protectedProvenance,
+          protectedContentHash: encrypted.revision.content.protectedContentHash,
+        },
         createdByUserId: ownerId,
         createdAt: timestamp,
       },
@@ -107,5 +114,40 @@ describe("workflow catalog encryption", () => {
     ).rejects.toThrow(
       "Protected workflow metadata could not be authenticated.",
     );
+
+    const revisionWire = {
+      ...wire.latestRevision,
+      content: encrypted.revision.content,
+      manifest: {
+        version: 1 as const,
+        nodes: encrypted.revision.manifest.nodes.map((node) => ({
+          ...node,
+          createdAt: timestamp,
+        })),
+        edges: encrypted.revision.manifest.edges.map((edge) => ({
+          ...edge,
+          createdAt: timestamp,
+        })),
+      },
+    };
+    await expect(
+      openWorkflowDefinitionWireDetail(
+        { workflow: wire, revision: revisionWire },
+        options,
+      ),
+    ).resolves.toMatchObject({
+      revision: {
+        graph: {
+          nodes: [
+            {
+              name: "DEFINITION_SENTINEL inspect",
+              configuration: {
+                prompt: "DEFINITION_SENTINEL inspect the private project.",
+              },
+            },
+          ],
+        },
+      },
+    });
   });
 });

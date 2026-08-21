@@ -46,6 +46,7 @@ function opaque() {
 }
 
 function workflowPayload() {
+  const revisionNodeId = randomUUID();
   return encryptedWorkflowDefinitionCreateSchema.parse({
     id: randomUUID(),
     scope: "personal",
@@ -61,16 +62,18 @@ function workflowPayload() {
     },
     revision: {
       id: randomUUID(),
-      graph: {
+      manifest: {
         version: 1,
         nodes: [
           {
-            key: "inspect",
+            id: revisionNodeId,
             type: "agent",
-            name: "Inspect",
-            configuration: { prompt: "Inspect the project." },
+            mutationMode: "read-only",
+            modelRouteId: null,
+            permissionProfileId: null,
           },
         ],
+        edges: [],
       },
       source: "manual",
       trustState: "untrusted",
@@ -78,6 +81,7 @@ function workflowPayload() {
       content: {
         protectedProvenance: opaque(),
         protectedContentHash: opaque(),
+        protectedDefinition: opaque(),
       },
     },
   });
@@ -108,6 +112,9 @@ describe.sequential("workflow catalog encryption boundary", () => {
     const created = workflowDefinitionWireDetailSchema.parse(response.json());
     expect(created.workflow.content).toEqual(payload.content);
     expect(created.revision?.content).toEqual(payload.revision.content);
+    expect(created.revision?.manifest.nodes).toEqual([
+      expect.objectContaining(payload.revision.manifest.nodes[0]!),
+    ]);
 
     const loaded = workflowDefinitionWireDetailSchema.parse(
       (
@@ -132,7 +139,19 @@ describe.sequential("workflow catalog encryption boundary", () => {
           scope: "personal",
           slug: "plaintext-is-rejected",
           name: "Plaintext is rejected",
-          revision: { graph: payload.revision.graph },
+          revision: {
+            graph: {
+              version: 1,
+              nodes: [
+                {
+                  key: "inspect",
+                  type: "agent",
+                  name: "Inspect",
+                  configuration: { prompt: "Inspect." },
+                },
+              ],
+            },
+          },
         },
       }),
     ).toMatchObject({ statusCode: 400 });
@@ -143,6 +162,13 @@ describe.sequential("workflow catalog encryption boundary", () => {
       ["POST", "/api/projects/project-one/workflow-repository/import"],
       ["POST", `/api/workflows/${payload.id}/repository-export`],
       ["POST", "/api/workflow-runs/run-one/save-revision"],
+      ["POST", "/api/workflow-runs"],
+      ["POST", "/api/workflow-triggers"],
+      ["PATCH", "/api/workflow-triggers/trigger-one"],
+      ["POST", "/api/workflow-triggers/trigger-one/deliver"],
+      ["POST", "/api/workflow-hooks/trigger-one"],
+      ["POST", "/api/workflow-triggers/trigger-one/git-event"],
+      ["POST", "/api/workflow-triggers/trigger-one/invoke"],
     ] as const) {
       expect(await app.inject({ method, url })).toMatchObject({
         statusCode: 410,

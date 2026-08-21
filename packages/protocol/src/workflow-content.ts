@@ -29,6 +29,7 @@ export const workflowContentFieldSchema = z.enum([
   "description",
   "provenance",
   "content-hash",
+  "definition",
   "prompt",
   "condition",
   "metadata",
