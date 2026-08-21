@@ -15,3 +15,4 @@ export * from "./surface-stream.js";
 export * from "./task-content.js";
 export * from "./task-operation.js";
 export * from "./wrappers.js";
+export * from "./workflow-content.js";

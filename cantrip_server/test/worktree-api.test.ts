@@ -11,7 +11,6 @@ import {
   codeTabSummarySchema,
   explorerSummarySchema,
   gitActionResultSchema,
-  gitAgentDraftResultSchema,
   gitBranchActionPreviewSchema,
   gitBranchListSchema,
   gitBranchMutationResultSchema,
@@ -257,9 +256,6 @@ const gitRefsCommands: Array<
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
-const gitAgentCommands: Array<
-  Extract<WorkerCommand, { type: "git.agent.generate" }>
-> = [];
 let cliInvocation: {
   arguments: Record<string, unknown>;
   command: "worktree.switch";
@@ -1198,21 +1194,6 @@ const workerBridge = {
       case "git.force-push.apply":
         gitForcePushCommands.push(command);
         return completeGitMutation("forced with lease");
-      case "git.agent.generate":
-        gitAgentCommands.push(command);
-        return {
-          threadId: "git-agent-thread",
-          turnId: "git-agent-turn",
-          text: "",
-          structuredResult: {
-            text:
-              command.task === "draft-commit-message"
-                ? "feat: add Git assistant drafts"
-                : "Summarized working changes.",
-          },
-          measuredUsage: {},
-          status: "completed",
-        };
       case "git.diff":
         gitDiffCommands.push(command);
         return {
@@ -1639,6 +1620,7 @@ describe.sequential("server worktree control plane", () => {
     expect(response.json()).toEqual({
       operationId,
       protectedResponse: protectedRequest,
+      agentExecution: null,
     });
     expect(repositoryOperationCommands.at(-1)).toMatchObject({
       type: "repository.operation",
@@ -1664,6 +1646,7 @@ describe.sequential("server worktree control plane", () => {
     expect(workerResponse.json()).toEqual({
       operationId,
       protectedResponse: protectedRequest,
+      agentExecution: null,
     });
     expect(repositoryOperationCommands.at(-1)).toMatchObject({
       type: "repository.operation",
@@ -3667,70 +3650,60 @@ describe.sequential("server worktree control plane", () => {
     expect(invalidComparison.statusCode).toBe(400);
   });
 
-  it("routes preview-only Git agent drafts through the selected worker and default model", async () => {
-    const target = (
-      await database.repository.listProjectWorktrees(LOCAL_USER_ID, projectId)
-    ).find(({ id }) => id === managedIds[0])!;
-    const response = await app.inject({
+  it("rejects plaintext Git agent drafts and relays opaque agent requests", async () => {
+    const target = { id: primaryId, path: primaryPath };
+    const legacyResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${target.id}/git/agent/drafts`,
       payload: {
         task: "draft-commit-message",
-        instructions: "Mention the Git client.",
+        instructions: "Mention the private Git client.",
       },
     });
+    expect(legacyResponse.statusCode).toBe(410);
 
+    const modelId = (await database.repository.getSettings(LOCAL_USER_ID))
+      .preferences.defaultModelId!;
+    const operationId = "99999999-9999-4999-8999-999999999999";
+    const protectedRequest = {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    };
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/worktrees/${target.id}/repository-operation`,
+      payload: {
+        operationId,
+        protectedRequest,
+        agent: true,
+        modelId,
+      },
+    });
     expect(response.statusCode, response.body).toBe(200);
-    expect(gitAgentDraftResultSchema.parse(response.json())).toMatchObject({
-      task: "draft-commit-message",
-      text: "feat: add Git assistant drafts",
+    expect(response.json()).toEqual({
+      operationId,
+      protectedResponse: protectedRequest,
+      agentExecution: null,
+    });
+    const command = repositoryOperationCommands.at(-1)!;
+    expect(command).toMatchObject({
+      type: "repository.operation",
+      cwd: target.path,
       worktreeId: target.id,
+      operationId,
+      agent: true,
+      modelId,
     });
-    expect(gitAgentCommands.at(-1)).toMatchObject({
-      cwd: target.path,
-      task: "draft-commit-message",
-      instructions: "Mention the Git client.",
-      baseRevision: null,
-      headRevision: null,
-      pullRequestNumber: null,
-      repository: null,
-      timeoutMs: 120_000,
-    });
-
-    const rangeResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/agent/drafts`,
-      payload: {
-        task: "review-commit-range",
-        baseRevision: "origin/main",
-        headRevision: "feature/review",
-      },
-    });
-    expect(rangeResponse.statusCode).toBe(200);
-    expect(gitAgentCommands.at(-1)).toMatchObject({
-      cwd: target.path,
-      task: "review-commit-range",
-      baseRevision: "origin/main",
-      headRevision: "feature/review",
-    });
-
-    const checksResponse = await app.inject({
-      method: "POST",
-      url: `/api/projects/${projectId}/worktrees/${target.id}/git/agent/drafts`,
-      payload: {
-        task: "summarize-failed-checks",
-        pullRequestNumber: 42,
-      },
-    });
-    expect(checksResponse.statusCode, checksResponse.body).toBe(200);
-    expect(gitAgentCommands.at(-1)).toMatchObject({
-      cwd: target.path,
-      task: "summarize-failed-checks",
-      pullRequestNumber: 42,
-      repository: "ArcaneArts/Cantrip",
-    });
+    expect(command.agentRuntimes).toHaveLength(1);
+    expect(JSON.stringify(command)).not.toContain("private Git client");
   });
-
   it("locks, unlocks, and protects Primary and external removal", async () => {
     const managedId = managedIds[0]!;
     const locked = await app.inject({

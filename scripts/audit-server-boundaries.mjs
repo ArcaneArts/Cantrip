@@ -19,8 +19,24 @@ const repositoryOperationProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/repository-operation.ts",
 );
+const automationProtocolPath = resolve(
+  repositoryRoot,
+  "packages/protocol/src/automations.ts",
+);
 const clientApiPath = resolve(repositoryRoot, "cantrip_app/src/lib/api.ts");
+const clientAutomationEncryptionPath = resolve(
+  repositoryRoot,
+  "cantrip_app/src/lib/project-automation-encryption.ts",
+);
+const clientAutomationSettingsPath = resolve(
+  repositoryRoot,
+  "cantrip_app/src/components/projects/project-automations-settings.tsx",
+);
 const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
+const workerAutomationEncryptionPath = resolve(
+  repositoryRoot,
+  "cantrip_worker/src/automation-encryption.ts",
+);
 const workerRoutingPath = resolve(
   repositoryRoot,
   "cantrip_worker/src/routing-registry.ts",
@@ -1489,7 +1505,9 @@ function repositoryOperationRouteBoundaryAudit(
     "protectRepositoryOperationContent",
     "openRepositoryOperationContent",
     "getProjectWorktreeWireList",
+    "generateProjectWorktreeGitDraft",
     'type: "worktree.status"',
+    'type: "git.agent.generate"',
     "Protected path unavailable",
     "/repository-operation",
   ]) {
@@ -1525,6 +1543,9 @@ function repositoryOperationRouteBoundaryAudit(
     "routingRegistry.protectMetadata",
     "routingRegistry.resolveMetadata",
     "repository-routing.json",
+    'request.type === "git.agent.generate"',
+    "gitAgentDraftCreateSchema.parse(request.arguments)",
+    "GIT_AGENT_INSTRUCTIONS",
     "Protected repository operation failed on the worker.",
   ]) {
     if (!workerText.includes(marker)) {
@@ -1550,6 +1571,7 @@ function repositoryOperationRouteBoundaryAudit(
     "legacyGithubCatalogRoute",
     "legacyWorktreeStatusRoute",
     "This plaintext repository route was removed",
+    "This plaintext Git agent route was removed",
   ]) {
     if (!applicationText.includes(marker)) {
       failures.push(
@@ -1572,12 +1594,13 @@ function repositoryOperationRouteBoundaryAudit(
       protocolText,
       "repositoryOperationTypeSchema",
     ),
-    pendingPlaintextPaths: ["Git agent drafts"],
+    pendingPlaintextPaths: [],
     protectedDurableEndpointState: [
       "managed Git operation context and output:worker-local",
       "repository path, branch, and status routing:worker-local opaque handles",
       "repository identity and managed-folder bootstrap:blind indexes plus worker-local opaque handles",
       "GitHub catalogs and pull-request checkout:protected worker-scoped relay",
+      "Git agent request, repository evidence, and draft:protected worker-scoped relay",
       "legacy Git, History, Issues, PR, and release content routes:fail-closed",
       "legacy GitHub catalog routes:fail-closed",
       "legacy worktree status route:fail-closed",
@@ -1648,6 +1671,140 @@ async function taskRepositoryBoundaryAudit() {
     "projectAutomation.target:agent-only",
     "updateQueuedPrompt:agent-only",
   ];
+}
+
+async function projectAutomationContentBoundaryAudit() {
+  const schemaPath = resolve(serverSourcePath, "db/schema.ts");
+  const repositoryPath = resolve(serverSourcePath, "db/project-automations.ts");
+  const [
+    schemaText,
+    repositoryText,
+    applicationText,
+    protocolText,
+    clientText,
+    clientSettingsText,
+    workerText,
+    workerCommandText,
+  ] = await Promise.all([
+    readFile(schemaPath, "utf8"),
+    readFile(repositoryPath, "utf8"),
+    readFile(appPath, "utf8"),
+    readFile(automationProtocolPath, "utf8"),
+    readFile(clientAutomationEncryptionPath, "utf8"),
+    readFile(clientAutomationSettingsPath, "utf8"),
+    readFile(workerAutomationEncryptionPath, "utf8"),
+    readFile(workerPath, "utf8"),
+  ]);
+  const failures = [];
+  const initializer = tableInitializer(schemaText, "projectAutomations");
+  for (const field of [
+    ["protectedName", "protected_name"],
+    ["protectedPrompt", "protected_prompt"],
+    ["protectedCondition", "protected_condition"],
+  ]) {
+    const [property, column] = field;
+    if (
+      !new RegExp(
+        `\\b${property}\\s*:\\s*jsonb\\(["']${column}["']\\)[\\s\\S]*?\\.notNull\\(\\)`,
+        "u",
+      ).test(initializer)
+    ) {
+      failures.push(
+        `projectAutomations: missing required opaque ${column} storage`,
+      );
+    }
+  }
+  for (const field of ["name", "prompt", "condition"]) {
+    if (new RegExp(`\\b${field}\\s*:`, "u").test(initializer)) {
+      failures.push(
+        `projectAutomations: legacy plaintext ${field} field returned`,
+      );
+    }
+    if (
+      new RegExp(`\\b(?:row|input)\\.${field}\\b`, "u").test(repositoryText)
+    ) {
+      failures.push(
+        `project automation repository references plaintext ${field}`,
+      );
+    }
+  }
+  for (const symbol of [
+    "projectAutomationCreateSchema",
+    "projectAutomationUpdateSchema",
+    "projectAutomationSchema",
+    "projectAutomationListSchema",
+  ]) {
+    if (new RegExp(`\\b${symbol}\\b`, "u").test(applicationText)) {
+      failures.push(`Server application imports trusted ${symbol}.`);
+    }
+  }
+  for (const marker of [
+    "encryptedProjectAutomationCreateSchema",
+    "encryptedProjectAutomationUpdateSchema",
+    "projectAutomationOpaqueContentSchema",
+    "projectAutomationWireSchema",
+  ]) {
+    if (!protocolText.includes(marker)) {
+      failures.push(`Automation protocol is missing ${marker}.`);
+    }
+  }
+  if (!clientSettingsText.includes("ensureChatWorkerEncryption")) {
+    failures.push(
+      "Project automation mutations no longer ensure the worker workflow-content grant.",
+    );
+  }
+  for (const marker of [
+    "protectProjectAutomationCreate",
+    "protectProjectAutomationUpdate",
+    "openProjectAutomationWire",
+    'component: "workflow-content"',
+  ]) {
+    if (!clientText.includes(marker)) {
+      failures.push(`Client automation E2EE path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    "protectProjectAutomationDispatch",
+    "decryptWorkflowContent",
+    "evaluateProjectAutomationCondition",
+    "protectChatTurn",
+  ]) {
+    if (!workerText.includes(marker)) {
+      failures.push(`Worker automation E2EE path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    'case "automation.dispatch.protect"',
+    "protectProjectAutomationDispatch",
+  ]) {
+    if (!workerCommandText.includes(marker)) {
+      failures.push(`Worker automation command path is missing ${marker}.`);
+    }
+  }
+  for (const marker of [
+    'type: "automation.dispatch.protect"',
+    "content: automation.content",
+    'text: "Encrypted automation prompt."',
+    '"Protected automation dispatch failed."',
+  ]) {
+    if (!applicationText.includes(marker)) {
+      failures.push(`Server automation relay is missing ${marker}.`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Project-automation content boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["project_automations"],
+    guards: [
+      "name-prompt-condition:opaque-jsonb-only",
+      "condition-evaluation:worker-only",
+      "chat-turn-protection:worker-only",
+      "server-dispatch-errors:generic-only",
+    ],
+  };
 }
 
 function tableInitializer(sourceText, declarationName) {
@@ -2576,6 +2733,7 @@ async function buildInventory() {
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
+    projectAutomationContent,
     policyDependencies,
     policyRepository,
     providerSecretRepository,
@@ -2602,6 +2760,7 @@ async function buildInventory() {
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
+    projectAutomationContentBoundaryAudit(),
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
@@ -2730,6 +2889,10 @@ async function buildInventory() {
       ...taskDependencies,
       repositoryGuards: taskRepositoryGuards,
       routeContracts: taskRouteContracts,
+    },
+    projectAutomationContentE2eeBoundary: {
+      status: "enforced",
+      ...projectAutomationContent,
     },
     policyE2eeBoundary: {
       status: "enforced",

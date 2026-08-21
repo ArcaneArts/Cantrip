@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { workflowMeasuredUsageSchema } from "./workflows.js";
+
 import {
   encryptedPayloadEnvelopeSchema,
   encryptionKeyRevisionSchema,
@@ -125,6 +127,7 @@ export const repositoryOperationTypeSchema = z.enum([
   "git.action",
   "git.force-push.preview",
   "git.force-push.apply",
+  "git.agent.generate",
   "worktree.status",
   "repository.metadata.register",
   "repository.metadata.resolve",
@@ -200,6 +203,20 @@ export const repositoryOperationWireRequestSchema = z
   .object({
     operationId: repositoryOperationContextSchema.shape.operationId,
     protectedRequest: repositoryOperationOpaqueSchema,
+    agent: z.boolean().default(false),
+    modelId: z.string().min(1).max(200).optional(),
+  })
+  .strict()
+  .refine((value) => value.agent || value.modelId === undefined, {
+    message: "Repository model selection is only valid for agent operations.",
+    path: ["modelId"],
+  });
+
+export const repositoryOperationAgentExecutionSchema = z
+  .object({
+    routeId: z.string().min(1).max(200),
+    turnId: z.string().min(1).max(200),
+    measuredUsage: workflowMeasuredUsageSchema,
   })
   .strict();
 
@@ -207,6 +224,9 @@ export const repositoryOperationWireResponseSchema = z
   .object({
     operationId: repositoryOperationContextSchema.shape.operationId,
     protectedResponse: repositoryOperationOpaqueSchema,
+    agentExecution: repositoryOperationAgentExecutionSchema
+      .nullable()
+      .default(null),
   })
   .strict();
 

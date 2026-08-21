@@ -48,6 +48,10 @@
       "types": "./src/repository-operation.ts",
       "import": "./dist/repository-operation.js"
     },
+    "./workflow-content": {
+      "types": "./src/workflow-content.ts",
+      "import": "./dist/workflow-content.js"
+    },
     "./encryption": {
       "types": "./src/encryption.ts",
       "import": "./dist/encryption.js"

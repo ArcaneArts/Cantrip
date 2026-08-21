@@ -1,6 +1,6 @@
 import {
   projectAutomationDispatchResultSchema,
-  projectAutomationListSchema,
+  projectAutomationWireListSchema,
 } from "@cantrip/protocol/automations";
 
 import { workerLogError, workerLogger } from "./logger.js";
@@ -77,7 +77,7 @@ export class ProjectAutomationScheduler {
       if (!response.ok) {
         throw new Error(`schedule refresh failed with HTTP ${response.status}`);
       }
-      const automations = projectAutomationListSchema.parse(
+      const automations = projectAutomationWireListSchema.parse(
         await response.json(),
       );
       const recovered = this.#lastError !== null;

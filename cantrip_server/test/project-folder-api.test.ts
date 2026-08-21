@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,12 +9,14 @@ import {
   projectGithubConversionPreflightResultSchema,
   projectWireListSchema,
   projectWireSummarySchema,
+  encryptedChatTurnCreateSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
 import {
+  encryptedProjectAutomationCreateSchema,
   projectAutomationDispatchResultSchema,
-  projectAutomationSchema,
+  projectAutomationWireSchema,
 } from "@cantrip/protocol/automations";
 import type { TaskOpaqueContent } from "@cantrip/protocol/tasks";
 import {
@@ -62,6 +64,60 @@ const encryptedTaskFixture = {
     ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
   },
 };
+
+function protectedBytes(seed: string, count: number): string {
+  return createHash("sha256")
+    .update(seed)
+    .digest()
+    .subarray(0, count)
+    .toString("base64url");
+}
+
+function protectedWorkflowEnvelope(seed: string) {
+  return {
+    formatVersion: 1 as const,
+    keyRevision: 1,
+    envelope: {
+      version: 1 as const,
+      algorithm: "AES-256-GCM" as const,
+      keyRevision: 1,
+      nonce: protectedBytes(`${seed}:nonce`, 12),
+      ciphertext: protectedBytes(`${seed}:ciphertext`, 32),
+    },
+  };
+}
+
+function protectedAutomationTurn(
+  command: Extract<WorkerCommand, { type: "automation.dispatch.protect" }>,
+) {
+  const classification = {
+    role: "user" as const,
+    mode: command.mode,
+    attachmentIds: [],
+  };
+  const message = {
+    id: command.messageId,
+    classification,
+    protectedContent: protectedWorkflowEnvelope("folder-automation-message"),
+    reasoningEffort: command.reasoningEffort,
+    idempotencyKey: command.idempotencyKey,
+  };
+  return encryptedChatTurnCreateSchema.parse({
+    message,
+    queuedPrompt: {
+      id: command.promptId,
+      classification: { mode: command.mode, attachmentIds: [] },
+      protectedContent: protectedWorkflowEnvelope("folder-automation-prompt"),
+      modelId: command.modelId,
+      reasoningEffort: command.reasoningEffort,
+      worktreeId: null,
+      frozen: false,
+      idempotencyKey: command.idempotencyKey,
+      pendingMessage: message,
+    },
+    modelId: command.modelId,
+  });
+}
 
 function opaqueTaskDraft(): TaskOpaqueContent {
   return {
@@ -149,8 +205,11 @@ const bridge: WorkerCommandBus = {
         worktreePolicy: "agent-managed",
       };
     }
-    if (command.type === "automation.condition.evaluate") {
-      return { allowed: true, detail: "Condition passed." };
+    if (command.type === "automation.dispatch.protect") {
+      return {
+        allowed: true,
+        protectedTurn: protectedAutomationTurn(command),
+      };
     }
     if (command.type === "project.folder-stats") {
       return {
@@ -947,25 +1006,31 @@ describe("managed folder project lifecycle", () => {
       true,
     );
     const startsAt = new Date(Date.now() + 10_000).toISOString();
+    const automationInput = encryptedProjectAutomationCreateSchema.parse({
+      id: randomUUID(),
+      chatId,
+      schedule: {
+        kind: "interval",
+        every: 5,
+        unit: "minute",
+        startsAt,
+      },
+      enabled: true,
+      content: {
+        protectedName: protectedWorkflowEnvelope("folder-review-name"),
+        protectedPrompt: protectedWorkflowEnvelope("folder-review-prompt"),
+        protectedCondition: protectedWorkflowEnvelope(
+          "folder-review-condition",
+        ),
+      },
+    });
     const createAutomationResponse = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/automations`,
-      payload: {
-        name: "Folder review",
-        chatId,
-        prompt: "Review the current folder contents.",
-        schedule: {
-          kind: "interval",
-          every: 5,
-          unit: "minute",
-          startsAt,
-        },
-        condition: { type: "script", script: "test -f README.md" },
-        enabled: true,
-      },
+      payload: automationInput,
     });
     expect(createAutomationResponse.statusCode).toBe(201);
-    const automation = projectAutomationSchema.parse(
+    const automation = projectAutomationWireSchema.parse(
       createAutomationResponse.json(),
     );
     const dispatch = await app.inject({
@@ -981,11 +1046,12 @@ describe("managed folder project lifecycle", () => {
     expect(
       projectAutomationDispatchResultSchema.parse(dispatch.json()),
     ).toMatchObject({ accepted: true, status: "queued" });
-    expect(commands.at(-1)).toEqual({
+    expect(commands.at(-1)).toMatchObject({
       workerId: "folder-worker",
       command: {
-        type: "automation.condition.evaluate",
-        condition: { type: "script", script: "test -f README.md" },
+        type: "automation.dispatch.protect",
+        automationId: automation.id,
+        content: automationInput.content,
         cwd: root.path,
         repository: null,
       },
@@ -994,35 +1060,26 @@ describe("managed folder project lifecycle", () => {
     const openIssues = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/automations`,
-      payload: {
-        name: "Issue review",
+      payload: encryptedProjectAutomationCreateSchema.parse({
+        id: randomUUID(),
         chatId,
-        prompt: "Review open issues.",
         schedule: {
           kind: "interval",
           every: 5,
           unit: "minute",
           startsAt,
         },
-        condition: { type: "open-issues", minimum: 1 },
         enabled: true,
-      },
+        content: {
+          protectedName: protectedWorkflowEnvelope("issue-review-name"),
+          protectedPrompt: protectedWorkflowEnvelope("issue-review-prompt"),
+          protectedCondition: protectedWorkflowEnvelope(
+            "issue-review-condition",
+          ),
+        },
+      }),
     });
-    expect(openIssues.statusCode).toBe(409);
-    expect(openIssues.json()).toMatchObject({
-      code: "project-capability-unavailable",
-      capability: "github",
-    });
-    const updateToOpenIssues = await app.inject({
-      method: "PATCH",
-      url: `/api/automations/${automation.id}`,
-      payload: { condition: { type: "open-issues", minimum: 1 } },
-    });
-    expect(updateToOpenIssues.statusCode).toBe(409);
-    expect(updateToOpenIssues.json()).toMatchObject({
-      code: "project-capability-unavailable",
-      capability: "github",
-    });
+    expect(openIssues.statusCode).toBe(201);
 
     const preauthorized = {
       filesystem: "read-only",

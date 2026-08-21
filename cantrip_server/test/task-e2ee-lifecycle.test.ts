@@ -779,7 +779,7 @@ describe.sequential("Task E2EE closure lifecycle", () => {
         enabled: false,
       },
     });
-    expect(blockedAutomation.statusCode).toBe(404);
+    expect(blockedAutomation.statusCode).toBe(400);
 
     const stored = {
       task: await database.repository.tasks.get(ownerId, chatId),
