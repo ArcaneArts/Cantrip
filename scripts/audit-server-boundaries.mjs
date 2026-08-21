@@ -1860,6 +1860,7 @@ async function workflowCatalogContentBoundaryAudit() {
     ["protectedProvenance", "protected_provenance"],
     ["contentBlindIndex", "content_blind_index"],
     ["protectedContentHash", "protected_content_hash"],
+    ["protectedDefinition", "protected_definition"],
   ]) {
     if (
       !new RegExp(
@@ -1901,6 +1902,43 @@ async function workflowCatalogContentBoundaryAudit() {
       failures.push(`workflow repository: legacy reference ${reference}`);
     }
   }
+  for (const reference of [
+    "input.graph",
+    "input.declaredInputs",
+    "input.declaredOutputs",
+    "input.defaults",
+    "input.permissionRequirements",
+    "node.key",
+    "node.name",
+    "node.configuration",
+    "node.inputSchema",
+    "node.outputSchema",
+    "node.permissionRequirements",
+    "edge.sourceOutput",
+    "edge.targetInput",
+    "edge.condition",
+  ]) {
+    if (repositoryText.includes(reference)) {
+      failures.push(
+        `workflow repository: trusted definition reference ${reference}`,
+      );
+    }
+  }
+  for (const marker of [
+    "protectedDefinition: input.content.protectedDefinition",
+    "input.manifest.nodes.map",
+    "input.manifest.edges.map",
+    'name: "Encrypted workflow node"',
+    "declaredInputs: {}",
+    "sourceOutput: null",
+    "condition: null",
+  ]) {
+    if (!repositoryText.includes(marker)) {
+      failures.push(
+        `workflow repository: opaque definition path missing ${marker}`,
+      );
+    }
+  }
   const trustedServerImports = namedImportsFrom(
     applicationText,
     "@cantrip/protocol/workflows",
@@ -1925,6 +1963,9 @@ async function workflowCatalogContentBoundaryAudit() {
     "workflowDefinitionWireSummarySchema",
     "workflowDefinitionWireDetailSchema",
     "workflowRevisionWireSchema",
+    "workflowRevisionProtectedDefinitionSchema",
+    "workflowRevisionManifestSchema",
+    "workflowRevisionWireManifestSchema",
   ]) {
     if (!protocolText.includes(marker)) {
       failures.push(`Workflow protocol is missing ${marker}.`);
@@ -1946,6 +1987,8 @@ async function workflowCatalogContentBoundaryAudit() {
     'const component = "workflow-content"',
     'field: "slug"',
     'field: "content-hash"',
+    'field: "definition"',
+    "protectedDefinition",
     "deriveLookupKey",
     "computeBlindLookupTag",
     "encryptWorkflowContent",
@@ -1961,6 +2004,10 @@ async function workflowCatalogContentBoundaryAudit() {
     "This plaintext workflow repository import path was removed",
     "This plaintext workflow repository export path was removed",
     "This plaintext workflow revision path was removed",
+    "Workflow trigger mutations are unavailable during the protected runtime cutover.",
+    "Workflow trigger delivery is unavailable during the protected runtime cutover.",
+    "Workflow webhook delivery is unavailable during the protected runtime cutover.",
+    "Workflow execution is unavailable during the protected runtime cutover.",
   ]) {
     if (!applicationText.includes(marker)) {
       failures.push(`Workflow fail-closed boundary is missing ${marker}.`);
@@ -1976,12 +2023,14 @@ async function workflowCatalogContentBoundaryAudit() {
     guards: [
       "definition-slug-name-description-provenance:opaque-only",
       "revision-provenance-and-content-hash:opaque-only",
+      "revision-graph-prompts-config-schemas-defaults-permissions:opaque-only",
+      "node-edge-topology:minimized-public-scheduling-manifest",
       "slug-and-content-hash-equality:keyed-blind-index",
       "duplicated-revision-graph:removed",
       "legacy-generation-repository-and-save-routes:fail-closed",
+      "workflow-run-and-trigger-ingress:fail-closed-until-worker-runtime",
     ],
     remainingPlaintextContent: [
-      "workflow revision node names, configurations, prompts, schemas, and edge predicates",
       "workflow run, node, item, attempt, event, interaction, gate, trigger, and delivery payloads",
     ],
   };
@@ -3077,7 +3126,7 @@ async function buildInventory() {
       ...projectAutomationContent,
     },
     workflowCatalogContentE2eeBoundary: {
-      status: "partial-content-boundary-enforced",
+      status: "definition-content-boundary-enforced",
       ...workflowCatalogContent,
     },
     policyE2eeBoundary: {

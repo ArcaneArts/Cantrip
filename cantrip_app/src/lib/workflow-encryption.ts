@@ -20,6 +20,7 @@ import {
   workflowDefinitionWireSummarySchema,
   workflowRevisionCreateSchema,
   workflowRevisionProtectedContentHashSchema,
+  workflowRevisionProtectedDefinitionSchema,
   workflowRevisionProtectedProvenanceSchema,
   workflowRevisionSchema,
   workflowRevisionSummarySchema,
@@ -137,7 +138,13 @@ function blindIndex(input: {
 async function protectField<T>(input: {
   content: T;
   context: EncryptionContext;
-  field: "slug" | "name" | "description" | "provenance" | "content-hash";
+  field:
+    | "slug"
+    | "name"
+    | "description"
+    | "provenance"
+    | "content-hash"
+    | "definition";
   recordId: string;
   recordKind: "workflow-definition" | "workflow-revision";
   schema: { parse(value: unknown): T };
@@ -159,7 +166,13 @@ async function protectField<T>(input: {
 async function openField<T>(input: {
   context: EncryptionContext;
   encrypted: WorkflowContentOpaque;
-  field: "slug" | "name" | "description" | "provenance" | "content-hash";
+  field:
+    | "slug"
+    | "name"
+    | "description"
+    | "provenance"
+    | "content-hash"
+    | "definition";
   recordId: string;
   recordKind: "workflow-definition" | "workflow-revision";
   schema: { parse(value: unknown): T };
@@ -185,35 +198,74 @@ async function protectRevision(
 ): Promise<EncryptedWorkflowRevisionCreate> {
   const input = workflowRevisionCreateSchema.parse(raw);
   const contentHash = await sha256(input);
-  const [protectedProvenance, protectedContentHash] = await Promise.all([
-    protectField({
-      content: { version: 1, provenance: input.provenance } as const,
-      context,
-      field: "provenance",
-      recordId: id,
-      recordKind: "workflow-revision",
-      schema: workflowRevisionProtectedProvenanceSchema,
-    }),
-    protectField({
-      content: { version: 1, contentHash } as const,
-      context,
-      field: "content-hash",
-      recordId: id,
-      recordKind: "workflow-revision",
-      schema: workflowRevisionProtectedContentHashSchema,
-    }),
-  ]);
-  const { provenance: _provenance, ...publicInput } = input;
+  const nodeIdByKey = new Map(
+    input.graph.nodes.map((node) => [node.key, crypto.randomUUID()]),
+  );
+  const manifest = {
+    version: 1 as const,
+    nodes: input.graph.nodes.map((node) => ({
+      id: nodeIdByKey.get(node.key)!,
+      type: node.type,
+      mutationMode: node.mutationMode,
+      modelRouteId: node.modelRouteId,
+      permissionProfileId: node.permissionProfileId,
+    })),
+    edges: input.graph.edges.map((edge) => ({
+      id: crypto.randomUUID(),
+      fromNodeId: nodeIdByKey.get(edge.from)!,
+      toNodeId: nodeIdByKey.get(edge.to)!,
+    })),
+  };
+  const [protectedProvenance, protectedContentHash, protectedDefinition] =
+    await Promise.all([
+      protectField({
+        content: { version: 1, provenance: input.provenance } as const,
+        context,
+        field: "provenance",
+        recordId: id,
+        recordKind: "workflow-revision",
+        schema: workflowRevisionProtectedProvenanceSchema,
+      }),
+      protectField({
+        content: { version: 1, contentHash } as const,
+        context,
+        field: "content-hash",
+        recordId: id,
+        recordKind: "workflow-revision",
+        schema: workflowRevisionProtectedContentHashSchema,
+      }),
+      protectField({
+        content: {
+          version: 1,
+          graph: input.graph,
+          declaredInputs: input.declaredInputs,
+          declaredOutputs: input.declaredOutputs,
+          defaults: input.defaults,
+          permissionRequirements: input.permissionRequirements,
+        } as const,
+        context,
+        field: "definition",
+        recordId: id,
+        recordKind: "workflow-revision",
+        schema: workflowRevisionProtectedDefinitionSchema,
+      }),
+    ]);
   return encryptedWorkflowRevisionCreateSchema.parse({
-    ...publicInput,
     id,
+    source: input.source,
+    trustState: input.trustState,
+    manifest,
     contentBlindIndex: blindIndex({
       canonicalValue: contentHash,
       context,
       field: "content-hash",
       recordKind: "workflow-revision",
     }),
-    content: { protectedProvenance, protectedContentHash },
+    content: {
+      protectedProvenance,
+      protectedContentHash,
+      protectedDefinition,
+    },
   });
 }
 
@@ -355,7 +407,10 @@ async function openRevisionSummaryWithContext(
     revision: raw.revision,
     source: raw.source,
     trustState: raw.trustState,
-    content: raw.content,
+    content: {
+      protectedProvenance: raw.content.protectedProvenance,
+      protectedContentHash: raw.content.protectedContentHash,
+    },
     createdByUserId: raw.createdByUserId,
     createdAt: raw.createdAt,
   });
@@ -402,11 +457,76 @@ async function openRevisionWithContext(
   context: EncryptionContext,
 ): Promise<WorkflowRevision> {
   const revision = workflowRevisionWireSchema.parse(raw);
-  const summary = await openRevisionSummaryWithContext(revision, context);
+  const [summary, definition] = await Promise.all([
+    openRevisionSummaryWithContext(revision, context),
+    openField({
+      context,
+      encrypted: revision.content.protectedDefinition,
+      field: "definition",
+      recordId: revision.id,
+      recordKind: "workflow-revision",
+      schema: workflowRevisionProtectedDefinitionSchema,
+    }),
+  ]);
+  if (
+    definition.graph.nodes.length !== revision.manifest.nodes.length ||
+    definition.graph.edges.length !== revision.manifest.edges.length
+  ) {
+    throw new Error(
+      "Protected workflow definition does not match its manifest.",
+    );
+  }
+  const nodeIdByKey = new Map<string, string>();
+  const nodes = definition.graph.nodes.map((node, position) => {
+    const manifestNode = revision.manifest.nodes[position]!;
+    if (
+      manifestNode.type !== node.type ||
+      manifestNode.mutationMode !== node.mutationMode ||
+      manifestNode.modelRouteId !== node.modelRouteId ||
+      manifestNode.permissionProfileId !== node.permissionProfileId
+    ) {
+      throw new Error(
+        "Protected workflow definition does not match its manifest.",
+      );
+    }
+    nodeIdByKey.set(node.key, manifestNode.id);
+    return {
+      ...node,
+      id: manifestNode.id,
+      revisionId: revision.id,
+      position,
+      createdAt: manifestNode.createdAt,
+    };
+  });
+  const edges = definition.graph.edges.map((edge, position) => {
+    const manifestEdge = revision.manifest.edges[position]!;
+    if (
+      manifestEdge.fromNodeId !== nodeIdByKey.get(edge.from) ||
+      manifestEdge.toNodeId !== nodeIdByKey.get(edge.to)
+    ) {
+      throw new Error(
+        "Protected workflow definition does not match its manifest.",
+      );
+    }
+    return {
+      ...edge,
+      id: manifestEdge.id,
+      revisionId: revision.id,
+      fromNodeId: manifestEdge.fromNodeId,
+      toNodeId: manifestEdge.toNodeId,
+      position,
+      createdAt: manifestEdge.createdAt,
+    };
+  });
   return workflowRevisionSchema.parse({
-    ...revision,
     ...summary,
-    content: undefined,
+    graph: definition.graph,
+    declaredInputs: definition.declaredInputs,
+    declaredOutputs: definition.declaredOutputs,
+    defaults: definition.defaults,
+    permissionRequirements: definition.permissionRequirements,
+    nodes,
+    edges,
   });
 }
 

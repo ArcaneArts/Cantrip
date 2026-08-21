@@ -827,6 +827,10 @@ const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
 const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
 const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
+
+function workflowRuntimeCutover(): boolean {
+  return true;
+}
 const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
 const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
 const EXTERNAL_CHAT_DISCOVERY_TIMEOUT_MS = 20_000;
@@ -12654,6 +12658,11 @@ export async function buildApp({
   });
 
   app.post("/api/workflow-triggers", async (request, reply) => {
+    if (workflowRuntimeCutover())
+      return reply.code(410).send({
+        error:
+          "Workflow trigger mutations are unavailable during the protected runtime cutover.",
+      });
     const input = workflowAutomationTriggerCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
@@ -12698,6 +12707,11 @@ export async function buildApp({
   app.patch<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId",
     async (request, reply) => {
+      if (workflowRuntimeCutover())
+        return reply.code(410).send({
+          error:
+            "Workflow trigger mutations are unavailable during the protected runtime cutover.",
+        });
       const input = workflowAutomationTriggerUpdateSchema.safeParse(
         request.body,
       );
@@ -12728,6 +12742,11 @@ export async function buildApp({
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/deliver",
     async (request, reply) => {
+      if (workflowRuntimeCutover())
+        return reply.code(410).send({
+          error:
+            "Workflow trigger delivery is unavailable during the protected runtime cutover.",
+        });
       const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
@@ -12769,6 +12788,11 @@ export async function buildApp({
     Headers: { "x-cantrip-webhook-token"?: string };
     Params: { triggerId: string };
   }>("/api/workflow-hooks/:triggerId", async (request, reply) => {
+    if (workflowRuntimeCutover())
+      return reply.code(410).send({
+        error:
+          "Workflow webhook delivery is unavailable during the protected runtime cutover.",
+      });
     const context = await repository.workflowTriggers.getWebhookDeliveryContext(
       request.params.triggerId,
     );
@@ -12823,6 +12847,11 @@ export async function buildApp({
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/git-event",
     async (request, reply) => {
+      if (workflowRuntimeCutover())
+        return reply.code(410).send({
+          error:
+            "Workflow trigger delivery is unavailable during the protected runtime cutover.",
+        });
       const input = workflowGitEventDeliveryCreateSchema.safeParse(
         request.body,
       );
@@ -12894,6 +12923,11 @@ export async function buildApp({
   app.post<{ Params: { triggerId: string } }>(
     "/api/workflow-triggers/:triggerId/invoke",
     async (request, reply) => {
+      if (workflowRuntimeCutover())
+        return reply.code(410).send({
+          error:
+            "Workflow trigger delivery is unavailable during the protected runtime cutover.",
+        });
       const input = workflowTriggerDeliveryCreateSchema.safeParse(request.body);
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
@@ -13962,6 +13996,11 @@ export async function buildApp({
   });
 
   app.post("/api/workflow-runs", async (request, reply) => {
+    if (workflowRuntimeCutover())
+      return reply.code(410).send({
+        error:
+          "Workflow execution is unavailable during the protected runtime cutover.",
+      });
     const input = workflowRunCreateSchema.safeParse(request.body);
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));

@@ -946,6 +946,128 @@ export const workflowRevisionProtectedContentHashSchema = z
   })
   .strict();
 
+export const workflowRevisionProtectedDefinitionSchema = z
+  .object({
+    version: z.literal(1),
+    graph: workflowGraphSchema,
+    declaredInputs: workflowJsonObjectSchema,
+    declaredOutputs: workflowJsonObjectSchema,
+    defaults: workflowJsonObjectSchema,
+    permissionRequirements: workflowPermissionRequirementsSchema,
+  })
+  .strict();
+
+const workflowRevisionManifestNodeSchema = z
+  .object({
+    id: z.uuid(),
+    type: workflowNodeTypeSchema,
+    mutationMode: workflowMutationModeSchema,
+    modelRouteId: optionalIdSchema,
+    permissionProfileId: optionalIdSchema,
+  })
+  .strict();
+
+const workflowRevisionManifestEdgeSchema = z
+  .object({
+    id: z.uuid(),
+    fromNodeId: z.uuid(),
+    toNodeId: z.uuid(),
+  })
+  .strict();
+
+function validateWorkflowRevisionManifest(
+  manifest: {
+    nodes: Array<z.infer<typeof workflowRevisionManifestNodeSchema>>;
+    edges: Array<z.infer<typeof workflowRevisionManifestEdgeSchema>>;
+  },
+  context: z.RefinementCtx,
+) {
+  const nodeIds = new Set(manifest.nodes.map(({ id }) => id));
+  if (nodeIds.size !== manifest.nodes.length) {
+    context.addIssue({
+      code: "custom",
+      message: "Workflow manifest node IDs must be unique.",
+      path: ["nodes"],
+    });
+  }
+  if (
+    new Set(manifest.edges.map(({ id }) => id)).size !== manifest.edges.length
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "Workflow manifest edge IDs must be unique.",
+      path: ["edges"],
+    });
+  }
+  const indegree = new Map(manifest.nodes.map(({ id }) => [id, 0]));
+  const outgoing = new Map(
+    manifest.nodes.map(({ id }) => [id, [] as string[]]),
+  );
+  for (const [index, edge] of manifest.edges.entries()) {
+    if (!nodeIds.has(edge.fromNodeId) || !nodeIds.has(edge.toNodeId)) {
+      context.addIssue({
+        code: "custom",
+        message: "Workflow manifest edges must reference manifest nodes.",
+        path: ["edges", index],
+      });
+      continue;
+    }
+    outgoing.get(edge.fromNodeId)!.push(edge.toNodeId);
+    indegree.set(edge.toNodeId, indegree.get(edge.toNodeId)! + 1);
+  }
+  const ready = [...indegree]
+    .filter(([, count]) => count === 0)
+    .map(([id]) => id);
+  let visited = 0;
+  while (ready.length > 0) {
+    const id = ready.pop()!;
+    visited += 1;
+    for (const target of outgoing.get(id) ?? []) {
+      const count = indegree.get(target)! - 1;
+      indegree.set(target, count);
+      if (count === 0) ready.push(target);
+    }
+  }
+  if (visited !== manifest.nodes.length) {
+    context.addIssue({
+      code: "custom",
+      message: "Workflow manifest dependencies must form an acyclic graph.",
+      path: ["edges"],
+    });
+  }
+}
+
+export const workflowRevisionManifestSchema = z
+  .object({
+    version: z.literal(1),
+    nodes: z.array(workflowRevisionManifestNodeSchema).min(1).max(256),
+    edges: z.array(workflowRevisionManifestEdgeSchema).max(2_048),
+  })
+  .strict()
+  .superRefine(validateWorkflowRevisionManifest);
+
+export const workflowRevisionWireManifestSchema = z
+  .object({
+    version: z.literal(1),
+    nodes: z
+      .array(
+        workflowRevisionManifestNodeSchema.extend({
+          createdAt: z.string().datetime(),
+        }),
+      )
+      .min(1)
+      .max(256),
+    edges: z
+      .array(
+        workflowRevisionManifestEdgeSchema.extend({
+          createdAt: z.string().datetime(),
+        }),
+      )
+      .max(2_048),
+  })
+  .strict()
+  .superRefine(validateWorkflowRevisionManifest);
+
 const workflowBlindIndexSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 
 export const workflowDefinitionOpaqueContentSchema = z
@@ -964,15 +1086,21 @@ export const workflowRevisionOpaqueContentSchema = z
   })
   .strict();
 
-export const encryptedWorkflowRevisionCreateSchema =
-  workflowRevisionCreateSchema
-    .omit({ provenance: true })
-    .extend({
-      id: z.uuid(),
-      contentBlindIndex: workflowBlindIndexSchema,
-      content: workflowRevisionOpaqueContentSchema,
-    })
+export const workflowRevisionOpaqueDefinitionContentSchema =
+  workflowRevisionOpaqueContentSchema
+    .extend({ protectedDefinition: workflowContentOpaqueSchema })
     .strict();
+
+export const encryptedWorkflowRevisionCreateSchema = z
+  .object({
+    id: z.uuid(),
+    source: workflowSourceSchema,
+    trustState: workflowTrustStateSchema,
+    manifest: workflowRevisionManifestSchema,
+    contentBlindIndex: workflowBlindIndexSchema,
+    content: workflowRevisionOpaqueDefinitionContentSchema,
+  })
+  .strict();
 
 export const encryptedWorkflowDefinitionCreateSchema =
   workflowDefinitionCreateObject
@@ -1119,9 +1247,12 @@ export const workflowRevisionSchema = workflowRevisionSummarySchema.extend({
   edges: z.array(workflowRevisionEdgeSchema).max(2_048),
 });
 
-export const workflowRevisionWireSchema = workflowRevisionSchema
-  .omit({ provenance: true, contentHash: true })
-  .extend({ content: workflowRevisionOpaqueContentSchema })
+export const workflowRevisionWireSchema = workflowRevisionWireSummarySchema
+  .omit({ content: true })
+  .extend({
+    content: workflowRevisionOpaqueDefinitionContentSchema,
+    manifest: workflowRevisionWireManifestSchema,
+  })
   .strict();
 
 export const workflowDefinitionDetailSchema = z.object({
@@ -2050,6 +2181,15 @@ export type WorkflowDefinitionOpaqueContent = z.infer<
 >;
 export type WorkflowRevisionOpaqueContent = z.infer<
   typeof workflowRevisionOpaqueContentSchema
+>;
+export type WorkflowRevisionOpaqueDefinitionContent = z.infer<
+  typeof workflowRevisionOpaqueDefinitionContentSchema
+>;
+export type WorkflowRevisionManifest = z.infer<
+  typeof workflowRevisionManifestSchema
+>;
+export type WorkflowRevisionWireManifest = z.infer<
+  typeof workflowRevisionWireManifestSchema
 >;
 export type WorkflowDefinitionWireSummary = z.infer<
   typeof workflowDefinitionWireSummarySchema

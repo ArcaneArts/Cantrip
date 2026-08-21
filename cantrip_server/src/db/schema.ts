@@ -3546,6 +3546,9 @@ export const workflowRevisions = pgTable(
     protectedContentHash: jsonb("protected_content_hash")
       .$type<WorkflowContentOpaque>()
       .notNull(),
+    protectedDefinition: jsonb("protected_definition")
+      .$type<WorkflowContentOpaque>()
+      .notNull(),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),

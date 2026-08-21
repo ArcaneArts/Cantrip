@@ -890,6 +890,13 @@
       "when": 1787285726718,
       "tag": "0126_slow_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1787286614491,
+      "tag": "0127_hesitant_tattoo",
+      "breakpoints": true
     }
   ]
 }
