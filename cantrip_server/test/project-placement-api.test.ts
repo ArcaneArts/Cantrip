@@ -15,7 +15,15 @@ import {
   unprobedCodexRuntimeReport,
   type WorkerCommand,
 } from "@cantrip/protocol";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { surfaceStreamOpaqueSchema } from "@cantrip/protocol/surface-stream";
 
 import { buildApp } from "../src/app.js";
@@ -402,6 +410,40 @@ describe.sequential("project execution placement API", () => {
       selection: "fallback",
       placement: { workerId: "worker-alpha" },
     });
+  });
+
+  it("trusts a live worker connection when its persisted heartbeat is stale", async () => {
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 31_000);
+
+    try {
+      expect(
+        await database.repository.resolveProjectExecutionPlacement(
+          LOCAL_USER_ID,
+          projectId,
+          "code",
+          undefined,
+          workerBridge.isConnected.bind(workerBridge),
+        ),
+      ).toMatchObject({
+        selection: "default-worker",
+        placement: {
+          workerId: "worker-alpha",
+          worktreeId: alphaWorktreeId,
+        },
+      });
+
+      await expect(
+        database.repository.resolveProjectExecutionPlacement(
+          LOCAL_USER_ID,
+          projectId,
+          "code",
+        ),
+      ).rejects.toMatchObject<Partial<ExecutionPlacementUnavailableError>>({
+        code: "no-compatible-placement",
+      });
+    } finally {
+      dateNow.mockRestore();
+    }
   });
 
   it("honors explicit worktrees and never silently moves an invalid target", async () => {
