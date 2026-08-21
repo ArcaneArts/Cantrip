@@ -98,6 +98,9 @@ describe("desktop update settings", () => {
     expect(markup).toContain("1.3.0");
     expect(markup).toContain("Highlights");
     expect(markup).toContain("Faster startup");
+    expect(markup).toContain(
+      'data-elite-global="desktop-update-release-notes"',
+    );
     expect(markup).not.toContain("<script>");
   });
 
