@@ -8,6 +8,7 @@ export * from "./payload.js";
 export * from "./policy-content.js";
 export * from "./protected-secret.js";
 export * from "./private-labels.js";
+export * from "./remote-surface-stream.js";
 export * from "./surface-private-state.js";
 export * from "./surface-stream.js";
 export * from "./task-content.js";

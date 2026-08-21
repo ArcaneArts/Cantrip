@@ -3,6 +3,7 @@
   "sources": {
     "applicationRoutes": "cantrip_server/src/app.ts",
     "liveProtocol": "packages/protocol/src/live.ts",
+    "remoteSurfaceStreamProtocol": "packages/protocol/src/remote-surface-stream.ts",
     "workerCommands": "packages/protocol/src/index.ts"
   },
   "summary": {
@@ -6302,6 +6303,25 @@
         "method": "GET",
         "path": "/api/terminals/:terminalId/connect"
       }
+    ]
+  },
+  "remoteSurfaceStreamE2eeBoundary": {
+    "status": "enforced",
+    "productionCryptoImports": 0,
+    "prohibitedTrustedRemoteSurfaceStreamImports": 0,
+    "guards": [
+      "browser-and-desktop-payloads:opaque",
+      "websocket-and-webrtc:protected-before-relay",
+      "attachment-direction-channel-sequence-bound",
+      "per-channel-replay-guards",
+      "server-payload-decoding:absent"
+    ],
+    "protectedChannels": [
+      "control",
+      "frame",
+      "cursor",
+      "clipboard",
+      "webrtc-signal"
     ]
   },
   "externalTransports": [

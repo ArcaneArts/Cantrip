@@ -40,6 +40,10 @@
       "types": "./src/surface-stream.ts",
       "import": "./dist/surface-stream.js"
     },
+    "./remote-surface-stream": {
+      "types": "./src/remote-surface-stream.ts",
+      "import": "./dist/remote-surface-stream.js"
+    },
     "./encryption": {
       "types": "./src/encryption.ts",
       "import": "./dist/encryption.js"

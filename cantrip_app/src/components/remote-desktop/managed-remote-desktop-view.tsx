@@ -349,6 +349,7 @@ export function ManagedRemoteDesktopView({
     setError,
   } = useRemoteSurfaceTransport({
     enabled: encryptionReady,
+    streamKind: "desktop",
     surfaceKind: "remote-desktop",
     surfaceId: desktop.id,
     webSocketUrl: () =>
