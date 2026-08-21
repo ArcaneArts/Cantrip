@@ -43,7 +43,7 @@ describe("client log relay", () => {
       {
         system: "client",
         level: "error",
-        message: 'request failed {"apiKey":"[REDACTED]"}',
+        message: "client.diagnostic",
       },
     ]);
     expect(result.nextCursor).toBe(result.latestCursor);
@@ -68,11 +68,10 @@ describe("client log relay", () => {
       {
         system: "client",
         level: "info",
-        message: "Server connection restored",
+        message: "server.connection.restored",
         context: {
           event: "server.connection.restored",
           subsystem: "connection",
-          authorization: "[REDACTED]",
         },
       },
     ]);

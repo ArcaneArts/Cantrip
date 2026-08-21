@@ -250,20 +250,20 @@ import {
   modelProfileCreateSchema,
   modelProfileSummarySchema,
   modelProfileUpdateSchema,
-  modelProviderAccountCreateSchema,
-  modelProviderAccountListSchema,
-  modelProviderAccountSummarySchema,
-  modelProviderAccountUpdateSchema,
+  encryptedModelProviderAccountCreateSchema,
+  encryptedModelProviderAccountUpdateSchema,
+  modelProviderAccountWireListSchema,
+  modelProviderAccountWireSummarySchema,
   encryptedModelProviderCreateSchema,
   providerCredentialUploadSchema,
   providerCredentialWireRecordSchema,
   providerConnectionTestResultSchema,
   providerModelCatalogResultSchema,
-  providerTelemetryAnalyticsSchema,
+  providerTelemetryWireAnalyticsSchema,
   providerTelemetryDeleteResultSchema,
   workerProviderConnectionTestResultSchema,
   providerTelemetryExportSchema,
-  modelProviderSummarySchema,
+  modelProviderWireSummarySchema,
   encryptedModelProviderUpdateSchema,
   encryptedMcpServerCreateSchema,
   encryptedMcpServerUpdateSchema,
@@ -343,7 +343,7 @@ import {
   encryptedRemoteSurfaceUpdateSchema,
   remoteSurfaceViewportSchema,
   serverBootstrapSchema,
-  settingsBundleSchema,
+  settingsBundleWireSchema,
   scriptCommandListSchema,
   skillListSchema,
   skillSettingsContextSchema,
@@ -2919,7 +2919,6 @@ export async function buildApp({
       action: string;
       actorSessionId?: string | null;
       actorUserId?: string | null;
-      metadata?: Record<string, string>;
       ownerId?: string | null;
       resourceId?: string | null;
       resourceType: string;
@@ -2943,8 +2942,6 @@ export async function buildApp({
               ? principal.user.id
               : null
             : input.actorUserId,
-        ipAddressHash: request.ip ? hashSecret(request.ip) : null,
-        metadata: input.metadata,
         ownerId:
           input.ownerId === undefined
             ? authenticated
@@ -2955,10 +2952,6 @@ export async function buildApp({
         resourceId: input.resourceId ?? null,
         resourceType: input.resourceType,
         result: input.result,
-        userAgentHash:
-          typeof request.headers["user-agent"] === "string"
-            ? hashSecret(request.headers["user-agent"])
-            : null,
       });
     } catch (error) {
       request.log.error(
@@ -2980,7 +2973,6 @@ export async function buildApp({
     if (!descriptor) return;
     await appendAudit(request, {
       ...descriptor,
-      metadata: { method: request.method, route },
       resourceId: auditResourceId(request),
       result:
         reply.statusCode < 400
@@ -5651,9 +5643,6 @@ export async function buildApp({
         projectId,
         chatId,
         modelRouteId: runtime.routeId,
-        modelName: runtime.model.profileName,
-        providerName: runtime.provider.name,
-        providerModelName: runtime.model.name,
         providerAccountId: runtime.provider.accountId,
         workerId: attribution.workerId,
         turnId: attribution.turnId,
@@ -5704,9 +5693,6 @@ export async function buildApp({
         projectId: execution.projectId,
         chatId: execution.chatId,
         modelRouteId: runtime.routeId,
-        modelName: runtime.model.profileName,
-        providerName: runtime.provider.name,
-        providerModelName: runtime.model.name,
         providerAccountId: runtime.provider.accountId,
         workerId: execution.workerId,
         executionAttemptId: attribution.executionAttemptId,
@@ -8280,7 +8266,6 @@ export async function buildApp({
     if (limited) {
       await appendAudit(request, {
         action: "auth.registration-rate-limited",
-        metadata: { identityHash: hashSecret(normalizedEmail) },
         ownerId: null,
         resourceType: "account",
         result: "denied",
@@ -8295,7 +8280,6 @@ export async function buildApp({
       if (licenseWhitelistEnabled && firstAccount && !configuredAdministrator) {
         await appendAudit(request, {
           action: "auth.registration-denied",
-          metadata: { reason: "administrator-bootstrap-required" },
           ownerId: null,
           resourceType: "account",
           result: "denied",
@@ -8312,7 +8296,6 @@ export async function buildApp({
       ) {
         await appendAudit(request, {
           action: "auth.registration-denied",
-          metadata: { reason: "license-required" },
           ownerId: null,
           resourceType: "account",
           result: "denied",
@@ -8329,7 +8312,6 @@ export async function buildApp({
       ) {
         await appendAudit(request, {
           action: "auth.registration-denied",
-          metadata: { reason: "registration-disabled" },
           ownerId: null,
           resourceType: "account",
           result: "denied",
@@ -8349,7 +8331,6 @@ export async function buildApp({
         ) {
           await appendAudit(request, {
             action: "auth.registration-denied",
-            metadata: { reason: "invalid-bootstrap-token" },
             ownerId: null,
             resourceType: "account",
             result: "denied",
@@ -8378,7 +8359,6 @@ export async function buildApp({
         await appendAudit(request, {
           action: "auth.registration-succeeded",
           actorUserId: user.id,
-          metadata: { role: user.role },
           ownerId: user.id,
           resourceId: user.id,
           resourceType: "account",
@@ -8400,7 +8380,6 @@ export async function buildApp({
       } catch {
         await appendAudit(request, {
           action: "auth.registration-failed",
-          metadata: { identityHash: hashSecret(normalizedEmail) },
           ownerId: null,
           resourceType: "account",
           result: "failed",
@@ -8427,7 +8406,6 @@ export async function buildApp({
     if (limited) {
       await appendAudit(request, {
         action: "auth.login-rate-limited",
-        metadata: { identityHash: hashSecret(identity) },
         ownerId: null,
         resourceType: "session",
         result: "denied",
@@ -8450,7 +8428,6 @@ export async function buildApp({
     if (!valid || !user) {
       await appendAudit(request, {
         action: "auth.login-failed",
-        metadata: { identityHash: hashSecret(identity) },
         ownerId: user?.id ?? null,
         resourceType: "session",
         result: "denied",
@@ -8461,7 +8438,6 @@ export async function buildApp({
     await appendAudit(request, {
       action: "auth.login-succeeded",
       actorUserId: user.id,
-      metadata: { authMethod },
       ownerId: user.id,
       resourceId: user.id,
       resourceType: "session",
@@ -8585,7 +8561,6 @@ export async function buildApp({
     if (!user) {
       await appendAudit(request, {
         action: "auth.mobile-sign-in-failed",
-        metadata: { codeHash },
         ownerId: null,
         resourceType: "session-grant",
         result: "denied",
@@ -8598,7 +8573,6 @@ export async function buildApp({
     await appendAudit(request, {
       action: "auth.mobile-sign-in-succeeded",
       actorUserId: user.id,
-      metadata: { authMethod: "mobile-qr" },
       ownerId: user.id,
       resourceId: user.id,
       resourceType: "session",
@@ -8675,7 +8649,6 @@ export async function buildApp({
     sessionService.clear(reply);
     await appendAudit(request, {
       action: "auth.all-sessions-revoked",
-      metadata: { revokedSessions: String(revokedSessions) },
       resourceId: principal.user.id,
       resourceType: "account",
       result: "succeeded",
@@ -10597,7 +10570,7 @@ export async function buildApp({
         request.params.providerId,
       );
       return accounts
-        ? reply.send(modelProviderAccountListSchema.parse(accounts))
+        ? reply.send(modelProviderAccountWireListSchema.parse(accounts))
         : reply.code(404).send({ error: "Account provider not found." });
     },
   );
@@ -10630,7 +10603,7 @@ export async function buildApp({
         to,
       },
     );
-    return reply.send(providerTelemetryAnalyticsSchema.parse(analytics));
+    return reply.send(providerTelemetryWireAnalyticsSchema.parse(analytics));
   });
 
   app.get<{ Params: { providerId: string } }>(
@@ -10663,7 +10636,9 @@ export async function buildApp({
     Params: { providerId: string };
     Body: unknown;
   }>("/api/settings/providers/:providerId/accounts", async (request, reply) => {
-    const input = modelProviderAccountCreateSchema.safeParse(request.body);
+    const input = encryptedModelProviderAccountCreateSchema.safeParse(
+      request.body,
+    );
     if (!input.success) {
       return reply.code(400).send(invalidBody(input.error.issues));
     }
@@ -10673,7 +10648,9 @@ export async function buildApp({
       input.data,
     );
     return account
-      ? reply.code(201).send(modelProviderAccountSummarySchema.parse(account))
+      ? reply
+          .code(201)
+          .send(modelProviderAccountWireSummarySchema.parse(account))
       : reply.code(404).send({ error: "Account provider not found." });
   });
 
@@ -10705,7 +10682,9 @@ export async function buildApp({
   }>(
     "/api/settings/providers/:providerId/accounts/:accountId",
     async (request, reply) => {
-      const input = modelProviderAccountUpdateSchema.safeParse(request.body);
+      const input = encryptedModelProviderAccountUpdateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -10716,7 +10695,7 @@ export async function buildApp({
         input.data,
       );
       return account
-        ? reply.send(modelProviderAccountSummarySchema.parse(account))
+        ? reply.send(modelProviderAccountWireSummarySchema.parse(account))
         : reply.code(404).send({ error: "Provider account not found." });
     },
   );
@@ -11043,7 +11022,7 @@ export async function buildApp({
         () => undefined,
       );
     }
-    return reply.send(settingsBundleSchema.parse(settings));
+    return reply.send(settingsBundleWireSchema.parse(settings));
   });
 
   app.get("/api/desktop-update/active-work", async (_request, reply) => {
@@ -11250,7 +11229,7 @@ export async function buildApp({
         .code(400)
         .send({ error: "Default model or worker was not found." });
     }
-    return reply.send(settingsBundleSchema.parse(settings));
+    return reply.send(settingsBundleWireSchema.parse(settings));
   });
 
   app.post("/api/settings/providers", async (request, reply) => {
@@ -11278,7 +11257,9 @@ export async function buildApp({
           false,
         ).catch(() => undefined);
       }
-      return reply.code(201).send(modelProviderSummarySchema.parse(provider));
+      return reply
+        .code(201)
+        .send(modelProviderWireSummarySchema.parse(provider));
     } catch (error) {
       return reply.code(409).send({ error: errorMessage(error) });
     }
@@ -11379,7 +11360,7 @@ export async function buildApp({
           ).catch(() => undefined);
         }
         return provider
-          ? reply.send(modelProviderSummarySchema.parse(provider))
+          ? reply.send(modelProviderWireSummarySchema.parse(provider))
           : reply.code(404).send({ error: "Provider not found." });
       } catch (error) {
         return reply.code(409).send({ error: errorMessage(error) });
@@ -23749,10 +23730,6 @@ export async function buildApp({
         }
         await appendAudit(request, {
           action: "worker.paired",
-          metadata: {
-            architecture: provision.worker.architecture,
-            platform: provision.worker.platform,
-          },
           ownerId: provision.ownerId,
           resourceId: provision.worker.workerId,
           resourceType: "worker",
@@ -23782,7 +23759,6 @@ export async function buildApp({
         if (error instanceof WorkerEnrollmentError) {
           await appendAudit(request, {
             action: "worker.pairing-failed",
-            metadata: { reason: "invalid-or-conflicting-enrollment" },
             ownerId: null,
             resourceId: input.data.heartbeat.workerId,
             resourceType: "worker",
@@ -24164,11 +24140,6 @@ export async function buildApp({
               action: "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
-              metadata: {
-                command: input.data.command,
-                requestId: input.data.requestId,
-                sourceWorkerId: input.data.workerId,
-              },
               ownerId: workerAuth.ownerId,
               resourceId: input.data.requestId,
               resourceType: "cli-command",
@@ -24226,11 +24197,6 @@ export async function buildApp({
               action: "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
-              metadata: {
-                command: input.data.command,
-                requestId: input.data.requestId,
-                sourceWorkerId: input.data.workerId,
-              },
               ownerId: workerAuth.ownerId,
               resourceId: input.data.requestId,
               resourceType: "cli-command",

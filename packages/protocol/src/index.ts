@@ -362,12 +362,6 @@ export const accountSessionListSchema = z
   .array(accountSessionSummarySchema)
   .max(1_000);
 
-const auditMetadataSchema = z
-  .record(z.string().min(1).max(80), z.string().max(500))
-  .refine((metadata) => Object.keys(metadata).length <= 20, {
-    message: "Audit metadata may contain at most 20 fields.",
-  });
-
 export const auditEventSchema = z.object({
   id: z.number().int().positive(),
   ownerId: z.string().min(1).nullable(),
@@ -386,7 +380,6 @@ export const auditEventSchema = z.object({
     id: z.string().min(1).max(500).nullable(),
   }),
   requestId: z.string().min(1).max(200).nullable(),
-  metadata: auditMetadataSchema,
   occurredAt: z.iso.datetime(),
 });
 
@@ -1544,7 +1537,6 @@ export const modelProviderAccountSummarySchema = z.object({
   id: z.string().min(1),
   providerId: z.string().min(1),
   label: z.string().trim().min(1).max(160),
-  email: z.string().email().nullable(),
   planType: z.string().max(160).nullable(),
   position: z.number().int().nonnegative(),
   enabled: z.boolean(),
@@ -1569,6 +1561,33 @@ export const modelProviderAccountUpdateSchema = z.object({
   label: z.string().trim().min(1).max(160).optional(),
   enabled: z.boolean().optional(),
 });
+
+export const encryptedModelProviderAccountCreateSchema = z
+  .object({
+    id: z.string().uuid(),
+    protectedLabel: protectedSecretEnvelopeSchema,
+  })
+  .strict();
+
+export const encryptedModelProviderAccountUpdateSchema = z
+  .object({
+    protectedLabel: protectedSecretEnvelopeSchema.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one provider account update.",
+  });
+
+export const modelProviderAccountWireSummarySchema =
+  modelProviderAccountSummarySchema
+    .omit({ label: true })
+    .extend({ protectedLabel: protectedSecretEnvelopeSchema })
+    .strict();
+
+export const modelProviderAccountWireListSchema = z.array(
+  modelProviderAccountWireSummarySchema,
+);
 
 export const tokenUsageTotalsSchema = z.object({
   inputTokens: z.number().int().nonnegative(),
@@ -1596,9 +1615,22 @@ export const encryptedModelProviderCreateSchema = modelProviderCreateSchema
   .omit({ apiKey: true })
   .extend({
     id: z.string().uuid(),
+    initialAccount: encryptedModelProviderAccountCreateSchema.nullable(),
     protectedApiKey: protectedSecretEnvelopeSchema.nullable().default(null),
   })
-  .strict();
+  .strict()
+  .superRefine((provider, context) => {
+    const requiresAccount =
+      provider.kind === "chatgpt" || provider.kind === "grok";
+    if (requiresAccount !== (provider.initialAccount !== null)) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Account-backed providers require one protected initial account.",
+        path: ["initialAccount"],
+      });
+    }
+  });
 
 export const encryptedModelProviderUpdateSchema = modelProviderCreateSchema
   .omit({ apiKey: true })
@@ -1624,6 +1656,15 @@ export const modelProviderSummarySchema = modelProviderCreateSchema
   });
 
 export const modelProviderListSchema = z.array(modelProviderSummarySchema);
+
+export const modelProviderWireSummarySchema = modelProviderSummarySchema
+  .omit({ accounts: true })
+  .extend({ accounts: modelProviderAccountWireListSchema.default([]) })
+  .strict();
+
+export const modelProviderWireListSchema = z.array(
+  modelProviderWireSummarySchema,
+);
 
 export const modelRouteInputSchema = z.object({
   id: z.string().min(1).optional(),
@@ -1845,6 +1886,11 @@ export const settingsBundleSchema = z.object({
   providers: modelProviderListSchema,
   models: modelProfileListSchema,
 });
+
+export const settingsBundleWireSchema = settingsBundleSchema
+  .omit({ providers: true })
+  .extend({ providers: modelProviderWireListSchema })
+  .strict();
 
 export const githubAuthStatusSchema = z.object({
   authenticated: z.boolean(),
@@ -3448,6 +3494,15 @@ export const telemetryQuotaReadingSchema = z.object({
   observedAt: z.string().datetime(),
 });
 
+export const telemetryQuotaReadingWireSchema = telemetryQuotaReadingSchema
+  .omit({
+    providerName: true,
+    providerAccountLabel: true,
+    limitName: true,
+  })
+  .extend({ limitId: z.string().nullable() })
+  .strict();
+
 export const telemetryBreakdownSchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
@@ -3457,6 +3512,10 @@ export const telemetryBreakdownSchema = z.object({
   tokens: detailedTokenUsageTotalsSchema,
   effectiveTokensPer100Percent: telemetryValueStatisticsSchema,
 });
+
+export const telemetryBreakdownWireSchema = telemetryBreakdownSchema
+  .omit({ label: true })
+  .strict();
 
 export const modelBehaviorSummarySchema = z.object({
   attemptCount: z.number().int().nonnegative(),
@@ -3523,6 +3582,10 @@ export const telemetryChangePointSchema = z.object({
   impact: z.enum(["improvement", "degradation", "neutral"]),
   unit: z.enum(["tokens", "ratio", "milliseconds"]),
 });
+
+export const telemetryChangePointWireSchema = telemetryChangePointSchema
+  .omit({ providerAccountLabel: true, modelLabel: true })
+  .strict();
 
 export const providerTelemetryAnalyticsSchema = z.object({
   generatedAt: z.string().datetime(),
@@ -3591,12 +3654,55 @@ export const providerTelemetryAnalyticsSchema = z.object({
   changePoints: z.array(telemetryChangePointSchema).max(100),
 });
 
+export const providerTelemetryWireAnalyticsSchema =
+  providerTelemetryAnalyticsSchema
+    .omit({
+      accounts: true,
+      currentQuota: true,
+      quotaHistory: true,
+      breakdowns: true,
+      behavior: true,
+      changePoints: true,
+    })
+    .extend({
+      accounts: z.array(
+        z
+          .object({
+            id: z.string().min(1),
+            providerId: z.string().min(1),
+          })
+          .strict(),
+      ),
+      currentQuota: z.array(telemetryQuotaReadingWireSchema),
+      quotaHistory: z.array(telemetryQuotaReadingWireSchema),
+      breakdowns: z.object({
+        accounts: z.array(telemetryBreakdownWireSchema),
+        models: z.array(telemetryBreakdownWireSchema),
+        reasoningEfforts: z.array(telemetryBreakdownWireSchema),
+        months: z.array(telemetryBreakdownWireSchema),
+      }),
+      behavior: z.object({
+        total: modelBehaviorSummarySchema,
+        daily: z.array(modelBehaviorDaySchema).max(366),
+        accounts: z.array(
+          modelBehaviorBreakdownSchema.omit({ label: true }).strict(),
+        ),
+        models: z.array(
+          modelBehaviorBreakdownSchema.omit({ label: true }).strict(),
+        ),
+        reasoningEfforts: z.array(
+          modelBehaviorBreakdownSchema.omit({ label: true }).strict(),
+        ),
+      }),
+      changePoints: z.array(telemetryChangePointWireSchema).max(100),
+    })
+    .strict();
+
 const telemetryExportQuotaObservationSchema = z.object({
   id: z.string().min(1),
   eventKey: z.string().min(1),
   observationBatchKey: z.string().min(1),
   providerAccountId: z.string().min(1),
-  providerAccountLabel: z.string().min(1),
   workerId: z.string().nullable(),
   observedAt: z.string().datetime(),
   receivedAt: z.string().datetime(),
@@ -3604,9 +3710,7 @@ const telemetryExportQuotaObservationSchema = z.object({
   resetsAt: z.string().datetime().nullable(),
   windowDurationMinutes: z.number().int().nonnegative().nullable(),
   limitId: z.string().nullable(),
-  limitName: z.string().nullable(),
   windowKind: z.string().min(1),
-  planType: z.string().nullable(),
   reachedType: z.string().nullable(),
   observationTrigger: z.string().min(1),
   chatId: z.string().nullable(),
@@ -3615,7 +3719,6 @@ const telemetryExportQuotaObservationSchema = z.object({
   workerVersion: z.string().nullable(),
   serverVersion: z.string().nullable(),
   codexVersion: z.string().nullable(),
-  sanitizedRawPayload: z.record(z.string(), z.unknown()),
 });
 
 const telemetryExportTokenUsageSchema = z.object({
@@ -3625,8 +3728,6 @@ const telemetryExportTokenUsageSchema = z.object({
   sourceKey: z.string().min(1),
   modelId: z.string().nullable(),
   modelRouteId: z.string().nullable(),
-  modelName: z.string().min(1),
-  providerModelName: z.string().min(1),
   providerAccountId: z.string().nullable(),
   workerId: z.string().nullable(),
   turnId: z.string().nullable(),
@@ -3642,7 +3743,6 @@ const telemetryExportTokenUsageSchema = z.object({
   visibleOutputTokens: z.number().int().nonnegative().nullable(),
   reportedTotalTokens: z.number().int().nonnegative().nullable(),
   usageSemantics: z.string().min(1),
-  sanitizedRawUsage: z.record(z.string(), z.unknown()),
   startedAt: z.string().datetime(),
   completedAt: z.string().datetime().nullable(),
   finalizedAt: z.string().datetime().nullable(),
@@ -3658,8 +3758,6 @@ const telemetryExportBehaviorSchema = z.object({
   chatId: z.string().nullable(),
   modelId: z.string().nullable(),
   modelRouteId: z.string().nullable(),
-  modelName: z.string().min(1),
-  providerModelName: z.string().min(1),
   providerAccountId: z.string().nullable(),
   workerId: z.string().nullable(),
   turnId: z.string().nullable(),
@@ -3702,21 +3800,19 @@ const telemetryExportCatalogSnapshotSchema = z.object({
   providerAccountId: z.string().nullable(),
   workerId: z.string().nullable(),
   availabilityScope: z.string().min(1),
-  nativeModelId: z.string().min(1),
-  canonicalModelId: z.string().nullable(),
   metadataSource: z.string().min(1),
   metadataHash: z.string().min(1),
-  metadata: z.record(z.string(), z.unknown()),
   observedAt: z.string().datetime(),
 });
 
 export const providerTelemetryExportSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   generatedAt: z.string().datetime(),
-  provider: z.object({ id: z.string().min(1), name: z.string().min(1) }),
+  provider: z.object({ id: z.string().min(1) }),
   privacy: z.object({
     includesMessageContent: z.literal(false),
-    rawPayloadsSanitized: z.literal(true),
+    rawPayloadsStored: z.literal(false),
+    dimensionLabels: z.literal("opaque-ids"),
     retention: z.literal("owner-controlled-indefinite"),
   }),
   quotaObservations: z.array(telemetryExportQuotaObservationSchema),
@@ -11508,6 +11604,15 @@ export type ModelProviderAccountCreate = z.infer<
 export type ModelProviderAccountUpdate = z.infer<
   typeof modelProviderAccountUpdateSchema
 >;
+export type EncryptedModelProviderAccountCreate = z.infer<
+  typeof encryptedModelProviderAccountCreateSchema
+>;
+export type EncryptedModelProviderAccountUpdate = z.infer<
+  typeof encryptedModelProviderAccountUpdateSchema
+>;
+export type ModelProviderAccountWireSummary = z.infer<
+  typeof modelProviderAccountWireSummarySchema
+>;
 export type TokenUsageTotals = z.infer<typeof tokenUsageTotalsSchema>;
 export type DetailedTokenUsageTotals = z.infer<
   typeof detailedTokenUsageTotalsSchema
@@ -11521,6 +11626,9 @@ export type EncryptedModelProviderUpdate = z.infer<
   typeof encryptedModelProviderUpdateSchema
 >;
 export type ModelProviderSummary = z.infer<typeof modelProviderSummarySchema>;
+export type ModelProviderWireSummary = z.infer<
+  typeof modelProviderWireSummarySchema
+>;
 export type ModelRouteInput = z.infer<typeof modelRouteInputSchema>;
 export type ModelRouteSummary = z.infer<typeof modelRouteSummarySchema>;
 export type ModelProfileCreate = z.infer<typeof modelProfileCreateSchema>;
@@ -11545,6 +11653,7 @@ export type MobileProjectTabConfigurations = z.infer<
 export type UserSettings = z.infer<typeof userSettingsSchema>;
 export type UserSettingsUpdate = z.infer<typeof userSettingsUpdateSchema>;
 export type SettingsBundle = z.infer<typeof settingsBundleSchema>;
+export type SettingsBundleWire = z.infer<typeof settingsBundleWireSchema>;
 export type ProjectOriginKind = z.infer<typeof projectOriginKindSchema>;
 export type ProjectFolderManagement = z.infer<
   typeof projectFolderManagementSchema
@@ -11630,6 +11739,9 @@ export type TelemetryChangeMetric = z.infer<typeof telemetryChangeMetricSchema>;
 export type TelemetryChangePoint = z.infer<typeof telemetryChangePointSchema>;
 export type ProviderTelemetryAnalytics = z.infer<
   typeof providerTelemetryAnalyticsSchema
+>;
+export type ProviderTelemetryWireAnalytics = z.infer<
+  typeof providerTelemetryWireAnalyticsSchema
 >;
 export type ProviderTelemetryExport = z.infer<
   typeof providerTelemetryExportSchema

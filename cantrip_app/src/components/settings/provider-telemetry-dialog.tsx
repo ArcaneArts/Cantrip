@@ -506,7 +506,8 @@ export function ProviderTelemetryDialog({
     enabled: open && Boolean(provider),
     queryFn: () =>
       getProviderTelemetryAnalytics({
-        providerId: provider!.id,
+        provider: provider!,
+        models,
         providerAccountId: accountId || undefined,
         modelId: modelId || undefined,
         reasoningEffort: reasoningEffort || undefined,

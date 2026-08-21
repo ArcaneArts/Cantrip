@@ -24,6 +24,7 @@ import { WorkerBridge, WorkerUnavailableError } from "../src/workers/bridge.js";
 import { protectedProjectFields } from "./private-label-fixture.js";
 import {
   protectedProviderCredentialFixture,
+  protectedSecretEnvelopeFixture,
   providerCredentialMetadataFixture,
 } from "./protected-provider-credential-fixture.js";
 
@@ -291,9 +292,14 @@ describe("per-worker enrollment credentials", () => {
       expect(enrolledResponse.body).not.toContain("secretHash");
       const ownerId = registered.json().currentUser.id as string;
       const provider = await database.repository.createModelProvider(ownerId, {
+        id: "00000000-0000-4000-8000-000000000941",
         baseUrl: "https://chatgpt.com/backend-api/codex",
         kind: "chatgpt",
         name: "ChatGPT",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000942",
+          protectedLabel: protectedSecretEnvelopeFixture("Q"),
+        },
       });
       const providerAccountId = provider.accounts[0]!.id;
       const protectedCredential = protectedProviderCredentialFixture("E");

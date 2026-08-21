@@ -91,7 +91,7 @@ export async function resolveAccountProviderRuntimes(input: {
       } else {
         unavailableCounts.migrationNeeded += 1;
         unavailable.push(
-          `${runtime.provider.name} account ${account.label} must be migrated; reconnect its original worker`,
+          `${runtime.provider.name} account ${account.accountId} must be migrated; reconnect its original worker`,
         );
       }
       continue;
@@ -100,8 +100,8 @@ export async function resolveAccountProviderRuntimes(input: {
       unavailableCounts.requiresSignIn += 1;
       unavailable.push(
         account.credentialState === "conflict"
-          ? `${runtime.provider.name} account ${account.label} has a credential identity conflict`
-          : `${runtime.provider.name} account ${account.label} requires sign-in`,
+          ? `${runtime.provider.name} account ${account.accountId} has a credential identity conflict`
+          : `${runtime.provider.name} account ${account.accountId} requires sign-in`,
       );
       continue;
     }
@@ -116,12 +116,12 @@ export async function resolveAccountProviderRuntimes(input: {
     } else if (remainingPercent > 0) {
       unavailableCounts.belowReserve += 1;
       unavailable.push(
-        `${runtime.provider.name} account ${account.label} is below its ${runtime.provider.weeklyUsageReservePercent}% weekly usage reserve`,
+        `${runtime.provider.name} account ${account.accountId} is below its ${runtime.provider.weeklyUsageReservePercent}% weekly usage reserve`,
       );
     } else {
       unavailableCounts.exhausted += 1;
       unavailable.push(
-        `${runtime.provider.name} account ${account.label} has no weekly usage left`,
+        `${runtime.provider.name} account ${account.accountId} has no weekly usage left`,
       );
     }
   }

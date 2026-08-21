@@ -17,6 +17,7 @@ import {
   exactOpenRouterAliases,
 } from "../src/models/catalog-enrichment.js";
 import { SecretVault } from "../src/security/secret-vault.js";
+import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -168,9 +169,14 @@ describe("provider catalog enrichment", () => {
         baseUrl: "https://openrouter.ai/api/v1",
       });
       const chatGpt = await repository.createModelProvider(LOCAL_USER_ID, {
+        id: "00000000-0000-4000-8000-000000000943",
         name: "ChatGPT",
         kind: "chatgpt",
         baseUrl: "https://chatgpt.com/backend-api/codex/responses",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000944",
+          protectedLabel: protectedSecretEnvelopeFixture("R"),
+        },
       });
       await repository.reconcileProviderModelCatalog(
         LOCAL_USER_ID,
@@ -221,13 +227,16 @@ describe("provider catalog enrichment", () => {
       `);
       expect(initialSnapshots.rows[0]?.count).toBe(2);
       const storedMetadata = await client.query<{
-        metadata: { rawMetadata?: Record<string, unknown> };
+        metadata_hash: string;
+        metadata_source: string;
       }>(`
-        SELECT metadata FROM provider_model_catalog_snapshots
-        WHERE native_model_id = 'openai/gpt-5.6-sol'
+        SELECT metadata_hash, metadata_source
+        FROM provider_model_catalog_snapshots
+        WHERE provider_id = '${openRouter.id}'
       `);
-      expect(storedMetadata.rows[0]?.metadata.rawMetadata).toEqual({
-        safe: "kept",
+      expect(storedMetadata.rows[0]).toMatchObject({
+        metadata_hash: expect.any(String),
+        metadata_source: "openrouter",
       });
 
       await repository.reconcileProviderModelCatalog(

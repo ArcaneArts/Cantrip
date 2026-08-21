@@ -314,12 +314,6 @@ export const auditEvents = pgTable(
     resourceType: text("resource_type").notNull(),
     resourceId: text("resource_id"),
     requestId: text("request_id"),
-    ipAddressHash: text("ip_address_hash"),
-    userAgentHash: text("user_agent_hash"),
-    metadata: jsonb("metadata")
-      .$type<Record<string, string>>()
-      .notNull()
-      .default({}),
     occurredAt: timestamp("occurred_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -410,8 +404,9 @@ export const modelProviderAccounts = pgTable(
     providerId: text("provider_id")
       .notNull()
       .references(() => modelProviders.id, { onDelete: "cascade" }),
-    label: text("label").notNull(),
-    email: text("email"),
+    protectedLabel: jsonb("protected_label")
+      .$type<ProtectedSecretEnvelope>()
+      .notNull(),
     planType: text("plan_type"),
     position: integer("position").notNull().default(0),
     enabled: boolean("enabled").notNull().default(true),
@@ -440,7 +435,6 @@ export const modelProviderAccounts = pgTable(
     credentialLastRefreshAt: timestamp("credential_last_refresh_at", {
       withTimezone: true,
     }),
-    credentialLastRefreshError: text("credential_last_refresh_error"),
     weeklyUsageUsedBasisPoints: integer("weekly_usage_used_basis_points"),
     weeklyUsageResetsAt: timestamp("weekly_usage_resets_at", {
       withTimezone: true,
@@ -504,7 +498,6 @@ export const modelProviderAccountWorkers = pgTable(
       withTimezone: true,
     }),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
-    lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -545,12 +538,9 @@ export const providerQuotaObservations = pgTable(
     eventKey: text("event_key").notNull(),
     observationBatchKey: text("observation_batch_key").notNull(),
     providerId: text("provider_id").notNull(),
-    providerName: text("provider_name").notNull(),
     providerKind: text("provider_kind").notNull(),
     providerAccountId: text("provider_account_id").notNull(),
-    providerAccountLabel: text("provider_account_label").notNull(),
     workerId: text("worker_id"),
-    workerName: text("worker_name"),
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
     receivedAt: timestamp("received_at", { withTimezone: true })
       .notNull()
@@ -559,9 +549,7 @@ export const providerQuotaObservations = pgTable(
     resetsAt: timestamp("resets_at", { withTimezone: true }),
     windowDurationMinutes: integer("window_duration_minutes"),
     limitId: text("limit_id"),
-    limitName: text("limit_name"),
     windowKind: text("window_kind").notNull(),
-    planType: text("plan_type"),
     reachedType: text("reached_type"),
     observationTrigger: text("observation_trigger").notNull(),
     isWeeklyProjection: boolean("is_weekly_projection")
@@ -573,10 +561,6 @@ export const providerQuotaObservations = pgTable(
     workerVersion: text("worker_version"),
     serverVersion: text("server_version"),
     codexVersion: text("codex_version"),
-    sanitizedRawPayload: jsonb("sanitized_raw_payload")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
   },
   (table) => [
     uniqueIndex("provider_quota_observations_owner_event_unique").on(
@@ -703,18 +687,11 @@ export const providerModelCatalogSnapshots = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     providerId: text("provider_id").notNull(),
-    providerName: text("provider_name").notNull(),
     providerAccountId: text("provider_account_id"),
     workerId: text("worker_id"),
     availabilityScope: text("availability_scope").notNull(),
-    nativeModelId: text("native_model_id").notNull(),
-    canonicalModelId: text("canonical_model_id"),
     metadataSource: text("metadata_source").notNull(),
     metadataHash: text("metadata_hash").notNull(),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
     observedAt: timestamp("observed_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -727,13 +704,11 @@ export const providerModelCatalogSnapshots = pgTable(
       table.ownerId,
       table.providerId,
       table.availabilityScope,
-      table.nativeModelId,
       table.metadataHash,
     ),
     index("provider_model_catalog_snapshots_model_time_index").on(
       table.ownerId,
       table.providerId,
-      table.nativeModelId,
       table.observedAt,
     ),
     index("provider_model_catalog_snapshots_hash_index").on(table.metadataHash),
@@ -798,7 +773,7 @@ export const providerCatalogSyncStates = pgTable(
       { onDelete: "cascade" },
     ),
     status: text("status").notNull().default("idle"),
-    error: text("error"),
+    errorCode: text("error_code"),
     etag: text("etag"),
     refreshStartedAt: timestamp("refresh_started_at", { withTimezone: true }),
     lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
@@ -2748,9 +2723,6 @@ export const tokenUsageRecords = pgTable(
     providerId: text("provider_id").references(() => modelProviders.id, {
       onDelete: "set null",
     }),
-    modelName: text("model_name").notNull(),
-    providerName: text("provider_name").notNull(),
-    providerModelName: text("provider_model_name").notNull(),
     providerAccountId: text("provider_account_id"),
     workerId: text("worker_id"),
     turnId: text("turn_id"),
@@ -2785,10 +2757,6 @@ export const tokenUsageRecords = pgTable(
     usageSemantics: text("usage_semantics")
       .notNull()
       .default("provider-reported-v2"),
-    sanitizedRawUsage: jsonb("sanitized_raw_usage")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
     startedAt: timestamp("started_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -2861,9 +2829,6 @@ export const modelBehaviorObservations = pgTable(
     providerId: text("provider_id").references(() => modelProviders.id, {
       onDelete: "set null",
     }),
-    modelName: text("model_name").notNull(),
-    providerName: text("provider_name").notNull(),
-    providerModelName: text("provider_model_name").notNull(),
     providerAccountId: text("provider_account_id"),
     workerId: text("worker_id"),
     turnId: text("turn_id"),

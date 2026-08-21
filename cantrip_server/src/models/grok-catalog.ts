@@ -159,7 +159,7 @@ export class GrokCatalogService {
       workerId: null,
       providerAccountId: accountId,
       status: "current",
-      error: null,
+      errorCode: null,
       lastSuccessAt: new Date(),
     });
   }
@@ -240,7 +240,7 @@ export class GrokCatalogService {
           workerId: null,
           providerAccountId: account.id,
           status: "refreshing",
-          error: null,
+          errorCode: null,
           refreshStartedAt: new Date(),
         });
         const inventory = grokModelInventorySchema.parse(
@@ -315,7 +315,7 @@ export class GrokCatalogService {
           workerId: null,
           providerAccountId: account.id,
           status: "current",
-          error: null,
+          errorCode: null,
           lastSuccessAt: new Date(),
         });
         succeeded += 1;
@@ -326,7 +326,7 @@ export class GrokCatalogService {
           workerId: null,
           providerAccountId: account.id,
           status: existing?.models.length ? "stale" : "failed",
-          error: error instanceof Error ? error.message : String(error),
+          errorCode: "grok-catalog-refresh-failed",
         });
       }
     }

@@ -83,7 +83,6 @@ function account(
     id,
     providerId: "chatgpt-1",
     label: id,
-    email: `${id}@example.com`,
     planType: "pro",
     position: 0,
     enabled: true,

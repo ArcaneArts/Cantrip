@@ -97,7 +97,7 @@ export class ChatGptCatalogService {
       workerId: null,
       providerAccountId: accountId,
       status: "current",
-      error: null,
+      errorCode: null,
       lastSuccessAt: new Date(),
     });
   }
@@ -177,7 +177,7 @@ export class ChatGptCatalogService {
           workerId: null,
           providerAccountId: account.id,
           status: "refreshing",
-          error: null,
+          errorCode: null,
           refreshStartedAt: new Date(),
         });
         const inventory = chatGptModelInventorySchema.parse(
@@ -247,7 +247,7 @@ export class ChatGptCatalogService {
           workerId: null,
           providerAccountId: account.id,
           status: "current",
-          error: null,
+          errorCode: null,
           lastSuccessAt: new Date(),
         });
         succeeded += 1;
@@ -258,7 +258,7 @@ export class ChatGptCatalogService {
           workerId: null,
           providerAccountId: account.id,
           status: existing?.models.length ? "stale" : "failed",
-          error: error instanceof Error ? error.message : String(error),
+          errorCode: "chatgpt-catalog-refresh-failed",
         });
       }
     }

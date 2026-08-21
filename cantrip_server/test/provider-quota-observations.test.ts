@@ -10,6 +10,7 @@ import { LOCAL_USER_ID, ServerRepository } from "../src/db/repository.js";
 import * as schema from "../src/db/schema.js";
 import { persistProviderQuotaSnapshot } from "../src/models/provider-quota.js";
 import { SecretVault } from "../src/security/secret-vault.js";
+import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -28,9 +29,14 @@ describe("provider quota observation ledger", () => {
     try {
       await repository.ensureLocalIdentity();
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+        id: "00000000-0000-4000-8000-000000000931",
         baseUrl: "https://chatgpt.com/backend-api/codex",
         kind: "chatgpt",
         name: "Observed account",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000932",
+          protectedLabel: protectedSecretEnvelopeFixture("L"),
+        },
       });
       const account = provider.accounts[0]!;
       await repository.recordWorker(LOCAL_USER_ID, {
@@ -60,7 +66,6 @@ describe("provider quota observation ledger", () => {
         resetsAt: new Date("2026-08-23T00:00:00.000Z"),
         windowDurationMinutes: 10_080,
         limitId: "opaque-limit",
-        limitName: "Observed meter",
         windowKind: "secondary",
         planType: "observed-plan",
         reachedType: null,
@@ -72,7 +77,6 @@ describe("provider quota observation ledger", () => {
         workerVersion: "worker-build",
         serverVersion: "server-build",
         codexVersion: "0.148.0",
-        sanitizedRawPayload: { meter: "opaque", usedPercent: 42.125 },
       } as const;
 
       await expect(
@@ -114,20 +118,23 @@ describe("provider quota observation ledger", () => {
 
       const observations = await client.query<{
         event_key: string;
-        provider_name: string;
+        provider_id: string;
+        provider_account_id: string;
         used_percent_micros: number;
-        worker_name: string;
+        worker_id: string;
       }>(`
-        SELECT event_key, provider_name, used_percent_micros, worker_name
+        SELECT event_key, provider_id, provider_account_id,
+               used_percent_micros, worker_id
         FROM provider_quota_observations
         ORDER BY observed_at
       `);
       expect(observations.rows).toHaveLength(3);
       expect(observations.rows.at(-1)).toMatchObject({
         event_key: "quota-event-independent",
-        provider_name: "Observed account",
+        provider_id: provider.id,
+        provider_account_id: account.id,
         used_percent_micros: 42_125_000,
-        worker_name: "Telemetry worker",
+        worker_id: "worker-telemetry",
       });
 
       const current = await client.query<{
@@ -215,8 +222,7 @@ describe("provider quota observation ledger", () => {
       expect(analytics.accounts).toEqual([
         expect.objectContaining({
           id: account.id,
-          label: "ChatGPT account",
-          providerName: "Observed account",
+          providerId: provider.id,
         }),
       ]);
       expect(analytics.quotaHistory).toHaveLength(5);
@@ -238,10 +244,11 @@ describe("provider quota observation ledger", () => {
         provider.id,
       );
       expect(exported).toMatchObject({
-        schemaVersion: 1,
+        schemaVersion: 2,
         privacy: {
           includesMessageContent: false,
-          rawPayloadsSanitized: true,
+          rawPayloadsStored: false,
+          dimensionLabels: "opaque-ids",
           retention: "owner-controlled-indefinite",
         },
       });

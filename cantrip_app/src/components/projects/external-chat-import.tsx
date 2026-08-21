@@ -682,7 +682,6 @@ export function ExternalChatImportSettings({
                     {accounts.map((account) => (
                       <option key={account.id} value={account.id}>
                         {account.label}
-                        {account.email ? ` · ${account.email}` : ""}
                       </option>
                     ))}
                   </NativeSelect>

@@ -196,11 +196,6 @@ function AccountQuotaRow({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{account.label}</p>
-          {account.email ? (
-            <p className="truncate text-[11px] text-muted-foreground">
-              {account.email}
-            </p>
-          ) : null}
         </div>
         <span className="shrink-0 text-xs font-medium tabular-nums">
           {remainingPercent === null

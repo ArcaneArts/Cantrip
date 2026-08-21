@@ -33,7 +33,10 @@ function associatedData(input: {
   table: "model_providers" | "model_provider_accounts" | "mcp_servers";
   rowId: string;
   field:
-    "protected_api_key" | "protected_credential" | "protected_configuration";
+    | "protected_api_key"
+    | "protected_credential"
+    | "protected_configuration"
+    | "protected_label";
   keyRevision: number;
 }): EncryptionAssociatedData {
   return encryptionAssociatedDataSchema.parse({
@@ -51,7 +54,10 @@ export async function encryptProtectedSecret<T>(input: {
   table: "model_providers" | "model_provider_accounts" | "mcp_servers";
   rowId: string;
   field:
-    "protected_api_key" | "protected_credential" | "protected_configuration";
+    | "protected_api_key"
+    | "protected_credential"
+    | "protected_configuration"
+    | "protected_label";
   keyRevision: number;
   componentKey: Uint8Array;
   content: T;
@@ -107,7 +113,10 @@ export async function decryptProtectedSecret<T>(input: {
   table: "model_providers" | "model_provider_accounts" | "mcp_servers";
   rowId: string;
   field:
-    "protected_api_key" | "protected_credential" | "protected_configuration";
+    | "protected_api_key"
+    | "protected_credential"
+    | "protected_configuration"
+    | "protected_label";
   keyRevision: number;
   componentKey: Uint8Array;
   encrypted: ProtectedSecretEnvelope;

@@ -29,6 +29,13 @@ export const providerApiKeyProtectedContentSchema = z
   })
   .strict();
 
+export const providerAccountLabelProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    label: z.string().trim().min(1).max(160),
+  })
+  .strict();
+
 const providerCredentialBaseSchema = z.object({
   accessToken: z.string().min(1).max(1_000_000),
   email: z.string().max(1_024).nullable(),
@@ -99,6 +106,9 @@ export type ProtectedSecretEnvelope = z.infer<
 >;
 export type ProviderApiKeyProtectedContent = z.infer<
   typeof providerApiKeyProtectedContentSchema
+>;
+export type ProviderAccountLabelProtectedContent = z.infer<
+  typeof providerAccountLabelProtectedContentSchema
 >;
 export type ProviderCredentialProtectedContent = z.infer<
   typeof providerCredentialProtectedContentSchema

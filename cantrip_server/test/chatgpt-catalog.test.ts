@@ -13,6 +13,7 @@ import {
 } from "../src/models/chatgpt-catalog.js";
 import { SecretVault } from "../src/security/secret-vault.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
+import { protectedSecretEnvelopeFixture } from "./protected-provider-credential-fixture.js";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
@@ -113,9 +114,14 @@ describe("ChatGPT catalog", () => {
         );
       `);
       const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+        id: "00000000-0000-4000-8000-000000000947",
         name: "ChatGPT",
         kind: "chatgpt",
         baseUrl: "https://chatgpt.com/backend-api/codex/responses",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000948",
+          protectedLabel: protectedSecretEnvelopeFixture("T"),
+        },
       });
       const first = (await repository.listModelProviderAccounts(
         LOCAL_USER_ID,
@@ -124,7 +130,10 @@ describe("ChatGPT catalog", () => {
       const second = await repository.createModelProviderAccount(
         LOCAL_USER_ID,
         provider.id,
-        { label: "Backup" },
+        {
+          id: "00000000-0000-4000-8000-000000000949",
+          protectedLabel: protectedSecretEnvelopeFixture("U"),
+        },
       );
       for (const account of [first, second!]) {
         await repository.storeModelProviderAccountCredential(

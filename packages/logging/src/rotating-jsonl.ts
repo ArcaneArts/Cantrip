@@ -10,7 +10,10 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { sanitizeLogRecordInput, type ServiceLogRecord } from "./records.js";
+import {
+  minimizeServiceLogRecordInput,
+  type ServiceLogRecord,
+} from "./records.js";
 
 export type RotatingJsonlLogOptions = {
   filePath: string;
@@ -52,11 +55,11 @@ export class RotatingJsonlLog {
   }
 
   write(record: ServiceLogRecord): void {
-    const sanitized = {
-      ...sanitizeLogRecordInput(record),
+    const minimized = {
+      ...minimizeServiceLogRecordInput(record),
       cursor: record.cursor,
     };
-    const line = `${JSON.stringify(sanitized)}\n`;
+    const line = `${JSON.stringify(minimized)}\n`;
     const bytes = Buffer.byteLength(line);
     if (this.#bytes > 0 && this.#bytes + bytes > this.#maxBytes) {
       this.#rotate();
