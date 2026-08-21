@@ -382,7 +382,7 @@ export function WorkerSettings() {
   const accountSessions = useQuery({
     queryFn: getAccountSessions,
     queryKey: ["account-sessions"],
-    refetchInterval: 10_000,
+    refetchInterval: liveResourceRefreshInterval(liveStatus === "live", 10_000),
   });
   const workers = useQuery({
     queryFn: getWorkerManagement,
@@ -455,9 +455,12 @@ export function WorkerSettings() {
     queryFn: () => getWorkerEnrollmentCodeStatus(pairResult!.id),
     queryKey: ["worker-enrollment-status", pairResult?.id],
     refetchInterval: (query) =>
-      query.state.data?.status === "pending" || !query.state.data
-        ? 1_500
-        : false,
+      liveResourceRefreshInterval(
+        liveStatus === "live",
+        query.state.data?.status === "pending" || !query.state.data
+          ? 1_500
+          : false,
+      ),
   });
   useEffect(() => {
     if (pairingStatus.data?.status !== "paired") return;
@@ -472,9 +475,12 @@ export function WorkerSettings() {
     queryFn: () => getWorkerEnrollmentCodeStatus(desktopEnrollment!.id),
     queryKey: ["desktop-worker-enrollment-status", desktopEnrollment?.id],
     refetchInterval: (query) =>
-      query.state.data?.status === "pending" || !query.state.data
-        ? 1_000
-        : false,
+      liveResourceRefreshInterval(
+        liveStatus === "live",
+        query.state.data?.status === "pending" || !query.state.data
+          ? 1_000
+          : false,
+      ),
   });
   useEffect(() => {
     if (desktopEnrollmentStatus.data?.status !== "paired") return;

@@ -17,6 +17,7 @@ import type {
   WorkerCommand,
   WorkerNotification,
 } from "@cantrip/protocol";
+import { encryptedProjectAutomationCreateSchema } from "@cantrip/protocol/automations";
 import {
   encryptedWorkflowAutomationTriggerCreateSchema,
   encryptedWorkflowDefinitionCreateSchema,
@@ -787,6 +788,46 @@ describe.sequential("application live WebSocket", () => {
               message.scope.kind === "current-user",
           ),
       ).toBe(true),
+    );
+
+    const automationEventStart = messages.length;
+    const automationId = randomUUID();
+    const automationResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${projectId}/automations`,
+      payload: encryptedProjectAutomationCreateSchema.parse({
+        id: automationId,
+        chatId,
+        schedule: {
+          kind: "interval",
+          every: 1,
+          unit: "hour",
+          startsAt: new Date(Date.now() + 60_000).toISOString(),
+        },
+        enabled: true,
+        content: {
+          protectedName: opaqueWorkflowContent(),
+          protectedPrompt: opaqueWorkflowContent(),
+          protectedCondition: opaqueWorkflowContent(),
+        },
+      }),
+    });
+    expect(automationResponse.statusCode).toBe(201);
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(automationEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "project-automation" &&
+              message.entityId === automationId,
+          ),
+      ).toMatchObject({
+        action: "invalidated",
+        payload: null,
+        scope: { kind: "project", projectId },
+      }),
     );
 
     const policyEventStart = messages.length;

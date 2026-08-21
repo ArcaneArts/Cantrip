@@ -43,8 +43,10 @@ import {
   updateProjectAutomation,
 } from "@/lib/project-automation-api";
 import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
+import { useAppLiveStatus } from "@/lib/app-live-react";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/error-message";
+import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 
 const dayOptions = [
   { label: "Sun", value: 0 },
@@ -547,6 +549,7 @@ export function ProjectAutomationsSettings({
   workers: WorkerSummary[];
 }) {
   const queryClient = useQueryClient();
+  const automationResourcesLive = useAppLiveStatus() === "live";
   const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectAutomation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ProjectAutomation | null>(
@@ -555,7 +558,10 @@ export function ProjectAutomationsSettings({
   const automations = useQuery({
     queryKey: ["project-automations", projectId],
     queryFn: () => getProjectAutomations(projectId),
-    refetchInterval: 10_000,
+    refetchInterval: liveResourceRefreshInterval(
+      automationResourcesLive,
+      10_000,
+    ),
   });
 
   const refresh = () =>

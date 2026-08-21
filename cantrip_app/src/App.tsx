@@ -3514,7 +3514,7 @@ export function App() {
     enabled: Boolean(selectedProjectId) && projectOverviewSelected,
     queryFn: () => getProjectTokenUsage(selectedProjectId!),
     queryKey: ["project-token-usage", selectedProjectId],
-    refetchInterval: 15_000,
+    refetchInterval: projectResourcesLive ? false : 15_000,
     staleTime: 10_000,
   });
   const selectedProjectViewForQuery = projectViews.data?.find(

@@ -51,6 +51,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
   switch (event.resource) {
     case "server":
       return [["server-bootstrap"]];
+    case "account-session":
+      return [["account-sessions"]];
     case "settings":
       return [["settings"]];
     case "provider-auth":
@@ -67,6 +69,8 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
       return [
         ["workers"],
         ["worker-management"],
+        ["worker-enrollment-status"],
+        ["desktop-worker-enrollment-status"],
         ["chat-sync"],
         ["project-repository-stats"],
       ];
@@ -78,6 +82,14 @@ export function appLiveEventQueryKeys(event: AppLiveEvent): QueryKey[] {
             ["project-tab-layout", projectId],
           ]
         : [["projects"], ["project-workspaces"]];
+    case "project-automation":
+      return projectId
+        ? [["project-automations", projectId]]
+        : [["project-automations"]];
+    case "project-token-usage":
+      return projectId
+        ? [["project-token-usage", projectId]]
+        : [["project-token-usage"]];
     case "project-replica-job":
       return projectId
         ? [
@@ -306,6 +318,7 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
     case "current-user":
       return [
         ["server-bootstrap"],
+        ["account-sessions"],
         ["settings"],
         ["codex-auth"],
         ["policies"],
@@ -315,6 +328,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["effective-policies"],
         ["workers"],
         ["worker-management"],
+        ["worker-enrollment-status"],
+        ["desktop-worker-enrollment-status"],
         ["projects"],
         ["project-workspaces"],
         ["tunnels"],
@@ -325,6 +340,8 @@ export function appLiveScopeQueryKeys(scope: AppLiveScope): QueryKey[] {
         ["project-policy-assignments", scope.projectId],
         ["effective-policies", scope.projectId],
         ["project-replica-jobs", scope.projectId],
+        ["project-automations", scope.projectId],
+        ["project-token-usage", scope.projectId],
         ["project-folder-setup", scope.projectId],
         ["project-github-conversion", scope.projectId],
         ["project-tab-layout", scope.projectId],
