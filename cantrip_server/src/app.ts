@@ -2904,15 +2904,20 @@ export async function buildApp({
         revision: change.job.stateRevision,
         payload: null,
       });
-      liveHub.publish({
-        ownerId: change.ownerId,
-        scope: { kind: "project", projectId: change.job.projectId },
-        resource: "project",
-        action: "invalidated",
-        entityId: change.job.projectId,
-        revision: null,
-        payload: null,
-      });
+      // Running progress only changes the replica job. Invalidating the project
+      // here makes every clone progress frame rehydrate every project through
+      // its worker-backed encrypted metadata path.
+      if (change.job.state !== "running") {
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "project", projectId: change.job.projectId },
+          resource: "project",
+          action: "invalidated",
+          entityId: change.job.projectId,
+          revision: null,
+          payload: null,
+        });
+      }
       if (change.job.state === "succeeded") {
         liveHub.publish({
           ownerId: change.ownerId,
