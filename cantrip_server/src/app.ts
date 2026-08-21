@@ -472,6 +472,8 @@ import type {
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
+  CantripAgentOperationRequest,
+  CantripAgentOperationResult,
   CantripCliCommandResult,
   WorkerCliCommandCall,
 } from "@cantrip/protocol";
@@ -727,6 +729,7 @@ import {
 } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
 import { CoalescedInvalidations } from "./live/coalesced-invalidations.js";
+import { createCantripAgentOperationExecutor } from "./agent-tools/executor.js";
 import {
   createServerLogStream,
   SERVER_LOG_REDACTION_PATHS,
@@ -4765,36 +4768,12 @@ export async function buildApp({
     worktreeMode: ChatExecutionContext["worktreeMode"] | null;
   };
 
-  type ExecutionOperationName =
-    | "browser.navigate"
-    | "browser.services"
-    | "explorer.list"
-    | "explorer.read"
-    | "explorer.write"
-    | "target.inspect"
-    | "targets.list"
-    | "terminal.input"
-    | "terminal.read"
-    | "terminal.service.restart"
-    | "worktree.acquire"
-    | "worktree.create"
-    | "worktree.release"
-    | "worktree.remove"
-    | "worktree.status"
-    | "worktree.switch"
-    | "worktrees.list";
-
-  type ExecutionOperation = {
-    arguments: Record<string, unknown>;
-    operation: ExecutionOperationName;
-  };
-
   const executeExecutionOperation = async (
     context: ExecutionOperationContext,
-    call: ExecutionOperation,
-  ): Promise<CantripCliCommandResult> => {
+    call: CantripAgentOperationRequest,
+  ): Promise<CantripAgentOperationResult> => {
     if (
-      call.operation === "worktrees.list" ||
+      call.operation === "worktree.list" ||
       call.operation.startsWith("worktree.")
     ) {
       const project = await repository.getProject(
@@ -4854,18 +4833,107 @@ export async function buildApp({
     };
 
     switch (call.operation) {
-      case "targets.list": {
+      case "context.get": {
+        const worker = await repository.getWorker(
+          applicationOwnerId(),
+          context.workerId,
+        );
+        if (!worker) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "The connected worker is no longer registered.",
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: `Connected through ${worker.name}; project context is ready.`,
+          data: {
+            worker: {
+              id: worker.workerId,
+              name: worker.name,
+              online: bridge.isConnected(context.workerId),
+            },
+            context,
+          },
+        });
+      }
+      case "policy.list": {
+        const effective = await repository.policies.resolveEffective(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        if (!effective) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "The current project no longer exists.",
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: "Returned opaque effective policy metadata.",
+          worktreeId: context.worktreeId,
+          data: policyCliWireListResultSchema.parse(effective),
+        });
+      }
+      case "policy.read": {
+        const policyId = requiredToolString(call.arguments, "policyId");
+        const effective = await repository.policies.resolveEffective(
+          applicationOwnerId(),
+          context.projectId,
+        );
+        if (!effective?.policies.some((policy) => policy.id === policyId)) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "That policy is not effective for the current project.",
+          );
+        }
+        const current = await repository.policies.get(
+          applicationOwnerId(),
+          policyId,
+        );
+        if (!current?.enabled) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "That policy is not effective for the current project.",
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: "Returned opaque policy content.",
+          worktreeId: context.worktreeId,
+          data: policyCliWireReadResultSchema.parse({ policy: current }),
+        });
+      }
+      case "target.list": {
         const catalog = await repository.listProjectExecutionTargets(
           applicationOwnerId(),
           context.projectId,
           (workerId) => bridge.isConnected(workerId),
         );
         if (!catalog) throw new Error("Project not found.");
+        const kindValue = optionalToolString(call.arguments, "kind");
+        const kind = kindValue
+          ? executionTargetResourceKindSchema.parse(kindValue)
+          : null;
+        const matchingTargets = kind
+          ? catalog.targets.filter(({ resourceKind }) => resourceKind === kind)
+          : catalog.targets;
+        if (
+          call.arguments.cursor === undefined &&
+          call.arguments.limit === undefined
+        ) {
+          return cantripCliCommandResultSchema.parse({
+            summary: `Found ${matchingTargets.length} authorized target${matchingTargets.length === 1 ? "" : "s"}.`,
+            worktreeId: context.worktreeId,
+            data: { ...catalog, targets: matchingTargets },
+          });
+        }
         const cursor = boundedToolCursor(call.arguments, 1_999);
         const limit = boundedToolInteger(call.arguments, "limit", 100, 200);
-        const targets = catalog.targets.slice(cursor, cursor + limit);
+        const targets = matchingTargets.slice(cursor, cursor + limit);
         const nextCursor =
-          cursor + targets.length < catalog.targets.length
+          cursor + targets.length < matchingTargets.length
             ? cursor + targets.length
             : null;
         return cantripCliCommandResultSchema.parse({
@@ -4875,7 +4943,7 @@ export async function buildApp({
             targets,
             cursor,
             nextCursor,
-            total: catalog.targets.length,
+            total: matchingTargets.length,
             truncated: catalog.truncated || nextCursor !== null,
           },
         });
@@ -5043,7 +5111,7 @@ export async function buildApp({
           data: result,
         });
       }
-      case "terminal.input": {
+      case "terminal.send": {
         const target = surfaceTargetArgument(call.arguments, "terminal");
         const resolution = await resolveTarget(target);
         const terminal = await repository.getTerminalExecutionContext(
@@ -5081,7 +5149,7 @@ export async function buildApp({
           data: result,
         });
       }
-      case "terminal.service.restart": {
+      case "terminal.restart": {
         const target = surfaceTargetArgument(call.arguments, "terminal");
         const resolution = await resolveTarget(target);
         const terminal = await repository.getTerminalExecutionContext(
@@ -5114,7 +5182,7 @@ export async function buildApp({
           mutated: true,
         });
       }
-      case "browser.navigate": {
+      case "browser.open": {
         const target = surfaceTargetArgument(call.arguments, "browser");
         const resolution = await resolveTarget(target);
         const browser = await applyBrowserUpdate(
@@ -5139,7 +5207,7 @@ export async function buildApp({
           data: browser,
         });
       }
-      case "worktrees.list": {
+      case "worktree.list": {
         const [items, leases] = await Promise.all([
           worktrees(),
           repository.listProjectExecutionLanes(
@@ -5342,8 +5410,16 @@ export async function buildApp({
           data: removed,
         });
       }
+      default:
+        throw new Error(
+          `Unsupported Cantrip agent operation: ${call.operation}`,
+        );
     }
   };
+
+  const agentOperationExecutor = createCantripAgentOperationExecutor(
+    executeExecutionOperation,
+  );
 
   class CliCommandRequestError extends Error {
     constructor(
@@ -5765,6 +5841,12 @@ export async function buildApp({
       call.command === "status",
     );
     if (call.command === "status") {
+      if (context) {
+        return agentOperationExecutor.execute(context, {
+          operation: "context.get",
+          arguments: {},
+        });
+      }
       const worker = await repository.getWorker(
         applicationOwnerId(),
         call.workerId,
@@ -5777,9 +5859,7 @@ export async function buildApp({
         );
       }
       return cantripCliCommandResultSchema.parse({
-        summary: context
-          ? `Connected through ${worker.name}; project context is ready.`
-          : `Connected through ${worker.name}; no project context was inferred.`,
+        summary: `Connected through ${worker.name}; no project context was inferred.`,
         data: {
           worker: {
             id: worker.workerId,
@@ -5820,59 +5900,21 @@ export async function buildApp({
       return cantripCliCommandResultSchema.parse({ ...result, mutated: true });
     };
     switch (call.command) {
-      case "policy.list": {
-        const effective = await repository.policies.resolveEffective(
-          applicationOwnerId(),
-          context.projectId,
-        );
-        if (!effective) {
-          throw new CliCommandRequestError(
-            "not-found",
-            404,
-            "The current project no longer exists.",
-          );
-        }
-        const data = policyCliWireListResultSchema.parse(effective);
-        return cantripCliCommandResultSchema.parse({
-          summary: "Returned opaque effective policy metadata.",
-          worktreeId: context.worktreeId,
-          data,
+      case "policy.list":
+        return agentOperationExecutor.execute(context, {
+          operation: "policy.list",
+          arguments: {},
         });
-      }
-      case "policy.read": {
-        const policyId = requiredToolString(call.arguments, "policyId");
-        const effective = await repository.policies.resolveEffective(
-          applicationOwnerId(),
-          context.projectId,
-        );
-        if (!effective?.policies.some((policy) => policy.id === policyId)) {
-          throw new CliCommandRequestError(
-            "not-found",
-            404,
-            "That policy is not effective for the current project.",
-          );
-        }
-        const current = await repository.policies.get(
-          applicationOwnerId(),
-          policyId,
-        );
-        if (!current?.enabled) {
-          throw new CliCommandRequestError(
-            "not-found",
-            404,
-            "That policy is not effective for the current project.",
-          );
-        }
-        const data = policyCliWireReadResultSchema.parse({ policy: current });
-        return cantripCliCommandResultSchema.parse({
-          summary: "Returned opaque policy content.",
-          worktreeId: context.worktreeId,
-          data,
+      case "policy.read":
+        return agentOperationExecutor.execute(context, {
+          operation: "policy.read",
+          arguments: {
+            policyId: requiredToolString(call.arguments, "policyId"),
+          },
         });
-      }
       case "worktree.list":
-        return executeExecutionOperation(context, {
-          operation: "worktrees.list",
+        return agentOperationExecutor.execute(context, {
+          operation: "worktree.list",
           arguments: {},
         });
       case "worktree.create": {
@@ -5886,7 +5928,7 @@ export async function buildApp({
         const shouldSwitch = call.arguments.switch === true;
         if (shouldSwitch) requireCliChatLane(context);
         return mutationResult(
-          executeExecutionOperation(context, {
+          agentOperationExecutor.execute(context, {
             operation: shouldSwitch ? "worktree.acquire" : "worktree.create",
             arguments: {
               name,
@@ -5907,7 +5949,7 @@ export async function buildApp({
           requiredToolString(call.arguments, "worktree"),
         );
         return mutationResult(
-          executeExecutionOperation(context, {
+          agentOperationExecutor.execute(context, {
             operation: "worktree.switch",
             arguments: {
               worktreeId: worktree.id,
@@ -5921,7 +5963,7 @@ export async function buildApp({
           context,
           optionalToolString(call.arguments, "worktree"),
         );
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "worktree.status",
           arguments: { worktreeId: worktree.id },
         });
@@ -5929,7 +5971,7 @@ export async function buildApp({
       case "worktree.release":
         requireCliChatLane(context);
         return mutationResult(
-          executeExecutionOperation(context, {
+          agentOperationExecutor.execute(context, {
             operation: "worktree.release",
             arguments: { purpose: "Release from the Cantrip CLI" },
           }),
@@ -5940,7 +5982,7 @@ export async function buildApp({
           requiredToolString(call.arguments, "worktree"),
         );
         return mutationResult(
-          executeExecutionOperation(context, {
+          agentOperationExecutor.execute(context, {
             operation: "worktree.remove",
             arguments: { worktreeId: worktree.id },
           }),
@@ -5948,17 +5990,9 @@ export async function buildApp({
       }
       case "target.list": {
         const kindValue = optionalToolString(call.arguments, "kind");
-        const kind = kindValue
-          ? executionTargetResourceKindSchema.parse(kindValue)
-          : null;
-        const catalog = await targetCatalog(context);
-        const targets = kind
-          ? catalog.targets.filter(({ resourceKind }) => resourceKind === kind)
-          : catalog.targets;
-        return cantripCliCommandResultSchema.parse({
-          summary: `Found ${targets.length} authorized target${targets.length === 1 ? "" : "s"}.`,
-          worktreeId: context.worktreeId,
-          data: { ...catalog, targets },
+        return agentOperationExecutor.execute(context, {
+          operation: "target.list",
+          arguments: kindValue ? { kind: kindValue } : {},
         });
       }
       case "target.show": {
@@ -5971,85 +6005,85 @@ export async function buildApp({
               : "worktree",
           selector,
         );
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "target.inspect",
           arguments: { target: target.target },
         });
       }
       case "target.resolve-browser": {
         const target = await selectTarget(context, "browser", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "target.inspect",
           arguments: { target: target.target },
         });
       }
       case "target.resolve-explorer": {
         const target = await selectTarget(context, "explorer", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "target.inspect",
           arguments: { target: target.target },
         });
       }
       case "target.resolve-terminal": {
         const target = await selectTarget(context, "terminal", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "target.inspect",
           arguments: { target: target.target },
         });
       }
       case "explorer.list": {
         const target = await selectTarget(context, "explorer", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "explorer.list",
           arguments: { ...call.arguments, target: target.target },
         });
       }
       case "explorer.read": {
         const target = await selectTarget(context, "explorer", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "explorer.read",
           arguments: { ...call.arguments, target: target.target },
         });
       }
       case "explorer.write": {
         const target = await selectTarget(context, "explorer", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "explorer.write",
           arguments: { ...call.arguments, target: target.target },
         });
       }
       case "terminal.read": {
         const target = await selectTarget(context, "terminal", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "terminal.read",
           arguments: { ...call.arguments, target: target.target },
         });
       }
       case "terminal.send": {
         const target = await selectTarget(context, "terminal", selector);
-        return executeExecutionOperation(context, {
-          operation: "terminal.input",
+        return agentOperationExecutor.execute(context, {
+          operation: "terminal.send",
           arguments: { ...call.arguments, target: target.target },
         });
       }
       case "terminal.restart": {
         const target = await selectTarget(context, "terminal", selector);
-        return executeExecutionOperation(context, {
-          operation: "terminal.service.restart",
+        return agentOperationExecutor.execute(context, {
+          operation: "terminal.restart",
           arguments: { target: target.target },
         });
       }
       case "browser.services": {
         const target = await selectTarget(context, "browser", selector);
-        return executeExecutionOperation(context, {
+        return agentOperationExecutor.execute(context, {
           operation: "browser.services",
           arguments: { target: target.target },
         });
       }
       case "browser.open": {
         const target = await selectTarget(context, "browser", selector);
-        return executeExecutionOperation(context, {
-          operation: "browser.navigate",
+        return agentOperationExecutor.execute(context, {
+          operation: "browser.open",
           arguments: {
             target: target.target,
             expectedStateRevision: call.arguments.expectedStateRevision,

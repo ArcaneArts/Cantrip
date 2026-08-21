@@ -17,6 +17,8 @@ import {
   browserCreateSchema,
   browserUpdateSchema,
   browserServiceFleetDiscoverySchema,
+  cantripAgentOperationRequestSchema,
+  cantripAgentOperationResultSchema,
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
@@ -582,6 +584,32 @@ describe("model catalog protocol", () => {
 });
 
 describe("Cantrip protocol", () => {
+  it("validates bounded transport-neutral agent operations", () => {
+    expect(
+      cantripAgentOperationRequestSchema.parse({
+        operation: "terminal.send",
+        arguments: { target: "Build", sequence: 1 },
+      }),
+    ).toEqual({
+      operation: "terminal.send",
+      arguments: { target: "Build", sequence: 1 },
+    });
+    expect(
+      cantripAgentOperationResultSchema.parse({ summary: "Sent input." }),
+    ).toMatchObject({
+      continuationScheduled: false,
+      mutated: false,
+      target: null,
+      worktreeId: null,
+    });
+    expect(
+      cantripAgentOperationRequestSchema.safeParse({
+        operation: "shell.run",
+        arguments: {},
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates CLI commands across the local broker and server boundary", () => {
     const request = cantripCliCommandRequestSchema.parse({
       command: "explorer.read",
