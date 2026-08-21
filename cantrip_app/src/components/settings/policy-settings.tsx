@@ -48,6 +48,7 @@ import {
 import { Markdown } from "@/components/chat/markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogClose,
@@ -816,11 +817,10 @@ export function PolicySettings({
                   </DialogClose>
                   <Button
                     type="submit"
-                    disabled={save.isPending || !editorReady}
+                    disabled={!editorReady}
+                    pending={save.isPending}
+                    pendingLabel="Saving…"
                   >
-                    {save.isPending ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : null}
                     Save changes
                   </Button>
                 </div>
@@ -835,62 +835,33 @@ export function PolicySettings({
         </DialogContent>
       </Dialog>
 
-      <Dialog
+      <ConfirmDialog
+        confirmDisabled={!deleteTarget}
+        confirmLabel="Delete policy"
+        confirmPendingLabel="Deleting…"
+        contentClassName="max-w-md"
+        description={deleteTarget ? policyDeletionMessage(deleteTarget) : ""}
+        error={remove.isError ? errorMessage(remove.error) : undefined}
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget)}
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete policy?</DialogTitle>
-            <DialogDescription>
-              {deleteTarget ? policyDeletionMessage(deleteTarget) : ""}
-            </DialogDescription>
-          </DialogHeader>
-          {remove.isError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {errorMessage(remove.error)}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={!deleteTarget || remove.isPending}
-              onClick={() => deleteTarget && remove.mutate(deleteTarget)}
-            >
-              Delete policy
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        pending={remove.isPending}
+        title="Delete policy?"
+      />
 
-      <Dialog open={resetConfirmOpen} onOpenChange={setResetConfirmOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Reset from template?</DialogTitle>
-            <DialogDescription>
-              This replaces the saved name, summary, and Markdown body with the
-              packaged template. Enabled, Mandatory, assignments, and position
-              are preserved.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button disabled={reset.isPending} onClick={() => reset.mutate()}>
-              Reset policy
-            </Button>
-          </DialogFooter>
-          {reset.isError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {errorMessage(reset.error)}
-            </p>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        confirmLabel="Reset policy"
+        confirmPendingLabel="Resetting…"
+        confirmVariant="default"
+        contentClassName="max-w-md"
+        description="This replaces the saved name, summary, and Markdown body with the packaged template. Enabled, Mandatory, assignments, and position are preserved."
+        error={reset.isError ? errorMessage(reset.error) : undefined}
+        onConfirm={() => reset.mutate()}
+        onOpenChange={setResetConfirmOpen}
+        open={resetConfirmOpen}
+        pending={reset.isPending}
+        title="Reset from template?"
+      />
     </div>
   );
 }

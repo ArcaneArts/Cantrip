@@ -11,14 +11,7 @@ import {
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   getArchivedChats,
   permanentlyDeleteArchivedChat,
@@ -170,46 +163,26 @@ export function ProjectArchiveSettings({
         </div>
       </section>
 
-      <Dialog
-        open={Boolean(deleteTarget)}
-        onOpenChange={(open) =>
-          !open && !remove.isPending && setDeleteTarget(null)
+      <ConfirmDialog
+        confirmDisabled={!deleteTarget}
+        confirmLabel={
+          <>
+            <Trash2 className="size-4" /> Delete permanently
+          </>
         }
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Permanently delete this{" "}
-              {deleteTarget?.experience === "task" ? "Task" : "agent"}?
-            </DialogTitle>
-            <DialogDescription>
-              {deleteTarget?.title ?? "This item"} and its entire conversation
-              history will be deleted. This cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={remove.isPending}
-              onClick={() => setDeleteTarget(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={!deleteTarget || remove.isPending}
-              onClick={() => deleteTarget && remove.mutate(deleteTarget.id)}
-            >
-              {remove.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Delete permanently
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        confirmPendingLabel="Deleting…"
+        description={`${deleteTarget?.title ?? "This item"} and its entire conversation history will be deleted. This cannot be undone.`}
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget.id)}
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        pending={remove.isPending}
+        title={
+          <>
+            Permanently delete this{" "}
+            {deleteTarget?.experience === "task" ? "Task" : "agent"}?
+          </>
+        }
+      />
     </div>
   );
 }

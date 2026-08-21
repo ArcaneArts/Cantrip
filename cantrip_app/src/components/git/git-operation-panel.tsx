@@ -902,11 +902,7 @@ export function GitOperationPanel({
                 </Button>
                 <Button
                   disabled={start.isPending || !previewMatchesAction}
-                  className={
-                    preview.data.destructive
-                      ? "bg-destructive text-white hover:bg-destructive/90"
-                      : undefined
-                  }
+                  variant={preview.data.destructive ? "destructive" : "default"}
                   onClick={reviewedOperation.applyReviewed}
                 >
                   {start.isPending ? (

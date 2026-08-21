@@ -52,6 +52,7 @@ import {
 } from "@/lib/api";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { Button } from "@/components/ui/button";
+import { confirmDialogAllowsOpenChange } from "@/components/ui/confirm-dialog";
 import {
   NavigationTabBar,
   type NavigationTab,
@@ -1517,8 +1518,15 @@ export function GitHistoryView({
         }
       />
 
-      <Dialog open={pruneOpen} onOpenChange={setPruneOpen}>
-        <DialogContent>
+      <Dialog
+        open={pruneOpen}
+        onOpenChange={(open) => {
+          if (confirmDialogAllowsOpenChange(open, pruneWorktrees.isPending)) {
+            setPruneOpen(open);
+          }
+        }}
+      >
+        <DialogContent showClose={!pruneWorktrees.isPending}>
           <DialogHeader>
             <DialogTitle>Prune stale worktrees?</DialogTitle>
             <DialogDescription>
@@ -1546,16 +1554,18 @@ export function GitHistoryView({
             </p>
           ) : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPruneOpen(false)}>
+            <Button
+              disabled={pruneWorktrees.isPending}
+              variant="outline"
+              onClick={() => setPruneOpen(false)}
+            >
               Cancel
             </Button>
             <Button
-              disabled={pruneWorktrees.isPending}
               onClick={() => pruneWorktrees.mutate()}
+              pending={pruneWorktrees.isPending}
+              pendingLabel="Pruning…"
             >
-              {pruneWorktrees.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
               Prune
             </Button>
           </DialogFooter>
@@ -1565,13 +1575,16 @@ export function GitHistoryView({
       <Dialog
         open={Boolean(removeTarget)}
         onOpenChange={(open) => {
-          if (!open) {
+          if (
+            !open &&
+            confirmDialogAllowsOpenChange(open, removeWorktree.isPending)
+          ) {
             setRemoveTarget(null);
             setForceRemove(false);
           }
         }}
       >
-        <DialogContent>
+        <DialogContent showClose={!removeWorktree.isPending}>
           <DialogHeader>
             <DialogTitle>Remove {removeTarget?.name}?</DialogTitle>
             <DialogDescription>
@@ -1608,26 +1621,26 @@ export function GitHistoryView({
             </p>
           ) : null}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRemoveTarget(null)}>
+            <Button
+              disabled={removeWorktree.isPending}
+              variant="outline"
+              onClick={() => setRemoveTarget(null)}
+            >
               Cancel
             </Button>
             <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={
-                removeWorktree.isPending ||
-                Boolean(
-                  removeTarget &&
-                  statuses[removeTarget.id]?.files.length &&
-                  !forceRemove,
-                )
-              }
+              disabled={Boolean(
+                removeTarget &&
+                statuses[removeTarget.id]?.files.length &&
+                !forceRemove,
+              )}
               onClick={() => {
                 if (removeTarget) removeWorktree.mutate(removeTarget);
               }}
+              pending={removeWorktree.isPending}
+              pendingLabel="Removing…"
+              variant="destructive"
             >
-              {removeWorktree.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
               Remove worktree
             </Button>
           </DialogFooter>

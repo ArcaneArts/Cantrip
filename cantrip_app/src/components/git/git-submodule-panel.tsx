@@ -248,10 +248,8 @@ export function GitSubmodulePanel({
         previewErrorFallback="The action could not be reviewed."
         applyErrorFallback="The submodule action failed."
         applyLabel="Apply"
-        applyClassName={
-          operation.preview.data?.destructive
-            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            : undefined
+        applyVariant={
+          operation.preview.data?.destructive ? "destructive" : "default"
         }
       >
         {(preview) => (

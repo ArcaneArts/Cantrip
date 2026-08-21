@@ -342,11 +342,7 @@ export function GitPartialPatchView({
         applyLabel="Apply exact patch"
         contentClassName="max-w-3xl"
         bodyClassName="grid gap-3"
-        applyClassName={
-          operation === "discard"
-            ? "bg-destructive text-white hover:bg-destructive/90"
-            : undefined
-        }
+        applyVariant={operation === "discard" ? "destructive" : "default"}
       >
         {(preview) => (
           <div className="flex h-[55vh] min-h-72 overflow-hidden rounded-lg border">

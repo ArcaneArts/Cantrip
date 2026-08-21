@@ -607,13 +607,11 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
               Cancel
             </Button>
             <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={remove.isPending}
+              variant="destructive"
               onClick={() => remove.mutate()}
+              pending={remove.isPending}
+              pendingLabel="Deleting…"
             >
-              {remove.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
               Delete skill
             </Button>
           </DialogFooter>

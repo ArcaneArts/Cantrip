@@ -690,10 +690,8 @@ export function GitBranchPanel({
                     !editor.branch.mergedIntoHead &&
                     !editor.force)
                 }
-                className={
-                  editor?.type.startsWith("delete")
-                    ? "bg-destructive text-white hover:bg-destructive/90"
-                    : undefined
+                variant={
+                  editor?.type.startsWith("delete") ? "destructive" : "default"
                 }
               >
                 Review action
@@ -718,10 +716,8 @@ export function GitBranchPanel({
         applyLabel="Confirm"
         contentClassName="max-w-xl"
         bodyClassName="grid gap-3"
-        applyClassName={
-          operation.preview.data?.destructive
-            ? "bg-destructive text-white hover:bg-destructive/90"
-            : undefined
+        applyVariant={
+          operation.preview.data?.destructive ? "destructive" : "default"
         }
       >
         {(preview) => (

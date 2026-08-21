@@ -18,19 +18,11 @@ import {
 } from "./project-surface-create-menu";
 import { InlineRenameLabel, SurfaceActionsMenu } from "./surface-tab-controls";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   StyledContextMenuContent,
   StyledContextMenuItem,
 } from "@/components/ui/styled-menu";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { nextProjectTabAfterRemoval } from "@/lib/project-tab-group";
 import type { ProjectSurface } from "@/lib/project-surface";
 import {
@@ -270,47 +262,33 @@ export function ProjectTabBar({
         </div>
       </div>
 
-      <Dialog
+      <ConfirmDialog
+        confirmDisabled={Boolean(
+          deleteTarget && surfaceIsExecuting(deleteTarget),
+        )}
+        confirmLabel="Delete"
+        description={
+          deleteTarget && surfaceIsExecuting(deleteTarget)
+            ? "Stop the active agent before removing this tab."
+            : deleteTarget?.kind === "chat"
+              ? "Agents with conversation history move to Archive for 90 days. Empty agents are deleted immediately."
+              : `This permanently removes the ${deleteTarget?.kind ?? "surface"} tab and its Cantrip-owned state. Project files are not deleted.`
+        }
+        onConfirm={() => {
+          if (deleteTarget) {
+            const nextTabKey = nextProjectTabAfterRemoval(
+              surfaces,
+              deleteTarget.tabKey,
+            );
+            if (nextTabKey) onSelect(nextTabKey);
+            onDelete(deleteTarget);
+          }
+          setDeleteTarget(null);
+        }}
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {deleteTarget?.title}?</DialogTitle>
-            <DialogDescription>
-              {deleteTarget && surfaceIsExecuting(deleteTarget)
-                ? "Stop the active agent before removing this tab."
-                : deleteTarget?.kind === "chat"
-                  ? "Agents with conversation history move to Archive for 90 days. Empty agents are deleted immediately."
-                  : `This permanently removes the ${deleteTarget?.kind ?? "surface"} tab and its Cantrip-owned state. Project files are not deleted.`}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={Boolean(
-                deleteTarget && surfaceIsExecuting(deleteTarget),
-              )}
-              onClick={() => {
-                if (deleteTarget) {
-                  const nextTabKey = nextProjectTabAfterRemoval(
-                    surfaces,
-                    deleteTarget.tabKey,
-                  );
-                  if (nextTabKey) onSelect(nextTabKey);
-                  onDelete(deleteTarget);
-                }
-                setDeleteTarget(null);
-              }}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={`Delete ${deleteTarget?.title ?? "tab"}?`}
+      />
     </>
   );
 }

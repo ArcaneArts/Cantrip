@@ -874,7 +874,7 @@ export function GitRepositoryPanel({
               tagDetail.data?.publishedRemotes.includes(remote.name) ? (
                 <Button
                   key={`delete-${remote.name}`}
-                  className="bg-destructive text-white hover:bg-destructive/90"
+                  variant="destructive"
                   disabled={busy}
                   onClick={() => {
                     setSelectedTag(null);
@@ -912,7 +912,7 @@ export function GitRepositoryPanel({
               ),
             )}
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               disabled={busy}
               onClick={() => {
                 setSelectedTag(null);
@@ -1145,10 +1145,8 @@ export function GitRepositoryPanel({
             </Button>
             <Button
               disabled={!currentPreview.data || apply.isPending}
-              className={
-                currentPreview.data?.destructive
-                  ? "bg-destructive text-white hover:bg-destructive/90"
-                  : undefined
+              variant={
+                currentPreview.data?.destructive ? "destructive" : "default"
               }
               onClick={() => apply.mutate()}
             >

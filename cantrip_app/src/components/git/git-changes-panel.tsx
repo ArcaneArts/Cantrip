@@ -732,11 +732,11 @@ export function GitChangesPanel({
             </Button>
             <Button
               type="button"
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={busy}
+              variant="destructive"
               onClick={confirmDiscard}
+              pending={busy}
+              pendingLabel="Discarding…"
             >
-              {busy ? <Loader2 className="size-4 animate-spin" /> : null}
               Discard changes
             </Button>
           </DialogFooter>

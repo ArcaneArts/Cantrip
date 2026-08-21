@@ -756,12 +756,12 @@ export function GitStashPanel({
         contentClassName="max-w-2xl"
         bodyClassName="grid gap-3"
         errorClassName="text-xs"
-        applyClassName={
+        applyVariant={
           reviewedOperation.preview.data?.destructive &&
           reviewedOperation.request?.type !== "pop" &&
           reviewedOperation.request?.type !== "branch"
-            ? "bg-destructive text-white hover:bg-destructive/90"
-            : undefined
+            ? "destructive"
+            : "default"
         }
       >
         {(preview) => (

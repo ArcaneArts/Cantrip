@@ -385,11 +385,12 @@ export function WorkspaceSettings({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={remove.isPending}
+              variant="destructive"
               onClick={() => {
                 if (deleteTarget) remove.mutate(deleteTarget.id);
               }}
+              pending={remove.isPending}
+              pendingLabel="Deleting…"
             >
               Delete workspace
             </Button>

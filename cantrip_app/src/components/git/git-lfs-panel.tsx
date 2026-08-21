@@ -385,10 +385,8 @@ export function GitLfsPanel({
         previewErrorFallback="Git LFS preview failed."
         applyErrorFallback="Git LFS action failed."
         applyLabel="Apply"
-        applyClassName={
-          operation.preview.data?.destructive
-            ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            : undefined
+        applyVariant={
+          operation.preview.data?.destructive ? "destructive" : "default"
         }
       >
         {(preview) => (
