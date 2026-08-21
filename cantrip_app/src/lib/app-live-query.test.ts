@@ -44,6 +44,30 @@ describe("application live query bridge", () => {
     expect(
       appLiveEventQueryKeys(
         event({
+          resource: "account-session",
+          scope: { kind: "current-user" },
+        }),
+      ),
+    ).toEqual([["account-sessions"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "project-automation",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["project-automations", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
+          resource: "project-token-usage",
+          scope: { kind: "project", projectId: "project-one" },
+        }),
+      ),
+    ).toEqual([["project-token-usage", "project-one"]]);
+    expect(
+      appLiveEventQueryKeys(
+        event({
           resource: "worktree-status",
           scope: { kind: "project", projectId: "project-one" },
         }),
@@ -290,18 +314,24 @@ describe("application live query bridge", () => {
     bridge.handleEvent({ ...workerEvent, cursor: 2 });
     await Promise.resolve();
     await Promise.resolve();
-    expect(invalidate).toHaveBeenCalledTimes(4);
+    expect(invalidate).toHaveBeenCalledTimes(6);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["workers"] });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["worker-management"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["worker-enrollment-status"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["desktop-worker-enrollment-status"],
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chat-sync"] });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["project-repository-stats"],
     });
     expect(bridge.stats()).toMatchObject({
-      coalescedInvalidationCount: 4,
-      invalidatedQueryCount: 4,
+      coalescedInvalidationCount: 6,
+      invalidatedQueryCount: 6,
       invalidationFlushCount: 1,
       receivedEventCount: 2,
     });
@@ -954,6 +984,12 @@ describe("application live query bridge", () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["projects"] });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["worker-management"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["account-sessions"],
+    });
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ["worker-enrollment-status"],
     });
     expect(invalidate).toHaveBeenCalledWith({
       queryKey: ["messages", "chat-one"],

@@ -726,6 +726,7 @@ import {
   sendWorkerRequestFailure,
 } from "./http/worker-request-failures.js";
 import { AppLiveHub } from "./live/hub.js";
+import { CoalescedInvalidations } from "./live/coalesced-invalidations.js";
 import {
   createServerLogStream,
   SERVER_LOG_REDACTION_PATHS,
@@ -850,6 +851,8 @@ const CUSTOMIZATION_STATUS_OBSERVE_INTERVAL_MS = 1_000;
 const CUSTOMIZATION_STATUS_OBSERVE_RETRY_MAX_MS = 10_000;
 const CUSTOMIZATION_STATUS_OBSERVER_LIMIT = 128;
 const CUSTOMIZATION_STATUS_OBSERVE_TIMEOUT_MS = 15 * 60 * 1_000;
+const PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS = 10_000;
+const PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT = 4_096;
 const TUNNEL_ATTACHMENT_SECRET_TTL_MS = 2 * 60_000;
 const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
 const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
@@ -1312,6 +1315,29 @@ export async function buildApp({
         "Could not publish application live invalidation",
       );
     }
+  };
+  const projectTokenUsageLiveInvalidations = new CoalescedInvalidations<{
+    ownerId: string;
+    projectId: string;
+  }>({
+    delayMs: PROJECT_TOKEN_USAGE_LIVE_COALESCE_MS,
+    limit: PROJECT_TOKEN_USAGE_LIVE_TIMER_LIMIT,
+    publish: ({ ownerId, projectId }) =>
+      runAsOwner(ownerId, () =>
+        publishLiveInvalidation("project-token-usage", { projectId }),
+      ),
+  });
+  const publishProjectTokenUsageChange = (
+    ownerId: string,
+    projectId: string,
+    immediate: boolean,
+  ): void => {
+    const key = `${ownerId}:${projectId}`;
+    projectTokenUsageLiveInvalidations.schedule(
+      key,
+      { ownerId, projectId },
+      immediate,
+    );
   };
   const publishTunnelRuntimeChange = (change: {
     attachmentId: string;
@@ -2145,6 +2171,15 @@ export async function buildApp({
   };
   const publishWorkflowDefinitionChange = (workflowId: string): void => {
     publishLiveInvalidation("workflow-definition", { entityId: workflowId });
+  };
+  const publishProjectAutomationChange = (
+    projectId: string,
+    automationId: string,
+  ): void => {
+    publishLiveInvalidation("project-automation", {
+      entityId: automationId,
+      projectId,
+    });
   };
   const publishWorkflowTriggerChange = (
     triggerId: string,
@@ -3826,6 +3861,14 @@ export async function buildApp({
     return reply.code(statusCode).send(error);
   });
 
+  const publishAccountSessionChange = (
+    ownerId: string,
+    sessionId: string,
+  ): void => {
+    runAsOwner(ownerId, () =>
+      publishLiveInvalidation("account-session", { entityId: sessionId }),
+    );
+  };
   const registerSessionSocket = (
     socket: {
       close(code?: number, reason?: string): void;
@@ -3835,15 +3878,23 @@ export async function buildApp({
   ): void => {
     const principal = authenticatedPrincipal(request);
     if (!principal.sessionId) return;
-    const entry = sessionSockets.get(principal.sessionId) ?? {
+    const existing = sessionSockets.get(principal.sessionId);
+    const entry = existing ?? {
       ownerId: principal.user.id,
       sockets: new Set(),
     };
+    const wasConnected = entry.sockets.size > 0;
     entry.sockets.add(socket);
     sessionSockets.set(principal.sessionId, entry);
+    if (!wasConnected) {
+      publishAccountSessionChange(principal.user.id, principal.sessionId);
+    }
     socket.on("close", () => {
       entry.sockets.delete(socket);
-      if (entry.sockets.size === 0) sessionSockets.delete(principal.sessionId!);
+      if (entry.sockets.size === 0) {
+        sessionSockets.delete(principal.sessionId!);
+        publishAccountSessionChange(principal.user.id, principal.sessionId!);
+      }
     });
   };
   const registerAccountSocket = (
@@ -6215,7 +6266,8 @@ export async function buildApp({
     } = {},
   ): Promise<void> => {
     try {
-      await repository.recordTokenUsage(applicationOwnerId(), {
+      const ownerId = applicationOwnerId();
+      await repository.recordTokenUsage(ownerId, {
         sourceKey,
         projectId,
         chatId,
@@ -6235,6 +6287,14 @@ export async function buildApp({
         finalizedAt: attribution.finalizedAt,
         usage,
       });
+      if (projectId) {
+        publishProjectTokenUsageChange(
+          ownerId,
+          projectId,
+          attribution.attemptStatus !== undefined &&
+            attribution.attemptStatus !== "running",
+        );
+      }
     } catch (error) {
       app.log.warn(
         { err: error, sourceKey },
@@ -13309,11 +13369,15 @@ export async function buildApp({
           request.params.projectId,
           input.data,
         );
-        return automation
-          ? reply.code(201).send(projectAutomationWireSchema.parse(automation))
-          : reply
-              .code(404)
-              .send({ error: "Project or target chat not found." });
+        if (!automation) {
+          return reply
+            .code(404)
+            .send({ error: "Project or target chat not found." });
+        }
+        publishProjectAutomationChange(automation.projectId, automation.id);
+        return reply
+          .code(201)
+          .send(projectAutomationWireSchema.parse(automation));
       } catch (error) {
         if (error instanceof ProjectAutomationConflictError) {
           return reply.code(409).send({ error: error.message });
@@ -13338,9 +13402,11 @@ export async function buildApp({
           request.params.automationId,
           input.data,
         );
-        return automation
-          ? reply.send(projectAutomationWireSchema.parse(automation))
-          : reply.code(404).send({ error: "Automation not found." });
+        if (!automation) {
+          return reply.code(404).send({ error: "Automation not found." });
+        }
+        publishProjectAutomationChange(automation.projectId, automation.id);
+        return reply.send(projectAutomationWireSchema.parse(automation));
       } catch (error) {
         if (error instanceof ProjectAutomationConflictError) {
           return reply.code(409).send({ error: error.message });
@@ -13352,13 +13418,23 @@ export async function buildApp({
 
   app.delete<{ Params: { automationId: string } }>(
     "/api/automations/:automationId",
-    async (request, reply) =>
-      (await repository.projectAutomations.delete(
+    async (request, reply) => {
+      const automation = await repository.projectAutomations.get(
         applicationOwnerId(),
         request.params.automationId,
-      ))
-        ? reply.code(204).send()
-        : reply.code(404).send({ error: "Automation not found." }),
+      );
+      if (
+        !automation ||
+        !(await repository.projectAutomations.delete(
+          applicationOwnerId(),
+          request.params.automationId,
+        ))
+      ) {
+        return reply.code(404).send({ error: "Automation not found." });
+      }
+      publishProjectAutomationChange(automation.projectId, automation.id);
+      return reply.code(204).send();
+    },
   );
 
   app.get<{ Params: { projectId: string } }>(
@@ -24781,6 +24857,21 @@ export async function buildApp({
         }
 
         const automation = claim.automation;
+        publishProjectAutomationChange(automation.projectId, automation.id);
+        const finishDispatch = async (
+          status: "started" | "queued" | "skipped" | "failed",
+          error: string | null = null,
+        ): Promise<boolean> => {
+          const finalized = await repository.projectAutomations.finishDispatch(
+            claim,
+            status,
+            error,
+          );
+          if (finalized) {
+            publishProjectAutomationChange(automation.projectId, automation.id);
+          }
+          return finalized;
+        };
         serverLogger.info("Automation dispatch lease claimed", {
           event: "automation.dispatch.claimed",
           subsystem: "automation",
@@ -24821,8 +24912,7 @@ export async function buildApp({
           ]);
           if (existingMessage || existingPrompt) {
             const status = existingPrompt ? "queued" : "started";
-            const finalized =
-              await repository.projectAutomations.finishDispatch(claim, status);
+            const finalized = await finishDispatch(status);
             if (!finalized) {
               return reply.code(409).send({
                 error: "Automation dispatch lease expired before recovery.",
@@ -24864,11 +24954,7 @@ export async function buildApp({
               ),
             );
           if (!protectedDispatch.allowed) {
-            const finalized =
-              await repository.projectAutomations.finishDispatch(
-                claim,
-                "skipped",
-              );
+            const finalized = await finishDispatch("skipped");
             if (!finalized) {
               return reply.code(409).send({
                 error: "Automation dispatch lease expired before completion.",
@@ -24922,10 +25008,7 @@ export async function buildApp({
             );
             status = "started";
           }
-          const finalized = await repository.projectAutomations.finishDispatch(
-            claim,
-            status,
-          );
+          const finalized = await finishDispatch(status);
           if (!finalized) {
             return reply.code(409).send({
               error: "Automation dispatch lease expired before completion.",
@@ -24951,8 +25034,7 @@ export async function buildApp({
             }),
           );
         } catch (error) {
-          await repository.projectAutomations.finishDispatch(
-            claim,
+          await finishDispatch(
             "failed",
             "Protected automation dispatch failed.",
           );
@@ -25867,6 +25949,7 @@ export async function buildApp({
       if (observer.timer) clearTimeout(observer.timer);
     }
     customizationStatusObservers.clear();
+    projectTokenUsageLiveInvalidations.close();
     for (const timer of worktreeObservationTimers.values()) clearTimeout(timer);
     worktreeObservationTimers.clear();
     chatTurnOutcomeRecoveryScheduler.clear();
