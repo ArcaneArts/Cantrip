@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   decodeWorkerRequestEnvelope,
+  decodeWorkerServerEnvelope,
   serviceLogReadResultSchema,
   workerLogReadQuerySchema,
+  workerLogStreamServerMessageSchema,
 } from "../src/index.js";
 
 describe("worker service log protocol", () => {
@@ -59,6 +61,57 @@ describe("worker service log protocol", () => {
         oldestCursor: 1,
         latestCursor: 1,
         hasMore: false,
+        truncated: false,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates leased stream commands and bounded notifications", () => {
+    const subscriptionId = "00000000-0000-4000-8000-000000000001";
+    expect(
+      decodeWorkerRequestEnvelope(
+        JSON.stringify({
+          kind: "request",
+          requestId: "stream-1",
+          command: {
+            type: "diagnostics.logs.stream.start",
+            subscriptionId,
+            afterCursor: 9,
+            minimumLevel: "info",
+            leaseMs: 120_000,
+          },
+        }),
+      ),
+    ).toMatchObject({ success: true });
+    expect(
+      decodeWorkerServerEnvelope(
+        JSON.stringify({
+          kind: "notification",
+          notification: {
+            type: "diagnostics.logs.observed",
+            subscriptionId,
+            records: [],
+            nextCursor: 10,
+            oldestCursor: 1,
+            latestCursor: 10,
+            truncated: false,
+          },
+        }),
+      ),
+    ).toMatchObject({ success: true });
+    expect(
+      workerLogStreamServerMessageSchema.safeParse({
+        type: "batch",
+        records: Array.from({ length: 201 }, (_, index) => ({
+          cursor: index + 1,
+          timestamp: new Date().toISOString(),
+          system: "worker",
+          level: "info",
+          message: "bounded",
+        })),
+        nextCursor: 201,
+        oldestCursor: 1,
+        latestCursor: 201,
         truncated: false,
       }).success,
     ).toBe(false);

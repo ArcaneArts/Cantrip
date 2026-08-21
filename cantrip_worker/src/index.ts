@@ -123,9 +123,11 @@ import {
   closeWorkerLogArchive,
   initializeWorkerLogArchive,
   readWorkerLogs,
+  subscribeWorkerLogs,
   workerLogError,
   workerLogger,
 } from "./logger.js";
+import { WorkerLogStreamManager } from "./log-stream.js";
 import {
   EncryptedChatEventSealer,
   encryptChatTurnResult,
@@ -686,6 +688,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ((notification: WorkerNotification) => boolean) | null = null;
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
+  const workerLogStreams = new WorkerLogStreamManager({
+    emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
+    read: readWorkerLogs,
+    subscribe: subscribeWorkerLogs,
+  });
   const codegraphInvocation = codegraphRuntime?.launcherInvocation() ?? null;
   let codegraphProjects: CodeGraphProjectSupervisor | null = null;
   let codegraphObservationTargets: WorktreeObservationTarget[] = [];
@@ -1066,6 +1073,12 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         });
       case "diagnostics.logs.read":
         return readWorkerLogs(command);
+      case "diagnostics.logs.stream.start":
+        return workerLogStreams.start(command);
+      case "diagnostics.logs.stream.renew":
+        return workerLogStreams.renew(command.subscriptionId, command.leaseMs);
+      case "diagnostics.logs.stream.stop":
+        return workerLogStreams.stop(command.subscriptionId);
       case "worker.credential.rotate":
         saveWorkerCredential({
           credential: command.credential,
@@ -3717,6 +3730,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     for (const runtime of codexCatalogRuntimes.values()) {
       runtime.close();
     }
+    workerLogStreams.close();
     workerLogger.flushRepeated();
     workerLogger.event("info", "Cantrip Worker stopped", {
       event: "worker.shutdown.completed",

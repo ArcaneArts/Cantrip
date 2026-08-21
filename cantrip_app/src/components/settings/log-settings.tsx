@@ -66,6 +66,11 @@ import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
 import { useCompactLayout } from "@/lib/use-compact-layout";
 import { cn } from "@/lib/utils";
 import {
+  parseWorkerLogStreamMessage,
+  workerLogPageAction,
+  workerLogStreamWebSocketUrl,
+} from "@/lib/worker-log-stream";
+import {
   appendServiceLogRecords,
   canReadLocalServerLogs,
   filterServiceLogRecords,
@@ -455,8 +460,10 @@ export function LogSettings() {
   useEffect(() => {
     let cancelled = false;
     let timeout: number | undefined;
+    let socket: WebSocket | null = null;
     let backoff = POLL_INTERVAL_MS;
     let consecutiveFailures = 0;
+    let streamFailures = 0;
 
     const commit = (change: (state: LogSourceState) => LogSourceState) => {
       if (cancelled) return;
@@ -467,9 +474,116 @@ export function LogSettings() {
     };
     const schedule = (delay: number) => {
       if (cancelled) return;
-      timeout = window.setTimeout(() => void poll(), delay);
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      timeout = window.setTimeout(() => {
+        timeout = undefined;
+        void synchronize();
+      }, delay);
     };
-    const poll = async () => {
+    const recordFailure = (error: unknown) => {
+      consecutiveFailures += 1;
+      const message =
+        error instanceof Error ? error.message : "Log stream unavailable.";
+      commit((latest) => ({
+        ...latest,
+        error: message,
+        status: selectedSource.online ? "reconnecting" : "offline",
+      }));
+      clientLogger.rateLimited(
+        `logs-stream:${selectedSource.id}`,
+        selectedSource.online ? "warn" : "info",
+        "Service log stream is unavailable",
+        {
+          attempt: consecutiveFailures,
+          ...operationalErrorMetadata(error),
+          event: "surface.logs.stream.failed",
+          operation: "read-logs",
+          reasonCode: selectedSource.online
+            ? "transport-error"
+            : "source-offline",
+          sourceKind: selectedSource.kind,
+          status: selectedSource.online ? "reconnecting" : "offline",
+          subsystem: "logs",
+          workerId: selectedSource.workerId,
+        },
+        { summaryEvery: 10, windowMs: 30_000 },
+      );
+      backoff = Math.min(MAX_BACKOFF_MS, Math.max(1_500, backoff * 2));
+      schedule(backoff);
+    };
+    const connectRemoteStream = (afterCursor: number) => {
+      if (!selectedSource.workerId || cancelled) return;
+      commit((latest) => ({ ...latest, status: "connecting" }));
+      const candidate = new WebSocket(
+        workerLogStreamWebSocketUrl(
+          activeServerUrl,
+          window.location.origin,
+          selectedSource.workerId,
+          afterCursor,
+          "trace",
+        ),
+      );
+      socket = candidate;
+      candidate.addEventListener("message", (event) => {
+        if (cancelled || socket !== candidate) return;
+        try {
+          const message = parseWorkerLogStreamMessage(String(event.data));
+          if (message.type === "error") {
+            candidate.close(1012, message.message);
+            return;
+          }
+          if (message.type === "ready") {
+            consecutiveFailures = 0;
+            streamFailures = 0;
+            backoff = POLL_INTERVAL_MS;
+            commit((latest) => ({ ...latest, error: null, status: "live" }));
+            return;
+          }
+          if (message.truncated) {
+            commit((latest) => ({ ...latest, truncated: true }));
+            candidate.close(1012, "Worker log cursor gap");
+            return;
+          }
+          const transport = `remote:${selectedSource.workerId}`;
+          commit((latest) => ({
+            ...latest,
+            cursors: {
+              ...latest.cursors,
+              [transport]: Math.max(
+                latest.cursors[transport] ?? 0,
+                message.nextCursor,
+              ),
+            },
+            error: null,
+            records: appendServiceLogRecords(
+              latest.records,
+              message.records,
+              transport,
+            ),
+            status: "live",
+          }));
+        } catch (error) {
+          candidate.close(1008, "Invalid worker log stream message");
+          clientLogger.warn("Invalid worker log stream message", {
+            ...operationalErrorMetadata(error),
+            event: "surface.logs.stream.invalid-message",
+            operation: "read-logs",
+            subsystem: "logs",
+            workerId: selectedSource.workerId,
+          });
+        }
+      });
+      candidate.addEventListener("error", () => {
+        if (candidate.readyState < WebSocket.CLOSING) candidate.close();
+      });
+      candidate.addEventListener("close", () => {
+        if (cancelled || socket !== candidate) return;
+        socket = null;
+        streamFailures += 1;
+        recordFailure(new Error("Worker log stream disconnected."));
+      });
+    };
+    const synchronize = async () => {
       const current =
         states.current.get(selectedSource.id) ?? emptySourceState();
       try {
@@ -505,37 +619,27 @@ export function LogSettings() {
           status: page.status,
           truncated: latest.truncated || page.result.truncated,
         }));
-        schedule(page.result.hasMore ? 0 : POLL_INTERVAL_MS);
+        const remote =
+          page.transport.startsWith("remote:") &&
+          selectedSource.kind === "worker" &&
+          Boolean(selectedSource.workerId) &&
+          selectedSource.online;
+        const action = workerLogPageAction({
+          hasMore: page.result.hasMore,
+          remote,
+          streamFailures,
+        });
+        if (action === "catch-up") {
+          schedule(0);
+        } else if (action === "stream") {
+          connectRemoteStream(page.result.nextCursor);
+        } else {
+          const retryDelay = remote ? MAX_BACKOFF_MS : POLL_INTERVAL_MS;
+          if (remote) streamFailures = 0;
+          schedule(retryDelay);
+        }
       } catch (error) {
-        consecutiveFailures += 1;
-        const message =
-          error instanceof Error ? error.message : "Log stream unavailable.";
-        commit((latest) => ({
-          ...latest,
-          error: message,
-          status: selectedSource.online ? "reconnecting" : "offline",
-        }));
-        clientLogger.rateLimited(
-          `logs-stream:${selectedSource.id}`,
-          selectedSource.online ? "warn" : "info",
-          "Service log stream is unavailable",
-          {
-            attempt: consecutiveFailures,
-            ...operationalErrorMetadata(error),
-            event: "surface.logs.stream.failed",
-            operation: "read-logs",
-            reasonCode: selectedSource.online
-              ? "transport-error"
-              : "source-offline",
-            sourceKind: selectedSource.kind,
-            status: selectedSource.online ? "reconnecting" : "offline",
-            subsystem: "logs",
-            workerId: selectedSource.workerId,
-          },
-          { summaryEvery: 10, windowMs: 30_000 },
-        );
-        backoff = Math.min(MAX_BACKOFF_MS, Math.max(1_500, backoff * 2));
-        schedule(backoff);
+        recordFailure(error);
       }
     };
 
@@ -544,12 +648,14 @@ export function LogSettings() {
       error: null,
       status: state.records.length ? state.status : "connecting",
     }));
-    void poll();
+    void synchronize();
     return () => {
       cancelled = true;
       if (timeout !== undefined) window.clearTimeout(timeout);
+      socket?.close(1000, "Log viewer changed source");
+      socket = null;
     };
-  }, [retryToken, selectedSource]);
+  }, [activeServerUrl, retryToken, selectedSource]);
 
   const visibleText = useMemo(
     () => filteredRecords.map(formatServiceLogRecord).join("\n"),

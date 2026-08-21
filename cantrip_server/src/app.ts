@@ -55,6 +55,9 @@ import {
   codeThemeUpdateSchema,
   desktopUpdateActiveWorkSummarySchema,
   serviceLogReadResultSchema,
+  workerLogStreamServerMessageSchema,
+  workerLogStreamStartResultSchema,
+  workerLogStreamRenewResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
   codexCustomizationInventorySchema,
@@ -689,6 +692,7 @@ import {
   type WorkerCommandBus,
   WorkerUnavailableError,
 } from "./workers/bridge.js";
+import { workerLogStreamConsumerIsSlow } from "./workers/log-stream.js";
 import {
   authenticateWorkerRequest,
   createWorkerCredential,
@@ -832,6 +836,9 @@ const TUNNEL_ATTACHMENT_LIFETIME_MS = 12 * 60 * 60_000;
 const TUNNEL_ATTACHMENT_INITIALIZE_TIMEOUT_MS = 10_000;
 const TUNNEL_ATTACHMENT_EXPIRY_SWEEP_MS = 60_000;
 const BROWSER_FLEET_DISCOVERY_TIMEOUT_MS = 20_000;
+const WORKER_LOG_STREAM_LEASE_MS = 120_000;
+const WORKER_LOG_STREAM_RENEW_MS = 60_000;
+const WORKER_LOG_STREAM_HEARTBEAT_MS = 25_000;
 
 const BROWSER_FLEET_DISCOVERY_WORKER_LIMIT = 64;
 const BROWSER_FLEET_DISCOVERY_SERVICE_LIMIT = 1_024;
@@ -1659,6 +1666,7 @@ export async function buildApp({
       publishCodeGraphStatus(status, observation.revision);
       return;
     }
+    if (notification.type === "diagnostics.logs.observed") return;
     const context = await repository.getProjectWorktreeObservationContext(
       ownerId,
       workerId,
@@ -9748,6 +9756,182 @@ export async function buildApp({
           .send(serviceLogReadResultSchema.parse(result));
       } catch (error) {
         return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.get<{
+    Params: { workerId: string };
+    Querystring: { afterCursor?: string; minimumLevel?: string };
+  }>(
+    "/api/workers/:workerId/logs/stream",
+    { websocket: true },
+    async (socket, request) => {
+      const origin = request.headers.origin;
+      if (!origin || !config.appOrigins.includes(origin)) {
+        socket.close(1008, "Origin is not allowed");
+        return;
+      }
+      if (request.principal.state !== "authenticated") {
+        socket.close(1008, "Authentication is required");
+        return;
+      }
+      if (!registerAuthenticatedSocket(socket, request)) return;
+      registerSessionSocket(socket, request);
+      const query = workerLogReadQuerySchema.safeParse({
+        afterCursor: request.query.afterCursor,
+        minimumLevel: request.query.minimumLevel,
+      });
+      if (!query.success) {
+        socket.close(1008, "Invalid worker log stream request");
+        return;
+      }
+      const principal = authenticatedPrincipal(request);
+      const workerId = request.params.workerId;
+      const worker = await repository.getWorker(principal.user.id, workerId);
+      if (!worker) {
+        socket.close(1008, "Worker log stream is not authorized");
+        return;
+      }
+      if (!bridge.isConnected(workerId) || !bridge.subscribeNotifications) {
+        socket.close(1013, "Worker is offline");
+        return;
+      }
+
+      const subscriptionId = randomUUID();
+      let started = false;
+      let closed = false;
+      let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+      let renewTimer: ReturnType<typeof setInterval> | null = null;
+      let unsubscribeNotifications: (() => void) | null = null;
+      let unsubscribeDisconnect: (() => void) | null = null;
+      const stopWorkerStream = (): void => {
+        if (!started) return;
+        started = false;
+        void bridge
+          .request(
+            workerId,
+            {
+              type: "diagnostics.logs.stream.stop",
+              subscriptionId,
+            },
+            { ownerId: principal.user.id, timeoutMs: 5_000 },
+          )
+          .catch(() => undefined);
+      };
+      const cleanup = (): void => {
+        if (closed) return;
+        closed = true;
+        if (heartbeatTimer) clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+        if (renewTimer) clearInterval(renewTimer);
+        renewTimer = null;
+        unsubscribeNotifications?.();
+        unsubscribeNotifications = null;
+        unsubscribeDisconnect?.();
+        unsubscribeDisconnect = null;
+        stopWorkerStream();
+      };
+      const send = (message: unknown): boolean => {
+        if (socket.readyState !== 1) return false;
+        if (workerLogStreamConsumerIsSlow(socket.bufferedAmount)) {
+          socket.close(1013, "Worker log stream consumer is too slow");
+          cleanup();
+          return false;
+        }
+        socket.send(
+          JSON.stringify(workerLogStreamServerMessageSchema.parse(message)),
+        );
+        return true;
+      };
+      socket.once("close", cleanup);
+      heartbeatTimer = setInterval(() => {
+        if (socket.readyState === 1) socket.ping();
+      }, WORKER_LOG_STREAM_HEARTBEAT_MS);
+      heartbeatTimer.unref();
+      unsubscribeDisconnect = bridge.subscribeWorkerDisconnect(workerId, () => {
+        send({
+          type: "error",
+          code: "worker-offline",
+          message: "Worker disconnected.",
+          retryable: true,
+        });
+        socket.close(1013, "Worker disconnected");
+        cleanup();
+      });
+      unsubscribeNotifications = bridge.subscribeNotifications(
+        workerId,
+        (notification) => {
+          if (
+            notification.type !== "diagnostics.logs.observed" ||
+            notification.subscriptionId !== subscriptionId
+          ) {
+            return;
+          }
+          send({
+            type: "batch",
+            records: notification.records,
+            nextCursor: notification.nextCursor,
+            oldestCursor: notification.oldestCursor,
+            latestCursor: notification.latestCursor,
+            truncated: notification.truncated,
+          });
+        },
+      );
+
+      try {
+        workerLogStreamStartResultSchema.parse(
+          await bridge.request(
+            workerId,
+            {
+              type: "diagnostics.logs.stream.start",
+              subscriptionId,
+              afterCursor: query.data.afterCursor,
+              minimumLevel: query.data.minimumLevel,
+              leaseMs: WORKER_LOG_STREAM_LEASE_MS,
+            },
+            { ownerId: principal.user.id, timeoutMs: 5_000 },
+          ),
+        );
+        started = true;
+        if (closed) {
+          stopWorkerStream();
+          return;
+        }
+        send({
+          type: "ready",
+          subscriptionId,
+          nextCursor: query.data.afterCursor,
+        });
+        renewTimer = setInterval(() => {
+          void bridge
+            .request(
+              workerId,
+              {
+                type: "diagnostics.logs.stream.renew",
+                subscriptionId,
+                leaseMs: WORKER_LOG_STREAM_LEASE_MS,
+              },
+              { ownerId: principal.user.id, timeoutMs: 5_000 },
+            )
+            .then((result) => workerLogStreamRenewResultSchema.parse(result))
+            .catch(() => {
+              if (socket.readyState === 1) {
+                socket.close(1013, "Worker log stream lease was lost");
+              }
+              cleanup();
+            });
+        }, WORKER_LOG_STREAM_RENEW_MS);
+        renewTimer.unref();
+      } catch {
+        send({
+          type: "error",
+          code: "stream-unavailable",
+          message: "Worker log stream could not start.",
+          retryable: true,
+        });
+        socket.close(1013, "Worker log stream could not start");
+        cleanup();
       }
     },
   );
