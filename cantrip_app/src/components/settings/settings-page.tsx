@@ -36,6 +36,7 @@ import {
   Plus,
   RefreshCw,
   Route,
+  ScanLine,
   Search,
   Server,
   ShieldCheck,
@@ -109,6 +110,7 @@ import { SkillsSettings } from "./skills-settings";
 import { WorkerSettings } from "./worker-settings";
 import { TunnelSettings } from "./tunnel-settings";
 import { LogSettings } from "./log-settings";
+import { EliteSettings } from "./elite-settings";
 import { PolicySettings } from "./policy-settings";
 import {
   availableCatalogModelIds,
@@ -136,6 +138,7 @@ import {
 
 export type SettingsSection =
   | "general"
+  | "elite"
   | "models"
   | "workers"
   | "logs"
@@ -147,6 +150,7 @@ export type SettingsSection =
 
 const settingsTabs: readonly SettingsTab<SettingsSection>[] = [
   { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "elite", label: "Elite", icon: ScanLine },
   { id: "models", label: "Models", icon: Cpu },
   { id: "workers", label: "Workers", icon: Network },
   { id: "logs", label: "Logs", icon: ScrollText },
@@ -1022,7 +1026,7 @@ export function SettingsPage({
         onTabChange={setSection}
       />
       <div
-        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
+        className={`min-h-0 min-w-0 max-w-full flex-1 overflow-x-hidden ${section === "logs" || section === "elite" ? "overflow-hidden p-3 sm:p-4" : "overflow-y-auto p-4 sm:p-6"}`}
       >
         <div
           className={`${section === "general" || section === "models" ? "grid" : "hidden"} w-full min-w-0 gap-4`}
@@ -1516,6 +1520,7 @@ export function SettingsPage({
           </div>
         ) : null}
         {section === "workers" ? <WorkerSettings /> : null}
+        {section === "elite" ? <EliteSettings /> : null}
         {section === "logs" ? <LogSettings /> : null}
         {section === "tunnels" ? (
           <TunnelSettings onOpenOwner={onOpenTunnelOwner} />

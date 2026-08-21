@@ -31,17 +31,27 @@ describe("account settings", () => {
     expect(changedAccountLabel("Arcane", "   ")).toBeNull();
   });
 
-  it("places Models immediately after General", () => {
+  it("places the Elite lab between General and Models", () => {
     const markup = renderSettings("general");
     const general = markup.indexOf(">General<");
+    const elite = markup.indexOf(">Elite<");
     const models = markup.indexOf(">Models<");
     const workers = markup.indexOf(">Workers<");
     const logs = markup.indexOf(">Logs<");
 
     expect(general).toBeGreaterThanOrEqual(0);
-    expect(models).toBeGreaterThan(general);
+    expect(elite).toBeGreaterThan(general);
+    expect(models).toBeGreaterThan(elite);
     expect(workers).toBeGreaterThan(models);
     expect(logs).toBeGreaterThan(workers);
+  });
+
+  it("exposes the visual reveal laboratory as its own section", () => {
+    const markup = renderSettings("elite");
+    expect(markup).toContain("Elite reveal laboratory");
+    expect(markup).toContain("Experimental");
+    expect(markup).toContain("Configure");
+    expect(markup).toContain('data-elite-reveal=""');
   });
 
   it("exposes root policy management as its own settings section", () => {
