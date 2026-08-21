@@ -292,7 +292,10 @@ function ReleaseDetails({ release }: { release: DesktopUpdateRelease }) {
           </>
         ) : null}
       </dl>
-      <div className="min-h-0 max-h-[45vh] overflow-y-auto py-1">
+      <div
+        data-elite-global="desktop-update-release-notes"
+        className="min-h-0 max-h-[45vh] overflow-y-auto py-1"
+      >
         <h3 className="mb-2 text-sm font-semibold">What changed</h3>
         {release.releaseNotes ? (
           <Markdown>{release.releaseNotes}</Markdown>
