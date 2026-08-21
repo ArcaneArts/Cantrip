@@ -1357,14 +1357,14 @@ export function goalShouldContinue(
   return !automationPaused && goal?.status === "active";
 }
 
-export const CANTRIP_CLI_DEVELOPER_INSTRUCTIONS =
-  "Cantrip-specific operations are available through the `cantrip` CLI; run `cantrip -h` for concise command help. Effective Cantrip policy summaries supplied as application context are instructions; use `cantrip policy read <policy-key>` whenever a summary requires the current full policy. Use standard command-line tools for normal repository work. If a Cantrip command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
+export const CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS =
+  "The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`, list targets instead of guessing identifiers, and use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use standard shell, file, and Git tools for normal repository work. If the managed MCP server is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
 
 export const CANTRIP_DYNAMIC_TOOLS_OVERRIDE = { dynamicTools: [] } as const;
 
 export function cantripChatThreadParams() {
   return {
-    developerInstructions: CANTRIP_CLI_DEVELOPER_INSTRUCTIONS,
+    developerInstructions: CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
     ...CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   } as const;
 }
@@ -1392,9 +1392,9 @@ export function codexWorktreeTurnPolicy(
   const modeInstruction =
     options.worktreeMode === "pinned"
       ? "This chat is pinned to the current worktree. Do not acquire or switch worktrees unless the user first returns the chat to Agent managed mode."
-      : "This chat is Agent managed and may use `cantrip worktree` commands when isolation is appropriate.";
+      : "This chat is Agent managed and may use the managed Cantrip MCP `worktree_create` and `worktree_switch` tools when isolation is appropriate; use `cantrip worktree` only as a fallback.";
   const policyInstruction = primaryIsReadOnly
-    ? "The project policy is Required for writes and this turn is on Primary. Primary is inspection-only: do not mutate files or Git state here. Before writing, run `cantrip worktree create --switch` or `cantrip worktree switch`, then finish this turn if the command schedules continuation."
+    ? "The project policy is Required for writes and this turn is on Primary. Primary is inspection-only: do not mutate files or Git state here. Before writing, call `worktree_create` and then `worktree_switch` with its returned target, or call `worktree_switch` for an existing target. Use `cantrip worktree create --switch` or `cantrip worktree switch` only if managed MCP is unavailable, then finish this turn if the operation schedules continuation."
     : options.worktreePolicy === "direct"
       ? "The project policy is Direct. Writes are permitted in the current checkout, including Primary."
       : options.worktreePolicy === "required-for-writes"

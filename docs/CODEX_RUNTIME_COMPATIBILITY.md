@@ -29,12 +29,14 @@ preserves explicit empty `dynamicTools` semantics on resume, omits empty
 reasoning objects, removes OpenAI-only tools from compatible-provider requests,
 adds the active-turn pause boundary used by Cantrip, and exposes MCP tools as
 portable function tools when a provider lacks namespace support. Cantrip sends
-the empty dynamic-tool override and its CLI developer instruction on both
-thread start and resume, migrating pre-cutover chats without discarding their
-conversation history. The build also downloads the sandboxed Rusty V8 archive
-and binding from OpenAI's official versioned Codex dependency release, verifies
-their published SHA-256 values, and passes them to Cargo. The ordered patch-set
-hash is part of the runtime manifest and invalidates cached binaries.
+the empty dynamic-tool override and its managed-MCP-first developer instruction
+on both thread start and resume, migrating pre-cutover chats without discarding
+their conversation history. `dynamicTools: []` clears legacy declarations; it
+does not remove native tools loaded from MCP configuration. The build also
+downloads the sandboxed Rusty V8 archive and binding from OpenAI's official
+versioned Codex dependency release, verifies their published SHA-256 values,
+and passes them to Cargo. The ordered patch-set hash is part of the runtime
+manifest and invalidates cached binaries.
 
 ## Startup negotiation
 
@@ -70,6 +72,31 @@ recognizes `thread/queue/changed` and `thread/reverted`. The probe deliberately
 sends invalid parameters, so discovering a mutation method cannot install a
 plugin, change a skill, import configuration, start OAuth, queue a turn, or
 revert history.
+
+## Managed Cantrip MCP contract
+
+The worker synthesizes a required STDIO MCP server named `cantrip` for
+applicable attached chat turns. It passes that server through the same native
+MCP configuration used for user servers, after filtering reserved managed
+names, and provides an expiring worker-local connection document. The MCP host
+runs beside Codex on the worker; Cantrip Server remains the authoritative
+authorization and cross-worker routing boundary. Start, resume, and runtime
+reload must preserve the managed entry and its enabled tool catalog.
+
+Runtime inventory depends on `mcpServerStatus/list`. Cantrip pages and validates
+that response, preserving all returned tools, resources, and templates. The app
+labels the reserved `cantrip` and `codegraph` rows **Managed by Cantrip**. Only
+CodeGraph receives a whole-server **Read only** badge; Cantrip has per-tool read
+and mutation annotations. If native MCP startup or inventory is unavailable,
+the developer instruction retains the worker-authenticated `cantrip` CLI as a
+fallback rather than registering private dynamic tools.
+
+Compatibility verification for a Codex pin must cover native MCP server
+configuration on thread start and resume, required-server startup failure,
+`mcpServerStatus/list` tool enumeration, reload behavior, MCP tools exposed as
+portable functions for providers without namespace support, and explicit empty
+dynamic-tool behavior. The complete transport, binding, and catalog contract is
+in [`MCP.md`](MCP.md).
 
 These new methods are capability-visible but not yet product operations.
 Cantrip's existing prompt queue remains server-owned, encrypted, and portable

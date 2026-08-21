@@ -96,12 +96,13 @@ cannot silently regress worktree routing.
 
 ### Agent control
 
-Cantrip uses its worker-bundled CLI as the primary agent control path. Codex is
-given a short instruction to discover it with `cantrip -h`, while normal files
-and Git remain standard shell operations. The CLI's authenticated loopback
-broker carries server-issued execution-lane identity and reuses the same
-authorization, routing, filesystem, and lifecycle implementation established
-by this decision. No Cantrip-specific dynamic tools are registered with Codex.
+Cantrip uses its worker-owned managed MCP as the primary agent control path.
+Codex is instructed to start with `context_get`, while normal files and Git
+remain standard shell operations. MCP's expiring connection document and
+authenticated loopback broker carry server-issued execution-lane identity and
+reuse the authorization, routing, filesystem, and lifecycle implementation
+established by this decision. The worker-bundled CLI remains a fallback over
+the same operation boundary. No legacy Cantrip dynamic tools are registered.
 
 The agent supplies intent and Git references, never an unrestricted checkout
 path. The server authorizes ownership and lease transitions; the worker chooses

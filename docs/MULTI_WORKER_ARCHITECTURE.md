@@ -422,28 +422,32 @@ paths.
 
 ### Agent operations use the same targets
 
-Interactive Codex turns use the worker-bundled `cantrip` CLI instead of
-client-hosted dynamic tools. Its layered command tree exposes worktree
-lifecycle, canonical target discovery, bounded Explorer reads/writes, Terminal
-scrollback/input/service restart, and Browser discovery/navigation. Target
-lists are cursor-paginated, file and terminal output are bounded, Explorer
-writes require the current SHA-256 version, and Browser URLs must use HTTP(S).
+Interactive Codex turns prefer the worker-owned managed `cantrip` MCP instead
+of client-hosted dynamic tools. Its typed catalog exposes worktree lifecycle,
+canonical target discovery, bounded Explorer reads/writes, Terminal
+scrollback/input/service restart, Browser discovery/navigation, and ephemeral
+client controls. The worker-bundled `cantrip` CLI remains the human/script and
+agent fallback over the same server operation boundary. Target lists are
+cursor-paginated, file and terminal output are bounded, Explorer writes require
+the current SHA-256 version, and Browser URLs must use HTTP(S).
 
-The CLI talks only to an authenticated loopback broker. For commands launched
-inside Codex, that broker attaches the server-issued chat and execution-lane
-identity associated with `CODEX_THREAD_ID`; terminal and shell use terminal ID
-or the most-specific registered working directory. The worker then calls
-`POST /api/internal/cli` with its worker credential. The server revalidates the
-active lane, account ownership, project, worktree, target kind, capabilities,
-and availability before using the existing server-to-target-worker bridge.
-The source and target workers never exchange addresses or credentials.
+MCP STDIO and the CLI each talk only to authenticated loopback worker brokers.
+The MCP uses an expiring per-chat connection document and binding; the CLI
+resolves `CODEX_THREAD_ID`, terminal ID, or the most-specific registered
+working directory. The worker then calls the appropriate internal operation
+endpoint with its worker credential. The server revalidates the active lane,
+account ownership, project, worktree, permission profile, target kind,
+capabilities, and availability before using the existing server-to-target-worker
+bridge. The source and target workers never exchange addresses or credentials.
 
-Every attempted mutation records a `cli.command.mutated` audit event. Project
-mismatches, stale or spoofed lanes, pinned-chat transitions, incorrect surface
+Every attempted mutation reaches the same audited operation implementation.
+CLI attempts record `cli.command.mutated`; MCP calls retain their request and
+binding correlation. Project mismatches, stale or spoofed lanes, pinned-chat
+transitions, incorrect surface
 kinds, missing capabilities, and offline targets fail closed without fallback
-placement. New and resumed chat threads explicitly expose no Cantrip dynamic
-tools; the pinned runtime clears declarations persisted by older chats during
-resume. Rolling clients must still treat a missing
+placement. New and resumed chat threads explicitly expose no legacy Cantrip
+dynamic tools; the pinned runtime clears declarations persisted by older chats
+during resume. Rolling clients must still treat a missing
 `crossWorkerExecutionTargets` capability as false.
 
 ## Default placement selection

@@ -1,26 +1,27 @@
 # Application live transport
 
 Cantrip uses one small JSON WebSocket to notify an app about committed server
-state. HTTP remains the source of truth. The live channel does not proxy REST
-requests and does not carry terminal, Remote Surface, Cantrip Code, or worker
-data.
+state and to deliver a bounded family of ephemeral client-control requests.
+HTTP remains the source of truth. The live channel does not proxy REST requests
+or carry terminal, Remote Surface, Cantrip Code, or general worker data.
 
 The architecture decision is recorded in
 [ADR 0005](adr/0005-application-live-control-websocket.md).
 
 ## Ownership
 
-| Boundary                                                          | Transport                                    |
-| ----------------------------------------------------------------- | -------------------------------------------- |
-| Bootstrap and state snapshots                                     | HTTP                                         |
-| CRUD, chat input, approvals, run controls, files, and Git actions | HTTP                                         |
-| Committed state notifications and cache synchronization           | Application live WebSocket                   |
-| Terminal PTY streams                                              | Dedicated terminal WebSocket                 |
-| Browser and Remote Desktop frames/input                           | Dedicated Remote Surface WebSocket or WebRTC |
-| Tunnel control snapshots and mutations                            | HTTP                                         |
-| Tunnel state invalidation                                         | Application live WebSocket                   |
-| Raw TCP, project-share, and Cantrip Code bytes                    | Unified binary tunnel data plane             |
-| Worker commands and events                                        | Authenticated outbound worker WebSocket      |
+| Boundary                                                              | Transport                                    |
+| --------------------------------------------------------------------- | -------------------------------------------- |
+| Bootstrap and state snapshots                                         | HTTP                                         |
+| CRUD, chat input, approvals, run controls, files, and Git actions     | HTTP                                         |
+| Committed state notifications and cache synchronization               | Application live WebSocket                   |
+| Ephemeral notice/focus/show-interaction requests and acknowledgements | Application live WebSocket                   |
+| Terminal PTY streams                                                  | Dedicated terminal WebSocket                 |
+| Browser and Remote Desktop frames/input                               | Dedicated Remote Surface WebSocket or WebRTC |
+| Tunnel control snapshots and mutations                                | HTTP                                         |
+| Tunnel state invalidation                                             | Application live WebSocket                   |
+| Raw TCP, project-share, and Cantrip Code bytes                        | Unified binary tunnel data plane             |
+| Worker commands and events                                            | Authenticated outbound worker WebSocket      |
 
 ## Server-authorized local direct broker
 
@@ -53,10 +54,11 @@ supported client and falls back to the authenticated WebSocket relay.
 ## Version 1 contract
 
 The client begins with `initialize`, protocol version `1`, a bounded client
-identity, and an optional `{ serverEpoch, cursor }` resume point. It then adds
-or removes unique current-user, project, chat, and workflow-run subscriptions.
-The server responds with its process epoch, connection ID, current cursor,
-heartbeat interval, and replay decision.
+identity, an exact list of supported client-control capabilities, and an
+optional `{ serverEpoch, cursor }` resume point. Omitted capabilities default
+to none. It then adds or removes unique current-user, project, chat, and
+workflow-run subscriptions. The server responds with its process epoch,
+connection ID, current cursor, heartbeat interval, and replay decision.
 
 Every event contains exactly one authorized scope, typed resource and action,
 optional entity ID and revision, committed timestamp, and optional bounded JSON
@@ -77,6 +79,39 @@ Unknown fields and message types are rejected. Subscription and event payloads
 are bounded. WebSocket ordering is reliable within one connection; the cursor
 exists for reconnect/replay and recovery decisions rather than treating a
 socket as durable storage.
+
+## Ephemeral client controls
+
+The managed Cantrip MCP can request four app behaviors through the worker →
+server → client route: a bounded notice, project focus, authorized surface
+focus, or display of an exact pending interaction. Each request is separately
+typed, correlated, and expires no more than ten seconds after issue. The app
+acknowledges `applied`, `declined`, `unsupported`, or `expired`; the server may
+return `unavailable` when no matching client is connected or the selected
+client disconnects.
+
+The server derives the owner and bound project from the revalidated MCP binding.
+It selects only initialized connections for that owner whose declared
+capabilities contain the request kind and whose active scopes include the
+project. `show-interaction` prefers a connection also subscribed to the bound
+chat. The app independently checks its advertised capability, request expiry,
+and local handler before applying anything. Focus requests do not create,
+delete, or mutate durable surfaces, and showing an interaction never answers it.
+
+Client-control frames do not receive a live cursor, enter the replay ring, or
+become durable events. Reconnect therefore never repeats a stale notice or
+focus action. The app keeps a bounded correlation cache and returns the prior
+acknowledgement for duplicates, preventing duplicate application within one
+client lifetime. Pending server requests settle unavailable on disconnect and
+expired on deadline. This path is deliberately separate from committed-state
+notifications and HTTP snapshots.
+
+Capability negotiation was added to the strict version 1 initialize object.
+Older clients that omit the field safely advertise no controls. Cantrip ships
+the app and server as one compatibility unit; a rollout must not deploy a new
+capability-sending app against a server revision whose strict version 1 parser
+predates that field. A future independently deployable client protocol change
+requires a version bump or an explicit server feature-negotiation mechanism.
 
 ## Rollout rule
 

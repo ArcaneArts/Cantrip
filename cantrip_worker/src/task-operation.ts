@@ -43,7 +43,7 @@ const PLANNER_RULES = `You are planning a Cantrip Task. Investigate the reposito
 
 Return one complete replacement Markdown plan through the supplied structured output. Cover product behavior, architecture, persistence, APIs, UI, safety, tests, rollout, and independently mergeable milestones when relevant. Ask only questions whose answers materially change the plan. Give a recommended option when you have a defensible recommendation. Return an empty questions array when clarification is unnecessary. Do not claim to have inspected files or run checks that you did not inspect or run.
 
-Effective Cantrip Policy summaries are supplied as application context. Run \`cantrip policy list\` and \`cantrip policy read <policy-key>\` for every summary that requires its full current body. Policies may constrain the future implementation even though this planning turn cannot write.`;
+Effective Cantrip Policy summaries are supplied as application context. Prefer the managed Cantrip MCP \`policy_list\` and \`policy_read\` tools when available; otherwise run \`cantrip policy list\` and \`cantrip policy read <policy-key>\`. Read every summary that requires its full current body. Policies may constrain the future implementation even though this planning turn cannot write.`;
 
 const FINALIZER_RULES = `You are finalizing a Cantrip Task for implementation. This turn is strictly read-only: do not edit files, mutate Git or GitHub, call side-effecting tools, or implement any part of the plan.
 
@@ -51,7 +51,7 @@ Return a complete final implementation plan and a Goal prompt through the suppli
 
 Keep the final plan and Goal prompt concise enough that Cantrip can combine them into one objective of at most ${TASK_GOAL_PROMPT_LIMIT.toLocaleString()} characters.
 
-Effective Cantrip Policy summaries are supplied as application context. Run \`cantrip policy list\` and \`cantrip policy read <policy-key>\` for every summary that requires its full current body. Policies may constrain the implementation, but do not copy policy bodies or revision identifiers into the result.`;
+Effective Cantrip Policy summaries are supplied as application context. Prefer the managed Cantrip MCP \`policy_list\` and \`policy_read\` tools when available; otherwise run \`cantrip policy list\` and \`cantrip policy read <policy-key>\`. Read every summary that requires its full current body. Policies may constrain the implementation, but do not copy policy bodies or revision identifiers into the result.`;
 
 const FALLBACK_TASK_GOAL_PROMPT =
   "Implement the complete final plan, validate the finished result, and continue until every acceptance criterion is satisfied.";
@@ -168,7 +168,7 @@ function parseFinalizerResult(
 function goalObjective(result: TaskFinalizerResult): string {
   const objective = `# Cantrip Task implementation objective
 
-Implement the complete Task plan below. Before making changes, inspect the effective Cantrip Policies supplied by the application, run \`cantrip policy list\`, and use \`cantrip policy read <policy-key>\` for every policy whose summary requires the full body. Follow the current policies throughout implementation.
+Implement the complete Task plan below. Before making changes, inspect the effective Cantrip Policies supplied by the application. Prefer the managed Cantrip MCP \`policy_list\` and \`policy_read\` tools; use \`cantrip policy list\` and \`cantrip policy read <policy-key>\` as the CLI fallback. Read every policy whose summary requires the full body and follow the current policies throughout implementation.
 
 Continue until every acceptance criterion is satisfied or the Goal is genuinely blocked. Keep progress recoverable, validate each completed change, and report the final outcome. Do not stop after only the first milestone.
 

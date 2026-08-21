@@ -339,6 +339,34 @@ describe("Codex customization inventory", () => {
     });
   });
 
+  it("retains the managed Cantrip server and its mixed tool catalog", () => {
+    const page = parseMcpServerPage({
+      data: [
+        {
+          name: "cantrip",
+          serverInfo: { name: "Cantrip", version: "1.0.0" },
+          authStatus: "unsupported",
+          tools: {
+            context_get: { name: "context_get", inputSchema: {} },
+            worktree_create: { name: "worktree_create", inputSchema: {} },
+            client_notify: { name: "client_notify", inputSchema: {} },
+          },
+        },
+      ],
+    });
+
+    expect(page.servers).toEqual([
+      expect.objectContaining({
+        name: "cantrip",
+        tools: [
+          expect.objectContaining({ name: "context_get" }),
+          expect.objectContaining({ name: "worktree_create" }),
+          expect.objectContaining({ name: "client_notify" }),
+        ],
+      }),
+    ]);
+  });
+
   it("previews only project-scoped external artifacts with opaque ids", () => {
     const preview = parseExternalImportPreview(
       {

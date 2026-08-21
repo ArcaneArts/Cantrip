@@ -6,7 +6,7 @@ import {
 } from "@cantrip/protocol";
 
 import {
-  CANTRIP_CLI_DEVELOPER_INSTRUCTIONS,
+  CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
   CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
   cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
@@ -886,7 +886,7 @@ describe("Codex agent interaction bridge", () => {
   });
 });
 
-describe("Cantrip CLI cutover", () => {
+describe("managed Cantrip MCP guidance", () => {
   it("registers no Cantrip dynamic tools for new or resumed threads", () => {
     expect(CANTRIP_DYNAMIC_TOOLS_OVERRIDE).toEqual({ dynamicTools: [] });
     const newThreadParams = cantripChatThreadParams();
@@ -897,12 +897,14 @@ describe("Cantrip CLI cutover", () => {
     expect(JSON.stringify(resumedThreadParams)).not.toContain("cantrip_");
   });
 
-  it("directs Codex to the documented CLI instead of private tools", () => {
-    expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
-    expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).toContain(
-      "`cantrip policy read <policy-key>`",
+  it("prefers managed MCP and retains the documented CLI fallback", () => {
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain(
+      "managed `cantrip` MCP server",
     );
-    expect(CANTRIP_CLI_DEVELOPER_INSTRUCTIONS).not.toContain("cantrip_");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`context_get`");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`policy_read`");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
+    expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("fallback");
   });
 });
 
@@ -936,16 +938,15 @@ describe("codexReasoningEffortParams", () => {
 
 describe("codexWorktreeTurnPolicy", () => {
   it("enforces inspection-only Primary for required-for-writes projects", () => {
-    expect(
-      codexWorktreeTurnPolicy({
-        cwd: "/workspace/project",
-        rootKind: "git-worktree",
-        isPrimary: true,
-        resultMode: { kind: "visible" },
-        worktreeMode: "agent-managed",
-        worktreePolicy: "required-for-writes",
-      }),
-    ).toEqual({
+    const policy = codexWorktreeTurnPolicy({
+      cwd: "/workspace/project",
+      rootKind: "git-worktree",
+      isPrimary: true,
+      resultMode: { kind: "visible" },
+      worktreeMode: "agent-managed",
+      worktreePolicy: "required-for-writes",
+    });
+    expect(policy).toEqual({
       additionalContext: {
         "cantrip.worktree-policy": {
           kind: "application",
@@ -954,6 +955,10 @@ describe("codexWorktreeTurnPolicy", () => {
       },
       sandboxPolicy: { type: "readOnly", networkAccess: false },
     });
+    const guidance = policy.additionalContext["cantrip.worktree-policy"].value;
+    expect(guidance).toContain("`worktree_create`");
+    expect(guidance).toContain("`worktree_switch`");
+    expect(guidance).toContain("only if managed MCP is unavailable");
   });
 
   it("grants checkout-scoped writes outside Primary and explains pinned mode", () => {

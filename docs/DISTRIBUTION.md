@@ -55,6 +55,20 @@ native PTY, screen capture, and image modules.
 | `pnpm deploy:server`    | Builds and deploys the current production server                  | Clean synchronized `main`, Docker, Infisical, and SSH |
 | `pnpm release`          | Promotes `release`, builds, migrates, and deploys production      | Same as `deploy:server`, plus push access             |
 
+Every Worker package must contain the regular entry file
+`dist/mcp/stdio.js` and its production MCP SDK dependencies. Standalone Worker
+trees also contain `runtime/node` on macOS/Linux or `runtime/node.exe` on
+Windows. `package-distributions.mjs` verifies the entry and invokes it with the
+bundled runtime, expecting the bounded missing-`--connection` startup error;
+this proves that the packaged module graph loads without requiring a live
+worker credential or server. Native release CI repeats the check on both
+`darwin-arm64` and `win32-x64` before creating the Worker archives. Operators
+can repeat it with:
+
+```console
+node scripts/verify-packaged-worker-mcp.mjs artifacts/cantrip-worker-<target>
+```
+
 `pnpm bundle` performs the complete native build for the current host. It builds
 the protocol once, packages Server and Worker concurrently, then builds the
 Desktop client from those exact service trees. Final archives and native

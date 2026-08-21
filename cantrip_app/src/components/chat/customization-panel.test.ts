@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   boundedResourceText,
   customizationCapabilityRows,
+  mcpServerPresentation,
   parseSkillRootsDraft,
   selectableExternalImportIds,
 } from "./customization-panel";
@@ -20,6 +21,21 @@ const unsupported = {
 };
 
 describe("Codex customization inspection", () => {
+  it("labels both managed servers without treating Cantrip tools as read-only", () => {
+    expect(mcpServerPresentation("CANTRIP")).toEqual({
+      managedByCantrip: true,
+      readOnly: false,
+    });
+    expect(mcpServerPresentation("codegraph")).toEqual({
+      managedByCantrip: true,
+      readOnly: true,
+    });
+    expect(mcpServerPresentation("docs")).toEqual({
+      managedByCantrip: false,
+      readOnly: false,
+    });
+  });
+
   it("presents independently negotiated read and write capabilities", () => {
     const inventory = codexCustomizationInventorySchema.parse({
       capabilities: {

@@ -11,6 +11,11 @@ chat state, workflow execution and catalogs, and customization operations. The
 measured request reduction, browser trace, recovery evidence, remaining timers,
 operational counters, and deployment limits.
 
+Extended on 2026-08-21 with capability-negotiated, expiring notice, focus, and
+show-interaction requests for the worker-owned managed Cantrip MCP. These
+client controls are acknowledged but deliberately excluded from the event
+cursor and replay ring.
+
 ## Context
 
 Cantrip's app loads authoritative server state through HTTP, but currently
@@ -35,8 +40,8 @@ reconnection.
 ## Decision
 
 Cantrip will add one versioned JSON application control WebSocket per active
-server profile. It is a notification and synchronization channel, not a
-replacement RPC transport.
+server profile. It is a notification and synchronization channel plus a narrow
+ephemeral client-control relay, not a replacement RPC transport.
 
 HTTP remains authoritative for bootstrap, initial and recovery snapshots,
 mutations, idempotent controls, file/Git operations, and other bounded
@@ -61,6 +66,14 @@ Reliable control messages use a bounded outbound queue. Redundant
 invalidations may be coalesced by scope/resource/entity. A client that cannot
 keep up receives `resync-required` or a retryable close instead of causing
 unbounded memory growth.
+
+During initialization, a client declares the exact notice, project-focus,
+surface-focus, and show-interaction controls it supports. An authorized server
+operation may send one correlated request to a same-owner client active in the
+bound project or chat. The request expires within ten seconds and returns an
+explicit acknowledgement or unavailable result. It is not durable, does not
+receive a cursor, and is never replayed after reconnect. Durable mutations must
+commit through their authoritative operation before an optional focus request.
 
 Terminal, Remote Surface, Cantrip Code, and worker WebSockets remain separate.
 Their binary or high-volume data must not delay app state, approvals, or

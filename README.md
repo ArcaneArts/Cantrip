@@ -262,12 +262,13 @@ See the [orchestration contract](docs/WORKFLOW_ORCHESTRATION.md),
 [implementation audit](docs/WORKFLOW_IMPLEMENTATION_AUDIT.md), and
 [architecture decision](docs/adr/0004-codex-native-workflow-control-plane.md).
 
-Cantrip-specific agent operations are also available through the
-worker-authenticated Rust CLI. Its layered `cantrip -h` command tree covers
-Policies, worktrees, execution targets, Explorer, Terminal, and Browser
-surfaces while ordinary file and Git work continues to use ordinary shell
-commands. See the [CLI guide](docs/CLI.md) for examples, context resolution,
-and the transport security boundary.
+Cantrip-specific agent operations are exposed through a worker-owned managed
+MCP server. Its typed catalog covers Policies, worktrees, execution targets,
+Explorer, Terminal, Browser, and bounded client controls while ordinary file
+and Git work continues to use ordinary shell commands. The worker-authenticated
+Rust CLI remains available to humans, scripts, diagnostics, and agents as a
+fallback. See the [managed MCP guide](docs/MCP.md) and
+[CLI guide](docs/CLI.md).
 
 ### Reusable Agent Policies
 
@@ -288,8 +289,8 @@ and bootstrap state stay on the server and are isolated by account.
 Before each Agent, Plan, Goal, queued, or automatic-continuation turn, the
 server resolves the current effective set and supplies only ordered summaries
 to Codex as bounded application context. Full bodies, assignment internals, and
-database identifiers are not injected. Agents can inspect the same effective
-set with:
+database identifiers are not injected. Agents prefer managed MCP `policy_list`
+and `policy_read`. The CLI exposes the same effective set as a fallback:
 
 ```console
 cantrip policy list
