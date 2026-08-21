@@ -220,7 +220,9 @@ async function enrichProcessCommands(
   }));
 }
 
-async function collectListeningPorts(): Promise<ListeningPortCandidate[]> {
+export async function collectListeningPorts(): Promise<
+  ListeningPortCandidate[]
+> {
   let candidates: ListeningPortCandidate[] = [];
   if (platform() === "win32") {
     candidates = parseNetstatListeners(

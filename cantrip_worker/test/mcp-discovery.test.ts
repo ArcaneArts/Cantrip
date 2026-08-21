@@ -86,9 +86,20 @@ describe("worker MCP configuration discovery", () => {
       projectRoot,
       service,
       homeDirectory: home,
+      runningHttpDiscovery: async () => [
+        mcpServerConfigurationSchema.parse({
+          name: "running-private-4777",
+          enabled: true,
+          transport: "http",
+          url: "http://127.0.0.1:4777/mcp-private-sentinel",
+          bearerTokenEnvironmentVariable: null,
+          headers: {},
+          environmentHeaders: {},
+        }),
+      ],
     });
 
-    expect(result.candidates).toHaveLength(4);
+    expect(result.candidates).toHaveLength(5);
     expect(
       result.candidates.every(
         ({ configuration }) => configuration.workerId === workerId,
@@ -105,6 +116,8 @@ describe("worker MCP configuration discovery", () => {
       "project_codex_private",
       "project-secret-sentinel",
       "legacy_private",
+      "running-private-4777",
+      "mcp-private-sentinel",
     ]) {
       expect(serialized).not.toContain(sentinel);
     }
@@ -129,6 +142,7 @@ describe("worker MCP configuration discovery", () => {
       "codex_private",
       "project_codex_private",
       "project_private",
+      "running-private-4777",
     ]);
     expect(result.issues).toEqual([
       {

@@ -39,16 +39,22 @@ Cantrip owns MCP server configuration independently from the worker's
   worker. It reads that worker user's `~/.codex/config.toml` and
   `~/.claude.json`; project scans additionally read `.codex/config.toml`,
   `.mcp.json`, and the matching Claude Code project entry from the selected
-  ready replica. Discovered entries remain inactive until the user chooses Add
-  or Add all, and every imported entry is bound to the worker that found it.
+  ready replica. The same explicit scan checks bounded loopback listeners at
+  `/mcp` and `/` with a real Streamable HTTP MCP initialize handshake. Ordinary
+  HTTP services, authenticated endpoints without a matching local config, and
+  non-loopback listeners are ignored. Discovered entries remain inactive until
+  the user chooses Add or Add all, and every imported entry is bound to the
+  worker that found it.
 
 The worker encrypts importable discovered configurations with `mcp-secret`
 before returning them. The server relays only row-bound ciphertext plus the
 non-sensitive source kind and scope, and the client opens the candidate for
 display. Adding a candidate persists that same ciphertext; plaintext commands,
 URLs, headers, arguments, and environment values never pass through the server.
-The scan is bounded to standard files and does not recursively search the
-filesystem or inspect Cantrip's isolated managed Codex home.
+The scan is bounded to standard files and localhost listeners, does not run in
+the background, fetch MCP tools or resources, recursively search the filesystem,
+or inspect Cantrip's isolated managed Codex home. Successful probe sessions are
+closed immediately.
 
 Both stdio commands and streamable HTTP endpoints are validated by the shared
 protocol before persistence. Stdio configuration supports argument arrays and

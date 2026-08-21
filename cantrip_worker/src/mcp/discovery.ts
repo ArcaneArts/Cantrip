@@ -16,6 +16,7 @@ import { parse as parseToml } from "smol-toml";
 
 import { protectDiscoveredMcpServer } from "../protected-secrets.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
+import { discoverLoopbackMcpServers } from "./http-discovery.js";
 
 const MAX_CONFIG_BYTES = 2 * 1024 * 1024;
 const MAX_CANDIDATES = 200;
@@ -328,6 +329,7 @@ export async function discoverMcpConfigurations(input: {
   projectRoot: string | null;
   service: WorkerEncryptionService;
   homeDirectory?: string;
+  runningHttpDiscovery?: () => Promise<McpServerConfiguration[]>;
 }): Promise<McpServerDiscoveryResult> {
   const candidates: PlainCandidate[] = [];
   const issues: McpServerDiscoveryIssue[] = [];
@@ -376,6 +378,18 @@ export async function discoverMcpConfigurations(input: {
       parse: parseClaudeServer,
       candidates,
       issues,
+    });
+  }
+
+  const runningHttp = await (
+    input.runningHttpDiscovery ?? discoverLoopbackMcpServers
+  )();
+  for (const configuration of runningHttp) {
+    if (candidates.length >= MAX_CANDIDATES) break;
+    candidates.push({
+      source: "localhost",
+      sourceScope: "user",
+      configuration,
     });
   }
 
