@@ -24,6 +24,7 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   ELITE_GLITCH_VARIANTS,
   EliteReveal,
+  ELITE_GLITCH_VARIANT_WEIGHTS,
   normalizeEliteRevealConfig,
   type EliteGlitchVariant,
   type EliteRevealConfig,
@@ -610,7 +611,7 @@ function EliteConfigurator({
 
   const setNumber = (
     key:
-      "glitchCountMax" | "glitchCountMin" | "glitchShowMs" | "staggerDelayMs",
+      "glitchCountMax" | "glitchCountMin" | "glitchShowMs" | "staggerSpreadMs",
     value: number,
   ) => setDraft((current) => ({ ...current, [key]: value }));
   const setVariant = (variant: EliteGlitchVariant, enabled: boolean) =>
@@ -675,13 +676,17 @@ function EliteConfigurator({
               value={draft.glitchCountMax}
             />
             <NumberOption
-              label="Stagger delay"
+              label="Stagger spread"
               maximum={250}
               minimum={0}
-              onChange={(value) => setNumber("staggerDelayMs", value)}
+              onChange={(value) => setNumber("staggerSpreadMs", value)}
               suffix="ms"
-              value={draft.staggerDelayMs}
+              value={draft.staggerSpreadMs}
             />
+            <p className="text-xs leading-5 text-muted-foreground">
+              Visible elements are distributed across this window. Off-screen
+              elements still begin by its end.
+            </p>
             <NumberOption
               label="Glitch exposure"
               maximum={120}
@@ -743,6 +748,11 @@ function EliteConfigurator({
                       type="checkbox"
                     />
                     <span className="flex-1">{variantLabels[variant]}</span>
+                    {ELITE_GLITCH_VARIANT_WEIGHTS[variant] < 1 ? (
+                      <span className="text-[10px] text-muted-foreground">
+                        {ELITE_GLITCH_VARIANT_WEIGHTS[variant]}× weight
+                      </span>
+                    ) : null}
                     {checked ? (
                       <Check className="size-3.5 text-muted-foreground" />
                     ) : null}
@@ -852,7 +862,7 @@ export function EliteSettings() {
           />
           <p className="pb-2 text-[11px] text-muted-foreground">
             {config.glitchCountMin}–{config.glitchCountMax} glitches ·{" "}
-            {config.glitchShowMs} ms · {config.staggerDelayMs} ms stagger ·{" "}
+            {config.glitchShowMs} ms · {config.staggerSpreadMs} ms spread ·{" "}
             {enabledVariantSummary}
           </p>
         </div>

@@ -87,11 +87,12 @@
 
 .elite-reveal[data-variant="chromatic"] > .elite-reveal__content {
   filter: drop-shadow(
-      var(--elite-chromatic-x) var(--elite-chromatic-y) 0 rgb(0 224 255 / 85%)
+      var(--elite-chromatic-x) var(--elite-chromatic-y) 0
+        color-mix(in oklab, var(--elite-chromatic-channel-a) 85%, transparent)
     )
     drop-shadow(
       var(--elite-chromatic-x-negative) var(--elite-chromatic-y-negative) 0
-        rgb(255 34 122 / 78%)
+        color-mix(in oklab, var(--elite-chromatic-channel-b) 82%, transparent)
     );
   opacity: 0.88;
   transform: translate(
@@ -104,9 +105,9 @@
 .elite-reveal[data-variant="chromatic"] > .elite-reveal__signal {
   background: linear-gradient(
     var(--elite-chromatic-angle),
-    rgb(0 224 255 / 12%),
+    color-mix(in oklab, var(--elite-chromatic-channel-a) 14%, transparent),
     transparent 38%,
-    rgb(255 34 122 / 14%)
+    color-mix(in oklab, var(--elite-chromatic-channel-b) 16%, transparent)
   );
   mix-blend-mode: screen;
 }

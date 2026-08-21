@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -24,11 +25,31 @@ export const ELITE_GLITCH_VARIANTS = [
 export type EliteGlitchVariant = (typeof ELITE_GLITCH_VARIANTS)[number];
 export type EliteRevealContentKind = "box" | "control" | "text";
 
+export const ELITE_GLITCH_VARIANT_WEIGHTS: Record<EliteGlitchVariant, number> =
+  {
+    chromatic: 1,
+    "full-frame": 0.5,
+    "left-frame": 0.5,
+    outline: 1,
+    "right-frame": 0.5,
+    scanline: 1,
+    "spatial-shift": 1,
+    "text-jitter": 1,
+  };
+
+export const ELITE_CHROMATIC_PAIRS = [
+  { channelA: "rgb(0 224 255)", channelB: "rgb(255 34 122)" },
+  { channelA: "rgb(76 125 255)", channelB: "rgb(255 150 42)" },
+  { channelA: "rgb(188 88 255)", channelB: "rgb(102 255 68)" },
+  { channelA: "rgb(255 58 78)", channelB: "rgb(38 244 207)" },
+  { channelA: "rgb(255 220 64)", channelB: "rgb(92 84 255)" },
+] as const;
+
 export interface EliteRevealConfig {
   glitchCountMax: number;
   glitchCountMin: number;
   glitchShowMs: number;
-  staggerDelayMs: number;
+  staggerSpreadMs: number;
   variants: readonly EliteGlitchVariant[];
 }
 
@@ -36,14 +57,14 @@ export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
   glitchCountMax: 3,
   glitchCountMin: 1,
   glitchShowMs: 9,
-  staggerDelayMs: 7,
+  staggerSpreadMs: 50,
   variants: ELITE_GLITCH_VARIANTS,
 };
 
 const numericLimits = {
   glitchCount: { max: 8, min: 1 },
   glitchShowMs: { max: 120, min: 5 },
-  staggerDelayMs: { max: 250, min: 0 },
+  staggerSpreadMs: { max: 250, min: 0 },
 } as const;
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -72,10 +93,10 @@ export function normalizeEliteRevealConfig(
       numericLimits.glitchShowMs.min,
       numericLimits.glitchShowMs.max,
     ),
-    staggerDelayMs: clamp(
-      config.staggerDelayMs,
-      numericLimits.staggerDelayMs.min,
-      numericLimits.staggerDelayMs.max,
+    staggerSpreadMs: clamp(
+      config.staggerSpreadMs,
+      numericLimits.staggerSpreadMs.min,
+      numericLimits.staggerSpreadMs.max,
     ),
     variants: [...new Set(config.variants)].filter((variant) =>
       ELITE_GLITCH_VARIANTS.includes(variant),
@@ -92,6 +113,29 @@ export function variantsForEliteContent(
   );
 }
 
+export function selectEliteGlitchVariant(
+  variants: readonly EliteGlitchVariant[],
+  random: () => number = Math.random,
+): EliteGlitchVariant | undefined {
+  const weightedVariants = variants.filter(
+    (variant) => ELITE_GLITCH_VARIANT_WEIGHTS[variant] > 0,
+  );
+  const fallbackVariant = weightedVariants.at(-1);
+  if (!fallbackVariant) return undefined;
+
+  const totalWeight = weightedVariants.reduce(
+    (total, variant) => total + ELITE_GLITCH_VARIANT_WEIGHTS[variant],
+    0,
+  );
+  let selection = unitRandom(random) * totalWeight;
+  for (const variant of weightedVariants) {
+    const weight = ELITE_GLITCH_VARIANT_WEIGHTS[variant];
+    if (selection < weight) return variant;
+    selection -= weight;
+  }
+  return fallbackVariant;
+}
+
 export function createEliteGlitchSequence(
   config: EliteRevealConfig,
   contentKind: EliteRevealContentKind,
@@ -106,17 +150,27 @@ export function createEliteGlitchSequence(
     normalized.glitchCountMin +
     Math.min(countRange - 1, Math.floor(random() * countRange));
   return Array.from({ length: count }, () => {
-    const index = Math.min(
-      variants.length - 1,
-      Math.floor(random() * variants.length),
-    );
-    return variants[index] ?? fallbackVariant;
+    return selectEliteGlitchVariant(variants, random) ?? fallbackVariant;
   });
+}
+
+export function eliteStaggerDelayForVisibleRank(
+  visibleIndex: number,
+  visibleCount: number,
+  spreadMs: number,
+): number {
+  const normalizedSpread = Math.max(0, Math.round(spreadMs));
+  if (visibleIndex < 0) return normalizedSpread;
+  if (visibleCount <= 1) return 0;
+  const boundedIndex = Math.min(visibleCount - 1, Math.max(0, visibleIndex));
+  return Math.round((boundedIndex / (visibleCount - 1)) * normalizedSpread);
 }
 
 export interface EliteGlitchFrame {
   chromaticAngleDeg: number;
   chromaticDistancePx: number;
+  chromaticChannelA: string;
+  chromaticChannelB: string;
   chromaticOffsetXPx: number;
   chromaticOffsetYPx: number;
   outlineBottom: boolean;
@@ -149,8 +203,11 @@ export function createEliteGlitchFrame(
   variant: EliteGlitchVariant,
   random: () => number = Math.random,
 ): EliteGlitchFrame {
+  const defaultChromaticPair = ELITE_CHROMATIC_PAIRS[0];
   const frame: EliteGlitchFrame = {
     chromaticAngleDeg: 0,
+    chromaticChannelA: defaultChromaticPair.channelA,
+    chromaticChannelB: defaultChromaticPair.channelB,
     chromaticDistancePx: 0,
     chromaticOffsetXPx: 0,
     chromaticOffsetYPx: 0,
@@ -190,6 +247,12 @@ export function createEliteGlitchFrame(
     frame.chromaticOffsetYPx = roundFrameValue(
       Math.sin(angleRadians) * distancePixels,
     );
+    const chromaticPair =
+      ELITE_CHROMATIC_PAIRS[
+        Math.floor(unitRandom(random) * ELITE_CHROMATIC_PAIRS.length)
+      ] ?? defaultChromaticPair;
+    frame.chromaticChannelA = chromaticPair.channelA;
+    frame.chromaticChannelB = chromaticPair.channelB;
   } else if (variant === "spatial-shift") {
     const angleRadians = unitRandom(random) * Math.PI * 2;
     const distancePercent = unitRandom(random) * 7.5;
@@ -221,6 +284,106 @@ type EliteRevealStyle = CSSProperties & {
   [property: `--elite-${string}`]: string;
 };
 
+function clipsOverflow(value: string): boolean {
+  return (
+    value === "auto" ||
+    value === "clip" ||
+    value === "hidden" ||
+    value === "scroll"
+  );
+}
+
+function isEliteRevealVisible(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+
+  let left = Math.max(0, rect.left);
+  let right = Math.min(window.innerWidth, rect.right);
+  let top = Math.max(0, rect.top);
+  let bottom = Math.min(window.innerHeight, rect.bottom);
+  let ancestor = element.parentElement;
+
+  while (ancestor && right > left && bottom > top) {
+    const style = window.getComputedStyle(ancestor);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    const ancestorRect = ancestor.getBoundingClientRect();
+    if (clipsOverflow(style.overflowX)) {
+      left = Math.max(left, ancestorRect.left);
+      right = Math.min(right, ancestorRect.right);
+    }
+    if (clipsOverflow(style.overflowY)) {
+      top = Math.max(top, ancestorRect.top);
+      bottom = Math.min(bottom, ancestorRect.bottom);
+    }
+    ancestor = ancestor.parentElement;
+  }
+
+  return right > left && bottom > top;
+}
+
+interface EliteSpreadSnapshot {
+  delays: ReadonlyMap<Element, number>;
+  elements: ReadonlySet<Element>;
+  spreadMs: number;
+}
+
+let eliteSpreadSnapshot: EliteSpreadSnapshot | null = null;
+let eliteSpreadSnapshotClearQueued = false;
+
+function staggerDelayForEliteElement(
+  element: HTMLElement,
+  spreadMs: number,
+): number {
+  if (
+    !eliteSpreadSnapshot ||
+    eliteSpreadSnapshot.spreadMs !== spreadMs ||
+    !eliteSpreadSnapshot.elements.has(element)
+  ) {
+    const elements = [
+      ...document.querySelectorAll<HTMLElement>("[data-elite-reveal]"),
+    ];
+    const visibleElements = elements
+      .filter(isEliteRevealVisible)
+      .map((candidate) => ({
+        element: candidate,
+        rect: candidate.getBoundingClientRect(),
+      }))
+      .sort((left, right) => {
+        const verticalDifference = left.rect.top - right.rect.top;
+        return Math.abs(verticalDifference) > 1
+          ? verticalDifference
+          : left.rect.left - right.rect.left;
+      });
+    const visibleRanks = new Map(
+      visibleElements.map(({ element: candidate }, rank) => [candidate, rank]),
+    );
+    const delays = new Map(
+      elements.map((candidate) => [
+        candidate,
+        eliteStaggerDelayForVisibleRank(
+          visibleRanks.get(candidate) ?? -1,
+          visibleElements.length,
+          spreadMs,
+        ),
+      ]),
+    );
+    eliteSpreadSnapshot = {
+      delays,
+      elements: new Set(elements),
+      spreadMs,
+    };
+    if (!eliteSpreadSnapshotClearQueued) {
+      eliteSpreadSnapshotClearQueued = true;
+      queueMicrotask(() => {
+        eliteSpreadSnapshot = null;
+        eliteSpreadSnapshotClearQueued = false;
+      });
+    }
+  }
+
+  return eliteSpreadSnapshot.delays.get(element) ?? spreadMs;
+}
+
 export function EliteReveal({
   children,
   className,
@@ -236,17 +399,18 @@ export function EliteReveal({
   index?: number;
   replayKey: number;
 }) {
+  const elementRef = useRef<HTMLDivElement>(null);
   const normalized = useMemo(
     () => normalizeEliteRevealConfig(config),
     [
       config.glitchCountMax,
       config.glitchCountMin,
       config.glitchShowMs,
-      config.staggerDelayMs,
+      config.staggerSpreadMs,
       config.variants,
     ],
   );
-  const configSignature = `${normalized.glitchCountMin}:${normalized.glitchCountMax}:${normalized.glitchShowMs}:${normalized.staggerDelayMs}:${normalized.variants.join(",")}`;
+  const configSignature = `${normalized.glitchCountMin}:${normalized.glitchCountMax}:${normalized.glitchShowMs}:${normalized.staggerSpreadMs}:${normalized.variants.join(",")}`;
   const [stage, setStage] = useState<RevealStage>(() =>
     variantsForEliteContent(normalized.variants, contentKind).length
       ? { frame: null, state: "waiting" }
@@ -283,7 +447,17 @@ export function EliteReveal({
       }, normalized.glitchShowMs);
     };
     setStage({ frame: null, state: "waiting" });
-    schedule(showNextGlitch, Math.max(0, index) * normalized.staggerDelayMs);
+    const startDelayMs = elementRef.current
+      ? staggerDelayForEliteElement(
+          elementRef.current,
+          normalized.staggerSpreadMs,
+        )
+      : eliteStaggerDelayForVisibleRank(
+          index,
+          Math.max(1, index + 1),
+          normalized.staggerSpreadMs,
+        );
+    schedule(showNextGlitch, startDelayMs);
 
     return () => {
       cancelled = true;
@@ -309,6 +483,8 @@ export function EliteReveal({
   const frameStyle: EliteRevealStyle | undefined = frame
     ? {
         "--elite-chromatic-angle": `${frame.chromaticAngleDeg}deg`,
+        "--elite-chromatic-channel-a": frame.chromaticChannelA,
+        "--elite-chromatic-channel-b": frame.chromaticChannelB,
         "--elite-chromatic-distance": `${frame.chromaticDistancePx}px`,
         "--elite-chromatic-x": `${frame.chromaticOffsetXPx}px`,
         "--elite-chromatic-x-negative": `${-frame.chromaticOffsetXPx}px`,
@@ -332,6 +508,7 @@ export function EliteReveal({
       data-elite-reveal=""
       data-state={stage.state}
       data-variant={frame?.variant}
+      ref={elementRef}
       style={frameStyle}
     >
       <div className="elite-reveal__content">{children}</div>
