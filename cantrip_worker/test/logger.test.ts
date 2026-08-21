@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   captureWorkerDiagnostic,
   readWorkerLogs,
+  subscribeWorkerLogs,
   workerLogError,
   workerLogger,
 } from "../src/logger.js";
@@ -65,6 +66,24 @@ describe("worker service log capture", () => {
       hasMore: false,
       truncated: false,
     });
+  });
+
+  it("notifies active readers with the sanitized stored record", () => {
+    const records: unknown[] = [];
+    const unsubscribe = subscribeWorkerLogs((record) => records.push(record));
+    captureWorkerDiagnostic("info", "token=ghp_abcdefghijk", {
+      event: "worker.test",
+    });
+    unsubscribe();
+    captureWorkerDiagnostic("info", "after unsubscribe");
+
+    expect(records).toEqual([
+      expect.objectContaining({
+        cursor: expect.any(Number),
+        message: "worker.test",
+        context: { event: "worker.test" },
+      }),
+    ]);
   });
 
   it("normalizes operational errors without stacks, causes, or arbitrary fields", () => {

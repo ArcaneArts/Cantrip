@@ -101,6 +101,9 @@ function commandLogContext(
 
 const HIGH_VOLUME_COMMANDS = new Set<WorkerCommand["type"]>([
   "diagnostics.logs.read",
+  "diagnostics.logs.stream.start",
+  "diagnostics.logs.stream.renew",
+  "diagnostics.logs.stream.stop",
   "surface.configure",
   "terminal.input",
   "terminal.resize",

@@ -9,15 +9,24 @@ import {
 import type { DailyLogArchive } from "@cantrip/logging/archive";
 import { createNodeDailyLogArchive } from "@cantrip/logging/node";
 import type { WorkerLogReadQuery } from "@cantrip/protocol";
+import type { ServiceLogRecord } from "@cantrip/protocol";
 import path from "node:path";
 
 const workerLogBuffer = new ServiceLogBuffer();
+const workerLogListeners = new Set<(record: ServiceLogRecord) => void>();
 let workerLogArchive: DailyLogArchive | null = null;
 let lastArchiveDiagnosticAt = 0;
 
 function storeWorkerLogRecord(record: ServiceLogRecordInput) {
   const stored = workerLogBuffer.append(record);
   void workerLogArchive?.append(stored);
+  for (const listener of workerLogListeners) {
+    try {
+      listener(stored);
+    } catch {
+      // Log capture must not fail because an optional live reader failed.
+    }
+  }
 }
 
 export async function initializeWorkerLogArchive(
@@ -82,4 +91,11 @@ export function captureWorkerDiagnostic(
 
 export function readWorkerLogs(query: WorkerLogReadQuery) {
   return workerLogBuffer.read(query);
+}
+
+export function subscribeWorkerLogs(
+  listener: (record: ServiceLogRecord) => void,
+): () => void {
+  workerLogListeners.add(listener);
+  return () => workerLogListeners.delete(listener);
 }

@@ -8,6 +8,7 @@ import {
   chatMessageOpaqueSummarySchema,
   codexMcpOauthStartResultSchema,
   unprobedCodexRuntimeReport,
+  workerLogStreamServerMessageSchema,
 } from "@cantrip/protocol";
 import type {
   AppLiveServerMessage,
@@ -99,6 +100,16 @@ const opaqueWorkflowContent = () => ({
 let oauthStatusReads = 0;
 let chatSyncReads = 0;
 let workerNotificationListener: WorkerNotificationListener | null = null;
+const workerNotificationListeners = new Set<WorkerNotificationListener>();
+let workerLogStreamStarts = 0;
+let workerLogStreamStops = 0;
+const emitWorkerNotification = async (
+  notification: WorkerNotification,
+): Promise<void> => {
+  await Promise.all(
+    [...workerNotificationListeners].map((listener) => listener(notification)),
+  );
+};
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -120,10 +131,13 @@ const workerBridge: WorkerCommandBus = {
         `Unexpected worker notification subscription ${workerId}.`,
       );
     }
-    workerNotificationListener = listener;
+    workerNotificationListeners.add(listener);
+    workerNotificationListener ??= listener;
     return () => {
+      workerNotificationListeners.delete(listener);
       if (workerNotificationListener === listener) {
-        workerNotificationListener = null;
+        workerNotificationListener =
+          workerNotificationListeners.values().next().value ?? null;
       }
     };
   },
@@ -147,6 +161,14 @@ const workerBridge: WorkerCommandBus = {
           status: "idle",
           turns: [],
         };
+      case "diagnostics.logs.stream.start":
+        workerLogStreamStarts += 1;
+        return { accepted: true, latestCursor: command.afterCursor };
+      case "diagnostics.logs.stream.renew":
+        return { accepted: true };
+      case "diagnostics.logs.stream.stop":
+        workerLogStreamStops += 1;
+        return { stopped: true };
       case "worktree.observation.configure":
         return { accepted: true };
       case "workflow.trigger.prepare.protected":
@@ -235,6 +257,26 @@ describe.sequential("application live WebSocket", () => {
       expect(await closePromise).toBe(1008);
       socket.terminate();
     }
+  });
+
+  it("rejects worker log streams outside the authenticated owner", async () => {
+    let resolveClose: ((code: number) => void) | null = null;
+    const closePromise = new Promise<number>((resolve) => {
+      resolveClose = resolve;
+    });
+    const startCount = workerLogStreamStarts;
+    const socket = await app.injectWS(
+      "/api/workers/unowned-worker/logs/stream?afterCursor=0&minimumLevel=trace",
+      { headers: { origin: config.appOrigins[0] } },
+      {
+        onInit(client) {
+          client.once("close", (code) => resolveClose?.(code));
+        },
+      },
+    );
+    expect(await closePromise).toBe(1008);
+    expect(workerLogStreamStarts).toBe(startCount);
+    socket.terminate();
   });
 
   it("authorizes current-user, project, and chat scopes by ownership", async () => {
@@ -764,6 +806,68 @@ describe.sequential("application live WebSocket", () => {
       { timeout: 2_500 },
     );
     expect(oauthStatusReads).toBe(1);
+
+    const logMessages: ReturnType<
+      typeof workerLogStreamServerMessageSchema.parse
+    >[] = [];
+    let logClient: WebSocket | null = null;
+    const streamStartCount = workerLogStreamStarts;
+    const logSocket = await app.injectWS(
+      `/api/workers/${liveTestHeartbeat.workerId}/logs/stream?afterCursor=7&minimumLevel=trace`,
+      { headers: { origin: config.appOrigins[0] } },
+      {
+        onInit(client) {
+          logClient = client;
+          client.on("message", (data) => {
+            logMessages.push(
+              workerLogStreamServerMessageSchema.parse(
+                JSON.parse(data.toString()),
+              ),
+            );
+          });
+        },
+      },
+    );
+    await vi.waitFor(() =>
+      expect(workerLogStreamStarts).toBe(streamStartCount + 1),
+    );
+    await vi.waitFor(() =>
+      expect(logMessages[0]).toMatchObject({
+        type: "ready",
+        nextCursor: 7,
+      }),
+    );
+    const ready = logMessages[0];
+    if (!logClient || ready?.type !== "ready") {
+      throw new Error("Worker log stream did not initialize.");
+    }
+    await emitWorkerNotification({
+      type: "diagnostics.logs.observed",
+      subscriptionId: ready.subscriptionId,
+      records: [
+        {
+          cursor: 8,
+          timestamp: "2026-08-21T12:00:00.000Z",
+          system: "worker",
+          level: "info",
+          message: "Streamed worker log",
+        },
+      ],
+      nextCursor: 8,
+      oldestCursor: 1,
+      latestCursor: 8,
+      truncated: false,
+    });
+    await vi.waitFor(() =>
+      expect(logMessages[1]).toMatchObject({
+        type: "batch",
+        nextCursor: 8,
+        records: [{ cursor: 8, message: "Streamed worker log" }],
+      }),
+    );
+    const stopCount = workerLogStreamStops;
+    logSocket.terminate();
+    await vi.waitFor(() => expect(workerLogStreamStops).toBe(stopCount + 1));
 
     const health = (
       await app.inject({ method: "GET", url: "/api/health" })

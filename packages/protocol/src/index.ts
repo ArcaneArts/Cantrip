@@ -9716,6 +9716,53 @@ export const serviceLogReadResultSchema = z.object({
   truncated: z.boolean(),
 });
 
+export const workerLogStreamSubscriptionIdSchema = z.string().uuid();
+
+export const workerLogStreamBatchSchema = z
+  .object({
+    records: z.array(serviceLogRecordSchema).max(200),
+    nextCursor: z.number().int().nonnegative(),
+    oldestCursor: z.number().int().positive().nullable(),
+    latestCursor: z.number().int().nonnegative(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const workerLogStreamStartResultSchema = z
+  .object({
+    accepted: z.literal(true),
+    latestCursor: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const workerLogStreamRenewResultSchema = z
+  .object({ accepted: z.literal(true) })
+  .strict();
+
+export const workerLogStreamServerMessageSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("ready"),
+      subscriptionId: workerLogStreamSubscriptionIdSchema,
+      nextCursor: z.number().int().nonnegative(),
+    })
+    .strict(),
+  workerLogStreamBatchSchema.extend({ type: z.literal("batch") }).strict(),
+  z
+    .object({
+      type: z.literal("error"),
+      code: z.enum([
+        "authorization-failed",
+        "invalid-request",
+        "worker-offline",
+        "stream-unavailable",
+      ]),
+      message: z.string().min(1).max(500),
+      retryable: z.boolean(),
+    })
+    .strict(),
+]);
+
 export const workerLogReadQuerySchema = z
   .object({
     afterCursor: z.coerce.number().int().nonnegative().default(0),
@@ -9744,6 +9791,28 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     limit: z.number().int().min(1).max(500).default(200),
     minimumLevel: serviceLogLevelSchema.default("trace"),
   }),
+  z
+    .object({
+      type: z.literal("diagnostics.logs.stream.start"),
+      subscriptionId: workerLogStreamSubscriptionIdSchema,
+      afterCursor: z.number().int().nonnegative(),
+      minimumLevel: serviceLogLevelSchema,
+      leaseMs: z.number().int().min(10_000).max(300_000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("diagnostics.logs.stream.renew"),
+      subscriptionId: workerLogStreamSubscriptionIdSchema,
+      leaseMs: z.number().int().min(10_000).max(300_000),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("diagnostics.logs.stream.stop"),
+      subscriptionId: workerLogStreamSubscriptionIdSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("worker.credential.rotate"),
     credential: workerCredentialSecretSchema,
@@ -11407,6 +11476,12 @@ export const workerNotificationSchema = z.discriminatedUnion("type", [
         .max(4),
     })
     .strict(),
+  workerLogStreamBatchSchema
+    .extend({
+      type: z.literal("diagnostics.logs.observed"),
+      subscriptionId: workerLogStreamSubscriptionIdSchema,
+    })
+    .strict(),
   z.object({
     type: z.literal("worktree.inventory.observed"),
     sourcePath: worktreeObservationTargetSchema.shape.sourcePath,
@@ -12832,6 +12907,10 @@ export type ServiceLogLevel = z.infer<typeof serviceLogLevelSchema>;
 export type ServiceLogRecord = z.infer<typeof serviceLogRecordSchema>;
 export type ServiceLogReadResult = z.infer<typeof serviceLogReadResultSchema>;
 export type WorkerLogReadQuery = z.infer<typeof workerLogReadQuerySchema>;
+export type WorkerLogStreamBatch = z.infer<typeof workerLogStreamBatchSchema>;
+export type WorkerLogStreamServerMessage = z.infer<
+  typeof workerLogStreamServerMessageSchema
+>;
 export type ProjectShareAdapterRequestHead = z.infer<
   typeof projectShareAdapterRequestHeadSchema
 >;

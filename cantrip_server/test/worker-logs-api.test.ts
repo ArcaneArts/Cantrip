@@ -174,6 +174,32 @@ describe.sequential("worker logs API", () => {
     expect(commands).toHaveLength(before);
   });
 
+  it("rejects a foreign account before opening a worker log stream", async () => {
+    let resolveClose: ((code: number) => void) | null = null;
+    const closePromise = new Promise<number>((resolve) => {
+      resolveClose = resolve;
+    });
+    const before = commands.length;
+    const socket = await app.injectWS(
+      "/api/workers/first-worker/logs/stream?afterCursor=0&minimumLevel=trace",
+      {
+        headers: {
+          cookie: second.cookie,
+          host: "server.cantrip.test",
+          origin,
+        },
+      },
+      {
+        onInit(client) {
+          client.once("close", (code) => resolveClose?.(code));
+        },
+      },
+    );
+    expect(await closePromise).toBe(1008);
+    expect(commands).toHaveLength(before);
+    socket.terminate();
+  });
+
   it("rejects malformed queries before contacting the worker", async () => {
     const before = commands.length;
     const response = await app.inject({
