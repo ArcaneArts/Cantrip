@@ -506,7 +506,10 @@ function MessageContent({ message }: { message: ChatMessage }) {
     useState<ChatAttachmentSummary | null>(null);
   return (
     <>
-      <div className="min-w-0 max-w-full space-y-3">
+      <div
+        className="min-w-0 max-w-full space-y-3"
+        data-elite-global-key={`chat-message:${message.chatId}:${message.id}`}
+      >
         {message.content.map((item, index) =>
           item.type === "text" ? (
             item.phase === "commentary" ? (

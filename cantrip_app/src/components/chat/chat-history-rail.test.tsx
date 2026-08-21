@@ -116,6 +116,7 @@ describe("chat history rail landmarks", () => {
     );
 
     expect(markup).toContain('aria-label="Conversation history"');
+    expect(markup).toContain('data-elite-ignore=""');
     expect(markup).toContain('aria-label="Jump to turn 1: Request 0');
     expect(markup.match(/type="button"/g)).toHaveLength(
       CHAT_HISTORY_RAIL_MIN_TURNS,

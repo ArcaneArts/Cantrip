@@ -238,6 +238,7 @@ export function ChatHistoryRail({
   return (
     <nav
       aria-label="Conversation history"
+      data-elite-ignore=""
       className={cn(
         "pointer-events-none absolute left-1 top-6 z-20 hidden w-12 md:block",
         withComposer ? "bottom-64" : "bottom-10",
