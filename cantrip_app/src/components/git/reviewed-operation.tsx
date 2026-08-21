@@ -205,6 +205,7 @@ export function ReviewedOperationDialog<TRequest, TPreview, TResult>({
   applyClassName,
   applyDisabled = false,
   applyLabel,
+  applyVariant,
   bodyClassName,
   children,
   contentClassName,
@@ -222,6 +223,7 @@ export function ReviewedOperationDialog<TRequest, TPreview, TResult>({
   applyDisabled?: boolean;
   applyErrorFallback: string;
   applyLabel: ReactNode;
+  applyVariant?: "default" | "destructive";
   bodyClassName?: string;
   children(preview: TPreview, request: TRequest): ReactNode;
   contentClassName?: string;
@@ -277,10 +279,10 @@ export function ReviewedOperationDialog<TRequest, TPreview, TResult>({
             className={applyClassName}
             disabled={!operation.canApply || applyDisabled}
             onClick={operation.applyReviewed}
+            pending={operation.apply.isPending}
+            pendingLabel={applyLabel}
+            variant={applyVariant}
           >
-            {operation.apply.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : null}
             {applyLabel}
           </Button>
         </DialogFooter>

@@ -296,11 +296,7 @@ export function GitCommitActionDialog({
               </Button>
               <Button
                 disabled={!preview.data || apply.isPending}
-                className={
-                  preview.data?.destructive
-                    ? "bg-destructive text-white hover:bg-destructive/90"
-                    : undefined
-                }
+                variant={preview.data?.destructive ? "destructive" : "default"}
                 onClick={reviewedOperation.applyReviewed}
               >
                 {apply.isPending ? (

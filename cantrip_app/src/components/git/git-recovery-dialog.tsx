@@ -353,12 +353,8 @@ export function GitRecoveryDialog({
                       />
                     </label>
                     <Button
-                      variant="default"
-                      className={cn(
-                        "w-full",
-                        preview.destructive &&
-                          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-                      )}
+                      variant={preview.destructive ? "destructive" : "default"}
+                      className="w-full"
                       disabled={
                         confirmation !== preview.confirmation ||
                         applyMutation.isPending

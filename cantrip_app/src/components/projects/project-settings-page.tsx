@@ -1116,22 +1116,18 @@ export function ProjectSettingsPage({
               Cancel
             </Button>
             <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={
-                remove.isPending ||
-                Boolean(
-                  removeTarget &&
-                  statuses[removeTarget.id]?.files.length &&
-                  !forceRemove,
-                )
-              }
+              variant="destructive"
+              disabled={Boolean(
+                removeTarget &&
+                statuses[removeTarget.id]?.files.length &&
+                !forceRemove,
+              )}
               onClick={() => {
                 if (removeTarget) remove.mutate(removeTarget);
               }}
+              pending={remove.isPending}
+              pendingLabel="Removing…"
             >
-              {remove.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
               Remove worktree
             </Button>
           </DialogFooter>

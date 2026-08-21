@@ -1,5 +1,6 @@
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
@@ -11,6 +12,8 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-primary text-primary-foreground shadow-xs hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90 focus-visible:ring-destructive/20",
         outline:
           "border border-input bg-background shadow-xs hover:bg-accent hover:text-accent-foreground",
         ghost: "hover:bg-accent hover:text-accent-foreground",
@@ -31,21 +34,39 @@ const buttonVariants = cva(
 function Button({
   asChild = false,
   className,
+  disabled,
+  pending = false,
+  pendingLabel,
   size,
   variant,
+  children,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
+    pending?: boolean;
+    pendingLabel?: React.ReactNode;
   }) {
   const Component = asChild ? Slot : "button";
 
   return (
     <Component
-      data-slot="button"
-      className={cn(buttonVariants({ className, size, variant }))}
       {...props}
-    />
+      aria-busy={pending || undefined}
+      data-slot="button"
+      data-pending={pending || undefined}
+      className={cn(buttonVariants({ className, size, variant }))}
+      disabled={disabled || pending}
+    >
+      {pending ? (
+        <>
+          <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+          {pendingLabel ?? children}
+        </>
+      ) : (
+        children
+      )}
+    </Component>
   );
 }
 

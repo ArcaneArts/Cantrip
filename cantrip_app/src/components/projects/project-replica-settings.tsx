@@ -534,15 +534,12 @@ export function ProjectReplicaSettings({
               Cancel
             </Button>
             <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={remove.isPending}
+              variant="destructive"
               onClick={() => removeTarget && remove.mutate(removeTarget)}
+              pending={remove.isPending}
+              pendingLabel="Removing…"
             >
-              {remove.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
+              <Trash2 className="size-4" />
               Remove replica
             </Button>
           </DialogFooter>

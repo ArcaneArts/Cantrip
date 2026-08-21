@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
@@ -523,12 +524,11 @@ function AutomationDialog({
             Cancel
           </Button>
           <Button
-            disabled={!chats.length || save.isPending}
+            disabled={!chats.length}
             onClick={() => save.mutate()}
+            pending={save.isPending}
+            pendingLabel={automation ? "Saving…" : "Creating…"}
           >
-            {save.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : null}
             {automation ? "Save changes" : "Create automation"}
           </Button>
         </DialogFooter>
@@ -768,35 +768,16 @@ export function ProjectAutomationsSettings({
         workers={workers}
       />
 
-      <Dialog
+      <ConfirmDialog
+        confirmLabel="Delete automation"
+        confirmPendingLabel="Deleting…"
+        description="Future scheduled prompts will stop immediately. Existing agent conversation messages and already queued prompts are retained."
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget)}
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete {deleteTarget?.name}?</DialogTitle>
-            <DialogDescription>
-              Future scheduled prompts will stop immediately. Existing agent
-              conversation messages and already queued prompts are retained.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={remove.isPending}
-              onClick={() => deleteTarget && remove.mutate(deleteTarget)}
-            >
-              {remove.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : null}
-              Delete automation
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        pending={remove.isPending}
+        title={`Delete ${deleteTarget?.name ?? "automation"}?`}
+      />
     </div>
   );
 }

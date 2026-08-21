@@ -1473,9 +1473,10 @@ export function WorkerSettings() {
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={unlink.isPending}
+              variant="destructive"
               onClick={() => unlink.mutate()}
+              pending={unlink.isPending}
+              pendingLabel="Unlinking…"
             >
               <Unplug className="size-4" /> Unlink worker
             </Button>

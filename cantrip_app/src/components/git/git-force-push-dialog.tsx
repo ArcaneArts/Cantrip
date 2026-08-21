@@ -4,6 +4,7 @@ import { AlertTriangle, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { confirmDialogAllowsOpenChange } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -100,8 +101,18 @@ export function GitForcePushDialog({
   );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[88vh] max-w-2xl flex-col overflow-hidden">
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (confirmDialogAllowsOpenChange(nextOpen, apply.isPending)) {
+          onOpenChange(nextOpen);
+        }
+      }}
+    >
+      <DialogContent
+        className="flex max-h-[88vh] max-w-2xl flex-col overflow-hidden"
+        showClose={!apply.isPending}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="size-5" /> Replace published history
@@ -210,20 +221,18 @@ export function GitForcePushDialog({
             Cancel
           </Button>
           <Button
-            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            variant="destructive"
             disabled={
               !preview.data ||
               !gitForcePushConfirmationMatches(
                 expectedConfirmation,
                 confirmation,
-              ) ||
-              apply.isPending
+              )
             }
             onClick={() => apply.mutate()}
+            pending={apply.isPending}
+            pendingLabel="Force pushing…"
           >
-            {apply.isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : null}
             Force push with lease
           </Button>
         </DialogFooter>

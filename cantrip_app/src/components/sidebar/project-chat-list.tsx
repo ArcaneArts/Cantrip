@@ -1305,7 +1305,7 @@ export function ProjectChatList({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               disabled={
                 deleteTarget?.status === "running" ||
                 deleteTarget?.status === "waiting-for-approval"
@@ -1373,10 +1373,6 @@ export function ProjectChatList({
               Cancel
             </Button>
             <Button
-              className={cn(
-                deleteLocalFiles &&
-                  "bg-destructive text-white hover:bg-destructive/90",
-              )}
               disabled={removeProjectPending}
               onClick={() => {
                 const action = projectRemovalAction(
@@ -1389,6 +1385,7 @@ export function ProjectChatList({
                   void submitRemoveProject(action === "delete");
                 }
               }}
+              variant={deleteLocalFiles ? "destructive" : "default"}
             >
               {removeProjectPending ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -1435,15 +1432,12 @@ export function ProjectChatList({
               Back
             </Button>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
-              disabled={removeProjectPending}
+              variant="destructive"
               onClick={() => void submitRemoveProject(true)}
+              pending={removeProjectPending}
+              pendingLabel="Deleting…"
             >
-              {removeProjectPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
+              <Trash2 className="size-4" />
               Delete folder permanently
             </Button>
           </DialogFooter>
@@ -1466,7 +1460,7 @@ export function ProjectChatList({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (deleteTerminalTarget)
                   onDeleteTerminal(deleteTerminalTarget.id);
@@ -1495,7 +1489,7 @@ export function ProjectChatList({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (deleteExplorerTarget)
                   onDeleteExplorer(deleteExplorerTarget.id);
@@ -1524,7 +1518,7 @@ export function ProjectChatList({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (deleteBrowserTarget)
                   onDeleteBrowser(deleteBrowserTarget.id);
@@ -1554,7 +1548,7 @@ export function ProjectChatList({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (deleteProjectViewTarget) {
                   onDeleteProjectView(deleteProjectViewTarget.id);
@@ -1584,7 +1578,7 @@ export function ProjectChatList({
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              className="bg-destructive text-white hover:bg-destructive/90"
+              variant="destructive"
               onClick={() => {
                 if (deleteCodeTarget) onDeleteCode(deleteCodeTarget.id);
                 setDeleteCodeTarget(null);
