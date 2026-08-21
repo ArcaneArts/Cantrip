@@ -49,6 +49,7 @@ describe("sortable sidebar surface row", () => {
     const markup = renderRow(true);
 
     expect(markup).toContain('aria-label="Rename Primary terminal"');
+    expect(markup).toContain('data-elite-ignore=""');
     expect(markup).toContain('value="Renamed terminal"');
     expect(markup).not.toContain("Running");
     expect(markup).not.toContain("Primary worktree");
