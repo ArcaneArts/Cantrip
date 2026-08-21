@@ -1,5 +1,5 @@
 diff --git a/codex-rs/app-server-protocol/src/protocol/common.rs b/codex-rs/app-server-protocol/src/protocol/common.rs
-index 3893b77..fc7be5c 100644
+index 3893b776236900c6ed5c10b003542a848457719e..fc7be5c3505a2771ed031f9f689f86575d085e83 100644
 --- a/codex-rs/app-server-protocol/src/protocol/common.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/common.rs
 @@ -932,6 +932,11 @@ client_request_definitions! {
@@ -15,7 +15,7 @@ index 3893b77..fc7be5c 100644
      ThreadRealtimeStart => "thread/realtime/start" {
          params: v2::ThreadRealtimeStartParams,
 diff --git a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
-index 0b2c092..1433bb5 100644
+index 0b2c092ec83a7c4c29827ad8c735db73ee61142a..1433bb53fe6058995b86c81f8a20a5c32eb8f5d6 100644
 --- a/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 +++ b/codex-rs/app-server-protocol/src/protocol/v2/turn.rs
 @@ -216,6 +216,22 @@ pub struct TurnInterruptParams {
@@ -42,7 +42,7 @@ index 0b2c092..1433bb5 100644
  #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, JsonSchema, TS)]
  #[serde(rename_all = "camelCase")]
 diff --git a/codex-rs/app-server/src/message_processor.rs b/codex-rs/app-server/src/message_processor.rs
-index d02be34..cdbe7e3 100644
+index d02be34123b300dc1b254c95f414c1cde8a82e7d..cdbe7e3bffaa0218427745776e1d852e78131eed 100644
 --- a/codex-rs/app-server/src/message_processor.rs
 +++ b/codex-rs/app-server/src/message_processor.rs
 @@ -1382,6 +1382,9 @@ impl MessageProcessor {
@@ -56,20 +56,20 @@ index d02be34..cdbe7e3 100644
                  self.turn_processor
                      .thread_realtime_start(&request_id, params)
 diff --git a/codex-rs/app-server/src/request_processors.rs b/codex-rs/app-server/src/request_processors.rs
-index 0929e26..5c994d2 100644
+index 0929e2629effbacb1fbdc5bb86fa658fc8d11a2d..0f798e871d3d902f972829758dcf14b03e2bf84e 100644
 --- a/codex-rs/app-server/src/request_processors.rs
 +++ b/codex-rs/app-server/src/request_processors.rs
-@@ -296,6 +296,8 @@ use codex_app_server_protocol::TurnEnvironmentParams;
- use codex_app_server_protocol::TurnError;
+@@ -297,6 +297,8 @@ use codex_app_server_protocol::TurnError;
  use codex_app_server_protocol::TurnInterruptParams;
  use codex_app_server_protocol::TurnInterruptResponse;
+ use codex_app_server_protocol::TurnItemsView;
 +use codex_app_server_protocol::TurnPauseParams;
 +use codex_app_server_protocol::TurnPauseResponse;
- use codex_app_server_protocol::TurnItemsView;
  use codex_app_server_protocol::TurnStartParams;
  use codex_app_server_protocol::TurnStartResponse;
+ use codex_app_server_protocol::TurnStatus;
 diff --git a/codex-rs/app-server/src/request_processors/turn_processor.rs b/codex-rs/app-server/src/request_processors/turn_processor.rs
-index 08de04f..550f5cb 100644
+index 08de04ffba4d59dd2ea192f0a987fbc90845c95d..95736145dea2e94bd11b1abb388244cbc0fcc381 100644
 --- a/codex-rs/app-server/src/request_processors/turn_processor.rs
 +++ b/codex-rs/app-server/src/request_processors/turn_processor.rs
 @@ -234,6 +234,16 @@ impl TurnRequestProcessor {
@@ -89,7 +89,7 @@ index 08de04f..550f5cb 100644
      pub(crate) async fn thread_realtime_start(
          &self,
          request_id: &ConnectionRequestId,
-@@ -1505,6 +1515,35 @@ impl TurnRequestProcessor {
+@@ -1505,6 +1515,43 @@ impl TurnRequestProcessor {
          }
      }
  
@@ -119,14 +119,61 @@ index 08de04f..550f5cb 100644
 +        self.submit_core_op(request_id, thread.as_ref(), Op::SetTurnPaused { paused })
 +            .await
 +            .map_err(|err| internal_error(format!("failed to update turn pause state: {err}")))?;
++        if paused {
++            thread
++                .wait_until_turn_pause_boundary()
++                .await
++                .map_err(|err| {
++                    internal_error(format!("failed to reach turn pause boundary: {err}"))
++                })?;
++        }
 +        Ok(TurnPauseResponse { paused })
 +    }
 +
      fn listener_task_context(&self) -> ListenerTaskContext {
          ListenerTaskContext {
              thread_manager: Arc::clone(&self.thread_manager),
+diff --git a/codex-rs/core/src/codex_thread.rs b/codex-rs/core/src/codex_thread.rs
+index cdc8c01320ed3031eb94da4655caf13953761857..cc79f48b2df4ce6fe38167ab5979866472497d81 100644
+--- a/codex-rs/core/src/codex_thread.rs
++++ b/codex-rs/core/src/codex_thread.rs
+@@ -263,6 +263,34 @@ impl CodexThread {
+         self.session.flush_rollout().await
+     }
+ 
++    /// Wait for a requested turn pause to reach a durable model/tool boundary.
++    /// If the turn finishes first, its terminal rollout flush is also a safe boundary.
++    pub async fn wait_until_turn_pause_boundary(&self) -> CodexResult<()> {
++        let mut pause_boundary = self.session.subscribe_turn_pause_boundary_state();
++        let mut agent_status = self.io.agent_status.clone();
++        loop {
++            if *pause_boundary.borrow() {
++                return Ok(());
++            }
++            if !matches!(&*agent_status.borrow(), AgentStatus::Running) {
++                self.flush_rollout().await?;
++                return Ok(());
++            }
++            tokio::select! {
++                changed = pause_boundary.changed() => {
++                    if changed.is_err() {
++                        return Err(CodexErr::InternalAgentDied);
++                    }
++                }
++                changed = agent_status.changed() => {
++                    if changed.is_err() {
++                        return Err(CodexErr::InternalAgentDied);
++                    }
++                }
++            }
++        }
++    }
++
+     pub async fn submit_with_trace(
+         &self,
+         op: Op,
 diff --git a/codex-rs/core/src/session/handlers.rs b/codex-rs/core/src/session/handlers.rs
-index a928090..4c35e4b 100644
+index a928090cc82eae3368030172e36b938c9422d5c3..4c35e4b46e3aded4980f12a713530682eb3aa501 100644
 --- a/codex-rs/core/src/session/handlers.rs
 +++ b/codex-rs/core/src/session/handlers.rs
 @@ -528,6 +528,10 @@ pub(super) async fn submission_loop(
@@ -141,14 +188,15 @@ index a928090..4c35e4b 100644
                      clean_background_terminals(&sess).await;
                      false
 diff --git a/codex-rs/core/src/session/mod.rs b/codex-rs/core/src/session/mod.rs
-index 33b77fa..d1ecdd9 100644
+index 33b77fadf4abc1281ce9426c3ff2f19325f516c1..2235f8b9ac0b95e3ac55732aa4893590cab0ade9 100644
 --- a/codex-rs/core/src/session/mod.rs
 +++ b/codex-rs/core/src/session/mod.rs
-@@ -1171,6 +1171,14 @@ impl Session {
+@@ -1171,6 +1171,23 @@ impl Session {
          self.services.elicitations.subscribe()
      }
  
 +    pub(crate) fn set_turn_paused(&self, paused: bool) {
++        self.turn_pause_boundary_state.send_replace(false);
 +        self.turn_pause_state.send_replace(paused);
 +    }
 +
@@ -156,131 +204,170 @@ index 33b77fa..d1ecdd9 100644
 +        self.turn_pause_state.subscribe()
 +    }
 +
++    pub(crate) fn set_turn_pause_boundary_reached(&self, reached: bool) {
++        self.turn_pause_boundary_state.send_replace(reached);
++    }
++
++    pub(crate) fn subscribe_turn_pause_boundary_state(&self) -> watch::Receiver<bool> {
++        self.turn_pause_boundary_state.subscribe()
++    }
++
      pub(crate) fn mark_interrupted(&self) {
          self.agent_status.send_replace(AgentStatus::Interrupted);
      }
 diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
-index dfd6ca1..be1e77d 100644
+index dfd6ca1bb9a94c7823c469dc56714ff861da5dde..5a9c95747ebd5fa823863b6c4831ed05ac1d4093 100644
 --- a/codex-rs/core/src/session/session.rs
 +++ b/codex-rs/core/src/session/session.rs
-@@ -56,6 +56,7 @@ pub(crate) struct Session {
+@@ -56,6 +56,8 @@ pub(crate) struct Session {
      pub(super) mcp_prewarm_task: std::sync::Mutex<Option<JoinHandle<()>>>,
      pub(crate) conversation: Arc<RealtimeConversationManager>,
      pub(crate) active_turn: Mutex<Option<ActiveTurn>>,
 +    pub(crate) turn_pause_state: watch::Sender<bool>,
++    pub(crate) turn_pause_boundary_state: watch::Sender<bool>,
      pub(crate) async_hook_results: async_channel::Receiver<HookCompletedEvent>,
      pub(crate) input_queue: InputQueue,
      pub(crate) guardian_review_session: GuardianReviewSessionManager,
-@@ -1305,6 +1306,7 @@ impl Session {
+@@ -1305,6 +1307,8 @@ impl Session {
                  turn_environments: Arc::clone(&turn_environments),
              };
              let (mcp_prewarm_tx, mcp_prewarm_rx) = async_channel::bounded(1);
 +            let (turn_pause_state, _) = watch::channel(false);
++            let (turn_pause_boundary_state, _) = watch::channel(false);
              let sess = Arc::new(Session {
                  thread_id,
                  installation_id,
-@@ -1323,6 +1325,7 @@ impl Session {
+@@ -1323,6 +1327,8 @@ impl Session {
                  mcp_prewarm_task: std::sync::Mutex::new(None),
                  conversation: Arc::new(RealtimeConversationManager::new()),
                  active_turn: Mutex::new(None),
 +                turn_pause_state,
++                turn_pause_boundary_state,
                  async_hook_results,
                  input_queue: InputQueue::new(),
                  guardian_review_session: GuardianReviewSessionManager::default(),
 diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
-index 9a90659..f95cb36 100644
+index 9a90659060b5ba942e3e3c00acad0428686c2203..a2d8f67f82c431e2f14a38e06b95224e8c9eef08 100644
 --- a/codex-rs/core/src/session/tests.rs
 +++ b/codex-rs/core/src/session/tests.rs
-@@ -5935,6 +5935,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -5935,6 +5935,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          turn_environments: Arc::clone(&turn_environments),
      };
  
 +    let (turn_pause_state, _) = watch::channel(false);
++    let (turn_pause_boundary_state, _) = watch::channel(false);
      let session = Session {
          thread_id,
          installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
-@@ -5954,6 +5955,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+@@ -5954,6 +5956,8 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
          mcp_prewarm_task: std::sync::Mutex::new(None),
          conversation: Arc::new(RealtimeConversationManager::new()),
          active_turn: Mutex::new(None),
 +        turn_pause_state,
++        turn_pause_boundary_state,
          async_hook_results,
          input_queue: super::input_queue::InputQueue::new(),
          guardian_review_session: crate::guardian::GuardianReviewSessionManager::default(),
-@@ -8132,6 +8134,7 @@ where
+@@ -8132,6 +8136,8 @@ where
          turn_environments: Arc::clone(&turn_environments),
      };
  
 +    let (turn_pause_state, _) = watch::channel(false);
++    let (turn_pause_boundary_state, _) = watch::channel(false);
      let session = Arc::new(Session {
          thread_id,
          installation_id: "11111111-1111-4111-8111-111111111111".to_string(),
-@@ -8151,6 +8154,7 @@ where
+@@ -8151,6 +8157,8 @@ where
          mcp_prewarm_task: std::sync::Mutex::new(None),
          conversation: Arc::new(RealtimeConversationManager::new()),
          active_turn: Mutex::new(None),
 +        turn_pause_state,
++        turn_pause_boundary_state,
          async_hook_results,
          input_queue: super::input_queue::InputQueue::new(),
          guardian_review_session: crate::guardian::GuardianReviewSessionManager::default(),
 diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
-index 7ff56e4..bce0830 100644
+index 7ff56e4da33d2dbcff69a3d92dbc7f6df467cdb7..da34fecc71d93eb115fb177eb81a92908a56ff76 100644
 --- a/codex-rs/core/src/session/turn.rs
 +++ b/codex-rs/core/src/session/turn.rs
-@@ -136,6 +136,25 @@ use tracing::warn;
+@@ -136,6 +136,34 @@ use tracing::warn;
  
  const POST_SAMPLING_TOKEN_ESTIMATE_TARGET: &str = "codex_core::post_sampling_token_estimate";
  
 +async fn wait_for_turn_resume(
++    sess: &Session,
 +    turn_pause_state: &mut tokio::sync::watch::Receiver<bool>,
 +    cancellation_token: &CancellationToken,
 +) -> CodexResult<()> {
-+    while *turn_pause_state.borrow() {
++    if *turn_pause_state.borrow() {
++        sess.flush_rollout().await?;
++        sess.set_turn_pause_boundary_reached(true);
++    }
++    let result = loop {
++        if !*turn_pause_state.borrow() {
++            break Ok(());
++        }
 +        tokio::select! {
 +            changed = turn_pause_state.changed() => {
 +                if changed.is_err() {
-+                    return Err(CodexErr::TurnAborted);
++                    break Err(CodexErr::TurnAborted);
 +                }
 +            }
 +            _ = cancellation_token.cancelled() => {
-+                return Err(CodexErr::TurnAborted);
++                break Err(CodexErr::TurnAborted);
 +            }
 +        }
-+    }
-+    Ok(())
++    };
++    sess.set_turn_pause_boundary_reached(false);
++    result
 +}
 +
  /// Takes initial turn input and runs a loop where, at each sampling request,
  /// the model replies with either:
  ///
-@@ -278,7 +297,9 @@ pub(crate) async fn run_turn(
+@@ -278,7 +306,9 @@ pub(crate) async fn run_turn(
      // 2. After auto-compact, when model/tool continuation needs to resume before any steer.
  
      let mut next_step_context = Some(first_step_context);
 +    let mut turn_pause_state = sess.subscribe_turn_pause_state();
      loop {
-+        wait_for_turn_resume(&mut turn_pause_state, &cancellation_token).await?;
++        wait_for_turn_resume(sess.as_ref(), &mut turn_pause_state, &cancellation_token).await?;
          // Note that pending_input would be something like a message the user
          // submitted through the UI while the model was running. Though the UI
          // may support this, the model might not.
 diff --git a/codex-rs/core/src/session/turn_tests.rs b/codex-rs/core/src/session/turn_tests.rs
-index d628f60..0015d16 100644
+index d628f601f81aaa510223793b6aab4186e3d2d56c..5f6b764fed87f21f193eec1577cf2ce70dd11793 100644
 --- a/codex-rs/core/src/session/turn_tests.rs
 +++ b/codex-rs/core/src/session/turn_tests.rs
-@@ -58,6 +58,24 @@ fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
+@@ -58,6 +58,39 @@ fn post_sampling_token_estimate_is_disabled_by_always_on_sinks() {
      });
  }
  
 +#[tokio::test]
 +async fn paused_turn_waits_for_resume_at_boundary() {
-+    let (pause_tx, mut pause_rx) = tokio::sync::watch::channel(true);
++    let (session, _) = crate::session::tests::make_session_and_context().await;
++    let session = Arc::new(session);
++    session.set_turn_paused(true);
++    let mut pause_rx = session.subscribe_turn_pause_state();
++    let mut pause_boundary = session.subscribe_turn_pause_boundary_state();
 +    let cancellation_token = CancellationToken::new();
-+    let wait =
-+        tokio::spawn(async move { wait_for_turn_resume(&mut pause_rx, &cancellation_token).await });
++    let waiting_session = Arc::clone(&session);
++    let wait = tokio::spawn(async move {
++        wait_for_turn_resume(&waiting_session, &mut pause_rx, &cancellation_token).await
++    });
 +
-+    tokio::task::yield_now().await;
++    tokio::time::timeout(std::time::Duration::from_secs(1), async {
++        while !*pause_boundary.borrow() {
++            pause_boundary
++                .changed()
++                .await
++                .expect("pause boundary sender should remain available");
++        }
++    })
++    .await
++    .expect("pause gate should acknowledge its durable boundary");
 +    assert!(!wait.is_finished());
-+    pause_tx.send_replace(false);
++    session.set_turn_paused(false);
 +
 +    tokio::time::timeout(std::time::Duration::from_secs(1), wait)
 +        .await
@@ -293,7 +380,7 @@ index d628f60..0015d16 100644
  async fn plan_mode_uses_contributed_turn_item_for_last_agent_message() {
      let (mut session, turn_context) = crate::session::tests::make_session_and_context().await;
 diff --git a/codex-rs/core/src/tasks/mod.rs b/codex-rs/core/src/tasks/mod.rs
-index cc71acb..d4f8e58 100644
+index cc71acb3b590ee88e87d9be1a2be89fa40cc156d..d4f8e581751d68f16663d2d0af263ee4e3fdf175 100644
 --- a/codex-rs/core/src/tasks/mod.rs
 +++ b/codex-rs/core/src/tasks/mod.rs
 @@ -547,6 +547,7 @@ impl Session {
@@ -326,22 +413,20 @@ index cc71acb..d4f8e58 100644
  
      pub(crate) async fn close_unified_exec_processes(&self) {
 diff --git a/codex-rs/protocol/src/protocol.rs b/codex-rs/protocol/src/protocol.rs
-index 2ae44ae..301415e 100644
+index 2ae44aea087d623dabe45cfcb84ca7b21b22000a..9c2d4e906abc04af488b1c806449e768ac7d716b 100644
 --- a/codex-rs/protocol/src/protocol.rs
 +++ b/codex-rs/protocol/src/protocol.rs
-@@ -543,6 +543,11 @@ pub enum Op {
+@@ -543,6 +543,9 @@ pub enum Op {
      /// This server sends [`EventMsg::TurnAborted`] in response.
      Interrupt,
  
 +    /// Hold the active turn at the next model/tool boundary until resumed.
-+    SetTurnPaused {
-+        paused: bool,
-+    },
++    SetTurnPaused { paused: bool },
 +
      /// Terminate all running background terminal processes for this thread.
      /// Use this when callers intentionally want to stop long-lived background shells.
      CleanBackgroundTerminals,
-@@ -863,6 +868,7 @@ impl Op {
+@@ -863,6 +866,7 @@ impl Op {
      pub fn kind(&self) -> &'static str {
          match self {
              Self::Interrupt => "interrupt",

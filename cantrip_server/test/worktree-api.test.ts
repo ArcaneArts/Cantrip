@@ -4,6 +4,7 @@ import path from "node:path";
 
 import {
   cantripCliCommandResultSchema,
+  chatPauseStateSchema,
   chatSummarySchema,
   chatMessageListSchema,
   codeSessionListSchema,
@@ -62,6 +63,7 @@ import {
   type WorkerWorktreeSummary,
   type WorkerCommand,
   type GitManagedOperationContext,
+  type ThreadGoal,
 } from "@cantrip/protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -74,7 +76,10 @@ import {
   type WorkerCommandBus,
 } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(
   path.join(tmpdir(), "cantrip-worktree-api-"),
@@ -259,6 +264,12 @@ const gitRefsCommands: Array<
 > = [];
 const chatTurnCommands: Array<Extract<WorkerCommand, { type: "chat.turn" }>> =
   [];
+const chatPauseCommands: Array<
+  Extract<WorkerCommand, { type: "chat.pause.set" }> & {
+    timeoutMs: number | null | undefined;
+  }
+> = [];
+let activeChatGoal: ThreadGoal | null = null;
 let cliInvocation: {
   arguments: Record<string, unknown>;
   command: "worktree.switch";
@@ -1470,8 +1481,42 @@ const workerBridge = {
         return {
           threadId: command.threadId ?? `thread-${command.cwd}`,
         };
+      case "chat.pause.set":
+        chatPauseCommands.push({ ...command, timeoutMs: options?.timeoutMs });
+        return { paused: command.paused };
+      case "chat.message.protect":
+        return {
+          id: command.message.id,
+          classification: {
+            role: command.message.role,
+            mode: command.message.mode ?? "default",
+            attachmentIds: [],
+          },
+          protectedContent: {
+            formatVersion: 1,
+            keyRevision: 1,
+            envelope: {
+              version: 1,
+              algorithm: "AES-256-GCM",
+              keyRevision: 1,
+              nonce: "AAAAAAAAAAAAAAAA",
+              ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+            },
+          },
+          reasoningEffort: command.message.reasoningEffort ?? null,
+          idempotencyKey: command.message.idempotencyKey,
+        };
+      case "chat.goal.get":
+        return { goal: activeChatGoal };
       case "chat.turn":
         chatTurnCommands.push(command);
+        if (
+          command.prompt.startsWith("Continue working toward the active goal")
+        ) {
+          activeChatGoal = activeChatGoal
+            ? { ...activeChatGoal, status: "paused" }
+            : null;
+        }
         if (cliInvocation) {
           const invocation = cliInvocation;
           cliInvocation = null;
@@ -3867,5 +3912,128 @@ describe.sequential("server worktree control plane", () => {
     });
     expect(reconcile.statusCode).toBe(503);
     connected = true;
+  });
+
+  it("keeps live resumes in-turn and recovers durable pauses after restart", async () => {
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        ...protectedChatFields(),
+        worktreeMode: "agent-managed",
+      },
+    );
+    expect(chat).not.toBeNull();
+    const started = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat!.id,
+      "agent",
+      "Durable pause recovery",
+    );
+    expect(started).not.toBeNull();
+    const storedThreadId = "thread-durable-pause-recovery";
+    const settings = await database.repository.getSettings(LOCAL_USER_ID);
+    const routeId = settings.models.find(
+      ({ id }) => id === settings.preferences.defaultModelId,
+    )!.routes[0]!.id;
+    await database.repository.updateChatRuntime(
+      chat!.id,
+      started!.workerId,
+      started!.worktreeId,
+      storedThreadId,
+      routeId,
+      "running",
+    );
+
+    activeChatGoal = {
+      threadId: storedThreadId,
+      objective: "Continue after Cantrip restarts",
+      status: "active",
+      tokenBudget: null,
+      tokensUsed: 1,
+      timeUsedSeconds: 1,
+      createdAt: 1_786_665_600,
+      updatedAt: 1_786_665_601,
+    };
+    await database.repository.setChatStatus(chat!.id, "running");
+    expect(
+      chatPauseStateSchema.parse(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: `/api/chats/${chat!.id}/pause`,
+            payload: { paused: true },
+          })
+        ).json(),
+      ),
+    ).toEqual({ paused: true });
+    expect(chatPauseCommands.at(-1)).toMatchObject({
+      chatId: chat!.id,
+      paused: true,
+      timeoutMs: null,
+    });
+
+    const turnsBeforeLiveResume = chatTurnCommands.length;
+    expect(
+      chatPauseStateSchema.parse(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: `/api/chats/${chat!.id}/pause`,
+            payload: { paused: false },
+          })
+        ).json(),
+      ),
+    ).toEqual({ paused: false });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(chatTurnCommands).toHaveLength(turnsBeforeLiveResume);
+
+    expect(
+      chatPauseStateSchema.parse(
+        (
+          await app.inject({
+            method: "PATCH",
+            url: `/api/chats/${chat!.id}/pause`,
+            payload: { paused: true },
+          })
+        ).json(),
+      ),
+    ).toEqual({ paused: true });
+    await app.close();
+    database = await connectDatabase(config);
+    app = await buildApp({
+      config,
+      database,
+      logger: false,
+      workerBridge,
+    });
+
+    expect(
+      await database.repository.getChatExecutionContext(
+        LOCAL_USER_ID,
+        chat!.id,
+      ),
+    ).toMatchObject({
+      automationPaused: true,
+      status: "idle",
+      threadId: storedThreadId,
+    });
+    const turnsBeforeRestartResume = chatTurnCommands.length;
+    const restartResume = await app.inject({
+      method: "PATCH",
+      url: `/api/chats/${chat!.id}/pause`,
+      payload: { paused: false },
+    });
+    expect(restartResume.statusCode, restartResume.body).toBe(200);
+    expect(chatPauseStateSchema.parse(restartResume.json())).toEqual({
+      paused: false,
+    });
+    await expect
+      .poll(() => chatTurnCommands.length)
+      .toBe(turnsBeforeRestartResume + 1);
+    expect(chatTurnCommands.at(-1)).toMatchObject({
+      chatId: chat!.id,
+      threadId: storedThreadId,
+    });
   });
 });

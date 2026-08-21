@@ -9796,7 +9796,19 @@ export class ServerRepository {
         .update(schema.chats)
         .set({ status: "failed", updatedAt: now })
         .where(
-          inArray(schema.chats.status, ["running", "waiting-for-approval"]),
+          and(
+            inArray(schema.chats.status, ["running", "waiting-for-approval"]),
+            eq(schema.chats.automationPaused, false),
+          ),
+        );
+      await transaction
+        .update(schema.chats)
+        .set({ status: "idle", updatedAt: now })
+        .where(
+          and(
+            inArray(schema.chats.status, ["running", "waiting-for-approval"]),
+            eq(schema.chats.automationPaused, true),
+          ),
         );
       await transaction
         .update(schema.chatRuntimeSessions)

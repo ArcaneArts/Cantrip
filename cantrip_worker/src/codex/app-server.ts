@@ -369,6 +369,7 @@ type WorkspaceSnapshot = Map<string, WorkspaceFileState>;
 const execFileAsync = promisify(execFile);
 const CODEX_STARTUP_TIMEOUT_MS = 2 * 60_000;
 const CODEX_RPC_TIMEOUT_MS = 2 * 60_000;
+const CODEX_PAUSE_BOUNDARY_TIMEOUT_MS = 24 * 60 * 60_000;
 const COMPLETED_TURN_RECONCILIATION_TIMEOUT_MS = 5_000;
 const CODEX_DIAGNOSTIC_LIMIT = 100;
 const CUSTOMIZATION_STATUS_LIMIT = 100;
@@ -2772,11 +2773,15 @@ export class CodexAppServer implements CodexRuntime {
       return false;
     }
     try {
-      await this.request("turn/pause", {
-        threadId: active[1].threadId,
-        turnId: active[0],
-        paused,
-      });
+      await this.request(
+        "turn/pause",
+        {
+          threadId: active[1].threadId,
+          turnId: active[0],
+          paused,
+        },
+        CODEX_PAUSE_BOUNDARY_TIMEOUT_MS,
+      );
     } catch (error) {
       if (!this.#activeTurns.has(active[0])) return false;
       throw error;
