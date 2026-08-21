@@ -7,12 +7,14 @@ import {
   appLiveServerMessageSchema,
   chatMessageOpaqueSummarySchema,
   codexMcpOauthStartResultSchema,
+  providerAuthLiveStatusSchema,
   unprobedCodexRuntimeReport,
   workerLogStreamServerMessageSchema,
 } from "@cantrip/protocol";
 import type {
   AppLiveServerMessage,
   GitManagedOperationWorkerState,
+  WorkerCommand,
   WorkerNotification,
 } from "@cantrip/protocol";
 import {
@@ -40,6 +42,10 @@ import {
   protectedProjectFields,
   protectedTerminalFields,
 } from "./private-label-fixture.js";
+import {
+  protectedSecretEnvelopeFixture,
+  providerCredentialMetadataFixture,
+} from "./protected-provider-credential-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-live-api-"));
 const config: ServerConfig = {
@@ -102,6 +108,11 @@ let oauthStatusReads = 0;
 let chatSyncReads = 0;
 let gitOperationInspections = 0;
 let gitOperationInspection: GitManagedOperationWorkerState | null = null;
+let providerLoginCommand: Extract<
+  WorkerCommand,
+  { type: "codex.auth.login.start" }
+> | null = null;
+let providerCredentialCaptureRequests = 0;
 let workerNotificationListener: WorkerNotificationListener | null = null;
 const workerNotificationListeners = new Set<WorkerNotificationListener>();
 let workerLogStreamStarts = 0;
@@ -180,6 +191,34 @@ const workerBridge: WorkerCommandBus = {
           throw new Error("No Git operation inspection was configured.");
         }
         return gitOperationInspection;
+      case "codex.auth.login.start":
+        providerLoginCommand = command;
+        return {
+          loginId: "provider-login-one",
+          verificationUrl: "https://auth.openai.com/codex/device",
+          userCode: "SAFE-1234",
+        };
+      case "provider.auth.legacy.capture":
+        providerCredentialCaptureRequests += 1;
+        return {
+          status: "available",
+          credential: {
+            subjectBlindIndex: randomBytes(32).toString("base64url"),
+            protectedCredential: {
+              formatVersion: 1,
+              keyRevision: 1,
+              envelope: {
+                version: 1,
+                algorithm: "AES-256-GCM",
+                keyRevision: 1,
+                nonce: randomBytes(12).toString("base64url"),
+                ciphertext: randomBytes(32).toString("base64url"),
+              },
+            },
+          },
+          metadata: providerCredentialMetadataFixture(),
+          portableAuth: false,
+        };
       case "workflow.trigger.prepare.protected":
         return {
           status: "accepted",
@@ -978,6 +1017,157 @@ describe.sequential("application live WebSocket", () => {
       { timeout: 2_500 },
     );
     expect(oauthStatusReads).toBe(1);
+
+    const provider = await database.repository.createModelProvider(
+      LOCAL_USER_ID,
+      {
+        id: "00000000-0000-4000-8000-000000000991",
+        name: "Live ChatGPT",
+        kind: "chatgpt",
+        baseUrl: "https://api.openai.com/v1",
+        initialAccount: {
+          id: "00000000-0000-4000-8000-000000000992",
+          protectedLabel: protectedSecretEnvelopeFixture("L"),
+        },
+        protectedApiKey: null,
+      },
+    );
+    const providerAccount = provider.accounts[0];
+    if (!providerAccount) throw new Error("Provider account was not created.");
+    providerLoginCommand = null;
+    const providerEventStart = messages.length;
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/api/codex/auth/device-login",
+      payload: {
+        workerId: liveTestHeartbeat.workerId,
+        providerId: provider.id,
+        accountId: providerAccount.id,
+      },
+    });
+    expect(loginResponse.statusCode).toBe(200);
+    expect(loginResponse.json()).toMatchObject({ userCode: "SAFE-1234" });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/codex/auth/status?providerId=${provider.id}&accountId=${providerAccount.id}&workerId=${liveTestHeartbeat.workerId}`,
+        })
+      ).json(),
+    ).toMatchObject({ authenticated: false, loginPending: true });
+    expect(providerCredentialCaptureRequests).toBe(0);
+    await vi.waitFor(() => expect(providerLoginCommand).not.toBeNull());
+    const loginCommand = providerLoginCommand;
+    if (!loginCommand) throw new Error("Provider login was not observed.");
+    expect(loginCommand).toMatchObject({
+      providerId: provider.id,
+      providerAccountId: providerAccount.id,
+      providerKind: "chatgpt",
+    });
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(providerEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "provider-auth" &&
+              message.entityId === providerAccount.id,
+          ),
+      ).toMatchObject({
+        action: "status",
+        payload: { status: { state: "pending" } },
+      }),
+    );
+
+    const unauthorizedEventStart = messages.length;
+    await emitWorkerNotification({
+      type: "provider.auth.status.observed",
+      observationId: "00000000-0000-4000-8000-000000000999",
+      providerId: provider.id,
+      providerAccountId: providerAccount.id,
+      providerKind: "chatgpt",
+      sequence: 99,
+      observedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      status: {
+        state: "authenticated",
+        authMode: "chatgpt",
+        email: "attacker@example.com",
+        planType: "plus",
+        weeklyUsage: null,
+        failureCode: null,
+      },
+    });
+    expect(
+      messages
+        .slice(unauthorizedEventStart)
+        .some(
+          (message) =>
+            message.type === "event" && message.resource === "provider-auth",
+        ),
+    ).toBe(false);
+
+    const authenticatedEventStart = messages.length;
+    await emitWorkerNotification({
+      type: "provider.auth.status.observed",
+      observationId: loginCommand.observationId,
+      providerId: provider.id,
+      providerAccountId: providerAccount.id,
+      providerKind: "chatgpt",
+      sequence: 1,
+      observedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+      status: {
+        state: "authenticated",
+        authMode: "chatgpt",
+        email: "person@example.com",
+        planType: "plus",
+        weeklyUsage: { usedPercent: 25, resetsAt: 1_800_000_000 },
+        failureCode: null,
+      },
+    });
+    await vi.waitFor(() =>
+      expect(
+        messages
+          .slice(authenticatedEventStart)
+          .find(
+            (message) =>
+              message.type === "event" &&
+              message.resource === "provider-auth" &&
+              message.entityId === providerAccount.id,
+          ),
+      ).toMatchObject({
+        action: "status",
+        payload: { status: { state: "authenticated" } },
+      }),
+    );
+    const authenticatedEvent = messages
+      .slice(authenticatedEventStart)
+      .find(
+        (message) =>
+          message.type === "event" &&
+          message.resource === "provider-auth" &&
+          message.entityId === providerAccount.id,
+      );
+    if (authenticatedEvent?.type !== "event") {
+      throw new Error("Provider auth live event was not published.");
+    }
+    expect(
+      providerAuthLiveStatusSchema.parse(authenticatedEvent.payload).status,
+    ).toMatchObject({ state: "authenticated", authMode: "chatgpt" });
+    expect(providerCredentialCaptureRequests).toBe(1);
+    expect(JSON.stringify(authenticatedEvent.payload)).not.toMatch(
+      /SAFE-1234|accessToken|refreshToken|deviceCode|userCode|privateKey|protectedCredential/u,
+    );
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/codex/auth/status?providerId=${provider.id}&accountId=${providerAccount.id}`,
+        })
+      ).json(),
+    ).toMatchObject({ authenticated: true, authMode: "chatgpt" });
 
     const logMessages: ReturnType<
       typeof workerLogStreamServerMessageSchema.parse

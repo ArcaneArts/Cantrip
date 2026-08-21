@@ -187,6 +187,7 @@ export class WorkerConnection {
       undefined,
     private readonly handleTransportDisconnect: () => void = () => undefined,
     private readonly keepaliveIntervalMs = DEFAULT_KEEPALIVE_INTERVAL_MS,
+    private readonly handleTransportConnect: () => void = () => undefined,
   ) {}
 
   start(): void {
@@ -279,6 +280,7 @@ export class WorkerConnection {
     });
     this.#disconnectStartedAtMs = null;
     this.#connectAttempt = 0;
+    this.handleTransportConnect();
   }
 
   private handleSocketError(error: Error): void {

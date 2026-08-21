@@ -60,6 +60,7 @@ import {
   workerLogStreamRenewResultSchema,
   codexAuthStatusSchema,
   codexDeviceLoginSchema,
+  providerAuthLiveStatusSchema,
   codexCustomizationInventorySchema,
   codexExternalImportApplySchema,
   codexExternalImportPreviewSchema,
@@ -463,6 +464,7 @@ import type {
   GitOperationObservationState,
   ProjectWorktreeSummary,
   ProviderQuotaSnapshot,
+  ProviderAuthLiveStatus,
   ReasoningEffort,
   WorkerNotification,
   WorkerCommand,
@@ -1402,6 +1404,73 @@ export async function buildApp({
   >();
   let codeGraphStatusRevision = Date.now() * 1_000;
   let gitLiveRevision = Date.now() * 1_000;
+  let providerAuthLiveRevision = Date.now() * 1_000;
+  const activeProviderAuthObservations = new Map<
+    string,
+    {
+      accountId: string;
+      expiresAt: number;
+      lastSequence: number;
+      ownerId: string;
+      providerId: string;
+      providerKind: "chatgpt" | "grok";
+      startedAt: number;
+      workerId: string;
+    }
+  >();
+  const nextProviderAuthLiveRevision = (): number => {
+    providerAuthLiveRevision = Math.max(
+      providerAuthLiveRevision + 1,
+      Date.now() * 1_000,
+    );
+    return providerAuthLiveRevision;
+  };
+  const publishProviderAuthStatus = (
+    status: Omit<ProviderAuthLiveStatus, "revision">,
+  ): ProviderAuthLiveStatus => {
+    const payload = providerAuthLiveStatusSchema.parse({
+      ...status,
+      revision: nextProviderAuthLiveRevision(),
+    });
+    if (livePublishingEnabled) {
+      liveHub.publish({
+        ownerId: applicationOwnerId(),
+        scope: { kind: "current-user" },
+        resource: "provider-auth",
+        action: "status",
+        entityId: payload.providerAccountId,
+        revision: payload.revision,
+        payload: appLiveEventPayloadSchema.parse(payload),
+      });
+    }
+    return payload;
+  };
+  const activeProviderAuthObservation = (
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+  ) =>
+    [...activeProviderAuthObservations.entries()].find(
+      ([, observation]) =>
+        observation.ownerId === ownerId &&
+        observation.providerId === providerId &&
+        observation.accountId === accountId,
+    ) ?? null;
+  const removeProviderAuthObservations = (
+    ownerId: string,
+    providerId: string,
+    accountId: string,
+  ): void => {
+    for (const [observationId, observation] of activeProviderAuthObservations) {
+      if (
+        observation.ownerId === ownerId &&
+        observation.providerId === providerId &&
+        observation.accountId === accountId
+      ) {
+        activeProviderAuthObservations.delete(observationId);
+      }
+    }
+  };
   const nextGitLiveRevision = (): number => {
     gitLiveRevision = Math.max(gitLiveRevision + 1, Date.now() * 1_000);
     return gitLiveRevision;
@@ -1939,6 +2008,96 @@ export async function buildApp({
     }
     if (notification.type === "git.operation.observed") {
       scheduleGitOperationObservation(ownerId, workerId, notification);
+      return;
+    }
+    if (notification.type === "provider.auth.status.observed") {
+      const active = activeProviderAuthObservations.get(
+        notification.observationId,
+      );
+      const observedAt = Date.parse(notification.observedAt);
+      if (
+        !active ||
+        active.ownerId !== ownerId ||
+        active.workerId !== workerId ||
+        active.providerId !== notification.providerId ||
+        active.accountId !== notification.providerAccountId ||
+        active.providerKind !== notification.providerKind ||
+        (notification.status.state === "authenticated" &&
+          notification.status.authMode !== notification.providerKind) ||
+        observedAt < active.startedAt - 5 * 60_000 ||
+        observedAt > Date.now() + 5 * 60_000 ||
+        notification.sequence <= active.lastSequence
+      ) {
+        return;
+      }
+      const [worker, account] = await Promise.all([
+        repository.getWorker(ownerId, workerId),
+        resolveAccountAuthTarget(
+          notification.providerId,
+          notification.providerAccountId,
+        ),
+      ]);
+      if (!worker || account.providerKind !== notification.providerKind) {
+        return;
+      }
+      active.lastSequence = notification.sequence;
+      active.expiresAt = Math.min(
+        Date.parse(notification.expiresAt),
+        Date.now() + 16 * 60_000,
+      );
+      let safeStatus = notification.status;
+      if (notification.status.state === "authenticated") {
+        const capture = await providerCredentialMigrations.captureAccount(
+          ownerId,
+          workerId,
+          notification.providerId,
+          notification.providerAccountId,
+        );
+        if (capture.captured + capture.alreadyCaptured === 0) {
+          safeStatus = {
+            state: "failed",
+            authMode: null,
+            email: null,
+            planType: null,
+            weeklyUsage: null,
+            failureCode: "credential-capture-failed",
+          };
+        } else {
+          await repository.recordModelProviderAccountStatus(
+            notification.providerAccountId,
+            workerId,
+            {
+              authenticated: true,
+              email: notification.status.email,
+              planType: notification.status.planType,
+              weeklyUsage: notification.status.weeklyUsage,
+            },
+          );
+          void loadProviderCatalog(
+            ownerId,
+            notification.providerId,
+            workerId,
+            true,
+            notification.providerAccountId,
+            "account-auth-live",
+          ).catch(() => undefined);
+        }
+      }
+      if (safeStatus.state !== "pending") {
+        publishLiveInvalidation("settings");
+      }
+      publishProviderAuthStatus({
+        providerId: notification.providerId,
+        providerAccountId: notification.providerAccountId,
+        providerKind: notification.providerKind,
+        workerId,
+        observedAt: notification.observedAt,
+        expiresAt: notification.expiresAt,
+        status: safeStatus,
+      });
+      if (safeStatus.state !== "pending") {
+        activeProviderAuthObservations.delete(notification.observationId);
+      }
       return;
     }
     if (notification.type === "diagnostics.logs.observed") return;
@@ -11389,6 +11548,7 @@ export async function buildApp({
         {
           type: "codex.auth.logout",
           providerId,
+          providerAccountId: account.accountId,
           providerKind: account.providerKind,
           credentialHomeKey: account.credentialHomeKey,
         },
@@ -11481,6 +11641,39 @@ export async function buildApp({
         ? accounts.find(({ id }) => id === accountId)
         : accounts.find(({ enabled }) => enabled);
       if (!account) throw new Error("Provider account not found.");
+      const activeObservation = activeProviderAuthObservation(
+        applicationOwnerId(),
+        providerId,
+        account.id,
+      );
+      if (activeObservation) {
+        const [observationId, active] = activeObservation;
+        if (active.expiresAt > Date.now()) {
+          return reply.send(
+            codexAuthStatusSchema.parse({
+              authenticated: false,
+              authMode: null,
+              email: null,
+              planType: null,
+              weeklyUsage: null,
+              loginPending: true,
+              loginError: null,
+            }),
+          );
+        }
+        activeProviderAuthObservations.delete(observationId);
+        return reply.send(
+          codexAuthStatusSchema.parse({
+            authenticated: false,
+            authMode: null,
+            email: null,
+            planType: null,
+            weeklyUsage: null,
+            loginPending: false,
+            loginError: "The provider sign-in code expired.",
+          }),
+        );
+      }
       let captureError: string | null = null;
       if (
         account.credentialState !== "signed-in" &&
@@ -11505,6 +11698,7 @@ export async function buildApp({
           providerId,
         );
         account = refreshed?.find(({ id }) => id === account!.id) ?? account;
+        publishLiveInvalidation("settings");
       }
       const globalStatus = providerAccountAuthStatus(provider.kind, account);
       const status =
@@ -11549,24 +11743,74 @@ export async function buildApp({
         repository.getWorker(applicationOwnerId(), workerId),
       ]);
       if (!worker) throw new Error("Worker not found.");
-      const login = codexDeviceLoginSchema.parse(
-        await bridge.request(workerId, {
-          type: "codex.auth.login.start",
-          providerId,
-          providerKind: account.providerKind,
-          credentialHomeKey: account.credentialHomeKey,
-        }),
-      );
-      await repository.recordModelProviderAccountStatus(
+      removeProviderAuthObservations(
+        applicationOwnerId(),
+        providerId,
         account.accountId,
-        workerId,
-        {
-          authenticated: false,
-          email: null,
-          planType: null,
-          weeklyUsage: null,
-        },
       );
+      const observationId = randomUUID();
+      const startedAt = Date.now();
+      const expiresAt = startedAt + 15 * 60_000;
+      activeProviderAuthObservations.set(observationId, {
+        accountId: account.accountId,
+        expiresAt,
+        lastSequence: 0,
+        ownerId: applicationOwnerId(),
+        providerId,
+        providerKind: account.providerKind,
+        startedAt,
+        workerId,
+      });
+      while (activeProviderAuthObservations.size > 4_096) {
+        const oldest = activeProviderAuthObservations.keys().next().value;
+        if (oldest === undefined) break;
+        activeProviderAuthObservations.delete(oldest);
+      }
+      let login: ReturnType<typeof codexDeviceLoginSchema.parse>;
+      try {
+        login = codexDeviceLoginSchema.parse(
+          await bridge.request(workerId, {
+            type: "codex.auth.login.start",
+            providerId,
+            providerAccountId: account.accountId,
+            providerKind: account.providerKind,
+            credentialHomeKey: account.credentialHomeKey,
+            observationId,
+          }),
+        );
+      } catch (error) {
+        activeProviderAuthObservations.delete(observationId);
+        throw error;
+      }
+      if (activeProviderAuthObservations.has(observationId)) {
+        await repository.recordModelProviderAccountStatus(
+          account.accountId,
+          workerId,
+          {
+            authenticated: false,
+            email: null,
+            planType: null,
+            weeklyUsage: null,
+          },
+        );
+        publishLiveInvalidation("settings");
+        publishProviderAuthStatus({
+          providerId,
+          providerAccountId: account.accountId,
+          providerKind: account.providerKind,
+          workerId,
+          observedAt: new Date(startedAt).toISOString(),
+          expiresAt: new Date(expiresAt).toISOString(),
+          status: {
+            state: "pending",
+            authMode: null,
+            email: null,
+            planType: null,
+            weeklyUsage: null,
+            failureCode: null,
+          },
+        });
+      }
       return reply.send(login);
     } catch (error) {
       const message = errorMessage(error);
@@ -11595,6 +11839,28 @@ export async function buildApp({
         providerId,
       });
       if (!signedOut) throw new Error("Provider account not found.");
+      removeProviderAuthObservations(
+        applicationOwnerId(),
+        providerId,
+        account.accountId,
+      );
+      publishLiveInvalidation("settings");
+      publishProviderAuthStatus({
+        providerId,
+        providerAccountId: account.accountId,
+        providerKind: account.providerKind,
+        workerId: workerId ?? "server",
+        observedAt: new Date().toISOString(),
+        expiresAt: null,
+        status: {
+          state: "signed-out",
+          authMode: null,
+          email: null,
+          planType: null,
+          weeklyUsage: null,
+          failureCode: null,
+        },
+      });
       return reply.code(204).send();
     } catch (error) {
       const message = errorMessage(error);

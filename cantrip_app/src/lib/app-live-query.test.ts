@@ -3,6 +3,7 @@ import { generateAccountMasterKey } from "@cantrip/crypto";
 import type {
   AppLiveServerMessage,
   ChatMessage,
+  CodexAuthStatus,
   GitConflictList,
   GitManagedOperationResponse,
   GitStatus,
@@ -816,6 +817,77 @@ describe("application live query bridge", () => {
       queryClient.getQueryData<ChatMessage[]>(["messages", "chat-one"])?.[0]
         ?.content,
     ).toEqual([{ type: "text", text: "newest", phase: "commentary" }]);
+  });
+
+  it("applies safe provider auth lifecycle state and rejects stale revisions", async () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue();
+    const bridge = new AppLiveQueryBridge(queryClient);
+    const authEvent = (
+      revision: number,
+      state: "authenticated" | "expired" | "pending" | "signed-out",
+    ): AppLiveEvent => ({
+      ...event({
+        entityId: "account-one",
+        resource: "provider-auth",
+        scope: { kind: "current-user" },
+      }),
+      action: "status",
+      revision,
+      payload: {
+        providerId: "provider-one",
+        providerAccountId: "account-one",
+        providerKind: "chatgpt",
+        workerId: "worker-one",
+        revision,
+        observedAt: "2026-08-21T12:00:00.000Z",
+        expiresAt: "2026-08-21T12:15:00.000Z",
+        status: {
+          state,
+          authMode: state === "authenticated" ? "chatgpt" : null,
+          email: state === "authenticated" ? "person@example.com" : null,
+          planType: state === "authenticated" ? "plus" : null,
+          weeklyUsage: null,
+          failureCode: state === "expired" ? "authorization-expired" : null,
+        },
+      },
+    });
+    const queryKey = ["codex-auth", "provider-one", "account-one"] as const;
+
+    bridge.handleEvent(authEvent(1, "pending"));
+    expect(queryClient.getQueryData<CodexAuthStatus>(queryKey)).toMatchObject({
+      authenticated: false,
+      loginPending: true,
+    });
+    bridge.handleEvent(authEvent(2, "authenticated"));
+    bridge.handleEvent(authEvent(1, "pending"));
+    expect(queryClient.getQueryData<CodexAuthStatus>(queryKey)).toMatchObject({
+      authenticated: true,
+      authMode: "chatgpt",
+      email: "person@example.com",
+      loginPending: false,
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+
+    bridge.handleEvent(authEvent(3, "expired"));
+    expect(queryClient.getQueryData<CodexAuthStatus>(queryKey)).toMatchObject({
+      authenticated: false,
+      loginPending: false,
+      loginError: "The provider sign-in code expired.",
+    });
+
+    await bridge.recoverScopes(
+      [{ kind: "current-user" }],
+      "server-epoch-changed",
+    );
+    bridge.handleEvent(authEvent(1, "signed-out"));
+    expect(queryClient.getQueryData<CodexAuthStatus>(queryKey)).toMatchObject({
+      authenticated: false,
+      loginPending: false,
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["codex-auth"] });
   });
 
   it("accepts a lower cursor after authoritative chat recovery", async () => {

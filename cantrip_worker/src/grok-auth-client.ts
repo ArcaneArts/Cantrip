@@ -64,6 +64,7 @@ export interface GrokAuthClientOptions {
   fetch?: typeof fetch;
   issuer?: string;
   now?: () => number;
+  onStatusChanged?: () => void;
   proxyBaseUrl?: string;
   sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
 }
@@ -148,6 +149,7 @@ export class GrokAuthClient {
   readonly #fetch: typeof fetch;
   readonly #issuer: string;
   readonly #now: () => number;
+  readonly #onStatusChanged: () => void;
   readonly #sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   readonly #subscription: GrokSubscriptionClient;
   #credential: StoredGrokCredential | null | undefined;
@@ -168,6 +170,7 @@ export class GrokAuthClient {
     this.#fetch = options.fetch ?? fetch;
     this.#issuer = (options.issuer ?? GROK_OAUTH_ISSUER).replace(/\/+$/u, "");
     this.#now = options.now ?? Date.now;
+    this.#onStatusChanged = options.onStatusChanged ?? (() => undefined);
     this.#sleep = options.sleep ?? defaultSleep;
     this.#subscription = new GrokSubscriptionClient(
       async (request) => {
@@ -230,12 +233,19 @@ export class GrokAuthClient {
     const abort = new AbortController();
     const pending = { abort, id: randomUUID() };
     this.#pendingLogin = pending;
+    this.#onStatusChanged();
     void this.#pollDeviceCode(response, abort.signal)
       .catch((error) => {
-        if (!abort.signal.aborted) this.#loginError = errorMessage(error);
+        if (!abort.signal.aborted) {
+          this.#loginError = errorMessage(error);
+          this.#onStatusChanged();
+        }
       })
       .finally(() => {
-        if (this.#pendingLogin === pending) this.#pendingLogin = null;
+        if (this.#pendingLogin === pending) {
+          this.#pendingLogin = null;
+          this.#onStatusChanged();
+        }
       });
     return codexDeviceLoginSchema.parse({
       loginId: pending.id,
@@ -255,6 +265,7 @@ export class GrokAuthClient {
     await unlink(this.#authPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== "ENOENT") throw error;
     });
+    this.#onStatusChanged();
   }
 
   async listModels(): Promise<GrokModelInventory> {
@@ -357,6 +368,7 @@ export class GrokAuthClient {
         credential = await this.#enrichProfile(credential);
         this.#credential = credential;
         this.#loginError = null;
+        this.#onStatusChanged();
         return;
       }
       if (payload.error === "authorization_pending") continue;
