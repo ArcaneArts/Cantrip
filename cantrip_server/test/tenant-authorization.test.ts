@@ -110,6 +110,7 @@ describe("hosted tenant authorization", () => {
           name: "First private provider",
           kind: "openai-compatible",
           baseUrl: "https://models.first.example/v1",
+          initialAccount: null,
           protectedApiKey: {
             formatVersion: 1,
             keyRevision: 1,
@@ -311,12 +312,8 @@ describe("hosted tenant authorization", () => {
           },
         }),
       ).toMatchObject({ statusCode: 404 });
-      const privateWorkspace = await database.repository.createProjectWorkspace(
-        first.userId,
-        {
-          name: "First private workspace",
-        },
-      );
+      const privateWorkspace =
+        await database.repository.ensureDefaultProjectWorkspace(first.userId);
       const secondPolicyCollection = secondPoliciesAfterCreate.json() as {
         collectionVersion: number;
         policies: Array<{ id: string }>;

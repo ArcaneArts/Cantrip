@@ -1,0 +1,4 @@
+ALTER TABLE "project_workspaces" DROP CONSTRAINT "project_workspaces_name_protection_check";--> statement-breakpoint
+DELETE FROM "project_workspaces" WHERE "name" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "project_workspaces" DROP COLUMN "name";--> statement-breakpoint
+ALTER TABLE "project_workspaces" ADD CONSTRAINT "project_workspaces_name_protection_check" CHECK (("project_workspaces"."id" = ('workspace:default:' || "project_workspaces"."owner_id") AND "project_workspaces"."name_envelope" IS NULL AND "project_workspaces"."name_blind_index" IS NULL AND "project_workspaces"."name_format_version" IS NULL AND "project_workspaces"."name_key_revision" IS NULL) OR ("project_workspaces"."name_envelope" IS NOT NULL AND "project_workspaces"."name_blind_index" IS NOT NULL AND "project_workspaces"."name_format_version" = 1 AND "project_workspaces"."name_key_revision" >= 1));

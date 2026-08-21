@@ -5,11 +5,6 @@ import type {
   ProjectWorkspaceWireList,
   ProjectWorkspaceWireSummary,
 } from "@cantrip/protocol";
-import type {
-  AccountEncryptionProfile,
-  AccountEncryptionProfileState,
-  EncryptionProfileMigrationUpdate,
-} from "@cantrip/protocol/encryption";
 import { describe, expect, it } from "vitest";
 
 import { CantripApiError } from "./api-client";
@@ -39,27 +34,11 @@ function session(): ClientSessionContext {
     },
   };
 }
-
-function profile(): AccountEncryptionProfile {
-  return {
-    ownerId: identity.ownerId,
-    formatVersion: 1,
-    activeMasterKeyRevision: 1,
-    passwordKdf: null,
-    passwordWrappedMasterKey: null,
-    initializationStatus: "initialized",
-    payloadMigrationStatus: "pending",
-    revision: 1,
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
-}
-
 class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
   readonly rows: ProjectWorkspaceWireSummary[] = [
     {
       id: "workspace:default:owner-a",
-      nameProtection: { state: "legacy", plaintext: "Default" },
+      nameProtection: { state: "system-default" },
       position: 0,
       isDefault: true,
       projectIds: [],
@@ -68,9 +47,7 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
       updatedAt: timestamp,
     },
   ];
-  migrationUpdates = 0;
   writes = 0;
-  private encryptionProfile = profile();
 
   async create(
     input: EncryptedProjectWorkspaceCreate,
@@ -105,21 +82,8 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
     if (index >= 0) this.rows.splice(index, 1);
   }
 
-  getEncryptionProfile(): Promise<AccountEncryptionProfileState> {
-    return Promise.resolve({
-      status: "initialized",
-      profile: structuredClone(this.encryptionProfile),
-    });
-  }
-
   list(): Promise<ProjectWorkspaceWireList> {
-    const workspaces = structuredClone(this.rows);
-    return Promise.resolve({
-      workspaces,
-      legacyCount: workspaces.filter(
-        ({ nameProtection }) => nameProtection.state === "legacy",
-      ).length,
-    });
+    return Promise.resolve({ workspaces: structuredClone(this.rows) });
   }
 
   async update(
@@ -143,22 +107,6 @@ class MemoryWorkspaceApi implements ProjectWorkspaceWireApi {
     this.rows[index] = next;
     return structuredClone(next);
   }
-
-  async updateMigration(
-    input: EncryptionProfileMigrationUpdate,
-  ): Promise<AccountEncryptionProfile> {
-    if (input.expectedRevision !== this.encryptionProfile.revision) {
-      throw new CantripApiError("Profile revision conflict.", 409);
-    }
-    this.migrationUpdates += 1;
-    this.encryptionProfile = {
-      ...this.encryptionProfile,
-      payloadMigrationStatus: input.payloadMigrationStatus,
-      revision: this.encryptionProfile.revision + 1,
-      updatedAt: timestamp,
-    };
-    return structuredClone(this.encryptionProfile);
-  }
 }
 
 function fixture(api = new MemoryWorkspaceApi()) {
@@ -180,13 +128,23 @@ function fixture(api = new MemoryWorkspaceApi()) {
 }
 
 describe("workspace encryption adapter", () => {
-  it("migrates, creates, lists, renames, and searches decrypted names", async () => {
+  it("seals the system default before the first create", async () => {
+    const { adapter, api } = fixture();
+
+    await expect(adapter.create({ name: "Default" })).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(api.rows).toHaveLength(1);
+    expect(api.rows[0]?.nameProtection.state).toBe("encrypted");
+  });
+
+  it("seals the system default, creates, renames, and searches names", async () => {
     const { adapter, api } = fixture();
     expect((await adapter.list()).map(({ name }) => name)).toEqual(["Default"]);
-    expect((await api.list()).legacyCount).toBe(0);
-    const writesAfterMigration = api.writes;
+    expect(api.rows[0]?.nameProtection.state).toBe("encrypted");
+    const writesAfterBootstrap = api.writes;
     await adapter.list();
-    expect(api.writes).toBe(writesAfterMigration);
+    expect(api.writes).toBe(writesAfterBootstrap);
 
     const created = await adapter.create({ name: "Team" });
     await expect(adapter.create({ name: "  TEAM " })).rejects.toMatchObject({
@@ -203,7 +161,6 @@ describe("workspace encryption adapter", () => {
       1,
     );
     expect(JSON.stringify(api.rows)).not.toContain("Research");
-    expect(api.migrationUpdates).toBe(2);
   });
 
   it("fails authentication when envelopes are swapped between row IDs", async () => {

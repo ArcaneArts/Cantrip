@@ -19,12 +19,7 @@ import {
   type ProjectWorkspaceWireList,
   type ProjectWorkspaceWireSummary,
 } from "@cantrip/protocol";
-import type {
-  AccountEncryptionProfile,
-  AccountEncryptionProfileState,
-  EncryptionAssociatedData,
-  EncryptionProfileMigrationUpdate,
-} from "@cantrip/protocol/encryption";
+import type { EncryptionAssociatedData } from "@cantrip/protocol/encryption";
 
 import {
   createEncryptedProjectWorkspace,
@@ -44,10 +39,6 @@ import {
   notifyAuthenticationRequired,
 } from "./client-session";
 import { prepareClientEncryption } from "./account-encryption";
-import {
-  getAccountEncryptionProfile,
-  updateAccountEncryptionMigration,
-} from "./encryption-api";
 import { clientLogger, operationalErrorMetadata } from "./client-log-relay";
 
 const component = "workspace-display-name" as const;
@@ -62,24 +53,18 @@ export interface ProjectWorkspaceWireApi {
     input: EncryptedProjectWorkspaceCreate,
   ): Promise<ProjectWorkspaceWireSummary>;
   delete(workspaceId: string): Promise<void>;
-  getEncryptionProfile(): Promise<AccountEncryptionProfileState>;
   list(): Promise<ProjectWorkspaceWireList>;
   update(
     workspaceId: string,
     input: EncryptedProjectWorkspaceUpdate,
   ): Promise<ProjectWorkspaceWireSummary>;
-  updateMigration(
-    input: EncryptionProfileMigrationUpdate,
-  ): Promise<AccountEncryptionProfile>;
 }
 
 const defaultApi: ProjectWorkspaceWireApi = {
   create: createEncryptedProjectWorkspace,
   delete: deleteProjectWorkspaceWire,
-  getEncryptionProfile: getAccountEncryptionProfile,
   list: getProjectWorkspaceWireList,
   update: updateEncryptedProjectWorkspace,
-  updateMigration: updateAccountEncryptionMigration,
 };
 
 function normalizedWorkspaceName(name: string): string {
@@ -275,7 +260,7 @@ export class ProjectWorkspaceEncryptionAdapter {
     if (workspace.nameProtection.state !== "encrypted") {
       throw new ClientEncryptionError(
         "decryption-failed",
-        "A legacy workspace name was not migrated before use.",
+        "The system-default workspace name was not sealed before use.",
       );
     }
     const { identity } = await this.identity();
@@ -322,53 +307,19 @@ export class ProjectWorkspaceEncryptionAdapter {
     }
   }
 
-  private async markMigration(
-    status: "in-progress" | "complete",
-  ): Promise<void> {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const state = await this.api.getEncryptionProfile();
-      if (state.status !== "initialized") {
-        throw new ClientEncryptionError(
-          "locked",
-          "Workspace migration requires initialized encryption.",
-        );
-      }
-      if (
-        state.profile.payloadMigrationStatus === status ||
-        (status === "in-progress" &&
-          state.profile.payloadMigrationStatus === "complete")
-      ) {
-        return;
-      }
-      try {
-        await this.api.updateMigration({
-          expectedRevision: state.profile.revision,
-          payloadMigrationStatus: status,
-        });
-        return;
-      } catch (error) {
-        if (!(error instanceof CantripApiError) || error.status !== 409) {
-          throw error;
-        }
-      }
-    }
-    throw new ClientEncryptionError(
-      "decryption-failed",
-      "Encryption migration state could not be saved.",
-    );
-  }
-
-  private async migrateLegacy(
+  private async sealSystemDefault(
     initial: ProjectWorkspaceWireList,
   ): Promise<ProjectWorkspaceWireList> {
-    if (initial.legacyCount === 0) return initial;
-    await this.markMigration("in-progress");
+    if (
+      initial.workspaces.every(
+        ({ nameProtection }) => nameProtection.state === "encrypted",
+      )
+    ) {
+      return initial;
+    }
     for (const workspace of initial.workspaces) {
-      if (workspace.nameProtection.state !== "legacy") continue;
-      const nameProtection = await this.encryptName(
-        workspace.id,
-        workspace.nameProtection.plaintext,
-      );
+      if (workspace.nameProtection.state !== "system-default") continue;
+      const nameProtection = await this.encryptName(workspace.id, "Default");
       try {
         await this.api.update(workspace.id, {
           expectedRevision: workspace.revision,
@@ -380,20 +331,23 @@ export class ProjectWorkspaceEncryptionAdapter {
         }
       }
     }
-    const migrated = await this.api.list();
-    if (migrated.legacyCount !== 0) {
+    const sealed = await this.api.list();
+    if (
+      sealed.workspaces.some(
+        ({ nameProtection }) => nameProtection.state !== "encrypted",
+      )
+    ) {
       throw new ClientEncryptionError(
         "decryption-failed",
-        "Workspace encryption migration did not finish.",
+        "The system-default workspace name could not be sealed.",
       );
     }
-    await this.markMigration("complete");
-    return migrated;
+    return sealed;
   }
 
   async list(): Promise<ProjectWorkspaceSummary[]> {
     await this.identity();
-    const wire = await this.migrateLegacy(await this.api.list());
+    const wire = await this.sealSystemDefault(await this.api.list());
     return Promise.all(
       wire.workspaces.map((workspace) => this.decrypt(workspace)),
     );
@@ -404,6 +358,7 @@ export class ProjectWorkspaceEncryptionAdapter {
   ): Promise<ProjectWorkspaceSummary> {
     const parsed = projectWorkspaceCreateSchema.parse(input);
     await this.identity();
+    await this.sealSystemDefault(await this.api.list());
     const id = globalThis.crypto.randomUUID();
     return this.decrypt(
       await this.api.create({
@@ -420,7 +375,7 @@ export class ProjectWorkspaceEncryptionAdapter {
     const parsed = projectWorkspaceUpdateSchema.parse(input);
     await this.identity();
     const current = (
-      await this.migrateLegacy(await this.api.list())
+      await this.sealSystemDefault(await this.api.list())
     ).workspaces.find(({ id }) => id === workspaceId);
     if (!current) throw new Error("Workspace not found.");
     return this.decrypt(

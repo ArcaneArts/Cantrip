@@ -2450,7 +2450,7 @@ describe("local server foundation", () => {
     );
     const defaultWorkspace = initialWorkspaces.workspaces[0]!;
     expect(defaultWorkspace).toMatchObject({
-      nameProtection: { state: "legacy", plaintext: "Default" },
+      nameProtection: { state: "system-default" },
       isDefault: true,
       projectIds: [project.id],
     });
