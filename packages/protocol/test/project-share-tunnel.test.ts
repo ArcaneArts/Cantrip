@@ -41,6 +41,29 @@ describe("project share tunnel protocol", () => {
     expect(PROJECT_SHARE_ADAPTER_MAX_HEAD_BYTES).toBe(64 * 1024);
   });
 
+  it("requires a persistent server binding for terminal adapters", () => {
+    expect(
+      tunnelDataPlaneTargetSchema.parse({
+        kind: "adapter",
+        adapter: "terminal",
+        resourceId: "terminal-1",
+        serverId: "server-persistent-id",
+      }),
+    ).toEqual({
+      kind: "adapter",
+      adapter: "terminal",
+      resourceId: "terminal-1",
+      serverId: "server-persistent-id",
+    });
+    expect(
+      tunnelDataPlaneTargetSchema.safeParse({
+        kind: "adapter",
+        adapter: "terminal",
+        resourceId: "terminal-1",
+      }).success,
+    ).toBe(false);
+  });
+
   it("validates public attachment credentials and mount leases", () => {
     const attachment = {
       attachmentId: "share-1",

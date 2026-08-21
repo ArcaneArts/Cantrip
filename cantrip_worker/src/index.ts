@@ -545,6 +545,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     return terminalDirectEndpoints.prepare(
       binding.capabilityId,
       target.resourceId,
+      target.serverId,
     );
   });
   directBroker.setCapabilityRevoker((capabilityId, reason) => {
