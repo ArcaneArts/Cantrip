@@ -247,6 +247,23 @@ describe("project worktree coordinator", () => {
     ]);
   });
 
+  it("serializes read-only work without publishing a project change", async () => {
+    const changedProjects: string[] = [];
+    const coordinator = new ProjectWorktreeCoordinator(
+      {} as never,
+      {} as never,
+      (projectId) => changedProjects.push(projectId),
+    );
+
+    await coordinator.serialize("project-1", async () => "read", {
+      notifyProjectChanged: false,
+    });
+    expect(changedProjects).toEqual([]);
+
+    await coordinator.serialize("project-1", async () => "write");
+    expect(changedProjects).toEqual(["project-1"]);
+  });
+
   it("reserves, verifies, activates, and replays a workflow lane in one project queue", async () => {
     const commands: WorkerCommand[] = [];
     const request = {

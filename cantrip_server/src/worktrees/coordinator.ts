@@ -106,6 +106,7 @@ export class ProjectWorktreeCoordinator {
   async serialize<T>(
     projectId: string,
     operation: () => Promise<T>,
+    options: { notifyProjectChanged?: boolean } = {},
   ): Promise<T> {
     const previous = this.#mutationQueues.get(projectId) ?? Promise.resolve();
     const current = previous.catch(() => undefined).then(operation);
@@ -116,7 +117,9 @@ export class ProjectWorktreeCoordinator {
     this.#mutationQueues.set(projectId, settled);
     try {
       const result = await current;
-      this.notifyProjectChanged(projectId);
+      if (options.notifyProjectChanged ?? true) {
+        this.notifyProjectChanged(projectId);
+      }
       return result;
     } finally {
       if (this.#mutationQueues.get(projectId) === settled) {

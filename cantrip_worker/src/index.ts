@@ -44,6 +44,7 @@ import {
   type SurfaceOperationOutcomeContent,
 } from "@cantrip/protocol/surface-stream";
 import {
+  repositoryOperationAccess,
   repositoryMetadataResultSchema,
   repositoryMetadataValuesSchema,
   repositoryOperationAgentExecutionSchema,
@@ -1504,6 +1505,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           schema: repositoryOperationRequestContentSchema,
           service: workerEncryption,
         });
+        if (command.access !== repositoryOperationAccess(request.type)) {
+          throw new Error("Repository operation access metadata is invalid.");
+        }
         let outcome: RepositoryOperationOutcomeContent;
         let agentExecution = null;
         try {

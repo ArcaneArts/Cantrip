@@ -100,6 +100,9 @@ let activeCreates = 0;
 let maximumConcurrentCreates = 0;
 let activeGitMutations = 0;
 let maximumConcurrentGitMutations = 0;
+let activeRepositoryOperations = 0;
+let maximumConcurrentRepositoryOperations = 0;
+let repositoryOperationDelayMs = 0;
 const gitActionPaths: string[] = [];
 const gitDiffCommands: Array<Extract<WorkerCommand, { type: "git.diff" }>> = [];
 const repositoryOperationCommands: Array<
@@ -565,10 +568,24 @@ const workerBridge = {
     switch (command.type) {
       case "repository.operation":
         repositoryOperationCommands.push(command);
-        return {
-          operationId: command.operationId,
-          protectedResponse: command.protectedRequest,
-        };
+        activeRepositoryOperations += 1;
+        maximumConcurrentRepositoryOperations = Math.max(
+          maximumConcurrentRepositoryOperations,
+          activeRepositoryOperations,
+        );
+        try {
+          if (repositoryOperationDelayMs > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, repositoryOperationDelayMs),
+            );
+          }
+          return {
+            operationId: command.operationId,
+            protectedResponse: command.protectedRequest,
+          };
+        } finally {
+          activeRepositoryOperations -= 1;
+        }
       case "worktree.list":
       case "worktree.reconcile":
         return inventory();
@@ -1614,7 +1631,7 @@ describe.sequential("server worktree control plane", () => {
     const response = await app.inject({
       method: "POST",
       url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
-      payload: { operationId, protectedRequest },
+      payload: { operationId, protectedRequest, access: "read" },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({
@@ -1628,6 +1645,7 @@ describe.sequential("server worktree control plane", () => {
       worktreeId: primaryId,
       operationId,
       protectedRequest,
+      access: "read",
     });
     expect(JSON.stringify(repositoryOperationCommands.at(-1))).not.toContain(
       "private/roadmap.md",
@@ -1656,6 +1674,47 @@ describe.sequential("server worktree control plane", () => {
       sourcePath: ".",
       repository: null,
     });
+  });
+
+  it("keeps protected reads serialized with project mutations", async () => {
+    const protectedRequest = {
+      formatVersion: 1 as const,
+      keyRevision: 1,
+      envelope: {
+        version: 1 as const,
+        algorithm: "AES-256-GCM" as const,
+        keyRevision: 1,
+        nonce: "AAAAAAAAAAAAAAAA",
+        ciphertext: "AAAAAAAAAAAAAAAAAAAAAA",
+      },
+    };
+    const invoke = (operationId: string, access: "read" | "write") =>
+      app.inject({
+        method: "POST",
+        url: `/api/projects/${projectId}/worktrees/${primaryId}/repository-operation`,
+        payload: { operationId, protectedRequest, access },
+      });
+
+    repositoryOperationDelayMs = 20;
+    maximumConcurrentRepositoryOperations = 0;
+    try {
+      const reads = await Promise.all([
+        invoke("21111111-1111-4111-8111-111111111111", "read"),
+        invoke("21111111-1111-4111-8111-111111111112", "read"),
+      ]);
+      expect(reads.map(({ statusCode }) => statusCode)).toEqual([200, 200]);
+      expect(maximumConcurrentRepositoryOperations).toBe(1);
+
+      maximumConcurrentRepositoryOperations = 0;
+      const writes = await Promise.all([
+        invoke("31111111-1111-4111-8111-111111111111", "write"),
+        invoke("31111111-1111-4111-8111-111111111112", "write"),
+      ]);
+      expect(writes.map(({ statusCode }) => statusCode)).toEqual([200, 200]);
+      expect(maximumConcurrentRepositoryOperations).toBe(1);
+    } finally {
+      repositoryOperationDelayMs = 0;
+    }
   });
 
   it("fails closed on legacy plaintext repository routes", async () => {
