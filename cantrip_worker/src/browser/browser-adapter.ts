@@ -20,7 +20,7 @@ import type {
   RemoteSurfacePrivateState,
   RemoteSurfaceSession,
 } from "../remote-surface-manager.js";
-import { workerLogger } from "../logger.js";
+import { workerLogError, workerLogger } from "../logger.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import {
   BrowserNavigationOperationGuard,
@@ -301,7 +301,24 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     this.#attachments.set(attachment.id, attachment);
     await this.configureViewport(attachment.viewport);
     await this.publishState(attachment.id);
-    await this.captureFrame(attachment.id);
+    try {
+      await this.captureFrame(attachment.id);
+    } catch (error) {
+      workerLogger.rateLimited(
+        `browser-initial-frame-unavailable:${this.#surfaceId}`,
+        "warn",
+        "Initial browser frame was unavailable",
+        {
+          event: "browser.frame.capture-failed",
+          subsystem: "browser",
+          operation: "capture-initial-frame",
+          reasonCode: "initial-frame-unavailable",
+          status: "degraded",
+          surfaceId: this.#surfaceId,
+          error: workerLogError(error),
+        },
+      );
+    }
   }
 
   async detach(attachmentId: string): Promise<void> {

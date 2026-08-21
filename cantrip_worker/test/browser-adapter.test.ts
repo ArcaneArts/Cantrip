@@ -19,9 +19,10 @@ import type {
   EncryptionKeyGrant,
   EncryptionPrincipal,
 } from "@cantrip/protocol/encryption";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserRemoteSurfaceAdapter } from "../src/browser/browser-adapter.js";
+import { BrowserCdpSession } from "../src/browser/browser-session.js";
 import { findChromiumExecutable } from "../src/browser/chromium.js";
 import { readWorkerLogs } from "../src/logger.js";
 import {
@@ -328,7 +329,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
   );
 
   it.skipIf(!findChromiumExecutable())(
-    "streams a real Chromium page and accepts worker-side navigation",
+    "streams a real Chromium page when its initial screenshot is unavailable",
     async () => {
       const server = createServer((request, response) => {
         response.setHeader("content-type", "text/html; charset=utf-8");
@@ -391,10 +392,21 @@ describe("BrowserRemoteSurfaceAdapter", () => {
       );
       expect(adapter.session("browser-test")).not.toBeNull();
       try {
-        await session.attach({
-          id: "attachment-test",
-          viewport: { width: 640, height: 480, devicePixelRatio: 1 },
-        });
+        const screenshot = vi
+          .spyOn(BrowserCdpSession.prototype, "captureScreenshot")
+          .mockRejectedValue(
+            new Error("Chromium is still committing the navigation."),
+          );
+        try {
+          await expect(
+            session.attach({
+              id: "attachment-test",
+              viewport: { width: 640, height: 480, devicePixelRatio: 1 },
+            }),
+          ).resolves.toBeUndefined();
+        } finally {
+          screenshot.mockRestore();
+        }
         await eventually(
           () =>
             emissions.some(({ channel }) => channel === "frame") &&
