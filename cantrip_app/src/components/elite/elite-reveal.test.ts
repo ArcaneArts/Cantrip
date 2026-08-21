@@ -95,7 +95,7 @@ describe("Elite reveal sequencing", () => {
     expect(frame.chromaticOffsetYPx).toBe(3.5);
   });
 
-  it("limits spatial displacement to fifteen percent of element size", () => {
+  it("limits spatial displacement to seven and a half percent", () => {
     const randomValues = [0.125, 0.8];
     const frame = createEliteGlitchFrame(
       "spatial-shift",
@@ -103,23 +103,42 @@ describe("Elite reveal sequencing", () => {
     );
 
     expect(Math.hypot(frame.shiftXPercent, frame.shiftYPercent)).toBeCloseTo(
-      12,
-      3,
+      6,
+      2,
     );
-    expect(Math.abs(frame.shiftXPercent)).toBeLessThanOrEqual(15);
-    expect(Math.abs(frame.shiftYPercent)).toBeLessThanOrEqual(15);
+    expect(Math.abs(frame.shiftXPercent)).toBeLessThanOrEqual(7.5);
+    expect(Math.abs(frame.shiftYPercent)).toBeLessThanOrEqual(7.5);
   });
 
-  it("keeps randomized pixel blocks within compact bounds", () => {
-    const randomValues = [0.999, 0, 0.999];
+  it("randomizes which outline sides are visible", () => {
+    const randomValues = [0.6, 0.4, 0.8, 0.2];
     const frame = createEliteGlitchFrame(
-      "pixelate",
+      "outline",
       () => randomValues.shift() ?? 0,
     );
 
-    expect(frame.pixelSizePx).toBe(12);
-    expect(Math.abs(frame.pixelOffsetXPx)).toBeLessThanOrEqual(12);
-    expect(Math.abs(frame.pixelOffsetYPx)).toBeLessThanOrEqual(12);
+    expect(frame).toMatchObject({
+      outlineBottom: true,
+      outlineLeft: false,
+      outlineRight: false,
+      outlineTop: true,
+    });
+  });
+
+  it("creates one to five scanline bands on a randomized side", () => {
+    const randomValues = [0.8, 0.6];
+    const frame = createEliteGlitchFrame(
+      "scanline",
+      () => randomValues.shift() ?? 0.5,
+    );
+
+    expect(frame.scanlineBands).toHaveLength(5);
+    expect(frame.scanlineSide).toBe("left");
+    expect(frame.scanlineBands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ heightPx: 7, topPercent: 50 }),
+      ]),
+    );
   });
 
   it("keeps the public variant catalog stable and unique", () => {
@@ -128,8 +147,8 @@ describe("Elite reveal sequencing", () => {
     );
     expect(ELITE_GLITCH_VARIANTS).toContain("left-frame");
     expect(ELITE_GLITCH_VARIANTS).toContain("right-frame");
-    expect(ELITE_GLITCH_VARIANTS).toContain("noise");
-    expect(ELITE_GLITCH_VARIANTS).toContain("pixelate");
+    expect(ELITE_GLITCH_VARIANTS).not.toContain("noise");
+    expect(ELITE_GLITCH_VARIANTS).not.toContain("pixelate");
     expect(ELITE_GLITCH_VARIANTS).toContain("spatial-shift");
   });
 });

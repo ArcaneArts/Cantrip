@@ -23,7 +23,7 @@ describe("Elite settings laboratory", () => {
 
     expect(markup).toContain('data-elite-reveal=""');
     expect(markup).toContain('data-content-kind="box"');
-    expect(markup).toContain('data-state="armed"');
+    expect(markup).toContain('data-state="waiting"');
     expect(markup).toContain("Relay subsystem 01");
   });
 });
