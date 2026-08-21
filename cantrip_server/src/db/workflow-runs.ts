@@ -845,13 +845,10 @@ export class WorkflowRunRepository {
     ];
     if (
       input.trigger.type !== "manual" &&
-      (input.permissionManifest.approvalMode !== "preauthorized" ||
-        requirements.some(
-          ({ approvalMode }) => approvalMode !== "preauthorized",
-        ))
+      input.permissionManifest.approvalMode !== "preauthorized"
     ) {
       throw new WorkflowRunConflictError(
-        "Unattended workflow runs require a fully preauthorized permission manifest and stages.",
+        "Unattended workflow runs require a preauthorized permission manifest.",
       );
     }
     if (

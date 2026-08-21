@@ -319,6 +319,43 @@ describe("workflow encryption migrations", () => {
       expect(eventRows.rows).toEqual([
         { protected_payload: null, public_payload: {} },
       ]);
+
+      const triggerMigration = files.find((name) => name.startsWith("0131_"));
+      expect(triggerMigration).toBeDefined();
+      await database.exec(
+        await readFile(`${migrationsDirectory}/${triggerMigration!}`, "utf8"),
+      );
+      const triggerColumns = await database.query<{ column_name: string }>(`
+        SELECT table_name || '.' || column_name AS column_name
+        FROM information_schema.columns
+        WHERE table_name IN (
+          'workflow_automation_triggers', 'workflow_trigger_deliveries'
+        )
+        ORDER BY column_name
+      `);
+      const triggerColumnNames = triggerColumns.rows.map(
+        ({ column_name }) => column_name,
+      );
+      expect(triggerColumnNames).toEqual(
+        expect.arrayContaining([
+          "workflow_automation_triggers.public_configuration",
+          "workflow_automation_triggers.protected_configuration",
+          "workflow_automation_triggers.protected_input",
+          "workflow_automation_triggers.protected_name",
+          "workflow_trigger_deliveries.protected_payload",
+          "workflow_trigger_deliveries.public_provenance",
+        ]),
+      );
+      expect(triggerColumnNames).not.toEqual(
+        expect.arrayContaining([
+          "workflow_automation_triggers.name",
+          "workflow_automation_triggers.configuration",
+          "workflow_automation_triggers.structured_input",
+          "workflow_automation_triggers.last_error",
+          "workflow_trigger_deliveries.trigger_provenance",
+          "workflow_trigger_deliveries.error_message",
+        ]),
+      );
     } finally {
       await database.close();
     }

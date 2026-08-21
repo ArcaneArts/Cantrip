@@ -1,17 +1,18 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  workflowAutomationTriggerListSchema,
-  workflowAutomationTriggerSchema,
-  workflowPermissionRequirementsSchema,
-  workflowTriggerDeliverySchema,
-  type WorkflowAutomationTrigger,
-  type WorkflowAutomationTriggerCreate,
+  workflowAutomationTriggerWireListSchema,
+  workflowAutomationTriggerWireSchema,
+  workflowTriggerDeliveryWireSchema,
+  workflowTriggerPublicConfigurationSchema,
+  type EncryptedWorkflowAutomationTriggerCreate,
+  type EncryptedWorkflowAutomationTriggerUpdate,
+  type WorkflowAutomationTriggerWire,
   type WorkflowAutomationTriggerQuery,
-  type WorkflowAutomationTriggerUpdate,
-  type WorkflowTriggerDelivery,
+  type WorkflowTriggerDeliveryWire,
   type WorkflowTriggerProvenance,
 } from "@cantrip/protocol/workflows";
+import type { WorkflowContentOpaque } from "@cantrip/protocol/workflow-content";
 import { and, asc, desc, eq, gt, lte } from "drizzle-orm";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
@@ -36,25 +37,19 @@ function toISOString(value: Date): string {
   return value.toISOString();
 }
 
-function publicConfiguration(row: TriggerRow): Record<string, unknown> {
-  if (row.type !== "webhook") return row.configuration;
-  const { credentialHash: _credentialHash, ...configuration } =
-    row.configuration;
-  return { ...configuration, credentialConfigured: true };
-}
-
-function toTrigger(row: TriggerRow): WorkflowAutomationTrigger {
-  return workflowAutomationTriggerSchema.parse({
+function toTrigger(row: TriggerRow): WorkflowAutomationTriggerWire {
+  return workflowAutomationTriggerWireSchema.parse({
     id: row.id,
     workflowId: row.workflowId,
     workflowRevisionId: row.workflowRevisionId,
     ownerId: row.ownerId,
     projectId: row.projectId,
-    name: row.name,
     type: row.type,
     enabled: row.enabled,
-    configuration: publicConfiguration(row),
-    structuredInput: row.structuredInput,
+    publicConfiguration: row.publicConfiguration,
+    protectedName: row.protectedName,
+    protectedConfiguration: row.protectedConfiguration,
+    protectedInput: row.protectedInput,
     budget: row.budget,
     permissionManifest: row.permissionManifest,
     selectedModelRouteId: row.selectedModelRouteId,
@@ -64,44 +59,47 @@ function toTrigger(row: TriggerRow): WorkflowAutomationTrigger {
       ? toISOString(row.lastDeliveredAt)
       : null,
     lastRunId: row.lastRunId,
-    lastError: row.lastError,
+    lastErrorCode: row.lastErrorCode,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
   });
 }
 
-function toDelivery(row: DeliveryRow): WorkflowTriggerDelivery {
-  return workflowTriggerDeliverySchema.parse({
+function toDelivery(row: DeliveryRow): WorkflowTriggerDeliveryWire {
+  return workflowTriggerDeliveryWireSchema.parse({
     id: row.id,
     triggerId: row.triggerId,
     runId: row.runId,
     status: row.status,
     idempotencyKey: row.idempotencyKey,
-    trigger: row.triggerProvenance,
+    trigger: row.publicProvenance,
+    protectedPayload: row.protectedPayload,
     errorCode: row.errorCode,
-    errorMessage: row.errorMessage,
     createdAt: toISOString(row.createdAt),
     updatedAt: toISOString(row.updatedAt),
   });
 }
 
 function minimumIntervalSeconds(row: TriggerRow): number {
-  if (row.type === "schedule") {
-    return Number(row.configuration.intervalSeconds);
+  const configuration = workflowTriggerPublicConfigurationSchema.parse(
+    row.publicConfiguration,
+  );
+  if (configuration.type === "schedule") {
+    return configuration.intervalSeconds;
   }
-  return Number(row.configuration.minimumIntervalSeconds ?? 1);
+  return configuration.minimumIntervalSeconds;
 }
 
 export interface WorkflowTriggerDeliveryContext {
   credentialHash: string | null;
   row: TriggerRow;
-  trigger: WorkflowAutomationTrigger;
+  trigger: WorkflowAutomationTriggerWire;
 }
 
 export type WorkflowTriggerClaim =
   | {
       kind: "claimed" | "replay";
-      delivery: WorkflowTriggerDelivery;
+      delivery: WorkflowTriggerDeliveryWire;
       context: WorkflowTriggerDeliveryContext;
     }
   | { kind: "disabled" };
@@ -120,7 +118,7 @@ export type WorkflowScheduleOccurrenceClaim =
     }
   | {
       kind: "completed";
-      delivery: WorkflowTriggerDelivery;
+      delivery: WorkflowTriggerDeliveryWire;
     }
   | { kind: "busy" }
   | { kind: "disabled" };
@@ -142,7 +140,6 @@ export class WorkflowTriggerRepository {
         definitionScope: schema.workflowDefinitions.scope,
         definitionTrust: schema.workflowDefinitions.trustState,
         revisionTrust: schema.workflowRevisions.trustState,
-        revisionPermissions: schema.workflowRevisions.permissionRequirements,
       })
       .from(schema.workflowRevisions)
       .innerJoin(
@@ -184,35 +181,13 @@ export class WorkflowTriggerRepository {
         "Unattended triggers require a trusted workflow and revision.",
       );
     }
-    const requirements = [
-      workflowPermissionRequirementsSchema.parse(context.revisionPermissions),
-      ...(
-        await this.database
-          .select({
-            permissions: schema.workflowRevisionNodes.permissionRequirements,
-          })
-          .from(schema.workflowRevisionNodes)
-          .where(
-            eq(schema.workflowRevisionNodes.revisionId, workflowRevisionId),
-          )
-      ).map(({ permissions }) =>
-        workflowPermissionRequirementsSchema.parse(permissions),
-      ),
-    ];
-    if (
-      requirements.some(({ approvalMode }) => approvalMode !== "preauthorized")
-    ) {
-      throw new WorkflowTriggerConflictError(
-        "Unattended triggers require every workflow stage to be preauthorized.",
-      );
-    }
     return { workflowId: context.workflowId };
   }
 
   async create(
     ownerId: string,
-    input: WorkflowAutomationTriggerCreate,
-  ): Promise<WorkflowAutomationTrigger | null> {
+    input: EncryptedWorkflowAutomationTriggerCreate,
+  ): Promise<WorkflowAutomationTriggerWire | null> {
     const context = await this.assertUnattendedContext(
       ownerId,
       input.workflowRevisionId,
@@ -226,26 +201,28 @@ export class WorkflowTriggerRepository {
     }
     const now = new Date();
     const nextRunAt =
-      input.type === "schedule"
-        ? input.configuration.startAt
-          ? new Date(input.configuration.startAt)
+      input.publicConfiguration.type === "schedule"
+        ? input.publicConfiguration.startAt
+          ? new Date(input.publicConfiguration.startAt)
           : new Date(
-              now.getTime() + input.configuration.intervalSeconds * 1_000,
+              now.getTime() + input.publicConfiguration.intervalSeconds * 1_000,
             )
         : null;
     const rows = await this.database
       .insert(schema.workflowAutomationTriggers)
       .values({
-        id: randomUUID(),
+        id: input.id,
         workflowId: context.workflowId,
         workflowRevisionId: input.workflowRevisionId,
         ownerId,
         projectId: input.projectId,
-        name: input.name,
         type: input.type,
         enabled: input.enabled,
-        configuration: input.configuration,
-        structuredInput: input.structuredInput,
+        publicConfiguration: input.publicConfiguration,
+        credentialHash: input.credentialHash,
+        protectedName: input.protectedName,
+        protectedConfiguration: input.protectedConfiguration,
+        protectedInput: input.protectedInput,
         budget: input.budget,
         permissionManifest: input.permissionManifest,
         selectedModelRouteId: input.selectedModelRouteId,
@@ -261,7 +238,7 @@ export class WorkflowTriggerRepository {
   async list(
     ownerId: string,
     query: WorkflowAutomationTriggerQuery,
-  ): Promise<WorkflowAutomationTrigger[]> {
+  ): Promise<WorkflowAutomationTriggerWire[]> {
     const conditions = [eq(schema.workflowAutomationTriggers.ownerId, ownerId)];
     if (query.projectId) {
       conditions.push(
@@ -282,13 +259,13 @@ export class WorkflowTriggerRepository {
       .where(and(...conditions))
       .orderBy(desc(schema.workflowAutomationTriggers.createdAt))
       .limit(query.limit);
-    return workflowAutomationTriggerListSchema.parse(rows.map(toTrigger));
+    return workflowAutomationTriggerWireListSchema.parse(rows.map(toTrigger));
   }
 
   async get(
     ownerId: string,
     triggerId: string,
-  ): Promise<WorkflowAutomationTrigger | null> {
+  ): Promise<WorkflowAutomationTriggerWire | null> {
     const rows = await this.database
       .select()
       .from(schema.workflowAutomationTriggers)
@@ -321,11 +298,7 @@ export class WorkflowTriggerRepository {
     return {
       row,
       trigger: toTrigger(row),
-      credentialHash:
-        row.type === "webhook" &&
-        typeof row.configuration.credentialHash === "string"
-          ? row.configuration.credentialHash
-          : null,
+      credentialHash: row.type === "webhook" ? row.credentialHash : null,
     };
   }
 
@@ -347,18 +320,15 @@ export class WorkflowTriggerRepository {
     return {
       row,
       trigger: toTrigger(row),
-      credentialHash:
-        typeof row.configuration.credentialHash === "string"
-          ? row.configuration.credentialHash
-          : null,
+      credentialHash: row.credentialHash,
     };
   }
 
   async update(
     ownerId: string,
     triggerId: string,
-    input: WorkflowAutomationTriggerUpdate,
-  ): Promise<WorkflowAutomationTrigger | null> {
+    input: EncryptedWorkflowAutomationTriggerUpdate,
+  ): Promise<WorkflowAutomationTriggerWire | null> {
     const existing = await this.getDeliveryContext(ownerId, triggerId);
     if (!existing) return null;
     if (input.enabled === true) {
@@ -371,7 +341,9 @@ export class WorkflowTriggerRepository {
     const rows = await this.database
       .update(schema.workflowAutomationTriggers)
       .set({
-        ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(input.protectedName !== undefined
+          ? { protectedName: input.protectedName }
+          : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
         updatedAt: new Date(),
       })
@@ -504,7 +476,8 @@ export class WorkflowTriggerRepository {
                 triggerId,
                 status: "pending",
                 idempotencyKey,
-                triggerProvenance: provenance,
+                publicProvenance: provenance,
+                protectedPayload: null,
                 dispatchInstanceId,
                 leaseToken,
                 fencingToken: 1,
@@ -517,7 +490,11 @@ export class WorkflowTriggerRepository {
       if (!delivery) return { kind: "busy" as const };
       await transaction
         .update(schema.workflowAutomationTriggers)
-        .set({ lastDeliveredAt: now, lastError: null, updatedAt: now })
+        .set({
+          lastDeliveredAt: now,
+          lastErrorCode: null,
+          updatedAt: now,
+        })
         .where(eq(schema.workflowAutomationTriggers.id, triggerId));
       return {
         kind: "claimed" as const,
@@ -540,6 +517,7 @@ export class WorkflowTriggerRepository {
     triggerId: string,
     idempotencyKey: string,
     provenance: WorkflowTriggerProvenance,
+    protectedPayload: WorkflowContentOpaque | null,
     now = new Date(),
   ): Promise<WorkflowTriggerClaim | null> {
     const deliveryContext = await this.getDeliveryContext(ownerId, triggerId);
@@ -578,11 +556,7 @@ export class WorkflowTriggerRepository {
       const context = {
         row,
         trigger: toTrigger(row),
-        credentialHash:
-          row.type === "webhook" &&
-          typeof row.configuration.credentialHash === "string"
-            ? row.configuration.credentialHash
-            : null,
+        credentialHash: row.type === "webhook" ? row.credentialHash : null,
       };
       if (existingDeliveries[0]) {
         return {
@@ -609,14 +583,19 @@ export class WorkflowTriggerRepository {
           triggerId,
           status: "pending",
           idempotencyKey,
-          triggerProvenance: provenance,
+          publicProvenance: provenance,
+          protectedPayload,
           createdAt: now,
           updatedAt: now,
         })
         .returning();
       await transaction
         .update(schema.workflowAutomationTriggers)
-        .set({ lastDeliveredAt: now, lastError: null, updatedAt: now })
+        .set({
+          lastDeliveredAt: now,
+          lastErrorCode: null,
+          updatedAt: now,
+        })
         .where(eq(schema.workflowAutomationTriggers.id, triggerId));
       return {
         kind: "claimed" as const,
@@ -632,7 +611,7 @@ export class WorkflowTriggerRepository {
     triggerId: string,
     runId: string,
     lease?: WorkflowScheduleDispatchLease,
-  ): Promise<WorkflowTriggerDelivery | null> {
+  ): Promise<WorkflowTriggerDeliveryWire | null> {
     if (!(await this.getDeliveryContext(ownerId, triggerId))) {
       throw new WorkflowTriggerConflictError("Workflow trigger not found.");
     }
@@ -668,7 +647,7 @@ export class WorkflowTriggerRepository {
     if (!rows[0]) return null;
     await this.database
       .update(schema.workflowAutomationTriggers)
-      .set({ lastRunId: runId, lastError: null, updatedAt: now })
+      .set({ lastRunId: runId, lastErrorCode: null, updatedAt: now })
       .where(
         and(
           eq(schema.workflowAutomationTriggers.id, triggerId),
@@ -683,7 +662,6 @@ export class WorkflowTriggerRepository {
     deliveryId: string,
     triggerId: string,
     errorCode: string,
-    errorMessage: string,
     lease?: WorkflowScheduleDispatchLease,
   ): Promise<boolean> {
     if (!(await this.getDeliveryContext(ownerId, triggerId))) return false;
@@ -693,7 +671,6 @@ export class WorkflowTriggerRepository {
       .set({
         status: "failed",
         errorCode,
-        errorMessage: errorMessage.slice(0, 5_000),
         updatedAt: now,
       })
       .where(
@@ -724,7 +701,7 @@ export class WorkflowTriggerRepository {
     if (!deliveries[0]) return false;
     await this.database
       .update(schema.workflowAutomationTriggers)
-      .set({ lastError: errorMessage.slice(0, 5_000), updatedAt: now })
+      .set({ lastErrorCode: errorCode, updatedAt: now })
       .where(
         and(
           eq(schema.workflowAutomationTriggers.id, triggerId),
@@ -739,11 +716,11 @@ export class WorkflowTriggerRepository {
     triggerId: string,
     expected: Date,
     next: Date,
-    lastError: string | null = null,
+    lastErrorCode: string | null = null,
   ): Promise<boolean> {
     const rows = await this.database
       .update(schema.workflowAutomationTriggers)
-      .set({ nextRunAt: next, lastError, updatedAt: new Date() })
+      .set({ nextRunAt: next, lastErrorCode, updatedAt: new Date() })
       .where(
         and(
           eq(schema.workflowAutomationTriggers.id, triggerId),

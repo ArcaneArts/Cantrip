@@ -1328,7 +1328,7 @@ export const workflowTriggerProvenanceSchema = z.object({
   metadata: workflowJsonObjectSchema.default({}),
 });
 
-const workflowScheduleTriggerConfigurationSchema = z.object({
+export const workflowScheduleTriggerConfigurationSchema = z.object({
   intervalSeconds: z
     .number()
     .int()
@@ -1339,22 +1339,22 @@ const workflowScheduleTriggerConfigurationSchema = z.object({
   offlinePolicy: z.enum(["pause", "queue"]).default("pause"),
 });
 
-const workflowApiTriggerConfigurationSchema = z.object({
+export const workflowApiTriggerConfigurationSchema = z.object({
   minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
 });
 
-const workflowWebhookTriggerConfigurationInputSchema = z.object({
+export const workflowWebhookTriggerConfigurationInputSchema = z.object({
   minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
   credentialHash: z.string().regex(/^[0-9a-f]{64}$/u),
 });
 
-const workflowGitTriggerConfigurationSchema = z.object({
+export const workflowGitTriggerConfigurationSchema = z.object({
   event: z.enum(["push", "pull-request"]),
   branchPattern: z.string().trim().min(1).max(500).default("*"),
   minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
 });
 
-const workflowSavedCommandTriggerConfigurationSchema = z.object({
+export const workflowSavedCommandTriggerConfigurationSchema = z.object({
   command: workflowKeySchema,
   minimumIntervalSeconds: z.number().int().min(1).max(3_600).default(1),
 });
@@ -1406,6 +1406,147 @@ export const workflowAutomationTriggerUpdateSchema = z
     message: "Provide at least one trigger update.",
   });
 
+const protectedTriggerContentBase = z.object({ version: z.literal(1) });
+
+export const workflowTriggerProtectedNameSchema = protectedTriggerContentBase
+  .extend({ name: z.string().trim().min(1).max(200) })
+  .strict();
+
+export const workflowTriggerProtectedConfigurationSchema = z.discriminatedUnion(
+  "type",
+  [
+    protectedTriggerContentBase
+      .extend({
+        type: z.literal("schedule"),
+        configuration: workflowScheduleTriggerConfigurationSchema,
+      })
+      .strict(),
+    protectedTriggerContentBase
+      .extend({
+        type: z.literal("api"),
+        configuration: workflowApiTriggerConfigurationSchema,
+      })
+      .strict(),
+    protectedTriggerContentBase
+      .extend({
+        type: z.literal("webhook"),
+        configuration: workflowApiTriggerConfigurationSchema.extend({
+          credentialConfigured: z.literal(true),
+        }),
+      })
+      .strict(),
+    protectedTriggerContentBase
+      .extend({
+        type: z.literal("git"),
+        configuration: workflowGitTriggerConfigurationSchema,
+      })
+      .strict(),
+    protectedTriggerContentBase
+      .extend({
+        type: z.literal("saved-command"),
+        configuration: workflowSavedCommandTriggerConfigurationSchema,
+      })
+      .strict(),
+  ],
+);
+
+export const workflowTriggerProtectedInputSchema = protectedTriggerContentBase
+  .extend({ input: workflowJsonObjectSchema })
+  .strict();
+
+export const workflowTriggerPublicConfigurationSchema = z.discriminatedUnion(
+  "type",
+  [
+    z
+      .object({
+        type: z.literal("schedule"),
+        intervalSeconds:
+          workflowScheduleTriggerConfigurationSchema.shape.intervalSeconds,
+        startAt: workflowScheduleTriggerConfigurationSchema.shape.startAt,
+        catchUpPolicy:
+          workflowScheduleTriggerConfigurationSchema.shape.catchUpPolicy,
+        offlinePolicy:
+          workflowScheduleTriggerConfigurationSchema.shape.offlinePolicy,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("api"),
+        minimumIntervalSeconds:
+          workflowApiTriggerConfigurationSchema.shape.minimumIntervalSeconds,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("webhook"),
+        minimumIntervalSeconds:
+          workflowApiTriggerConfigurationSchema.shape.minimumIntervalSeconds,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("git"),
+        event: workflowGitTriggerConfigurationSchema.shape.event,
+        minimumIntervalSeconds:
+          workflowGitTriggerConfigurationSchema.shape.minimumIntervalSeconds,
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("saved-command"),
+        minimumIntervalSeconds:
+          workflowSavedCommandTriggerConfigurationSchema.shape
+            .minimumIntervalSeconds,
+      })
+      .strict(),
+  ],
+);
+
+const encryptedWorkflowAutomationTriggerCreateBase = workflowTriggerCreateBase
+  .omit({ name: true, structuredInput: true })
+  .extend({
+    id: idSchema,
+    type: workflowTriggerTypeSchema.exclude(["manual"]),
+    protectedName: workflowContentOpaqueSchema,
+    protectedConfiguration: workflowContentOpaqueSchema,
+    protectedInput: workflowContentOpaqueSchema,
+    publicConfiguration: workflowTriggerPublicConfigurationSchema,
+    credentialHash: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/u)
+      .nullable(),
+  })
+  .strict()
+  .superRefine((trigger, context) => {
+    if (trigger.type !== trigger.publicConfiguration.type) {
+      context.addIssue({
+        code: "custom",
+        message: "The trigger type must match its public configuration.",
+        path: ["publicConfiguration", "type"],
+      });
+    }
+    if ((trigger.type === "webhook") !== (trigger.credentialHash !== null)) {
+      context.addIssue({
+        code: "custom",
+        message: "Only webhook triggers may include a credential hash.",
+        path: ["credentialHash"],
+      });
+    }
+  });
+
+export const encryptedWorkflowAutomationTriggerCreateSchema =
+  encryptedWorkflowAutomationTriggerCreateBase;
+
+export const encryptedWorkflowAutomationTriggerUpdateSchema = z
+  .object({
+    protectedName: workflowContentOpaqueSchema.optional(),
+    enabled: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "Provide at least one trigger update.",
+  });
+
 export const workflowAutomationTriggerQuerySchema = z.object({
   projectId: idSchema.optional(),
   type: workflowTriggerTypeSchema.exclude(["manual"]).optional(),
@@ -1420,6 +1561,47 @@ export const workflowTriggerDeliveryCreateSchema = z.object({
   structuredInput: workflowJsonObjectSchema.default({}),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
+
+export const workflowTriggerProtectedDeliverySchema = z.discriminatedUnion(
+  "type",
+  [
+    z
+      .object({
+        version: z.literal(1),
+        type: z.enum(["api", "saved-command"]),
+        input: workflowJsonObjectSchema,
+      })
+      .strict(),
+    z
+      .object({
+        version: z.literal(1),
+        type: z.literal("git"),
+        event: z.enum(["push", "pull-request"]),
+        branch: z.string().trim().min(1).max(500),
+        input: workflowJsonObjectSchema,
+      })
+      .strict(),
+  ],
+);
+
+export const encryptedWorkflowTriggerDeliveryCreateSchema = z
+  .object({
+    idempotencyKey: z.string().trim().min(1).max(200),
+    protectedPayload: workflowContentOpaqueSchema,
+  })
+  .strict();
+
+export const encryptedWorkflowGitEventDeliveryCreateSchema = z
+  .object({
+    event: z.enum(["push", "pull-request"]),
+    deliveryId: z.string().trim().min(1).max(200),
+    protectedPayload: workflowContentOpaqueSchema,
+  })
+  .strict();
+
+export const workflowWebhookDeliveryCreateSchema = z
+  .object({ idempotencyKey: z.string().trim().min(1).max(200) })
+  .strict();
 
 export const workflowGitEventDeliveryCreateSchema = z.object({
   event: z.enum(["push", "pull-request"]),
@@ -2104,6 +2286,33 @@ export const workflowAutomationTriggerListSchema = z.array(
   workflowAutomationTriggerSchema,
 );
 
+const workflowAutomationTriggerWireBase = workflowAutomationTriggerBase
+  .omit({ name: true, structuredInput: true, lastError: true })
+  .extend({
+    type: workflowTriggerTypeSchema.exclude(["manual"]),
+    publicConfiguration: workflowTriggerPublicConfigurationSchema,
+    protectedName: workflowContentOpaqueSchema,
+    protectedConfiguration: workflowContentOpaqueSchema,
+    protectedInput: workflowContentOpaqueSchema,
+    lastErrorCode: z.string().trim().min(1).max(200).nullable(),
+  })
+  .strict()
+  .superRefine((trigger, context) => {
+    if (trigger.type !== trigger.publicConfiguration.type) {
+      context.addIssue({
+        code: "custom",
+        message: "The trigger type must match its public configuration.",
+        path: ["publicConfiguration", "type"],
+      });
+    }
+  });
+
+export const workflowAutomationTriggerWireSchema =
+  workflowAutomationTriggerWireBase;
+export const workflowAutomationTriggerWireListSchema = z.array(
+  workflowAutomationTriggerWireSchema,
+);
+
 export const workflowTriggerDeliveryStatusSchema = z.enum([
   "pending",
   "accepted",
@@ -2123,9 +2332,19 @@ export const workflowTriggerDeliverySchema = z.object({
   updatedAt: z.string().datetime(),
 });
 
+export const workflowTriggerDeliveryWireSchema = workflowTriggerDeliverySchema
+  .omit({ errorMessage: true })
+  .extend({ protectedPayload: workflowContentOpaqueSchema.nullable() })
+  .strict();
+
 export const workflowTriggerDeliveryResultSchema = z.object({
   delivery: workflowTriggerDeliverySchema,
   run: workflowRunDetailSchema,
+  replayed: z.boolean(),
+});
+export const workflowTriggerDeliveryWireResultSchema = z.object({
+  delivery: workflowTriggerDeliveryWireSchema,
+  run: workflowRunWireDetailSchema,
   replayed: z.boolean(),
 });
 export const workflowRunListSchema = z.array(workflowRunSchema);
@@ -2318,6 +2537,61 @@ export const protectedWorkflowGateDecisionRequestSchema =
       protectedResponse: workflowContentOpaqueSchema,
     })
     .strict();
+
+export const protectedWorkflowTriggerPrepareRequestSchema = z
+  .object({
+    triggerId: idSchema,
+    workflowRunId: idSchema,
+    triggerType: workflowTriggerTypeSchema.exclude(["manual"]),
+    publicConfiguration: workflowTriggerPublicConfigurationSchema,
+    protectedConfiguration: workflowContentOpaqueSchema,
+    protectedBaseInput: workflowContentOpaqueSchema,
+    deliveryOperationId: z.string().trim().min(1).max(500).nullable(),
+    protectedDeliveryPayload: workflowContentOpaqueSchema.nullable(),
+  })
+  .strict()
+  .superRefine((request, context) => {
+    if (request.triggerType !== request.publicConfiguration.type) {
+      context.addIssue({
+        code: "custom",
+        message: "The trigger type must match its public configuration.",
+        path: ["publicConfiguration", "type"],
+      });
+    }
+    if (
+      Boolean(request.deliveryOperationId) !==
+      Boolean(request.protectedDeliveryPayload)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Protected delivery payloads require an operation ID.",
+        path: ["deliveryOperationId"],
+      });
+    }
+  });
+
+export const protectedWorkflowTriggerPrepareResultSchema = z.discriminatedUnion(
+  "status",
+  [
+    z
+      .object({
+        status: z.literal("accepted"),
+        protectedRunInput: workflowContentOpaqueSchema,
+      })
+      .strict(),
+    z
+      .object({
+        status: z.literal("rejected"),
+        code: z.enum([
+          "protected-trigger-invalid",
+          "protected-delivery-invalid",
+          "git-event-mismatch",
+          "git-branch-mismatch",
+        ]),
+      })
+      .strict(),
+  ],
+);
 
 export const protectedWorkflowNodeExecutionResultSchema = z.discriminatedUnion(
   "status",
@@ -2582,8 +2856,14 @@ export type WorkflowTriggerProvenance = z.infer<
 export type WorkflowAutomationTriggerCreate = z.infer<
   typeof workflowAutomationTriggerCreateSchema
 >;
+export type EncryptedWorkflowAutomationTriggerCreate = z.infer<
+  typeof encryptedWorkflowAutomationTriggerCreateSchema
+>;
 export type WorkflowAutomationTriggerUpdate = z.infer<
   typeof workflowAutomationTriggerUpdateSchema
+>;
+export type EncryptedWorkflowAutomationTriggerUpdate = z.infer<
+  typeof encryptedWorkflowAutomationTriggerUpdateSchema
 >;
 export type WorkflowAutomationTriggerQuery = z.infer<
   typeof workflowAutomationTriggerQuerySchema
@@ -2591,17 +2871,32 @@ export type WorkflowAutomationTriggerQuery = z.infer<
 export type WorkflowAutomationTrigger = z.infer<
   typeof workflowAutomationTriggerSchema
 >;
+export type WorkflowAutomationTriggerWire = z.infer<
+  typeof workflowAutomationTriggerWireSchema
+>;
 export type WorkflowTriggerDeliveryCreate = z.infer<
   typeof workflowTriggerDeliveryCreateSchema
 >;
 export type WorkflowGitEventDeliveryCreate = z.infer<
   typeof workflowGitEventDeliveryCreateSchema
 >;
+export type EncryptedWorkflowTriggerDeliveryCreate = z.infer<
+  typeof encryptedWorkflowTriggerDeliveryCreateSchema
+>;
+export type EncryptedWorkflowGitEventDeliveryCreate = z.infer<
+  typeof encryptedWorkflowGitEventDeliveryCreateSchema
+>;
 export type WorkflowTriggerDelivery = z.infer<
   typeof workflowTriggerDeliverySchema
 >;
+export type WorkflowTriggerDeliveryWire = z.infer<
+  typeof workflowTriggerDeliveryWireSchema
+>;
 export type WorkflowTriggerDeliveryResult = z.infer<
   typeof workflowTriggerDeliveryResultSchema
+>;
+export type WorkflowTriggerDeliveryWireResult = z.infer<
+  typeof workflowTriggerDeliveryWireResultSchema
 >;
 export type WorkflowRunCreate = z.infer<typeof workflowRunCreateSchema>;
 export type EncryptedWorkflowRunCreate = z.infer<
@@ -2695,6 +2990,12 @@ export type EncryptedWorkflowGateDecision = z.infer<
 >;
 export type ProtectedWorkflowGateDecisionRequest = z.infer<
   typeof protectedWorkflowGateDecisionRequestSchema
+>;
+export type ProtectedWorkflowTriggerPrepareRequest = z.infer<
+  typeof protectedWorkflowTriggerPrepareRequestSchema
+>;
+export type ProtectedWorkflowTriggerPrepareResult = z.infer<
+  typeof protectedWorkflowTriggerPrepareResultSchema
 >;
 export type ProtectedWorkflowGateDecisionResult = z.infer<
   typeof protectedWorkflowGateDecisionResultSchema

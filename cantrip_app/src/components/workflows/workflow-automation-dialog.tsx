@@ -1,3 +1,4 @@
+import type { WorkerSummary } from "@cantrip/protocol";
 import type {
   WorkflowAutomationTrigger,
   WorkflowDefinitionDetail,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { createWorkflowAutomationTrigger } from "@/lib/api";
+import { ensureChatWorkerEncryption } from "@/lib/chat-worker-encryption";
 import { errorMessage } from "@/lib/error-message";
 
 type AutomationType = WorkflowAutomationTrigger["type"];
@@ -89,6 +91,7 @@ export function WorkflowAutomationDialog({
   onOpenChange,
   open,
   projectId,
+  worker,
   workflow,
 }: {
   gitAvailable: boolean;
@@ -96,6 +99,7 @@ export function WorkflowAutomationDialog({
   onOpenChange(open: boolean): void;
   open: boolean;
   projectId: string;
+  worker: WorkerSummary | null;
   workflow: WorkflowDefinitionDetail;
 }) {
   const [type, setType] = useState<AutomationType>("schedule");
@@ -132,6 +136,7 @@ export function WorkflowAutomationDialog({
           "Unattended triggers require a trusted, fully preauthorized revision.",
         );
       }
+      await ensureChatWorkerEncryption({ worker });
       const common = {
         workflowRevisionId: revision.id,
         projectId,

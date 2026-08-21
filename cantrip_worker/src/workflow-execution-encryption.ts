@@ -10,11 +10,13 @@ import type { WorkerCommand } from "@cantrip/protocol";
 import {
   protectedWorkflowNodeExecutionResultSchema,
   protectedWorkflowGateDecisionResultSchema,
+  protectedWorkflowTriggerPrepareResultSchema,
   workflowAgentNodeConfigurationSchema,
   workflowConditionNodeConfigurationSchema,
   workflowGateNodeConfigurationSchema,
   workflowGateProtectedRequestSchema,
   workflowGateProtectedResponseSchema,
+  workflowJsonObjectSchema,
   workflowJsonValueSchema,
   workflowMapNodeConfigurationSchema,
   workflowMeasuredUsageSchema,
@@ -27,6 +29,9 @@ import {
   workflowRevisionProtectedDefinitionSchema,
   workflowRunProtectedInputSchema,
   workflowRunProtectedResultSchema,
+  workflowTriggerProtectedConfigurationSchema,
+  workflowTriggerProtectedDeliverySchema,
+  workflowTriggerProtectedInputSchema,
   workflowVerifyNodeConfigurationSchema,
   type WorkflowAgentNodeConfiguration,
   type WorkflowJsonValue,
@@ -34,6 +39,7 @@ import {
   type WorkflowMeasuredUsage,
   type WorkflowNodeExecutionResult,
   type WorkflowPredicate,
+  type ProtectedWorkflowTriggerPrepareRequest,
 } from "@cantrip/protocol/workflows";
 
 import type { WorkerEncryptionService } from "./worker-encryption.js";
@@ -50,6 +56,197 @@ type ProtectableCommand = Pick<
   ProtectedCommand,
   "attemptId" | "protectedDefinition" | "runNodeId" | "workflowRunId"
 >;
+
+function triggerPublicConfigurationMatches(
+  command: ProtectedWorkflowTriggerPrepareRequest,
+  protectedConfiguration: ReturnType<
+    typeof workflowTriggerProtectedConfigurationSchema.parse
+  >,
+): boolean {
+  if (
+    command.triggerType !== protectedConfiguration.type ||
+    command.publicConfiguration.type !== protectedConfiguration.type
+  ) {
+    return false;
+  }
+  switch (protectedConfiguration.type) {
+    case "schedule": {
+      const publicValue = command.publicConfiguration;
+      const privateValue = protectedConfiguration.configuration;
+      return (
+        publicValue.type === "schedule" &&
+        publicValue.intervalSeconds === privateValue.intervalSeconds &&
+        publicValue.startAt === privateValue.startAt &&
+        publicValue.catchUpPolicy === privateValue.catchUpPolicy &&
+        publicValue.offlinePolicy === privateValue.offlinePolicy
+      );
+    }
+    case "api":
+    case "webhook":
+    case "saved-command":
+      return (
+        command.publicConfiguration.type === protectedConfiguration.type &&
+        command.publicConfiguration.minimumIntervalSeconds ===
+          protectedConfiguration.configuration.minimumIntervalSeconds
+      );
+    case "git":
+      return (
+        command.publicConfiguration.type === "git" &&
+        command.publicConfiguration.event ===
+          protectedConfiguration.configuration.event &&
+        command.publicConfiguration.minimumIntervalSeconds ===
+          protectedConfiguration.configuration.minimumIntervalSeconds
+      );
+  }
+}
+
+function workflowTriggerBranchMatches(pattern: string, branch: string) {
+  const expression = pattern
+    .split("*")
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+    .join(".*");
+  const matcher = new RegExp(`^${expression}$`, "u");
+  const normalizedBranch = branch.replace(/^refs\/heads\//u, "");
+  return matcher.test(branch) || matcher.test(normalizedBranch);
+}
+
+export async function prepareProtectedWorkflowTrigger(input: {
+  command: ProtectedWorkflowTriggerPrepareRequest;
+  service: WorkerEncryptionService;
+}) {
+  const component = input.service.componentKey("workflow-content");
+  const ownerId = input.service.ownerId();
+  try {
+    let configuration: ReturnType<
+      typeof workflowTriggerProtectedConfigurationSchema.parse
+    >;
+    let baseInput: ReturnType<typeof workflowTriggerProtectedInputSchema.parse>;
+    try {
+      [configuration, baseInput] = await Promise.all([
+        decryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-trigger",
+            recordId: input.command.triggerId,
+            field: "content",
+          },
+          keyRevision: input.command.protectedConfiguration.keyRevision,
+          componentKey: component.key,
+          encrypted: input.command.protectedConfiguration,
+          schema: workflowTriggerProtectedConfigurationSchema,
+        }),
+        decryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-trigger",
+            recordId: input.command.triggerId,
+            field: "input",
+          },
+          keyRevision: input.command.protectedBaseInput.keyRevision,
+          componentKey: component.key,
+          encrypted: input.command.protectedBaseInput,
+          schema: workflowTriggerProtectedInputSchema,
+        }),
+      ]);
+    } catch {
+      return protectedWorkflowTriggerPrepareResultSchema.parse({
+        status: "rejected",
+        code: "protected-trigger-invalid",
+      });
+    }
+    if (!triggerPublicConfigurationMatches(input.command, configuration)) {
+      return protectedWorkflowTriggerPrepareResultSchema.parse({
+        status: "rejected",
+        code: "protected-trigger-invalid",
+      });
+    }
+
+    let deliveryInput: WorkflowJsonObject = {};
+    if (input.command.protectedDeliveryPayload) {
+      let delivery: ReturnType<
+        typeof workflowTriggerProtectedDeliverySchema.parse
+      >;
+      try {
+        delivery = await decryptWorkflowContent({
+          ownerId,
+          context: {
+            recordKind: "workflow-delivery",
+            recordId: `${input.command.triggerId}:${input.command.deliveryOperationId!}`,
+            field: "payload",
+          },
+          keyRevision: input.command.protectedDeliveryPayload.keyRevision,
+          componentKey: component.key,
+          encrypted: input.command.protectedDeliveryPayload,
+          schema: workflowTriggerProtectedDeliverySchema,
+        });
+      } catch {
+        return protectedWorkflowTriggerPrepareResultSchema.parse({
+          status: "rejected",
+          code: "protected-delivery-invalid",
+        });
+      }
+      if (delivery.type !== input.command.triggerType) {
+        return protectedWorkflowTriggerPrepareResultSchema.parse({
+          status: "rejected",
+          code: "protected-delivery-invalid",
+        });
+      }
+      if (delivery.type === "git") {
+        if (
+          configuration.type !== "git" ||
+          delivery.event !== configuration.configuration.event
+        ) {
+          return protectedWorkflowTriggerPrepareResultSchema.parse({
+            status: "rejected",
+            code: "git-event-mismatch",
+          });
+        }
+        if (
+          !workflowTriggerBranchMatches(
+            configuration.configuration.branchPattern,
+            delivery.branch,
+          )
+        ) {
+          return protectedWorkflowTriggerPrepareResultSchema.parse({
+            status: "rejected",
+            code: "git-branch-mismatch",
+          });
+        }
+      }
+      deliveryInput = delivery.input;
+    } else if (!["schedule", "webhook"].includes(input.command.triggerType)) {
+      return protectedWorkflowTriggerPrepareResultSchema.parse({
+        status: "rejected",
+        code: "protected-delivery-invalid",
+      });
+    }
+
+    const protectedRunInput = await encryptWorkflowContent({
+      ownerId,
+      context: {
+        recordKind: "workflow-run",
+        recordId: input.command.workflowRunId,
+        field: "input",
+      },
+      keyRevision: component.keyRevision,
+      componentKey: component.key,
+      content: {
+        version: 1,
+        input: workflowJsonObjectSchema.parse({
+          ...baseInput.input,
+          ...deliveryInput,
+        }),
+      },
+      schema: workflowRunProtectedInputSchema,
+    });
+    return protectedWorkflowTriggerPrepareResultSchema.parse({
+      status: "accepted",
+      protectedRunInput,
+    });
+  } finally {
+    clearSensitiveBytes(component.key);
+  }
+}
 
 function pointerValue(value: WorkflowJsonValue, selector: string | null) {
   if (selector === null) return value;

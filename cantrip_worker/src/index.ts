@@ -52,7 +52,10 @@ import {
   repositoryOperationWireResponseSchema,
   type RepositoryOperationOutcomeContent,
 } from "@cantrip/protocol/repository-operation";
-import { workflowNodeExecutionResultSchema } from "@cantrip/protocol/workflows";
+import {
+  protectedWorkflowTriggerPrepareResultSchema,
+  workflowNodeExecutionResultSchema,
+} from "@cantrip/protocol/workflows";
 import { cantripVersion } from "@cantrip/version";
 
 import { AttachmentStore } from "./attachment-store.js";
@@ -68,6 +71,7 @@ import { ProjectAutomationScheduler } from "./automation-scheduler.js";
 import { protectProjectAutomationDispatch } from "./automation-encryption.js";
 import {
   executeProtectedWorkflowNode,
+  prepareProtectedWorkflowTrigger,
   resolveProtectedWorkflowGate,
 } from "./workflow-execution-encryption.js";
 import {
@@ -3082,6 +3086,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           command,
           service: workerEncryption,
         });
+      case "workflow.trigger.prepare.protected":
+        return protectedWorkflowTriggerPrepareResultSchema.parse(
+          await prepareProtectedWorkflowTrigger({
+            command,
+            service: workerEncryption,
+          }),
+        );
       case "workflow.definition.generate":
         return runtimeFor({
           model: command.model,

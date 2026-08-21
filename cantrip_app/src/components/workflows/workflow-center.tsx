@@ -1244,6 +1244,7 @@ export function WorkflowCenter({
           gitAvailable={!directFolder}
           open={automationOpen}
           projectId={projectId}
+          worker={worker}
           workflow={workflow.data}
           onOpenChange={setAutomationOpen}
           onCreated={(created) => {
