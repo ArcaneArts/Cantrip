@@ -2012,12 +2012,12 @@ export type EliteGlitchVariantWeights = z.infer<
 
 export const DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS: EliteGlitchVariantWeights = {
   outline: 1,
-  "full-frame": 0.1,
-  "left-frame": 0.1,
-  "right-frame": 0.1,
+  "full-frame": 0.01,
+  "left-frame": 0.01,
+  "right-frame": 0.01,
   chromatic: 0.25,
   "spatial-shift": 1,
-  scanline: 0.5,
+  scanline: 0.33,
   "text-jitter": 1,
 };
 
@@ -2044,9 +2044,9 @@ export const eliteRevealConfigSchema = z
 export type EliteRevealConfig = z.infer<typeof eliteRevealConfigSchema>;
 
 export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
-  glitchCountMax: 3,
-  glitchCountMin: 1,
-  glitchShowMs: 9,
+  glitchCountMax: 8,
+  glitchCountMin: 4,
+  glitchShowMs: 16,
   staggerSpreadMs: 50,
   variants: [...eliteGlitchVariantSchema.options],
   variantWeights: { ...DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS },
@@ -2057,7 +2057,7 @@ export const userSettingsSchema = z.object({
   highContrast: z.boolean(),
   proMode: z.boolean(),
   proModeOpacity: z.number().int().min(0).max(100),
-  eliteMode: z.boolean().default(false),
+  eliteMode: z.boolean().default(true),
   eliteRevealConfig: eliteRevealConfigSchema.default(
     DEFAULT_ELITE_REVEAL_CONFIG,
   ),

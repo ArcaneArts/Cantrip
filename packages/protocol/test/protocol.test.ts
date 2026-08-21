@@ -4576,7 +4576,7 @@ describe("Cantrip protocol", () => {
       }),
     ).toMatchObject({
       desktopFrameRate: 30,
-      eliteMode: false,
+      eliteMode: true,
       eliteRevealConfig: DEFAULT_ELITE_REVEAL_CONFIG,
       defaultPermissionProfileId: ":workspace",
       defaultWorkerId: null,
@@ -4665,10 +4665,10 @@ describe("Cantrip protocol", () => {
         variants: ["chromatic"],
         variantWeights: {
           chromatic: 0.25,
-          "full-frame": 0.1,
-          "left-frame": 0.1,
-          "right-frame": 0.1,
-          scanline: 0.5,
+          "full-frame": 0.01,
+          "left-frame": 0.01,
+          "right-frame": 0.01,
+          scanline: 0.33,
         },
       },
     });

@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
-  EliteModeSecretButton,
+  EliteModeButton,
   SettingsPage,
   changedAccountLabel,
   type SettingsSection,
@@ -46,13 +46,13 @@ describe("account settings", () => {
     expect(logs).toBeGreaterThan(workers);
   });
 
-  it("keeps the Elite entry invisible until its secret button is hovered", () => {
+  it("keeps the Elite entry visible in the Pro Mode dialog", () => {
     const markup = renderToStaticMarkup(
-      <EliteModeSecretButton onOpen={() => undefined} />,
+      <EliteModeButton onOpen={() => undefined} />,
     );
 
     expect(markup).toContain("Elite Mode");
-    expect(markup).toContain("elite-secret-entry");
+    expect(markup).not.toContain("elite-secret-entry");
     expect(markup).toContain('aria-label="Open Elite Mode"');
   });
 
