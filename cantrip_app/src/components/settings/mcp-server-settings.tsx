@@ -667,8 +667,9 @@ export function McpServerSettings({
               Available
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Scan a worker&apos;s Codex and Claude Code configuration. Nothing
-              is activated until you add it here.
+              Scan a worker&apos;s Codex and Claude Code configuration plus
+              running localhost HTTP MCP servers. Nothing is activated until you
+              add it here.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -762,12 +763,16 @@ export function McpServerSettings({
                           <Badge variant="outline">
                             {candidate.source === "codex"
                               ? "Codex"
-                              : "Claude Code"}
+                              : candidate.source === "claude"
+                                ? "Claude Code"
+                                : "Running locally"}
                           </Badge>
                           <Badge variant="outline">
-                            {candidate.sourceScope === "project"
-                              ? "Project config"
-                              : "User config"}
+                            {candidate.source === "localhost"
+                              ? "Worker listener"
+                              : candidate.sourceScope === "project"
+                                ? "Project config"
+                                : "User config"}
                           </Badge>
                         </div>
                         <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
@@ -799,15 +804,20 @@ export function McpServerSettings({
             ) : (
               <p className="text-sm text-muted-foreground">
                 No importable MCP servers were found in standard Codex or Claude
-                Code config files on this worker.
+                Code config files or among running localhost HTTP listeners on
+                this worker.
               </p>
             )}
             {discovery.data.issues.length ? (
               <div className="grid gap-1 text-xs text-muted-foreground">
                 {discovery.data.issues.map((issue, index) => (
                   <p key={`${issue.source}:${issue.sourceScope}:${index}`}>
-                    {issue.source === "codex" ? "Codex" : "Claude Code"} ·{" "}
-                    {issue.message}
+                    {issue.source === "codex"
+                      ? "Codex"
+                      : issue.source === "claude"
+                        ? "Claude Code"
+                        : "Localhost"}{" "}
+                    · {issue.message}
                   </p>
                 ))}
               </div>

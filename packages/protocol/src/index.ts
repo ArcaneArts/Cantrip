@@ -1941,7 +1941,11 @@ export const encryptedMcpServerUpdateSchema = encryptedMcpServerCreateSchema
   .omit({ id: true })
   .strict();
 
-export const mcpServerDiscoverySourceSchema = z.enum(["codex", "claude"]);
+export const mcpServerDiscoverySourceSchema = z.enum([
+  "codex",
+  "claude",
+  "localhost",
+]);
 export const mcpServerDiscoveryScopeSchema = z.enum(["user", "project"]);
 
 export const mcpServerDiscoveryCandidateSchema = z
