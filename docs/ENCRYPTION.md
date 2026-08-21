@@ -70,8 +70,10 @@ Some data is already protected, but it is not end-to-end encrypted:
   worker. Live workflow agent interactions reuse the independently scoped
   `interaction-content` key end to end. Explicit gate prompts, permission
   manifests, decisions, reasons, inputs, results, and private failures are also
-  endpoint-only encrypted. Triggers, deliveries, and other content-bearing
-  events still require the remaining worker-runtime cutover.
+  endpoint-only encrypted. Workflow control reasons use the same boundary;
+  event history is limited to allowlisted operational metadata plus opaque
+  payloads. Triggers and deliveries still require the remaining
+  worker-runtime cutover.
 - Repository and Git operations, including Git-agent tasks, locally gathered
   evidence, and generated drafts, use protected client-to-worker envelopes or
   worker-local opaque routing handles.
@@ -448,7 +450,8 @@ database-compromise guarantee is described.
 | Workflow run inputs/results, noninteractive node inputs/results, attempts, and private worker errors                        | Client-sealed run input; worker-opened definitions and predecessor outputs; separately row-bound run/node/attempt result and error envelopes                                              | Noninteractive runtime E2EE complete             | Implemented          | Very high                                                  | Server schedules preauthorized DAGs but cannot compose prompts, apply mappings, inspect results, or read private failures                                                  |
 | Workflow map, pipeline, reduce, repeat-until, verify, and condition semantics                                               | Authorized-worker-only collection expansion, iteration, predicate evaluation, and branch selection; one opaque top-level result with public aggregate usage and logical execution count   | E2EE complete                                    | Implemented          | Very high                                                  | Server sees random-ID topology, selected branch, aggregate usage/counts, and lifecycle, but never collection values or predicates                                          |
 | Workflow gates and gate decisions                                                                                           | Worker-sealed prompt/permission request; client-sealed decision/reason; worker-authenticated outcome and separately sealed run/node/attempt payloads                                      | E2EE complete                                    | Implemented          | Very high                                                  | Server sees gate status, expiry, denial policy, decision classification, and routing but cannot inspect the prompt, permissions, reason, input, result, or private failure |
-| Workflow content-bearing events, triggers, and deliveries                                                                   | Unattended ingress remains fail-closed; protected runtime emits only metadata-only gate/interaction events                                                                                | Protected runtime closure pending                | Good when split      | Very high                                                  | Trigger configuration/input, delivery payloads/private errors, and remaining semantic event content must move to authorized clients and workers                            |
+| Workflow control reasons and content-bearing events                                                                         | Client-sealed pause/cancel/retry/resume reasons; opaque event payload slot; explicit allowlist for server-readable scheduling/routing metadata                                            | E2EE/minimization complete                       | Implemented          | Very high                                                  | Server sees event type/order/actors, opaque IDs, lifecycle classifications, aggregate usage, and bounded operational codes, but no user reason or worker event content     |
+| Workflow triggers and deliveries                                                                                            | Unattended ingress remains fail-closed                                                                                                                                                    | Protected runtime closure pending                | Good when split      | Very high                                                  | Trigger configuration/input, delivery payloads, and private delivery errors must move to authorized clients and workers                                                    |
 | Repository identities and names, remotes, paths, branch names, and Git output                                               | `repository-content` operations; keyed identity blind indexes; worker-local opaque routing for identity, setup, lifecycle, paths, branches, status, operation state, and Git-agent drafts | E2EE complete                                    | Implemented          | High                                                       | Repository/Git content, identity, paths, branches, status, errors, GitHub catalogs, and Git-agent prose; equality leakage remains                                          |
 | Token usage, quotas, and model-behavior analytics                                                                           | Plaintext/queryable                                                                                                                                                                       | Planned minimization                             | Partial              | Medium-High                                                | Fully encrypting numbers removes server dashboards, budgets, and historical analysis                                                                                       |
 | Diagnostic logs and audit metadata                                                                                          | Redacted but server-readable                                                                                                                                                              | Planned minimization                             | Partial              | Medium                                                     | Fully encrypted logs prevent server-side operations and security investigation                                                                                             |
@@ -1664,19 +1667,41 @@ Because a server cannot encrypt pre-cutover plaintext gates, those old rows
 remain deliberately unreadable and fail closed until the planned pre-release
 server wipe; every new protected-path gate writes a request envelope.
 
-Content-bearing activity/message/plan events, trigger configuration/input,
-delivery payloads, and their private errors remain the next protected-runtime
-slices. Every trigger mutation and delivery route still returns `410`; there is
-no plaintext fallback for these unattended paths.
+Workflow control operations now keep the existing user experience while
+removing their server-readable reason strings. The client seals pause and
+cancel reasons directly to the run row and resume/retry reasons to the stable
+event operation; run reads open only the active pause/cancel envelopes.
+Cancellation propagates a fixed operational message to interrupted rows rather
+than copying the user's reason. The generic event log stores a separate opaque
+payload and an allowlisted public payload containing only event ordering,
+routing IDs, lifecycle classifications, bounded coarse codes, revision
+fingerprints, and aggregate usage. Raw worker events, text previews, messages,
+reasons, authored collection paths/step keys, and arbitrary JSON are discarded
+at the persistence boundary.
 
-The focused client and worker encryption tests cover client-side run and gate
-decision sealing, permission-manifest minimization, worker-only prompt and gate
-request construction, collection expansion, gate resolution, row-bound result
-opening, and ciphertext-only transport.
+[Migration 0130](../cantrip_server/drizzle/0130_protected_workflow_events.sql)
+adds the protected run-reason and event-payload columns, replaces the arbitrary
+event JSON column with explicitly public metadata, and removes the old pause,
+cancel, and event payload columns. A server cannot transform those legacy
+values without an endpoint key, so the pre-release cutover deliberately drops
+them instead of adding a plaintext compatibility reader. It does not reset a
+remote or production server; the planned pre-release wipe still clears all
+remaining pre-cutover workflow rows.
+
+Trigger configuration/input, delivery payloads, and their private errors
+remain the next protected-runtime slice. Every trigger mutation and delivery
+route still returns `410`; there is no plaintext fallback for unattended
+ingress.
+
+The focused client and worker encryption tests cover client-side run, control
+reason, and gate-decision sealing, permission-manifest minimization,
+worker-only prompt and gate request construction, collection expansion, gate
+resolution, row-bound result opening, and ciphertext-only transport.
 The server relay and migration tests prove opaque persistence, empty legacy
-semantic placeholders, and the runtime-only destructive reset. The generated
-server-boundary audit records the protected command/result contract and the
-still fail-closed trigger surfaces.
+semantic placeholders, legacy reason/event removal, and the runtime-only
+destructive reset. The event minimization test and generated server-boundary
+audit guard the protected/public split and the still fail-closed trigger
+surfaces.
 
 ## Projects, worktrees, and Git
 
@@ -1966,8 +1991,10 @@ counts, worker presence, model-route choices, and traffic patterns.
     unlocked client; the server retains only routing/lifecycle metadata and
     ciphertext. Explicit gate requests and decisions use `workflow-content`
     between the assigned worker and unlocked client, with only operational gate
-    classification exposed to the scheduler. Content-bearing events, triggers,
-    and deliveries remain the next protected-runtime phases.
+    classification exposed to the scheduler. Pause/cancel/retry/resume reasons
+    are client-sealed, and workflow events retain only allowlisted operational
+    metadata plus optional ciphertext. Triggers and deliveries remain the next
+    protected-runtime phase.
 22. **Optional private analytics:** after workflow runtime content is opaque,
     minimize or relocate analytics according to the selected privacy mode.
 

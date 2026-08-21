@@ -266,6 +266,59 @@ describe("workflow encryption migrations", () => {
         FROM workflow_approval_gates
       `);
       expect(gateRows.rows).toEqual([{ gates: 1, protected_request: null }]);
+
+      await database.exec(`
+        UPDATE workflow_runs
+        SET pause_reason = 'LEGACY_PAUSE_REASON_SENTINEL',
+            cancel_reason = 'LEGACY_CANCEL_REASON_SENTINEL'
+        WHERE id = 'gate-run';
+        INSERT INTO workflow_run_events (
+          run_id, run_node_id, sequence, event_key, type, payload,
+          actor_type
+        ) VALUES (
+          'gate-run', 'gate-run-node', 0, 'legacy-content-event',
+          'workflow.node.message',
+          '{"message":"LEGACY_EVENT_CONTENT_SENTINEL"}'::jsonb,
+          'worker'
+        );
+      `);
+      const eventMigration = files.find((name) => name.startsWith("0130_"));
+      expect(eventMigration).toBeDefined();
+      await database.exec(
+        await readFile(`${migrationsDirectory}/${eventMigration!}`, "utf8"),
+      );
+      const protectedColumns = await database.query<{
+        column_name: string;
+      }>(`
+        SELECT table_name || '.' || column_name AS column_name
+        FROM information_schema.columns
+        WHERE (table_name = 'workflow_runs' AND column_name IN (
+          'pause_reason', 'cancel_reason',
+          'protected_pause_reason', 'protected_cancel_reason'
+        )) OR (table_name = 'workflow_run_events' AND column_name IN (
+          'payload', 'public_payload', 'protected_payload'
+        ))
+        ORDER BY column_name
+      `);
+      expect(
+        protectedColumns.rows.map(({ column_name }) => column_name),
+      ).toEqual([
+        "workflow_run_events.protected_payload",
+        "workflow_run_events.public_payload",
+        "workflow_runs.protected_cancel_reason",
+        "workflow_runs.protected_pause_reason",
+      ]);
+      const eventRows = await database.query<{
+        protected_payload: unknown;
+        public_payload: unknown;
+      }>(`
+        SELECT protected_payload, public_payload
+        FROM workflow_run_events
+        WHERE event_key = 'legacy-content-event'
+      `);
+      expect(eventRows.rows).toEqual([
+        { protected_payload: null, public_payload: {} },
+      ]);
     } finally {
       await database.close();
     }

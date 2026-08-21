@@ -11,12 +11,12 @@ import {
   workflowFolderProducedChangesSchema,
   protectedWorkflowGateDecisionResultSchema,
   protectedWorkflowNodeExecutionResultSchema,
+  type EncryptedWorkflowNodeRetry,
   type EncryptedWorkflowGateDecision,
-  type WorkflowNodeRetry,
-  type WorkflowRunCancel,
+  type EncryptedWorkflowRunCancel,
+  type EncryptedWorkflowRunPause,
+  type EncryptedWorkflowRunResume,
   type WorkflowRunWireDetail,
-  type WorkflowRunPause,
-  type WorkflowRunResume,
 } from "@cantrip/protocol/workflows";
 import { cantripVersion } from "@cantrip/version";
 
@@ -304,7 +304,7 @@ export class WorkflowExecutor {
   async cancelRun(
     ownerId: string,
     runId: string,
-    input: WorkflowRunCancel,
+    input: EncryptedWorkflowRunCancel,
   ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const requested = await this.repository.workflowRuns.requestCancellation(
@@ -350,7 +350,7 @@ export class WorkflowExecutor {
   async pauseRun(
     ownerId: string,
     runId: string,
-    input: WorkflowRunPause,
+    input: EncryptedWorkflowRunPause,
   ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const run = await this.repository.workflowRuns.pauseRun(
@@ -379,7 +379,7 @@ export class WorkflowExecutor {
   async resumeRun(
     ownerId: string,
     runId: string,
-    input: WorkflowRunResume,
+    input: EncryptedWorkflowRunResume,
   ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const run = await this.repository.workflowRuns.resumeRun(
@@ -451,7 +451,7 @@ export class WorkflowExecutor {
     ownerId: string,
     runId: string,
     runNodeId: string,
-    input: WorkflowNodeRetry,
+    input: EncryptedWorkflowNodeRetry,
   ): Promise<WorkflowRunWireDetail | null> {
     return this.#ownerContext.run(ownerId, async () => {
       const run = await this.repository.workflowRuns.retryNode(

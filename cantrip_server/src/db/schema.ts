@@ -3706,6 +3706,12 @@ export const workflowRuns = pgTable(
       .notNull(),
     protectedResult: jsonb("protected_result").$type<WorkflowContentOpaque>(),
     protectedError: jsonb("protected_error").$type<WorkflowContentOpaque>(),
+    protectedPauseReason: jsonb(
+      "protected_pause_reason",
+    ).$type<WorkflowContentOpaque>(),
+    protectedCancelReason: jsonb(
+      "protected_cancel_reason",
+    ).$type<WorkflowContentOpaque>(),
     budget: jsonb("budget")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -3732,8 +3738,6 @@ export const workflowRuns = pgTable(
     codexThreadId: text("codex_thread_id"),
     errorCode: text("error_code"),
     errorMessage: text("error_message"),
-    pauseReason: text("pause_reason"),
-    cancelReason: text("cancel_reason"),
     recoveryState: text("recovery_state").notNull().default("stable"),
     queuedAt: timestamp("queued_at", { withTimezone: true })
       .notNull()
@@ -4374,10 +4378,11 @@ export const workflowRunEvents = pgTable(
     sequence: integer("sequence").notNull(),
     eventKey: text("event_key").notNull(),
     type: text("type").notNull(),
-    payload: jsonb("payload")
+    publicPayload: jsonb("public_payload")
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    protectedPayload: jsonb("protected_payload").$type<WorkflowContentOpaque>(),
     actorType: text("actor_type").notNull(),
     actorId: text("actor_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
