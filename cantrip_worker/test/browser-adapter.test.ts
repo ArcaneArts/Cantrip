@@ -333,7 +333,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
       const server = createServer((request, response) => {
         response.setHeader("content-type", "text/html; charset=utf-8");
         response.end(
-          `<title>${request.url === "/next" ? "Next" : request.url === "/configured" ? "Configured" : "Home"}</title><style>body{margin:0}a{display:block;height:100px;cursor:pointer}</style><a id="target">Cantrip browser</a><textarea id="input"></textarea>`,
+          `<title>${request.url === "/next" ? "Next" : request.url === "/configured" ? "Configured" : "Home"}</title><style>body{margin:0;min-height:2400px}a{display:block;height:100px;cursor:pointer}</style><a id="target">Cantrip browser</a><textarea id="input"></textarea>`,
         );
       });
       await new Promise<void>((resolve) =>
@@ -530,6 +530,50 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             .session("browser-test")
             ?.evaluate("document.querySelector('#input').value"),
         ).resolves.toBe("pasted");
+
+        await expect(
+          session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "touch",
+                event: "end",
+                points: [{ id: 1, x: 320, y: 400 }],
+              }),
+            ),
+          ),
+        ).rejects.toThrow(/CDP/);
+        expect(adapter.session("browser-test")).not.toBeNull();
+        expect(launches).toHaveLength(1);
+
+        for (const message of [
+          {
+            type: "touch",
+            event: "start",
+            points: [{ id: 1, x: 320, y: 400 }],
+          },
+          {
+            type: "touch",
+            event: "move",
+            points: [{ id: 1, x: 320, y: 100 }],
+          },
+          { type: "touch", event: "end", points: [] },
+        ]) {
+          await session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(JSON.stringify(message)),
+          );
+        }
+        await eventually(async () =>
+          Boolean(
+            await adapter
+              .session("browser-test")
+              ?.evaluate("globalThis.scrollY > 0"),
+          ),
+        );
+        expect(launches).toHaveLength(1);
 
         const framesBeforeCrash = emissions.filter(
           ({ channel }) => channel === "frame",

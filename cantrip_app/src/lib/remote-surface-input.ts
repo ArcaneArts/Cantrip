@@ -222,7 +222,10 @@ export function remoteSurfaceTouchInput(
   return {
     type: "touch",
     event: type,
-    points: remoteSurfaceTouchPoints(event.touches, bounds, target),
+    points:
+      type === "end" || type === "cancel"
+        ? []
+        : remoteSurfaceTouchPoints(event.touches, bounds, target),
     modifiers: remoteSurfaceModifiers(event),
   };
 }

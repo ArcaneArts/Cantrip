@@ -537,12 +537,18 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
   private async configureViewport(
     viewport: RemoteSurfaceViewport,
   ): Promise<void> {
-    await this.command("Emulation.setDeviceMetricsOverride", {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: viewport.devicePixelRatio,
-      mobile: false,
-    });
+    await Promise.all([
+      this.command("Emulation.setDeviceMetricsOverride", {
+        width: viewport.width,
+        height: viewport.height,
+        deviceScaleFactor: viewport.devicePixelRatio,
+        mobile: false,
+      }),
+      this.command("Emulation.setTouchEmulationEnabled", {
+        enabled: true,
+        maxTouchPoints: 10,
+      }),
+    ]);
     await this.command("Page.stopScreencast").catch(() => undefined);
     await this.command("Page.startScreencast", {
       format: "jpeg",
@@ -851,15 +857,7 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     payload: Uint8Array,
   ): Promise<void> {
     const session = await this.ensureSession();
-    try {
-      await session.handleFrame(attachmentId, channel, payload);
-    } catch (error) {
-      this.handleCrash(
-        session,
-        error instanceof Error ? error : new Error(String(error)),
-      );
-      throw error;
-    }
+    await session.handleFrame(attachmentId, channel, payload);
   }
 
   async suspend(): Promise<void> {

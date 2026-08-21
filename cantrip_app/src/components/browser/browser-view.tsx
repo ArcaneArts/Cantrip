@@ -58,7 +58,7 @@ import {
 } from "@/lib/desktop-tunnel";
 import { errorMessage } from "@/lib/error-message";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
-import { ensureSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
+import { waitForSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
   forwardRemoteSurfaceClipboard,
   remoteSurfacePointerCoordinates,
@@ -297,14 +297,13 @@ export function BrowserView({
     let disposed = false;
     setEncryptionReady(false);
     setEncryptionError(null);
-    void getWorkers()
-      .then((workers) =>
-        ensureSurfacePrivateStateWorkerEncryption({
-          worker: workers.find(
-            (worker) => worker.workerId === browser.workerId,
-          ),
-        }),
-      )
+    void waitForSurfacePrivateStateWorkerEncryption({
+      isCancelled: () => disposed,
+      loadWorker: async () =>
+        (await getWorkers()).find(
+          (worker) => worker.workerId === browser.workerId,
+        ),
+    })
       .then(() => {
         if (!disposed) setEncryptionReady(true);
       })

@@ -16,6 +16,7 @@ import { ClientEncryptionService } from "./client-encryption";
 import {
   ensureSurfacePrivateStateWorkerEncryption,
   surfacePrivateStateWorkerReadiness,
+  waitForSurfacePrivateStateWorkerEncryption,
 } from "./surface-private-state-worker-encryption";
 import type { WorkerGrantApi } from "./worker-encryption-grants";
 
@@ -147,5 +148,34 @@ describe("surface private-state worker readiness", () => {
         new ClientEncryptionService().getSnapshot(),
       ),
     ).toBe("locked");
+  });
+
+  it("retries while a connected worker is still becoming visible", async () => {
+    const ready = status("ready", [
+      { component: "surface-private-state", keyRevision: 3 },
+    ]);
+    const loadWorker = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValue(worker(ready));
+    const sleep = vi.fn(async () => undefined);
+    const refresh = vi.fn(async () => ({
+      component: "surface-private-state" as const,
+      keyRevision: 3,
+      status: ready,
+    }));
+
+    await expect(
+      waitForSurfacePrivateStateWorkerEncryption({
+        loadWorker,
+        refresh,
+        service: service(),
+        session: () =>
+          ({ serverId, user: { id: ownerId } }) as ClientSessionContext,
+        sleep,
+      }),
+    ).resolves.toEqual(ready);
+    expect(loadWorker).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledWith(250);
   });
 });
