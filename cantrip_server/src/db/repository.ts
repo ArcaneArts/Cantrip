@@ -122,9 +122,6 @@ import type {
   ProviderTelemetryExport,
   EncryptedProjectWorkspaceCreate,
   EncryptedProjectWorkspaceUpdate,
-  ProjectWorkspaceCreate,
-  ProjectWorkspaceSummary,
-  ProjectWorkspaceUpdate,
   ProjectWorkspaceWireList,
   ProjectWorkspaceWireSummary,
   ProjectWorktreePolicyUpdate,
@@ -1074,37 +1071,26 @@ function toMcpServerOpaqueRuntime(
   };
 }
 
-function toProjectWorkspaceSummary(
-  workspace: ProjectWorkspaceRow,
-  projectIds: string[],
-): ProjectWorkspaceSummary {
-  if (workspace.name === null) {
-    throw new ProjectWorkspaceInvariantError(
-      "Encrypted workspace names must be decrypted by the client.",
-    );
-  }
-  return {
-    id: workspace.id,
-    name: workspace.name,
-    position: workspace.position,
-    isDefault: workspace.isDefault,
-    projectIds,
-    revision: workspace.revision,
-    createdAt: toISOString(workspace.createdAt),
-    updatedAt: toISOString(workspace.updatedAt),
-  };
-}
-
 function toProjectWorkspaceWireSummary(
   workspace: ProjectWorkspaceRow,
   projectIds: string[],
 ): ProjectWorkspaceWireSummary {
   if (
-    workspace.name === null &&
+    workspace.nameEnvelope === null &&
+    (workspace.id !== `workspace:default:${workspace.ownerId}` ||
+      workspace.nameFormatVersion !== null ||
+      workspace.nameKeyRevision !== null ||
+      workspace.nameBlindIndex !== null)
+  ) {
+    throw new ProjectWorkspaceInvariantError(
+      "Only the deterministic system-default workspace may omit name ciphertext.",
+    );
+  }
+  if (
+    workspace.nameEnvelope !== null &&
     (workspace.nameFormatVersion !== 1 ||
       workspace.nameKeyRevision === null ||
       workspace.nameBlindIndex === null ||
-      workspace.nameEnvelope === null ||
       workspace.nameEnvelope.keyRevision !== workspace.nameKeyRevision)
   ) {
     throw new ProjectWorkspaceInvariantError(
@@ -1112,15 +1098,15 @@ function toProjectWorkspaceWireSummary(
     );
   }
   const nameProtection: ProjectWorkspaceWireSummary["nameProtection"] =
-    workspace.name === null
-      ? {
+    workspace.nameEnvelope === null
+      ? { state: "system-default" }
+      : {
           state: "encrypted",
           formatVersion: 1,
           keyRevision: workspace.nameKeyRevision!,
           blindIndex: workspace.nameBlindIndex!,
-          envelope: workspace.nameEnvelope!,
-        }
-      : { state: "legacy", plaintext: workspace.name };
+          envelope: workspace.nameEnvelope,
+        };
   return {
     id: workspace.id,
     nameProtection,
@@ -7820,25 +7806,11 @@ export class ServerRepository {
       )
       .limit(1);
     if (rows[0]) return rows[0];
-    const profiles = await this.database
-      .select({
-        activeMasterKeyRevision:
-          schema.accountEncryptionProfiles.activeMasterKeyRevision,
-      })
-      .from(schema.accountEncryptionProfiles)
-      .where(eq(schema.accountEncryptionProfiles.ownerId, ownerId))
-      .limit(1);
-    if (profiles[0]) {
-      throw new ProjectWorkspaceInvariantError(
-        "An initialized encryption profile cannot create a plaintext default workspace.",
-      );
-    }
     await this.database
       .insert(schema.projectWorkspaces)
       .values({
         id: defaultId,
         ownerId,
-        name: "Default",
         position: 0,
         isDefault: true,
       })
@@ -7854,45 +7826,6 @@ export class ServerRepository {
       )
       .limit(1);
     return firstOrThrow(rows, "ensuring the default workspace");
-  }
-
-  async listProjectWorkspaces(
-    ownerId: string,
-  ): Promise<ProjectWorkspaceSummary[]> {
-    await this.ensureDefaultProjectWorkspace(ownerId);
-    const [workspaces, memberships] = await Promise.all([
-      this.database
-        .select()
-        .from(schema.projectWorkspaces)
-        .where(eq(schema.projectWorkspaces.ownerId, ownerId))
-        .orderBy(
-          asc(schema.projectWorkspaces.position),
-          asc(schema.projectWorkspaces.createdAt),
-        ),
-      this.database
-        .select({
-          workspaceId: schema.projectWorkspaceMemberships.workspaceId,
-          projectId: schema.projectWorkspaceMemberships.projectId,
-        })
-        .from(schema.projectWorkspaceMemberships)
-        .innerJoin(
-          schema.projectWorkspaces,
-          eq(
-            schema.projectWorkspaces.id,
-            schema.projectWorkspaceMemberships.workspaceId,
-          ),
-        )
-        .where(eq(schema.projectWorkspaces.ownerId, ownerId)),
-    ]);
-    const projectIds = new Map<string, string[]>();
-    for (const membership of memberships) {
-      const current = projectIds.get(membership.workspaceId) ?? [];
-      current.push(membership.projectId);
-      projectIds.set(membership.workspaceId, current);
-    }
-    return workspaces.map((workspace) =>
-      toProjectWorkspaceSummary(workspace, projectIds.get(workspace.id) ?? []),
-    );
   }
 
   async listProjectWorkspaceWire(
@@ -7935,12 +7868,7 @@ export class ServerRepository {
         projectIds.get(workspace.id) ?? [],
       ),
     );
-    return {
-      workspaces: summaries,
-      legacyCount: summaries.filter(
-        ({ nameProtection }) => nameProtection.state === "legacy",
-      ).length,
-    };
+    return { workspaces: summaries };
   }
 
   async createEncryptedProjectWorkspace(
@@ -7979,7 +7907,6 @@ export class ServerRepository {
       .values({
         id: input.id,
         ownerId,
-        name: null,
         nameEnvelope: input.nameProtection.envelope,
         nameBlindIndex: input.nameProtection.blindIndex,
         nameFormatVersion: input.nameProtection.formatVersion,
@@ -7992,140 +7919,6 @@ export class ServerRepository {
       firstOrThrow(rows, "creating an encrypted project workspace"),
       [],
     );
-  }
-
-  async createProjectWorkspace(
-    ownerId: string,
-    input: ProjectWorkspaceCreate,
-  ): Promise<ProjectWorkspaceSummary> {
-    await this.ensureDefaultProjectWorkspace(ownerId);
-    const profiles = await this.database
-      .select({ ownerId: schema.accountEncryptionProfiles.ownerId })
-      .from(schema.accountEncryptionProfiles)
-      .where(eq(schema.accountEncryptionProfiles.ownerId, ownerId))
-      .limit(1);
-    if (profiles[0]) {
-      throw new ProjectWorkspaceInvariantError(
-        "Initialized accounts cannot write plaintext workspace names.",
-      );
-    }
-    const last = await this.database
-      .select({ position: schema.projectWorkspaces.position })
-      .from(schema.projectWorkspaces)
-      .where(eq(schema.projectWorkspaces.ownerId, ownerId))
-      .orderBy(desc(schema.projectWorkspaces.position))
-      .limit(1);
-    const rows = await this.database
-      .insert(schema.projectWorkspaces)
-      .values({
-        id: randomUUID(),
-        ownerId,
-        name: input.name,
-        position: (last[0]?.position ?? -1) + 1,
-        isDefault: false,
-      })
-      .returning();
-    return toProjectWorkspaceSummary(
-      firstOrThrow(rows, "creating a project workspace"),
-      [],
-    );
-  }
-
-  async updateProjectWorkspace(
-    ownerId: string,
-    workspaceId: string,
-    input: ProjectWorkspaceUpdate,
-  ): Promise<ProjectWorkspaceSummary | null> {
-    const rows = await this.database
-      .select()
-      .from(schema.projectWorkspaces)
-      .where(
-        and(
-          eq(schema.projectWorkspaces.id, workspaceId),
-          eq(schema.projectWorkspaces.ownerId, ownerId),
-        ),
-      )
-      .limit(1);
-    const workspace = rows[0];
-    if (!workspace) return null;
-    if (input.name !== undefined) {
-      const profiles = await this.database
-        .select({ ownerId: schema.accountEncryptionProfiles.ownerId })
-        .from(schema.accountEncryptionProfiles)
-        .where(eq(schema.accountEncryptionProfiles.ownerId, ownerId))
-        .limit(1);
-      if (profiles[0]) {
-        throw new ProjectWorkspaceInvariantError(
-          "Initialized accounts cannot write plaintext workspace names.",
-        );
-      }
-    }
-    const projectIds = input.projectIds
-      ? [...new Set(input.projectIds)]
-      : undefined;
-    if (projectIds) {
-      const ownedProjects = projectIds.length
-        ? await this.database
-            .select({ id: schema.projects.id })
-            .from(schema.projects)
-            .where(
-              and(
-                eq(schema.projects.ownerId, ownerId),
-                inArray(schema.projects.id, projectIds),
-              ),
-            )
-        : [];
-      if (ownedProjects.length !== projectIds.length) {
-        throw new ProjectWorkspaceInvariantError(
-          "Workspace membership contained an unknown project.",
-        );
-      }
-    }
-    await this.database.transaction(async (transaction) => {
-      const updatedAt = new Date();
-      if (input.isDefault) {
-        await transaction
-          .update(schema.projectWorkspaces)
-          .set({ isDefault: false, updatedAt })
-          .where(
-            and(
-              eq(schema.projectWorkspaces.ownerId, ownerId),
-              eq(schema.projectWorkspaces.isDefault, true),
-            ),
-          );
-      }
-      await transaction
-        .update(schema.projectWorkspaces)
-        .set({
-          ...(input.name === undefined ? {} : { name: input.name }),
-          ...(input.isDefault ? { isDefault: true } : {}),
-          revision: sql`${schema.projectWorkspaces.revision} + 1`,
-          updatedAt,
-        })
-        .where(
-          and(
-            eq(schema.projectWorkspaces.id, workspaceId),
-            eq(schema.projectWorkspaces.ownerId, ownerId),
-          ),
-        );
-      if (projectIds !== undefined) {
-        await transaction
-          .delete(schema.projectWorkspaceMemberships)
-          .where(
-            eq(schema.projectWorkspaceMemberships.workspaceId, workspaceId),
-          );
-        if (projectIds.length) {
-          await transaction
-            .insert(schema.projectWorkspaceMemberships)
-            .values(
-              projectIds.map((projectId) => ({ workspaceId, projectId })),
-            );
-        }
-      }
-    });
-    return (await this.listProjectWorkspaces(ownerId)).find(
-      ({ id }) => id === workspaceId,
-    )!;
   }
 
   async updateEncryptedProjectWorkspace(
@@ -8206,7 +7999,6 @@ export class ServerRepository {
         .set({
           ...(input.nameProtection
             ? {
-                name: null,
                 nameEnvelope: input.nameProtection.envelope,
                 nameBlindIndex: input.nameProtection.blindIndex,
                 nameFormatVersion: input.nameProtection.formatVersion,

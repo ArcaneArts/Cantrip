@@ -33,7 +33,7 @@ function encryptedName(fill: number): EncryptedProjectWorkspaceName {
 }
 
 describe("workspace name encrypted persistence", () => {
-  it("migrates legacy rows atomically and rejects plaintext and duplicate blind tags", async () => {
+  it("seals the system default and rejects duplicate encrypted blind tags", async () => {
     const client = new PGlite();
     const database = drizzle(client, { schema });
     try {
@@ -60,9 +60,9 @@ describe("workspace name encrypted persistence", () => {
       `);
 
       const initial = await repository.listProjectWorkspaceWire(LOCAL_USER_ID);
-      expect(initial).toMatchObject({ legacyCount: 1 });
       const defaultWorkspace = initial.workspaces[0]!;
       expect(defaultWorkspace).toMatchObject({
+        nameProtection: { state: "system-default" },
         position: 0,
         isDefault: true,
         projectIds: [],
@@ -78,10 +78,10 @@ describe("workspace name encrypted persistence", () => {
           nameProtection: protectedDefault,
         },
       );
-      const migrated = await repository.listProjectWorkspaceWire(LOCAL_USER_ID);
-      expect(migrated.legacyCount).toBe(0);
-      expect(migrated.workspaces[0]).toMatchObject({
+      const sealed = await repository.listProjectWorkspaceWire(LOCAL_USER_ID);
+      expect(sealed.workspaces[0]).toMatchObject({
         id: defaultWorkspace.id,
+        nameProtection: { state: "encrypted" },
         position: 0,
         isDefault: true,
         projectIds: [],
@@ -89,14 +89,17 @@ describe("workspace name encrypted persistence", () => {
       });
 
       const stored = await client.query<{
-        name: string | null;
         name_envelope: unknown;
-      }>(`SELECT name, name_envelope FROM project_workspaces`);
+      }>(`SELECT name_envelope FROM project_workspaces`);
       expect(stored.rows).toHaveLength(1);
-      expect(stored.rows[0]?.name).toBeNull();
       expect(JSON.stringify(stored.rows[0]?.name_envelope)).not.toContain(
         "Default",
       );
+      const plaintextColumns = await client.query<{ column_name: string }>(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = 'project_workspaces' AND column_name = 'name'
+      `);
+      expect(plaintextColumns.rows).toEqual([]);
 
       await expect(
         repository.updateEncryptedProjectWorkspace(
@@ -108,10 +111,6 @@ describe("workspace name encrypted persistence", () => {
           },
         ),
       ).rejects.toBeInstanceOf(ProjectWorkspaceInvariantError);
-      await expect(
-        repository.createProjectWorkspace(LOCAL_USER_ID, { name: "Plaintext" }),
-      ).rejects.toThrow(/plaintext/iu);
-
       await repository.createEncryptedProjectWorkspace(LOCAL_USER_ID, {
         id: "bcb5c558-3dcb-4dca-8561-90f014b1860c",
         nameProtection: encryptedName(9),
@@ -125,8 +124,8 @@ describe("workspace name encrypted persistence", () => {
 
       await migrate(database, { migrationsFolder });
       expect(
-        (await repository.listProjectWorkspaceWire(LOCAL_USER_ID)).legacyCount,
-      ).toBe(0);
+        (await repository.listProjectWorkspaceWire(LOCAL_USER_ID)).workspaces,
+      ).toHaveLength(2);
     } finally {
       await client.close();
     }

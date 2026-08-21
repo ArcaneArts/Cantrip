@@ -352,7 +352,7 @@ async function initializeProfile(input: {
         activeMasterKeyRevision: 1,
         passwordKdf: passwordWrappedMasterKey?.kdf ?? null,
         passwordWrappedMasterKey,
-        payloadMigrationStatus: "pending",
+        payloadMigrationStatus: "complete",
       },
       initialClient: {
         id: input.device.clientId,

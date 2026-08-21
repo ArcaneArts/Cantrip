@@ -1514,7 +1514,6 @@ export const projectWorkspaces = pgTable(
     ownerId: text("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name"),
     nameEnvelope: jsonb("name_envelope").$type<EncryptedPayloadEnvelope>(),
     nameBlindIndex: text("name_blind_index"),
     nameFormatVersion: integer("name_format_version"),
@@ -1542,7 +1541,7 @@ export const projectWorkspaces = pgTable(
     ),
     check(
       "project_workspaces_name_protection_check",
-      sql`(${table.name} IS NOT NULL AND ${table.nameEnvelope} IS NULL AND ${table.nameBlindIndex} IS NULL AND ${table.nameFormatVersion} IS NULL AND ${table.nameKeyRevision} IS NULL) OR (${table.name} IS NULL AND ${table.nameEnvelope} IS NOT NULL AND ${table.nameBlindIndex} IS NOT NULL AND ${table.nameFormatVersion} = 1 AND ${table.nameKeyRevision} >= 1)`,
+      sql`(${table.id} = ('workspace:default:' || ${table.ownerId}) AND ${table.nameEnvelope} IS NULL AND ${table.nameBlindIndex} IS NULL AND ${table.nameFormatVersion} IS NULL AND ${table.nameKeyRevision} IS NULL) OR (${table.nameEnvelope} IS NOT NULL AND ${table.nameBlindIndex} IS NOT NULL AND ${table.nameFormatVersion} = 1 AND ${table.nameKeyRevision} >= 1)`,
     ),
     check("project_workspaces_revision_check", sql`${table.revision} >= 1`),
   ],

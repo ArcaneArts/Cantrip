@@ -86,6 +86,7 @@ const inventoryPath = resolve(
   repositoryRoot,
   "docs/security/server-route-inventory.json",
 );
+const encryptionPlanPath = resolve(repositoryRoot, "docs/ENCRYPTION.md");
 
 const prohibitedTaskProtocolSymbols = new Set([
   "TaskContinuationStart",
@@ -2734,6 +2735,194 @@ async function providerSecretRepositoryBoundaryAudit() {
   };
 }
 
+async function workspaceNameRepositoryBoundaryAudit() {
+  const paths = {
+    schema: resolve(serverSourcePath, "db/schema.ts"),
+    repository: resolve(serverSourcePath, "db/repository.ts"),
+    protocol: protocolPath,
+    application: appPath,
+    client: resolve(
+      repositoryRoot,
+      "cantrip_app/src/lib/workspace-encryption.ts",
+    ),
+    migration: resolve(
+      repositoryRoot,
+      "cantrip_server/drizzle/0133_lame_rocket_racer.sql",
+    ),
+  };
+  const texts = Object.fromEntries(
+    await Promise.all(
+      Object.entries(paths).map(async ([name, path]) => [
+        name,
+        await readFile(path, "utf8"),
+      ]),
+    ),
+  );
+  const failures = [];
+  const table = tableInitializer(texts.schema, "projectWorkspaces");
+  for (const marker of [
+    "nameEnvelope",
+    "nameBlindIndex",
+    "nameFormatVersion",
+    "nameKeyRevision",
+    "workspace:default:",
+  ]) {
+    if (!table.includes(marker)) {
+      failures.push(`projectWorkspaces: missing opaque marker ${marker}`);
+    }
+  }
+  if (/\bname\s*:\s*text\(/u.test(table)) {
+    failures.push("projectWorkspaces: plaintext name column returned");
+  }
+  for (const marker of [
+    "legacyProjectWorkspaceNameSchema",
+    'state: z.literal("legacy")',
+    "legacyCount",
+  ]) {
+    if (texts.protocol.includes(marker)) {
+      failures.push(`protocol: legacy workspace contract returned (${marker})`);
+    }
+  }
+  for (const marker of [
+    "systemDefaultProjectWorkspaceNameSchema",
+    "encryptedProjectWorkspaceNameSchema",
+  ]) {
+    if (!texts.protocol.includes(marker)) {
+      failures.push(`protocol: missing workspace wire contract ${marker}`);
+    }
+  }
+  for (const marker of [
+    "schema.projectWorkspaces.name",
+    "createProjectWorkspace(",
+    "updateProjectWorkspace(",
+    "listProjectWorkspaces(",
+  ]) {
+    if (texts.repository.includes(marker)) {
+      failures.push(
+        `repository: plaintext workspace path returned (${marker})`,
+      );
+    }
+  }
+  for (const marker of [
+    "encryptedProjectWorkspaceCreateSchema",
+    "encryptedProjectWorkspaceUpdateSchema",
+    "projectWorkspaceWireSummarySchema",
+  ]) {
+    if (!texts.application.includes(marker)) {
+      failures.push(
+        `application: missing encrypted workspace marker ${marker}`,
+      );
+    }
+  }
+  for (const marker of ["sealSystemDefault", "encryptName", "decryptPayload"]) {
+    if (!texts.client.includes(marker)) {
+      failures.push(`client: missing workspace endpoint operation ${marker}`);
+    }
+  }
+  for (const marker of [
+    'DELETE FROM "project_workspaces" WHERE "name" IS NOT NULL',
+    'DROP COLUMN "name"',
+  ]) {
+    if (!texts.migration.includes(marker)) {
+      failures.push(`migration: missing workspace plaintext cutover ${marker}`);
+    }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `Workspace-name E2EE boundary regressed:\n${failures.join("\n")}`,
+    );
+  }
+  return {
+    coveredTables: ["project_workspaces"],
+    guards: [
+      "workspace-names:encrypted-and-blind-indexed",
+      "system-default:semantic-sentinel-only",
+      "legacy-workspace-plaintext:absent",
+      "workspace-routes:encrypted-ingress-and-wire-egress",
+    ],
+  };
+}
+
+async function encryptionLedgerClosureAudit() {
+  const document = await readFile(encryptionPlanPath, "utf8");
+  const section = document
+    .split("## Feasibility and rollout ledger", 2)[1]
+    ?.split("### Workspace display names", 1)[0];
+  if (!section) throw new Error("Encryption ledger section was not found.");
+  const rows = section
+    .split("\n")
+    .filter((line) => line.startsWith("|") && !/^\|\s*-+/u.test(line))
+    .map((line) =>
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    )
+    .filter(([dataClass]) => dataClass !== "Data class");
+  const failures = [];
+  const classifications = {
+    endpointProtected: 0,
+    minimizedOperationalMetadata: 0,
+    hashedAuthenticationMaterial: 0,
+    plaintextControlPlane: 0,
+  };
+  for (const cells of rows) {
+    if (cells.length !== 6) {
+      failures.push(`ledger: malformed row with ${cells.length} cells`);
+      continue;
+    }
+    const [dataClass, currentProtection, rolloutStatus, feasibility] = cells;
+    if (
+      /\b(?:incomplete|lazy|partial|pending|planned|not started)\b/iu.test(
+        rolloutStatus,
+      )
+    ) {
+      failures.push(`${dataClass}: unfinished rollout status ${rolloutStatus}`);
+    }
+    if (rolloutStatus === "Keep hashed") {
+      classifications.hashedAuthenticationMaterial += 1;
+    } else if (
+      [
+        "Intentionally plaintext",
+        "Do not encrypt",
+        "Usually keep plaintext",
+        "No encryption benefit",
+      ].includes(rolloutStatus)
+    ) {
+      classifications.plaintextControlPlane += 1;
+    } else if (
+      /minimization/iu.test(rolloutStatus) ||
+      feasibility === "Intentional metadata"
+    ) {
+      classifications.minimizedOperationalMetadata += 1;
+    } else {
+      classifications.endpointProtected += 1;
+    }
+    if (
+      /^Plaintext(?:\/public)?$/u.test(currentProtection) &&
+      ![
+        "Intentionally plaintext",
+        "Do not encrypt",
+        "Usually keep plaintext",
+        "No encryption benefit",
+      ].includes(rolloutStatus)
+    ) {
+      failures.push(`${dataClass}: plaintext is not explicitly classified`);
+    }
+  }
+  if (rows.length !== 47) {
+    failures.push(`ledger: expected 47 classified rows, found ${rows.length}`);
+  }
+  if (failures.length > 0) {
+    throw new Error(`Encryption ledger is not closed:\n${failures.join("\n")}`);
+  }
+  return {
+    status: "closed",
+    rowCount: rows.length,
+    classifications,
+  };
+}
+
 async function analyticsAuditLogPrivacyBoundaryAudit() {
   const paths = {
     schema: resolve(serverSourcePath, "db/schema.ts"),
@@ -3558,6 +3747,7 @@ async function buildInventory() {
     policyDependencies,
     policyRepository,
     providerSecretRepository,
+    workspaceNameRepository,
     analyticsAuditLogPrivacy,
     attachmentContentRepository,
     privateDisplayLabelDependencies,
@@ -3566,6 +3756,7 @@ async function buildInventory() {
     surfaceStreamDependencies,
     repositoryOperationDependencies,
     remoteSurfaceStreamDependencies,
+    encryptionLedgerClosure,
   ] = await Promise.all([
     readFile(appPath, "utf8"),
     readFile(protocolPath, "utf8"),
@@ -3587,6 +3778,7 @@ async function buildInventory() {
     policyProductionDependencyAudit(),
     policyRepositoryBoundaryAudit(),
     providerSecretRepositoryBoundaryAudit(),
+    workspaceNameRepositoryBoundaryAudit(),
     analyticsAuditLogPrivacyBoundaryAudit(),
     attachmentContentRepositoryBoundaryAudit(),
     privateDisplayLabelProductionDependencyAudit(),
@@ -3595,6 +3787,7 @@ async function buildInventory() {
     surfaceStreamProductionDependencyAudit(),
     repositoryOperationProductionDependencyAudit(),
     remoteSurfaceStreamProductionDependencyAudit(),
+    encryptionLedgerClosureAudit(),
   ]);
   const surfacePrivateStateRepository =
     await surfacePrivateStateRepositoryBoundaryAudit(protocolText);
@@ -3731,6 +3924,10 @@ async function buildInventory() {
       status: "enforced",
       ...providerSecretRepository,
     },
+    workspaceNameE2eeBoundary: {
+      status: "enforced",
+      ...workspaceNameRepository,
+    },
     analyticsAuditLogPrivacyBoundary: {
       status: "minimized",
       ...analyticsAuditLogPrivacy,
@@ -3767,6 +3964,7 @@ async function buildInventory() {
       ...remoteSurfaceStreamDependencies,
       ...remoteSurfaceStreamProtocol,
     },
+    encryptionLedgerClosure,
     externalTransports: [
       {
         boundary: "capability-token",

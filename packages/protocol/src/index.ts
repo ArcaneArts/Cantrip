@@ -2442,10 +2442,9 @@ export const encryptedProjectWorkspaceNameSchema = z
     }
   });
 
-export const legacyProjectWorkspaceNameSchema = z
+export const systemDefaultProjectWorkspaceNameSchema = z
   .object({
-    state: z.literal("legacy"),
-    plaintext: z.string().trim().min(1).max(80),
+    state: z.literal("system-default"),
   })
   .strict();
 
@@ -2453,28 +2452,15 @@ export const projectWorkspaceWireSummarySchema =
   projectWorkspaceWireBaseSchema.extend({
     nameProtection: z.discriminatedUnion("state", [
       encryptedProjectWorkspaceNameSchema,
-      legacyProjectWorkspaceNameSchema,
+      systemDefaultProjectWorkspaceNameSchema,
     ]),
   });
 
 export const projectWorkspaceWireListSchema = z
   .object({
     workspaces: z.array(projectWorkspaceWireSummarySchema),
-    legacyCount: z.number().int().nonnegative(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    const actual = value.workspaces.filter(
-      ({ nameProtection }) => nameProtection.state === "legacy",
-    ).length;
-    if (actual !== value.legacyCount) {
-      context.addIssue({
-        code: "custom",
-        message: "Workspace legacy count does not match the payload.",
-        path: ["legacyCount"],
-      });
-    }
-  });
+  .strict();
 
 export const encryptedProjectWorkspaceCreateSchema = z
   .object({
