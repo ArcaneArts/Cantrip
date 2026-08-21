@@ -201,6 +201,7 @@ import {
   type ProjectCreateSource,
 } from "@/components/projects/project-create-menu";
 import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
+import { terminalLinkBrowserTitle } from "@/components/terminal/terminal-links";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
 import {
   SettingsPage,
@@ -217,6 +218,7 @@ import {
 } from "@/components/worktrees/worktree-control";
 import { hasScrolledContent } from "@/lib/scroll-divider";
 import { errorMessage as errorText } from "@/lib/error-message";
+import { openExternalUrl } from "@/lib/external-url";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 import {
   APP_ACTION_IDS,
@@ -4771,6 +4773,25 @@ export function App() {
       : undefined;
   const selectedTerminal = selectedStandaloneTerminal ?? linkedConsoleTerminal;
   const linkedConsoleChat = linkedConsoleTerminal ? selectedChat : undefined;
+  const openTerminalLink = (url: string) => {
+    if (!selectedTerminal || !selectedTabGroup) return;
+    newBrowser.mutate({
+      projectId: selectedTerminal.projectId,
+      tabGroupId: selectedTabGroup.id,
+      target: {
+        kind: "worker",
+        projectId: selectedTerminal.projectId,
+        workerId: selectedTerminal.activeWorkerId,
+      },
+      title: terminalLinkBrowserTitle(url),
+      url,
+    });
+  };
+  const openTerminalLinkExternally = (url: string) => {
+    void openExternalUrl(url).catch((error: unknown) =>
+      setPopoutError(errorText(error)),
+    );
+  };
   const activeChat = selectedChat;
   const chatRelocations = useQuery({
     enabled: Boolean(
@@ -7124,6 +7145,8 @@ export function App() {
               <TerminalView
                 terminal={selectedTerminal}
                 onExit={() => setChatConsoleChatId(null)}
+                onOpenExternalLink={openTerminalLinkExternally}
+                onOpenLink={openTerminalLink}
               />
             ) : (
               <TerminalView
@@ -7144,6 +7167,8 @@ export function App() {
                     open ? selectedTerminal.id : null,
                   )
                 }
+                onOpenExternalLink={openTerminalLinkExternally}
+                onOpenLink={openTerminalLink}
               />
             )}
           </Suspense>

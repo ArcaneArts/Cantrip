@@ -50,6 +50,9 @@ importers:
       "@capacitor/app":
         specifier: ^8.1.1
         version: 8.1.1(@capacitor/core@8.5.0)
+      "@capacitor/app-launcher":
+        specifier: ^8.0.1
+        version: 8.0.1(@capacitor/core@8.5.0)
       "@capacitor/core":
         specifier: ^8.5.0
         version: 8.5.0
@@ -578,6 +581,14 @@ packages:
       }
     peerDependencies:
       "@capacitor/core": ^8.5.0
+
+  "@capacitor/app-launcher@8.0.1":
+    resolution:
+      {
+        integrity: sha512-23D8zi74sn7kxvISix8qYwgqdxGJN+4NImcNGvHen98LB1zb4eZfkJvFvp7pwntxGw4OjIE7yuf4wbzZxQHpog==,
+      }
+    peerDependencies:
+      "@capacitor/core": ">=8.0.0"
 
   "@capacitor/app@8.1.1":
     resolution:
@@ -9030,6 +9041,10 @@ snapshots:
       "@babel/helper-validator-identifier": 7.29.7
 
   "@capacitor/android@8.5.0(@capacitor/core@8.5.0)":
+    dependencies:
+      "@capacitor/core": 8.5.0
+
+  "@capacitor/app-launcher@8.0.1(@capacitor/core@8.5.0)":
     dependencies:
       "@capacitor/core": 8.5.0
 

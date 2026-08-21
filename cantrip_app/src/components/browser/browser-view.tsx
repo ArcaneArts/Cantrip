@@ -57,6 +57,7 @@ import {
   type DesktopTunnelForwardSummary,
 } from "@/lib/desktop-tunnel";
 import { errorMessage } from "@/lib/error-message";
+import { openExternalUrl } from "@/lib/external-url";
 import { surfaceTitleEncryption } from "@/lib/surface-title-encryption";
 import { waitForSurfacePrivateStateWorkerEncryption } from "@/lib/surface-private-state-worker-encryption";
 import {
@@ -159,15 +160,6 @@ export function browserTunnelLocalUrl(
   local.hostname = attachment.localHost;
   local.port = String(attachment.localPort);
   return local.toString();
-}
-
-async function openBrowserExternally(url: string): Promise<void> {
-  if ("__TAURI_INTERNALS__" in window) {
-    const { openUrl } = await import("@tauri-apps/plugin-opener");
-    await openUrl(url);
-    return;
-  }
-  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 export function browserPointerCoordinates(
@@ -568,9 +560,7 @@ export function BrowserView({
         ...(currentWorkerId ? { workerId: currentWorkerId } : {}),
       });
       const attachment = await startDesktopTunnel(tunnel.id);
-      await openBrowserExternally(
-        browserTunnelLocalUrl(currentUrl, attachment),
-      );
+      await openExternalUrl(browserTunnelLocalUrl(currentUrl, attachment));
       setExternalActionMessage(
         `Opened through local port ${attachment.localPort}.`,
       );
@@ -612,7 +602,7 @@ export function BrowserView({
     setExternalActionPending(true);
     setExternalActionMessage(null);
     try {
-      await openBrowserExternally(currentUrl);
+      await openExternalUrl(currentUrl);
     } catch (error) {
       setExternalActionMessage(errorMessage(error));
     } finally {
