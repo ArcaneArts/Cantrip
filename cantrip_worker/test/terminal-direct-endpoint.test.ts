@@ -41,7 +41,7 @@ describe("TerminalDirectEndpointManager", () => {
       resize,
     } as unknown as TerminalManager;
     const manager = new TerminalDirectEndpointManager(terminal);
-    const serverId = "https://cantrip.example";
+    const streamServerId = "server-persistent-id";
     const ownerId = "terminal-owner";
     const componentKey = randomBytes(32);
     const encryption = {
@@ -50,13 +50,16 @@ describe("TerminalDirectEndpointManager", () => {
         keyRevision: 1,
       }),
       ownerId: () => ownerId,
-      serverIdentity: () => serverId,
     } as unknown as WorkerEncryptionService;
     manager.setEncryptionService(encryption, new SurfaceStreamReplayGuard());
     managers.push(manager);
     const capabilityId = randomUUID();
     const operationId = randomUUID();
-    const target = await manager.prepare(capabilityId, "terminal-1");
+    const target = await manager.prepare(
+      capabilityId,
+      "terminal-1",
+      streamServerId,
+    );
     if (target.kind !== "tcp") throw new Error("expected loopback target");
     const socket = new WebSocket(
       `ws://${target.host}:${target.port}/terminal?operationId=${operationId}`,
@@ -79,7 +82,7 @@ describe("TerminalDirectEndpointManager", () => {
     await expect(
       openWorkerSurfaceStreamContent({
         context: {
-          serverId,
+          serverId: streamServerId,
           surfaceKind: "terminal",
           surfaceId: "terminal-1",
           operationId,
@@ -94,7 +97,7 @@ describe("TerminalDirectEndpointManager", () => {
 
     const protectedData = await protectWorkerSurfaceStreamContent({
       context: {
-        serverId,
+        serverId: streamServerId,
         surfaceKind: "terminal",
         surfaceId: "terminal-1",
         operationId,

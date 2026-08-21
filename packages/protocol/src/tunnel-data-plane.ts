@@ -35,7 +35,7 @@ export const tunnelDataPlaneCloseCodeSchema = z.enum([
   "protocol-error",
 ]);
 
-export const tunnelDataPlaneTargetSchema = z.discriminatedUnion("kind", [
+export const tunnelDataPlaneTargetSchema = z.union([
   z
     .object({
       kind: z.literal("tcp"),
@@ -46,8 +46,16 @@ export const tunnelDataPlaneTargetSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("adapter"),
-      adapter: z.enum(["code", "project-share", "terminal"]),
+      adapter: z.enum(["code", "project-share"]),
       resourceId: idSchema,
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("adapter"),
+      adapter: z.literal("terminal"),
+      resourceId: idSchema,
+      serverId: z.string().trim().min(1).max(2_000),
     })
     .strict(),
 ]);

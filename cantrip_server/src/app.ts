@@ -20986,6 +20986,7 @@ export async function buildApp({
               kind: "adapter",
               adapter: "terminal",
               resourceId: context.terminalId,
+              serverId,
             },
           },
           worker,

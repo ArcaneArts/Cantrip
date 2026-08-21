@@ -55,6 +55,7 @@ export class TerminalDirectEndpointManager {
   async prepare(
     capabilityId: string,
     terminalId: string,
+    serverId: string,
   ): Promise<TunnelDataPlaneTarget> {
     this.revoke(capabilityId, "Direct terminal capability rotated");
     const server = createServer((_request, response) => {
@@ -93,7 +94,7 @@ export class TerminalDirectEndpointManager {
       }
       endpoint.sockets.add(socket);
       server.close();
-      this.#attach(terminalId, operationId, socket);
+      this.#attach(terminalId, operationId, serverId, socket);
       socket.once("close", () => endpoint.sockets.delete(socket));
     });
     await new Promise<void>((resolve, reject) => {
@@ -145,7 +146,12 @@ export class TerminalDirectEndpointManager {
     }
   }
 
-  #attach(terminalId: string, operationId: string, socket: WebSocket): void {
+  #attach(
+    terminalId: string,
+    operationId: string,
+    serverId: string,
+    socket: WebSocket,
+  ): void {
     const encryption = this.#encryption;
     const replay = this.#replay;
     if (!encryption || !replay) {
@@ -154,7 +160,7 @@ export class TerminalDirectEndpointManager {
     }
     const attachmentId = `direct:${randomUUID()}`;
     const inputContext = {
-      serverId: encryption.serverIdentity(),
+      serverId,
       surfaceKind: "terminal" as const,
       surfaceId: terminalId,
       operationId,
