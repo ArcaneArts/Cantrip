@@ -25,11 +25,17 @@ import {
 } from "@/lib/surface-stream-encryption";
 
 import { terminalCommandInput } from "./terminal-command-palette";
+import {
+  MobileTerminalCommandBar,
+  mobileTerminalKeyInput,
+  type MobileTerminalKey,
+} from "./mobile-terminal-command-bar";
 import { rowsWithoutPartiallyVisibleLastLine } from "./terminal-fit";
 import { installTerminalLinkLayer } from "./terminal-link-layer";
 import { TerminalScriptCommandDialog } from "./terminal-script-command-dialog";
 import { TerminalServicePanel } from "./terminal-service-panel";
 import { terminalBackground } from "./terminal-theme";
+import { useMobileTerminalKeyboard } from "./use-mobile-terminal-keyboard";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -74,6 +80,7 @@ export function TerminalView({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputSenderRef = useRef<((data: string) => boolean) | null>(null);
   const reconnectAttemptRef = useRef(0);
+  const terminalSurfaceRef = useRef<HTMLDivElement>(null);
   const terminalIdRef = useRef(terminal.id);
   const xtermRef = useRef<Terminal | null>(null);
   const onExitRef = useRef(onExit);
@@ -87,8 +94,11 @@ export function TerminalView({
   const [loadedTerminalId, setLoadedTerminalId] = useState<string | null>(() =>
     loadedTerminalIds.has(terminal.id) ? terminal.id : null,
   );
+  const [terminalFocused, setTerminalFocused] = useState(false);
+  const mobileKeyboard = useMobileTerminalKeyboard(terminalSurfaceRef);
   const hasLoaded =
     loadedTerminalId === terminal.id || loadedTerminalIds.has(terminal.id);
+  const mobileCommandBarVisible = mobileKeyboard.open && terminalFocused;
   onExitRef.current = onExit;
   onOpenExternalLinkRef.current = onOpenExternalLink;
   onOpenLinkRef.current = onOpenLink;
@@ -132,6 +142,18 @@ export function TerminalView({
       onOpen: (url) => onOpenLinkRef.current?.(url),
       onOpenExternal: (url) => onOpenExternalLinkRef.current?.(url),
     });
+    setTerminalFocused(false);
+    let terminalFocusFrame: number | null = null;
+    const updateTerminalFocus = () => {
+      terminalFocusFrame = null;
+      setTerminalFocused(container.contains(document.activeElement));
+    };
+    const handleTerminalFocusOut = () => {
+      if (terminalFocusFrame !== null) cancelAnimationFrame(terminalFocusFrame);
+      terminalFocusFrame = requestAnimationFrame(updateTerminalFocus);
+    };
+    container.addEventListener("focusin", updateTerminalFocus);
+    container.addEventListener("focusout", handleTerminalFocusOut);
 
     let socket: WebSocket | null = null;
     let directConnection: DesktopTerminalConnection | null = null;
@@ -473,6 +495,9 @@ export function TerminalView({
       disposed = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       input.dispose();
+      if (terminalFocusFrame !== null) cancelAnimationFrame(terminalFocusFrame);
+      container.removeEventListener("focusin", updateTerminalFocus);
+      container.removeEventListener("focusout", handleTerminalFocusOut);
       if (inputSenderRef.current === sendInput) inputSenderRef.current = null;
       if (xtermRef.current === xterm) xtermRef.current = null;
       resizeObserver.disconnect();
@@ -499,12 +524,33 @@ export function TerminalView({
     onServicePanelOpenChange?.(open);
     if (!open) requestAnimationFrame(() => xtermRef.current?.focus());
   };
+  const runMobileTerminalKey = (key: MobileTerminalKey, shift: boolean) => {
+    const xterm = xtermRef.current;
+    if (xterm) {
+      inputSenderRef.current?.(
+        mobileTerminalKeyInput(
+          key,
+          shift,
+          xterm.modes.applicationCursorKeysMode,
+        ),
+      );
+    }
+    requestAnimationFrame(() => xtermRef.current?.focus());
+  };
   return (
     <div
       className="relative flex min-h-0 flex-1 bg-background"
       data-slot="terminal-view"
+      ref={terminalSurfaceRef}
     >
-      <div className="relative flex min-h-0 min-w-0 flex-1">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1"
+        style={{
+          paddingBottom: mobileCommandBarVisible
+            ? `${mobileKeyboard.contentInset}px`
+            : undefined,
+        }}
+      >
         <div
           ref={containerRef}
           className="min-h-0 min-w-0 flex-1 p-3"
@@ -562,6 +608,13 @@ export function TerminalView({
               ? null
               : "The terminal is reconnecting. Try again when it is ready."
           }
+        />
+      ) : null}
+      {mobileCommandBarVisible ? (
+        <MobileTerminalCommandBar
+          bottomInset={mobileKeyboard.bottomInset}
+          disabled={state !== "ready"}
+          onKey={runMobileTerminalKey}
         />
       ) : null}
     </div>
