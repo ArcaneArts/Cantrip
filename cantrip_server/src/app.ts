@@ -629,6 +629,7 @@ import {
 import { TunnelRuntimeManager } from "./tunnels/runtime.js";
 import { TunnelStreamBroker } from "./tunnels/broker.js";
 import { browserTunnelTarget } from "./tunnels/browser-target.js";
+import { terminalRelayOutputMessage } from "./terminals/relay.js";
 import { ModelBehaviorTracker } from "./analytics/model-behavior.js";
 import type { DatabaseConnection } from "./db/index.js";
 import { TaskConflictError } from "./db/tasks.js";
@@ -22154,7 +22155,7 @@ export async function buildApp({
                     await updateTerminalStatus(terminalId!, "running");
                     send({ type: "ready" });
                   } else if (event.type === "terminal.output") {
-                    send(event);
+                    send(terminalRelayOutputMessage(event));
                   }
                 },
               },

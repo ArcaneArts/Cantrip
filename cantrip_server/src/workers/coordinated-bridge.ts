@@ -504,9 +504,35 @@ export class CoordinatedWorkerBridge implements WorkerCommandBus {
         if (!pending?.onEvent) return;
         const event = workerEventSchema.safeParse(message.event);
         if (!event.success) return;
-        pending.eventQueue = pending.eventQueue.then(() =>
+        const eventQueue = pending.eventQueue.then(() =>
           pending.onEvent?.(event.data),
         );
+        pending.eventQueue = eventQueue;
+        void eventQueue
+          .catch((error: unknown) => {
+            if (this.#pending.get(message.requestId) !== pending) return;
+            clearTimeout(pending.timeout);
+            this.#pending.delete(message.requestId);
+            this.#failedRequests += 1;
+            serverLogger.event(
+              "warn",
+              "Remote worker command event handling failed",
+              {
+                event: "coordination.command.event-handler-failed",
+                subsystem: "relay-coordination",
+                operation: pending.commandType,
+                requestId: message.requestId,
+                reasonCode: "event-handler-failed",
+                status: "failed",
+                durationMs: Date.now() - pending.startedAtMs,
+                workerId: pending.workerId,
+              },
+            );
+            pending.reject(
+              error instanceof Error ? error : new Error(String(error)),
+            );
+          })
+          .catch(() => undefined);
         return;
       }
       case "worker-command-response": {
