@@ -1991,6 +1991,36 @@ export const eliteGlitchVariantSchema = z.enum([
   "text-jitter",
 ]);
 
+export type EliteGlitchVariant = z.infer<typeof eliteGlitchVariantSchema>;
+
+const eliteGlitchVariantWeightSchema = z.number().min(0).max(10);
+
+export const eliteGlitchVariantWeightsSchema = z.object({
+  outline: eliteGlitchVariantWeightSchema,
+  "full-frame": eliteGlitchVariantWeightSchema,
+  "left-frame": eliteGlitchVariantWeightSchema,
+  "right-frame": eliteGlitchVariantWeightSchema,
+  chromatic: eliteGlitchVariantWeightSchema,
+  "spatial-shift": eliteGlitchVariantWeightSchema,
+  scanline: eliteGlitchVariantWeightSchema,
+  "text-jitter": eliteGlitchVariantWeightSchema,
+});
+
+export type EliteGlitchVariantWeights = z.infer<
+  typeof eliteGlitchVariantWeightsSchema
+>;
+
+export const DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS: EliteGlitchVariantWeights = {
+  outline: 1,
+  "full-frame": 0.1,
+  "left-frame": 0.1,
+  "right-frame": 0.1,
+  chromatic: 0.25,
+  "spatial-shift": 1,
+  scanline: 0.5,
+  "text-jitter": 1,
+};
+
 export const eliteRevealConfigSchema = z
   .object({
     glitchCountMax: z.number().int().min(1).max(8),
@@ -1998,6 +2028,9 @@ export const eliteRevealConfigSchema = z
     glitchShowMs: z.number().int().min(5).max(120),
     staggerSpreadMs: z.number().int().min(0).max(250),
     variants: z.array(eliteGlitchVariantSchema).max(8),
+    variantWeights: eliteGlitchVariantWeightsSchema.default(
+      DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS,
+    ),
   })
   .refine(
     ({ glitchCountMax, glitchCountMin }) => glitchCountMax >= glitchCountMin,
@@ -2008,7 +2041,6 @@ export const eliteRevealConfigSchema = z
     },
   );
 
-export type EliteGlitchVariant = z.infer<typeof eliteGlitchVariantSchema>;
 export type EliteRevealConfig = z.infer<typeof eliteRevealConfigSchema>;
 
 export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
@@ -2017,6 +2049,7 @@ export const DEFAULT_ELITE_REVEAL_CONFIG: EliteRevealConfig = {
   glitchShowMs: 9,
   staggerSpreadMs: 50,
   variants: [...eliteGlitchVariantSchema.options],
+  variantWeights: { ...DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS },
 };
 
 export const userSettingsSchema = z.object({

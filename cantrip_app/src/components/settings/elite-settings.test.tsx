@@ -30,8 +30,14 @@ describe("Elite settings laboratory", () => {
     expect(markup).toContain(
       'data-slot="elite-configurator-sidebar-shell" data-state="closed"',
     );
-    expect(markup).toContain("0.1× weight");
-    expect(markup).toContain("0.5× weight");
+    expect(markup).toContain('aria-label="Full bright frame weight"');
+    expect(markup).toContain('aria-label="Left half frame weight"');
+    expect(markup).toContain('aria-label="Right half frame weight"');
+    expect(markup).toContain('aria-label="Chromatic shift weight"');
+    expect(markup).toContain('aria-label="Scanline bands weight"');
+    expect(markup.match(/value="0\.1"/g)).toHaveLength(3);
+    expect(markup).toContain('value="0.25"');
+    expect(markup).toContain('value="0.5"');
   });
 
   it("marks fixture items with explicit reveal semantics", () => {

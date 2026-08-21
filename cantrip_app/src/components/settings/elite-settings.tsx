@@ -32,7 +32,7 @@ import {
   DEFAULT_ELITE_REVEAL_CONFIG,
   ELITE_GLITCH_VARIANTS,
   EliteReveal,
-  ELITE_GLITCH_VARIANT_WEIGHTS,
+  eliteRevealConfigSignature,
   normalizeEliteRevealConfig,
   type EliteGlitchVariant,
   type EliteRevealConfig,
@@ -675,10 +675,15 @@ function EliteConfigurator({
   const [draft, setDraft] = useState<EliteRevealConfig>(() => ({
     ...config,
     variants: [...config.variants],
+    variantWeights: { ...config.variantWeights },
   }));
-  const configSignature = `${config.glitchCountMin}:${config.glitchCountMax}:${config.glitchShowMs}:${config.staggerSpreadMs}:${config.variants.join(",")}`;
+  const configSignature = eliteRevealConfigSignature(config);
   useEffect(() => {
-    setDraft({ ...config, variants: [...config.variants] });
+    setDraft({
+      ...config,
+      variants: [...config.variants],
+      variantWeights: { ...config.variantWeights },
+    });
   }, [config, configSignature]);
 
   const setNumber = (
@@ -692,6 +697,14 @@ function EliteConfigurator({
       variants: enabled
         ? [...new Set([...current.variants, variant])]
         : current.variants.filter((candidate) => candidate !== variant),
+    }));
+  const setVariantWeight = (variant: EliteGlitchVariant, weight: number) =>
+    setDraft((current) => ({
+      ...current,
+      variantWeights: {
+        ...current.variantWeights,
+        [variant]: weight,
+      },
     }));
 
   return (
@@ -757,7 +770,9 @@ function EliteConfigurator({
             <div>
               <h3 className="text-sm font-semibold">Variants</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Text jitter is reserved for wrappers explicitly marked as text.
+                Relative weights control how often each enabled effect is
+                selected. Set a weight to zero to suppress it without unchecking
+                it. Text jitter is reserved for text wrappers.
               </p>
             </div>
             <div className="flex gap-1">
@@ -790,27 +805,39 @@ function EliteConfigurator({
             {ELITE_GLITCH_VARIANTS.map((variant) => {
               const checked = draft.variants.includes(variant);
               return (
-                <label
-                  className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/60"
+                <div
+                  className="flex items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/60"
                   key={variant}
                 >
-                  <input
-                    checked={checked}
-                    onChange={(event) =>
-                      setVariant(variant, event.target.checked)
-                    }
-                    type="checkbox"
-                  />
-                  <span className="flex-1">{variantLabels[variant]}</span>
-                  {ELITE_GLITCH_VARIANT_WEIGHTS[variant] < 1 ? (
-                    <span className="text-[10px] text-muted-foreground">
-                      {ELITE_GLITCH_VARIANT_WEIGHTS[variant]}× weight
-                    </span>
-                  ) : null}
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+                    <input
+                      checked={checked}
+                      onChange={(event) =>
+                        setVariant(variant, event.target.checked)
+                      }
+                      type="checkbox"
+                    />
+                    <span className="truncate">{variantLabels[variant]}</span>
+                  </label>
+                  <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+                    <Input
+                      aria-label={`${variantLabels[variant]} weight`}
+                      className="h-7 w-[4.5rem] px-2 text-right text-xs"
+                      max={10}
+                      min={0}
+                      onChange={(event) =>
+                        setVariantWeight(variant, Number(event.target.value))
+                      }
+                      step={0.05}
+                      type="number"
+                      value={draft.variantWeights[variant]}
+                    />
+                    <span aria-hidden="true">×</span>
+                  </div>
                   {checked ? (
                     <Check className="size-3.5 text-muted-foreground" />
                   ) : null}
-                </label>
+                </div>
               );
             })}
           </div>
@@ -822,6 +849,9 @@ function EliteConfigurator({
             setDraft({
               ...DEFAULT_ELITE_REVEAL_CONFIG,
               variants: [...DEFAULT_ELITE_REVEAL_CONFIG.variants],
+              variantWeights: {
+                ...DEFAULT_ELITE_REVEAL_CONFIG.variantWeights,
+              },
             })
           }
           type="button"
@@ -998,6 +1028,7 @@ export function EliteSettings({
   const [config, setConfig] = useState<EliteRevealConfig>(() => ({
     ...configuredEffect,
     variants: [...configuredEffect.variants],
+    variantWeights: { ...configuredEffect.variantWeights },
   }));
   const [replayKey, setReplayKey] = useState(0);
   const [configuratorOpen, setConfiguratorOpen] = useState(false);
@@ -1015,11 +1046,13 @@ export function EliteSettings({
     });
   }, []);
 
-  const configuredEffectSignature = `${configuredEffect.glitchCountMin}:${configuredEffect.glitchCountMax}:${configuredEffect.glitchShowMs}:${configuredEffect.staggerSpreadMs}:${configuredEffect.variants.join(",")}`;
+  const configuredEffectSignature =
+    eliteRevealConfigSignature(configuredEffect);
   useEffect(() => {
     setConfig({
       ...configuredEffect,
       variants: [...configuredEffect.variants],
+      variantWeights: { ...configuredEffect.variantWeights },
     });
   }, [configuredEffect, configuredEffectSignature]);
 

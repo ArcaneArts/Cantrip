@@ -1,7 +1,9 @@
 import {
+  DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS,
   DEFAULT_ELITE_REVEAL_CONFIG as PROTOCOL_DEFAULT_ELITE_REVEAL_CONFIG,
   eliteGlitchVariantSchema,
   type EliteGlitchVariant,
+  type EliteGlitchVariantWeights,
   type EliteRevealConfig,
 } from "@cantrip/protocol";
 import {
@@ -21,17 +23,8 @@ export const ELITE_GLITCH_VARIANTS = eliteGlitchVariantSchema.options;
 export type { EliteGlitchVariant, EliteRevealConfig } from "@cantrip/protocol";
 export type EliteRevealContentKind = "box" | "control" | "text";
 
-export const ELITE_GLITCH_VARIANT_WEIGHTS: Record<EliteGlitchVariant, number> =
-  {
-    chromatic: 1,
-    "full-frame": 0.1,
-    "left-frame": 0.5,
-    outline: 1,
-    "right-frame": 0.5,
-    scanline: 0.5,
-    "spatial-shift": 1,
-    "text-jitter": 1,
-  };
+export const ELITE_GLITCH_VARIANT_WEIGHTS =
+  DEFAULT_ELITE_GLITCH_VARIANT_WEIGHTS;
 
 export const ELITE_CHROMATIC_PAIRS = [
   { channelA: "rgb(0 224 255)", channelB: "rgb(255 34 122)" },
@@ -47,6 +40,7 @@ const numericLimits = {
   glitchCount: { max: 8, min: 1 },
   glitchShowMs: { max: 120, min: 5 },
   staggerSpreadMs: { max: 250, min: 0 },
+  variantWeight: { max: 10, min: 0 },
 } as const;
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -83,7 +77,26 @@ export function normalizeEliteRevealConfig(
     variants: [...new Set(config.variants)].filter((variant) =>
       ELITE_GLITCH_VARIANTS.includes(variant),
     ),
+    variantWeights: Object.fromEntries(
+      ELITE_GLITCH_VARIANTS.map((variant) => [
+        variant,
+        Math.min(
+          numericLimits.variantWeight.max,
+          Math.max(
+            numericLimits.variantWeight.min,
+            config.variantWeights[variant],
+          ),
+        ),
+      ]),
+    ) as EliteGlitchVariantWeights,
   };
+}
+
+export function eliteRevealConfigSignature(config: EliteRevealConfig): string {
+  const weightSignature = ELITE_GLITCH_VARIANTS.map(
+    (variant) => config.variantWeights[variant],
+  ).join(",");
+  return `${config.glitchCountMin}:${config.glitchCountMax}:${config.glitchShowMs}:${config.staggerSpreadMs}:${config.variants.join(",")}:${weightSignature}`;
 }
 
 export function variantsForEliteContent(
@@ -97,21 +110,22 @@ export function variantsForEliteContent(
 
 export function selectEliteGlitchVariant(
   variants: readonly EliteGlitchVariant[],
+  variantWeights: EliteGlitchVariantWeights,
   random: () => number = Math.random,
 ): EliteGlitchVariant | undefined {
   const weightedVariants = variants.filter(
-    (variant) => ELITE_GLITCH_VARIANT_WEIGHTS[variant] > 0,
+    (variant) => variantWeights[variant] > 0,
   );
   const fallbackVariant = weightedVariants.at(-1);
   if (!fallbackVariant) return undefined;
 
   const totalWeight = weightedVariants.reduce(
-    (total, variant) => total + ELITE_GLITCH_VARIANT_WEIGHTS[variant],
+    (total, variant) => total + variantWeights[variant],
     0,
   );
   let selection = unitRandom(random) * totalWeight;
   for (const variant of weightedVariants) {
-    const weight = ELITE_GLITCH_VARIANT_WEIGHTS[variant];
+    const weight = variantWeights[variant];
     if (selection < weight) return variant;
     selection -= weight;
   }
@@ -125,14 +139,19 @@ export function createEliteGlitchSequence(
 ): readonly EliteGlitchVariant[] {
   const normalized = normalizeEliteRevealConfig(config);
   const variants = variantsForEliteContent(normalized.variants, contentKind);
-  const fallbackVariant = variants[0];
+  const fallbackVariant = variants.find(
+    (variant) => normalized.variantWeights[variant] > 0,
+  );
   if (!fallbackVariant) return [];
   const countRange = normalized.glitchCountMax - normalized.glitchCountMin + 1;
   const count =
     normalized.glitchCountMin +
     Math.min(countRange - 1, Math.floor(random() * countRange));
   return Array.from({ length: count }, () => {
-    return selectEliteGlitchVariant(variants, random) ?? fallbackVariant;
+    return (
+      selectEliteGlitchVariant(variants, normalized.variantWeights, random) ??
+      fallbackVariant
+    );
   });
 }
 
@@ -428,11 +447,14 @@ export function EliteReveal({
       config.glitchShowMs,
       config.staggerSpreadMs,
       config.variants,
+      config.variantWeights,
     ],
   );
-  const configSignature = `${normalized.glitchCountMin}:${normalized.glitchCountMax}:${normalized.glitchShowMs}:${normalized.staggerSpreadMs}:${normalized.variants.join(",")}`;
+  const configSignature = eliteRevealConfigSignature(normalized);
   const [stage, setStage] = useState<RevealStage>(() =>
-    variantsForEliteContent(normalized.variants, contentKind).length
+    variantsForEliteContent(normalized.variants, contentKind).some(
+      (variant) => normalized.variantWeights[variant] > 0,
+    )
       ? { frame: null, state: "waiting" }
       : { frame: null, state: "ready" },
   );
