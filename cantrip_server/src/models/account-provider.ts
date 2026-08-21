@@ -11,6 +11,28 @@ export function isAccountProviderKind(
   return kind === "chatgpt" || kind === "grok";
 }
 
+export function canRefreshProviderOnWorker(
+  kind: ModelProviderKind | string,
+  worker:
+    | {
+        encryption: {
+          grants: ReadonlyArray<{ component: string }>;
+        };
+      }
+    | null
+    | undefined,
+): boolean {
+  if (kind === "ollama") return true;
+  return (
+    isAccountProviderKind(kind) &&
+    Boolean(
+      worker?.encryption.grants.some(
+        ({ component }) => component === "provider-credential",
+      ),
+    )
+  );
+}
+
 export function accountProviderLabel(kind: AccountProviderKind): string {
   return kind === "grok" ? "Grok" : "ChatGPT";
 }

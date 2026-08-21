@@ -781,6 +781,7 @@ import { ProviderAccountLifecycleService } from "./models/provider-account-lifec
 import { resolveAccountProviderRuntimes } from "./models/chatgpt-account-routing.js";
 import {
   accountProviderLabel,
+  canRefreshProviderOnWorker,
   isAccountProviderKind,
 } from "./models/account-provider.js";
 import { providerAccountAuthStatus } from "./models/provider-account-status.js";
@@ -12732,20 +12733,25 @@ export async function buildApp({
     workerId: string,
     quotaTrigger: "periodic-refresh" | "worker-reconnected",
   ) => {
-    const settings = await repository.getSettings(ownerId);
+    const [settings, worker] = await Promise.all([
+      repository.getSettings(ownerId),
+      repository.getWorker(ownerId, workerId),
+    ]);
     await Promise.allSettled(
       settings.providers
-        .filter(
-          (provider) =>
-            isAccountProviderKind(provider.kind) || provider.kind === "ollama",
-        )
+        .filter((provider) => canRefreshProviderOnWorker(provider.kind, worker))
         .map((provider) =>
           loadProviderCatalog(ownerId, provider.id, workerId, false),
         ),
     );
     await Promise.allSettled(
       settings.providers.flatMap((provider) => {
-        if (!isAccountProviderKind(provider.kind)) return [];
+        if (
+          !isAccountProviderKind(provider.kind) ||
+          !canRefreshProviderOnWorker(provider.kind, worker)
+        ) {
+          return [];
+        }
         const providerKind = provider.kind;
         return provider.accounts
           .filter((account) => account.enabled)
