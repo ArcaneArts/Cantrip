@@ -63,6 +63,7 @@ export const repositoryOperationTypeSchema = z.enum([
   "git.action",
   "git.force-push.preview",
   "git.force-push.apply",
+  "worktree.status",
   "github.issues.list",
   "github.issue.get",
   "github.issue.create",

@@ -3,6 +3,7 @@ import type {
   EncryptedGithubProjectCreate,
   EncryptedManagedFolderProjectCreate,
   ProjectPreferredWorkerUpdate,
+  ProjectWorktreeSummary,
   ProjectWireSummary,
   WorktreePolicy,
 } from "@cantrip/protocol";
@@ -80,6 +81,7 @@ function wire(
 
 class MemoryProjectApi implements ProjectWireApi {
   readonly rows: ProjectWireSummary[] = [];
+  readonly worktrees: ProjectWorktreeSummary[] = [];
   writes = 0;
 
   async createGithub(
@@ -102,6 +104,14 @@ class MemoryProjectApi implements ProjectWireApi {
 
   list(): Promise<ProjectWireSummary[]> {
     return Promise.resolve(structuredClone(this.rows));
+  }
+
+  listWorktrees(projectId: string): Promise<ProjectWorktreeSummary[]> {
+    return Promise.resolve(
+      structuredClone(
+        this.worktrees.filter((worktree) => worktree.projectId === projectId),
+      ),
+    );
   }
 
   updatePreferredWorker(
@@ -190,5 +200,52 @@ describe("encrypted project display names", () => {
       },
     };
     await expect(adapter.list()).rejects.toMatchObject({ state: "corrupt" });
+  });
+
+  it("hydrates opaque server routing handles from a protected worker status", async () => {
+    const { adapter, api } = fixture();
+    const created = await adapter.createGithub({
+      workerId: "worker-a",
+      repositoryId: "repository-1",
+      nameWithOwner: "ArcaneArts/SentinelProject",
+      url: "https://github.com/ArcaneArts/SentinelProject",
+    });
+    const row = api.rows[0]!;
+    row.setupStatus = "ready";
+    row.source = {
+      id: "source-a",
+      sourceKind: "git",
+      workerId: "worker-a",
+      path: `ctrr_${"a".repeat(43)}`,
+      displayPath: `ctrr_${"a".repeat(43)}`,
+    };
+    api.worktrees.push({
+      id: "worktree-a",
+      projectSourceId: "source-a",
+      projectId: created.id,
+      rootKind: "git-worktree",
+      workerId: "worker-a",
+      name: "Primary",
+      path: "/Users/example/private-repository",
+      displayPath: "/Users/example/private-repository",
+      isPrimary: true,
+      isDefault: true,
+      origin: "cantrip",
+      lifecycleState: "ready",
+      branch: "private-feature",
+      head: "a".repeat(40),
+      detached: false,
+      locked: false,
+      lockReason: null,
+      lastScannedAt: timestamp,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+
+    const [project] = await adapter.list();
+    expect(project?.source?.path).toBe("/Users/example/private-repository");
+    expect(JSON.stringify(api.rows)).not.toContain(
+      "/Users/example/private-repository",
+    );
   });
 });

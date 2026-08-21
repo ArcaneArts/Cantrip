@@ -10234,6 +10234,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       projectId: z.string().min(1).max(200),
       worktreeId: z.string().min(1).max(200),
       cwd: z.string().min(1).max(8_192),
+      sourcePath: z.string().min(1).max(8_192),
       repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
     })
     .extend(repositoryOperationWireRequestSchema.shape)

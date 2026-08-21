@@ -21,6 +21,10 @@ const repositoryOperationProtocolPath = resolve(
 );
 const clientApiPath = resolve(repositoryRoot, "cantrip_app/src/lib/api.ts");
 const workerPath = resolve(repositoryRoot, "cantrip_worker/src/index.ts");
+const workerRoutingPath = resolve(
+  repositoryRoot,
+  "cantrip_worker/src/routing-registry.ts",
+);
 const remoteSurfaceStreamProtocolPath = resolve(
   repositoryRoot,
   "packages/protocol/src/remote-surface-stream.ts",
@@ -1460,6 +1464,9 @@ function repositoryOperationRouteBoundaryAudit(
     "runProtectedRepositoryOperation",
     "protectRepositoryOperationContent",
     "openRepositoryOperationContent",
+    "getProjectWorktreeWireList",
+    'type: "worktree.status"',
+    "Protected path unavailable",
     "/repository-operation",
   ]) {
     if (!clientText.includes(marker)) {
@@ -1481,6 +1488,10 @@ function repositoryOperationRouteBoundaryAudit(
     "repositoryManagedOperations.get",
     "repositoryManagedOperations.put",
     'request.type === "git.operation.current"',
+    "routingRegistry.resolveCommand",
+    "routingRegistry.protectResult",
+    "repository-routing.json",
+    "Protected repository operation failed on the worker.",
   ]) {
     if (!workerText.includes(marker)) {
       failures.push(`Worker protected repository path is missing ${marker}.`);
@@ -1490,6 +1501,7 @@ function repositoryOperationRouteBoundaryAudit(
     "legacyGitRoute",
     "legacyHistoryRoute",
     "legacyGithubContentRoute",
+    "legacyWorktreeStatusRoute",
     "This plaintext repository route was removed",
   ]) {
     if (!applicationText.includes(marker)) {
@@ -1516,12 +1528,14 @@ function repositoryOperationRouteBoundaryAudit(
     pendingPlaintextPaths: [
       "Git agent drafts",
       "pull-request checkout",
-      "worktree status and lifecycle",
-      "repository identity and paths",
+      "worktree lifecycle inputs",
+      "repository identity and managed-folder bootstrap paths",
     ],
     protectedDurableEndpointState: [
       "managed Git operation context and output:worker-local",
+      "repository path, branch, and status routing:worker-local opaque handles",
       "legacy Git, History, Issues, PR, and release content routes:fail-closed",
+      "legacy worktree status route:fail-closed",
     ],
   };
 }
@@ -2513,6 +2527,7 @@ async function buildInventory() {
     remoteSurfaceRelayText,
     clientApiText,
     workerText,
+    workerRoutingText,
     repositoryMethods,
     taskDependencies,
     taskRepositoryGuards,
@@ -2538,6 +2553,7 @@ async function buildInventory() {
     readFile(remoteSurfaceRelayPath, "utf8"),
     readFile(clientApiPath, "utf8"),
     readFile(workerPath, "utf8"),
+    readFile(workerRoutingPath, "utf8"),
     repositoryMethodInventory(),
     taskProductionDependencyAudit(),
     taskRepositoryBoundaryAudit(),
@@ -2579,7 +2595,7 @@ async function buildInventory() {
     sourceText,
     repositoryOperationProtocolText,
     clientApiText,
-    workerText,
+    `${workerText}\n${workerRoutingText}`,
   );
   const routes = parsedRoutes.map(({ source: _source, ...route }) => route);
   routes.sort(

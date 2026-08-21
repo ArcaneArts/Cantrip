@@ -9,6 +9,7 @@ import {
   type ManagedFolderProjectCreate,
   type ProjectPreferredWorkerUpdate,
   type ProjectSummary,
+  type ProjectWorktreeSummary,
   type ProjectWireSummary,
   type WorktreePolicy,
 } from "@cantrip/protocol";
@@ -16,6 +17,7 @@ import {
 import {
   createEncryptedGithubProject,
   createEncryptedManagedFolderProject,
+  getProjectWorktrees,
   getProjectWireList,
   updateProjectPreferredWorkerWire,
   updateProjectWorktreePolicyWire,
@@ -36,6 +38,7 @@ export interface ProjectWireApi {
     input: EncryptedManagedFolderProjectCreate,
   ): Promise<ProjectWireSummary>;
   list(): Promise<ProjectWireSummary[]>;
+  listWorktrees?(projectId: string): Promise<ProjectWorktreeSummary[]>;
   updatePreferredWorker(
     projectId: string,
     input: ProjectPreferredWorkerUpdate,
@@ -50,6 +53,7 @@ const defaultApi: ProjectWireApi = {
   createGithub: createEncryptedGithubProject,
   createManagedFolder: createEncryptedManagedFolderProject,
   list: getProjectWireList,
+  listWorktrees: getProjectWorktrees,
   updatePreferredWorker: updateProjectPreferredWorkerWire,
   updateWorktreePolicy: updateProjectWorktreePolicyWire,
 };
@@ -93,7 +97,8 @@ export class ProjectEncryptionAdapter {
   }
 
   private async decrypt(project: ProjectWireSummary): Promise<ProjectSummary> {
-    const { nameProtection, ...publicProject } = project;
+    const routedProject = await this.hydrateRoutingMetadata(project);
+    const { nameProtection, ...publicProject } = routedProject;
     return projectSummarySchema.parse({
       ...publicProject,
       name: await decodePrivateDisplayLabelForClient({
@@ -104,6 +109,53 @@ export class ProjectEncryptionAdapter {
         service: this.service,
       }),
     });
+  }
+
+  private async hydrateRoutingMetadata(
+    project: ProjectWireSummary,
+  ): Promise<ProjectWireSummary> {
+    if (
+      !this.api.listWorktrees ||
+      (!project.source && project.replicas.length === 0)
+    ) {
+      return project;
+    }
+    let worktrees: ProjectWorktreeSummary[] = [];
+    try {
+      worktrees = await this.api.listWorktrees(project.id);
+    } catch {
+      // Fail closed: server-returned routing handles are never presented as
+      // filesystem metadata when the authorized worker cannot open them.
+    }
+    const unavailablePath = "Protected path unavailable";
+    const sourceWorktree = project.source
+      ? worktrees.find(
+          (worktree) =>
+            worktree.projectSourceId === project.source?.id &&
+            worktree.isPrimary,
+        )
+      : undefined;
+    return {
+      ...project,
+      source: project.source
+        ? {
+            ...project.source,
+            path: sourceWorktree?.path ?? unavailablePath,
+            displayPath: sourceWorktree?.displayPath ?? unavailablePath,
+          }
+        : null,
+      replicas: project.replicas.map((replica) => {
+        const worktree = replica.primaryWorktreeId
+          ? worktrees.find(({ id }) => id === replica.primaryWorktreeId)
+          : undefined;
+        return {
+          ...replica,
+          path: worktree?.path ?? unavailablePath,
+          displayPath: worktree?.displayPath ?? unavailablePath,
+          branch: worktree?.branch ?? null,
+        };
+      }),
+    };
   }
 
   async list(): Promise<ProjectSummary[]> {

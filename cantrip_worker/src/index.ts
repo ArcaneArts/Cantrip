@@ -240,6 +240,7 @@ import {
   scheduleWorkerRuntimeRestart,
   type WorkerRuntimeOutcome,
 } from "./runtime-loop.js";
+import { WorkerRoutingRegistry } from "./routing-registry.js";
 import { SkillManager } from "./skill-manager.js";
 import { WorkerConnection } from "./transport.js";
 import { WorkerEncryptionService } from "./worker-encryption.js";
@@ -400,6 +401,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     version: cantripVersion.version,
   });
   const config = readWorkerConfig();
+  const routingRegistry = new WorkerRoutingRegistry(config.dataDirectory);
   const serverOrigin = new URL(config.serverUrl).origin;
   workerLogger.event("info", "Worker configuration loaded", {
     event: "worker.configuration.loaded",
@@ -1527,6 +1529,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ...request.arguments,
               type: request.type,
               cwd: command.cwd,
+              sourcePath: command.sourcePath,
+              worktreePath: command.cwd,
               repository: command.repository,
               ...(["git.operation.control", "git.operation.amend"].includes(
                 request.type,
@@ -3289,7 +3293,17 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   };
   const commandConnection = new WorkerConnection(
     config,
-    handleCommand,
+    async (command, emit) => {
+      try {
+        const resolved = await routingRegistry.resolveCommand(command);
+        return await routingRegistry.protectResult(
+          command.type,
+          await handleCommand(resolved, emit),
+        );
+      } catch (error) {
+        throw routingRegistry.protectError(command.type, error);
+      }
+    },
     (header, payload) => remoteSurfaces.handleFrame(header, payload),
     (header, payload) => tunnelDestinations.handleFrame(header, payload),
     () => {
