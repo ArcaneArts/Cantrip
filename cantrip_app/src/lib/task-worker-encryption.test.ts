@@ -22,6 +22,23 @@ import type { WorkerGrantApi } from "./worker-encryption-grants";
 const ownerId = "owner-task-encryption";
 const serverId = "server-task-encryption";
 const timestamp = "2026-08-19T12:00:00.000Z";
+const requiredTaskWorkerComponents = [
+  "attachment-content",
+  "task-content",
+  "mcp-secret",
+  "policy-content",
+  "provider-credential",
+] as const;
+
+function workerGrants(
+  keyRevision: number,
+  taskKeyRevision = keyRevision,
+): WorkerEncryptionStatus["grants"] {
+  return requiredTaskWorkerComponents.map((component) => ({
+    component,
+    keyRevision: component === "task-content" ? taskKeyRevision : keyRevision,
+  }));
+}
 
 function session(): ClientSessionContext {
   return {
@@ -120,16 +137,13 @@ async function apiFor(
 }
 
 describe("Task worker encryption readiness", () => {
-  it("approves and grants Task and policy content before refreshing the worker", async () => {
+  it("approves every required content grant before refreshing the worker", async () => {
     const client = service();
     const { api, createdComponents } = await apiFor("worker-a", "pending");
     const refresh = vi.fn(async () => ({
       component: "task-content" as const,
       keyRevision: 3,
-      status: status("ready", [
-        { component: "task-content", keyRevision: 3 },
-        { component: "policy-content", keyRevision: 3 },
-      ]),
+      status: status("ready", workerGrants(3)),
     }));
 
     const refreshed = await ensureTaskWorkerEncryption({
@@ -140,15 +154,12 @@ describe("Task worker encryption readiness", () => {
       worker: worker(status("pending-approval")),
     });
 
-    expect(createdComponents).toEqual(["task-content", "policy-content"]);
+    expect(createdComponents).toEqual(requiredTaskWorkerComponents);
     expect(refresh).toHaveBeenCalledWith("worker-a", {
       component: "task-content",
       keyRevision: 3,
     });
-    expect(refreshed.grants).toEqual([
-      { component: "task-content", keyRevision: 3 },
-      { component: "policy-content", keyRevision: 3 },
-    ]);
+    expect(refreshed.grants).toEqual(workerGrants(3));
   });
 
   it("fails closed while locked or revoked without creating a grant", async () => {
@@ -202,19 +213,11 @@ describe("Task worker encryption readiness", () => {
         refresh: async () => ({
           component: "task-content",
           keyRevision: 2,
-          status: status("ready", [
-            { component: "task-content", keyRevision: 1 },
-            { component: "policy-content", keyRevision: 2 },
-          ]),
+          status: status("ready", workerGrants(2, 1)),
         }),
         service: client,
         session,
-        worker: worker(
-          status("ready", [
-            { component: "task-content", keyRevision: 1 },
-            { component: "policy-content", keyRevision: 2 },
-          ]),
-        ),
+        worker: worker(status("ready", workerGrants(2, 1))),
       }),
     ).rejects.toMatchObject({ state: "wrong-revision" });
   });
@@ -223,10 +226,7 @@ describe("Task worker encryption readiness", () => {
     const refresh = vi.fn(async () => ({
       component: "task-content" as const,
       keyRevision: 3,
-      status: status("ready", [
-        { component: "task-content", keyRevision: 3 },
-        { component: "policy-content", keyRevision: 3 },
-      ]),
+      status: status("ready", workerGrants(3)),
     }));
     const api = {
       listPrincipals: vi.fn(() => Promise.reject(new Error("not called"))),
@@ -237,12 +237,7 @@ describe("Task worker encryption readiness", () => {
         refresh,
         service: service(),
         session,
-        worker: worker(
-          status("ready", [
-            { component: "task-content", keyRevision: 3 },
-            { component: "policy-content", keyRevision: 3 },
-          ]),
-        ),
+        worker: worker(status("ready", workerGrants(3))),
       }),
     ).resolves.toMatchObject({ state: "ready" });
     expect(api.listPrincipals).not.toHaveBeenCalled();
@@ -256,12 +251,7 @@ describe("Task worker encryption readiness", () => {
     ).toBe("missing-grant");
     expect(
       taskWorkerEncryptionReadiness(
-        worker(
-          status("ready", [
-            { component: "task-content", keyRevision: 1 },
-            { component: "policy-content", keyRevision: 1 },
-          ]),
-        ),
+        worker(status("ready", workerGrants(3, 1))),
         snapshot,
       ),
     ).toBe("wrong-revision");

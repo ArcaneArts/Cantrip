@@ -218,6 +218,15 @@ function workflowContentFixture() {
   return terminalStateFixture().protectedState;
 }
 
+function attachmentChunkFixture() {
+  return {
+    sequence: 0,
+    plaintextBytes: 7,
+    eof: true,
+    envelope: workflowContentFixture().envelope,
+  };
+}
+
 function browserStateFixture() {
   return {
     classification: { recordKind: "browser-state" as const },
@@ -5293,8 +5302,9 @@ describe("Cantrip protocol", () => {
         type: "attachment.upload.chunk",
         chatId: "chat-1",
         attachmentId: attachment.id,
-        chunkIndex: 0,
-        data: Buffer.from("diagram").toString("base64"),
+        operationId: "11111111-1111-4111-8111-111111111111",
+        direction: "upload",
+        chunk: attachmentChunkFixture(),
       }).type,
     ).toBe("attachment.upload.chunk");
     expect(
@@ -5311,10 +5321,11 @@ describe("Cantrip protocol", () => {
         attachments: [
           {
             id: attachment.id,
-            fileName: attachment.fileName,
-            mimeType: attachment.mimeType,
+            chatId: attachment.chatId,
             sizeBytes: attachment.sizeBytes,
-            kind: attachment.kind,
+            status: attachment.status,
+            protectedMetadata: workflowContentFixture(),
+            createdAt: attachment.createdAt,
           },
         ],
         cwd: "/workspace",
@@ -5379,7 +5390,6 @@ describe("Cantrip protocol", () => {
             result: "succeeded",
             resource: { type: "session", id: "session-1" },
             requestId: "request-1",
-            metadata: { authMethod: "account-password" },
             occurredAt: "2026-08-11T12:00:00.000Z",
           },
         ],
@@ -5459,13 +5469,9 @@ describe("Cantrip protocol", () => {
             attachment: {
               id: "attachment-1",
               chatId: "chat-1",
-              fileName: "context.txt",
-              mimeType: "text/plain",
               sizeBytes: 7,
-              kind: "text",
-              source: "file",
               status: "ready",
-              previewText: "context",
+              protectedMetadata: workflowContentFixture(),
               createdAt: "2026-08-12T00:00:00.000Z",
             },
             sha256: "a".repeat(64),
