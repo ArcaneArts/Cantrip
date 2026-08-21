@@ -1,6 +1,7 @@
 import {
   githubProjectCreateSchema,
   managedFolderProjectCreateSchema,
+  projectGithubConversionRepositorySchema,
   projectPreferredWorkerUpdateSchema,
   projectSummarySchema,
   type EncryptedGithubProjectCreate,
@@ -8,17 +9,23 @@ import {
   type GithubProjectCreate,
   type ManagedFolderProjectCreate,
   type ProjectPreferredWorkerUpdate,
+  type ProjectGithubConversionRepository,
+  type ProjectGithubRoutingRepository,
   type ProjectSummary,
   type ProjectWorktreeSummary,
   type ProjectWireSummary,
   type WorktreePolicy,
 } from "@cantrip/protocol";
+import { repositoryRoutingHandleSchema } from "@cantrip/protocol/repository-operation";
 
 import {
   createEncryptedGithubProject,
   createEncryptedManagedFolderProject,
   getProjectWorktrees,
   getProjectWireList,
+  protectWorkerRepositoryIdentity,
+  registerWorkerRepositoryMetadata,
+  resolveWorkerRepositoryMetadata,
   updateProjectPreferredWorkerWire,
   updateProjectWorktreePolicyWire,
 } from "./api";
@@ -39,6 +46,24 @@ export interface ProjectWireApi {
   ): Promise<ProjectWireSummary>;
   list(): Promise<ProjectWireSummary[]>;
   listWorktrees?(projectId: string): Promise<ProjectWorktreeSummary[]>;
+  protectRepositoryIdentity?(input: {
+    projectId: string;
+    repository: ProjectGithubConversionRepository;
+    workerId: string;
+  }): Promise<{
+    repository: ProjectGithubRoutingRepository;
+    repositoryBlindIndex: string;
+  }>;
+  registerMetadata?(input: {
+    scopeId: string;
+    values: Record<string, string | string[] | null>;
+    workerId: string;
+  }): Promise<{ values: Record<string, string | string[] | null> }>;
+  resolveMetadata?(input: {
+    scopeId: string;
+    values: Record<string, string | string[] | null>;
+    workerId: string;
+  }): Promise<{ values: Record<string, string | string[] | null> }>;
   updatePreferredWorker(
     projectId: string,
     input: ProjectPreferredWorkerUpdate,
@@ -54,6 +79,9 @@ const defaultApi: ProjectWireApi = {
   createManagedFolder: createEncryptedManagedFolderProject,
   list: getProjectWireList,
   listWorktrees: getProjectWorktrees,
+  protectRepositoryIdentity: protectWorkerRepositoryIdentity,
+  registerMetadata: registerWorkerRepositoryMetadata,
+  resolveMetadata: resolveWorkerRepositoryMetadata,
   updatePreferredWorker: updateProjectPreferredWorkerWire,
   updateWorktreePolicy: updateProjectWorktreePolicyWire,
 };
@@ -114,11 +142,61 @@ export class ProjectEncryptionAdapter {
   private async hydrateRoutingMetadata(
     project: ProjectWireSummary,
   ): Promise<ProjectWireSummary> {
+    let routedProject = project;
+    const workerId =
+      project.source?.workerId ??
+      project.preferredWorkerId ??
+      project.replicas[0]?.workerId;
+    const protectedGithub =
+      project.github &&
+      repositoryRoutingHandleSchema.safeParse(project.github.repositoryId)
+        .success &&
+      repositoryRoutingHandleSchema.safeParse(project.github.nameWithOwner)
+        .success &&
+      repositoryRoutingHandleSchema.safeParse(project.github.url).success;
+    const protectedSetupError =
+      project.setupError &&
+      repositoryRoutingHandleSchema.safeParse(project.setupError).success;
+    if (
+      workerId &&
+      this.api.resolveMetadata &&
+      (protectedGithub || protectedSetupError)
+    ) {
+      try {
+        const resolved = await this.api.resolveMetadata({
+          workerId,
+          scopeId: project.id,
+          values: {
+            ...(protectedGithub ? project.github : {}),
+            ...(protectedSetupError ? { setupError: project.setupError } : {}),
+          },
+        });
+        routedProject = {
+          ...project,
+          github: protectedGithub
+            ? projectGithubConversionRepositorySchema.parse(resolved.values)
+            : project.github,
+          setupError: protectedSetupError
+            ? typeof resolved.values.setupError === "string"
+              ? resolved.values.setupError
+              : "Protected setup error unavailable"
+            : project.setupError,
+        };
+      } catch {
+        routedProject = {
+          ...project,
+          github: protectedGithub ? null : project.github,
+          setupError: protectedSetupError
+            ? "Protected setup error unavailable"
+            : project.setupError,
+        };
+      }
+    }
     if (
       !this.api.listWorktrees ||
       (!project.source && project.replicas.length === 0)
     ) {
-      return project;
+      return routedProject;
     }
     let worktrees: ProjectWorktreeSummary[] = [];
     try {
@@ -136,7 +214,7 @@ export class ProjectEncryptionAdapter {
         )
       : undefined;
     return {
-      ...project,
+      ...routedProject,
       source: project.source
         ? {
             ...project.source,
@@ -174,11 +252,23 @@ export class ProjectEncryptionAdapter {
     const parsed = githubProjectCreateSchema.parse(input);
     const id = globalThis.crypto.randomUUID();
     const name = parsed.nameWithOwner.split("/").at(-1) ?? parsed.nameWithOwner;
+    if (!this.api.protectRepositoryIdentity) {
+      throw new Error("Protected repository identity is unavailable.");
+    }
+    const { workerId, workspaceIds, ...repository } = parsed;
+    const protectedIdentity = await this.api.protectRepositoryIdentity({
+      workerId,
+      projectId: id,
+      repository,
+    });
     return this.decrypt(
       await this.api.createGithub({
-        ...parsed,
+        workerId,
+        workspaceIds,
         id,
         nameProtection: await this.protectName(id, name),
+        repositoryBlindIndex: protectedIdentity.repositoryBlindIndex,
+        ...protectedIdentity.repository,
       }),
     );
   }
@@ -188,10 +278,25 @@ export class ProjectEncryptionAdapter {
   ): Promise<ProjectSummary> {
     const parsed = managedFolderProjectCreateSchema.parse(input);
     const id = globalThis.crypto.randomUUID();
-    const { name, ...publicInput } = parsed;
+    const { existingPath, name, ...publicInput } = parsed;
+    let existingPathHandle: string | undefined;
+    if (existingPath) {
+      if (!this.api.registerMetadata) {
+        throw new Error("Protected repository metadata is unavailable.");
+      }
+      const registered = await this.api.registerMetadata({
+        workerId: parsed.workerId,
+        scopeId: id,
+        values: { existingPath },
+      });
+      existingPathHandle = repositoryRoutingHandleSchema.parse(
+        registered.values.existingPath,
+      );
+    }
     return this.decrypt(
       await this.api.createManagedFolder({
         ...publicInput,
+        ...(existingPathHandle ? { existingPath: existingPathHandle } : {}),
         id,
         nameProtection: await this.protectName(id, name),
       }),

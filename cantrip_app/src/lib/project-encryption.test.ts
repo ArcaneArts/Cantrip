@@ -80,14 +80,35 @@ function wire(
 }
 
 class MemoryProjectApi implements ProjectWireApi {
+  readonly folderCreates: EncryptedManagedFolderProjectCreate[] = [];
+  readonly githubCreates: EncryptedGithubProjectCreate[] = [];
   readonly rows: ProjectWireSummary[] = [];
   readonly worktrees: ProjectWorktreeSummary[] = [];
   writes = 0;
+
+  protectRepositoryIdentity(): Promise<{
+    repository: {
+      repositoryId: string;
+      nameWithOwner: string;
+      url: string;
+    };
+    repositoryBlindIndex: string;
+  }> {
+    return Promise.resolve({
+      repository: {
+        repositoryId: `ctrr_${"i".repeat(43)}`,
+        nameWithOwner: `ctrr_${"n".repeat(43)}`,
+        url: `ctrr_${"u".repeat(43)}`,
+      },
+      repositoryBlindIndex: "b".repeat(43),
+    });
+  }
 
   async createGithub(
     input: EncryptedGithubProjectCreate,
   ): Promise<ProjectWireSummary> {
     this.writes += 1;
+    this.githubCreates.push(structuredClone(input));
     const row = wire(input.id, input.nameProtection, "github");
     this.rows.push(row);
     return structuredClone(row);
@@ -97,6 +118,7 @@ class MemoryProjectApi implements ProjectWireApi {
     input: EncryptedManagedFolderProjectCreate,
   ): Promise<ProjectWireSummary> {
     this.writes += 1;
+    this.folderCreates.push(structuredClone(input));
     const row = wire(input.id, input.nameProtection, "managed-folder");
     this.rows.push(row);
     return structuredClone(row);
@@ -112,6 +134,19 @@ class MemoryProjectApi implements ProjectWireApi {
         this.worktrees.filter((worktree) => worktree.projectId === projectId),
       ),
     );
+  }
+
+  registerMetadata(input: {
+    values: Record<string, string | string[] | null>;
+  }): Promise<{ values: Record<string, string | string[] | null> }> {
+    return Promise.resolve({
+      values: Object.fromEntries(
+        Object.keys(input.values).map((field) => [
+          field,
+          `ctrr_${field.slice(0, 1).repeat(43)}`,
+        ]),
+      ),
+    });
   }
 
   updatePreferredWorker(
@@ -159,6 +194,7 @@ describe("encrypted project display names", () => {
     const folder = await adapter.createManagedFolder({
       name: "Sentinel Folder",
       workerId: "worker-a",
+      existingPath: "/Users/example/Sentinel Folder",
     });
     expect(github.name).toBe("SentinelProject");
     expect(folder.name).toBe("Sentinel Folder");
@@ -168,6 +204,19 @@ describe("encrypted project display names", () => {
     ]);
     expect(JSON.stringify(api.rows)).not.toContain("Sentinel Folder");
     expect(api.rows.every((row) => !("name" in row))).toBe(true);
+    expect(JSON.stringify(api.githubCreates)).not.toContain(
+      "ArcaneArts/SentinelProject",
+    );
+    expect(api.githubCreates[0]).toMatchObject({
+      repositoryBlindIndex: "b".repeat(43),
+      repositoryId: expect.stringMatching(/^ctrr_/u),
+      nameWithOwner: expect.stringMatching(/^ctrr_/u),
+      url: expect.stringMatching(/^ctrr_/u),
+    });
+    expect(JSON.stringify(api.folderCreates)).not.toContain(
+      "/Users/example/Sentinel Folder",
+    );
+    expect(api.folderCreates[0]?.existingPath).toMatch(/^ctrr_/u);
   });
 
   it("blocks locked writes and rejects row swaps and tampering", async () => {

@@ -50,7 +50,10 @@ import {
   surfaceStreamOpaqueSchema,
   surfaceStreamWireRequestSchema,
 } from "./surface-stream.js";
-import { repositoryOperationWireRequestSchema } from "./repository-operation.js";
+import {
+  repositoryOperationWireRequestSchema,
+  repositoryRoutingHandleSchema,
+} from "./repository-operation.js";
 
 import {
   directBrokerAdvertisementSchema,
@@ -2284,6 +2287,23 @@ export const githubReleaseCreateSchema = z.object({
   prerelease: z.boolean(),
 });
 
+export const projectGithubConversionRepositorySchema = z.object({
+  repositoryId: z.string().min(1),
+  nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+  url: githubRepositorySchema.shape.url,
+});
+
+export const projectGithubRoutingRepositorySchema = z.object({
+  repositoryId: repositoryRoutingHandleSchema,
+  nameWithOwner: repositoryRoutingHandleSchema,
+  url: repositoryRoutingHandleSchema,
+});
+
+export const projectGithubWireRepositorySchema = z.union([
+  projectGithubConversionRepositorySchema,
+  projectGithubRoutingRepositorySchema,
+]);
+
 export const githubProjectCreateSchema = z.object({
   workerId: z.string().min(1),
   repositoryId: z.string().min(1),
@@ -2293,9 +2313,14 @@ export const githubProjectCreateSchema = z.object({
 });
 
 export const encryptedGithubProjectCreateSchema = githubProjectCreateSchema
+  .omit({ repositoryId: true, nameWithOwner: true, url: true })
   .extend({
     id: z.string().uuid(),
     nameProtection: privateDisplayLabelOpaqueSchema,
+    repositoryBlindIndex: encryptionKeyBytesSchema,
+    repositoryId: repositoryRoutingHandleSchema,
+    nameWithOwner: repositoryRoutingHandleSchema,
+    url: repositoryRoutingHandleSchema,
   })
   .strict();
 
@@ -2308,10 +2333,11 @@ export const managedFolderProjectCreateSchema = z.object({
 
 export const encryptedManagedFolderProjectCreateSchema =
   managedFolderProjectCreateSchema
-    .omit({ name: true })
+    .omit({ name: true, existingPath: true })
     .extend({
       id: z.string().uuid(),
       nameProtection: privateDisplayLabelOpaqueSchema,
+      existingPath: repositoryRoutingHandleSchema.optional(),
     })
     .strict();
 
@@ -2603,6 +2629,11 @@ export const projectReplicaProvisionCreateSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const encryptedProjectReplicaProvisionCreateSchema =
+  projectReplicaProvisionCreateSchema
+    .extend({ repository: repositoryRoutingHandleSchema })
+    .strict();
+
 export const projectReplicaSynchronizationPolicySchema = z.enum([
   "verify-only",
   "fast-forward-primary",
@@ -2614,10 +2645,20 @@ export const projectReplicaSynchronizeCreateSchema = z.object({
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
+export const encryptedProjectReplicaSynchronizeCreateSchema =
+  projectReplicaSynchronizeCreateSchema
+    .extend({ repository: repositoryRoutingHandleSchema })
+    .strict();
+
 export const projectReplicaRemoveCreateSchema = z.object({
   deleteLocalFiles: z.boolean().default(true),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
+
+export const encryptedProjectReplicaRemoveCreateSchema =
+  projectReplicaRemoveCreateSchema
+    .extend({ repository: repositoryRoutingHandleSchema })
+    .strict();
 
 export const projectReplicaJobRetrySchema = z.object({
   stateRevision: z.number().int().positive(),
@@ -2941,13 +2982,6 @@ const projectSummaryBaseSchema = z.object({
   setupError: z.string().min(1).nullable(),
   worktreePolicy: worktreePolicySchema,
   preferredWorkerId: z.string().min(1).nullable().optional(),
-  github: z
-    .object({
-      repositoryId: z.string().min(1),
-      nameWithOwner: z.string().min(1),
-      url: z.url(),
-    })
-    .nullable(),
   source: projectSourceSummarySchema.nullable(),
   replicas: projectReplicaListSchema.default([]),
   createdAt: z.string().datetime(),
@@ -2982,12 +3016,18 @@ function refineProjectSummary(
 }
 
 export const projectSummarySchema = projectSummaryBaseSchema
-  .extend({ name: z.string().min(1).max(1_000) })
+  .extend({
+    name: z.string().min(1).max(1_000),
+    github: projectGithubConversionRepositorySchema.nullable(),
+  })
   .strict()
   .superRefine(refineProjectSummary);
 
 export const projectWireSummarySchema = projectSummaryBaseSchema
-  .extend({ nameProtection: privateDisplayLabelOpaqueSchema })
+  .extend({
+    nameProtection: privateDisplayLabelOpaqueSchema,
+    github: projectGithubWireRepositorySchema.nullable(),
+  })
   .strict()
   .superRefine((project, context) => {
     refineProjectSummary(project, context);
@@ -7089,12 +7129,6 @@ export const projectFolderSetupRetrySchema = z.object({
   stateRevision: z.number().int().positive(),
 });
 
-export const projectGithubConversionRepositorySchema = z.object({
-  repositoryId: z.string().min(1),
-  nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
-  url: githubRepositorySchema.shape.url,
-});
-
 export const projectGithubConversionErrorSchema = z.object({
   code: z.enum([
     "worker-offline",
@@ -7119,7 +7153,7 @@ export const projectGithubConversionErrorSchema = z.object({
 
 const projectGithubConversionPreflightBaseSchema = z.object({
   projectId: z.string().uuid(),
-  repository: projectGithubConversionRepositorySchema,
+  repository: projectGithubWireRepositorySchema,
 });
 
 export const projectGithubConversionPreflightReadySchema =
@@ -7151,6 +7185,13 @@ export const projectGithubConversionPreflightRequestSchema = z.object({
   repository: projectGithubConversionRepositorySchema,
 });
 
+export const encryptedProjectGithubConversionPreflightRequestSchema = z
+  .object({
+    repository: projectGithubRoutingRepositorySchema,
+    repositoryBlindIndex: encryptionKeyBytesSchema,
+  })
+  .strict();
+
 export const projectGithubConversionStartSchema = z.object({
   repository: projectGithubConversionRepositorySchema,
   confirmationToken:
@@ -7162,6 +7203,18 @@ export const projectGithubConversionStartSchema = z.object({
     .nullable()
     .default(null),
 });
+
+export const encryptedProjectGithubConversionStartSchema =
+  projectGithubConversionStartSchema
+    .omit({ repository: true, initialCommit: true })
+    .extend({
+      repository: projectGithubRoutingRepositorySchema,
+      repositoryBlindIndex: encryptionKeyBytesSchema,
+      initialCommit: z
+        .object({ message: repositoryRoutingHandleSchema })
+        .nullable(),
+    })
+    .strict();
 
 export const projectGithubConversionJobStateSchema = z.enum([
   "queued",
@@ -7175,7 +7228,7 @@ export const projectGithubConversionJobSummarySchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
   workerId: z.string().min(1),
-  repository: projectGithubConversionRepositorySchema,
+  repository: projectGithubWireRepositorySchema,
   state: projectGithubConversionJobStateSchema,
   stateRevision: z.number().int().positive(),
   attempt: z.number().int().nonnegative(),
@@ -7195,7 +7248,7 @@ export const projectGithubConversionReadySchema = z.object({
   status: z.literal("ready"),
   jobId: z.string().uuid(),
   attempt: z.number().int().positive(),
-  repository: projectGithubConversionRepositorySchema,
+  repository: projectGithubWireRepositorySchema,
   path: z.string().min(1),
   displayPath: z.string().min(1),
   repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
@@ -9567,6 +9620,11 @@ export const workerLogReadQuerySchema = z
   })
   .strict();
 
+const workerRepositoryNameSchema = z.union([
+  githubRepositorySchema.shape.nameWithOwner,
+  repositoryRoutingHandleSchema,
+]);
+
 export const workerCommandSchema = z.discriminatedUnion("type", [
   directCapabilityPrepareCommandSchema,
   directCapabilityRevokeCommandSchema,
@@ -9670,11 +9728,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("automation.condition.evaluate"),
     condition: projectAutomationConditionSchema,
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
+    repository: workerRepositoryNameSchema.nullable(),
   }),
   z.object({
     type: z.literal("github.issues.list"),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     kind: githubIssueKindSchema.default("issue"),
     state: githubIssueStateSchema,
     page: z.number().int().positive().default(1),
@@ -9682,35 +9740,35 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("github.issue.get"),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
   }),
   z.object({
     type: z.literal("github.issue.create"),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     request: githubIssueCreateSchema,
   }),
   z.object({
     type: z.literal("github.issue.comment"),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     body: z.string().trim().min(1).max(65_536),
   }),
   z.object({
     type: z.literal("github.issue.close"),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     comment: z.string().trim().min(1).max(65_536).nullable(),
   }),
   z.object({
     type: z.literal("github.pull-request.create"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     request: githubPullRequestCreateSchema,
   }),
   z.object({
     type: z.literal("github.pull-requests.list"),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     state: githubIssueStateSchema,
     page: z.number().int().positive().default(1),
     limit: z.number().int().min(1).max(100).default(100),
@@ -9718,34 +9776,34 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("github.pull-request.get"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
   }),
   z.object({
     type: z.literal("github.pull-request.comment"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     body: githubIssueCommentCreateSchema.shape.body,
   }),
   z.object({
     type: z.literal("github.pull-request.review.submit"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     review: githubPullRequestReviewSubmitSchema,
   }),
   z.object({
     type: z.literal("github.pull-request.review.comment"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     comment: githubPullRequestInlineCommentCreateSchema,
   }),
   z.object({
     type: z.literal("github.pull-request.review.reply"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     commentId: z.number().int().positive(),
     body: githubIssueCommentCreateSchema.shape.body,
@@ -9753,44 +9811,44 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("github.pull-request.lifecycle.preview"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     action: githubPullRequestLifecycleActionSchema,
   }),
   z.object({
     type: z.literal("github.pull-request.lifecycle.apply"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
     request: githubPullRequestLifecycleApplySchema,
   }),
   z.object({
     type: z.literal("github.pull-request.checkout.prepare"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     number: z.number().int().positive(),
   }),
   z.object({
     type: z.literal("github.releases.list"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
   }),
   z.object({
     type: z.literal("github.release.get"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     releaseId: z.number().int().positive(),
   }),
   z.object({
     type: z.literal("github.release.create"),
     cwd: z.string().min(1).max(8_192),
-    repository: githubRepositorySchema.shape.nameWithOwner,
+    repository: workerRepositoryNameSchema,
     request: githubReleaseCreateSchema,
   }),
   z.object({
     type: z.literal("project.clone"),
     repository: z.object({
-      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+      nameWithOwner: workerRepositoryNameSchema,
     }),
   }),
   z.object({
@@ -9807,14 +9865,14 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project.folder-conversion.preflight"),
     projectId: z.string().uuid(),
-    repository: projectGithubConversionRepositorySchema,
+    repository: projectGithubWireRepositorySchema,
   }),
   z.object({
     type: z.literal("project.folder-conversion.execute"),
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     projectId: z.string().uuid(),
-    repository: projectGithubConversionRepositorySchema,
+    repository: projectGithubWireRepositorySchema,
     confirmationToken:
       projectGithubConversionPreflightReadySchema.shape.confirmationToken,
     initialCommit: projectGithubConversionStartSchema.shape.initialCommit,
@@ -9824,7 +9882,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     repository: z.object({
-      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+      nameWithOwner: workerRepositoryNameSchema,
     }),
     expectedRevision: gitObjectRevisionSchema.nullable(),
   }),
@@ -9833,7 +9891,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     repository: z.object({
-      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+      nameWithOwner: workerRepositoryNameSchema,
     }),
     sourcePath: z.string().min(1).max(8_192),
     expectedRevision: gitObjectRevisionSchema,
@@ -9844,7 +9902,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
     repository: z.object({
-      nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
+      nameWithOwner: workerRepositoryNameSchema,
     }),
     sourcePath: z.string().min(1).max(8_192),
     deleteLocalFiles: z.boolean(),
@@ -10235,7 +10293,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
       worktreeId: z.string().min(1).max(200),
       cwd: z.string().min(1).max(8_192),
       sourcePath: z.string().min(1).max(8_192),
-      repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
+      repository: workerRepositoryNameSchema.nullable(),
     })
     .extend(repositoryOperationWireRequestSchema.shape)
     .strict(),
@@ -10248,7 +10306,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     baseRevision: gitAgentRevisionSchema.nullable(),
     headRevision: gitAgentRevisionSchema.nullable(),
     pullRequestNumber: z.number().int().positive().nullable(),
-    repository: githubRepositorySchema.shape.nameWithOwner.nullable(),
+    repository: workerRepositoryNameSchema.nullable(),
     developerInstructions: z.string().trim().min(1).max(100_000),
     outputSchema: workflowJsonObjectSchema,
     timeoutMs: z
@@ -11496,14 +11554,23 @@ export type ProjectReplicaJobSummary = z.infer<
 export type ProjectReplicaProvisionCreate = z.infer<
   typeof projectReplicaProvisionCreateSchema
 >;
+export type EncryptedProjectReplicaProvisionCreate = z.infer<
+  typeof encryptedProjectReplicaProvisionCreateSchema
+>;
 export type ProjectReplicaSynchronizationPolicy = z.infer<
   typeof projectReplicaSynchronizationPolicySchema
 >;
 export type ProjectReplicaSynchronizeCreate = z.infer<
   typeof projectReplicaSynchronizeCreateSchema
 >;
+export type EncryptedProjectReplicaSynchronizeCreate = z.infer<
+  typeof encryptedProjectReplicaSynchronizeCreateSchema
+>;
 export type ProjectReplicaRemoveCreate = z.infer<
   typeof projectReplicaRemoveCreateSchema
+>;
+export type EncryptedProjectReplicaRemoveCreate = z.infer<
+  typeof encryptedProjectReplicaRemoveCreateSchema
 >;
 export type ProjectReplicaJobRetry = z.infer<
   typeof projectReplicaJobRetrySchema
@@ -11745,6 +11812,9 @@ export type ProjectFolderSetupJobSummary = z.infer<
 export type ProjectGithubConversionRepository = z.infer<
   typeof projectGithubConversionRepositorySchema
 >;
+export type ProjectGithubRoutingRepository = z.infer<
+  typeof projectGithubRoutingRepositorySchema
+>;
 export type ProjectGithubConversionError = z.infer<
   typeof projectGithubConversionErrorSchema
 >;
@@ -11757,8 +11827,14 @@ export type ProjectGithubConversionPreflightReady = z.infer<
 export type ProjectGithubConversionPreflightRequest = z.infer<
   typeof projectGithubConversionPreflightRequestSchema
 >;
+export type EncryptedProjectGithubConversionPreflightRequest = z.infer<
+  typeof encryptedProjectGithubConversionPreflightRequestSchema
+>;
 export type ProjectGithubConversionStart = z.infer<
   typeof projectGithubConversionStartSchema
+>;
+export type EncryptedProjectGithubConversionStart = z.infer<
+  typeof encryptedProjectGithubConversionStartSchema
 >;
 export type ProjectGithubConversionJobState = z.infer<
   typeof projectGithubConversionJobStateSchema

@@ -32,6 +32,7 @@ const config: ServerConfig = {
   port: 4310,
   workerToken: "test-worker-token",
 };
+const repositoryHandle = `ctrr_${"A".repeat(43)}`;
 
 afterAll(async () => {
   await rm(dataDirectory, { recursive: true, force: true });
@@ -64,12 +65,14 @@ describe("durable project replica jobs", () => {
     const project = await first.repository.createGithubProject(LOCAL_USER_ID, {
       workerId: "replica-worker",
       ...protectedProjectFields(),
+      repositoryBlindIndex: "A".repeat(43),
       repositoryId: "repository-one",
       nameWithOwner: "ArcaneArts/Cantrip",
       url: "https://github.com/ArcaneArts/Cantrip",
     });
     const request = {
       workerId: "replica-worker",
+      repository: repositoryHandle,
       expectedRevision: "a".repeat(40),
       idempotencyKey: "provision:repository-one:replica-worker",
     };
@@ -184,6 +187,7 @@ describe("durable project replica jobs", () => {
         project.id,
         completed.projectReplicaId!,
         {
+          repository: repositoryHandle,
           deleteLocalFiles: true,
           idempotencyKey: "remove:last-replica",
         },
@@ -217,6 +221,7 @@ describe("durable project replica jobs", () => {
         project.id,
         {
           workerId: "replica-worker-two",
+          repository: repositoryHandle,
           expectedRevision: "b".repeat(40),
           idempotencyKey: "provision:repository-one:replica-worker-two",
         },
@@ -246,6 +251,7 @@ describe("durable project replica jobs", () => {
         project.id,
         secondReplica.projectReplicaId!,
         {
+          repository: repositoryHandle,
           expectedRevision: "c".repeat(40),
           policy: "fast-forward-primary",
           idempotencyKey: "sync:repository-one:replica-worker-two:c",
@@ -284,6 +290,7 @@ describe("durable project replica jobs", () => {
       project.id,
       secondReplica.projectReplicaId!,
       {
+        repository: repositoryHandle,
         deleteLocalFiles: true,
         idempotencyKey: "remove:repository-one:replica-worker-two",
       },
@@ -339,6 +346,7 @@ describe("durable project replica jobs", () => {
         project.id,
         {
           workerId: "replica-worker-two",
+          repository: repositoryHandle,
           expectedRevision: null,
           idempotencyKey: "reprovision:repository-one:replica-worker-two",
         },
@@ -355,6 +363,7 @@ describe("durable project replica jobs", () => {
       {
         workerId: "replica-worker",
         ...protectedProjectFields(),
+        repositoryBlindIndex: "B".repeat(43),
         repositoryId: "repository-two",
         nameWithOwner: "ArcaneArts/Offline",
         url: "https://github.com/ArcaneArts/Offline",
@@ -365,6 +374,7 @@ describe("durable project replica jobs", () => {
       offlineProject.id,
       {
         workerId: "replica-worker",
+        repository: repositoryHandle,
         expectedRevision: null,
         idempotencyKey: "provision:repository-two:replica-worker",
       },

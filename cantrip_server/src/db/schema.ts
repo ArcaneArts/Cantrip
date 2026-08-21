@@ -1299,6 +1299,7 @@ export const projects = pgTable(
       { onDelete: "set null" },
     ),
     tabLayoutRevision: integer("tab_layout_revision").notNull().default(0),
+    githubRepositoryBlindIndex: text("github_repository_blind_index"),
     githubRepositoryId: text("github_repository_id"),
     githubRepositoryFullName: text("github_repository_full_name"),
     githubRepositoryUrl: text("github_repository_url"),
@@ -1312,7 +1313,7 @@ export const projects = pgTable(
   (table) => [
     uniqueIndex("projects_owner_github_repository_unique").on(
       table.ownerId,
-      table.githubRepositoryId,
+      table.githubRepositoryBlindIndex,
     ),
     check(
       "projects_origin_kind_check",
@@ -1320,7 +1321,7 @@ export const projects = pgTable(
     ),
     check(
       "projects_managed_folder_identity_check",
-      sql`(${table.originKind} = 'managed-folder' AND ${table.folderManagement} IN ('managed', 'external') AND ${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct') OR (${table.originKind} <> 'managed-folder' AND ${table.folderManagement} IS NULL)`,
+      sql`(${table.originKind} = 'managed-folder' AND ${table.folderManagement} IN ('managed', 'external') AND ${table.githubRepositoryBlindIndex} IS NULL AND ${table.githubRepositoryId} IS NULL AND ${table.githubRepositoryFullName} IS NULL AND ${table.githubRepositoryUrl} IS NULL AND ${table.worktreePolicy} = 'direct') OR (${table.originKind} <> 'managed-folder' AND ${table.folderManagement} IS NULL AND ${table.githubRepositoryBlindIndex} IS NOT NULL)`,
     ),
   ],
 );
@@ -1872,6 +1873,7 @@ export const projectGithubConversionJobs = pgTable(
     workerId: text("worker_id")
       .notNull()
       .references(() => workers.id, { onDelete: "cascade" }),
+    repositoryBlindIndex: text("repository_blind_index").notNull(),
     repositoryId: text("repository_id").notNull(),
     repositoryFullName: text("repository_full_name").notNull(),
     repositoryUrl: text("repository_url").notNull(),
@@ -1906,7 +1908,7 @@ export const projectGithubConversionJobs = pgTable(
       .on(table.projectId)
       .where(sql`${table.state} IN ('queued', 'running', 'blocked')`),
     uniqueIndex("project_github_conversion_jobs_repository_active_unique")
-      .on(table.ownerId, table.repositoryId)
+      .on(table.ownerId, table.repositoryBlindIndex)
       .where(sql`${table.state} IN ('queued', 'running', 'blocked')`),
     uniqueIndex("project_github_conversion_jobs_command_unique")
       .on(table.commandId)

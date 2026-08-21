@@ -280,10 +280,10 @@ import {
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
   projectGithubConversionJobSummarySchema,
-  projectGithubConversionPreflightRequestSchema,
+  encryptedProjectGithubConversionPreflightRequestSchema,
   projectGithubConversionPreflightResultSchema,
   projectGithubConversionRetrySchema,
-  projectGithubConversionStartSchema,
+  encryptedProjectGithubConversionStartSchema,
   projectExternalChatDiscoverySchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
@@ -293,9 +293,9 @@ import {
   projectReplicaJobRetrySchema,
   projectReplicaJobSummarySchema,
   projectReplicaListSchema,
-  projectReplicaProvisionCreateSchema,
-  projectReplicaRemoveCreateSchema,
-  projectReplicaSynchronizeCreateSchema,
+  encryptedProjectReplicaProvisionCreateSchema,
+  encryptedProjectReplicaRemoveCreateSchema,
+  encryptedProjectReplicaSynchronizeCreateSchema,
   projectReplicaSummarySchema,
   projectShareAttachmentSchema,
   projectShareDirectCreateSchema,
@@ -416,6 +416,7 @@ import {
 import {
   repositoryOperationWireRequestSchema,
   repositoryOperationWireResponseSchema,
+  repositoryWorkerOperationWireRequestSchema,
 } from "@cantrip/protocol/repository-operation";
 import {
   accountPasswordEncryptionChangeSchema,
@@ -3161,14 +3162,15 @@ export async function buildApp({
       projectRoute &&
       (route.includes("/github/issues") ||
         route.includes("/github/releases") ||
-        (route.includes("/github/pull-requests") &&
-          !route.endsWith("/checkout")));
+        route.includes("/github/pull-requests"));
+    const legacyGithubCatalogRoute = route.startsWith("/api/github/");
     const legacyWorktreeStatusRoute =
       projectRoute && route.endsWith("/worktrees/:worktreeId/status");
     if (
       legacyGitRoute ||
       legacyHistoryRoute ||
       legacyGithubContentRoute ||
+      legacyGithubCatalogRoute ||
       legacyWorktreeStatusRoute
     ) {
       return reply.code(410).send({
@@ -9507,6 +9509,7 @@ export async function buildApp({
       const githubContext = await repository.getGithubProjectExecutionContext(
         ownerId,
         request.params.projectId,
+        context.workerId,
       );
       try {
         const result = await worktreeCoordinator.serialize(
@@ -9529,6 +9532,48 @@ export async function buildApp({
               },
               { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
             ),
+        );
+        return reply.send(repositoryOperationWireResponseSchema.parse(result));
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { workerId: string } }>(
+    "/api/workers/:workerId/repository-operation",
+    { bodyLimit: 24 * 1_024 * 1_024 },
+    async (request, reply) => {
+      const input = repositoryWorkerOperationWireRequestSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = principalOwnerId(request);
+      const worker = await repository.getWorker(
+        ownerId,
+        request.params.workerId,
+      );
+      if (!worker) return reply.code(404).send({ error: "Worker not found." });
+      if (!bridge.isConnected(request.params.workerId)) {
+        return reply.code(503).send({ error: "Worker is offline." });
+      }
+      try {
+        const { scopeId, ...wireRequest } = input.data;
+        const result = await bridge.request(
+          request.params.workerId,
+          {
+            type: "repository.operation",
+            serverId,
+            projectId: scopeId,
+            worktreeId: request.params.workerId,
+            cwd: ".",
+            sourcePath: ".",
+            repository: null,
+            ...wireRequest,
+          },
+          { ownerId, timeoutMs: FINITE_WORKER_COMMAND_TIMEOUT_MS },
         );
         return reply.send(repositoryOperationWireResponseSchema.parse(result));
       } catch (error) {
@@ -11997,7 +12042,9 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/replicas",
     async (request, reply) => {
-      const input = projectReplicaProvisionCreateSchema.safeParse(request.body);
+      const input = encryptedProjectReplicaProvisionCreateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -12028,7 +12075,7 @@ export async function buildApp({
   app.post<{ Params: { projectId: string; replicaId: string } }>(
     "/api/projects/:projectId/replicas/:replicaId/synchronize",
     async (request, reply) => {
-      const input = projectReplicaSynchronizeCreateSchema.safeParse(
+      const input = encryptedProjectReplicaSynchronizeCreateSchema.safeParse(
         request.body,
       );
       if (!input.success) {
@@ -12062,7 +12109,9 @@ export async function buildApp({
   app.post<{ Params: { projectId: string; replicaId: string } }>(
     "/api/projects/:projectId/replicas/:replicaId/remove",
     async (request, reply) => {
-      const input = projectReplicaRemoveCreateSchema.safeParse(request.body);
+      const input = encryptedProjectReplicaRemoveCreateSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -17987,9 +18036,10 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/github-conversion/preflight",
     async (request, reply) => {
-      const input = projectGithubConversionPreflightRequestSchema.safeParse(
-        request.body,
-      );
+      const input =
+        encryptedProjectGithubConversionPreflightRequestSchema.safeParse(
+          request.body,
+        );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18024,7 +18074,7 @@ export async function buildApp({
       if (
         await repository.hasGithubProject(
           applicationOwnerId(),
-          input.data.repository.repositoryId,
+          input.data.repositoryBlindIndex,
         )
       ) {
         return reply.code(409).send({
@@ -18077,7 +18127,9 @@ export async function buildApp({
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/github-conversion",
     async (request, reply) => {
-      const input = projectGithubConversionStartSchema.safeParse(request.body);
+      const input = encryptedProjectGithubConversionStartSchema.safeParse(
+        request.body,
+      );
       if (!input.success) {
         return reply.code(400).send(invalidBody(input.error.issues));
       }
@@ -18123,7 +18175,7 @@ export async function buildApp({
       if (
         await repository.hasGithubProject(
           applicationOwnerId(),
-          input.data.repository.repositoryId,
+          input.data.repositoryBlindIndex,
         )
       ) {
         return reply.code(409).send({
@@ -18225,7 +18277,7 @@ export async function buildApp({
     if (
       await repository.hasGithubProject(
         applicationOwnerId(),
-        input.data.repositoryId,
+        input.data.repositoryBlindIndex,
       )
     ) {
       return reply.code(409).send({
@@ -18248,6 +18300,7 @@ export async function buildApp({
         project.id,
         {
           workerId: input.data.workerId,
+          repository: input.data.nameWithOwner,
           expectedRevision: null,
           idempotencyKey: `project-import:${project.id}:${input.data.workerId}`,
         },
@@ -18265,7 +18318,7 @@ export async function buildApp({
       if (
         await repository.hasGithubProject(
           applicationOwnerId(),
-          input.data.repositoryId,
+          input.data.repositoryBlindIndex,
         )
       ) {
         return reply.code(409).send({
@@ -18575,6 +18628,7 @@ export async function buildApp({
           : repository.getGithubProjectExecutionContext(
               ownerId,
               context.projectId,
+              context.workerId,
             ),
       ]);
       const observations: TaskWorktreeObservation[] = await Promise.all(
@@ -24501,6 +24555,7 @@ export async function buildApp({
                 ? await repository.getGithubProjectExecutionContext(
                     workerAuth.ownerId,
                     automation.projectId,
+                    context.workerId,
                   )
                 : null;
             const condition = projectAutomationConditionResultSchema.parse(

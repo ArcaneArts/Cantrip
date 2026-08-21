@@ -1,4 +1,9 @@
 import {
+  clearSensitiveBytes,
+  computeBlindLookupTag,
+  deriveLookupKey,
+} from "@cantrip/crypto";
+import {
   accountAdminSummarySchema,
   accountLicenseWhitelistCreateSchema,
   accountLicenseWhitelistEntrySchema,
@@ -98,6 +103,7 @@ import {
   githubIssueDetailSchema,
   githubIssueListSchema,
   githubPullRequestCreateResultSchema,
+  githubPullRequestCheckoutPreparedSchema,
   githubPullRequestCheckoutResultSchema,
   githubPullRequestDetailSchema,
   githubPullRequestLifecyclePreviewSchema,
@@ -192,15 +198,21 @@ import {
   projectFolderSetupJobSummarySchema,
   projectFolderSetupRetrySchema,
   projectGithubConversionJobSummarySchema,
+  projectGithubConversionRepositorySchema,
   projectGithubConversionPreflightRequestSchema,
   projectGithubConversionPreflightResultSchema,
   projectGithubConversionRetrySchema,
   projectGithubConversionStartSchema,
+  projectGithubRoutingRepositorySchema,
+  encryptedProjectGithubConversionPreflightRequestSchema,
+  encryptedProjectGithubConversionStartSchema,
   projectPreferredWorkerUpdateSchema,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
   projectReplicaListSchema,
-  projectReplicaSummarySchema,
+  encryptedProjectReplicaProvisionCreateSchema,
+  encryptedProjectReplicaRemoveCreateSchema,
+  encryptedProjectReplicaSynchronizeCreateSchema,
   projectRepositoryStatsSchema,
   projectTokenUsageSchema,
   providerTelemetryAnalyticsSchema,
@@ -214,6 +226,7 @@ import {
   projectWorkspaceWireListSchema,
   projectWorkspaceWireSummarySchema,
   projectTabLayoutWireSummarySchema,
+  projectWorktreeCreateSchema,
   projectWorktreeListSchema,
   serviceLogReadResultSchema,
   projectWorktreeSummarySchema,
@@ -287,9 +300,13 @@ import {
   type ExplorerOperationResultContent,
 } from "@cantrip/protocol/surface-stream";
 import {
+  repositoryMetadataResultSchema,
+  repositoryMetadataValuesSchema,
+  repositoryRoutingHandleSchema,
   repositoryOperationOutcomeContentSchema,
   repositoryOperationRequestContentSchema,
   repositoryOperationWireResponseSchema,
+  type RepositoryMetadataValues,
   type RepositoryOperationType,
 } from "@cantrip/protocol/repository-operation";
 import type {
@@ -374,6 +391,8 @@ import type {
   ExecutionTarget,
   ExecutionTargetResolveRequest,
   ProjectPreferredWorkerUpdate,
+  ProjectGithubConversionRepository,
+  ProjectGithubRoutingRepository,
   ProjectGithubConversionPreflightRequest,
   ProjectGithubConversionStart,
   EncryptedProjectWorkspaceCreate,
@@ -728,8 +747,44 @@ export async function activateDirectTunnelAttachment(
 }
 
 export async function getWorkerManagement() {
-  return workerManagementListSchema.parse(
+  const workers = workerManagementListSchema.parse(
     await request("/api/workers/management"),
+  );
+  return Promise.all(
+    workers.map(async (worker) => ({
+      ...worker,
+      sources: await Promise.all(
+        worker.sources.map(async (source) => {
+          try {
+            const resolved = await resolveWorkerRepositoryMetadata({
+              workerId: worker.workerId,
+              scopeId: source.projectId,
+              values: {
+                nameWithOwner: source.nameWithOwner,
+                displayPath: source.displayPath,
+              },
+            });
+            return {
+              ...source,
+              nameWithOwner:
+                typeof resolved.values.nameWithOwner === "string"
+                  ? resolved.values.nameWithOwner
+                  : "Protected repository unavailable",
+              displayPath:
+                typeof resolved.values.displayPath === "string"
+                  ? resolved.values.displayPath
+                  : "Protected path unavailable",
+            };
+          } catch {
+            return {
+              ...source,
+              nameWithOwner: "Protected repository unavailable",
+              displayPath: "Protected path unavailable",
+            };
+          }
+        }),
+      ),
+    })),
   );
 }
 
@@ -1245,50 +1300,59 @@ export async function updateModelProfile(
 }
 
 export async function getGithubStatus(workerId: string) {
-  return githubAuthStatusSchema.parse(
-    await request(
-      `/api/github/status?workerId=${encodeURIComponent(workerId)}`,
-    ),
-  );
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.auth.status",
+    arguments: {},
+    resultSchema: githubAuthStatusSchema,
+  });
 }
 
 export async function getGithubRepositories(workerId: string) {
-  return githubRepositoryListSchema.parse(
-    await request(
-      `/api/github/repositories?workerId=${encodeURIComponent(workerId)}`,
-    ),
-  );
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.repositories.list",
+    arguments: {},
+    resultSchema: githubRepositoryListSchema,
+  });
 }
 
 export async function getGithubRepositoryOwners(workerId: string) {
-  return githubRepositoryOwnerListSchema.parse(
-    await request(
-      `/api/github/repository-owners?workerId=${encodeURIComponent(workerId)}`,
-    ),
-  );
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.repository-owners.list",
+    arguments: {},
+    resultSchema: githubRepositoryOwnerListSchema,
+  });
 }
 
 export async function createGithubRepository(
   workerId: string,
   input: GithubRepositoryCreate,
 ) {
-  return githubRepositorySchema.parse(
-    await post(
-      `/api/github/repositories?workerId=${encodeURIComponent(workerId)}`,
-      githubRepositoryCreateSchema.parse(input),
-    ),
-  );
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.repositories.create",
+    arguments: { request: githubRepositoryCreateSchema.parse(input) },
+    resultSchema: githubRepositorySchema,
+  });
 }
 
 export async function getCachedGithubRepositories(
   workerId: string,
   login: string,
 ) {
-  return githubRepositoryListSchema.parse(
-    await request(
-      `/api/github/repositories/cache?workerId=${encodeURIComponent(workerId)}&login=${encodeURIComponent(login)}`,
-    ),
-  );
+  return runProtectedWorkerRepositoryOperation({
+    workerId,
+    scopeId: "github-catalog",
+    type: "github.repositories.cached",
+    arguments: { login },
+    resultSchema: githubRepositoryListSchema,
+  });
 }
 
 export async function getProjectWireList() {
@@ -1492,6 +1556,133 @@ async function runProtectedRepositoryOperation<T>(input: {
   return input.resultSchema.parse(outcome.result);
 }
 
+async function runProtectedWorkerRepositoryOperation<T>(input: {
+  arguments: Record<string, unknown>;
+  resultSchema: RepositoryResultSchema<T>;
+  scopeId: string;
+  type: RepositoryOperationType;
+  workerId: string;
+}): Promise<T> {
+  const worker = (await getWorkers()).find(
+    ({ workerId }) => workerId === input.workerId,
+  );
+  await ensureRepositoryWorkerEncryption({
+    refresh: refreshWorkerEncryption,
+    worker,
+  });
+  const operationId = crypto.randomUUID();
+  const protectedRequest = await protectRepositoryOperationContent({
+    context: {
+      projectId: input.scopeId,
+      worktreeId: input.workerId,
+      operationId,
+      direction: "request",
+    },
+    content: { type: input.type, arguments: input.arguments },
+    schema: repositoryOperationRequestContentSchema,
+  });
+  const wire = repositoryOperationWireResponseSchema.parse(
+    await post(
+      `/api/workers/${encodeURIComponent(input.workerId)}/repository-operation`,
+      { scopeId: input.scopeId, operationId, protectedRequest },
+    ),
+  );
+  const outcome = await openRepositoryOperationContent({
+    context: {
+      projectId: input.scopeId,
+      worktreeId: input.workerId,
+      operationId,
+      direction: "response",
+    },
+    opaque: wire.protectedResponse,
+    schema: repositoryOperationOutcomeContentSchema,
+  });
+  if (!outcome.ok) throw new CantripApiError(outcome.error, 422);
+  return input.resultSchema.parse(outcome.result);
+}
+
+export async function registerWorkerRepositoryMetadata(input: {
+  scopeId: string;
+  values: RepositoryMetadataValues;
+  workerId: string;
+}) {
+  return runProtectedWorkerRepositoryOperation({
+    workerId: input.workerId,
+    scopeId: input.scopeId,
+    type: "repository.metadata.register",
+    arguments: { values: repositoryMetadataValuesSchema.parse(input.values) },
+    resultSchema: repositoryMetadataResultSchema,
+  });
+}
+
+export async function resolveWorkerRepositoryMetadata(input: {
+  scopeId: string;
+  values: RepositoryMetadataValues;
+  workerId: string;
+}) {
+  return runProtectedWorkerRepositoryOperation({
+    workerId: input.workerId,
+    scopeId: input.scopeId,
+    type: "repository.metadata.resolve",
+    arguments: { values: repositoryMetadataValuesSchema.parse(input.values) },
+    resultSchema: repositoryMetadataResultSchema,
+  });
+}
+
+function repositoryIdentityBlindIndex(repositoryId: string): string {
+  const session = getClientSession();
+  const snapshot = clientEncryption.getSnapshot();
+  if (
+    !session ||
+    snapshot.status !== "ready" ||
+    !snapshot.masterKeyRevision ||
+    snapshot.identity?.ownerId !== session.user.id ||
+    snapshot.identity.serverId !== session.serverId
+  ) {
+    throw new Error("Encryption must be unlocked for this account.");
+  }
+  const componentKey = clientEncryption.componentKey({
+    component: "repository-content",
+    identity: snapshot.identity,
+    keyRevision: snapshot.masterKeyRevision,
+  });
+  const lookupKey = deriveLookupKey({
+    componentKey,
+    ownerId: session.user.id,
+    component: "repository-content",
+    table: "projects",
+    field: "github_repository_identity",
+    keyRevision: snapshot.masterKeyRevision,
+  });
+  try {
+    return computeBlindLookupTag(lookupKey, repositoryId);
+  } finally {
+    clearSensitiveBytes(lookupKey);
+    clearSensitiveBytes(componentKey);
+  }
+}
+
+export async function protectWorkerRepositoryIdentity(input: {
+  projectId: string;
+  repository: ProjectGithubConversionRepository;
+  workerId: string;
+}): Promise<{
+  repository: ProjectGithubRoutingRepository;
+  repositoryBlindIndex: string;
+}> {
+  const result = await registerWorkerRepositoryMetadata({
+    workerId: input.workerId,
+    scopeId: input.projectId,
+    values: input.repository,
+  });
+  return {
+    repository: projectGithubRoutingRepositorySchema.parse(result.values),
+    repositoryBlindIndex: repositoryIdentityBlindIndex(
+      input.repository.repositoryId,
+    ),
+  };
+}
+
 async function getProjectWorktreeWireList(projectId: string) {
   return projectWorktreeListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/worktrees`),
@@ -1581,21 +1772,74 @@ export async function createProjectWorktree(
   projectId: string,
   input: ProjectWorktreeCreate,
 ) {
-  return projectWorktreeSummarySchema.parse(
+  const parsed = projectWorktreeCreateSchema.parse(input);
+  const worktrees = await getProjectWorktreeWireList(projectId);
+  const workerId =
+    worktrees.find(({ isPrimary }) => isPrimary)?.workerId ??
+    worktrees.find(({ isDefault }) => isDefault)?.workerId;
+  if (!workerId)
+    throw new CantripApiError("Project worker is unavailable.", 409);
+  const protectedValues = await registerWorkerRepositoryMetadata({
+    workerId,
+    scopeId: projectId,
+    values: {
+      name: parsed.name,
+      ...(parsed.mode.type === "detached"
+        ? { revision: parsed.mode.revision }
+        : {
+            branch: parsed.mode.branch,
+            ...(parsed.mode.type === "newBranch" && parsed.mode.startPoint
+              ? { startPoint: parsed.mode.startPoint }
+              : {}),
+          }),
+    },
+  });
+  const protectedInput = projectWorktreeCreateSchema.parse({
+    name: protectedValues.values.name,
+    mode:
+      parsed.mode.type === "detached"
+        ? {
+            type: "detached",
+            revision: protectedValues.values.revision,
+          }
+        : parsed.mode.type === "existingBranch"
+          ? {
+              type: "existingBranch",
+              branch: protectedValues.values.branch,
+            }
+          : {
+              type: "newBranch",
+              branch: protectedValues.values.branch,
+              startPoint: parsed.mode.startPoint
+                ? protectedValues.values.startPoint
+                : null,
+            },
+  });
+  const wire = projectWorktreeSummarySchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees`,
-      input,
+      protectedInput,
     ),
+  );
+  return (
+    (await getProjectWorktrees(projectId)).find(({ id }) => id === wire.id) ??
+    projectWorktreeSummarySchema.parse({
+      ...wire,
+      name: "Protected worktree",
+      path: "Protected path unavailable",
+      displayPath: "Protected path unavailable",
+      branch: null,
+      lockReason: null,
+    })
   );
 }
 
 export async function reconcileProjectWorktrees(projectId: string) {
-  return projectWorktreeListSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/reconcile`,
-      {},
-    ),
+  await post(
+    `/api/projects/${encodeURIComponent(projectId)}/worktrees/reconcile`,
+    {},
   );
+  return getProjectWorktrees(projectId);
 }
 
 export async function getProjectWorktreeHistory(
@@ -2400,11 +2644,26 @@ export async function lockProjectWorktree(
   worktreeId: string,
   reason: string | null,
 ) {
-  return projectWorktreeSummarySchema.parse(
+  const worktree = (await getProjectWorktreeWireList(projectId)).find(
+    ({ id }) => id === worktreeId,
+  );
+  if (!worktree) throw new CantripApiError("Worktree not found.", 404);
+  const protectedReason = reason
+    ? await registerWorkerRepositoryMetadata({
+        workerId: worktree.workerId,
+        scopeId: projectId,
+        values: { lockReason: reason },
+      })
+    : null;
+  const wire = projectWorktreeSummarySchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/lock`,
-      { reason },
+      { reason: protectedReason?.values.lockReason ?? null },
     ),
+  );
+  return (
+    (await getProjectWorktrees(projectId)).find(({ id }) => id === wire.id) ??
+    wire
   );
 }
 
@@ -2412,11 +2671,15 @@ export async function unlockProjectWorktree(
   projectId: string,
   worktreeId: string,
 ) {
-  return projectWorktreeSummarySchema.parse(
+  const wire = projectWorktreeSummarySchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/unlock`,
       {},
     ),
+  );
+  return (
+    (await getProjectWorktrees(projectId)).find(({ id }) => id === wire.id) ??
+    wire
   );
 }
 
@@ -2424,12 +2687,10 @@ export async function pruneProjectWorktrees(
   projectId: string,
   allowExternal: boolean,
 ) {
-  return projectWorktreeListSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/prune`,
-      { allowExternal },
-    ),
-  );
+  await post(`/api/projects/${encodeURIComponent(projectId)}/worktrees/prune`, {
+    allowExternal,
+  });
+  return getProjectWorktrees(projectId);
 }
 
 export async function removeProjectWorktree(
@@ -2437,11 +2698,22 @@ export async function removeProjectWorktree(
   worktreeId: string,
   input: { allowExternal: boolean; force: boolean },
 ) {
-  return projectWorktreeSummarySchema.parse(
+  const wire = projectWorktreeSummarySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}`,
       { method: "DELETE", body: JSON.stringify(input) },
     ),
+  );
+  return (
+    (await getProjectWorktrees(projectId)).find(({ id }) => id === wire.id) ??
+    projectWorktreeSummarySchema.parse({
+      ...wire,
+      name: "Protected worktree",
+      path: "Protected path unavailable",
+      displayPath: "Protected path unavailable",
+      branch: null,
+      lockReason: null,
+    })
   );
 }
 
@@ -2535,12 +2807,36 @@ export async function checkoutGithubPullRequest(
   worktreeId: string,
   pullRequestNumber: number,
 ) {
-  return githubPullRequestCheckoutResultSchema.parse(
-    await post(
-      `/api/projects/${encodeURIComponent(projectId)}/worktrees/${encodeURIComponent(worktreeId)}/github/pull-requests/${pullRequestNumber}/checkout`,
-      {},
-    ),
+  const prepared = await runProtectedRepositoryOperation({
+    projectId,
+    worktreeId,
+    type: "github.pull-request.checkout.prepare",
+    arguments: { number: pullRequestNumber },
+    resultSchema: githubPullRequestCheckoutPreparedSchema,
+  });
+  const existing = (await getProjectWorktrees(projectId)).find(
+    ({ branch }) => branch === prepared.branch,
   );
+  if (existing) {
+    return githubPullRequestCheckoutResultSchema.parse({
+      pullRequest: prepared.pullRequest,
+      worktree: existing,
+      reused: true,
+    });
+  }
+  const worktree = await createProjectWorktree(projectId, {
+    name: prepared.name,
+    mode: {
+      type: "newBranch",
+      branch: prepared.branch,
+      startPoint: prepared.headSha,
+    },
+  });
+  return githubPullRequestCheckoutResultSchema.parse({
+    pullRequest: prepared.pullRequest,
+    worktree,
+    reused: false,
+  });
 }
 
 export async function runGithubPullRequestReviewAction(
@@ -2701,8 +2997,27 @@ export async function removeProject(
 }
 
 export async function getProjectReplicas(projectId: string) {
-  return projectReplicaListSchema.parse(
+  const replicas = projectReplicaListSchema.parse(
     await request(`/api/projects/${encodeURIComponent(projectId)}/replicas`),
+  );
+  let worktrees: Awaited<ReturnType<typeof getProjectWorktrees>> = [];
+  try {
+    worktrees = await getProjectWorktrees(projectId);
+  } catch {
+    // Endpoint-only routing metadata remains unavailable while its worker is.
+  }
+  return projectReplicaListSchema.parse(
+    replicas.map((replica) => {
+      const worktree = replica.primaryWorktreeId
+        ? worktrees.find(({ id }) => id === replica.primaryWorktreeId)
+        : undefined;
+      return {
+        ...replica,
+        path: worktree?.path ?? "Protected path unavailable",
+        displayPath: worktree?.displayPath ?? "Protected path unavailable",
+        branch: worktree?.branch ?? null,
+      };
+    }),
   );
 }
 
@@ -2744,21 +3059,101 @@ export async function getProjectReplica(
   projectId: string,
   projectReplicaId: string,
 ) {
-  return projectReplicaSummarySchema.parse(
-    await request(
-      `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}`,
-    ),
+  const replica = (await getProjectReplicas(projectId)).find(
+    ({ id }) => id === projectReplicaId,
   );
+  if (!replica) throw new CantripApiError("Project replica not found.", 404);
+  return replica;
+}
+
+async function projectRepositoryIdentity(
+  projectId: string,
+): Promise<ProjectGithubConversionRepository> {
+  const project = (await getProjectWireList()).find(
+    ({ id }) => id === projectId,
+  );
+  if (!project?.github) {
+    throw new CantripApiError("GitHub project not found.", 404);
+  }
+  if (
+    !repositoryRoutingHandleSchema.safeParse(project.github.nameWithOwner)
+      .success
+  ) {
+    return projectGithubConversionRepositorySchema.parse(project.github);
+  }
+  const workerId =
+    project.source?.workerId ??
+    project.preferredWorkerId ??
+    project.replicas[0]?.workerId;
+  if (!workerId)
+    throw new CantripApiError("Project worker is unavailable.", 409);
+  const resolved = await resolveWorkerRepositoryMetadata({
+    workerId,
+    scopeId: projectId,
+    values: project.github,
+  });
+  return projectGithubConversionRepositorySchema.parse(resolved.values);
+}
+
+async function protectReplicaRepository(input: {
+  projectId: string;
+  repository?: ProjectGithubConversionRepository;
+  workerId: string;
+}) {
+  const repository =
+    input.repository ?? (await projectRepositoryIdentity(input.projectId));
+  const protectedValues = await registerWorkerRepositoryMetadata({
+    workerId: input.workerId,
+    scopeId: input.projectId,
+    values: { nameWithOwner: repository.nameWithOwner },
+  });
+  return repositoryRoutingHandleSchema.parse(
+    protectedValues.values.nameWithOwner,
+  );
+}
+
+async function openProjectReplicaJob(value: unknown) {
+  const job = projectReplicaJobSummarySchema.parse(value);
+  if (!repositoryRoutingHandleSchema.safeParse(job.repository).success) {
+    return job;
+  }
+  try {
+    const resolved = await resolveWorkerRepositoryMetadata({
+      workerId: job.workerId,
+      scopeId: job.projectId,
+      values: { nameWithOwner: job.repository },
+    });
+    return projectReplicaJobSummarySchema.parse({
+      ...job,
+      repository: resolved.values.nameWithOwner,
+    });
+  } catch {
+    return projectReplicaJobSummarySchema.parse({
+      ...job,
+      repository: "Protected repository unavailable",
+    });
+  }
 }
 
 export async function createProjectReplica(
   projectId: string,
-  input: ProjectReplicaProvisionCreate,
+  input: ProjectReplicaProvisionCreate & {
+    repository?: ProjectGithubConversionRepository;
+  },
 ) {
-  return projectReplicaJobSummarySchema.parse(
+  const { repository, ...requestInput } = input;
+  const repositoryHandle = await protectReplicaRepository({
+    projectId,
+    workerId: input.workerId,
+    repository,
+  });
+  return openProjectReplicaJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/replicas`,
-      input,
+      encryptedProjectReplicaProvisionCreateSchema.parse({
+        ...requestInput,
+        repository: repositoryHandle,
+      }),
     ),
   );
 }
@@ -2766,12 +3161,27 @@ export async function createProjectReplica(
 export async function synchronizeProjectReplica(
   projectId: string,
   projectReplicaId: string,
-  input: ProjectReplicaSynchronizeCreate,
+  input: ProjectReplicaSynchronizeCreate & {
+    repository?: ProjectGithubConversionRepository;
+  },
 ) {
-  return projectReplicaJobSummarySchema.parse(
+  const replica = (await getProjectWireList())
+    .find(({ id }) => id === projectId)
+    ?.replicas.find(({ id }) => id === projectReplicaId);
+  if (!replica) throw new CantripApiError("Project replica not found.", 404);
+  const { repository, ...requestInput } = input;
+  const repositoryHandle = await protectReplicaRepository({
+    projectId,
+    workerId: replica.workerId,
+    repository,
+  });
+  return openProjectReplicaJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}/synchronize`,
-      input,
+      encryptedProjectReplicaSynchronizeCreateSchema.parse({
+        ...requestInput,
+        repository: repositoryHandle,
+      }),
     ),
   );
 }
@@ -2779,26 +3189,42 @@ export async function synchronizeProjectReplica(
 export async function removeProjectReplica(
   projectId: string,
   projectReplicaId: string,
-  input: ProjectReplicaRemoveCreate,
+  input: ProjectReplicaRemoveCreate & {
+    repository?: ProjectGithubConversionRepository;
+  },
 ) {
-  return projectReplicaJobSummarySchema.parse(
+  const replica = (await getProjectWireList())
+    .find(({ id }) => id === projectId)
+    ?.replicas.find(({ id }) => id === projectReplicaId);
+  if (!replica) throw new CantripApiError("Project replica not found.", 404);
+  const { repository, ...requestInput } = input;
+  const repositoryHandle = await protectReplicaRepository({
+    projectId,
+    workerId: replica.workerId,
+    repository,
+  });
+  return openProjectReplicaJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}/remove`,
-      input,
+      encryptedProjectReplicaRemoveCreateSchema.parse({
+        ...requestInput,
+        repository: repositoryHandle,
+      }),
     ),
   );
 }
 
 export async function getProjectReplicaJobs(projectId: string) {
-  return projectReplicaJobListSchema.parse(
+  const jobs = projectReplicaJobListSchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/replica-jobs`,
     ),
   );
+  return Promise.all(jobs.map(openProjectReplicaJob));
 }
 
 export async function getProjectReplicaJob(jobId: string) {
-  return projectReplicaJobSummarySchema.parse(
+  return openProjectReplicaJob(
     await request(`/api/project-replica-jobs/${encodeURIComponent(jobId)}`),
   );
 }
@@ -2807,7 +3233,7 @@ export async function retryProjectReplicaJob(
   jobId: string,
   input: ProjectReplicaJobRetry,
 ) {
-  return projectReplicaJobSummarySchema.parse(
+  return openProjectReplicaJob(
     await post(
       `/api/project-replica-jobs/${encodeURIComponent(jobId)}/retry`,
       input,
@@ -2819,7 +3245,7 @@ export async function cancelProjectReplicaJob(
   jobId: string,
   input: ProjectReplicaJobCancel,
 ) {
-  return projectReplicaJobSummarySchema.parse(
+  return openProjectReplicaJob(
     await post(
       `/api/project-replica-jobs/${encodeURIComponent(jobId)}/cancel`,
       input,
@@ -2870,11 +3296,54 @@ export async function preflightProjectGithubConversion(
   projectId: string,
   input: ProjectGithubConversionPreflightRequest,
 ) {
-  return projectGithubConversionPreflightResultSchema.parse(
+  const parsed = projectGithubConversionPreflightRequestSchema.parse(input);
+  const project = (await getProjectWireList()).find(
+    ({ id }) => id === projectId,
+  );
+  const workerId = project?.source?.workerId ?? project?.preferredWorkerId;
+  if (!workerId)
+    throw new CantripApiError("Project worker is unavailable.", 409);
+  const protectedIdentity = await protectWorkerRepositoryIdentity({
+    projectId,
+    workerId,
+    repository: parsed.repository,
+  });
+  const wire = projectGithubConversionPreflightResultSchema.parse(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/github-conversion/preflight`,
-      projectGithubConversionPreflightRequestSchema.parse(input),
+      encryptedProjectGithubConversionPreflightRequestSchema.parse({
+        repository: protectedIdentity.repository,
+        repositoryBlindIndex: protectedIdentity.repositoryBlindIndex,
+      }),
     ),
+  );
+  const privateValues: RepositoryMetadataValues =
+    wire.status === "ready"
+      ? {
+          branch: wire.branch,
+          originUrl: wire.originUrl,
+          warnings: wire.warnings,
+        }
+      : { message: wire.error.message };
+  const resolved = await resolveWorkerRepositoryMetadata({
+    workerId,
+    scopeId: projectId,
+    values: privateValues,
+  });
+  return projectGithubConversionPreflightResultSchema.parse(
+    wire.status === "ready"
+      ? {
+          ...wire,
+          repository: parsed.repository,
+          branch: resolved.values.branch,
+          originUrl: resolved.values.originUrl,
+          warnings: resolved.values.warnings,
+        }
+      : {
+          ...wire,
+          repository: parsed.repository,
+          error: { ...wire.error, message: resolved.values.message },
+        },
   );
 }
 
@@ -2882,17 +3351,78 @@ export async function startProjectGithubConversion(
   projectId: string,
   input: ProjectGithubConversionStart,
 ) {
-  return projectGithubConversionJobSummarySchema.parse(
+  const parsed = projectGithubConversionStartSchema.parse(input);
+  const project = (await getProjectWireList()).find(
+    ({ id }) => id === projectId,
+  );
+  const workerId = project?.source?.workerId ?? project?.preferredWorkerId;
+  if (!workerId)
+    throw new CantripApiError("Project worker is unavailable.", 409);
+  const protectedIdentity = await protectWorkerRepositoryIdentity({
+    projectId,
+    workerId,
+    repository: parsed.repository,
+  });
+  const protectedInitialCommit = parsed.initialCommit
+    ? await registerWorkerRepositoryMetadata({
+        workerId,
+        scopeId: projectId,
+        values: { message: parsed.initialCommit.message },
+      })
+    : null;
+  return openProjectGithubConversionJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/github-conversion`,
-      projectGithubConversionStartSchema.parse(input),
+      encryptedProjectGithubConversionStartSchema.parse({
+        repository: protectedIdentity.repository,
+        repositoryBlindIndex: protectedIdentity.repositoryBlindIndex,
+        confirmationToken: parsed.confirmationToken,
+        initialCommit: protectedInitialCommit
+          ? { message: protectedInitialCommit.values.message }
+          : null,
+      }),
     ),
   );
 }
 
+async function openProjectGithubConversionJob(value: unknown) {
+  const job = projectGithubConversionJobSummarySchema.parse(value);
+  try {
+    const resolved = await resolveWorkerRepositoryMetadata({
+      workerId: job.workerId,
+      scopeId: job.projectId,
+      values: {
+        ...job.repository,
+        ...(job.error ? { message: job.error.message } : {}),
+      },
+    });
+    return projectGithubConversionJobSummarySchema.parse({
+      ...job,
+      repository: projectGithubConversionRepositorySchema.parse(
+        resolved.values,
+      ),
+      error: job.error
+        ? { ...job.error, message: resolved.values.message }
+        : null,
+    });
+  } catch {
+    return projectGithubConversionJobSummarySchema.parse({
+      ...job,
+      repository: {
+        repositoryId: "protected-unavailable",
+        nameWithOwner: "protected/unavailable",
+        url: "https://protected.invalid",
+      },
+      error: job.error
+        ? { ...job.error, message: "Protected conversion error unavailable" }
+        : null,
+    });
+  }
+}
+
 export async function getProjectGithubConversion(projectId: string) {
   try {
-    return projectGithubConversionJobSummarySchema.parse(
+    return openProjectGithubConversionJob(
       await request(
         `/api/projects/${encodeURIComponent(projectId)}/github-conversion`,
       ),
@@ -2907,7 +3437,7 @@ export async function retryProjectGithubConversion(
   projectId: string,
   stateRevision: number,
 ) {
-  return projectGithubConversionJobSummarySchema.parse(
+  return openProjectGithubConversionJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/github-conversion/retry`,
       projectGithubConversionRetrySchema.parse({ stateRevision }),

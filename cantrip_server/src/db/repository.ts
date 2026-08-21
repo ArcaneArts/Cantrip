@@ -11072,32 +11072,55 @@ export class ServerRepository {
   async getGithubProjectExecutionContext(
     ownerId: string,
     projectId: string,
+    workerId?: string,
   ): Promise<GithubProjectExecutionContext | null> {
     const rows = await this.database
       .select({
         nameWithOwner: schema.projects.githubRepositoryFullName,
         url: schema.projects.githubRepositoryUrl,
+        projectReplicaId: schema.projectSources.id,
+        workerId: schema.projectSources.workerId,
       })
       .from(schema.projects)
+      .innerJoin(
+        schema.projectSources,
+        eq(schema.projectSources.projectId, schema.projects.id),
+      )
       .where(
         and(
           eq(schema.projects.id, projectId),
           eq(schema.projects.ownerId, ownerId),
+          isNull(schema.projectSources.removedAt),
+          workerId ? eq(schema.projectSources.workerId, workerId) : undefined,
         ),
       )
+      .orderBy(asc(schema.projectSources.createdAt))
       .limit(1);
     const row = rows[0];
-    const source = row ? await this.getProjectSource(ownerId, projectId) : null;
-    return row?.nameWithOwner && row.url && source
-      ? {
-          nameWithOwner: row.nameWithOwner,
-          url: row.url,
-          workerId: source.workerId,
-        }
-      : null;
+    if (!row?.nameWithOwner || !row.url) return null;
+    const provision = await this.database
+      .select({ repository: schema.projectReplicaJobs.repository })
+      .from(schema.projectReplicaJobs)
+      .where(
+        and(
+          eq(schema.projectReplicaJobs.ownerId, ownerId),
+          eq(schema.projectReplicaJobs.projectId, projectId),
+          eq(schema.projectReplicaJobs.projectReplicaId, row.projectReplicaId),
+          eq(schema.projectReplicaJobs.workerId, row.workerId),
+          eq(schema.projectReplicaJobs.kind, "provision"),
+          eq(schema.projectReplicaJobs.state, "succeeded"),
+        ),
+      )
+      .orderBy(desc(schema.projectReplicaJobs.completedAt))
+      .limit(1);
+    return {
+      nameWithOwner: provision[0]?.repository ?? row.nameWithOwner,
+      url: row.url,
+      workerId: row.workerId,
+    };
   }
 
-  async hasGithubProject(ownerId: string, repositoryId: string) {
+  async hasGithubProject(ownerId: string, repositoryBlindIndex: string) {
     const [projects, conversions] = await Promise.all([
       this.database
         .select({ id: schema.projects.id })
@@ -11105,7 +11128,10 @@ export class ServerRepository {
         .where(
           and(
             eq(schema.projects.ownerId, ownerId),
-            eq(schema.projects.githubRepositoryId, repositoryId),
+            eq(
+              schema.projects.githubRepositoryBlindIndex,
+              repositoryBlindIndex,
+            ),
           ),
         )
         .limit(1),
@@ -11115,7 +11141,10 @@ export class ServerRepository {
         .where(
           and(
             eq(schema.projectGithubConversionJobs.ownerId, ownerId),
-            eq(schema.projectGithubConversionJobs.repositoryId, repositoryId),
+            eq(
+              schema.projectGithubConversionJobs.repositoryBlindIndex,
+              repositoryBlindIndex,
+            ),
             inArray(schema.projectGithubConversionJobs.state, [
               "queued",
               "running",
@@ -11131,12 +11160,14 @@ export class ServerRepository {
   async listGithubRepositoryIds(ownerId: string): Promise<Set<string>> {
     const [rows, conversions] = await Promise.all([
       this.database
-        .select({ repositoryId: schema.projects.githubRepositoryId })
+        .select({
+          repositoryId: schema.projects.githubRepositoryBlindIndex,
+        })
         .from(schema.projects)
         .where(eq(schema.projects.ownerId, ownerId)),
       this.database
         .select({
-          repositoryId: schema.projectGithubConversionJobs.repositoryId,
+          repositoryId: schema.projectGithubConversionJobs.repositoryBlindIndex,
         })
         .from(schema.projectGithubConversionJobs)
         .where(
@@ -11197,6 +11228,8 @@ export class ServerRepository {
           originKind: "github",
           setupStatus: "cloning",
           setupError: null,
+          preferredWorkerId: input.workerId,
+          githubRepositoryBlindIndex: input.repositoryBlindIndex,
           githubRepositoryId: input.repositoryId,
           githubRepositoryFullName: input.nameWithOwner,
           githubRepositoryUrl: input.url,
@@ -11275,6 +11308,7 @@ export class ServerRepository {
           setupError: null,
           worktreePolicy: "direct",
           preferredWorkerId: input.workerId,
+          githubRepositoryBlindIndex: null,
           githubRepositoryId: null,
           githubRepositoryFullName: null,
           githubRepositoryUrl: null,

@@ -151,6 +151,7 @@ export function ProjectReplicaSettings({
     mutationFn: (workerId: string) =>
       createProjectReplica(project.id, {
         workerId,
+        ...(project.github ? { repository: project.github } : {}),
         expectedRevision: canonicalReplicaRevision(project),
         idempotencyKey: crypto.randomUUID(),
       }),
@@ -159,6 +160,7 @@ export function ProjectReplicaSettings({
   const synchronize = useMutation({
     mutationFn: (replica: ProjectReplicaSummary) =>
       synchronizeProjectReplica(project.id, replica.id, {
+        ...(project.github ? { repository: project.github } : {}),
         expectedRevision: canonicalReplicaRevision(project)!,
         policy: synchronizationPolicy,
         idempotencyKey: crypto.randomUUID(),
@@ -168,6 +170,7 @@ export function ProjectReplicaSettings({
   const remove = useMutation({
     mutationFn: (replica: ProjectReplicaSummary) =>
       removeProjectReplica(project.id, replica.id, {
+        ...(project.github ? { repository: project.github } : {}),
         deleteLocalFiles,
         idempotencyKey: crypto.randomUUID(),
       }),

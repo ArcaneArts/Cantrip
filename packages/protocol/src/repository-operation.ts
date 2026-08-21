@@ -8,6 +8,68 @@ import {
 export const REPOSITORY_OPERATION_PROTECTED_CONTENT_BYTES_LIMIT =
   16 * 1_024 * 1_024;
 
+export const repositoryRoutingHandleSchema = z
+  .string()
+  .regex(/^ctrr_[A-Za-z0-9_-]{43}$/u);
+
+export const REPOSITORY_METADATA_FIELDS = [
+  "branch",
+  "displayPath",
+  "existingPath",
+  "gitCommonDir",
+  "lockReason",
+  "managedRoot",
+  "message",
+  "name",
+  "nameWithOwner",
+  "originalPath",
+  "originUrl",
+  "path",
+  "primaryPath",
+  "pruneReason",
+  "prunedPaths",
+  "removedPath",
+  "repositoryId",
+  "revision",
+  "rootPath",
+  "sourcePath",
+  "setupError",
+  "startPoint",
+  "upstream",
+  "url",
+  "warning",
+  "warnings",
+  "worktreePath",
+] as const;
+
+const repositoryMetadataFieldNames = new Set<string>(
+  REPOSITORY_METADATA_FIELDS,
+);
+
+export const repositoryMetadataValuesSchema = z
+  .record(
+    z.string().min(1).max(120),
+    z.union([
+      z.string().min(1).max(32_768),
+      z.array(z.string().min(1).max(32_768)).max(100),
+      z.null(),
+    ]),
+  )
+  .refine(
+    (values) =>
+      Object.keys(values).every((field) =>
+        repositoryMetadataFieldNames.has(field),
+      ),
+    { message: "Repository metadata contains an unsupported field." },
+  )
+  .refine((values) => Object.keys(values).length <= 64, {
+    message: "Repository metadata is too large.",
+  });
+
+export const repositoryMetadataResultSchema = z
+  .object({ values: repositoryMetadataValuesSchema })
+  .strict();
+
 export const repositoryOperationTypeSchema = z.enum([
   "git.history",
   "git.graph.snapshot",
@@ -64,6 +126,13 @@ export const repositoryOperationTypeSchema = z.enum([
   "git.force-push.preview",
   "git.force-push.apply",
   "worktree.status",
+  "repository.metadata.register",
+  "repository.metadata.resolve",
+  "github.auth.status",
+  "github.repositories.cached",
+  "github.repositories.list",
+  "github.repository-owners.list",
+  "github.repositories.create",
   "github.issues.list",
   "github.issue.get",
   "github.issue.create",
@@ -78,6 +147,7 @@ export const repositoryOperationTypeSchema = z.enum([
   "github.pull-request.review.reply",
   "github.pull-request.lifecycle.preview",
   "github.pull-request.lifecycle.apply",
+  "github.pull-request.checkout.prepare",
   "github.releases.list",
   "github.release.get",
   "github.release.create",
@@ -140,6 +210,11 @@ export const repositoryOperationWireResponseSchema = z
   })
   .strict();
 
+export const repositoryWorkerOperationWireRequestSchema =
+  repositoryOperationWireRequestSchema
+    .extend({ scopeId: z.string().min(1).max(200) })
+    .strict();
+
 export type RepositoryOperationContext = z.infer<
   typeof repositoryOperationContextSchema
 >;
@@ -154,4 +229,10 @@ export type RepositoryOperationOutcomeContent = z.infer<
 >;
 export type RepositoryOperationType = z.infer<
   typeof repositoryOperationTypeSchema
+>;
+export type RepositoryMetadataValues = z.infer<
+  typeof repositoryMetadataValuesSchema
+>;
+export type RepositoryMetadataResult = z.infer<
+  typeof repositoryMetadataResultSchema
 >;
