@@ -36,6 +36,7 @@ import {
   browserTunnelRequestSchema,
   browserPrivateStateOpaqueSchema,
   encryptedBrowserUpdateSchema,
+  cantripAgentOperationResultSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
   codeAttachmentCreateSchema,
@@ -395,6 +396,7 @@ import {
   workerAttachmentUploadResultSchema,
   workerListSchema,
   workerManagementListSchema,
+  workerCantripMcpOperationCallSchema,
   workerCliCommandCallSchema,
   workerRestartAcknowledgementSchema,
   workerRestartResultSchema,
@@ -472,6 +474,7 @@ import type {
   WorktreeStatusResult,
 } from "@cantrip/protocol";
 import type {
+  CantripAgentOperationName,
   CantripAgentOperationRequest,
   CantripAgentOperationResult,
   CantripCliCommandResult,
@@ -731,6 +734,10 @@ import {
 import { AppLiveHub } from "./live/hub.js";
 import { CoalescedInvalidations } from "./live/coalesced-invalidations.js";
 import { createCantripAgentOperationExecutor } from "./agent-tools/executor.js";
+import {
+  assertCantripMcpBinding,
+  CantripMcpBindingError,
+} from "./agent-tools/binding.js";
 import {
   createServerLogStream,
   SERVER_LOG_REDACTION_PATHS,
@@ -25124,6 +25131,105 @@ export async function buildApp({
           void error;
           return reply.code(409).send({
             error: "Protected automation dispatch failed.",
+          });
+        }
+      });
+    },
+  );
+
+  const mcpBootstrapOperations: ReadonlySet<CantripAgentOperationName> =
+    new Set(["context.get"]);
+
+  app.post(
+    "/api/internal/agent-operations",
+    { logLevel: "warn" },
+    async (request, reply) => {
+      const input = workerCantripMcpOperationCallSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send({
+          code: "invalid",
+          ...invalidBody(input.error.issues),
+        });
+      }
+      const workerAuth = await authenticateWorkerRequest(
+        repository,
+        config,
+        request,
+        input.data.binding.workerId,
+        "worker:agent-tools",
+      );
+      if (!workerAuth) {
+        return reply.code(401).send({
+          code: "invalid",
+          error: "Unauthorized",
+        });
+      }
+      return runAsOwner(workerAuth.ownerId, async () => {
+        try {
+          const context = await repository.getChatExecutionContext(
+            workerAuth.ownerId,
+            input.data.binding.chatId,
+          );
+          if (!context) {
+            throw new CantripMcpBindingError(
+              "stale-binding",
+              409,
+              "The MCP binding chat context no longer exists.",
+            );
+          }
+          assertCantripMcpBinding({
+            binding: input.data.binding,
+            context,
+            operation: input.data.request.operation,
+            ownerId: workerAuth.ownerId,
+            serverAllowedOperations: mcpBootstrapOperations,
+          });
+          const result = await agentOperationExecutor.execute(
+            chatOperationContext(context),
+            input.data.request,
+          );
+          await appendAudit(request, {
+            action: "mcp.operation.executed",
+            actorSessionId: null,
+            actorUserId: null,
+            ownerId: workerAuth.ownerId,
+            resourceId: input.data.binding.bindingId,
+            resourceType: "mcp-binding",
+            result: "succeeded",
+          });
+          return reply.send(cantripAgentOperationResultSchema.parse(result));
+        } catch (error) {
+          const operationError =
+            error instanceof CantripMcpBindingError
+              ? error
+              : error instanceof WorkerUnavailableError
+                ? new CantripMcpBindingError(
+                    "stale-binding",
+                    503,
+                    errorMessage(error),
+                  )
+                : new CantripMcpBindingError(
+                    "invalid",
+                    400,
+                    errorMessage(error),
+                  );
+          await appendAudit(request, {
+            action: "mcp.operation.rejected",
+            actorSessionId: null,
+            actorUserId: null,
+            ownerId: workerAuth.ownerId,
+            resourceId: input.data.binding.bindingId,
+            resourceType: "mcp-binding",
+            result:
+              operationError.code === "forbidden" ||
+              operationError.code === "stale-binding" ||
+              operationError.code === "expired"
+                ? "denied"
+                : "failed",
+          });
+          return reply.code(operationError.status).send({
+            code: operationError.code,
+            error: operationError.message,
           });
         }
       });

@@ -1873,9 +1873,18 @@ export const MCP_SECRET_MASK = "••••••••";
  * shadows the managed runtime through a server API.
  */
 export const MANAGED_CODEGRAPH_MCP_NAME = "codegraph" as const;
+export const MANAGED_CANTRIP_MCP_NAME = "cantrip" as const;
 
 export function isManagedCodeGraphMcpName(name: string): boolean {
   return name.trim().toLowerCase() === MANAGED_CODEGRAPH_MCP_NAME;
+}
+
+export function isManagedCantripMcpName(name: string): boolean {
+  return name.trim().toLowerCase() === MANAGED_CANTRIP_MCP_NAME;
+}
+
+export function isManagedMcpName(name: string): boolean {
+  return isManagedCodeGraphMcpName(name) || isManagedCantripMcpName(name);
 }
 
 export const mcpServerNameSchema = z
@@ -7002,6 +7011,73 @@ export const cantripAgentOperationRequestSchema = z
   .object({
     operation: cantripAgentOperationNameSchema,
     arguments: cantripAgentOperationArgumentsSchema,
+  })
+  .strict();
+
+export const cantripMcpBindingSchema = z
+  .object({
+    bindingId: z.string().uuid(),
+    ownerId: z.string().min(1).max(200),
+    projectId: z.string().min(1).max(200),
+    chatId: z.string().min(1).max(200),
+    executionLaneId: z.string().min(1).max(200),
+    workerId: z.string().min(1).max(200),
+    worktreeId: z.string().min(1).max(200),
+    canonicalRoot: z.string().min(1).max(8_192),
+    rootKind: projectRootKindSchema,
+    permissionProfileId: permissionProfileIdSchema,
+    allowedOperations: z
+      .array(cantripAgentOperationNameSchema)
+      .min(1)
+      .max(cantripAgentOperationNameSchema.options.length)
+      .refine((operations) => new Set(operations).size === operations.length, {
+        message: "Cantrip MCP binding operations must be unique.",
+      }),
+    issuedAt: z.iso.datetime(),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict()
+  .superRefine((binding, context) => {
+    const issuedAt = Date.parse(binding.issuedAt);
+    const expiresAt = Date.parse(binding.expiresAt);
+    if (expiresAt <= issuedAt) {
+      context.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message: "Cantrip MCP bindings must expire after they are issued.",
+      });
+    }
+    if (expiresAt - issuedAt > 24 * 60 * 60 * 1_000) {
+      context.addIssue({
+        code: "custom",
+        path: ["expiresAt"],
+        message: "Cantrip MCP bindings cannot live longer than 24 hours.",
+      });
+    }
+  });
+
+export const cantripMcpConnectionDocumentSchema = z
+  .object({
+    protocolVersion: z.literal(1),
+    endpoint: z.url(),
+    bindingId: z.string().uuid(),
+    credential: z.string().min(32).max(512),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict();
+
+export const cantripMcpBrokerOperationRequestSchema = z
+  .object({
+    bindingId: z.string().uuid(),
+    request: cantripAgentOperationRequestSchema,
+  })
+  .strict();
+
+export const workerCantripMcpOperationCallSchema = z
+  .object({
+    requestId: z.string().min(1).max(200),
+    binding: cantripMcpBindingSchema,
+    request: cantripAgentOperationRequestSchema,
   })
   .strict();
 
@@ -13024,6 +13100,16 @@ export type CantripAgentOperationRequest = z.infer<
 >;
 export type CantripAgentOperationResult = z.infer<
   typeof cantripAgentOperationResultSchema
+>;
+export type CantripMcpBinding = z.infer<typeof cantripMcpBindingSchema>;
+export type CantripMcpConnectionDocument = z.infer<
+  typeof cantripMcpConnectionDocumentSchema
+>;
+export type CantripMcpBrokerOperationRequest = z.infer<
+  typeof cantripMcpBrokerOperationRequestSchema
+>;
+export type WorkerCantripMcpOperationCall = z.infer<
+  typeof workerCantripMcpOperationCallSchema
 >;
 export type CantripCliCommandName = z.infer<typeof cantripCliCommandNameSchema>;
 export type CantripCliContext = z.infer<typeof cantripCliContextSchema>;

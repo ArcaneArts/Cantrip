@@ -18,6 +18,7 @@
     "@cantrip/logging": "workspace:*",
     "@cantrip/protocol": "workspace:*",
     "@cantrip/version": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@zavora-ai/computer-use-mcp": "7.0.0",
     "node-pty": "^1.1.0",
     "node-screenshots": "0.2.8",

@@ -1,8 +1,9 @@
 import {
   MANAGED_CODEGRAPH_MCP_NAME,
-  isManagedCodeGraphMcpName,
   type McpServerConfiguration,
 } from "@cantrip/protocol";
+
+import { mergeManagedMcpServers } from "../mcp/managed.js";
 
 export const CODEGRAPH_MANAGED_ENVIRONMENT = Object.freeze({
   CODEGRAPH_DIR: ".codegraph-cantrip",
@@ -36,8 +37,5 @@ export function mergeManagedCodeGraphMcpServer(
   configured: McpServerConfiguration[],
   managed: McpServerConfiguration | null,
 ): McpServerConfiguration[] {
-  const userServers = configured.filter(
-    ({ name }) => !isManagedCodeGraphMcpName(name),
-  );
-  return managed ? [...userServers, managed] : userServers;
+  return mergeManagedMcpServers(configured, [managed]);
 }

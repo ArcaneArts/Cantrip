@@ -1440,7 +1440,7 @@ function surfaceStreamRouteBoundaryAudit(routes, applicationText) {
     "surfaceStreamWireArgument(call.arguments)",
     'operation: "explorer.list"',
     'operation: "terminal.read"',
-    'operation: "terminal.input"',
+    'operation: "terminal.send"',
   ]) {
     if (!applicationText.includes(marker)) {
       failures.push(`Protected surface CLI relay is missing ${marker}.`);

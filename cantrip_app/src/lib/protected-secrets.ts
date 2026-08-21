@@ -12,7 +12,7 @@ import {
   encryptedModelProviderAccountUpdateSchema,
   encryptedModelProviderCreateSchema,
   encryptedModelProviderUpdateSchema,
-  isManagedCodeGraphMcpName,
+  isManagedMcpName,
   mcpServerConfigurationSchema,
   mcpServerListSchema,
   mcpServerSummarySchema,
@@ -326,8 +326,8 @@ async function protectMcpConfiguration(
   options: TrustedOptions,
 ) {
   const input = mcpServerConfigurationSchema.parse(raw);
-  if (isManagedCodeGraphMcpName(input.name)) {
-    throw new Error("The CodeGraph MCP name is reserved by Cantrip.");
+  if (isManagedMcpName(input.name)) {
+    throw new Error("That MCP name is reserved by Cantrip.");
   }
   const encryption = context(options);
   const identity = encryption.service.getSnapshot().identity!;

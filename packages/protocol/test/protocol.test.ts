@@ -19,6 +19,8 @@ import {
   browserServiceFleetDiscoverySchema,
   cantripAgentOperationRequestSchema,
   cantripAgentOperationResultSchema,
+  cantripMcpBindingSchema,
+  cantripMcpConnectionDocumentSchema,
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
   cantripVersionSchema,
@@ -54,6 +56,7 @@ import {
   executionTargetResolveRequestSchema,
   executionTargetSchema,
   externalChatDiscoveryWorkerResultSchema,
+  isManagedMcpName,
   projectExternalChatDiscoverySchema,
   modelProviderAccountSummarySchema,
   providerAccessTokenLeaseRequestSchema,
@@ -606,6 +609,43 @@ describe("Cantrip protocol", () => {
       cantripAgentOperationRequestSchema.safeParse({
         operation: "shell.run",
         arguments: {},
+      }).success,
+    ).toBe(false);
+  });
+
+  it("validates expiring MCP bindings and reserves managed names", () => {
+    const binding = cantripMcpBindingSchema.parse({
+      bindingId: "00000000-0000-4000-8000-000000000001",
+      ownerId: "owner-one",
+      projectId: "project-one",
+      chatId: "chat-one",
+      executionLaneId: "lane-one",
+      workerId: "worker-one",
+      worktreeId: "worktree-one",
+      canonicalRoot: "/worktrees/one",
+      rootKind: "git-worktree",
+      permissionProfileId: ":workspace-write",
+      allowedOperations: ["context.get"],
+      issuedAt: "2026-08-21T12:00:00.000Z",
+      expiresAt: "2026-08-21T18:00:00.000Z",
+    });
+    expect(binding.allowedOperations).toEqual(["context.get"]);
+    expect(
+      cantripMcpConnectionDocumentSchema.parse({
+        protocolVersion: 1,
+        endpoint: "http://127.0.0.1:43123",
+        bindingId: binding.bindingId,
+        credential: "A".repeat(43),
+        expiresAt: binding.expiresAt,
+      }),
+    ).not.toHaveProperty("ownerId");
+    expect(isManagedMcpName(" CANTRIP ")).toBe(true);
+    expect(isManagedMcpName("CodeGraph")).toBe(true);
+    expect(isManagedMcpName("database")).toBe(false);
+    expect(
+      cantripMcpBindingSchema.safeParse({
+        ...binding,
+        expiresAt: "2026-08-23T12:00:00.000Z",
       }).success,
     ).toBe(false);
   });
