@@ -4,12 +4,25 @@ import remarkGfm from "remark-gfm";
 import { SyntaxHighlightedCode } from "@/components/chat/markdown-code";
 import { cn } from "@/lib/utils";
 
+export function handleMarkdownLinkClick(
+  event: { preventDefault(): void },
+  href: string | undefined,
+  onOpenLink: ((url: string) => void) | undefined,
+): boolean {
+  if (!onOpenLink || !href) return false;
+  event.preventDefault();
+  onOpenLink(href);
+  return true;
+}
+
 export function Markdown({
   children,
   inverse = false,
+  onOpenLink,
 }: {
   children: string;
   inverse?: boolean;
+  onOpenLink?(url: string): void;
 }) {
   return (
     <div
@@ -33,6 +46,9 @@ export function Markdown({
               )}
               rel="noreferrer"
               target="_blank"
+              onClick={(event) =>
+                handleMarkdownLinkClick(event, props.href, onOpenLink)
+              }
             >
               {linkChildren}
             </a>

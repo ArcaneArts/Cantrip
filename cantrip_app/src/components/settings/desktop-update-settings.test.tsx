@@ -17,7 +17,7 @@ const release = {
   version: "1.3.0",
   publishedAt: "2026-08-16T12:00:00.000Z",
   releaseNotes:
-    "## Highlights\n\n- Faster startup\n- Safer updates\n\n<script>bad()</script>",
+    "## Highlights\n\n- Faster startup\n- Safer updates\n\n[Full changelog](https://example.com/changelog)\n\n<script>bad()</script>",
 };
 
 const activeWork: DesktopUpdateActiveWorkSummary = {
@@ -98,6 +98,7 @@ describe("desktop update settings", () => {
     expect(markup).toContain("1.3.0");
     expect(markup).toContain("Highlights");
     expect(markup).toContain("Faster startup");
+    expect(markup).toContain('href="https://example.com/changelog"');
     expect(markup).toContain(
       'data-elite-global="desktop-update-release-notes"',
     );

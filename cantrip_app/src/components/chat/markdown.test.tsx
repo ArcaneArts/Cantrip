@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { markdownCodeLanguage } from "./markdown-code";
-import { Markdown } from "./markdown";
+import { handleMarkdownLinkClick, Markdown } from "./markdown";
 
 describe("Markdown", () => {
   it("marks rendered prose as selectable application content", () => {
@@ -39,5 +39,33 @@ describe("Markdown", () => {
     expect(markdownCodeLanguage("language-js")).toBe("javascript");
     expect(markdownCodeLanguage("language-shell")).toBe("bash");
     expect(markdownCodeLanguage("language-c++")).toBe("cpp");
+  });
+
+  it("renders a release-note link for delegated external opening", () => {
+    const openLink = vi.fn();
+    const markup = renderToStaticMarkup(
+      <Markdown onOpenLink={openLink}>
+        {"[Full changelog](https://example.com/changelog)"}
+      </Markdown>,
+    );
+
+    expect(markup).toContain('href="https://example.com/changelog"');
+    expect(markup).toContain('target="_blank"');
+    expect(openLink).not.toHaveBeenCalled();
+  });
+
+  it("prevents webview navigation when delegating a Markdown link", () => {
+    const preventDefault = vi.fn();
+    const openLink = vi.fn();
+
+    expect(
+      handleMarkdownLinkClick(
+        { preventDefault },
+        "https://example.com/changelog",
+        openLink,
+      ),
+    ).toBe(true);
+    expect(preventDefault).toHaveBeenCalledOnce();
+    expect(openLink).toHaveBeenCalledWith("https://example.com/changelog");
   });
 });
