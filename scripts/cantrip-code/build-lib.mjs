@@ -132,9 +132,14 @@ export function codeEntrypoint(target, distributionDirectory) {
   );
 }
 
-export async function createDistributionFileInventory(directory) {
+export async function createDistributionFileInventory(
+  directory,
+  { exclude = [] } = {},
+) {
+  const excludedPaths = new Set(exclude);
   const files = [];
   for (const relative of await walkFiles(directory)) {
+    if (excludedPaths.has(relative)) continue;
     const absolute = path.join(directory, relative);
     const details = await lstat(absolute);
     files.push(

@@ -7,6 +7,7 @@ import {
   normalizeTarget,
 } from "./cantrip-code/build-lib.mjs";
 import { pnpmCommand } from "./pnpm-command.mjs";
+import { verifyPackagedCantripCode } from "./cantrip-code/packaged-manifest.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 let requestedTarget;
@@ -87,6 +88,19 @@ if (target.platform === "darwin") {
     ]);
   }
 }
+await verifyPackagedCantripCode(
+  path.join(
+    root,
+    "cantrip_app",
+    "src-tauri",
+    "resources",
+    "runtime",
+    "worker",
+    "resources",
+    "cantrip-code",
+  ),
+  target.id,
+);
 const appBuild = pnpmCommand(["--filter", "@cantrip/app", "tauri:build"]);
 run(appBuild.command, appBuild.arguments);
 if (target.platform === "darwin") {

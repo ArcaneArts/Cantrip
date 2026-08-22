@@ -9,6 +9,10 @@ import {
   createDistributionFileInventory,
   normalizeTarget,
 } from "./build-lib.mjs";
+import {
+  resealPackagedCantripCode,
+  verifyPackagedCantripCode,
+} from "./packaged-manifest.mjs";
 
 test("normalizes documented target aliases", () => {
   assert.deepEqual(normalizeTarget("macos-arm64"), {
@@ -50,6 +54,36 @@ test("distribution inventory is stable and detects executable files", async () =
     );
     assert.equal(inventory[0].executable, true);
     assert.equal(inventory[1].executable, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("reseals a packaged Code manifest after native signing changes files", async () => {
+  const directory = await import("node:fs/promises").then(({ mkdtemp }) =>
+    mkdtemp(path.join(os.tmpdir(), "cantrip-code-reseal-")),
+  );
+  try {
+    const nativeLibrary = path.join(directory, "native.dylib");
+    await writeFile(nativeLibrary, "unsigned");
+    const files = await createDistributionFileInventory(directory);
+    await writeFile(
+      path.join(directory, "cantrip-code.manifest.json"),
+      JSON.stringify({
+        schemaVersion: 3,
+        component: "cantrip-code",
+        target: "darwin-arm64",
+        files,
+      }),
+    );
+    await writeFile(nativeLibrary, "signed");
+
+    await assert.rejects(
+      verifyPackagedCantripCode(directory, "darwin-arm64"),
+      /do not match their integrity manifest/u,
+    );
+    await resealPackagedCantripCode(directory);
+    await verifyPackagedCantripCode(directory, "darwin-arm64");
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
