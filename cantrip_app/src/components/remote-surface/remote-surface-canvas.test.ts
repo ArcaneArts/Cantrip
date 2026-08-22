@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { RemoteSurfaceFrameRenderer } from "./remote-surface-canvas";
+import {
+  RemoteSurfaceFrameRenderer,
+  RemoteSurfaceTouchPointerTracker,
+  type RemoteSurfaceTouchPointerEvent,
+} from "./remote-surface-canvas";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -22,6 +26,25 @@ function bitmap(value: number) {
 
 function canvas() {
   return { height: 0, width: 0 } as HTMLCanvasElement;
+}
+
+function touchPointer(
+  pointerId: number,
+  clientX: number,
+  clientY: number,
+): RemoteSurfaceTouchPointerEvent {
+  return {
+    altKey: false,
+    clientX,
+    clientY,
+    ctrlKey: false,
+    height: 8,
+    metaKey: false,
+    pointerId,
+    pressure: 0.5,
+    shiftKey: false,
+    width: 6,
+  };
 }
 
 describe("RemoteSurfaceFrameRenderer", () => {
@@ -123,5 +146,43 @@ describe("RemoteSurfaceFrameRenderer", () => {
     renderer.push(new Uint8Array([2]));
     await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
     expect(onError).toHaveBeenCalledOnce();
+  });
+});
+
+describe("RemoteSurfaceTouchPointerTracker", () => {
+  const bounds = { height: 200, left: 10, top: 20, width: 100 };
+  const target = { height: 1_000, width: 500 };
+
+  it("encodes a captured touch pointer drag as one remote touch gesture", () => {
+    const tracker = new RemoteSurfaceTouchPointerTracker();
+    expect(
+      tracker.input(touchPointer(7, 60, 170), "down", bounds, target),
+    ).toMatchObject({
+      event: "start",
+      points: [{ force: 0.5, id: 7, radiusX: 3, radiusY: 4, x: 250, y: 750 }],
+    });
+    expect(
+      tracker.input(touchPointer(7, 60, 70), "move", bounds, target),
+    ).toMatchObject({
+      event: "move",
+      points: [{ id: 7, x: 250, y: 250 }],
+    });
+    expect(
+      tracker.input(touchPointer(7, 60, 70), "up", bounds, target),
+    ).toMatchObject({ event: "end", points: [] });
+    expect(
+      tracker.input(touchPointer(7, 60, 60), "move", bounds, target),
+    ).toBeNull();
+  });
+
+  it("clears an interrupted pointer gesture", () => {
+    const tracker = new RemoteSurfaceTouchPointerTracker();
+    tracker.input(touchPointer(4, 30, 40), "down", bounds, target);
+    expect(
+      tracker.input(touchPointer(4, 30, 40), "cancel", bounds, target),
+    ).toMatchObject({ event: "cancel", points: [] });
+    expect(
+      tracker.input(touchPointer(4, 30, 30), "move", bounds, target),
+    ).toBeNull();
   });
 });
