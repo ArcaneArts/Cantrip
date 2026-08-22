@@ -130,6 +130,13 @@ struct DesktopExitState {
 }
 
 #[cfg(desktop)]
+pub(crate) fn approve_desktop_exit(app: &tauri::AppHandle) {
+    app.state::<DesktopExitState>()
+        .approved
+        .store(true, Ordering::SeqCst);
+}
+
+#[cfg(desktop)]
 fn exit_request_needs_confirmation(approved: bool, code: Option<i32>) -> bool {
     !approved && code != Some(tauri::RESTART_EXIT_CODE)
 }
