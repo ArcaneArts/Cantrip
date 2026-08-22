@@ -54,7 +54,7 @@ function worker(encryption: WorkerEncryptionStatus) {
 }
 
 describe("surface private-state worker readiness", () => {
-  it("creates only the independently scoped grant", async () => {
+  it("adds the missing private-label grant to a surface-ready worker", async () => {
     const keyPair = await generateHpkeKeyPair(false);
     let principal: EncryptionPrincipal = {
       id: "11111111-1111-4111-8111-111111111111",
@@ -63,9 +63,9 @@ describe("surface private-state worker readiness", () => {
       workerId: "worker-a",
       label: "Surface worker",
       publicKey: await publicKeyForPair(keyPair),
-      state: "pending",
-      revision: 1,
-      approvedAt: null,
+      state: "approved",
+      revision: 2,
+      approvedAt: timestamp,
       revokedAt: null,
       revokedReason: null,
       createdAt: timestamp,
@@ -106,6 +106,7 @@ describe("surface private-state worker readiness", () => {
       keyRevision: 3,
       status: status("ready", [
         { component: "surface-private-state", keyRevision: 3 },
+        { component: "private-surface-metadata", keyRevision: 3 },
       ]),
     }));
     await expect(
@@ -115,10 +116,14 @@ describe("surface private-state worker readiness", () => {
         service: service(),
         session: () =>
           ({ serverId, user: { id: ownerId } }) as ClientSessionContext,
-        worker: worker(status("pending-approval")),
+        worker: worker(
+          status("ready", [
+            { component: "surface-private-state", keyRevision: 3 },
+          ]),
+        ),
       }),
     ).resolves.toMatchObject({ state: "ready" });
-    expect(created).toEqual(["surface-private-state"]);
+    expect(created).toEqual(["private-surface-metadata"]);
   });
 
   it("classifies locked, missing, revoked, and stale workers", () => {
@@ -130,12 +135,34 @@ describe("surface private-state worker readiness", () => {
       surfacePrivateStateWorkerReadiness(
         worker(
           status("ready", [
-            { component: "surface-private-state", keyRevision: 2 },
+            { component: "surface-private-state", keyRevision: 3 },
+          ]),
+        ),
+        snapshot,
+      ),
+    ).toBe("missing-grant");
+    expect(
+      surfacePrivateStateWorkerReadiness(
+        worker(
+          status("ready", [
+            { component: "surface-private-state", keyRevision: 3 },
+            { component: "private-surface-metadata", keyRevision: 2 },
           ]),
         ),
         snapshot,
       ),
     ).toBe("stale");
+    expect(
+      surfacePrivateStateWorkerReadiness(
+        worker(
+          status("ready", [
+            { component: "surface-private-state", keyRevision: 3 },
+            { component: "private-surface-metadata", keyRevision: 3 },
+          ]),
+        ),
+        snapshot,
+      ),
+    ).toBe("ready");
     expect(
       surfacePrivateStateWorkerReadiness(
         worker(status("unavailable", [], "authorization revoked")),
@@ -153,6 +180,7 @@ describe("surface private-state worker readiness", () => {
   it("retries while a connected worker is still becoming visible", async () => {
     const ready = status("ready", [
       { component: "surface-private-state", keyRevision: 3 },
+      { component: "private-surface-metadata", keyRevision: 3 },
     ]);
     const loadWorker = vi
       .fn()

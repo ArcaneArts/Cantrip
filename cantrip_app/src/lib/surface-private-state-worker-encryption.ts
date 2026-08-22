@@ -17,6 +17,11 @@ import {
   type WorkerGrantApi,
 } from "./worker-encryption-grants";
 
+const remoteSurfaceWorkerComponents = [
+  "surface-private-state",
+  "private-surface-metadata",
+] as const;
+
 export type SurfacePrivateStateWorkerReadiness =
   | "ready"
   | "offline"
@@ -60,13 +65,18 @@ export function surfacePrivateStateWorkerReadiness(
     return "pending-approval";
   }
   if (worker.encryption.state === "error") return "unavailable";
-  const grants = worker.encryption.grants.filter(
-    ({ component }) => component === "surface-private-state",
+  const grants = remoteSurfaceWorkerComponents.map((component) =>
+    worker.encryption.grants.filter((grant) => grant.component === component),
   );
-  if (grants.length === 0) return "missing-grant";
+  if (grants.some((componentGrants) => componentGrants.length === 0)) {
+    return "missing-grant";
+  }
   if (
-    !grants.some(
-      ({ keyRevision }) => keyRevision === snapshot.masterKeyRevision,
+    grants.some(
+      (componentGrants) =>
+        !componentGrants.some(
+          ({ keyRevision }) => keyRevision === snapshot.masterKeyRevision,
+        ),
     )
   ) {
     return "stale";
@@ -120,9 +130,17 @@ export async function ensureSurfacePrivateStateWorkerEncryption(input: {
   }
 
   if (readiness !== "ready") {
+    const components = remoteSurfaceWorkerComponents.filter(
+      (component) =>
+        !worker.encryption.grants.some(
+          (grant) =>
+            grant.component === component &&
+            grant.keyRevision === snapshot.masterKeyRevision,
+        ),
+    );
     await authorizeWorkerEncryption({
       api: input.api,
-      components: ["surface-private-state"],
+      components,
       identity,
       keyRevision: snapshot.masterKeyRevision,
       service,
