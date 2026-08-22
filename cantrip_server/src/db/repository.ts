@@ -16596,6 +16596,44 @@ export class ServerRepository {
     return toTaskMessage(firstOrThrow(result, "appending a Task message"));
   }
 
+  async upsertTaskMessage(
+    ownerId: string,
+    chatId: string,
+    input: TaskMessageOpaqueContent,
+    attribution?: ChatExecutionAttribution,
+  ): Promise<TaskMessageOpaqueSummary | null> {
+    const message = taskMessageOpaqueContentSchema.parse(input);
+    const existing = await this.getTaskMessageByIdempotencyKey(
+      ownerId,
+      chatId,
+      message.idempotencyKey,
+    );
+    if (!existing) {
+      return this.appendTaskMessage(ownerId, chatId, message, attribution);
+    }
+    if (existing.id !== message.id) {
+      throw new Error("Encrypted Task message update targets another row.");
+    }
+    const result = await this.database
+      .update(schema.chatMessages)
+      .set({
+        role: message.classification.role,
+        mode: message.classification.mode,
+        taskProtectedContent: message.protectedContent,
+        taskAttachmentIds: message.classification.attachmentIds,
+        reasoningEffort: message.reasoningEffort,
+      })
+      .where(eq(schema.chatMessages.id, message.id))
+      .returning();
+    await this.database
+      .update(schema.chats)
+      .set({ updatedAt: new Date() })
+      .where(eq(schema.chats.id, chatId));
+    return toTaskMessage(
+      firstOrThrow(result, "updating an encrypted Task message"),
+    );
+  }
+
   async setTaskMessageModelRoute(
     ownerId: string,
     messageId: string,

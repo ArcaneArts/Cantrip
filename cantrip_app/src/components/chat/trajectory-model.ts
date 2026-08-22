@@ -52,6 +52,8 @@ export interface TrajectoryTurn {
 export interface TrajectoryFilters {
   hiddenKinds: ReadonlySet<string>;
   hiddenLanes: ReadonlySet<TrajectoryLane>;
+  hiddenStatuses: ReadonlySet<AgentActivity["status"]>;
+  hiddenTimingQualities: ReadonlySet<TrajectoryTimingQuality>;
   query: string;
 }
 
@@ -72,6 +74,13 @@ interface ActivityRecord {
   updatedAtMs: number | null;
   completedAtMs: number | null;
 }
+
+const messageActivityRecords = new WeakMap<ChatMessage, ActivityRecord[]>();
+const activityPresentations = new WeakMap<
+  AgentActivity,
+  { label: string; preview: string | null; rawSearchText: string }
+>();
+const activityRichness = new WeakMap<AgentActivity, number>();
 
 const terminalStatuses = new Set<AgentActivity["status"]>([
   "completed",
@@ -226,6 +235,12 @@ function activityPreview(activity: AgentActivity): string | null {
   return compact || null;
 }
 
+function rawSearchText(activity: AgentActivity): string {
+  return [activity.raw?.request?.text, activity.raw?.response?.text]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+}
+
 function terminalMessage(message: ChatMessage): boolean {
   if (message.role === "system") return true;
   return (
@@ -252,8 +267,14 @@ function laterRecord(
   if (candidateTerminal !== currentTerminal) {
     return candidateTerminal ? candidate : current;
   }
-  const currentRichness = JSON.stringify(current.activity).length;
-  const candidateRichness = JSON.stringify(candidate.activity).length;
+  const currentRichness =
+    activityRichness.get(current.activity) ??
+    JSON.stringify(current.activity).length;
+  const candidateRichness =
+    activityRichness.get(candidate.activity) ??
+    JSON.stringify(candidate.activity).length;
+  activityRichness.set(current.activity, currentRichness);
+  activityRichness.set(candidate.activity, candidateRichness);
   if (candidateRichness !== currentRichness) {
     return candidateRichness > currentRichness ? candidate : current;
   }
@@ -261,6 +282,30 @@ function laterRecord(
     return candidate.sequence > current.sequence ? candidate : current;
   }
   return candidate.contentIndex >= current.contentIndex ? candidate : current;
+}
+
+function recordsForMessage(message: ChatMessage): ActivityRecord[] {
+  const cached = messageActivityRecords.get(message);
+  if (cached) return cached;
+  const observedAtMs = timestamp(message.createdAt);
+  const records = message.content.flatMap((content, contentIndex) => {
+    if (content.type !== "activity") return [];
+    return [
+      {
+        activity: content.activity,
+        completedAtMs: content.activity.completedAtMs ?? null,
+        contentIndex,
+        firstObservedAtMs: observedAtMs,
+        lastObservedAtMs: observedAtMs,
+        messageId: message.id,
+        sequence: message.sequence,
+        startedAtMs: content.activity.startedAtMs ?? null,
+        updatedAtMs: content.activity.updatedAtMs ?? null,
+      },
+    ];
+  });
+  messageActivityRecords.set(message, records);
+  return records;
 }
 
 function mergeFileChanges(
@@ -282,25 +327,12 @@ function mergeFileChanges(
 function collectActivityRecords(messages: readonly ChatMessage[]) {
   const records = new Map<string, ActivityRecord>();
   for (const message of messages) {
-    const observedAtMs = timestamp(message.createdAt);
-    message.content.forEach((content, contentIndex) => {
-      if (content.type !== "activity") return;
-      const key = lifecycleKey(content.activity);
-      const candidate: ActivityRecord = {
-        activity: content.activity,
-        completedAtMs: content.activity.completedAtMs ?? null,
-        contentIndex,
-        firstObservedAtMs: observedAtMs,
-        lastObservedAtMs: observedAtMs,
-        messageId: message.id,
-        sequence: message.sequence,
-        startedAtMs: content.activity.startedAtMs ?? null,
-        updatedAtMs: content.activity.updatedAtMs ?? null,
-      };
+    for (const candidate of recordsForMessage(message)) {
+      const key = lifecycleKey(candidate.activity);
       const current = records.get(key);
       if (!current) {
         records.set(key, candidate);
-        return;
+        continue;
       }
       const selected = laterRecord(current, candidate);
       records.set(key, {
@@ -335,9 +367,21 @@ function collectActivityRecords(messages: readonly ChatMessage[]) {
           Math.max(current.updatedAtMs ?? 0, candidate.updatedAtMs ?? 0) ||
           null,
       });
-    });
+    }
   }
   return records;
+}
+
+function activityPresentation(activity: AgentActivity) {
+  const cached = activityPresentations.get(activity);
+  if (cached) return cached;
+  const presentation = {
+    label: activityLabel(activity),
+    preview: activityPreview(activity),
+    rawSearchText: rawSearchText(activity),
+  };
+  activityPresentations.set(activity, presentation);
+  return presentation;
 }
 
 function messageText(message: ChatMessage): string {
@@ -495,8 +539,11 @@ export function projectTrajectory(input: {
       turnStartedAtMs: startedAtMs,
       updatedAtMs: record.updatedAtMs,
     });
-    const label = activityLabel(activity);
-    const preview = activityPreview(activity);
+    const {
+      label,
+      preview,
+      rawSearchText: protectedSearchText,
+    } = activityPresentation(activity);
     const correlation = activity.correlation;
     events.push({
       activity,
@@ -510,7 +557,8 @@ export function projectTrajectory(input: {
       lane: activityLane(activity),
       messageId: record.messageId,
       preview,
-      searchableText: `${label} ${preview ?? ""}`.toLocaleLowerCase(),
+      searchableText:
+        `${label} ${preview ?? ""} ${protectedSearchText}`.toLocaleLowerCase(),
       sequence: record.sequence,
       startMs: timing.startMs,
       status: activity.status,
@@ -578,6 +626,8 @@ export function filterTrajectoryEvents(
     (event) =>
       !filters.hiddenLanes.has(event.lane) &&
       !filters.hiddenKinds.has(event.kind) &&
+      !filters.hiddenStatuses.has(event.status) &&
+      !filters.hiddenTimingQualities.has(event.timingQuality) &&
       (!query || event.searchableText.includes(query)),
   );
 }

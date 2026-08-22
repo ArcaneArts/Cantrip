@@ -1296,7 +1296,11 @@ function relocationContentText(content: ChatMessageContent): string {
       if (item.type === "attachment") {
         return `[Cantrip attachment: ${item.attachment.fileName} (${item.attachment.mimeType}), id ${item.attachment.id}]`;
       }
-      return `[Cantrip ${item.activity.type} activity: ${JSON.stringify(item.activity)}]`;
+      if (item.activity.type === "instructionContext") {
+        return `[Cantrip effective instructions: ${item.activity.provenance}]`;
+      }
+      const { raw: _raw, ...normalized } = item.activity;
+      return `[Cantrip ${item.activity.type} activity: ${JSON.stringify(normalized)}]`;
     })
     .join("\n\n")
     .trim();

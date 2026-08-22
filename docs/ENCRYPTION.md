@@ -581,6 +581,15 @@ seals user messages and queued prompts, grants `chat-content` to the selected
 worker, and opens persisted/live envelopes; the worker opens prompts and
 history only at execution, seals streamed messages, activity, checkpoints, and
 the final result; and the server stores and relays those values as opaque JSON.
+Trajectory diagnostics follow this same path rather than creating a diagnostic
+store: ordinary chats use `chat-content`, while Task planning/finalization and
+implementation activity uses `task-content`. The worker may add a versioned raw
+request/response envelope and an assembled effective-instruction event to
+encrypted activity content after credential redaction and byte-limit
+enforcement. Public live-event telemetry contains only the activity family and
+turn routing identity; it never includes raw text. The app opens the envelope
+through normal message history only after selection of an event, while the
+server neither decrypts nor indexes it.
 Queued prompts carry a separately row-bound prompt envelope plus the already
 sealed future message, so dispatch and steering do not require server
 decryption or re-encryption.

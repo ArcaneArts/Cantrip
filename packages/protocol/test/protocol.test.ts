@@ -4398,6 +4398,28 @@ describe("Cantrip protocol", () => {
       turnId: "turn-1",
     });
     expect(JSON.stringify(event.telemetry)).not.toContain("plaintextActivity");
+    const taskEvent = workerEventSchema.parse({
+      type: "agent.protected-task-message",
+      message: {
+        ...protectedChatMessageFixture(),
+        idempotencyKey: "protected-task-activity",
+      },
+      telemetry: {
+        kind: "activity",
+        activityType: "command",
+        turnId: "turn-1",
+        raw: "must be stripped",
+      },
+    });
+    expect(taskEvent).toMatchObject({
+      type: "agent.protected-task-message",
+      telemetry: {
+        kind: "activity",
+        activityType: "command",
+        turnId: "turn-1",
+      },
+    });
+    expect(JSON.stringify(taskEvent.telemetry)).not.toContain("raw");
     expect(
       workerEventSchema.safeParse({
         ...event,

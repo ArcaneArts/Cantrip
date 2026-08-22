@@ -12884,6 +12884,30 @@ export const workerResponseEnvelopeSchema = z.discriminatedUnion("ok", [
   }),
 ]);
 
+const protectedAgentEventTelemetrySchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("message"),
+    phase: agentMessagePhaseSchema.nullable(),
+    turnId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    kind: z.literal("activity"),
+    activityType: z.string().min(1).max(100),
+    turnId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    kind: z.literal("usage"),
+    usage: agentTokenUsageSchema,
+    modelContextWindow: z.number().int().positive().nullable(),
+    contextUsedPercent: z.number().min(0).nullable(),
+    turnId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    kind: z.literal("checkpoint"),
+    turnId: z.string().min(1),
+  }),
+]);
+
 export const workerEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project.replica.progress"),
@@ -12903,29 +12927,14 @@ export const workerEventSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("agent.protected-message"),
       message: chatMessageOpaqueContentSchema,
-      telemetry: z.discriminatedUnion("kind", [
-        z.object({
-          kind: z.literal("message"),
-          phase: agentMessagePhaseSchema.nullable(),
-          turnId: z.string().min(1).nullable(),
-        }),
-        z.object({
-          kind: z.literal("activity"),
-          activityType: z.string().min(1).max(100),
-          turnId: z.string().min(1).nullable(),
-        }),
-        z.object({
-          kind: z.literal("usage"),
-          usage: agentTokenUsageSchema,
-          modelContextWindow: z.number().int().positive().nullable(),
-          contextUsedPercent: z.number().min(0).nullable(),
-          turnId: z.string().min(1).nullable(),
-        }),
-        z.object({
-          kind: z.literal("checkpoint"),
-          turnId: z.string().min(1),
-        }),
-      ]),
+      telemetry: protectedAgentEventTelemetrySchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("agent.protected-task-message"),
+      message: taskMessageOpaqueContentSchema,
+      telemetry: protectedAgentEventTelemetrySchema,
     })
     .strict(),
   z.object({ type: z.literal("terminal.ready") }),

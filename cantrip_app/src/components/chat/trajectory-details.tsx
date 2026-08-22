@@ -29,6 +29,130 @@ function DetailField({ label, value }: { label: string; value: string }) {
   );
 }
 
+function activitySummaryFields(
+  event: TrajectoryEvent,
+): Array<{ label: string; value: string }> {
+  const activity = event.activity;
+  if (!activity) return [];
+  switch (activity.type) {
+    case "instructionContext":
+      return [
+        { label: "Provenance", value: activity.provenance },
+        {
+          label: "Sources",
+          value: activity.sources.join(" · ") || "Unavailable",
+        },
+        ...(activity.model ? [{ label: "Model", value: activity.model }] : []),
+        ...(activity.provider
+          ? [{ label: "Provider", value: activity.provider }]
+          : []),
+      ];
+    case "command":
+      return [
+        { label: "Command", value: activity.command },
+        { label: "Directory", value: activity.cwd },
+        {
+          label: "Exit",
+          value:
+            activity.exitCode === null
+              ? "Not reported"
+              : `${activity.exitCode}`,
+        },
+        ...(activity.outputTruncated
+          ? [
+              {
+                label: "Output",
+                value: "Tail retained; older output truncated",
+              },
+            ]
+          : []),
+      ];
+    case "fileChange":
+      return [
+        { label: "Files", value: `${activity.changes.length}` },
+        {
+          label: "Paths",
+          value: activity.changes.map((change) => change.path).join(" · "),
+        },
+      ];
+    case "worktree":
+      return [
+        { label: "Operation", value: activity.operation },
+        { label: "Result", value: activity.summary },
+      ];
+    case "plan":
+      return [{ label: "Steps", value: `${activity.steps.length}` }];
+    case "reasoning":
+      return [{ label: "Summaries", value: `${activity.summary.length}` }];
+    case "mcpToolCall":
+      return [
+        { label: "Server", value: activity.server },
+        { label: "Tool", value: activity.tool },
+      ];
+    case "dynamicToolCall":
+      return [
+        {
+          label: "Tool",
+          value: `${activity.namespace ? `${activity.namespace}/` : ""}${activity.tool}`,
+        },
+      ];
+    case "collabToolCall":
+      return [
+        { label: "Tool", value: activity.tool },
+        {
+          label: "Targets",
+          value: activity.receiverThreadIds.join(" · ") || "None",
+        },
+      ];
+    case "subAgent":
+      return [
+        { label: "Agent", value: activity.agentPath },
+        { label: "Lifecycle", value: activity.kind },
+      ];
+    case "webSearch":
+      return [
+        { label: "Query", value: activity.query || "Not captured" },
+        ...(activity.action
+          ? [{ label: "Action", value: activity.action }]
+          : []),
+      ];
+    case "imageView":
+      return [{ label: "Path", value: activity.path }];
+    case "reviewMode":
+      return [{ label: "Review mode", value: activity.state }];
+    case "notice":
+      return [{ label: "Level", value: activity.level }];
+    case "usage":
+      return [
+        {
+          label: "Tokens",
+          value: activity.last.totalTokens.toLocaleString(),
+        },
+      ];
+    case "rateLimit":
+      return [
+        {
+          label: "Usage",
+          value: activity.primary
+            ? `${activity.primary.usedPercent.toFixed(0)}%`
+            : "Unavailable",
+        },
+      ];
+    case "turnSummary":
+      return [
+        {
+          label: "Turn duration",
+          value:
+            activity.durationMs === null
+              ? "Unavailable"
+              : formatDuration(activity.durationMs),
+        },
+      ];
+    case "contextCompaction":
+      return [{ label: "Context", value: "Compacted" }];
+  }
+}
+
 function Summary({ event }: { event: TrajectoryEvent }) {
   const durationMs = Math.max(0, event.updatedAtMs - event.startMs);
   const correlation = event.activity?.correlation;
@@ -53,21 +177,13 @@ function Summary({ event }: { event: TrajectoryEvent }) {
       {event.diagnosticId ? (
         <DetailField label="Diagnostic" value={event.diagnosticId} />
       ) : null}
-      {event.activity?.type === "instructionContext" ? (
-        <>
-          <DetailField label="Provenance" value={event.activity.provenance} />
-          <DetailField
-            label="Sources"
-            value={event.activity.sources.join(" · ") || "Unavailable"}
-          />
-          {event.activity.model ? (
-            <DetailField label="Model" value={event.activity.model} />
-          ) : null}
-          {event.activity.provider ? (
-            <DetailField label="Provider" value={event.activity.provider} />
-          ) : null}
-        </>
-      ) : null}
+      {activitySummaryFields(event).map((field) => (
+        <DetailField
+          key={`${field.label}:${field.value}`}
+          label={field.label}
+          value={field.value}
+        />
+      ))}
     </dl>
   );
 }
@@ -88,6 +204,35 @@ function previewText(event: TrajectoryEvent): string | null {
       return activity.outputTail ?? activity.output ?? event.preview;
     case "reviewMode":
       return activity.review || event.preview;
+    case "fileChange":
+      return activity.changes
+        .map(
+          (change) =>
+            `- **${change.kind}** \`${change.path}\`${change.latestLine ? `\n  - Latest line: \`${change.latestLine}\`` : ""}`,
+        )
+        .join("\n");
+    case "worktree":
+      return `${activity.operation}: ${activity.summary}`;
+    case "collabToolCall":
+      return activity.prompt ?? event.preview;
+    case "subAgent":
+      return `${activity.kind}: ${activity.agentPath}`;
+    case "webSearch":
+      return [activity.query, activity.action].filter(Boolean).join("\n\n");
+    case "imageView":
+      return activity.path;
+    case "notice":
+      return activity.details ?? activity.message;
+    case "usage":
+      return `${activity.last.totalTokens.toLocaleString()} total tokens`;
+    case "rateLimit":
+      return activity.primary
+        ? `${activity.primary.usedPercent.toFixed(0)}% used`
+        : event.preview;
+    case "turnSummary":
+      return event.preview;
+    case "contextCompaction":
+      return "Conversation context compacted.";
     default:
       return event.preview;
   }
