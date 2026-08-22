@@ -215,6 +215,7 @@ import {
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
   projectReplicaListSchema,
+  encryptedProjectReplicaPlacementRequestSchema,
   encryptedProjectReplicaProvisionCreateSchema,
   encryptedProjectReplicaRemoveCreateSchema,
   encryptedProjectReplicaSynchronizeCreateSchema,
@@ -3339,6 +3340,24 @@ async function protectReplicaRepository(input: {
   );
 }
 
+async function protectReplicaPlacement(input: {
+  placement: ProjectReplicaProvisionCreate["placement"];
+  projectId: string;
+  workerId: string;
+}) {
+  const placement = input.placement ?? { mode: "managed" as const };
+  if (placement.mode === "managed") return placement;
+  const protectedValues = await registerWorkerRepositoryMetadata({
+    workerId: input.workerId,
+    scopeId: input.projectId,
+    values: { placementPath: placement.path },
+  });
+  return encryptedProjectReplicaPlacementRequestSchema.parse({
+    mode: placement.mode,
+    path: protectedValues.values.placementPath,
+  });
+}
+
 async function openProjectReplicaJob(value: unknown) {
   const job = projectReplicaJobSummarySchema.parse(value);
   if (!repositoryRoutingHandleSchema.safeParse(job.repository).success) {
@@ -3368,17 +3387,23 @@ export async function createProjectReplica(
     repository?: ProjectGithubConversionRepository;
   },
 ) {
-  const { repository, ...requestInput } = input;
+  const { placement, repository, ...requestInput } = input;
   const repositoryHandle = await protectReplicaRepository({
     projectId,
     workerId: input.workerId,
     repository,
+  });
+  const protectedPlacement = await protectReplicaPlacement({
+    placement,
+    projectId,
+    workerId: input.workerId,
   });
   return openProjectReplicaJob(
     await post(
       `/api/projects/${encodeURIComponent(projectId)}/replicas`,
       encryptedProjectReplicaProvisionCreateSchema.parse({
         ...requestInput,
+        placement: protectedPlacement,
         repository: repositoryHandle,
       }),
     ),

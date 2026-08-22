@@ -87,6 +87,12 @@ describe("durable project replica jobs", () => {
       request,
     );
     expect(replayed.id).toBe(created.id);
+    expect(created).toMatchObject({
+      placementMode: "managed",
+      placementPath: null,
+      resolvedMaterialization: null,
+      resolvedOwnership: null,
+    });
     await expect(
       first.repository.projectReplicaJobs.createProvision(
         LOCAL_USER_ID,
@@ -94,6 +100,29 @@ describe("durable project replica jobs", () => {
         { ...request, expectedRevision: "b".repeat(40) },
       ),
     ).rejects.toBeInstanceOf(ProjectReplicaJobConflictError);
+    await expect(
+      first.repository.projectReplicaJobs.createProvision(
+        LOCAL_USER_ID,
+        project.id,
+        {
+          ...request,
+          placement: { mode: "direct", path: `ctrr_${"P".repeat(43)}` },
+        },
+      ),
+    ).rejects.toBeInstanceOf(ProjectReplicaJobConflictError);
+    await expect(
+      first.repository.projectReplicaJobs.createProvision(
+        LOCAL_USER_ID,
+        project.id,
+        {
+          ...request,
+          idempotencyKey: "unsupported-direct-placement",
+          placement: { mode: "direct", path: `ctrr_${"P".repeat(43)}` },
+        },
+      ),
+    ).rejects.toThrow(
+      "The selected worker does not support this repository placement mode.",
+    );
 
     const firstAttempt = await first.repository.projectReplicaJobs.claimNext();
     expect(firstAttempt?.job).toMatchObject({

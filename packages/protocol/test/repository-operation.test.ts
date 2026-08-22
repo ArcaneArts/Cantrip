@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  repositoryMetadataValuesSchema,
   repositoryOperationAccess,
   repositoryOperationTypeSchema,
   repositoryOperationWireRequestSchema,
@@ -37,5 +38,21 @@ describe("repository operation access", () => {
     });
 
     expect(request.access).toBe("write");
+  });
+
+  it("allows only the declared private project placement path fields", () => {
+    expect(
+      repositoryMetadataValuesSchema.parse({
+        canonicalPath: "/srv/repos/Cantrip",
+        linkPath: "/workspace/Cantrip",
+        placementPath: "/workspace/Cantrip",
+        requestedPath: "/workspace/Cantrip",
+      }),
+    ).toMatchObject({ placementPath: "/workspace/Cantrip" });
+    expect(
+      repositoryMetadataValuesSchema.safeParse({
+        arbitraryPlacementAlias: "/workspace/Cantrip",
+      }).success,
+    ).toBe(false);
   });
 });

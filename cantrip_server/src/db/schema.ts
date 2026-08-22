@@ -36,6 +36,9 @@ import type {
   ProjectReplicaJobKind,
   ProjectReplicaJobProgress,
   ProjectReplicaJobState,
+  ProjectReplicaMaterialization,
+  ProjectReplicaOwnershipKind,
+  ProjectReplicaPlacementMode,
   ProjectRootKind,
   RunInstanceState,
   WorktreeSetupJobError,
@@ -160,6 +163,10 @@ const unavailableProjectReplicaCapabilities = {
   synchronize: false,
   remove: false,
   exactRevision: false,
+  directPlacement: false,
+  managedLinkPlacement: false,
+  attachExisting: false,
+  recursiveParentCreation: false,
 } satisfies ProjectReplicaCapabilities;
 
 const unavailableManagedFolderCapabilities = {
@@ -1733,6 +1740,16 @@ export const projectSources = pgTable(
       .default("git"),
     absolutePath: text("absolute_path").notNull(),
     displayPath: text("display_path").notNull(),
+    placementMode: text("placement_mode")
+      .$type<ProjectReplicaPlacementMode>()
+      .notNull()
+      .default("managed"),
+    ownershipKind: text("ownership_kind")
+      .$type<ProjectReplicaOwnershipKind>()
+      .notNull()
+      .default("cantrip"),
+    requestedPath: text("requested_path"),
+    linkPath: text("link_path"),
     repositoryFingerprint: text("repository_fingerprint"),
     removedAt: timestamp("removed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -1749,6 +1766,18 @@ export const projectSources = pgTable(
     check(
       "project_sources_source_kind_check",
       sql`${table.sourceKind} IN ('git', 'folder')`,
+    ),
+    check(
+      "project_sources_placement_mode_check",
+      sql`${table.placementMode} IN ('managed', 'managed-link', 'direct')`,
+    ),
+    check(
+      "project_sources_ownership_kind_check",
+      sql`${table.ownershipKind} IN ('cantrip', 'user')`,
+    ),
+    check(
+      "project_sources_placement_paths_check",
+      sql`(${table.placementMode} = 'managed' AND ${table.requestedPath} IS NULL AND ${table.linkPath} IS NULL) OR (${table.placementMode} = 'managed-link' AND ${table.requestedPath} IS NOT NULL AND ${table.linkPath} IS NOT NULL) OR (${table.placementMode} = 'direct' AND ${table.requestedPath} IS NOT NULL AND ${table.linkPath} IS NULL)`,
     ),
   ],
 );
@@ -2054,6 +2083,16 @@ export const projectReplicaJobs = pgTable(
     idempotencyKey: text("idempotency_key").notNull(),
     payloadFingerprint: text("payload_fingerprint").notNull(),
     repository: text("repository").notNull(),
+    placementMode: text("placement_mode")
+      .$type<ProjectReplicaPlacementMode>()
+      .notNull()
+      .default("managed"),
+    placementPath: text("placement_path"),
+    resolvedMaterialization: text(
+      "resolved_materialization",
+    ).$type<ProjectReplicaMaterialization>(),
+    resolvedOwnership:
+      text("resolved_ownership").$type<ProjectReplicaOwnershipKind>(),
     expectedRevision: text("expected_revision"),
     resolvedRevision: text("resolved_revision"),
     synchronizationPolicy: text("synchronization_policy"),
@@ -2107,6 +2146,22 @@ export const projectReplicaJobs = pgTable(
     check(
       "project_replica_jobs_state_check",
       sql`${table.state} IN ('queued', 'running', 'blocked', 'succeeded', 'failed', 'cancelled')`,
+    ),
+    check(
+      "project_replica_jobs_placement_mode_check",
+      sql`${table.placementMode} IN ('managed', 'managed-link', 'direct')`,
+    ),
+    check(
+      "project_replica_jobs_placement_path_check",
+      sql`(${table.placementMode} = 'managed' AND ${table.placementPath} IS NULL) OR (${table.placementMode} IN ('managed-link', 'direct') AND ${table.placementPath} IS NOT NULL)`,
+    ),
+    check(
+      "project_replica_jobs_materialization_check",
+      sql`${table.resolvedMaterialization} IS NULL OR ${table.resolvedMaterialization} IN ('cloned', 'reused', 'attached')`,
+    ),
+    check(
+      "project_replica_jobs_ownership_check",
+      sql`${table.resolvedOwnership} IS NULL OR ${table.resolvedOwnership} IN ('cantrip', 'user')`,
     ),
     check(
       "project_replica_jobs_revision_check",

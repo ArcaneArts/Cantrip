@@ -20217,10 +20217,28 @@ export async function buildApp({
         error: "This GitHub repository already has a Cantrip project.",
       });
     }
-    if (
-      !(await repository.getWorker(applicationOwnerId(), input.data.workerId))
-    ) {
+    const worker = await repository.getWorker(
+      applicationOwnerId(),
+      input.data.workerId,
+    );
+    if (!worker) {
       return reply.code(404).send({ error: "Worker not found." });
+    }
+    const placement = input.data.placement ?? { mode: "managed" as const };
+    const supportsPlacement =
+      placement.mode === "managed" ||
+      (placement.mode === "managed-link"
+        ? worker.projectReplicas.managedLinkPlacement &&
+          worker.projectReplicas.recursiveParentCreation
+        : worker.projectReplicas.directPlacement &&
+          worker.projectReplicas.attachExisting &&
+          worker.projectReplicas.recursiveParentCreation);
+    if (!supportsPlacement) {
+      return reply.code(409).send({
+        code: "placement-unsupported",
+        error:
+          "The selected worker does not support this repository placement mode.",
+      });
     }
 
     try {
@@ -20234,6 +20252,7 @@ export async function buildApp({
         {
           workerId: input.data.workerId,
           repository: input.data.nameWithOwner,
+          placement,
           expectedRevision: null,
           idempotencyKey: `project-import:${project.id}:${input.data.workerId}`,
         },

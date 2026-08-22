@@ -82,6 +82,8 @@ function wire(
 class MemoryProjectApi implements ProjectWireApi {
   readonly folderCreates: EncryptedManagedFolderProjectCreate[] = [];
   readonly githubCreates: EncryptedGithubProjectCreate[] = [];
+  readonly metadataRegistrations: Record<string, string | string[] | null>[] =
+    [];
   readonly rows: ProjectWireSummary[] = [];
   readonly worktrees: ProjectWorktreeSummary[] = [];
   writes = 0;
@@ -139,6 +141,7 @@ class MemoryProjectApi implements ProjectWireApi {
   registerMetadata(input: {
     values: Record<string, string | string[] | null>;
   }): Promise<{ values: Record<string, string | string[] | null> }> {
+    this.metadataRegistrations.push(structuredClone(input.values));
     return Promise.resolve({
       values: Object.fromEntries(
         Object.keys(input.values).map((field) => [
@@ -219,6 +222,25 @@ describe("encrypted project display names", () => {
     expect(api.folderCreates[0]?.existingPath).toMatch(/^ctrr_/u);
   });
 
+  it("registers custom placement paths on the worker before project creation", async () => {
+    const { adapter, api } = fixture();
+    const placementPath = "/srv/private/ArcaneArts/Cantrip";
+    await adapter.createGithub({
+      workerId: "worker-a",
+      repositoryId: "repository-1",
+      nameWithOwner: "ArcaneArts/SentinelProject",
+      url: "https://github.com/ArcaneArts/SentinelProject",
+      placement: { mode: "direct", path: placementPath },
+    });
+
+    expect(api.metadataRegistrations).toContainEqual({ placementPath });
+    expect(api.githubCreates[0]?.placement).toEqual({
+      mode: "direct",
+      path: `ctrr_${"p".repeat(43)}`,
+    });
+    expect(JSON.stringify(api.githubCreates)).not.toContain(placementPath);
+  });
+
   it("blocks locked writes and rejects row swaps and tampering", async () => {
     const api = new MemoryProjectApi();
     const locked = new ProjectEncryptionAdapter({
@@ -267,6 +289,10 @@ describe("encrypted project display names", () => {
       workerId: "worker-a",
       path: `ctrr_${"a".repeat(43)}`,
       displayPath: `ctrr_${"a".repeat(43)}`,
+      placementMode: "managed",
+      ownershipKind: "cantrip",
+      requestedPath: null,
+      linkPath: null,
     };
     api.worktrees.push({
       id: "worktree-a",
