@@ -246,6 +246,16 @@ describe("Grok OAuth accounts", () => {
     expect(
       normalizeGrokWeeklyUsage({
         config: {
+          currentPeriod: {
+            type: "USAGE_PERIOD_TYPE_WEEKLY",
+            end: "2026-08-24T00:00:00.000Z",
+          },
+        },
+      }),
+    ).toEqual({ usedPercent: 0, resetsAt: 1_787_529_600 });
+    expect(
+      normalizeGrokWeeklyUsage({
+        config: {
           creditUsagePercent: 25,
           currentPeriod: { type: "USAGE_PERIOD_TYPE_MONTHLY" },
         },

@@ -276,7 +276,9 @@ export function normalizeGrokWeeklyUsage(
   }
   const periodValue = period as Record<string, unknown>;
   if (periodValue.type !== WEEKLY_USAGE_PERIOD_TYPE) return null;
-  const usedPercent = value.creditUsagePercent;
+  // Proto3 JSON omits zero-valued scalar fields. An active weekly period with
+  // no creditUsagePercent therefore represents 0% used, not missing quota.
+  const usedPercent = value.creditUsagePercent ?? 0;
   if (
     typeof usedPercent !== "number" ||
     !Number.isFinite(usedPercent) ||
@@ -552,7 +554,21 @@ export class GrokSubscriptionClient {
         : null;
       this.#weeklyUsageCache = { fetchedAt, snapshot, value };
       return snapshot;
-    } catch {
+    } catch (error) {
+      workerLogger.rateLimited(
+        "grok-quota-refresh-failed",
+        "warn",
+        "Grok quota refresh failed",
+        {
+          event: "provider.quota.refresh",
+          subsystem: "provider",
+          operation: "grok-quota",
+          reasonCode: "request-failed",
+          status: "failed",
+          providerKind: "grok",
+          error,
+        },
+      );
       return this.#weeklyUsageCache?.snapshot ?? null;
     }
   }

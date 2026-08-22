@@ -84,7 +84,7 @@ export function latestContextUsage(
   return null;
 }
 
-export function selectedChatGptProvider(
+export function selectedQuotaProvider(
   model: ModelProfileSummary | undefined,
   providers: readonly ModelProviderSummary[],
 ): ModelProviderSummary | null {
@@ -96,7 +96,13 @@ export function selectedChatGptProvider(
   }, null);
   if (!primaryRoute) return null;
   const provider = providers.find(({ id }) => id === primaryRoute.providerId);
-  return provider?.kind === "chatgpt" ? provider : null;
+  return provider?.kind === "chatgpt" || provider?.kind === "grok"
+    ? provider
+    : null;
+}
+
+export function quotaProviderLabel(provider: ModelProviderSummary): string {
+  return provider.kind === "grok" ? "SuperGrok" : "ChatGPT";
 }
 
 export function signedInQuotaAccounts(
@@ -175,7 +181,7 @@ function QuotaSummary({ provider }: { provider: ModelProviderSummary }) {
   return (
     <div className="grid gap-0.5 border-t pt-2.5">
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        ChatGPT quota
+        {quotaProviderLabel(provider)} quota
       </p>
       <p className="text-xs leading-5">{quotaAvailabilityText(provider)}</p>
     </div>
@@ -246,7 +252,7 @@ function QuotaDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>ChatGPT 7-day usage</DialogTitle>
+          <DialogTitle>{quotaProviderLabel(provider)} 7-day usage</DialogTitle>
           <DialogDescription>
             Quota available to the selected model through {provider.name}.
           </DialogDescription>
@@ -275,7 +281,8 @@ function QuotaDialog({
             </div>
           ) : (
             <p className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-              No enabled, signed-in ChatGPT accounts are available.
+              No enabled, signed-in {quotaProviderLabel(provider)} accounts are
+              available.
             </p>
           )}
         </div>
@@ -294,8 +301,8 @@ export function ContextUsageRing({
   providers: readonly ModelProviderSummary[];
 }) {
   const usage = useMemo(() => latestContextUsage(messages), [messages]);
-  const chatGptProvider = useMemo(
-    () => selectedChatGptProvider(model, providers),
+  const quotaProvider = useMemo(
+    () => selectedQuotaProvider(model, providers),
     [model, providers],
   );
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -326,8 +333,8 @@ export function ContextUsageRing({
   const contextLabel = usage
     ? `${formattedPercent(usage.remainingPercent)}% context left, ${numberFormat.format(usage.usedTokens)} of ${numberFormat.format(usage.contextWindowTokens)} tokens used`
     : "Context usage unavailable";
-  const quotaLabel = chatGptProvider
-    ? `, ${quotaAvailabilityText(chatGptProvider)}`
+  const quotaLabel = quotaProvider
+    ? `, ${quotaAvailabilityText(quotaProvider)}`
     : "";
 
   const handlePointerEnter = (event: PointerEvent<HTMLElement>) => {
@@ -425,9 +432,9 @@ export function ContextUsageRing({
           onPointerLeave={handlePointerLeave}
         >
           <ContextSummary usage={usage} />
-          {chatGptProvider ? (
+          {quotaProvider ? (
             <>
-              <QuotaSummary provider={chatGptProvider} />
+              <QuotaSummary provider={quotaProvider} />
               <div className="flex justify-start border-t pt-1.5">
                 <Button
                   type="button"
@@ -448,10 +455,10 @@ export function ContextUsageRing({
           ) : null}
         </PopoverContent>
       </Popover>
-      {chatGptProvider ? (
+      {quotaProvider ? (
         <QuotaDialog
           open={quotaDialogOpen}
-          provider={chatGptProvider}
+          provider={quotaProvider}
           onOpenChange={setQuotaDialogOpen}
         />
       ) : null}
