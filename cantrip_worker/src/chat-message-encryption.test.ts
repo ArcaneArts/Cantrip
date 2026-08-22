@@ -5,6 +5,8 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
+  EncryptedChatEventSealer,
+  encryptChatTurnResult,
   protectChatTurn,
   reprotectChatMessages,
 } from "./chat-message-encryption.js";
@@ -82,5 +84,96 @@ describe("worker chat message encryption", () => {
     ).resolves.toMatchObject({
       content: [{ type: "text", text: "Run the unattended automation." }],
     });
+  });
+
+  it("exposes exact usage telemetry while keeping the activity encrypted", async () => {
+    const ownerId = "owner-chat-usage";
+    const componentKey = new Uint8Array(32).fill(9);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision: 1,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const usage = {
+      totalTokens: 1_200,
+      inputTokens: 800,
+      cachedInputTokens: 200,
+      cacheWriteInputTokens: 25,
+      outputTokens: 300,
+      reasoningOutputTokens: 100,
+    };
+    const sealer = new EncryptedChatEventSealer(service, "chat-usage", {
+      explanation: null,
+      steps: [],
+      question: null,
+    });
+    const event = await sealer.activity({
+      type: "usage",
+      id: "turn:turn-usage:usage",
+      status: "completed",
+      total: usage,
+      last: usage,
+      modelContextWindow: 128_000,
+      contextUsedPercent: 12.5,
+      correlation: {
+        sourceMethod: "thread/tokenUsage/updated",
+        diagnosticId: null,
+        threadId: "thread-usage",
+        turnId: "turn-usage",
+        itemId: null,
+      },
+    });
+
+    expect(event.telemetry).toEqual({
+      kind: "usage",
+      usage,
+      modelContextWindow: 128_000,
+      contextUsedPercent: 12.5,
+      turnId: "turn-usage",
+    });
+    await expect(
+      decryptChatMessageProtectedContent({
+        ownerId,
+        messageId: event.message.id,
+        keyRevision: 1,
+        componentKey,
+        encrypted: event.message.protectedContent,
+        publicClassification: event.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [{ type: "activity", activity: { type: "usage", last: usage } }],
+    });
+
+    const commandEvent = await sealer.activity({
+      type: "command",
+      id: "command-1",
+      status: "completed",
+      command: "secret command",
+      cwd: "/secret/path",
+      exitCode: 0,
+      output: null,
+    });
+    expect(commandEvent.telemetry).toEqual({
+      kind: "activity",
+      activityType: "command",
+      turnId: null,
+    });
+    expect(JSON.stringify(commandEvent.telemetry)).not.toContain("secret");
+
+    const result = await encryptChatTurnResult({
+      idempotencyKey: "assistant:usage",
+      messageId: "22222222-2222-4222-8222-222222222222",
+      result: {
+        threadId: "thread-usage",
+        turnId: "turn-usage",
+        text: "Completed with measured usage.",
+        measuredUsage: usage,
+        status: "completed",
+      },
+      service,
+    });
+    expect(result.measuredUsage).toEqual(usage);
   });
 });

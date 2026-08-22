@@ -9216,6 +9216,43 @@ export async function buildApp({
                             event.message.id,
                           );
                         }
+                      } else if (event.telemetry.kind === "usage") {
+                        behaviorTracker.observeUsage(
+                          {
+                            inputTokens: event.telemetry.usage.inputTokens,
+                            cachedInputTokens:
+                              event.telemetry.usage.cachedInputTokens,
+                            cacheWriteInputTokens:
+                              event.telemetry.usage.cacheWriteInputTokens,
+                            outputTokens: event.telemetry.usage.outputTokens,
+                            reasoningOutputTokens:
+                              event.telemetry.usage.reasoningOutputTokens,
+                            modelContextWindow:
+                              event.telemetry.modelContextWindow,
+                            contextUsedPercent:
+                              event.telemetry.contextUsedPercent,
+                          },
+                          observedAt,
+                        );
+                        await recordRuntimeTokenUsage(
+                          tokenUsageSourceKey,
+                          execution.projectId,
+                          execution.chatId,
+                          runtime,
+                          event.telemetry.usage,
+                          {
+                            workerId: execution.workerId,
+                            turnId:
+                              event.telemetry.turnId ??
+                              behaviorTurnId ??
+                              event.message.id,
+                            executionAttemptId,
+                            attemptKind: "chat-turn",
+                            attemptStatus: "running",
+                            codexVersion:
+                              attributedWorker?.codexVersion ?? null,
+                          },
+                        );
                       } else if (event.telemetry.kind === "activity") {
                         behaviorTracker.markActivity(observedAt);
                       } else {
@@ -9416,7 +9453,7 @@ export async function buildApp({
               execution.projectId,
               execution.chatId,
               runtime,
-              undefined,
+              result.measuredUsage ?? undefined,
               {
                 workerId: execution.workerId,
                 turnId: result.turnId ?? null,

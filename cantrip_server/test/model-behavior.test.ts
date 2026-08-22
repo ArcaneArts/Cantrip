@@ -119,6 +119,25 @@ describe("model behavior telemetry", () => {
       modelContextWindow: 128_000,
       contextUsedPercent: 12.5,
     });
+
+    tracker.observeUsage({
+      inputTokens: 80,
+      cachedInputTokens: 12,
+      cacheWriteInputTokens: 4,
+      outputTokens: 35,
+      reasoningOutputTokens: 14,
+      modelContextWindow: 256_000,
+      contextUsedPercent: 6.25,
+    });
+    expect(tracker.snapshot()).toMatchObject({
+      inputTokens: 80,
+      cachedInputTokens: 12,
+      cacheWriteInputTokens: 4,
+      outputTokens: 35,
+      reasoningOutputTokens: 14,
+      modelContextWindow: 256_000,
+      contextUsedPercent: 6.25,
+    });
   });
 
   it("recognizes common test runners without treating builds as tests", () => {

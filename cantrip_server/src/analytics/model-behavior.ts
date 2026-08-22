@@ -49,6 +49,16 @@ export interface ModelBehaviorSnapshot {
   testFailureCount: number;
 }
 
+export interface ModelBehaviorUsage {
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  modelContextWindow: number | null;
+  contextUsedPercent: number | null;
+}
+
 /**
  * Reduces the live Codex event stream into content-free behavioral counters.
  * Activity IDs are retained only in memory to avoid counting streamed updates
@@ -89,6 +99,21 @@ export class ModelBehaviorTracker {
   }
 
   observeActivity(activity: AgentActivity, at = new Date()): void {
+    if (activity.type === "usage") {
+      this.observeUsage(
+        {
+          inputTokens: activity.last.inputTokens,
+          cachedInputTokens: activity.last.cachedInputTokens,
+          cacheWriteInputTokens: activity.last.cacheWriteInputTokens,
+          outputTokens: activity.last.outputTokens,
+          reasoningOutputTokens: activity.last.reasoningOutputTokens,
+          modelContextWindow: activity.modelContextWindow,
+          contextUsedPercent: activity.contextUsedPercent,
+        },
+        at,
+      );
+      return;
+    }
     this.markActivity(at);
     if (TOOL_ACTIVITY_TYPES.has(activity.type)) {
       this.#tools.set(activity.id, toolFailed(activity));
@@ -111,17 +136,11 @@ export class ModelBehaviorTracker {
     if (activity.type === "contextCompaction") {
       this.#compactionIds.add(activity.id);
     }
-    if (activity.type === "usage") {
-      this.#usage = {
-        inputTokens: activity.last.inputTokens,
-        cachedInputTokens: activity.last.cachedInputTokens,
-        cacheWriteInputTokens: activity.last.cacheWriteInputTokens,
-        outputTokens: activity.last.outputTokens,
-        reasoningOutputTokens: activity.last.reasoningOutputTokens,
-        modelContextWindow: activity.modelContextWindow,
-        contextUsedPercent: activity.contextUsedPercent,
-      };
-    }
+  }
+
+  observeUsage(usage: ModelBehaviorUsage, at = new Date()): void {
+    this.markActivity(at);
+    this.#usage = { ...usage };
   }
 
   snapshot(): ModelBehaviorSnapshot {

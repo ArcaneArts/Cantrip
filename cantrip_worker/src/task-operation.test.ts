@@ -123,6 +123,14 @@ describe("worker encrypted Task operations", () => {
           planMarkdown: "# SENTINEL encrypted output plan",
           questions: [],
         },
+        measuredUsage: {
+          totalTokens: 1_200,
+          inputTokens: 800,
+          cachedInputTokens: 200,
+          cacheWriteInputTokens: 25,
+          outputTokens: 300,
+          reasoningOutputTokens: 100,
+        },
         status: "completed" as const,
       };
     });
@@ -137,6 +145,14 @@ describe("worker encrypted Task operations", () => {
     });
     expect(run).toHaveBeenCalledOnce();
     expect(result.text).toBe("");
+    expect(result.measuredUsage).toEqual({
+      totalTokens: 1_200,
+      inputTokens: 800,
+      cachedInputTokens: 200,
+      cacheWriteInputTokens: 25,
+      outputTokens: 300,
+      reasoningOutputTokens: 100,
+    });
     expect(JSON.stringify(result)).not.toContain("SENTINEL");
     const relay = taskOperationRelayResultSchema.parse(result.structuredResult);
     await expect(
