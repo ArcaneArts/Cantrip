@@ -106,6 +106,7 @@ import { AgentInteractionPanel } from "@/components/chat/agent-interaction-panel
 import {
   AgentInspectContent,
   agentInspectorActive,
+  type AgentInspectTab,
 } from "@/components/chat/agent-inspect-content";
 import {
   AgentInspectPanelShell,
@@ -1208,6 +1209,10 @@ function ChatTranscript({
   const [attachmentNotice, setAttachmentNotice] = useState<string | null>(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [inspectWidth, setInspectWidth] = useState(readAgentInspectWidth);
+  const [inspectTab, setInspectTab] = useState<AgentInspectTab>("trajectory");
+  const [trajectoryTargetKey, setTrajectoryTargetKey] = useState<string | null>(
+    null,
+  );
   const [viewingAttachment, setViewingAttachment] =
     useState<ChatAttachmentSummary | null>(null);
   const commandListRef = useRef<HTMLDivElement>(null);
@@ -1225,6 +1230,27 @@ function ChatTranscript({
     showScrollToBottom,
     viewportRef: transcriptViewportRef,
   } = useStickyChatScroll(chat.id);
+  useEffect(() => {
+    setInspectTab("trajectory");
+    setTrajectoryTargetKey(null);
+  }, [chat.id]);
+
+  const handleInspectOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) setTrajectoryTargetKey(null);
+      onInspectOpenChange(open);
+    },
+    [onInspectOpenChange],
+  );
+
+  const viewTurnTrajectory = useCallback(
+    (turnKey: string) => {
+      setInspectTab("trajectory");
+      setTrajectoryTargetKey(turnKey);
+      onInspectOpenChange(true);
+    },
+    [onInspectOpenChange],
+  );
   useEffect(() => {
     if (!refocusOnWindowActivation) return;
     let mounted = true;
@@ -2581,6 +2607,7 @@ function ChatTranscript({
                   key={entry.key}
                   startedAt={entry.startedAt}
                   endedAt={entry.endedAt}
+                  onViewTrajectory={viewTurnTrajectory}
                   turnId={entry.turnId}
                   turnKey={entry.turnKey}
                 >
@@ -3496,7 +3523,7 @@ function ChatTranscript({
       ) : null}
       <AgentInspectPanelShell
         className="absolute inset-y-0 right-0 z-30"
-        onOpenChange={onInspectOpenChange}
+        onOpenChange={handleInspectOpenChange}
         onWidthChange={setInspectWidth}
         open={inspectOpen}
         overlay={inspectOverlay}
@@ -3504,7 +3531,11 @@ function ChatTranscript({
         <AgentInspectContent
           active={inspectActive}
           messages={messages.data ?? []}
+          onTabChange={setInspectTab}
+          tab={inspectTab}
+          trajectoryTargetKey={trajectoryTargetKey}
           visible={inspectOpen}
+          onBackToCurrent={() => setTrajectoryTargetKey(null)}
         />
       </AgentInspectPanelShell>
     </div>
