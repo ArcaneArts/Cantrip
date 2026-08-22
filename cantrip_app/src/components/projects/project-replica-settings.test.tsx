@@ -7,6 +7,8 @@ import {
   ProjectReplicaSettings,
   canonicalReplicaRevision,
   projectReplicaForWorker,
+  replicaPlacementLabel,
+  replicaRemovalCopy,
 } from "./project-replica-settings";
 
 const now = "2026-08-11T20:00:00.000Z";
@@ -77,6 +79,17 @@ describe("project replica settings", () => {
       replica.id,
     );
     expect(projectReplicaForWorker(project.replicas, "worker-two")).toBeNull();
+    expect(replicaPlacementLabel(project.replicas[0]!.placementMode)).toBe(
+      "Managed by Cantrip",
+    );
+    expect(
+      replicaRemovalCopy({
+        ...project.replicas[0]!,
+        placementMode: "direct",
+        ownershipKind: "user",
+        requestedPath: "/srv/projects/cantrip",
+      }),
+    ).toContain("will not be deleted");
   });
 
   it("renders flat project placement and replica controls", () => {
@@ -95,6 +108,9 @@ describe("project replica settings", () => {
     expect(markup).toContain("Preferred");
     expect(markup).toContain("Replica capabilities");
     expect(markup).toContain("Last fetch");
+    expect(markup).toContain("Placement: Managed by Cantrip");
+    expect(markup).toContain("Ownership:");
+    expect(markup).toContain("Canonical: /srv/cantrip");
     expect(markup).toContain("Sync");
     expect(markup).toContain("Fast-forward Primary");
   });

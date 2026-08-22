@@ -424,6 +424,7 @@ describe("durable project replica jobs", () => {
         attempt: 1,
         path: `ctrr_${"T".repeat(43)}`,
         localFilesDeleted: false,
+        warning: "The retained checkout was left untouched.",
       },
     );
     expect(
@@ -434,6 +435,7 @@ describe("durable project replica jobs", () => {
     ).toMatchObject({
       state: "succeeded",
       projectReplicaId: secondReplica.projectReplicaId,
+      progress: { message: "The retained checkout was left untouched." },
     });
     const reprovision =
       await second.repository.projectReplicaJobs.createProvision(

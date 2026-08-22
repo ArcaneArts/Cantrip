@@ -214,6 +214,7 @@ import {
   projectPreferredWorkerUpdateSchema,
   projectReplicaJobListSchema,
   projectReplicaJobSummarySchema,
+  projectReplicaLinkRepairResultSchema,
   projectReplicaListSchema,
   encryptedProjectReplicaPlacementRequestSchema,
   encryptedProjectReplicaProvisionCreateSchema,
@@ -3360,23 +3361,73 @@ async function protectReplicaPlacement(input: {
 
 async function openProjectReplicaJob(value: unknown) {
   const job = projectReplicaJobSummarySchema.parse(value);
-  if (!repositoryRoutingHandleSchema.safeParse(job.repository).success) {
+  const protectedRepository = repositoryRoutingHandleSchema.safeParse(
+    job.repository,
+  ).success;
+  const protectedProgress = repositoryRoutingHandleSchema.safeParse(
+    job.progress.message,
+  ).success;
+  const protectedError = Boolean(
+    job.error &&
+    repositoryRoutingHandleSchema.safeParse(job.error.message).success,
+  );
+  if (!protectedRepository && !protectedProgress && !protectedError) {
     return job;
   }
   try {
     const resolved = await resolveWorkerRepositoryMetadata({
       workerId: job.workerId,
       scopeId: job.projectId,
-      values: { nameWithOwner: job.repository },
+      values: {
+        ...(protectedRepository ? { nameWithOwner: job.repository } : {}),
+        ...(protectedProgress ? { warning: job.progress.message } : {}),
+        ...(protectedError ? { message: job.error!.message } : {}),
+      },
     });
     return projectReplicaJobSummarySchema.parse({
       ...job,
-      repository: resolved.values.nameWithOwner,
+      repository: protectedRepository
+        ? resolved.values.nameWithOwner
+        : job.repository,
+      progress: protectedProgress
+        ? {
+            ...job.progress,
+            message:
+              typeof resolved.values.warning === "string"
+                ? resolved.values.warning
+                : "Protected worker warning unavailable",
+          }
+        : job.progress,
+      error:
+        protectedError && job.error
+          ? {
+              ...job.error,
+              message:
+                typeof resolved.values.message === "string"
+                  ? resolved.values.message
+                  : "Protected worker error unavailable",
+            }
+          : job.error,
     });
   } catch {
     return projectReplicaJobSummarySchema.parse({
       ...job,
-      repository: "Protected repository unavailable",
+      repository: protectedRepository
+        ? "Protected repository unavailable"
+        : job.repository,
+      progress: protectedProgress
+        ? {
+            ...job.progress,
+            message: "Protected worker warning unavailable",
+          }
+        : job.progress,
+      error:
+        protectedError && job.error
+          ? {
+              ...job.error,
+              message: "Protected worker error unavailable",
+            }
+          : job.error,
     });
   }
 }
@@ -3462,6 +3513,18 @@ export async function removeProjectReplica(
         ...requestInput,
         repository: repositoryHandle,
       }),
+    ),
+  );
+}
+
+export async function repairProjectReplicaLink(
+  projectId: string,
+  projectReplicaId: string,
+) {
+  return projectReplicaLinkRepairResultSchema.parse(
+    await post(
+      `/api/projects/${encodeURIComponent(projectId)}/replicas/${encodeURIComponent(projectReplicaId)}/repair-link`,
+      {},
     ),
   );
 }

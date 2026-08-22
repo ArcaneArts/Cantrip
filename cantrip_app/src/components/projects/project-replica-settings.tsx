@@ -8,7 +8,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CircleAlert,
   GitCompareArrows,
+  Link2,
   Loader2,
+  MapPin,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -32,10 +34,15 @@ import {
   cancelProjectReplicaJob,
   createProjectReplica,
   getProjectReplicaJobs,
+  repairProjectReplicaLink,
   removeProjectReplica,
   retryProjectReplicaJob,
   synchronizeProjectReplica,
 } from "@/lib/api";
+import {
+  RepositoryImportOptionsDialog,
+  type RepositoryImportOptions,
+} from "@/components/projects/repository-import-options-dialog";
 import { errorMessage } from "@/lib/error-message";
 import { useAppLiveStatus } from "@/lib/app-live-react";
 import { liveResourceRefreshInterval } from "@/lib/live-resource-refresh";
@@ -69,6 +76,27 @@ export function projectReplicaForWorker(
 
 function shortRevision(revision: string | null): string {
   return revision?.slice(0, 10) ?? "Unknown";
+}
+
+export function replicaPlacementLabel(
+  mode: ProjectReplicaSummary["placementMode"],
+): string {
+  if (mode === "managed-link") return "Managed clone with link";
+  if (mode === "direct") return "Worker path";
+  return "Managed by Cantrip";
+}
+
+export function replicaRemovalCopy(replica: ProjectReplicaSummary): string {
+  if (replica.ownershipKind === "user") {
+    return "This checkout existed before Cantrip and will not be deleted.";
+  }
+  if (replica.placementMode === "managed-link") {
+    return "Keeping local files leaves both the checkout and link on the worker.";
+  }
+  if (replica.placementMode === "direct") {
+    return "Keeping local files leaves the checkout in place and makes it user-managed.";
+  }
+  return "Keeping local files leaves the managed checkout on the worker.";
 }
 
 function replicaStatus(replica: ProjectReplicaSummary | null, online: boolean) {
@@ -116,6 +144,13 @@ export function ProjectReplicaSettings({
   const replicaResourcesLive = useAppLiveStatus() === "live";
   const [removeTarget, setRemoveTarget] =
     useState<ProjectReplicaSummary | null>(null);
+  const [provisionTarget, setProvisionTarget] = useState<WorkerSummary | null>(
+    null,
+  );
+  const [repairOutcome, setRepairOutcome] = useState<{
+    message: string;
+    replicaId: string;
+  } | null>(null);
   const [deleteLocalFiles, setDeleteLocalFiles] = useState(true);
   const [synchronizationPolicy, setSynchronizationPolicy] = useState<
     "verify-only" | "fast-forward-primary"
@@ -154,9 +189,16 @@ export function ProjectReplicaSettings({
     },
   });
   const provision = useMutation({
-    mutationFn: (workerId: string) =>
+    mutationFn: ({
+      placement,
+      workerId,
+    }: {
+      placement?: RepositoryImportOptions["placement"];
+      workerId: string;
+    }) =>
       createProjectReplica(project.id, {
         workerId,
+        ...(placement ? { placement } : {}),
         ...(project.github ? { repository: project.github } : {}),
         expectedRevision: canonicalReplicaRevision(project),
         idempotencyKey: crypto.randomUUID(),
@@ -182,6 +224,20 @@ export function ProjectReplicaSettings({
       }),
     onSuccess: async () => {
       setRemoveTarget(null);
+      await refreshProject();
+    },
+  });
+  const repairLink = useMutation({
+    mutationFn: (replica: ProjectReplicaSummary) =>
+      repairProjectReplicaLink(project.id, replica.id),
+    onMutate: () => setRepairOutcome(null),
+    onSuccess: async (result, replica) => {
+      if (result.status === "ready") {
+        setRepairOutcome({
+          replicaId: replica.id,
+          message: result.repaired ? "Link recreated" : "Link verified",
+        });
+      }
       await refreshProject();
     },
   });
@@ -222,11 +278,23 @@ export function ProjectReplicaSettings({
     }
     return byWorker;
   }, [jobs.data]);
+  const provisionOutcomes = useMemo(() => {
+    const byWorker = new Map<string, ProjectReplicaJobSummary>();
+    for (const job of jobs.data ?? []) {
+      if (job.kind !== "provision" || job.state !== "succeeded") continue;
+      const current = byWorker.get(job.workerId);
+      if (!current || current.createdAt < job.createdAt) {
+        byWorker.set(job.workerId, job);
+      }
+    }
+    return byWorker;
+  }, [jobs.data]);
   const mutationError =
     preferredWorker.error ??
     provision.error ??
     synchronize.error ??
     remove.error ??
+    repairLink.error ??
     retry.error ??
     cancel.error ??
     jobs.error;
@@ -329,11 +397,14 @@ export function ProjectReplicaSettings({
             const status = replicaStatus(replica, worker.online);
             const job = latestJobs.get(worker.workerId) ?? null;
             const lastFetchAt = lastFetches.get(worker.workerId) ?? null;
+            const provisionOutcome = provisionOutcomes.get(worker.workerId);
             const capabilities = [
               worker.projectReplicas.provision ? "provision" : null,
               worker.projectReplicas.synchronize ? "sync" : null,
               worker.projectReplicas.remove ? "remove" : null,
               worker.projectReplicas.exactRevision ? "exact revision" : null,
+              worker.projectReplicas.directPlacement ? "custom path" : null,
+              worker.projectReplicas.managedLinkPlacement ? "links" : null,
             ].filter(Boolean);
             const jobActive = Boolean(job && activeJobStates.has(job.state));
             const canProvision =
@@ -412,6 +483,50 @@ export function ProjectReplicaSettings({
                           ? new Date(lastFetchAt).toLocaleString()
                           : "No completed fetch recorded"}
                       </p>
+                      <div className="mt-2 grid gap-1 rounded-md border bg-muted/15 p-2 text-[11px] text-muted-foreground sm:grid-cols-2">
+                        <span>
+                          Placement:{" "}
+                          {replicaPlacementLabel(replica.placementMode)}
+                        </span>
+                        <span>
+                          Ownership:{" "}
+                          {replica.ownershipKind === "user"
+                            ? "User-owned; never deleted by Cantrip"
+                            : "Cantrip-owned"}
+                        </span>
+                        <span className="truncate" title={replica.path}>
+                          Canonical: {replica.path}
+                        </span>
+                        <span
+                          className="truncate"
+                          title={
+                            replica.linkPath ??
+                            replica.requestedPath ??
+                            undefined
+                          }
+                        >
+                          {replica.placementMode === "managed-link"
+                            ? `Link: ${replica.linkPath ?? "Unavailable"}`
+                            : replica.placementMode === "direct"
+                              ? `Requested: ${replica.requestedPath ?? "Unavailable"}`
+                              : "Requested path: Cantrip managed"}
+                        </span>
+                        <span>
+                          Materialization:{" "}
+                          {provisionOutcome?.resolvedMaterialization ??
+                            "Existing replica"}
+                        </span>
+                        {replica.placementMode === "managed-link" ? (
+                          <span>
+                            Repair status:{" "}
+                            {repairOutcome?.replicaId === replica.id
+                              ? repairOutcome.message
+                              : replica.linkPath
+                                ? "Link can be verified or repaired"
+                                : "Link metadata unavailable"}
+                          </span>
+                        ) : null}
+                      </div>
                     </>
                   ) : (
                     <p className="text-muted-foreground">
@@ -427,19 +542,38 @@ export function ProjectReplicaSettings({
                     <WifiOff className="mr-1 size-4 text-muted-foreground" />
                   ) : null}
                   {!replica ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={!canProvision || provision.isPending}
-                      onClick={() => provision.mutate(worker.workerId)}
-                    >
-                      {provision.isPending ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="size-3.5" />
-                      )}
-                      Provision
-                    </Button>
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!canProvision || provision.isPending}
+                        onClick={() =>
+                          provision.mutate({
+                            workerId: worker.workerId,
+                            placement: { mode: "managed" },
+                          })
+                        }
+                      >
+                        {provision.isPending ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="size-3.5" />
+                        )}
+                        Provision
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        disabled={!canProvision || provision.isPending}
+                        title="Provision with location"
+                        onClick={() => setProvisionTarget(worker)}
+                      >
+                        <MapPin className="size-3.5" />
+                        <span className="sr-only">
+                          Provision on {worker.name} with location
+                        </span>
+                      </Button>
+                    </>
                   ) : (
                     <>
                       <Button
@@ -450,12 +584,33 @@ export function ProjectReplicaSettings({
                       >
                         <GitCompareArrows className="size-3.5" /> Sync
                       </Button>
+                      {replica.placementMode === "managed-link" ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={
+                            !worker.online ||
+                            !worker.projectReplicas.managedLinkPlacement ||
+                            repairLink.isPending
+                          }
+                          title="Verify or repair managed link"
+                          onClick={() => repairLink.mutate(replica)}
+                        >
+                          <Link2 className="size-3.5" />
+                          <span className="sr-only">
+                            Verify or repair link on {worker.name}
+                          </span>
+                        </Button>
+                      ) : null}
                       <Button
                         size="icon"
                         variant="ghost"
                         disabled={!canRemove || remove.isPending}
                         onClick={() => {
-                          setDeleteLocalFiles(true);
+                          setDeleteLocalFiles(
+                            replica.placementMode === "managed" &&
+                              replica.ownershipKind === "cantrip",
+                          );
                           setRemoveTarget(replica);
                         }}
                       >
@@ -519,13 +674,15 @@ export function ProjectReplicaSettings({
               type="checkbox"
               className="mt-0.5 size-4 accent-foreground"
               checked={deleteLocalFiles}
+              disabled={removeTarget?.ownershipKind === "user"}
               onChange={(event) => setDeleteLocalFiles(event.target.checked)}
             />
             <span>
               <span className="block font-medium">Delete local checkout</span>
               <span className="block text-xs text-muted-foreground">
-                Leave this off to remove Cantrip's replica record while keeping
-                verified local files on the worker.
+                {removeTarget
+                  ? replicaRemovalCopy(removeTarget)
+                  : "Keep local files on the worker."}
               </span>
             </span>
           </label>
@@ -545,6 +702,24 @@ export function ProjectReplicaSettings({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <RepositoryImportOptionsDialog
+        error={provision.error ? errorMessage(provision.error) : null}
+        open={Boolean(provisionTarget)}
+        pending={provision.isPending}
+        repositoryName={project.github?.nameWithOwner ?? project.name}
+        submitLabel="Provision replica"
+        title="Provision with location"
+        worker={provisionTarget}
+        onOpenChange={(open) => !open && setProvisionTarget(null)}
+        onSubmit={async ({ placement }) => {
+          if (!provisionTarget) return;
+          await provision.mutateAsync({
+            workerId: provisionTarget.workerId,
+            placement,
+          });
+          setProvisionTarget(null);
+        }}
+      />
     </div>
   );
 }

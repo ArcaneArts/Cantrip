@@ -207,6 +207,71 @@ export class ProjectEncryptionAdapter {
       // filesystem metadata when the authorized worker cannot open them.
     }
     const unavailablePath = "Protected path unavailable";
+    const hydratedReplicas = [...project.replicas];
+    if (this.api.resolveMetadata) {
+      const replicasByWorker = new Map<
+        string,
+        Array<{
+          index: number;
+          replica: ProjectWireSummary["replicas"][number];
+        }>
+      >();
+      project.replicas.forEach((replica, index) => {
+        if (!replica.requestedPath && !replica.linkPath) return;
+        const group = replicasByWorker.get(replica.workerId) ?? [];
+        group.push({ index, replica });
+        replicasByWorker.set(replica.workerId, group);
+      });
+      await Promise.all(
+        [...replicasByWorker].map(async ([replicaWorkerId, entries]) => {
+          const requested = entries.flatMap(({ replica }) =>
+            replica.requestedPath ? [replica.requestedPath] : [],
+          );
+          const links = entries.flatMap(({ replica }) =>
+            replica.linkPath ? [replica.linkPath] : [],
+          );
+          try {
+            const resolved = await this.api.resolveMetadata!({
+              workerId: replicaWorkerId,
+              scopeId: project.id,
+              values: {
+                ...(requested.length ? { requestedPath: requested } : {}),
+                ...(links.length ? { linkPath: links } : {}),
+              },
+            });
+            const resolvedRequested = Array.isArray(
+              resolved.values.requestedPath,
+            )
+              ? resolved.values.requestedPath
+              : [];
+            const resolvedLinks = Array.isArray(resolved.values.linkPath)
+              ? resolved.values.linkPath
+              : [];
+            let requestedIndex = 0;
+            let linkIndex = 0;
+            for (const { index, replica } of entries) {
+              hydratedReplicas[index] = {
+                ...replica,
+                requestedPath: replica.requestedPath
+                  ? (resolvedRequested[requestedIndex++] ?? unavailablePath)
+                  : null,
+                linkPath: replica.linkPath
+                  ? (resolvedLinks[linkIndex++] ?? unavailablePath)
+                  : null,
+              };
+            }
+          } catch {
+            for (const { index, replica } of entries) {
+              hydratedReplicas[index] = {
+                ...replica,
+                requestedPath: replica.requestedPath ? unavailablePath : null,
+                linkPath: replica.linkPath ? unavailablePath : null,
+              };
+            }
+          }
+        }),
+      );
+    }
     const sourceWorktree = project.source
       ? worktrees.find(
           (worktree) =>
@@ -214,16 +279,25 @@ export class ProjectEncryptionAdapter {
             worktree.isPrimary,
         )
       : undefined;
+    const sourcePlacement = project.source
+      ? hydratedReplicas.find(({ id }) => id === project.source?.id)
+      : undefined;
     return {
       ...routedProject,
       source: project.source
         ? {
             ...project.source,
+            ...(sourcePlacement
+              ? {
+                  requestedPath: sourcePlacement.requestedPath,
+                  linkPath: sourcePlacement.linkPath,
+                }
+              : {}),
             path: sourceWorktree?.path ?? unavailablePath,
             displayPath: sourceWorktree?.displayPath ?? unavailablePath,
           }
         : null,
-      replicas: project.replicas.map((replica) => {
+      replicas: hydratedReplicas.map((replica) => {
         const worktree = replica.primaryWorktreeId
           ? worktrees.find(({ id }) => id === replica.primaryWorktreeId)
           : undefined;

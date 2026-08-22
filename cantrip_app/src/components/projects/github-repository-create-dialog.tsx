@@ -103,7 +103,7 @@ export function GithubRepositoryCreateDialog({
           <DialogDescription>
             {initialize === "empty"
               ? "Create an empty repository with the worker's GitHub account, then review the conversion preflight."
-              : "Create the repository with the worker's GitHub account, then add it to Cantrip and the selected workspaces."}
+              : "Create the repository with the worker's GitHub account, then choose its Cantrip placement and workspaces."}
           </DialogDescription>
         </DialogHeader>
 
@@ -226,7 +226,7 @@ export function GithubRepositoryCreateDialog({
               {createRepository.isPending
                 ? initialize === "empty"
                   ? "Creating…"
-                  : "Creating and adding…"
+                  : "Creating…"
                 : initialize === "empty"
                   ? "Create empty repository"
                   : "Create repository"}

@@ -61,6 +61,7 @@ import {
   Globe2,
   Loader2,
   Lock,
+  MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Pause,
@@ -229,6 +230,10 @@ import { taskChatIsInspectOnly } from "@/components/tasks/task-chat-access";
 import { terminalLinkBrowserTitle } from "@/components/terminal/terminal-links";
 import { terminalCommandInput } from "@/components/terminal/terminal-command-palette";
 import { GithubRepositoryCreateDialog } from "@/components/projects/github-repository-create-dialog";
+import {
+  RepositoryImportOptionsDialog,
+  type RepositoryImportOptions,
+} from "@/components/projects/repository-import-options-dialog";
 import {
   SettingsPage,
   type SettingsSection,
@@ -626,6 +631,7 @@ function RepositoryImporter({
   projectSetupJobs,
   projects,
   workerId,
+  workers,
   workspaces,
 }: {
   activeWorkspaceId: string | null;
@@ -633,11 +639,14 @@ function RepositoryImporter({
   projectSetupJobs: ReadonlyMap<string, ProjectReplicaJobSummary>;
   projects: ProjectSummary[];
   workerId: string | null;
+  workers: WorkerSummary[];
   workspaces: ProjectWorkspaceSummary[];
 }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [createRepositoryOpen, setCreateRepositoryOpen] = useState(false);
+  const [customRepository, setCustomRepository] =
+    useState<GithubRepository | null>(null);
   const [pendingRepositoryIds, setPendingRepositoryIds] = useState<Set<string>>(
     new Set(),
   );
@@ -695,7 +704,10 @@ function RepositoryImporter({
     );
     void queryClient.invalidateQueries({ queryKey: ["project-workspaces"] });
   };
-  const importRepository = async (repository: GithubRepository) => {
+  const importRepository = async (
+    repository: GithubRepository,
+    options?: RepositoryImportOptions,
+  ) => {
     if (
       !workerId ||
       !activeWorkspaceId ||
@@ -710,7 +722,7 @@ function RepositoryImporter({
       return next;
     });
 
-    const workspaceIds = new Set(selectedWorkspaceIds);
+    const workspaceIds = new Set(options?.workspaceIds ?? selectedWorkspaceIds);
     workspaceIds.add(activeWorkspaceId);
     try {
       const project = await createGithubProject({
@@ -718,6 +730,7 @@ function RepositoryImporter({
         repositoryId: repository.id,
         nameWithOwner: repository.nameWithOwner,
         url: repository.url,
+        ...(options?.placement ? { placement: options.placement } : {}),
         workspaceIds: [...workspaceIds],
       });
       rememberProject(project, workspaceIds);
@@ -778,6 +791,8 @@ function RepositoryImporter({
   const repositoryPickerReady = Boolean(
     workerId && github.data?.authenticated && !github.isError,
   );
+  const selectedWorker =
+    workers.find((worker) => worker.workerId === workerId) ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -928,7 +943,7 @@ function RepositoryImporter({
                       <th className="hidden w-28 px-3 py-2 font-medium lg:table-cell">
                         Updated
                       </th>
-                      <th className="w-24 px-3 py-2 text-right font-medium">
+                      <th className="w-36 px-3 py-2 text-right font-medium">
                         Status
                       </th>
                     </tr>
@@ -1014,8 +1029,8 @@ function RepositoryImporter({
                               },
                             )}
                           </td>
-                          <td className="px-3 py-1.5 text-right text-xs">
-                            <span className="inline-flex items-center justify-end gap-1.5">
+                          <td className="px-3 py-1 text-right text-xs">
+                            <span className="inline-flex items-center justify-end gap-1">
                               {failed ? (
                                 <CircleAlert className="size-3.5 text-destructive" />
                               ) : importing ? (
@@ -1025,15 +1040,46 @@ function RepositoryImporter({
                               ) : (
                                 <Plus className="size-3.5" />
                               )}
-                              {failed
-                                ? "Failed"
-                                : importing
-                                  ? setupJob
-                                    ? `${setupJob.progress.percent}%`
-                                    : "Starting"
-                                  : repository.imported
-                                    ? "Added"
-                                    : "Add"}
+                              {failed || importing || repository.imported ? (
+                                failed ? (
+                                  "Failed"
+                                ) : importing ? (
+                                  setupJob ? (
+                                    `${setupJob.progress.percent}%`
+                                  ) : (
+                                    "Starting"
+                                  )
+                                ) : (
+                                  "Added"
+                                )
+                              ) : (
+                                <>
+                                  <Button
+                                    className="h-7 px-2 text-xs"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      queueImport(repository);
+                                    }}
+                                  >
+                                    Add
+                                  </Button>
+                                  <Button
+                                    aria-label={`Add ${repository.nameWithOwner} with location`}
+                                    className="size-7"
+                                    size="icon"
+                                    title="Add with location"
+                                    variant="ghost"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setCustomRepository(repository);
+                                    }}
+                                  >
+                                    <MoreHorizontal className="size-3.5" />
+                                  </Button>
+                                </>
+                              )}
                             </span>
                           </td>
                         </tr>
@@ -1073,12 +1119,34 @@ function RepositoryImporter({
               onOpenChange={setCreateRepositoryOpen}
               onCreated={async (repository) => {
                 rememberRepository(repository);
-                try {
-                  const project = await importRepository(repository);
-                  onCreatedProject(project);
-                } catch {
-                  // The new repository remains in the list so Add can be retried.
-                }
+                setCustomRepository(repository);
+              }}
+            />
+            <RepositoryImportOptionsDialog
+              error={
+                customRepository
+                  ? (importErrors.get(customRepository.id) ?? null)
+                  : null
+              }
+              initialWorkspaceIds={[...selectedWorkspaceIds]}
+              open={Boolean(customRepository)}
+              pending={Boolean(
+                customRepository &&
+                pendingRepositoryIds.has(customRepository.id),
+              )}
+              repositoryName={customRepository?.nameWithOwner ?? "repository"}
+              requiredWorkspaceId={activeWorkspaceId ?? undefined}
+              worker={selectedWorker}
+              workspaces={workspaces}
+              onOpenChange={(open) => !open && setCustomRepository(null)}
+              onSubmit={async (options) => {
+                if (!customRepository) return;
+                const project = await importRepository(
+                  customRepository,
+                  options,
+                );
+                setCustomRepository(null);
+                onCreatedProject(project);
               }}
             />
           </>
@@ -7822,6 +7890,7 @@ export function App() {
             projects={projects.data ?? []}
             projectSetupJobs={projectSetupJobs}
             workerId={onlineWorker?.workerId ?? null}
+            workers={workers.data ?? []}
             workspaces={projectWorkspaces.data ?? []}
           />
         ) : compactShell && mobileTabGridOpen && selectedProject ? (
