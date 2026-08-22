@@ -23,7 +23,7 @@ import {
 import * as pty from "node-pty";
 
 import { workerLogError, workerLogger } from "./logger.js";
-import { inspectRunConfigurations } from "./run-configuration-discovery.js";
+import { inspectRunConfigurationsForExecution } from "./run-configuration-discovery.js";
 import { ensureSpawnHelperExecutable } from "./terminal-manager.js";
 import { runShellInvocation } from "./managed-run-supervisor.js";
 
@@ -437,7 +437,7 @@ export class RunSetupManager {
       const roots = await this.#authorize(input);
       session.sourcePath = roots.sourceRoot;
       session.worktreePath = roots.worktreeRoot;
-      const inspection = await inspectRunConfigurations(
+      const inspection = await inspectRunConfigurationsForExecution(
         roots.sourceRoot,
         this.#platform,
       );

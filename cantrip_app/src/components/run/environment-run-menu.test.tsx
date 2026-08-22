@@ -31,7 +31,6 @@ const environment: RunEnvironmentSummary = {
             id: actionId,
             name: "Run Spectral Lab",
             icon: "run",
-            command: "dotnet run",
             platform: "linux",
             configurationPath: ".codex/environments/environment.toml",
             sourceIndex: 0,

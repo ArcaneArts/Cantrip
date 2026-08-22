@@ -594,26 +594,34 @@ describe("Cantrip MCP worker broker", () => {
             },
             configured: true,
             valid: true,
-            configurations: [
-              {
-                relativePath: ".codex/environments/environment.toml",
-                revision: "b".repeat(64),
-                version: 1,
-                name: "Large environment",
-                sourceControlState: "tracked",
-                setup: null,
-                actions: Array.from({ length: 6 }, (_, sourceIndex) => ({
-                  id: sourceIndex.toString(16).padStart(64, "0"),
-                  name: `Action ${sourceIndex}`,
-                  icon: "run",
-                  command: "x".repeat(100_000),
-                  platform: "linux",
-                  configurationPath: ".codex/environments/environment.toml",
-                  sourceIndex,
-                })),
-                diagnostics: [],
+            configurations: Array.from(
+              { length: 64 },
+              (_, configurationIndex) => {
+                const relativePath =
+                  configurationIndex === 0
+                    ? ".codex/environments/environment.toml"
+                    : `.codex/environments/environment-${configurationIndex}.toml`;
+                return {
+                  relativePath,
+                  revision: configurationIndex.toString(16).padStart(64, "0"),
+                  version: 1,
+                  name: "Large environment".padEnd(200, "x"),
+                  sourceControlState: "tracked",
+                  setup: null,
+                  actions: Array.from({ length: 200 }, (_, sourceIndex) => ({
+                    id: (configurationIndex * 200 + sourceIndex)
+                      .toString(16)
+                      .padStart(64, "0"),
+                    name: `Action ${sourceIndex}`.padEnd(200, "x"),
+                    icon: "run".padEnd(100, "x"),
+                    platform: "linux",
+                    configurationPath: relativePath,
+                    sourceIndex,
+                  })),
+                  diagnostics: [],
+                };
               },
-            ],
+            ),
             diagnostics: [],
           },
         }),

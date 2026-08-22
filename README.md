@@ -32,6 +32,10 @@ source folder on a worker and can contain an ordered mix of:
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
 - Real PTY terminal tabs that run in the project folder on the worker. A terminal can also become a durable service: the worker starts its saved command at boot, restarts it after an unexpected exit, retains its live PTY for later attachment, and exposes stop, disable, and restart controls.
+- Codex-compatible project Run environments with platform-specific saved
+  actions, revision-checked CLI/MCP execution, headless worker-owned PTYs,
+  encrypted terminal materialization, and durable secondary-worktree setup.
+  See [the Run environment guide](docs/RUN_CONFIGURATIONS.md).
 - Finder-style Explorer tabs with a lazy expandable directory tree and file
   sizes. Git-backed projects also show local Git state and asynchronously
   hydrated last-commit metadata. Files open in preview or structured visual
@@ -188,6 +192,9 @@ documented in
 Portable provider authentication, migration, lifecycle, threat boundaries, and
 manual cross-platform validation are documented in
 [`docs/PROVIDER_AUTHENTICATION.md`](docs/PROVIDER_AUTHENTICATION.md).
+Codex-compatible environment discovery, Run/setup lifecycle, CLI and MCP
+commands, limits, and threat controls are documented in
+[`docs/RUN_CONFIGURATIONS.md`](docs/RUN_CONFIGURATIONS.md).
 
 ## Current deployment model
 

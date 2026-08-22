@@ -113,6 +113,7 @@ boundary.
 | `run_config_read`         | Read                            | Read one exact action after revalidating both its ID and configuration revision.                |
 | `run_status`              | Read                            | Refresh one Run, or the latest Run in the bound worktree, from its owning worker.               |
 | `run_read`                | Read                            | Read a bounded tail of volatile, worker-owned Run output.                                       |
+| `run_setup_status`        | Read                            | Read durable setup state and bounded output when its worker is available.                       |
 | `worktree_list`           | Read                            | List validated worktrees and leases without exposing worker filesystem paths.                   |
 | `worktree_status`         | Read                            | Read bounded Git status for the current or an exact listed worktree.                            |
 | `explorer_list`           | Read                            | List a bounded directory page through an exact Explorer target.                                 |
@@ -122,6 +123,7 @@ boundary.
 | `run_start`               | Open-world mutation             | Start an exact revision-checked action in the bound worktree through its target worker.         |
 | `run_open`                | Mutation                        | Retry idempotent encrypted terminal materialization for an exact Run through a live client.     |
 | `run_stop`                | Destructive/open-world mutation | Stop an exact Run and its complete worker-owned process group.                                  |
+| `run_setup_retry`         | Mutation                        | Queue explicit setup retry for the bound secondary worktree.                                    |
 | `worktree_create`         | Mutation                        | Create an agent-owned worktree in the bound project.                                            |
 | `worktree_switch`         | Mutation                        | Schedule continuation in an exact authorized worktree.                                          |
 | `worktree_release`        | Destructive mutation            | Release a clean secondary lease and schedule continuation on Primary.                           |
@@ -141,6 +143,10 @@ fixes project/worktree/worker identity, requires the terminal UUID to equal the
 Run UUID, and then asks a compatible client to author the encrypted terminal
 fields. A generic future `surface_create` still requires a separate durable
 design.
+
+See [Codex-compatible Run environments](RUN_CONFIGURATIONS.md) for the shared
+configuration contract, CLI parity, platform behavior, setup lifecycle,
+limits, and threat model.
 
 ## Client controls
 

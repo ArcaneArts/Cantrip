@@ -29,7 +29,6 @@ import {
   type RunConfigurationInspection,
   type RunConfigurationPlatform,
   type RunConfigurationSetup,
-  type RunConfigurationSelection,
   type RunConfigurationSourceControlState,
   type WorkerRunConfigurationWriteResult,
 } from "@cantrip/protocol";
@@ -49,6 +48,34 @@ const AUTHORING_ACTION_FIELDS = new Set([
   "command",
   "platform",
 ]);
+
+export type ExecutableRunConfigurationSetup = RunConfigurationSetup & {
+  command: string;
+};
+
+export type ExecutableRunConfigurationAction = RunConfigurationAction & {
+  command: string;
+};
+
+export type ExecutableRunConfigurationDefinition = Omit<
+  RunConfigurationDefinition,
+  "actions" | "setup"
+> & {
+  actions: ExecutableRunConfigurationAction[];
+  setup: ExecutableRunConfigurationSetup | null;
+};
+
+export type ExecutableRunConfigurationInspection = Omit<
+  RunConfigurationInspection,
+  "configurations"
+> & {
+  configurations: ExecutableRunConfigurationDefinition[];
+};
+
+export interface ExecutableRunConfigurationSelection {
+  action: ExecutableRunConfigurationAction;
+  configuration: ExecutableRunConfigurationDefinition;
+}
 
 function platformName(platform: NodeJS.Platform): RunConfigurationPlatform {
   if (platform === "win32" || platform === "darwin") return platform;
@@ -381,7 +408,7 @@ function parseSetup(
   platform: RunConfigurationPlatform,
   relativePath: string,
   diagnostics: RunConfigurationDiagnostic[],
-): RunConfigurationSetup | null {
+): ExecutableRunConfigurationSetup | null {
   if (input.setup === undefined) return null;
   const setup = record(input.setup);
   if (!setup) {
@@ -444,7 +471,7 @@ function parseActions(
   platform: RunConfigurationPlatform,
   relativePath: string,
   diagnostics: RunConfigurationDiagnostic[],
-): RunConfigurationAction[] {
+): ExecutableRunConfigurationAction[] {
   if (input.actions === undefined) return [];
   if (!Array.isArray(input.actions)) {
     pushDiagnostic(
@@ -472,7 +499,7 @@ function parseActions(
     );
   }
 
-  const actions: RunConfigurationAction[] = [];
+  const actions: ExecutableRunConfigurationAction[] = [];
   input.actions.slice(0, MAX_ACTIONS).forEach((value, sourceIndex) => {
     const action = record(value);
     if (!action) {
@@ -532,7 +559,7 @@ async function inspectConfiguration(
   pathname: string,
   relativePath: string,
   platform: RunConfigurationPlatform,
-): Promise<RunConfigurationDefinition> {
+): Promise<ExecutableRunConfigurationDefinition> {
   const diagnostics: RunConfigurationDiagnostic[] = [];
   const metadata = await stat(pathname);
   if (!metadata.isFile()) throw new Error("Run configuration is not a file.");
@@ -636,10 +663,10 @@ async function inspectConfiguration(
   };
 }
 
-export async function inspectRunConfigurations(
+export async function inspectRunConfigurationsForExecution(
   sourcePath: string,
   hostPlatform: NodeJS.Platform = process.platform,
-): Promise<RunConfigurationInspection> {
+): Promise<ExecutableRunConfigurationInspection> {
   const platform = platformName(hostPlatform);
   const sourceRoot = await realpath(sourcePath);
   const sourceMetadata = await stat(sourceRoot);
@@ -654,7 +681,7 @@ export async function inspectRunConfigurations(
     directoryMetadata = await lstat(directoryPath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return runConfigurationInspectionSchema.parse({
+      return {
         platform,
         canonical: {
           relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
@@ -664,7 +691,7 @@ export async function inspectRunConfigurations(
         valid: true,
         configurations: [],
         diagnostics: [],
-      });
+      };
     }
     throw error;
   }
@@ -677,7 +704,7 @@ export async function inspectRunConfigurations(
         "The run configuration location must be a real directory inside the project source.",
       ),
     );
-    return runConfigurationInspectionSchema.parse({
+    return {
       platform,
       canonical: {
         relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
@@ -687,7 +714,7 @@ export async function inspectRunConfigurations(
       valid: false,
       configurations: [],
       diagnostics,
-    });
+    };
   }
   const canonicalDirectory = await realpath(directoryPath);
   if (!isWithin(sourceRoot, canonicalDirectory)) {
@@ -699,7 +726,7 @@ export async function inspectRunConfigurations(
         "The run configuration directory resolves outside the project source.",
       ),
     );
-    return runConfigurationInspectionSchema.parse({
+    return {
       platform,
       canonical: {
         relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
@@ -709,7 +736,7 @@ export async function inspectRunConfigurations(
       valid: false,
       configurations: [],
       diagnostics,
-    });
+    };
   }
 
   const entries = (await readdir(canonicalDirectory, { withFileTypes: true }))
@@ -726,7 +753,7 @@ export async function inspectRunConfigurations(
     );
   }
 
-  const configurations: RunConfigurationDefinition[] = [];
+  const configurations: ExecutableRunConfigurationDefinition[] = [];
   for (const entry of entries.slice(0, MAX_CONFIGURATIONS)) {
     const relativePath = `${RUN_CONFIGURATION_DIRECTORY}/${entry.name}`;
     if (!entry.isFile()) {
@@ -806,7 +833,7 @@ export async function inspectRunConfigurations(
     ...diagnostics,
     ...configurations.flatMap((configuration) => configuration.diagnostics),
   ].some(({ severity }) => severity === "error");
-  return runConfigurationInspectionSchema.parse({
+  return {
     platform,
     canonical: {
       relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
@@ -817,6 +844,28 @@ export async function inspectRunConfigurations(
     valid: !hasErrors,
     configurations,
     diagnostics,
+  };
+}
+
+export async function inspectRunConfigurations(
+  sourcePath: string,
+  hostPlatform: NodeJS.Platform = process.platform,
+): Promise<RunConfigurationInspection> {
+  const inspection = await inspectRunConfigurationsForExecution(
+    sourcePath,
+    hostPlatform,
+  );
+  return runConfigurationInspectionSchema.parse({
+    ...inspection,
+    configurations: inspection.configurations.map((configuration) => ({
+      ...configuration,
+      setup: configuration.setup
+        ? { platform: configuration.setup.platform }
+        : null,
+      actions: configuration.actions.map(
+        ({ command: _command, ...action }) => action,
+      ),
+    })),
   });
 }
 
@@ -953,8 +1002,11 @@ export async function resolveRunConfigurationAction(
   actionId: string,
   expectedRevision: string,
   hostPlatform: NodeJS.Platform = process.platform,
-): Promise<RunConfigurationSelection> {
-  const inspection = await inspectRunConfigurations(sourcePath, hostPlatform);
+): Promise<ExecutableRunConfigurationSelection> {
+  const inspection = await inspectRunConfigurationsForExecution(
+    sourcePath,
+    hostPlatform,
+  );
   if (!inspection.valid) {
     throw new Error(
       "Run configuration validation failed. Validate the environment before starting an action.",

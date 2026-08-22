@@ -45,6 +45,7 @@ const configurationRevision = "b".repeat(64);
 const routedCommands: WorkerCommand[] = [];
 const routedWorkers: string[] = [];
 const runs = new Map<string, WorkerRunSnapshot>();
+const connectedWorkers = new Set(["run-worker", "run-worker-beta"]);
 const runInspection = {
   platform: "linux",
   canonical: {
@@ -66,7 +67,6 @@ const runInspection = {
           id: actionId,
           name: "Run Spectral Lab",
           icon: "run",
-          command: "dotnet run --project ./src/SpectralLab.App",
           platform: "linux" as const,
           configurationPath: ".codex/environments/environment.toml",
           sourceIndex: 1,
@@ -102,7 +102,7 @@ const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
   isConnected(workerId) {
-    return workerId === "run-worker" || workerId === "run-worker-beta";
+    return connectedWorkers.has(workerId);
   },
   sendSurfaceFrame() {
     return false;
@@ -179,6 +179,13 @@ const workerBridge: WorkerCommandBus = {
         runs.set(command.runId, stopped);
         return { found: true, run: stopped };
       }
+      case "project.run.reconcile":
+        return command.runs.map((identity) => {
+          const run = runs.get(identity.runId);
+          return run
+            ? { found: true as const, run }
+            : { found: false as const, runId: identity.runId };
+        });
       default:
         throw new Error(`Unexpected Run CLI worker command ${command.type}.`);
     }
@@ -715,6 +722,64 @@ describe("Run CLI execution", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps durable status offline and marks a missing Run lost after worker restart", async () => {
+    const started = await cli(
+      "run.start",
+      { action: "Run Spectral Lab", focus: false },
+      "run-restart-reconciliation",
+    );
+    expect(started.statusCode, started.body).toBe(200);
+    const run = cantripCliCommandResultSchema.parse(started.json()).data as {
+      run: { id: string; state: string };
+    };
+    expect(run.run.state).toBe("running");
+
+    connectedWorkers.delete("run-worker");
+    try {
+      const status = await cli(
+        "run.status",
+        { runId: run.run.id },
+        "run-offline-status",
+      );
+      expect(status.statusCode, status.body).toBe(200);
+      expect(
+        cantripCliCommandResultSchema.parse(status.json()).data,
+      ).toMatchObject({ run: { id: run.run.id, state: "running" } });
+      const logs = await cli(
+        "run.logs",
+        { runId: run.run.id, tail: 1_000 },
+        "run-offline-logs",
+      );
+      expect(logs.statusCode, logs.body).toBe(503);
+      expect(logs.json()).toMatchObject({ code: "unavailable" });
+    } finally {
+      connectedWorkers.add("run-worker");
+    }
+
+    runs.delete(run.run.id);
+    const socket = await app.injectWS(
+      "/api/internal/workers/connect?workerId=run-worker",
+      { headers: { authorization: `Bearer ${config.workerToken}` } },
+    );
+    try {
+      await expect
+        .poll(
+          async () =>
+            (
+              await database.repository.getRunInstance(
+                LOCAL_USER_ID,
+                projectId,
+                worktreeId,
+                run.run.id,
+              )
+            )?.state,
+        )
+        .toBe("lost");
+    } finally {
+      socket.terminate();
+    }
   });
 
   it("revalidates MCP revisions, routes Run state cross-worker, and audits mutations", async () => {

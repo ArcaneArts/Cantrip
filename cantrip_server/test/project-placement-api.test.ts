@@ -156,9 +156,10 @@ const workerBridge: WorkerCommandBus = {
             statusCode: 200,
           },
         ];
-      case "project.run-configurations.inspect":
+      case "project.run-configurations.inspect": {
+        const platform = workerId === "worker-alpha" ? "darwin" : "linux";
         return {
-          platform: "darwin",
+          platform,
           canonical: {
             relativePath: ".codex/environments/environment.toml",
             sourceControlState: "ignored",
@@ -178,8 +179,7 @@ const workerBridge: WorkerCommandBus = {
                   id: "b".repeat(64),
                   name: "Run Spectral Lab",
                   icon: "run",
-                  command: "dotnet run --project ./src/SpectralLab.App",
-                  platform: "darwin",
+                  platform,
                   configurationPath: ".codex/environments/environment.toml",
                   sourceIndex: 1,
                 },
@@ -189,6 +189,7 @@ const workerBridge: WorkerCommandBus = {
           ],
           diagnostics: [],
         };
+      }
       default:
         throw new Error(`Unexpected placement command ${command.type}.`);
     }
@@ -245,6 +246,7 @@ beforeAll(async () => {
   const project = await database.repository.createGithubProject(LOCAL_USER_ID, {
     workerId: "worker-alpha",
     ...protectedProjectFields(),
+    repositoryBlindIndex: "A".repeat(43),
     repositoryId: "placement-api",
     nameWithOwner: "ArcaneArts/Cantrip",
     url: "https://github.com/ArcaneArts/Cantrip",
@@ -518,11 +520,6 @@ describe.sequential("project execution placement API", () => {
     const fields = protectedBrowserFields();
     const created = await request("browser.create", {
       ...fields,
-      target: {
-        kind: "worktree",
-        projectId,
-        worktreeId: alphaWorktreeId,
-      },
     });
     expect(created.statusCode, JSON.stringify(created.json())).toBe(200);
     const result = cantripCliCommandResultSchema.parse(created.json());
@@ -931,6 +928,7 @@ describe.sequential("project execution placement API", () => {
         | "worktree.switch",
       arguments_: Record<string, unknown> = {},
       fromChat = false,
+      invokingWorkerId: "worker-alpha" | "worker-beta" = "worker-alpha",
     ) =>
       app.inject({
         method: "POST",
@@ -947,11 +945,14 @@ describe.sequential("project execution placement API", () => {
           context: {
             codexThreadId: null,
             terminalId: null,
-            cwd: path.join(dataDirectory, "worker-alpha"),
+            cwd: path.join(dataDirectory, invokingWorkerId),
           },
           arguments: arguments_,
-          requestId: `cli-${command}`,
-          workerId: "worker-alpha",
+          requestId:
+            invokingWorkerId === "worker-alpha"
+              ? `cli-${command}`
+              : `cli-worker-beta-${command}`,
+          workerId: invokingWorkerId,
         },
       });
 
@@ -1051,6 +1052,23 @@ describe.sequential("project execution placement API", () => {
       command: {
         type: "project.run-configurations.inspect",
         sourcePath: path.join(dataDirectory, "worker-alpha"),
+      },
+    });
+    const betaRunList = await cli("run.list", {}, false, "worker-beta");
+    expect(betaRunList.statusCode).toBe(200);
+    expect(
+      cantripCliCommandResultSchema.parse(betaRunList.json()).data,
+    ).toMatchObject({
+      platform: "linux",
+      configurations: [
+        { actions: [{ id: "b".repeat(64), platform: "linux" }] },
+      ],
+    });
+    expect(routedCommands).toContainEqual({
+      workerId: "worker-beta",
+      command: {
+        type: "project.run-configurations.inspect",
+        sourcePath: path.join(dataDirectory, "worker-beta"),
       },
     });
     const cliRunAction = await cli("run.show", {
@@ -1243,12 +1261,12 @@ describe.sequential("project execution placement API", () => {
         expect.objectContaining({
           action: "cli.command.mutated",
           result: "succeeded",
-          metadata: expect.objectContaining({ command: "explorer.write" }),
+          resource: { type: "cli-command", id: "cli-explorer.write" },
         }),
         expect.objectContaining({
           action: "cli.command.mutated",
           result: "succeeded",
-          metadata: expect.objectContaining({ command: "browser.open" }),
+          resource: { type: "cli-command", id: "cli-browser.open" },
         }),
       ]),
     );

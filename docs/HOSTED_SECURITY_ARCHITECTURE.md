@@ -280,6 +280,20 @@ authority. Conversion enables those capabilities only after the worker binds
 and pushes the selected new/empty GitHub repository and the server atomically
 commits the reconciled source identity.
 
+### Run environment authority
+
+Codex-compatible setup and action scripts are arbitrary worker-side code.
+Discovery, execution, authoring, terminal materialization, and setup retry all
+retain the app → server → worker boundary. Public list/read responses omit raw
+scripts; the worker reopens the source-root file and revision-checks the opaque
+action immediately before spawning a managed PTY. The server persists only
+bounded Run identity/lifecycle metadata, while scrollback and setup environment
+deltas remain worker-local. Revision-checked authoring never changes Git state.
+
+Path, race, process-tree, binding, response-limit, offline/restart, and client
+surface threats are mapped to controls in
+[the Run environment threat model](RUN_CONFIGURATIONS.md#threat-model).
+
 ## 7. Database ownership
 
 Account-owned tables use an `owner_id` foreign key. Child resources must be

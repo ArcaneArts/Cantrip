@@ -30,6 +30,9 @@ supported alias.
   terminal service.
 - `cantrip browser` discovers worker browser services or opens a URL in a
   Browser tab, creating and focusing one when the project has none.
+- `cantrip run` discovers, validates, starts, inspects, opens, and stops
+  Codex-compatible saved actions; it also initializes the canonical
+  environment and inspects or retries secondary-worktree setup.
 
 Commands choose useful defaults. A command run inside a linked terminal uses
 that terminal; a command run by Codex uses its chat; otherwise the current
