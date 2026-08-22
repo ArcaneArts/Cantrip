@@ -15,10 +15,14 @@ export type DesktopExplorerFileTarget = {
 
 const groupParameter = "cantrip-popout-group";
 const explorerFileParameter = "cantrip-explorer-file";
-const noDesktopPopoutListener = () => undefined;
+const noDesktopListener = () => undefined;
 
 export type DesktopPopoutWindowLifecycle = {
   listenDestroyed(listener: () => void): Promise<() => void>;
+};
+
+export type DesktopWindowFocusLifecycle = {
+  listenFocusChanged(listener: (focused: boolean) => void): Promise<() => void>;
 };
 
 // Cantrip windows host live transports and Tauri's title-bar drag handling.
@@ -168,7 +172,7 @@ export async function observeDesktopPopoutClosure(
   const popout = await getWindow();
   if (!popout) {
     onClosed();
-    return noDesktopPopoutListener;
+    return noDesktopListener;
   }
 
   let listening = true;
@@ -192,14 +196,14 @@ export async function observeDesktopPopoutClosure(
   }
   unlisten();
   resume();
-  return noDesktopPopoutListener;
+  return noDesktopListener;
 }
 
 export async function watchDesktopPopoutGroup(
   groupId: string,
   onClosed: () => void,
 ): Promise<() => void> {
-  if (!isDesktopRuntime()) return noDesktopPopoutListener;
+  if (!isDesktopRuntime()) return noDesktopListener;
   const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
   const label = desktopPopoutGroupWindowLabel(groupId);
   return observeDesktopPopoutClosure(async () => {
@@ -211,6 +215,31 @@ export async function watchDesktopPopoutGroup(
         }
       : null;
   }, onClosed);
+}
+
+export async function observeDesktopWindowFocus(
+  getWindow: () => Promise<DesktopWindowFocusLifecycle | null>,
+  onFocused: () => void,
+): Promise<() => void> {
+  const currentWindow = await getWindow();
+  if (!currentWindow) return noDesktopListener;
+  return currentWindow.listenFocusChanged((focused) => {
+    if (focused) onFocused();
+  });
+}
+
+export async function watchDesktopWindowFocus(
+  onFocused: () => void,
+): Promise<() => void> {
+  if (!isDesktopRuntime()) return noDesktopListener;
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  return observeDesktopWindowFocus(async () => {
+    const currentWindow = getCurrentWindow();
+    return {
+      listenFocusChanged: (listener) =>
+        currentWindow.onFocusChanged(({ payload }) => listener(payload)),
+    };
+  }, onFocused);
 }
 
 export async function closeCurrentDesktopWindow(): Promise<void> {
