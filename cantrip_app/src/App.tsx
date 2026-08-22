@@ -3119,6 +3119,7 @@ function ChatTranscript({
           {planState.data ? (
             <ChatPlanProgress
               explanation={planState.data.explanation}
+              loading={chat.status === "running" && !interrupt.isPending}
               steps={planState.data.steps}
             />
           ) : null}

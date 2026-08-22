@@ -42,13 +42,19 @@ export function summarizePlanProgress(
   };
 }
 
-function StepStatusIcon({ status }: { status: PlanStep["status"] }) {
+function StepStatusIcon({
+  loading,
+  status,
+}: {
+  loading: boolean;
+  status: PlanStep["status"];
+}) {
   if (status === "completed") {
     return (
       <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />
     );
   }
-  if (status === "inProgress") {
+  if (status === "inProgress" && loading) {
     return (
       <Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin text-sky-500" />
     );
@@ -58,10 +64,12 @@ function StepStatusIcon({ status }: { status: PlanStep["status"] }) {
 
 export function PlanProgressDetails({
   explanation,
+  loading,
   steps,
   summary,
 }: {
   explanation: string | null;
+  loading: boolean;
   steps: PlanStep[];
   summary: PlanProgressSummary;
 }) {
@@ -85,7 +93,7 @@ export function PlanProgressDetails({
             aria-current={step.status === "inProgress" ? "step" : undefined}
             className="flex gap-2 text-sm"
           >
-            <StepStatusIcon status={step.status} />
+            <StepStatusIcon loading={loading} status={step.status} />
             <span
               className={cn(
                 "min-w-0 leading-5",
@@ -103,9 +111,11 @@ export function PlanProgressDetails({
 
 export function ChatPlanProgress({
   explanation,
+  loading,
   steps,
 }: {
   explanation: string | null;
+  loading: boolean;
   steps: PlanStep[];
 }) {
   const summary = summarizePlanProgress(steps);
@@ -125,7 +135,7 @@ export function ChatPlanProgress({
           >
             {summary.isComplete ? (
               <CheckCircle2 className="size-4 text-emerald-500" />
-            ) : currentStatus === "inProgress" ? (
+            ) : currentStatus === "inProgress" && loading ? (
               <Loader2 className="size-4 animate-spin text-sky-500" />
             ) : (
               <Circle className="size-4 text-muted-foreground" />
@@ -147,6 +157,7 @@ export function ChatPlanProgress({
         >
           <PlanProgressDetails
             explanation={explanation}
+            loading={loading}
             steps={steps}
             summary={summary}
           />
