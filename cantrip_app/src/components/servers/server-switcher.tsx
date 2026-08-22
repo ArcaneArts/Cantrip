@@ -1,4 +1,5 @@
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { CANTRIP_VERSION } from "@cantrip/version";
 import {
   Check,
   LogOut,
@@ -9,7 +10,7 @@ import {
   ShieldOff,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { MobileSignInQrDialog } from "@/components/auth/mobile-sign-in-qr-dialog";
 import { AddServerForm } from "@/components/servers/add-server-form";
@@ -20,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { logout, logoutAll } from "@/lib/api";
+import { getServerBootstrap, logout, logoutAll } from "@/lib/api";
 import { clientLogger } from "@/lib/client-log-relay";
 import { clearClientSession, getClientSession } from "@/lib/client-session";
 import {
@@ -29,7 +30,9 @@ import {
   getServerConnections,
   removeServerConnection,
   selectServerConnection,
+  testServerConnection,
 } from "@/lib/server-connections";
+import { cn } from "@/lib/utils";
 
 type ServerSwitcherProps = {
   currentUserName: string;
@@ -39,6 +42,64 @@ type ServerSwitcherProps = {
 
 const itemClass =
   "flex cursor-default select-none items-center gap-2 rounded-md px-2 py-2 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
+
+export type ServerVersionCompatibility =
+  "loading" | "matching" | "mismatched" | "unavailable";
+
+export function serverVersionCompatibility(
+  serverVersion: string | null | undefined,
+  clientVersion = CANTRIP_VERSION,
+): ServerVersionCompatibility {
+  if (serverVersion === undefined) return "loading";
+  if (serverVersion === null) return "unavailable";
+  return serverVersion === clientVersion ? "matching" : "mismatched";
+}
+
+export function ServerVersionBadge({
+  clientVersion = CANTRIP_VERSION,
+  serverVersion,
+}: {
+  clientVersion?: string;
+  serverVersion: string | null | undefined;
+}) {
+  const compatibility = serverVersionCompatibility(
+    serverVersion,
+    clientVersion,
+  );
+  const label =
+    serverVersion === undefined
+      ? "Checking…"
+      : serverVersion === null
+        ? "Version unavailable"
+        : `v${serverVersion}`;
+  const title =
+    compatibility === "matching"
+      ? `Server ${label} matches this app.`
+      : compatibility === "mismatched"
+        ? `Server ${label} differs from this app (v${clientVersion}).`
+        : compatibility === "loading"
+          ? "Checking the server version."
+          : `Server version unavailable. This app is v${clientVersion}.`;
+
+  return (
+    <span
+      aria-label={title}
+      className={cn(
+        "shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] leading-none",
+        compatibility === "matching" &&
+          "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        compatibility === "mismatched" &&
+          "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+        (compatibility === "loading" || compatibility === "unavailable") &&
+          "bg-muted text-muted-foreground",
+      )}
+      data-version-compatibility={compatibility}
+      title={title}
+    >
+      {label}
+    </span>
+  );
+}
 
 export function ServerSwitcher({
   currentUserName,
@@ -51,7 +112,46 @@ export function ServerSwitcher({
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [mobileQrOpen, setMobileQrOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [serverVersions, setServerVersions] = useState<
+    Record<string, string | null>
+  >({});
   const clientSession = getClientSession();
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const unresolved = connections.filter(
+      ({ id }) => !Object.hasOwn(serverVersions, id),
+    );
+    if (!unresolved.length) return;
+    let cancelled = false;
+    void Promise.all(
+      unresolved.map(async (connection) => {
+        try {
+          const bootstrap = connection.url
+            ? await testServerConnection(connection.url)
+            : connection.id === active?.id
+              ? await getServerBootstrap()
+              : null;
+          return [
+            connection.id,
+            bootstrap?.server.version.version ?? null,
+          ] as const;
+        } catch {
+          return [connection.id, null] as const;
+        }
+      }),
+    ).then((versions) => {
+      if (cancelled) return;
+      setServerVersions((current) => ({
+        ...current,
+        ...Object.fromEntries(versions),
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.id, connections, menuOpen, serverVersions]);
 
   const switchTo = async (id: string) => {
     if (id === active?.id) return;
@@ -117,7 +217,7 @@ export function ServerSwitcher({
 
   return (
     <>
-      <DropdownMenuPrimitive.Root>
+      <DropdownMenuPrimitive.Root onOpenChange={setMenuOpen}>
         <DropdownMenuPrimitive.Trigger asChild>
           <button
             className="flex min-w-0 flex-1 items-center rounded-lg px-2 py-2 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
@@ -136,7 +236,7 @@ export function ServerSwitcher({
         <DropdownMenuPrimitive.Portal>
           <DropdownMenuPrimitive.Content
             align="start"
-            className="z-[80] min-w-64 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg"
+            className="z-[80] min-w-72 rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg"
             side="top"
             sideOffset={6}
           >
@@ -151,7 +251,14 @@ export function ServerSwitcher({
               >
                 <Server className="size-4 text-muted-foreground" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate">{connection.name}</span>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="block min-w-0 flex-1 truncate">
+                      {connection.name}
+                    </span>
+                    <ServerVersionBadge
+                      serverVersion={serverVersions[connection.id]}
+                    />
+                  </span>
                   <span className="block truncate text-[10px] text-muted-foreground">
                     {connection.url || "Development proxy"}
                   </span>

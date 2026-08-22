@@ -44,6 +44,9 @@ importers:
       "@cantrip/protocol":
         specifier: workspace:*
         version: link:../packages/protocol
+      "@cantrip/version":
+        specifier: workspace:*
+        version: link:../packages/version
       "@capacitor/android":
         specifier: ^8.5.0
         version: 8.5.0(@capacitor/core@8.5.0)
