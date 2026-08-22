@@ -102,10 +102,15 @@ describe("policy protocol", () => {
         summary: "Read the full policy before changing a repository.",
         bodyMarkdown: "# Manual Change Protocol\n\nInspect before editing.",
         version: 1,
+        suggestedDefault: false,
         suggestedEnabled: true,
         suggestedMandatory: true,
       }),
-    ).toMatchObject({ version: 1, suggestedMandatory: true });
+    ).toMatchObject({
+      version: 1,
+      suggestedDefault: false,
+      suggestedMandatory: true,
+    });
   });
 
   it("bounds and deduplicates agent-facing policy data", () => {

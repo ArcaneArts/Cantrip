@@ -43,6 +43,7 @@ export const policyTemplateSummarySchema = z.object({
   suggestedPolicyKey: policyKeySchema,
   summary: policySummaryTextSchema,
   version: z.number().int().positive(),
+  suggestedDefault: z.boolean(),
   suggestedEnabled: z.boolean(),
   suggestedMandatory: z.boolean(),
 });
