@@ -9,6 +9,7 @@ import "prismjs/components/prism-c.js";
 import "prismjs/components/prism-cpp.js";
 import "prismjs/components/prism-csharp.js";
 import "prismjs/components/prism-dart.js";
+import "prismjs/components/prism-diff.js";
 import "prismjs/components/prism-go.js";
 import "prismjs/components/prism-graphql.js";
 import "prismjs/components/prism-java.js";

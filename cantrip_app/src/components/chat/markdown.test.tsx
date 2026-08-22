@@ -25,6 +25,16 @@ describe("Markdown", () => {
     expect(markup).toContain("token class-name");
   });
 
+  it("syntax highlights fenced diffs", () => {
+    const markup = renderToStaticMarkup(
+      <Markdown>{"```diff\n-before\n+after\n unchanged\n```"}</Markdown>,
+    );
+
+    expect(markup).toContain("language-diff");
+    expect(markup).toContain("deleted-sign");
+    expect(markup).toContain("inserted-sign");
+  });
+
   it("keeps unsupported fenced languages as readable plain code", () => {
     const markup = renderToStaticMarkup(
       <Markdown>{"```not-a-language\ncall something\n```"}</Markdown>,
