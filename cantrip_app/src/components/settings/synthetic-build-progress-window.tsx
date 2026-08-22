@@ -11,6 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  desktopUpdateActiveWorkTotal,
+  desktopUpdateClient,
+} from "@/lib/desktop-update";
+import type { DesktopUpdateActiveWorkSummary } from "@cantrip/protocol";
+import {
   normalizeSyntheticBuildError,
   syntheticBuildClient,
   type SyntheticBuildJob,
@@ -48,6 +53,11 @@ export function SyntheticBuildProgressWindow() {
   const [error, setError] = useState<string | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [confirmInstall, setConfirmInstall] = useState(false);
+  const [activeWorkCount, setActiveWorkCount] = useState(0);
+  const [activeWork, setActiveWork] =
+    useState<DesktopUpdateActiveWorkSummary | null>(null);
   const [now, setNow] = useState(Date.now());
   const consoleRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
@@ -132,6 +142,40 @@ export function SyntheticBuildProgressWindow() {
     [job],
   );
   const active = job?.state === "queued" || job?.state === "running";
+
+  async function prepareInstall() {
+    setInstalling(true);
+    setError(null);
+    try {
+      const activeWork = await desktopUpdateClient.getActiveWork();
+      setActiveWorkCount(desktopUpdateActiveWorkTotal(activeWork));
+      setActiveWork(activeWork);
+      setConfirmInstall(true);
+    } catch (reason) {
+      setError(normalizeSyntheticBuildError(reason).message);
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  async function install() {
+    if (!job || !activeWork) return;
+    setInstalling(true);
+    try {
+      const artifact = (await syntheticBuildClient.cached()).find(
+        (item) =>
+          item.commitSha === job.targetSha && item.version === job.version,
+      );
+      if (!artifact) throw new Error("The completed artifact is unavailable.");
+      await syntheticBuildClient.install(artifact.id, activeWork, true);
+      setConfirmInstall(false);
+    } catch (reason) {
+      setError(normalizeSyntheticBuildError(reason).message);
+      setConfirmInstall(false);
+    } finally {
+      setInstalling(false);
+    }
+  }
 
   return (
     <main className="flex h-screen min-h-0 flex-col bg-background text-foreground">
@@ -231,6 +275,24 @@ export function SyntheticBuildProgressWindow() {
           <span className="shrink-0 font-mono text-muted-foreground">
             {job?.progress ?? 0}%
           </span>
+          {job?.state === "ready-to-install" ? (
+            <Button
+              size="sm"
+              pending={installing}
+              pendingLabel="Preparing…"
+              onClick={() => void prepareInstall()}
+            >
+              Install build
+            </Button>
+          ) : job?.state === "failed" && job ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void syntheticBuildClient.openLog(job.id)}
+            >
+              Open log
+            </Button>
+          ) : null}
         </div>
         <div
           role="progressbar"
@@ -282,6 +344,39 @@ export function SyntheticBuildProgressWindow() {
               }}
             >
               Cancel build
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={confirmInstall}
+        onOpenChange={(next) => !installing && setConfirmInstall(next)}
+      >
+        <DialogContent className="max-w-md" showClose={!installing}>
+          <DialogHeader>
+            <DialogTitle>Install synthetic build?</DialogTitle>
+            <DialogDescription>
+              {activeWorkCount > 0
+                ? `${activeWorkCount} active Cantrip ${activeWorkCount === 1 ? "task" : "tasks"} must be stopped before the installer replaces and restarts Cantrip.`
+                : "Cantrip will open the verified local installer and restart into this synthetic version."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={installing}
+              onClick={() => setConfirmInstall(false)}
+            >
+              Not now
+            </Button>
+            <Button
+              pending={installing}
+              pendingLabel="Opening installer…"
+              onClick={() => void install()}
+            >
+              {activeWorkCount > 0
+                ? "Stop work and install"
+                : "Install and restart"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4,6 +4,7 @@ import {
   GitCommit,
   Hammer,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -19,15 +20,127 @@ import {
 import { Input } from "@/components/ui/input";
 import { openSyntheticBuildProgressWindow } from "@/lib/desktop-popout";
 import { openExternalUrl } from "@/lib/external-url";
+import { desktopUpdateClient } from "@/lib/desktop-update";
 import {
   normalizeSyntheticBuildError,
   syntheticBuildClient,
+  type CachedSyntheticBuild,
   type SyntheticBuildClient,
   type SyntheticCommit,
+  type SyntheticBuildIdentity,
   type SyntheticPrerequisiteScan,
 } from "@/lib/synthetic-build";
 
 type Stage = "commits" | "prerequisites" | "warning";
+
+export function SyntheticBuildCache({
+  client = syntheticBuildClient,
+}: {
+  client?: SyntheticBuildClient;
+}) {
+  const [builds, setBuilds] = useState<CachedSyntheticBuild[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [identity, setIdentity] = useState<SyntheticBuildIdentity | null>(null);
+
+  async function install(build: CachedSyntheticBuild) {
+    try {
+      const activeWork = await desktopUpdateClient.getActiveWork();
+      const total = Object.values(activeWork).reduce(
+        (sum, value) => sum + value,
+        0,
+      );
+      if (
+        total > 0 &&
+        !window.confirm(
+          `Installing will stop ${total} active Cantrip operation(s). Continue?`,
+        )
+      )
+        return;
+      await client.install(build.id, activeWork, true);
+    } catch (reason) {
+      setError(normalizeSyntheticBuildError(reason).message);
+    }
+  }
+
+  useEffect(() => {
+    if (!client.isSupportedEnvironment()) return;
+    void Promise.all([client.cached(), client.identity()])
+      .then(([nextBuilds, nextIdentity]) => {
+        setBuilds(nextBuilds);
+        setIdentity(nextIdentity);
+      })
+      .catch((reason: unknown) =>
+        setError(normalizeSyntheticBuildError(reason).message),
+      );
+  }, [client]);
+
+  if (builds.length === 0 && !identity && !error) return null;
+  return (
+    <section className="border-t" aria-labelledby="cached-synthetic-builds">
+      {identity ? (
+        <p className="border-b px-3 py-2.5 text-sm">
+          Installed version{" "}
+          <span className="font-mono">{identity.version}</span>{" "}
+          <span className="text-muted-foreground">
+            · Synthetic build · {identity.commitSha.slice(0, 7)}
+          </span>
+        </p>
+      ) : null}
+      <h4
+        id="cached-synthetic-builds"
+        className="border-b bg-muted/25 px-3 py-1.5 text-[11px] font-semibold uppercase text-muted-foreground"
+      >
+        Local synthetic builds
+      </h4>
+      {error ? (
+        <p className="px-3 py-3 text-sm text-destructive">{error}</p>
+      ) : (
+        builds.map((build) => (
+          <div
+            key={build.id}
+            className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b px-3 py-2.5"
+          >
+            <div className="min-w-0">
+              <div className="font-mono text-sm">
+                {build.version}{" "}
+                <span className="text-xs text-muted-foreground">
+                  Synthetic build · {build.commitSha.slice(0, 7)}
+                </span>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {new Date(build.builtAt).toLocaleString()} ·{" "}
+                {(build.sizeBytes / 1_048_576).toFixed(0)} MB
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void install(build)}
+            >
+              Install
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={`Delete ${build.version}`}
+              onClick={() =>
+                void client
+                  .deleteCached(build.id)
+                  .then(() =>
+                    setBuilds((current) =>
+                      current.filter((item) => item.id !== build.id),
+                    ),
+                  )
+              }
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
 
 export function selectDefaultSyntheticCommit(commits: SyntheticCommit[]) {
   return (
