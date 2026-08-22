@@ -277,6 +277,166 @@ fn find_installer(artifact: &Path) -> Result<PathBuf, SyntheticBuildError> {
     })
 }
 
+#[cfg(target_os = "macos")]
+fn find_macos_application(artifact: &Path) -> Result<PathBuf, SyntheticBuildError> {
+    fn walk(path: &Path) -> Option<PathBuf> {
+        let entries = fs::read_dir(path).ok()?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() && path.extension().is_some_and(|value| value == "app") {
+                return Some(path);
+            }
+            if path.is_dir() {
+                if let Some(found) = walk(&path) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+    walk(&artifact.join("bundle")).ok_or_else(|| {
+        SyntheticBuildError::new(
+            "synthetic_installer_missing",
+            "The verified artifact does not contain a macOS application bundle.",
+            false,
+        )
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn current_macos_application() -> Result<PathBuf, SyntheticBuildError> {
+    let executable = std::env::current_exe().map_err(|error| {
+        SyntheticBuildError::new("synthetic_install_path_failed", error.to_string(), false)
+    })?;
+    executable
+        .ancestors()
+        .find(|path| path.extension().is_some_and(|value| value == "app"))
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            SyntheticBuildError::new(
+                "synthetic_install_path_failed",
+                "Cantrip could not locate its current macOS application bundle.",
+                false,
+            )
+        })
+}
+
+#[cfg(target_os = "windows")]
+fn copy_directory(source: &Path, destination: &Path) -> Result<(), SyntheticBuildError> {
+    fs::create_dir_all(destination).map_err(|error| {
+        SyntheticBuildError::new("synthetic_rollback_stage_failed", error.to_string(), true)
+    })?;
+    for entry in fs::read_dir(source).map_err(|error| {
+        SyntheticBuildError::new("synthetic_rollback_stage_failed", error.to_string(), true)
+    })? {
+        let entry = entry.map_err(|error| {
+            SyntheticBuildError::new("synthetic_rollback_stage_failed", error.to_string(), true)
+        })?;
+        let target = destination.join(entry.file_name());
+        if entry.path().is_dir() {
+            copy_directory(&entry.path(), &target)?;
+        } else {
+            fs::copy(entry.path(), target).map_err(|error| {
+                SyntheticBuildError::new("synthetic_rollback_stage_failed", error.to_string(), true)
+            })?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn launch_install_handoff(
+    artifact: &Path,
+    active_identity: &Path,
+    install_id: &str,
+) -> Result<(), SyntheticBuildError> {
+    const SCRIPT: &str = r#"
+while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
+open -n "$2"
+sleep 10
+if pgrep -f "$2/Contents/MacOS/" >/dev/null 2>&1; then
+  cp "$4" "$5"
+  exit 0
+fi
+open -n "$3"
+"#;
+    let synthetic_app = find_macos_application(artifact)?;
+    let current_app = current_macos_application()?;
+    Command::new("/bin/sh")
+        .args(["-c", SCRIPT, "cantrip-synthetic-handoff"])
+        .arg(std::process::id().to_string())
+        .arg(synthetic_app)
+        .arg(current_app)
+        .arg(active_identity.with_file_name("pending.json"))
+        .arg(active_identity)
+        .arg(install_id)
+        .spawn()
+        .map_err(|error| {
+            SyntheticBuildError::new(
+                "synthetic_installer_launch_failed",
+                format!("The synthetic relaunch helper could not start: {error}"),
+                true,
+            )
+        })?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn launch_install_handoff(
+    artifact: &Path,
+    active_identity: &Path,
+    install_id: &str,
+    rollback_root: &Path,
+) -> Result<(), SyntheticBuildError> {
+    const SCRIPT: &str = r#"
+param($OldPid, $Installer, $CurrentExe, $RollbackExe, $PendingIdentity, $ActiveIdentity, $InstallId)
+Wait-Process -Id $OldPid -ErrorAction SilentlyContinue
+$process = Start-Process -FilePath $Installer -PassThru
+$process.WaitForExit()
+if (Test-Path $CurrentExe) {
+  $launched = Start-Process -FilePath $CurrentExe -PassThru
+  Start-Sleep -Seconds 10
+  if (-not $launched.HasExited) {
+    Copy-Item -Force $PendingIdentity $ActiveIdentity
+    exit 0
+  }
+}
+if (Test-Path $RollbackExe) { Start-Process -FilePath $RollbackExe }
+"#;
+    let installer = find_installer(artifact)?;
+    let current_exe = std::env::current_exe().map_err(|error| {
+        SyntheticBuildError::new("synthetic_install_path_failed", error.to_string(), false)
+    })?;
+    let install_root = current_exe.parent().ok_or_else(|| {
+        SyntheticBuildError::new(
+            "synthetic_install_path_failed",
+            "Cantrip could not locate its installation folder.",
+            false,
+        )
+    })?;
+    let rollback_app = rollback_root.join("app");
+    copy_directory(install_root, &rollback_app)?;
+    let rollback_exe = rollback_app.join(current_exe.file_name().unwrap_or_default());
+    Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+        .arg(std::process::id().to_string())
+        .arg(installer)
+        .arg(&current_exe)
+        .arg(rollback_exe)
+        .arg(active_identity.with_file_name("pending.json"))
+        .arg(active_identity)
+        .arg(install_id)
+        .spawn()
+        .map_err(|error| {
+            SyntheticBuildError::new(
+                "synthetic_installer_launch_failed",
+                format!("The synthetic install helper could not start: {error}"),
+                true,
+            )
+        })?;
+    Ok(())
+}
+
 pub(crate) fn reconcile_identity(root: &Path, running_version: &str) -> Result<(), String> {
     let pending_path = root.join("installs/pending.json");
     let active_path = root.join("installs/active.json");
@@ -342,7 +502,7 @@ pub fn install_cached_synthetic_build(
                 true,
             )
         })?;
-    let installer = find_installer(Path::new(&artifact.artifact_path))?;
+    let artifact_path = PathBuf::from(&artifact.artifact_path);
     let identity = SyntheticBuildIdentity {
         install_id: Uuid::new_v4().to_string(),
         artifact_id: artifact.id,
@@ -361,22 +521,26 @@ pub fn install_cached_synthetic_build(
         SyntheticBuildError::new("synthetic_install_stage_failed", error.to_string(), true)
     })?;
     crate::shutdown_owned_runtime(&app);
+    let active_identity = coordinator.root().join("installs/active.json");
     #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut value = Command::new("open");
-        value.arg(&installer);
-        value
-    };
+    launch_install_handoff(&artifact_path, &active_identity, &identity.install_id)?;
     #[cfg(target_os = "windows")]
-    let mut command = Command::new(&installer);
-    command.spawn().map_err(|error| {
-        SyntheticBuildError::new(
-            "synthetic_installer_launch_failed",
-            format!("The installer could not be opened: {error}"),
-            true,
-        )
-    })?;
+    launch_install_handoff(
+        &artifact_path,
+        &active_identity,
+        &identity.install_id,
+        &coordinator
+            .root()
+            .join("rollback")
+            .join(&identity.install_id),
+    )?;
     let _ = app.emit("cantrip-synthetic-build-install", &identity);
+    let exit_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+        crate::approve_desktop_exit(&exit_app);
+        exit_app.exit(0);
+    });
     Ok(identity.install_id)
 }
 
