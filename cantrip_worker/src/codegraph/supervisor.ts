@@ -16,8 +16,8 @@ import {
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
   type CodeGraphActionAcknowledgement,
+  type CodeGraphObservationTarget,
   type CodeGraphProjectStatus as PublicCodeGraphProjectStatus,
-  type WorktreeObservationTarget,
 } from "@cantrip/protocol";
 
 import { workerLogError, workerLogger } from "../logger.js";
@@ -74,7 +74,7 @@ interface ProcessOutcome {
 }
 
 interface AuthorizedTarget {
-  gitCommonDir: string;
+  gitCommonDir: string | null;
   root: string;
 }
 
@@ -99,6 +99,7 @@ export interface CodeGraphProjectSupervisorOptions {
   authorize: (
     sourcePath: string,
     worktreePaths: string[],
+    rootKind: CodeGraphObservationTarget["rootKind"],
   ) => Promise<AuthorizedTarget[]>;
   command: string;
   commandArguments?: string[];
@@ -341,7 +342,7 @@ export class CodeGraphProjectSupervisor {
       ((root, listener) => watch(root, { recursive: true }, listener));
   }
 
-  async configure(targets: WorktreeObservationTarget[]): Promise<void> {
+  async configure(targets: CodeGraphObservationTarget[]): Promise<void> {
     if (this.#closed) return;
     const generation = ++this.#configurationGeneration;
     const requested = new Set(
@@ -350,19 +351,32 @@ export class CodeGraphProjectSupervisor {
     for (const [root, project] of this.#projects) {
       if (!requested.has(root)) this.#remove(project);
     }
-    const grouped = new Map<string, WorktreeObservationTarget[]>();
+    const grouped = new Map<
+      string,
+      {
+        rootKind: CodeGraphObservationTarget["rootKind"];
+        sourcePath: string;
+        targets: CodeGraphObservationTarget[];
+      }
+    >();
     for (const target of targets) {
-      const group = grouped.get(target.sourcePath) ?? [];
-      group.push(target);
-      grouped.set(target.sourcePath, group);
+      const key = `${target.rootKind}\0${target.sourcePath}`;
+      const group = grouped.get(key) ?? {
+        rootKind: target.rootKind,
+        sourcePath: target.sourcePath,
+        targets: [],
+      };
+      group.targets.push(target);
+      grouped.set(key, group);
     }
     const results = await mapSettledConcurrent(
-      [...grouped.entries()],
+      [...grouped.values()],
       MAX_CONCURRENT_AUTHORIZATIONS,
-      async ([sourcePath, sourceTargets]) => {
+      async ({ rootKind, sourcePath, targets: sourceTargets }) => {
         const authorized = await this.#authorize(
           sourcePath,
           sourceTargets.map(({ worktreePath }) => worktreePath),
+          rootKind,
         );
         if (authorized.length !== sourceTargets.length) {
           throw new Error(
@@ -436,20 +450,26 @@ export class CodeGraphProjectSupervisor {
           watcherRetryTimer: null,
         };
         this.#projects.set(root, project);
-        try {
-          await this.#installGitExclude(project, authorized.gitCommonDir);
-        } catch (error) {
-          this.#remove(project);
-          workerLogger.event("warn", "CodeGraph worktree preparation failed", {
-            event: "codegraph.project.prepare-failed",
-            subsystem: "codegraph",
-            operation: "prepare-worktree",
-            reasonCode: "git-exclude-failed",
-            status: "degraded",
-            worktreePath: root,
-            error: workerLogError(error),
-          });
-          continue;
+        if (authorized.gitCommonDir) {
+          try {
+            await this.#installGitExclude(project, authorized.gitCommonDir);
+          } catch (error) {
+            this.#remove(project);
+            workerLogger.event(
+              "warn",
+              "CodeGraph worktree preparation failed",
+              {
+                event: "codegraph.project.prepare-failed",
+                subsystem: "codegraph",
+                operation: "prepare-worktree",
+                reasonCode: "git-exclude-failed",
+                status: "degraded",
+                worktreePath: root,
+                error: workerLogError(error),
+              },
+            );
+            continue;
+          }
         }
         if (project.closed || !this.#projects.has(root)) continue;
         this.#watchProject(project);

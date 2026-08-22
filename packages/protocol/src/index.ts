@@ -10080,6 +10080,32 @@ export const worktreeObservationTargetsSchema = z
     }
   });
 
+export const codeGraphObservationTargetSchema = z.object({
+  projectId: z.string().uuid(),
+  worktreeId: z.string().min(1).max(200),
+  rootKind: projectRootKindSchema,
+  sourcePath: z.string().min(1).max(8_192),
+  worktreePath: z.string().min(1).max(8_192),
+});
+
+export const codeGraphObservationTargetsSchema = z
+  .array(codeGraphObservationTargetSchema)
+  .max(128)
+  .superRefine((targets, context) => {
+    const keys = new Set<string>();
+    for (const [index, target] of targets.entries()) {
+      const key = `${target.rootKind}\0${target.sourcePath}\0${target.worktreePath}`;
+      if (keys.has(key)) {
+        context.addIssue({
+          code: "custom",
+          message: "CodeGraph observation targets must be unique.",
+          path: [index],
+        });
+      }
+      keys.add(key);
+    }
+  });
+
 export const projectWorktreeCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   mode: worktreeCreateModeSchema,
@@ -11539,6 +11565,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("worktree.observation.configure"),
     targets: worktreeObservationTargetsSchema,
+    codegraphTargets: codeGraphObservationTargetsSchema.optional(),
   }),
   z.object({
     type: z.literal("codegraph.status"),
@@ -13340,6 +13367,9 @@ export type WorktreePruneResult = z.infer<typeof worktreePruneResultSchema>;
 export type WorktreeStatusResult = z.infer<typeof worktreeStatusResultSchema>;
 export type WorktreeObservationTarget = z.infer<
   typeof worktreeObservationTargetSchema
+>;
+export type CodeGraphObservationTarget = z.infer<
+  typeof codeGraphObservationTargetSchema
 >;
 export type ProjectWorktreeCreate = z.infer<typeof projectWorktreeCreateSchema>;
 export type ProjectWorktreeLock = z.infer<typeof projectWorktreeLockSchema>;

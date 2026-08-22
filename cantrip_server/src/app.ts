@@ -1673,10 +1673,11 @@ export async function buildApp({
     workerId: string,
   ): Promise<void> => {
     if (!bridge.subscribeNotifications || !bridge.isConnected(workerId)) return;
-    const targets = await repository.listWorkerWorktreeObservationTargets(
-      applicationOwnerId(),
-      workerId,
-    );
+    const ownerId = applicationOwnerId();
+    const [targets, codegraphTargets] = await Promise.all([
+      repository.listWorkerWorktreeObservationTargets(ownerId, workerId),
+      repository.listWorkerExecutionRootContexts(ownerId, workerId),
+    ]);
     const configuredTargets = await Promise.all(
       targets.map(async (target) => {
         const active = await repository.getActiveGitOperation(
@@ -1702,6 +1703,13 @@ export async function buildApp({
     await bridge.request(workerId, {
       type: "worktree.observation.configure",
       targets: configuredTargets,
+      codegraphTargets: codegraphTargets.map((target) => ({
+        projectId: target.projectId,
+        worktreeId: target.worktreeId,
+        rootKind: target.rootKind,
+        sourcePath: target.sourcePath,
+        worktreePath: target.worktreePath,
+      })),
     });
   };
   const scheduleWorkerWorktreeObservation = (workerId: string): void => {
