@@ -66,6 +66,10 @@ function toJob(row: ProjectReplicaJobRow): ProjectReplicaJobSummary {
     stateRevision: row.stateRevision,
     idempotencyKey: row.idempotencyKey,
     repository: row.repository,
+    placementMode: row.placementMode,
+    placementPath: row.placementPath,
+    resolvedMaterialization: row.resolvedMaterialization,
+    resolvedOwnership: row.resolvedOwnership,
     expectedRevision: row.expectedRevision,
     resolvedRevision: row.resolvedRevision,
     synchronizationPolicy: row.synchronizationPolicy,
@@ -94,6 +98,7 @@ function provisionFingerprint(
   projectId: string,
   input: EncryptedProjectReplicaProvisionCreate,
 ): string {
+  const placement = input.placement ?? { mode: "managed" as const };
   return createHash("sha256")
     .update(
       JSON.stringify({
@@ -101,6 +106,7 @@ function provisionFingerprint(
         projectId,
         workerId: input.workerId,
         repository: input.repository,
+        placement,
         expectedRevision: input.expectedRevision,
       }),
     )
@@ -147,6 +153,7 @@ export class ProjectReplicaJobRepository {
     input: EncryptedProjectReplicaProvisionCreate,
   ): Promise<ProjectReplicaJobSummary> {
     const fingerprint = provisionFingerprint(projectId, input);
+    const placement = input.placement ?? { mode: "managed" as const };
     const existing = await this.database
       .select()
       .from(schema.projectReplicaJobs)
@@ -172,6 +179,7 @@ export class ProjectReplicaJobRepository {
         const targets = await transaction
           .select({
             project: schema.projects,
+            capabilities: schema.workers.projectReplicaCapabilities,
             workerId: schema.workers.id,
           })
           .from(schema.projects)
@@ -199,6 +207,19 @@ export class ProjectReplicaJobRepository {
         if (!target.project.githubRepositoryFullName) {
           throw new ProjectReplicaJobConflictError(
             "Only GitHub-backed projects can provision worker replicas.",
+          );
+        }
+        const supportsPlacement =
+          placement.mode === "managed" ||
+          (placement.mode === "managed-link"
+            ? target.capabilities.managedLinkPlacement === true &&
+              target.capabilities.recursiveParentCreation === true
+            : target.capabilities.directPlacement === true &&
+              target.capabilities.attachExisting === true &&
+              target.capabilities.recursiveParentCreation === true);
+        if (!supportsPlacement) {
+          throw new ProjectReplicaJobConflictError(
+            "The selected worker does not support this repository placement mode.",
           );
         }
         const replicas = await transaction
@@ -246,6 +267,8 @@ export class ProjectReplicaJobRepository {
             idempotencyKey: input.idempotencyKey,
             payloadFingerprint: fingerprint,
             repository: input.repository,
+            placementMode: placement.mode,
+            placementPath: placement.mode === "managed" ? null : placement.path,
             expectedRevision: input.expectedRevision,
             progress: progress(
               "queued",

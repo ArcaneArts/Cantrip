@@ -549,6 +549,10 @@ export const projectReplicaCapabilitiesSchema = z.object({
   synchronize: z.boolean(),
   remove: z.boolean(),
   exactRevision: z.boolean(),
+  directPlacement: z.boolean().default(false),
+  managedLinkPlacement: z.boolean().default(false),
+  attachExisting: z.boolean().default(false),
+  recursiveParentCreation: z.boolean().default(false),
 });
 
 export const unavailableProjectReplicaCapabilities =
@@ -557,6 +561,10 @@ export const unavailableProjectReplicaCapabilities =
     synchronize: false,
     remove: false,
     exactRevision: false,
+    directPlacement: false,
+    managedLinkPlacement: false,
+    attachExisting: false,
+    recursiveParentCreation: false,
   });
 
 export const managedFolderCapabilitiesSchema = z.object({
@@ -2643,22 +2651,93 @@ export const projectGithubWireRepositorySchema = z.union([
   projectGithubRoutingRepositorySchema,
 ]);
 
+export const projectReplicaPlacementModeSchema = z.enum([
+  "managed",
+  "managed-link",
+  "direct",
+]);
+
+const projectReplicaManagedPlacementSchema = z
+  .object({ mode: z.literal("managed") })
+  .strict();
+
+const projectReplicaManagedLinkPlacementSchema = z
+  .object({
+    mode: z.literal("managed-link"),
+    path: z.string().trim().min(1).max(8_192),
+  })
+  .strict();
+
+const projectReplicaDirectPlacementSchema = z
+  .object({
+    mode: z.literal("direct"),
+    path: z.string().trim().min(1).max(8_192),
+  })
+  .strict();
+
+export const projectReplicaPlacementRequestSchema = z.discriminatedUnion(
+  "mode",
+  [
+    projectReplicaManagedPlacementSchema,
+    projectReplicaManagedLinkPlacementSchema,
+    projectReplicaDirectPlacementSchema,
+  ],
+);
+
+export const encryptedProjectReplicaPlacementRequestSchema =
+  z.discriminatedUnion("mode", [
+    projectReplicaManagedPlacementSchema,
+    z
+      .object({
+        mode: z.literal("managed-link"),
+        path: repositoryRoutingHandleSchema,
+      })
+      .strict(),
+    z
+      .object({
+        mode: z.literal("direct"),
+        path: repositoryRoutingHandleSchema,
+      })
+      .strict(),
+  ]);
+
+export const projectReplicaMaterializationSchema = z.enum([
+  "cloned",
+  "reused",
+  "attached",
+]);
+
+export const projectReplicaOwnershipKindSchema = z.enum(["cantrip", "user"]);
+
+export const projectReplicaPlacementResultSchema = z
+  .object({
+    mode: projectReplicaPlacementModeSchema,
+    materialization: projectReplicaMaterializationSchema,
+    ownership: projectReplicaOwnershipKindSchema,
+    canonicalPath: z.string().min(1).max(8_192),
+    requestedPath: z.string().min(1).max(8_192).nullable(),
+    linkPath: z.string().min(1).max(8_192).nullable(),
+  })
+  .strict();
+
 export const githubProjectCreateSchema = z.object({
   workerId: z.string().min(1),
   repositoryId: z.string().min(1),
   nameWithOwner: githubRepositorySchema.shape.nameWithOwner,
   url: z.url(),
+  placement: projectReplicaPlacementRequestSchema.optional(),
   workspaceIds: z.array(z.string().min(1)).min(1).max(100).optional(),
 });
 
 export const encryptedGithubProjectCreateSchema = githubProjectCreateSchema
-  .omit({ repositoryId: true, nameWithOwner: true, url: true })
+  .omit({ repositoryId: true, nameWithOwner: true, placement: true, url: true })
   .extend({
     id: z.string().uuid(),
     nameProtection: privateDisplayLabelOpaqueSchema,
     repositoryBlindIndex: encryptionKeyBytesSchema,
     repositoryId: repositoryRoutingHandleSchema,
     nameWithOwner: repositoryRoutingHandleSchema,
+    placement: encryptedProjectReplicaPlacementRequestSchema.optional(),
     url: repositoryRoutingHandleSchema,
   })
   .strict();
@@ -2834,6 +2913,10 @@ export const projectSourceSummarySchema = z.object({
   workerId: z.string().min(1),
   path: z.string().min(1),
   displayPath: z.string().min(1),
+  placementMode: projectReplicaPlacementModeSchema.default("managed"),
+  ownershipKind: projectReplicaOwnershipKindSchema.default("cantrip"),
+  requestedPath: z.string().min(1).nullable().default(null),
+  linkPath: z.string().min(1).nullable().default(null),
 });
 
 export const projectReplicaSummarySchema = z.object({
@@ -2845,6 +2928,10 @@ export const projectReplicaSummarySchema = z.object({
   workerOnline: z.boolean(),
   path: z.string().min(1),
   displayPath: z.string().min(1),
+  placementMode: projectReplicaPlacementModeSchema.default("managed"),
+  ownershipKind: projectReplicaOwnershipKindSchema.default("cantrip"),
+  requestedPath: z.string().min(1).nullable().default(null),
+  linkPath: z.string().min(1).nullable().default(null),
   repositoryFingerprint: z.string().min(1).nullable(),
   primaryWorktreeId: z.string().min(1).nullable(),
   branch: z.string().min(1).nullable(),
@@ -2891,6 +2978,18 @@ export const projectReplicaJobErrorCodeSchema = z.enum([
   "policy-denied",
   "remote-unavailable",
   "windows-long-paths-disabled",
+  "placement-unsupported",
+  "path-invalid",
+  "path-permission-denied",
+  "parent-creation-failed",
+  "target-type-mismatch",
+  "target-repository-mismatch",
+  "target-not-primary-worktree",
+  "target-owned-by-another-project",
+  "target-revision-mismatch",
+  "link-unsupported",
+  "link-target-mismatch",
+  "ownership-proof-missing",
   "replica-in-use",
   "unpushed-commits",
   "worker-error",
@@ -2928,6 +3027,12 @@ export const projectReplicaJobSummarySchema = z.object({
   stateRevision: z.number().int().positive(),
   idempotencyKey: z.string().min(1).max(200),
   repository: z.string().min(1),
+  placementMode: projectReplicaPlacementModeSchema.default("managed"),
+  placementPath: z.string().min(1).nullable().default(null),
+  resolvedMaterialization: projectReplicaMaterializationSchema
+    .nullable()
+    .default(null),
+  resolvedOwnership: projectReplicaOwnershipKindSchema.nullable().default(null),
   expectedRevision: gitObjectRevisionSchema.nullable(),
   resolvedRevision: gitObjectRevisionSchema.nullable(),
   synchronizationPolicy: z
@@ -2951,13 +3056,18 @@ export const projectReplicaJobListSchema = z
 
 export const projectReplicaProvisionCreateSchema = z.object({
   workerId: z.string().min(1),
+  placement: projectReplicaPlacementRequestSchema.optional(),
   expectedRevision: gitObjectRevisionSchema.nullable().default(null),
   idempotencyKey: z.string().trim().min(1).max(200),
 });
 
 export const encryptedProjectReplicaProvisionCreateSchema =
   projectReplicaProvisionCreateSchema
-    .extend({ repository: repositoryRoutingHandleSchema })
+    .omit({ placement: true })
+    .extend({
+      placement: encryptedProjectReplicaPlacementRequestSchema.optional(),
+      repository: repositoryRoutingHandleSchema,
+    })
     .strict();
 
 export const projectReplicaSynchronizationPolicySchema = z.enum([
@@ -8569,6 +8679,7 @@ export const projectReplicaProvisionReadySchema = z.object({
   resolvedRevision: gitObjectRevisionSchema.nullable(),
   branch: z.string().min(1).nullable(),
   reused: z.boolean(),
+  placement: projectReplicaPlacementResultSchema.nullable().default(null),
   worktreePolicy: worktreePolicySchema.nullable().optional(),
 });
 
@@ -12952,6 +13063,24 @@ export type WorkerHeartbeat = z.infer<typeof workerHeartbeatSchema>;
 export type WorkerSummary = z.infer<typeof workerSummarySchema>;
 export type ProjectReplicaCapabilities = z.infer<
   typeof projectReplicaCapabilitiesSchema
+>;
+export type ProjectReplicaPlacementMode = z.infer<
+  typeof projectReplicaPlacementModeSchema
+>;
+export type ProjectReplicaPlacementRequest = z.infer<
+  typeof projectReplicaPlacementRequestSchema
+>;
+export type EncryptedProjectReplicaPlacementRequest = z.infer<
+  typeof encryptedProjectReplicaPlacementRequestSchema
+>;
+export type ProjectReplicaMaterialization = z.infer<
+  typeof projectReplicaMaterializationSchema
+>;
+export type ProjectReplicaOwnershipKind = z.infer<
+  typeof projectReplicaOwnershipKindSchema
+>;
+export type ProjectReplicaPlacementResult = z.infer<
+  typeof projectReplicaPlacementResultSchema
 >;
 export type ManagedFolderCapabilities = z.infer<
   typeof managedFolderCapabilitiesSchema

@@ -1,4 +1,5 @@
 import {
+  encryptedProjectReplicaPlacementRequestSchema,
   githubProjectCreateSchema,
   managedFolderProjectCreateSchema,
   projectGithubConversionRepositorySchema,
@@ -255,16 +256,38 @@ export class ProjectEncryptionAdapter {
     if (!this.api.protectRepositoryIdentity) {
       throw new Error("Protected repository identity is unavailable.");
     }
-    const { workerId, workspaceIds, ...repository } = parsed;
+    const {
+      workerId,
+      workspaceIds,
+      placement = { mode: "managed" as const },
+      ...repository
+    } = parsed;
     const protectedIdentity = await this.api.protectRepositoryIdentity({
       workerId,
       projectId: id,
       repository,
     });
+    let protectedPlacement =
+      encryptedProjectReplicaPlacementRequestSchema.parse({ mode: "managed" });
+    if (placement.mode !== "managed") {
+      if (!this.api.registerMetadata) {
+        throw new Error("Protected repository metadata is unavailable.");
+      }
+      const registered = await this.api.registerMetadata({
+        workerId,
+        scopeId: id,
+        values: { placementPath: placement.path },
+      });
+      protectedPlacement = encryptedProjectReplicaPlacementRequestSchema.parse({
+        mode: placement.mode,
+        path: registered.values.placementPath,
+      });
+    }
     return this.decrypt(
       await this.api.createGithub({
         workerId,
         workspaceIds,
+        placement: protectedPlacement,
         id,
         nameProtection: await this.protectName(id, name),
         repositoryBlindIndex: protectedIdentity.repositoryBlindIndex,

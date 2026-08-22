@@ -1116,6 +1116,10 @@ describe("Cantrip protocol", () => {
     expect(projectSummarySchema.parse({ ...legacy, replicas }).source).toEqual({
       ...legacy.source,
       sourceKind: "git",
+      placementMode: "managed",
+      ownershipKind: "cantrip",
+      requestedPath: null,
+      linkPath: null,
     });
   });
 
@@ -1415,6 +1419,10 @@ describe("Cantrip protocol", () => {
       synchronize: false,
       remove: false,
       exactRevision: false,
+      directPlacement: false,
+      managedLinkPlacement: false,
+      attachExisting: false,
+      recursiveParentCreation: false,
     });
     expect(heartbeat.managedFolders).toEqual({
       create: false,
