@@ -457,6 +457,111 @@ describe("Grok OAuth accounts", () => {
     }
   });
 
+  it("quarantines rejected reasoning while preserving newer valid reasoning", async () => {
+    const upstreamRequests: Array<{ body: string; headers: Headers }> = [];
+    const client = new GrokSubscriptionClient(
+      async () => ({
+        accessToken: "worker-owned-token",
+        email: "grok@example.com",
+        userId: "user-1",
+      }),
+      {
+        fetch: async (_input, init) => {
+          const body = await new Response(init?.body).text();
+          upstreamRequests.push({ body, headers: new Headers(init?.headers) });
+          if (body.includes("rejected-state")) {
+            return json(
+              {
+                code: "invalid-argument",
+                error:
+                  "Could not decode the compaction blob. Ensure it is unmodified from the compact response.",
+              },
+              400,
+            );
+          }
+          return json({ id: `response-${upstreamRequests.length}` });
+        },
+      },
+    );
+    try {
+      const baseUrl = await client.localProxyBaseUrl();
+      const metadata = {
+        session_id: "session-1",
+        thread_id: "thread-1",
+        turn_id: "turn-1",
+      };
+      const rejectedReasoning = {
+        type: "reasoning",
+        id: "reasoning-rejected",
+        status: "completed",
+        summary: [{ type: "summary_text", text: "Rejected reasoning." }],
+        encrypted_content: "rejected-state",
+      };
+      const first = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [
+            rejectedReasoning,
+            {
+              type: "function_call_output",
+              call_id: "call-1",
+              output: "README.md",
+            },
+          ],
+          prompt_cache_key: "cache-1",
+          client_metadata: metadata,
+        }),
+      });
+      await expect(first.json()).resolves.toEqual({ id: "response-2" });
+
+      const continuation = await fetch(`${baseUrl}/responses?stream=false`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "grok-4.6",
+          input: [
+            rejectedReasoning,
+            {
+              type: "reasoning",
+              id: "reasoning-valid",
+              status: "completed",
+              summary: [{ type: "summary_text", text: "Valid reasoning." }],
+              encrypted_content: "valid-new-state",
+            },
+            {
+              type: "function_call_output",
+              call_id: "call-2",
+              output: "package.json",
+            },
+          ],
+          prompt_cache_key: "cache-1",
+          client_metadata: metadata,
+        }),
+      });
+      await expect(continuation.json()).resolves.toEqual({ id: "response-3" });
+      expect(upstreamRequests).toHaveLength(3);
+
+      const forwarded = JSON.parse(upstreamRequests[2]?.body ?? "{}") as {
+        input: Array<Record<string, unknown>>;
+      };
+      expect(forwarded.input).not.toContainEqual(
+        expect.objectContaining({ encrypted_content: "rejected-state" }),
+      );
+      expect(forwarded.input).toContainEqual(
+        expect.objectContaining({ encrypted_content: "valid-new-state" }),
+      );
+      expect(upstreamRequests[2]?.headers.get("x-grok-conv-id")).toBe(
+        "cache-1",
+      );
+      expect(upstreamRequests[2]?.headers.get("x-grok-req-id")).toBe("turn-1");
+      expect(upstreamRequests[2]?.headers.get("x-grok-turn-idx")).toBe("1");
+    } finally {
+      client.close();
+    }
+  });
+
   it("recovers rejected opaque reasoning before resetting Grok session affinity", async () => {
     const upstreamRequests: Array<{ body: string; headers: Headers }> = [];
     const client = new GrokSubscriptionClient(

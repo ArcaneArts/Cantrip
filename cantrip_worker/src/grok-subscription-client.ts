@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -334,7 +334,44 @@ async function responseHasReasoningDecodeFailure(
   }
 }
 
-function stripReasoningItems(body: Buffer | undefined): Buffer | null {
+function reasoningItemKey(item: Record<string, unknown>): string {
+  const encryptedContent =
+    typeof item.encrypted_content === "string" && item.encrypted_content
+      ? item.encrypted_content
+      : null;
+  const source =
+    encryptedContent ??
+    (typeof item.id === "string" && item.id ? item.id : JSON.stringify(item));
+  return createHash("sha256").update(source).digest("hex");
+}
+
+function reasoningItemKeys(body: Buffer | undefined): Set<string> {
+  if (!body?.byteLength) return new Set();
+  try {
+    const parsed = JSON.parse(body.toString("utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Set();
+    }
+    const input = (parsed as Record<string, unknown>).input;
+    if (!Array.isArray(input)) return new Set();
+    return new Set(
+      input.flatMap((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+          return [];
+        }
+        const item = entry as Record<string, unknown>;
+        return item.type === "reasoning" ? [reasoningItemKey(item)] : [];
+      }),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function stripReasoningItems(
+  body: Buffer | undefined,
+  rejectedKeys?: ReadonlySet<string>,
+): Buffer | null {
   if (!body?.byteLength) return null;
   let payload: Record<string, unknown>;
   try {
@@ -356,7 +393,12 @@ function stripReasoningItems(body: Buffer | undefined): Buffer | null {
     // Grok accepts replayed reasoning only with the exact encrypted payload it
     // produced. Once that payload is rejected, retaining a summary-only item
     // produces a 422 because it is not a valid ModelInput variant.
-    if (item.type !== "reasoning") return [entry];
+    if (
+      item.type !== "reasoning" ||
+      (rejectedKeys && !rejectedKeys.has(reasoningItemKey(item)))
+    ) {
+      return [entry];
+    }
     changed = true;
     return [];
   });
@@ -455,6 +497,10 @@ export class GrokSubscriptionClient {
   readonly #now: () => number;
   readonly #proxyBaseUrl: string;
   readonly #proxyPathToken = randomUUID();
+  readonly #rejectedReasoningKeysByConversation = new Map<
+    string,
+    Set<string>
+  >();
   readonly #statelessConversations = new Set<string>();
   readonly #statelessRequestIdByTurn = new Map<string, string>();
   readonly #turnIndexByRequest = new Map<string, number>();
@@ -592,6 +638,7 @@ export class GrokSubscriptionClient {
     this.#proxyServer?.close();
     this.#proxyServer = null;
     this.#nextTurnIndexByConversation.clear();
+    this.#rejectedReasoningKeysByConversation.clear();
     this.#statelessConversations.clear();
     this.#statelessRequestIdByTurn.clear();
     this.#turnIndexByRequest.clear();
@@ -751,6 +798,9 @@ export class GrokSubscriptionClient {
     const statelessConversation = this.#statelessConversations.has(
       identity.conversationId,
     );
+    const rejectedReasoningKeys = this.#rejectedReasoningKeysByConversation.get(
+      identity.conversationId,
+    );
     let turnIndex = this.#turnIndexByRequest.get(turnKey);
     if (turnIndex === undefined) {
       // Grok increments its prompt index before sampling, so mirror its
@@ -783,9 +833,16 @@ export class GrokSubscriptionClient {
       headers.set("x-grok-model-override", identity.modelId);
     }
     const target = `${new URL(this.#proxyBaseUrl).origin}${upstreamPath}${requestUrl.search}`;
-    const initialBody = statelessConversation
-      ? removePromptCacheKey(stripReasoningItems(body) ?? body)
-      : body;
+    let initialBody = body;
+    if (rejectedReasoningKeys?.size) {
+      initialBody =
+        stripReasoningItems(initialBody, rejectedReasoningKeys) ?? initialBody;
+    }
+    if (statelessConversation) {
+      initialBody =
+        removePromptCacheKey(stripReasoningItems(initialBody) ?? initialBody) ??
+        initialBody;
+    }
     const initial = await this.request(
       target,
       {
@@ -798,11 +855,12 @@ export class GrokSubscriptionClient {
     if (statelessConversation) return initial;
     if (!(await responseHasReasoningDecodeFailure(initial))) return initial;
 
-    const portableBody = stripReasoningItems(body);
+    const portableBody = stripReasoningItems(initialBody);
     let rejected = initial;
     if (portableBody) {
+      const rejectedKeys = reasoningItemKeys(initialBody);
       workerLogger.warn(
-        "Grok rejected opaque reasoning state; retrying without reasoning history",
+        "Grok rejected opaque reasoning state; quarantining it from later continuations",
         {
           conversationId: identity.conversationId,
           requestId: identity.requestId,
@@ -818,11 +876,22 @@ export class GrokSubscriptionClient {
         },
         true,
       );
-      if (!(await responseHasReasoningDecodeFailure(portable))) return portable;
+      if (!(await responseHasReasoningDecodeFailure(portable))) {
+        const quarantined =
+          this.#rejectedReasoningKeysByConversation.get(
+            identity.conversationId,
+          ) ?? new Set<string>();
+        for (const key of rejectedKeys) quarantined.add(key);
+        this.#rejectedReasoningKeysByConversation.set(
+          identity.conversationId,
+          quarantined,
+        );
+        return portable;
+      }
       rejected = portable;
     }
 
-    const statelessBody = removePromptCacheKey(portableBody ?? body);
+    const statelessBody = removePromptCacheKey(portableBody ?? initialBody);
     if (!statelessBody) return rejected;
     await discardResponse(rejected);
     const statelessHeaders = new Headers(headers);
@@ -847,6 +916,7 @@ export class GrokSubscriptionClient {
     if (stateless.ok) {
       this.#statelessConversations.add(identity.conversationId);
       this.#statelessRequestIdByTurn.set(turnKey, statelessRequestId);
+      this.#rejectedReasoningKeysByConversation.delete(identity.conversationId);
     }
     return stateless;
   }
