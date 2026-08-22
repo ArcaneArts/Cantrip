@@ -24,6 +24,22 @@ export function projectsInWorkspace(
   return projects.filter(({ id }) => visibleIds.has(id));
 }
 
+export function resolveProjectWorkspaceForSelection(
+  workspaces: readonly ProjectWorkspaceSummary[],
+  projectId: string,
+  preferredWorkspaceId: string | null,
+): ProjectWorkspaceSummary | null {
+  const preferred = workspaces.find(
+    ({ id, projectIds }) =>
+      id === preferredWorkspaceId && projectIds.includes(projectId),
+  );
+  return (
+    preferred ??
+    workspaces.find(({ projectIds }) => projectIds.includes(projectId)) ??
+    null
+  );
+}
+
 export interface ProjectSearchResult {
   memberships: ProjectWorkspaceSummary[];
   project: ProjectSummary;
