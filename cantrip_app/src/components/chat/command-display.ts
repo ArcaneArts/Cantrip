@@ -1,5 +1,7 @@
 const loginShellCommandPattern =
   /^(?:\/(?:[^\s/]+\/)*)?(?:bash|zsh|sh)\s+-lc\s+([\s\S]+)$/u;
+const powershellCommandPattern =
+  /^(?:"(?:(?:[A-Za-z]:)?[^"\r\n]*[\\/])?(?:powershell|pwsh)(?:\.exe)?"|(?:(?:[A-Za-z]:)?[^\s"'`\r\n]*[\\/])?(?:powershell|pwsh)(?:\.exe)?)\s+(?:(?:-(?:NoLogo|NoProfile|NonInteractive)\s+)|(?:-ExecutionPolicy\s+\S+\s+))*(?:-Command|-c)\s+([\s\S]+)$/iu;
 const quotedWorkerRepositoryPathPattern =
   /(["'])(?:[A-Za-z]:)?[\\/][^"'\r\n]*?[\\/]worker[\\/]repositories[\\/]([^\\/"'\s]+)[\\/]([^\\/"'\s]+)/gu;
 const unquotedWorkerRepositoryPathPattern =
@@ -30,7 +32,9 @@ function normalizeWorkerRepositoryPaths(command: string): string {
 }
 
 export function displayCommand(command: string): string {
-  const match = loginShellCommandPattern.exec(command);
+  const match =
+    loginShellCommandPattern.exec(command) ??
+    powershellCommandPattern.exec(command);
   const unwrapped = match ? unwrapQuotedCommand(match[1]!.trim()) : command;
   return normalizeWorkerRepositoryPaths(unwrapped);
 }
