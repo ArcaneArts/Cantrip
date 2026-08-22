@@ -28,8 +28,8 @@ supported alias.
   text file with optimistic concurrency protection.
 - `cantrip terminal` reads scrollback, sends input, or restarts a configured
   terminal service.
-- `cantrip browser` discovers worker browser services or navigates a Browser
-  tab.
+- `cantrip browser` discovers worker browser services or opens a URL in a
+  Browser tab, creating and focusing one when the project has none.
 
 Commands choose useful defaults. A command run inside a linked terminal uses
 that terminal; a command run by Codex uses its chat; otherwise the current

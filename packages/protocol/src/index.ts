@@ -7737,6 +7737,7 @@ export const cantripCliCommandNameSchema = z.enum([
   "terminal.send",
   "terminal.restart",
   "browser.services",
+  "browser.create",
   "browser.open",
 ]);
 

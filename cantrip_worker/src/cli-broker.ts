@@ -44,6 +44,7 @@ import {
   invokeCantripCliCommand,
 } from "./cli-client.js";
 import { workerLogError, workerLogger } from "./logger.js";
+import { encodePrivateDisplayLabelForWorker } from "./private-label-encryption.js";
 import { encodeSurfacePrivateStateForWorker } from "./surface-private-state-encryption.js";
 import {
   openWorkerSurfaceStreamContent,
@@ -338,8 +339,13 @@ export class CantripCliBroker {
     command: CantripCliCommandRequest,
     requestId: string,
     chatContext: CantripCliChatContext | null,
-  ): Promise<CantripCliCommandRequest> {
-    if (command.command !== "browser.open") return command;
+  ): Promise<{
+    command: CantripCliCommandRequest;
+    result: CantripCliCommandResult | null;
+  }> {
+    if (command.command !== "browser.open") {
+      return { command, result: null };
+    }
     if (!this.#surfacePrivateState) {
       throw new Error("Browser private-state encryption is unavailable.");
     }
@@ -364,15 +370,60 @@ export class CantripCliBroker {
       `${requestId}:resolve-browser`,
       chatContext,
     );
-    const target = executionTargetSchema.parse(resolution.target);
+    let target = executionTargetSchema.parse(resolution.target);
     const details = resolution.data as {
       serverId?: unknown;
       stateRevision?: unknown;
     } | null;
+    if (typeof details?.serverId !== "string") {
+      throw new Error("The browser target has no usable encrypted state.");
+    }
+    if (target.kind !== "surface" || target.surfaceKind !== "browser") {
+      const id = randomUUID();
+      const ownerId = this.#surfacePrivateState.ownerId();
+      const created = await this.#execute(
+        cantripCliCommandRequestSchema.parse({
+          command: "browser.create",
+          context: command.context,
+          arguments: {
+            id,
+            target,
+            titleProtection: await encodePrivateDisplayLabelForWorker({
+              label: "Browser",
+              ownerId,
+              recordKind: "browser",
+              rowId: id,
+              service: this.#surfacePrivateState,
+            }),
+            stateProtection: await encodeSurfacePrivateStateForWorker({
+              ownerId,
+              context: {
+                serverId: details.serverId,
+                resource: "browser-row",
+                resourceId: id,
+                operationId: null,
+                recordKind: "browser-state",
+              },
+              content: {
+                version: 1,
+                classification: { recordKind: "browser-state" },
+                revision: 1,
+                url: url.toString(),
+              },
+              service: this.#surfacePrivateState,
+            }),
+          },
+        }),
+        `${requestId}:create-browser`,
+        chatContext,
+      );
+      target = executionTargetSchema.parse(created.target);
+      if (target.kind !== "surface" || target.surfaceKind !== "browser") {
+        throw new Error("Cantrip did not return the created Browser target.");
+      }
+      return { command, result: created };
+    }
     if (
-      target.kind !== "surface" ||
-      target.surfaceKind !== "browser" ||
-      typeof details?.serverId !== "string" ||
       !Number.isSafeInteger(details.stateRevision) ||
       Number(details.stateRevision) < 1
     ) {
@@ -396,15 +447,18 @@ export class CantripCliBroker {
       },
       service: this.#surfacePrivateState,
     });
-    return cantripCliCommandRequestSchema.parse({
-      command: command.command,
-      context: command.context,
-      arguments: {
-        target: target.surfaceId,
-        expectedStateRevision,
-        stateProtection,
-      },
-    });
+    return {
+      command: cantripCliCommandRequestSchema.parse({
+        command: command.command,
+        context: command.context,
+        arguments: {
+          target: target.surfaceId,
+          expectedStateRevision,
+          stateProtection,
+        },
+      }),
+      result: null,
+    };
   }
 
   private async executeProtectedSurfaceCommand(
@@ -769,12 +823,15 @@ export class CantripCliBroker {
               );
               return;
             }
-            command = await this.protectBrowserNavigation(
+            const browserNavigation = await this.protectBrowserNavigation(
               command,
               requestId,
               chatContext,
             );
-            const result = await this.#execute(command, requestId, chatContext);
+            command = browserNavigation.command;
+            const result =
+              browserNavigation.result ??
+              (await this.#execute(command, requestId, chatContext));
             workerLogger.event("debug", "Cantrip CLI command completed", {
               event: "cli.command.completed",
               subsystem: "cli-broker",

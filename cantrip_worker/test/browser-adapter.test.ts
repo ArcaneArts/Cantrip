@@ -450,20 +450,42 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             framesBeforeNavigation,
         );
 
-        await session.updateConfiguration?.(
-          { kind: "browser", profileId: null },
-          {
-            serverId,
-            stateResource: "browser-row",
-            stateRevision: 2,
-            stateProtection: await persistentBrowserState({
-              revision: 2,
-              service: surfacePrivateState,
-              surfaceId,
-              url: `${root}configured`,
-            }),
-          },
-        );
+        const originalCommand = BrowserCdpSession.prototype.command;
+        let interruptedConfiguration = false;
+        const command = vi
+          .spyOn(BrowserCdpSession.prototype, "command")
+          .mockImplementation(function (method, params = {}) {
+            if (
+              !interruptedConfiguration &&
+              method === "Page.navigate" &&
+              params.url === `${root}configured`
+            ) {
+              interruptedConfiguration = true;
+              this.client.close(
+                new Error("Chromium restarted during configuration."),
+              );
+            }
+            return originalCommand.call(this, method, params);
+          });
+        try {
+          await session.updateConfiguration?.(
+            { kind: "browser", profileId: null },
+            {
+              serverId,
+              stateResource: "browser-row",
+              stateRevision: 2,
+              stateProtection: await persistentBrowserState({
+                revision: 2,
+                service: surfacePrivateState,
+                surfaceId,
+                url: `${root}configured`,
+              }),
+            },
+          );
+        } finally {
+          command.mockRestore();
+        }
+        expect(interruptedConfiguration).toBe(true);
         await eventually(() =>
           hasBrowserState({
             emissions,
@@ -474,6 +496,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             url: `${root}configured`,
           }),
         );
+        const launchesAfterConfiguration = launches.length;
 
         await session.handleFrame(
           "attachment-test",
@@ -557,7 +580,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
           ),
         ).rejects.toThrow(/CDP/);
         expect(adapter.session("browser-test")).not.toBeNull();
-        expect(launches).toHaveLength(1);
+        expect(launches).toHaveLength(launchesAfterConfiguration);
 
         for (const message of [
           {
@@ -585,12 +608,13 @@ describe("BrowserRemoteSurfaceAdapter", () => {
               ?.evaluate("globalThis.scrollY > 0"),
           ),
         );
-        expect(launches).toHaveLength(1);
+        expect(launches).toHaveLength(launchesAfterConfiguration);
 
         const framesBeforeCrash = emissions.filter(
           ({ channel }) => channel === "frame",
         ).length;
-        launches[0]?.kill("SIGKILL");
+        const launchesBeforeCrash = launches.length;
+        launches.at(-1)?.kill("SIGKILL");
         await eventually(() =>
           emissions
             .filter(({ channel }) => channel === "control")
@@ -604,7 +628,7 @@ describe("BrowserRemoteSurfaceAdapter", () => {
               );
             }),
         );
-        await eventually(() => launches.length >= 2);
+        await eventually(() => launches.length > launchesBeforeCrash);
         await eventually(
           () =>
             emissions.filter(({ channel }) => channel === "frame").length >

@@ -856,15 +856,24 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
     });
     this.configuration = configuration;
     this.#stateRevision = opened.revision;
-    if (this.#session) {
-      await this.#session.applyConfiguration(
-        configuration,
-        opened.url,
-        opened.revision,
-      );
-      this.#currentUrl = this.#session.currentUrl;
+    this.#currentUrl = opened.url;
+    const session = this.#session;
+    if (session) {
+      try {
+        await session.applyConfiguration(
+          configuration,
+          opened.url,
+          opened.revision,
+        );
+      } catch (error) {
+        if (this.#session === session) throw error;
+        this.#currentUrl = opened.url;
+        await this.waitForRecovery();
+      }
+      this.#currentUrl = this.#session?.currentUrl ?? opened.url;
     } else {
-      this.#currentUrl = opened.url;
+      await this.waitForRecovery();
+      this.#currentUrl = this.#session?.currentUrl ?? opened.url;
     }
   }
 
@@ -923,6 +932,30 @@ class ResilientBrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       this.#opening = null;
     });
     return this.#opening;
+  }
+
+  private async waitForRecovery(
+    timeoutMs = 20_000,
+  ): Promise<BrowserRemoteSurfaceSession> {
+    const deadline = Date.now() + timeoutMs;
+    while (!this.#closed && Date.now() < deadline) {
+      if (this.#session) return this.#session;
+      if (this.#opening) {
+        try {
+          return await this.#opening;
+        } catch {
+          this.scheduleRestart();
+        }
+      } else if (!this.#restartTimer) {
+        try {
+          return await this.ensureSession();
+        } catch {
+          this.scheduleRestart();
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error("Browser runtime did not recover in time.");
   }
 
   private async openSession(): Promise<BrowserRemoteSurfaceSession> {
