@@ -8,6 +8,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  Link2,
   Network,
   SquareTerminal,
 } from "lucide-react";
@@ -71,6 +72,7 @@ export function ExplorerEntryRow({
   const openable = entry.kind === "directory" || entry.viewable;
   const title = [
     entry.path,
+    entry.symbolicLink ? "Symbolic link" : null,
     openable ? null : "Preview unavailable",
     change?.label,
     metadata?.tooltip,
@@ -120,6 +122,12 @@ export function ExplorerEntryRow({
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+            {entry.symbolicLink ? (
+              <span className="shrink-0" title="Symbolic link">
+                <Link2 className="size-3 text-muted-foreground/70" />
+                <span className="sr-only">Symbolic link</span>
+              </span>
+            ) : null}
             {change ? (
               <span
                 className={cn(

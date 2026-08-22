@@ -112,30 +112,60 @@ describe("project explorer", () => {
     expect(finalChunk).toMatchObject({ offset: 2, eof: true, size: 3 });
   });
 
-  it("rejects traversal and symbolic-link escapes", async () => {
+  it("rejects path traversal while following symbolic links", async () => {
     const parent = await mkdtemp(path.join(tmpdir(), "cantrip-explorer-test-"));
     directories.push(parent);
     const root = path.join(parent, "project");
     const outside = path.join(parent, "outside.txt");
+    const outsideDirectory = path.join(parent, "shared");
     await mkdir(root);
+    await mkdir(outsideDirectory);
     await writeFile(outside, "private\n");
+    await writeFile(path.join(outsideDirectory, "nested.md"), "# Shared\n");
     await symlink(outside, path.join(root, "linked.txt"));
+    await symlink(outsideDirectory, path.join(root, "linked-directory"));
+    await symlink(path.join(parent, "missing"), path.join(root, "broken"));
 
     await expect(readExplorerFile(root, "../outside.txt")).rejects.toThrow(
       "traversal",
     );
-    await expect(readExplorerFile(root, "linked.txt")).rejects.toThrow(
-      "does not follow symbolic links",
-    );
+    await expect(readExplorerFile(root, "linked.txt")).resolves.toMatchObject({
+      content: "private\n",
+      path: "linked.txt",
+    });
+    await expect(
+      listExplorerDirectory(root, "linked-directory"),
+    ).resolves.toMatchObject({
+      path: "linked-directory",
+      entries: [
+        expect.objectContaining({
+          kind: "file",
+          name: "nested.md",
+          path: "linked-directory/nested.md",
+        }),
+      ],
+    });
+    const directory = await listExplorerDirectory(root, "");
+    expect(
+      directory.entries.find(({ name }) => name === "linked-directory"),
+    ).toMatchObject({ kind: "directory", symbolicLink: true });
+    expect(
+      directory.entries.find(({ name }) => name === "linked.txt"),
+    ).toMatchObject({ kind: "file", symbolicLink: true, viewable: true });
+    expect(
+      directory.entries.find(({ name }) => name === "broken"),
+    ).toMatchObject({ kind: "other", symbolicLink: true, viewable: false });
     await expect(
       readExplorerMediaFile(root, "../outside.png", 0, 1),
     ).rejects.toThrow("traversal");
     await expect(
       writeExplorerFile(root, "../outside.txt", "overwrite\n", "a".repeat(64)),
     ).rejects.toThrow("traversal");
+    const linked = await readExplorerFile(root, "linked.txt");
     await expect(
-      writeExplorerFile(root, "linked.txt", "overwrite\n", "a".repeat(64)),
-    ).rejects.toThrow("does not follow symbolic links");
+      writeExplorerFile(root, "linked.txt", "updated\n", linked.version),
+    ).resolves.toMatchObject({ content: "updated\n" });
+    await expect(readFile(outside, "utf8")).resolves.toBe("updated\n");
   });
 
   it("hydrates immediate entries with one newest-first history scan", async () => {
