@@ -241,6 +241,9 @@ describe("durable project replica jobs", () => {
         synchronize: true,
         remove: true,
         exactRevision: true,
+        directPlacement: true,
+        attachExisting: true,
+        recursiveParentCreation: true,
       },
       startedAt: "2026-08-11T12:00:00.000Z",
     });
@@ -253,8 +256,13 @@ describe("durable project replica jobs", () => {
           repository: repositoryHandle,
           expectedRevision: "b".repeat(40),
           idempotencyKey: "provision:repository-one:replica-worker-two",
+          placement: { mode: "direct", path: `ctrr_${"P".repeat(43)}` },
         },
       );
+    expect(secondReplicaJob).toMatchObject({
+      placementMode: "direct",
+      placementPath: `ctrr_${"P".repeat(43)}`,
+    });
     const secondReplicaAttempt =
       await second.repository.projectReplicaJobs.claimNext();
     const secondReplica =
@@ -265,15 +273,40 @@ describe("durable project replica jobs", () => {
           status: "ready",
           jobId: secondReplicaJob.id,
           attempt: 1,
-          path: "/worker-two/repositories/ArcaneArts/Cantrip",
+          path: `ctrr_${"T".repeat(43)}`,
           displayPath: "ArcaneArts/Cantrip",
           repositoryFingerprint: "e".repeat(64),
           resolvedRevision: "b".repeat(40),
           branch: "main",
-          reused: false,
+          reused: true,
           worktreePolicy: null,
+          placement: {
+            mode: "direct",
+            materialization: "attached",
+            ownership: "user",
+            canonicalPath: `ctrr_${"C".repeat(43)}`,
+            requestedPath: `ctrr_${"R".repeat(43)}`,
+            linkPath: null,
+          },
         },
       );
+    expect(secondReplica).toMatchObject({
+      resolvedMaterialization: "attached",
+      resolvedOwnership: "user",
+    });
+    expect(
+      await second.repository.getProjectReplica(
+        LOCAL_USER_ID,
+        project.id,
+        secondReplica.projectReplicaId!,
+      ),
+    ).toMatchObject({
+      path: `ctrr_${"T".repeat(43)}`,
+      placementMode: "direct",
+      ownershipKind: "user",
+      requestedPath: `ctrr_${"R".repeat(43)}`,
+      linkPath: null,
+    });
     const synchronization =
       await second.repository.projectReplicaJobs.createSynchronize(
         LOCAL_USER_ID,
@@ -290,9 +323,24 @@ describe("durable project replica jobs", () => {
       kind: "synchronize",
       expectedRevision: "c".repeat(40),
       synchronizationPolicy: "fast-forward-primary",
+      placementMode: "direct",
+      placementPath: `ctrr_${"R".repeat(43)}`,
     });
     const synchronizationAttempt =
       await second.repository.projectReplicaJobs.claimNext();
+    expect(
+      await second.repository.projectReplicaJobs.operationContext(
+        synchronization.id,
+        synchronizationAttempt!.commandId,
+      ),
+    ).toMatchObject({
+      sourcePath: `ctrr_${"T".repeat(43)}`,
+      placementMode: "direct",
+      ownershipKind: "user",
+      requestedPath: `ctrr_${"R".repeat(43)}`,
+      linkPath: null,
+      repositoryFingerprint: "e".repeat(64),
+    });
     await second.repository.projectReplicaJobs.completeSynchronize(
       synchronization.id,
       synchronizationAttempt!.commandId,
@@ -300,7 +348,7 @@ describe("durable project replica jobs", () => {
         status: "ready",
         jobId: synchronization.id,
         attempt: 1,
-        path: "/worker-two/repositories/ArcaneArts/Cantrip",
+        path: `ctrr_${"T".repeat(43)}`,
         previousRevision: "b".repeat(40),
         resolvedRevision: "c".repeat(40),
         branch: "main",
@@ -314,18 +362,36 @@ describe("durable project replica jobs", () => {
         secondReplica.projectReplicaId!,
       ),
     ).toMatchObject({ head: "c".repeat(40), branch: "main" });
+    await expect(
+      second.repository.projectReplicaJobs.createRemove(
+        LOCAL_USER_ID,
+        project.id,
+        secondReplica.projectReplicaId!,
+        {
+          repository: repositoryHandle,
+          deleteLocalFiles: true,
+          idempotencyKey: "remove:repository-one:replica-worker-two:delete",
+        },
+      ),
+    ).rejects.toThrow(
+      "This checkout existed before Cantrip and cannot be deleted.",
+    );
     const removal = await second.repository.projectReplicaJobs.createRemove(
       LOCAL_USER_ID,
       project.id,
       secondReplica.projectReplicaId!,
       {
         repository: repositoryHandle,
-        deleteLocalFiles: true,
+        deleteLocalFiles: false,
         idempotencyKey: "remove:repository-one:replica-worker-two",
       },
     );
     const removalAttempt =
       await second.repository.projectReplicaJobs.claimNext();
+    expect(removal).toMatchObject({
+      placementMode: "direct",
+      placementPath: `ctrr_${"R".repeat(43)}`,
+    });
     expect(
       await second.repository.projectReplicaJobs.removalBlocker(
         secondReplica.projectReplicaId!,
@@ -356,8 +422,8 @@ describe("durable project replica jobs", () => {
         status: "removed",
         jobId: removal.id,
         attempt: 1,
-        path: "/worker-two/repositories/ArcaneArts/Cantrip",
-        localFilesDeleted: true,
+        path: `ctrr_${"T".repeat(43)}`,
+        localFilesDeleted: false,
       },
     );
     expect(
