@@ -2518,6 +2518,8 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return code.stop(command.sessionId);
       case "code.saveAll":
         return code.saveAll(command.sessionId);
+      case "code.openFile":
+        return code.openFile(command.sessionId, command.path);
       case "code.getDirtyEditors":
         return code.dirtyEditors(command.sessionId);
       case "code.setTheme":

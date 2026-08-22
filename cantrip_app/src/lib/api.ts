@@ -71,6 +71,7 @@ import {
   chatReasoningStateSchema,
   chatReasoningUpdateSchema,
   codeAttachmentSchema,
+  codeOpenFileResultSchema,
   codeRuntimeStatusSchema,
   codeGraphActionAcknowledgementSchema,
   codeGraphProjectStatusSchema,
@@ -4958,6 +4959,31 @@ export async function createCodeAttachment(
     await post(`/api/code-tabs/${encodeURIComponent(codeTabId)}/attachments`, {
       appearance,
     }),
+  );
+}
+
+export async function createExplorerCodeAttachment(
+  explorerId: string,
+  relativePath: string,
+  appearance: CodeAppearance,
+) {
+  return codeAttachmentSchema.parse(
+    await post(
+      `/api/explorers/${encodeURIComponent(explorerId)}/code-attachments`,
+      { appearance, path: relativePath },
+    ),
+  );
+}
+
+export async function openCodeAttachmentFile(
+  attachmentId: string,
+  relativePath: string,
+) {
+  return codeOpenFileResultSchema.parse(
+    await post(
+      `/api/code-attachments/${encodeURIComponent(attachmentId)}/open-file`,
+      { relativePath },
+    ),
   );
 }
 

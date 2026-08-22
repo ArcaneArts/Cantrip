@@ -6,6 +6,7 @@ import type {
   CodeAgentTurnPreparationResult,
   CodeAppearance,
   CodeDirtyEditor,
+  CodeOpenFileResult,
   CodeSaveAllResult,
   CodeWorkbenchState,
 } from "@cantrip/protocol";
@@ -322,6 +323,27 @@ export class CodeWorkbenchBridge {
           )
         : [],
     };
+  }
+
+  async openFile(
+    sessionId: string,
+    relativePath: string,
+  ): Promise<CodeOpenFileResult> {
+    const session = this.#sessions.get(sessionId);
+    if (!session) throw new Error("Cantrip Code session is not registered.");
+    const connected =
+      this.connected(sessionId) ||
+      (await this.waitUntilConnected(sessionId, 30_000));
+    if (!connected) {
+      throw new Error("Cantrip workbench bridge is not connected.");
+    }
+    const result = (await this.#request(session, "openFile", {
+      path: relativePath,
+    })) as Partial<CodeOpenFileResult>;
+    if (result.relativePath !== relativePath) {
+      throw new Error("Cantrip Code opened an unexpected file.");
+    }
+    return { relativePath };
   }
 
   async prepareAgentTurn(

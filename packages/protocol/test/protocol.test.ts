@@ -4974,8 +4974,15 @@ describe("Cantrip protocol", () => {
         profileId: "default",
         themeMode: "follow-cantrip",
         appearance: "high-contrast-dark",
+      }),
+    ).toMatchObject({ type: "code.open", presentation: "workbench" });
+    expect(
+      workerCommandSchema.parse({
+        type: "code.openFile",
+        sessionId: "session-1",
+        path: "packages/protocol/src/index.ts",
       }).type,
-    ).toBe("code.open");
+    ).toBe("code.openFile");
     expect(
       workerCommandSchema.parse({
         type: "code.prepareAgentTurn",

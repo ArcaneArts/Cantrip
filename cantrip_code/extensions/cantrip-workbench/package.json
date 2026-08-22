@@ -47,6 +47,16 @@
     "configuration": {
       "title": "Cantrip",
       "properties": {
+        "cantrip.presentation": {
+          "type": "string",
+          "enum": [
+            "workbench",
+            "editor"
+          ],
+          "default": "workbench",
+          "scope": "window",
+          "description": "Selects the full workbench or the compact editor-only Cantrip surface."
+        },
         "cantrip.saveBeforeAgentTurn": {
           "type": "string",
           "enum": [

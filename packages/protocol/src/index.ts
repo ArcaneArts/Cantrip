@@ -4743,6 +4743,7 @@ export const explorerListSchema = z.array(explorerSummarySchema);
 export const explorerWireListSchema = z.array(explorerWireSummarySchema);
 
 export const codeThemeModeSchema = z.enum(["follow-cantrip", "independent"]);
+export const codePresentationSchema = z.enum(["workbench", "editor"]);
 export const codeAppearanceSchema = z.enum([
   "light",
   "dark",
@@ -5068,6 +5069,20 @@ export const projectSharePublicOriginSchema = z.url().refine((value) => {
 export const codeAttachmentCreateSchema = z.object({
   appearance: codeAppearanceSchema.default("dark"),
 });
+
+export const explorerCodeAttachmentCreateSchema = codeAttachmentCreateSchema
+  .extend({
+    path: repositoryRelativePathSchema,
+  })
+  .strict();
+
+export const codeOpenFileResultSchema = z
+  .object({
+    relativePath: repositoryRelativePathSchema,
+  })
+  .strict();
+
+export const codeOpenFileRequestSchema = codeOpenFileResultSchema;
 
 export const codeThemeUpdateSchema = z.object({
   themeMode: codeThemeModeSchema,
@@ -12250,6 +12265,7 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     profileId: z.string().min(1).max(200),
     themeMode: codeThemeModeSchema,
     appearance: codeAppearanceSchema,
+    presentation: codePresentationSchema.default("workbench"),
   }),
   z.object({
     type: z.literal("code.status"),
@@ -12262,6 +12278,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("code.saveAll"),
     sessionId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("code.openFile"),
+    sessionId: z.string().min(1),
+    path: repositoryRelativePathSchema,
   }),
   z.object({
     type: z.literal("code.getDirtyEditors"),
@@ -14200,6 +14221,7 @@ export type EncryptedExplorerWorktreeUpdate = z.infer<
 export type ExplorerSummary = z.infer<typeof explorerSummarySchema>;
 export type ExplorerWireSummary = z.infer<typeof explorerWireSummarySchema>;
 export type CodeThemeMode = z.infer<typeof codeThemeModeSchema>;
+export type CodePresentation = z.infer<typeof codePresentationSchema>;
 export type CodeAppearance = z.infer<typeof codeAppearanceSchema>;
 export type CodeTabStatus = z.infer<typeof codeTabStatusSchema>;
 export type CodeSessionStatus = z.infer<typeof codeSessionStatusSchema>;
@@ -14231,6 +14253,11 @@ export type CodeAgentTurnNotificationResult = z.infer<
 >;
 export type CodeAttachment = z.infer<typeof codeAttachmentSchema>;
 export type CodeAttachmentCreate = z.infer<typeof codeAttachmentCreateSchema>;
+export type ExplorerCodeAttachmentCreate = z.infer<
+  typeof explorerCodeAttachmentCreateSchema
+>;
+export type CodeOpenFileResult = z.infer<typeof codeOpenFileResultSchema>;
+export type CodeOpenFileRequest = z.infer<typeof codeOpenFileRequestSchema>;
 export type CodeThemeUpdate = z.infer<typeof codeThemeUpdateSchema>;
 export type CodeAdapterRequestHead = z.infer<
   typeof codeAdapterRequestHeadSchema

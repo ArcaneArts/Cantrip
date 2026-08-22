@@ -6942,18 +6942,15 @@ export function App() {
         : null;
     return (
       <ExplorerFilePopout
+        appearance={codeAppearance}
         error={explorerError}
         explorer={explorer}
-        gitStatus={explorer ? worktreeStatuses[explorer.worktreeId] : undefined}
         loading={explorers.isLoading}
         overlayTitlebar={overlayTitlebar}
         path={explorerFileTarget.path}
         projectTitle={
           selectedProject?.github?.nameWithOwner ?? selectedProject?.name
         }
-        repositoryGraphAvailable={explorerRepositoryGraphAvailable(
-          selectedProject?.capabilities,
-        )}
       />
     );
   }

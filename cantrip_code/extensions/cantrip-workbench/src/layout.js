@@ -1,12 +1,27 @@
 "use strict";
 
-async function hideSecondarySideBar(commands) {
+async function executeLayoutCommand(commands, command) {
   try {
-    await commands.executeCommand("workbench.action.closeAuxiliaryBar");
+    await commands.executeCommand(command);
     return true;
   } catch {
     return false;
   }
 }
 
-module.exports = { hideSecondarySideBar };
+async function configureWorkbenchPresentation(configuration, commands) {
+  const commandIds = ["workbench.action.closeAuxiliaryBar"];
+  if (configuration.get("presentation", "workbench") === "editor") {
+    commandIds.push(
+      "workbench.action.closeSidebar",
+      "workbench.action.closePanel",
+    );
+  }
+  const results = [];
+  for (const command of commandIds) {
+    results.push(await executeLayoutCommand(commands, command));
+  }
+  return results.every(Boolean);
+}
+
+module.exports = { configureWorkbenchPresentation };

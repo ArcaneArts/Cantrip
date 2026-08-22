@@ -7,18 +7,19 @@ describe("ExplorerFilePopout", () => {
   it("relies on native window controls instead of rendering a close button", () => {
     const markup = renderToStaticMarkup(
       <ExplorerFilePopout
+        appearance="dark"
         error={null}
         explorer={null}
         loading
         overlayTitlebar
         path="src/example.ts"
         projectTitle="Cantrip"
-        repositoryGraphAvailable
       />,
     );
 
     expect(markup).not.toContain('title="Close file"');
     expect(markup).not.toContain("Close file</span>");
-    expect(markup).toContain("example.ts");
+    expect(markup).not.toContain("example.ts");
+    expect(markup).toContain("data-tauri-drag-region");
   });
 });

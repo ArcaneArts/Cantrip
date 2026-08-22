@@ -9,7 +9,7 @@ const {
   themeNameForAppearance,
 } = require("./protocol.js");
 const { forceColorTheme } = require("./theme.js");
-const { hideSecondarySideBar } = require("./layout.js");
+const { configureWorkbenchPresentation } = require("./layout.js");
 const { observeSocketErrors } = require("./socket.js");
 
 function configuration() {
@@ -206,8 +206,8 @@ class WorkbenchCoordinator {
       }),
     );
     this.registerCommands();
+    await configureWorkbenchPresentation(configuration(), vscode.commands);
     this.reconnect(true);
-    void hideSecondarySideBar(vscode.commands);
     void this.initializeGit();
   }
 
@@ -454,6 +454,7 @@ class WorkbenchCoordinator {
     if (method === "externalFilesChanged") {
       return this.externalFilesChanged(params.paths);
     }
+    if (method === "openFile") return this.openFile(params);
     if (method === "agentTurnState") return this.agentTurnState(params);
     if (method === "ping") return { connected: true };
     throw new Error(`Unsupported Cantrip workbench method: ${method}`);
@@ -495,6 +496,22 @@ class WorkbenchCoordinator {
         ? `Cantrip Code could not save ${result.failed.length} editor${result.failed.length === 1 ? "" : "s"}.`
         : null,
     };
+  }
+
+  async openFile(params) {
+    const [relativePath] = safeRelativePaths([params.path]);
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder || !relativePath) {
+      throw new Error("Cantrip Code requires a worktree-relative file path.");
+    }
+    const uri = vscode.Uri.joinPath(folder.uri, ...relativePath.split("/"));
+    const document = await vscode.workspace.openTextDocument(uri);
+    await vscode.window.showTextDocument(document, {
+      preserveFocus: false,
+      preview: true,
+    });
+    this.scheduleState();
+    return { relativePath };
   }
 
   async setTheme(params) {
