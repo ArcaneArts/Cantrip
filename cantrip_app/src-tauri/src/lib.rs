@@ -915,6 +915,8 @@ pub fn run() {
             desktop_update::desktop_update_capability,
             desktop_update::desktop_update_status,
             desktop_update::check_desktop_update,
+            desktop_update::list_desktop_update_history,
+            desktop_update::select_desktop_update,
             desktop_update::install_desktop_update,
             desktop_update::cancel_desktop_update,
             desktop_worker::list_desktop_workers,

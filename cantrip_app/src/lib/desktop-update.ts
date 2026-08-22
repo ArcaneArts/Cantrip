@@ -68,6 +68,7 @@ export interface DesktopUpdateClient {
   capability(): Promise<DesktopUpdateCapability>;
   check(): Promise<DesktopUpdateCheck>;
   getActiveWork(): Promise<DesktopUpdateActiveWorkSummary>;
+  history(): Promise<DesktopUpdateRelease[]>;
   install(
     request: DesktopUpdateInstallRequest,
   ): Promise<DesktopUpdateInstallResult>;
@@ -75,7 +76,21 @@ export interface DesktopUpdateClient {
   listen(
     listener: (progress: DesktopUpdateProgress) => void,
   ): Promise<() => void>;
+  select(version: string): Promise<DesktopUpdateRelease>;
   status(): Promise<DesktopUpdateStatus>;
+}
+
+export type DesktopUpdateHistoryGroupLabel =
+  | "Today"
+  | "Yesterday"
+  | "Earlier This Week"
+  | "Last Week"
+  | "Last Month"
+  | "Older";
+
+export interface DesktopUpdateHistoryGroup {
+  label: DesktopUpdateHistoryGroupLabel;
+  releases: DesktopUpdateRelease[];
 }
 
 function messageFromUnknown(error: unknown): string | null {
@@ -150,6 +165,69 @@ export function formatDesktopUpdateDate(value: string | null): string | null {
   });
 }
 
+function startOfLocalDay(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function daysBefore(value: Date, days: number): Date {
+  const result = new Date(value);
+  result.setDate(result.getDate() - days);
+  return result;
+}
+
+export function groupDesktopUpdateHistory(
+  releases: DesktopUpdateRelease[],
+  now = new Date(),
+): DesktopUpdateHistoryGroup[] {
+  const today = startOfLocalDay(now);
+  const yesterday = daysBefore(today, 1);
+  const dayOfWeek = (today.getDay() + 6) % 7;
+  const thisWeek = daysBefore(today, dayOfWeek);
+  const lastWeek = daysBefore(thisWeek, 7);
+  const lastMonth = daysBefore(today, 30);
+  const labels: DesktopUpdateHistoryGroupLabel[] = [
+    "Today",
+    "Yesterday",
+    "Earlier This Week",
+    "Last Week",
+    "Last Month",
+    "Older",
+  ];
+  const grouped = new Map<
+    DesktopUpdateHistoryGroupLabel,
+    DesktopUpdateRelease[]
+  >(labels.map((label) => [label, []]));
+
+  for (const release of [...releases].sort(
+    (left, right) =>
+      Date.parse(right.publishedAt ?? "") - Date.parse(left.publishedAt ?? ""),
+  )) {
+    const publishedAt = release.publishedAt
+      ? new Date(release.publishedAt)
+      : null;
+    const label: DesktopUpdateHistoryGroupLabel =
+      !publishedAt || Number.isNaN(publishedAt.getTime())
+        ? "Older"
+        : publishedAt >= today
+          ? "Today"
+          : publishedAt >= yesterday
+            ? "Yesterday"
+            : publishedAt >= thisWeek
+              ? "Earlier This Week"
+              : publishedAt >= lastWeek
+                ? "Last Week"
+                : publishedAt >= lastMonth
+                  ? "Last Month"
+                  : "Older";
+    grouped.get(label)?.push(release);
+  }
+
+  return labels.flatMap((label) => {
+    const entries = grouped.get(label) ?? [];
+    return entries.length > 0 ? [{ label, releases: entries }] : [];
+  });
+}
+
 async function getLocalActiveWork(): Promise<DesktopUpdateActiveWorkSummary> {
   try {
     const localServerUrl = await invoke<string>("local_server_url");
@@ -179,6 +257,8 @@ export const desktopUpdateClient: DesktopUpdateClient = {
   capability: () => invoke("desktop_update_capability"),
   status: () => invoke("desktop_update_status"),
   check: () => invoke("check_desktop_update"),
+  history: () => invoke("list_desktop_update_history"),
+  select: (version) => invoke("select_desktop_update", { version }),
   install: (request) => invoke("install_desktop_update", { request }),
   cancel: () => invoke("cancel_desktop_update"),
   getActiveWork: getLocalActiveWork,

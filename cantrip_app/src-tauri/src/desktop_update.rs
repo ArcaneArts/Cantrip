@@ -24,6 +24,10 @@ use tokio::sync::Notify;
 
 const UPDATE_EVENT: &str = "cantrip-desktop-update-progress";
 const RELEASE_NOTES_LIMIT: usize = 100_000;
+const RELEASE_HISTORY_PAGE_SIZE: usize = 100;
+const RELEASE_HISTORY_MAX_PAGES: usize = 100;
+const RELEASE_HISTORY_URL: &str = "https://api.github.com/repos/ArcaneArts/Cantrip/releases";
+const RELEASE_MANIFEST_BASE_URL: &str = "https://github.com/ArcaneArts/Cantrip/releases/download";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +65,21 @@ pub struct DesktopUpdateRelease {
     version: String,
     published_at: Option<String>,
     release_notes: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct GithubReleaseAsset {
+    name: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct GithubRelease {
+    assets: Vec<GithubReleaseAsset>,
+    body: Option<String>,
+    draft: bool,
+    prerelease: bool,
+    published_at: Option<String>,
+    tag_name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -239,6 +258,41 @@ fn release_from_update(update: &Update) -> DesktopUpdateRelease {
         published_at: update.date.map(|date| date.to_string()),
         release_notes: sanitize_release_notes(update.body.as_deref()),
     }
+}
+
+fn release_manifest_url(version: &semver::Version) -> Result<url::Url, DesktopUpdateError> {
+    url::Url::parse(&format!(
+        "{RELEASE_MANIFEST_BASE_URL}/v{version}/latest.json"
+    ))
+    .map_err(|_| {
+        DesktopUpdateError::new(
+            "update_release_invalid",
+            "The selected release does not have a valid update manifest URL.",
+            false,
+        )
+    })
+}
+
+fn release_from_github(
+    release: GithubRelease,
+    current_version: &str,
+) -> Option<DesktopUpdateRelease> {
+    if release.draft
+        || release.prerelease
+        || !release
+            .assets
+            .iter()
+            .any(|asset| asset.name == "latest.json")
+    {
+        return None;
+    }
+    let version = semver::Version::parse(release.tag_name.trim_start_matches('v')).ok()?;
+    Some(DesktopUpdateRelease {
+        current_version: current_version.to_owned(),
+        version: version.to_string(),
+        published_at: release.published_at,
+        release_notes: sanitize_release_notes(release.body.as_deref()),
+    })
 }
 
 fn validate_download_fields(
@@ -472,6 +526,88 @@ pub fn desktop_update_status(
 }
 
 #[tauri::command]
+pub async fn list_desktop_update_history(
+    app: AppHandle,
+) -> Result<Vec<DesktopUpdateRelease>, DesktopUpdateError> {
+    if !updater_available() {
+        return Err(DesktopUpdateError::unavailable());
+    }
+
+    #[cfg(all(
+        desktop,
+        not(debug_assertions),
+        any(target_os = "macos", target_os = "windows")
+    ))]
+    {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|error| {
+                DesktopUpdateError::new(
+                    "update_history_failed",
+                    format!("Could not prepare the version history request: {error}"),
+                    true,
+                )
+            })?;
+        let current_version = app.package_info().version.to_string();
+        let mut history = Vec::new();
+
+        for page in 1..=RELEASE_HISTORY_MAX_PAGES {
+            let response = client
+                .get(RELEASE_HISTORY_URL)
+                .query(&[
+                    ("per_page", RELEASE_HISTORY_PAGE_SIZE.to_string()),
+                    ("page", page.to_string()),
+                ])
+                .header("Accept", "application/vnd.github+json")
+                .header("User-Agent", "Cantrip-Desktop-Updater")
+                .header("X-GitHub-Api-Version", "2022-11-28")
+                .send()
+                .await
+                .and_then(reqwest::Response::error_for_status)
+                .map_err(|error| {
+                    DesktopUpdateError::new(
+                        "update_history_failed",
+                        format!("Could not load Cantrip version history: {error}"),
+                        true,
+                    )
+                })?;
+            let releases = response
+                .json::<Vec<GithubRelease>>()
+                .await
+                .map_err(|error| {
+                    DesktopUpdateError::new(
+                        "update_history_invalid",
+                        format!("Cantrip version history was not valid: {error}"),
+                        true,
+                    )
+                })?;
+            let release_count = releases.len();
+            history.extend(
+                releases
+                    .into_iter()
+                    .filter_map(|release| release_from_github(release, &current_version)),
+            );
+            if release_count < RELEASE_HISTORY_PAGE_SIZE {
+                break;
+            }
+        }
+
+        history.sort_by(|left, right| right.published_at.cmp(&left.published_at));
+        Ok(history)
+    }
+    #[cfg(not(all(
+        desktop,
+        not(debug_assertions),
+        any(target_os = "macos", target_os = "windows")
+    )))]
+    {
+        let _ = &app;
+        unreachable!("availability is false outside packaged macOS and Windows builds")
+    }
+}
+
+#[tauri::command]
 pub async fn check_desktop_update(
     app: AppHandle,
     coordinator: State<'_, DesktopUpdateCoordinator>,
@@ -551,6 +687,99 @@ pub async fn check_desktop_update(
         any(target_os = "macos", target_os = "windows")
     )))]
     unreachable!("availability is false outside packaged macOS and Windows builds")
+}
+
+#[tauri::command]
+pub async fn select_desktop_update(
+    app: AppHandle,
+    coordinator: State<'_, DesktopUpdateCoordinator>,
+    version: String,
+) -> Result<DesktopUpdateRelease, DesktopUpdateError> {
+    if !updater_available() {
+        return Err(DesktopUpdateError::unavailable());
+    }
+    let selected_version = semver::Version::parse(version.trim()).map_err(|_| {
+        DesktopUpdateError::new(
+            "update_version_invalid",
+            "Select a valid Cantrip version.",
+            false,
+        )
+    })?;
+    let endpoint = release_manifest_url(&selected_version)?;
+    begin_check(&coordinator)?;
+    emit_progress(&app, UpdatePhase::Checking, None, None, None, false);
+
+    #[cfg(all(
+        desktop,
+        not(debug_assertions),
+        any(target_os = "macos", target_os = "windows")
+    ))]
+    {
+        let expected_version = selected_version.clone();
+        let before_exit = app.clone();
+        let updater = app
+            .updater_builder()
+            .endpoints(vec![endpoint])
+            .map(|builder| {
+                builder
+                    .version_comparator(move |_current, release| {
+                        release.version == expected_version
+                    })
+                    .timeout(Duration::from_secs(30 * 60))
+                    .on_before_exit(move || {
+                        crate::shutdown_owned_runtime(&before_exit);
+                        before_exit.cleanup_before_exit();
+                    })
+            })
+            .and_then(|builder| builder.build())
+            .map_err(|error| map_updater_error(error, UpdateOperation::Check));
+        let updater = match updater {
+            Ok(updater) => updater,
+            Err(error) => {
+                set_failed(&coordinator, &app, &error, false);
+                return Err(error);
+            }
+        };
+        let checked = updater.check().await;
+        let update = match checked {
+            Ok(Some(update)) => update,
+            Ok(None) => {
+                let error = DesktopUpdateError::new(
+                    "update_release_unavailable",
+                    format!("Cantrip {selected_version} is no longer available for this platform."),
+                    true,
+                );
+                set_failed(&coordinator, &app, &error, false);
+                return Err(error);
+            }
+            Err(error) => {
+                let error = map_updater_error(error, UpdateOperation::Check);
+                set_failed(&coordinator, &app, &error, false);
+                return Err(error);
+            }
+        };
+        if let Err(error) = validate_download(&update) {
+            set_failed(&coordinator, &app, &error, false);
+            return Err(error);
+        }
+        let release = release_from_update(&update);
+        if let Ok(mut state) = coordinator.state.lock() {
+            state.phase = UpdatePhase::Ready;
+            state.release = Some(release.clone());
+            state.update = Some(update);
+        }
+        emit_progress(&app, UpdatePhase::Ready, None, None, None, false);
+        Ok(release)
+    }
+    #[cfg(not(all(
+        desktop,
+        not(debug_assertions),
+        any(target_os = "macos", target_os = "windows")
+    )))]
+    {
+        let _ = (&app, &coordinator, endpoint);
+        unreachable!("availability is false outside packaged macOS and Windows builds")
+    }
 }
 
 #[tauri::command]
@@ -834,5 +1063,47 @@ mod tests {
                 .len(),
             RELEASE_NOTES_LIMIT
         );
+    }
+
+    #[test]
+    fn historical_release_urls_are_fixed_to_the_cantrip_repository() {
+        let version = semver::Version::parse("1.2.3").unwrap();
+        assert_eq!(
+            release_manifest_url(&version).unwrap().as_str(),
+            "https://github.com/ArcaneArts/Cantrip/releases/download/v1.2.3/latest.json"
+        );
+    }
+
+    #[test]
+    fn history_includes_only_stable_releases_with_update_manifests() {
+        let release = GithubRelease {
+            assets: vec![GithubReleaseAsset {
+                name: "latest.json".into(),
+            }],
+            body: Some("# Changes\n\0Safe".into()),
+            draft: false,
+            prerelease: false,
+            published_at: Some("2026-08-22T12:00:00Z".into()),
+            tag_name: "v1.2.3".into(),
+        };
+        assert_eq!(
+            release_from_github(release, "1.2.2"),
+            Some(DesktopUpdateRelease {
+                current_version: "1.2.2".into(),
+                version: "1.2.3".into(),
+                published_at: Some("2026-08-22T12:00:00Z".into()),
+                release_notes: Some("# Changes\nSafe".into()),
+            })
+        );
+
+        let release_without_manifest = GithubRelease {
+            assets: Vec::new(),
+            body: None,
+            draft: false,
+            prerelease: false,
+            published_at: None,
+            tag_name: "v1.2.3".into(),
+        };
+        assert!(release_from_github(release_without_manifest, "1.2.2").is_none());
     }
 }

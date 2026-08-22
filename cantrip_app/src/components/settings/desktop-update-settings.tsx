@@ -8,7 +8,7 @@ import {
   RotateCcw,
   ShieldCheck,
 } from "lucide-react";
-import { useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { Markdown } from "@/components/chat/markdown";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,41 @@ import {
 } from "@/lib/desktop-update";
 import { openExternalUrl } from "@/lib/external-url";
 import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
+import { DesktopUpdateHistory } from "./desktop-update-history";
+
+const AUTOMATIC_UPDATE_REFRESH_MS = 30_000;
+const automaticCheckTimes = new WeakMap<DesktopUpdateClient, number>();
+const historyCache = new WeakMap<
+  DesktopUpdateClient,
+  { fetchedAt: number; promise: Promise<DesktopUpdateRelease[]> }
+>();
+
+export function desktopUpdateAutoRefreshDue(
+  lastCheckAt: number | null,
+  now = Date.now(),
+): boolean {
+  return (
+    lastCheckAt === null || now - lastCheckAt >= AUTOMATIC_UPDATE_REFRESH_MS
+  );
+}
+
+function loadDesktopUpdateHistory(
+  client: DesktopUpdateClient,
+  force = false,
+): Promise<DesktopUpdateRelease[]> {
+  const now = Date.now();
+  const cached = historyCache.get(client);
+  if (
+    !force &&
+    cached &&
+    now - cached.fetchedAt < AUTOMATIC_UPDATE_REFRESH_MS
+  ) {
+    return cached.promise;
+  }
+  const promise = client.history();
+  historyCache.set(client, { fetchedAt: now, promise });
+  return promise;
+}
 
 export type DesktopUpdateFlowStage =
   | "idle"
@@ -278,14 +313,20 @@ function UpdateProgress({ state }: { state: DesktopUpdateFlowState }) {
   );
 }
 
-function ReleaseDetails({ release }: { release: DesktopUpdateRelease }) {
+function ReleaseDetails({
+  release,
+  targetLabel = "Available",
+}: {
+  release: DesktopUpdateRelease;
+  targetLabel?: "Available" | "Selected";
+}) {
   const publishedAt = formatDesktopUpdateDate(release.publishedAt);
   return (
     <>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 border-y py-3 text-sm">
         <dt className="text-muted-foreground">Installed</dt>
         <dd className="font-mono">{release.currentVersion}</dd>
-        <dt className="text-muted-foreground">Available</dt>
+        <dt className="text-muted-foreground">{targetLabel}</dt>
         <dd className="font-mono">{release.version}</dd>
         {publishedAt ? (
           <>
@@ -330,8 +371,10 @@ function ReleaseDetails({ release }: { release: DesktopUpdateRelease }) {
 }
 
 export function DesktopUpdateDialogBody({
+  releaseLabel,
   state,
 }: {
+  releaseLabel?: "Available" | "Selected";
   state: DesktopUpdateFlowState;
 }) {
   const activeWorkLabels = state.activeWork
@@ -339,7 +382,9 @@ export function DesktopUpdateDialogBody({
     : [];
   return (
     <>
-      {state.release ? <ReleaseDetails release={state.release} /> : null}
+      {state.release ? (
+        <ReleaseDetails release={state.release} targetLabel={releaseLabel} />
+      ) : null}
       {state.stage === "confirm-active-work" ? (
         <div className="grid gap-2 border-y py-4">
           <h3 className="text-sm font-semibold">Active local work will stop</h3>
@@ -381,6 +426,13 @@ export function DesktopUpdateStatusMessage({
       </p>
     );
   }
+  if (state.stage === "available" && state.release) {
+    return (
+      <p className="mt-1 text-xs text-sky-600 dark:text-sky-400">
+        Cantrip {state.release.version} is available.
+      </p>
+    );
+  }
   if (state.stage === "failed" && state.errorContext === "check") {
     return (
       <p className="mt-1 text-xs text-destructive" role="alert">
@@ -403,18 +455,24 @@ export function DesktopUpdateSettings({
     capability.installedVersion,
     initialDesktopUpdateFlowState,
   );
+  const [history, setHistory] = useState<DesktopUpdateRelease[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [releaseDialogRequested, setReleaseDialogRequested] = useState(false);
+  const [selectedFromHistory, setSelectedFromHistory] = useState(false);
   const operation = useRef(0);
   const actionInFlight = useRef(false);
   const cancellationInFlight = useRef(false);
   const dialogOpen =
-    state.stage === "available" ||
-    state.stage === "preparing" ||
-    state.stage === "confirm-active-work" ||
-    state.stage === "downloading" ||
-    state.stage === "verifying" ||
-    state.stage === "installing" ||
-    state.stage === "restarting" ||
-    (state.stage === "failed" && state.errorContext === "install");
+    releaseDialogRequested &&
+    (state.stage === "available" ||
+      state.stage === "preparing" ||
+      state.stage === "confirm-active-work" ||
+      state.stage === "downloading" ||
+      state.stage === "verifying" ||
+      state.stage === "installing" ||
+      state.stage === "restarting" ||
+      (state.stage === "failed" && state.errorContext === "install"));
   const dismissible =
     state.stage === "available" ||
     state.stage === "preparing" ||
@@ -449,40 +507,79 @@ export function DesktopUpdateSettings({
     };
   }, [client]);
 
-  const checkForUpdate = async () => {
-    if (actionInFlight.current) return;
-    actionInFlight.current = true;
-    const currentOperation = ++operation.current;
-    dispatch({ type: "check-started" });
-    try {
-      const result = await client.check();
-      if (operation.current !== currentOperation) return;
-      if (result.status === "current") {
+  const checkForUpdate = useCallback(
+    async (openIfAvailable: boolean) => {
+      if (actionInFlight.current) return;
+      actionInFlight.current = true;
+      const currentOperation = ++operation.current;
+      dispatch({ type: "check-started" });
+      try {
+        const result = await client.check();
+        if (operation.current !== currentOperation) return;
+        if (result.status === "current") {
+          dispatch({
+            type: "check-current",
+            installedVersion: result.installedVersion,
+          });
+          setSelectedFromHistory(false);
+          setReleaseDialogRequested(false);
+        } else if (result.release) {
+          dispatch({ type: "check-available", release: result.release });
+          setSelectedFromHistory(false);
+          setReleaseDialogRequested(openIfAvailable);
+        } else {
+          throw new Error(
+            "The update service returned no release information.",
+          );
+        }
+      } catch (error) {
+        if (operation.current !== currentOperation) return;
         dispatch({
-          type: "check-current",
-          installedVersion: result.installedVersion,
+          type: "failed",
+          context: "check",
+          error: normalizeDesktopUpdateError(
+            error,
+            "Could not check for updates. Check your connection and try again.",
+          ),
         });
-      } else if (result.release) {
-        dispatch({ type: "check-available", release: result.release });
-      } else {
-        throw new Error("The update service returned no release information.");
+      } finally {
+        if (operation.current === currentOperation) {
+          actionInFlight.current = false;
+        }
       }
-    } catch (error) {
-      if (operation.current !== currentOperation) return;
-      dispatch({
-        type: "failed",
-        context: "check",
-        error: normalizeDesktopUpdateError(
-          error,
-          "Could not check for updates. Check your connection and try again.",
-        ),
-      });
-    } finally {
-      if (operation.current === currentOperation) {
-        actionInFlight.current = false;
+    },
+    [client],
+  );
+
+  const refreshHistory = useCallback(
+    async (force = false) => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        setHistory(await loadDesktopUpdateHistory(client, force));
+      } catch (error) {
+        setHistoryError(
+          normalizeDesktopUpdateError(
+            error,
+            "Could not load Cantrip version history.",
+          ).message,
+        );
+      } finally {
+        setHistoryLoading(false);
       }
+    },
+    [client],
+  );
+
+  useEffect(() => {
+    void refreshHistory();
+    const now = Date.now();
+    const lastCheck = automaticCheckTimes.get(client) ?? null;
+    if (desktopUpdateAutoRefreshDue(lastCheck, now)) {
+      automaticCheckTimes.set(client, now);
+      void checkForUpdate(false);
     }
-  };
+  }, [checkForUpdate, client, refreshHistory]);
 
   const install = async (
     activeWork: DesktopUpdateActiveWorkSummary,
@@ -517,10 +614,7 @@ export function DesktopUpdateSettings({
     }
   };
 
-  const prepareInstall = async () => {
-    if (actionInFlight.current) return;
-    actionInFlight.current = true;
-    const currentOperation = ++operation.current;
+  const prepareActiveWork = async (currentOperation: number) => {
     dispatch({ type: "active-work-started" });
     try {
       const activeWork = await client.getActiveWork();
@@ -542,6 +636,37 @@ export function DesktopUpdateSettings({
     }
   };
 
+  const prepareInstall = () => {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
+    const currentOperation = ++operation.current;
+    void prepareActiveWork(currentOperation);
+  };
+
+  const prepareSelectedVersion = async () => {
+    if (!state.release || actionInFlight.current) return;
+    actionInFlight.current = true;
+    const currentOperation = ++operation.current;
+    dispatch({ type: "active-work-started" });
+    try {
+      const release = await client.select(state.release.version);
+      if (operation.current !== currentOperation) return;
+      dispatch({ type: "check-available", release });
+      await prepareActiveWork(currentOperation);
+    } catch (error) {
+      if (operation.current !== currentOperation) return;
+      dispatch({
+        type: "failed",
+        context: "install",
+        error: normalizeDesktopUpdateError(
+          error,
+          "Could not prepare the selected Cantrip version.",
+        ),
+      });
+      actionInFlight.current = false;
+    }
+  };
+
   const confirmActiveWork = () => {
     if (!state.activeWork || actionInFlight.current) return;
     actionInFlight.current = true;
@@ -558,6 +683,8 @@ export function DesktopUpdateSettings({
     }
     actionInFlight.current = false;
     cancellationInFlight.current = false;
+    setReleaseDialogRequested(false);
+    setSelectedFromHistory(false);
     dispatch({ type: "reset" });
   };
 
@@ -579,7 +706,10 @@ export function DesktopUpdateSettings({
           size="sm"
           variant="outline"
           disabled={busy || dialogOpen}
-          onClick={() => void checkForUpdate()}
+          onClick={() => {
+            void checkForUpdate(true);
+            void refreshHistory(true);
+          }}
         >
           {state.stage === "checking" ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -595,6 +725,19 @@ export function DesktopUpdateSettings({
               : "Check for updates"}
         </Button>
       </div>
+
+      <DesktopUpdateHistory
+        error={historyError}
+        installedVersion={state.installedVersion}
+        loading={historyLoading}
+        releases={history}
+        onOpenRelease={(release) => {
+          if (busy || dialogOpen) return;
+          dispatch({ type: "check-available", release });
+          setSelectedFromHistory(true);
+          setReleaseDialogRequested(true);
+        }}
+      />
 
       <Dialog
         open={dialogOpen}
@@ -613,14 +756,22 @@ export function DesktopUpdateSettings({
           }}
         >
           <DialogHeader>
-            <DialogTitle>Update Cantrip</DialogTitle>
+            <DialogTitle>
+              {selectedFromHistory && state.release
+                ? `Cantrip ${state.release.version}`
+                : "Update Cantrip"}
+            </DialogTitle>
             <DialogDescription>
-              The complete signed desktop bundle will be replaced. Your data,
-              settings, credentials, conversations, and projects stay in place.
+              {selectedFromHistory
+                ? "Review this release, then explicitly choose whether to install it."
+                : "The complete signed desktop bundle will be replaced. Your data, settings, credentials, conversations, and projects stay in place."}
             </DialogDescription>
           </DialogHeader>
 
-          <DesktopUpdateDialogBody state={state} />
+          <DesktopUpdateDialogBody
+            releaseLabel={selectedFromHistory ? "Selected" : "Available"}
+            state={state}
+          />
 
           <DialogFooter>
             {dismissible ? (
@@ -633,8 +784,24 @@ export function DesktopUpdateSettings({
               </Button>
             ) : null}
             {state.stage === "available" ? (
-              <Button type="button" onClick={() => void prepareInstall()}>
-                <RotateCcw className="size-4" /> Update and restart
+              <Button
+                type="button"
+                disabled={
+                  selectedFromHistory &&
+                  state.release?.version === state.installedVersion
+                }
+                onClick={() =>
+                  void (selectedFromHistory
+                    ? prepareSelectedVersion()
+                    : prepareInstall())
+                }
+              >
+                <RotateCcw className="size-4" />
+                {selectedFromHistory
+                  ? state.release?.version === state.installedVersion
+                    ? "Current version"
+                    : "Change Version"
+                  : "Update and restart"}
               </Button>
             ) : null}
             {state.stage === "confirm-active-work" ? (
@@ -645,8 +812,16 @@ export function DesktopUpdateSettings({
             {state.stage === "failed" &&
             !state.restartingCurrentVersion &&
             state.error?.retryable ? (
-              <Button type="button" onClick={() => void checkForUpdate()}>
-                <RefreshCw className="size-4" /> Check again
+              <Button
+                type="button"
+                onClick={() =>
+                  void (selectedFromHistory
+                    ? prepareSelectedVersion()
+                    : checkForUpdate(true))
+                }
+              >
+                <RefreshCw className="size-4" />
+                {selectedFromHistory ? "Try this version again" : "Check again"}
               </Button>
             ) : null}
           </DialogFooter>
