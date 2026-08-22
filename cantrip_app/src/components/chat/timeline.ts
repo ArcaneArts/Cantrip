@@ -164,6 +164,7 @@ function visibleWorkMessage(message: ChatMessage): ChatMessage | null {
       item.type !== "activity" ||
       (item.activity.type !== "usage" &&
         item.activity.type !== "rateLimit" &&
+        item.activity.type !== "instructionContext" &&
         item.activity.type !== "turnSummary"),
   );
   return content.length > 0 ? { ...message, content } : null;

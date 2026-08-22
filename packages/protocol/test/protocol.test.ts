@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   accountSessionListSchema,
+  agentActivityRawRequestLimitBytes,
+  agentActivityRawResponseLimitBytes,
   agentActivitySchema,
   agentTurnResultSchema,
   agentInteractionRequestQuerySchema,
@@ -3819,6 +3821,59 @@ describe("Cantrip protocol", () => {
         worktreeId: "worktree-2",
       }).type,
     ).toBe("worktree");
+  });
+
+  it("validates protected trajectory captures and instruction provenance", () => {
+    const activity = agentActivitySchema.parse({
+      type: "instructionContext",
+      id: "turn:turn-1:instructions",
+      status: "completed",
+      provenance: "assembled",
+      text: "Cantrip developer instructions",
+      sources: ["Cantrip runtime developer instructions"],
+      model: "gpt-5.6-sol",
+      provider: "provider-1",
+      reasoningEffort: "high",
+      collaborationMode: "default",
+      permissionProfile: "trusted",
+      runtimeVersion: "1.2.3",
+      raw: {
+        schemaVersion: 1,
+        request: {
+          mediaType: "text/plain; charset=utf-8",
+          text: "Cantrip developer instructions",
+          originalBytes: 30,
+          truncated: false,
+        },
+        response: null,
+        metadata: { source: "assembled" },
+      },
+    });
+    expect(activity).toMatchObject({
+      type: "instructionContext",
+      provenance: "assembled",
+      raw: { schemaVersion: 1 },
+    });
+
+    for (const [direction, limit] of [
+      ["request", agentActivityRawRequestLimitBytes],
+      ["response", agentActivityRawResponseLimitBytes],
+    ] as const) {
+      expect(
+        agentActivitySchema.safeParse({
+          ...activity,
+          raw: {
+            ...activity.raw,
+            [direction]: {
+              mediaType: "text/plain",
+              text: "x".repeat(limit + 1),
+              originalBytes: limit + 1,
+              truncated: false,
+            },
+          },
+        }).success,
+      ).toBe(false);
+    }
   });
 
   it("validates bounded live command and file inspection telemetry", () => {

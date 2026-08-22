@@ -88,6 +88,7 @@ import {
   codexProviderConfiguration,
   isZaiRuntimeProvider,
 } from "./provider-config.js";
+import { createAgentActivityRawEnvelope } from "./raw-capture.js";
 import {
   runtimeModelSupportsImages,
   writeManagedCodexModelCatalog,
@@ -163,6 +164,7 @@ interface ActiveTurn {
   baseline: WorkspaceSnapshot;
   chatId: string | null;
   collaborationMode: NativeCollaborationMode | null;
+  captureProtectedDiagnostics: boolean;
   commandTelemetry: Map<string, ActiveCommandTelemetry>;
   completedCommandIds: Set<string>;
   cwd: string;
@@ -280,6 +282,7 @@ function emitCommandTelemetry(
     completedAtMs === undefined ? "started" : "completed",
     telemetry.correlation,
     {
+      captureRaw: active.captureProtectedDiagnostics,
       commandOutput: {
         output: telemetry.output,
         truncated: telemetry.truncated,
@@ -1199,6 +1202,7 @@ interface NativePendingAgentInteraction {
 export interface RunAgentTurnOptions {
   attachments?: RuntimeChatAttachment[];
   chatId: string;
+  captureProtectedDiagnostics: boolean;
   clientMessageId: string;
   cwd: string;
   isPrimary: Extract<WorkerCommand, { type: "chat.turn" }>["isPrimary"];
@@ -1466,6 +1470,83 @@ export function codexWorktreeTurnPolicy(
       ? {}
       : { sandboxPolicy }),
   } as const;
+}
+
+function assembledInstructionContextActivity(input: {
+  active: ActiveTurn;
+  hasGitMetadata: boolean;
+  options: RunAgentTurnOptions;
+  runtimeVersion: string | null;
+  turnId: string;
+  turnPolicy: ReturnType<typeof codexWorktreeTurnPolicy>;
+}): AgentActivity {
+  const developerInstructions = cantripChatThreadParams(
+    input.hasGitMetadata,
+  ).developerInstructions;
+  const contextEntries = Object.entries(input.turnPolicy.additionalContext);
+  const selectedSkillSources = input.options.skillNames
+    .slice(0, Math.max(0, 98 - contextEntries.length))
+    .map((name) => `Selected skill: ${name}`.slice(0, 500));
+  const sources = [
+    "Cantrip runtime developer instructions",
+    ...contextEntries.map(([key]) => `Turn context: ${key}`),
+    ...selectedSkillSources,
+    "Runtime customization and AGENTS.md context (not exposed verbatim by the runtime)",
+  ];
+  const instructionText = [
+    `Cantrip developer instructions:\n${developerInstructions}`,
+    ...contextEntries.map(([key, context]) => `${key}:\n${context.value}`),
+    input.options.skillNames.length > 0
+      ? `Selected skills: ${input.options.skillNames.join(", ")}`
+      : null,
+    "Runtime note: Codex may apply additional internal, customization, and AGENTS.md instructions that its app-server protocol does not expose verbatim.",
+  ]
+    .filter((value): value is string => value !== null)
+    .join("\n\n");
+  const raw = createAgentActivityRawEnvelope({
+    request: instructionText,
+    metadata: {
+      approvalProfile: input.options.permissionProfileId,
+      collaborationMode:
+        input.active.collaborationMode?.mode ?? input.options.planMode,
+      model: input.options.model.name,
+      providerId: input.options.provider.id,
+      providerKind: input.options.provider.kind,
+      reasoningEffort: input.options.model.reasoningEffort,
+      runtimeVersion: input.runtimeVersion,
+      sandboxPolicy:
+        "sandboxPolicy" in input.turnPolicy
+          ? JSON.stringify(input.turnPolicy.sandboxPolicy)
+          : "permission-profile-managed",
+    },
+  });
+  const capturedAtMs = Date.now();
+  return agentActivitySchema.parse({
+    type: "instructionContext",
+    id: `turn:${input.turnId}:instructions`,
+    status: "completed",
+    provenance: "assembled",
+    text: raw.request?.text ?? null,
+    sources,
+    model: input.options.model.name,
+    provider: input.options.provider.id,
+    reasoningEffort: input.options.model.reasoningEffort,
+    collaborationMode:
+      input.active.collaborationMode?.mode ?? input.options.planMode,
+    permissionProfile: input.options.permissionProfileId,
+    runtimeVersion: input.runtimeVersion,
+    startedAtMs: input.active.startedAtMs,
+    updatedAtMs: capturedAtMs,
+    completedAtMs: capturedAtMs,
+    correlation: eventCorrelation(
+      "cantrip/trajectory/instructions",
+      null,
+      input.active.threadId,
+      input.turnId,
+      `turn:${input.turnId}:instructions`,
+    ),
+    raw,
+  });
 }
 
 export function codexWorkflowTurnPolicy(
@@ -2211,6 +2292,116 @@ function safeDisplayUrl(value: string): string {
   }
 }
 
+function createThreadItemRawCapture(
+  item: CodexThreadItem,
+  commandOutput?: CommandOutputBuffer,
+) {
+  const metadata = { itemId: item.id, itemType: item.type };
+  switch (item.type) {
+    case "commandExecution":
+      return createAgentActivityRawEnvelope({
+        request: { command: item.command, cwd: item.cwd },
+        response: {
+          durationMs: item.durationMs ?? null,
+          exitCode: item.exitCode,
+          output: commandOutput?.output ?? item.aggregatedOutput,
+          outputTruncated: commandOutput?.truncated ?? false,
+          status: item.status,
+        },
+        metadata,
+      });
+    case "fileChange":
+      return createAgentActivityRawEnvelope({
+        request: { changes: item.changes },
+        response: {
+          changes: item.changes.map((change) => ({
+            kind: change.kind.type,
+            path: change.path,
+          })),
+          status: item.status,
+        },
+        metadata,
+      });
+    case "plan":
+      return createAgentActivityRawEnvelope({
+        response: { text: item.text },
+        metadata,
+      });
+    case "reasoning":
+      return createAgentActivityRawEnvelope({
+        response: { content: item.content, summary: item.summary },
+        metadata,
+      });
+    case "mcpToolCall":
+      return createAgentActivityRawEnvelope({
+        request: item.arguments,
+        response: {
+          error: item.error,
+          result: item.result,
+          status: item.status,
+        },
+        metadata: { ...metadata, server: item.server, tool: item.tool },
+      });
+    case "dynamicToolCall":
+      return createAgentActivityRawEnvelope({
+        response: {
+          durationMs: item.durationMs,
+          status: item.status,
+          success: item.success,
+        },
+        metadata: {
+          ...metadata,
+          namespace: item.namespace,
+          tool: item.tool,
+        },
+      });
+    case "collabAgentToolCall":
+      return createAgentActivityRawEnvelope({
+        request: {
+          model: item.model,
+          prompt: item.prompt,
+          receiverThreadIds: item.receiverThreadIds,
+          senderThreadId: item.senderThreadId,
+        },
+        response: { agentStates: item.agentsStates, status: item.status },
+        metadata: { ...metadata, tool: item.tool },
+      });
+    case "subAgentActivity":
+      return createAgentActivityRawEnvelope({
+        response: {
+          agentPath: item.agentPath,
+          agentThreadId: item.agentThreadId,
+          kind: item.kind,
+        },
+        metadata,
+      });
+    case "webSearch":
+      return createAgentActivityRawEnvelope({
+        request: { query: item.query },
+        response: { action: item.action },
+        metadata,
+      });
+    case "imageView":
+      return createAgentActivityRawEnvelope({
+        request: { path: item.path },
+        metadata,
+      });
+    case "enteredReviewMode":
+    case "exitedReviewMode":
+      return createAgentActivityRawEnvelope({
+        request: { review: item.review },
+        metadata,
+      });
+    case "contextCompaction":
+      return createAgentActivityRawEnvelope({ metadata });
+    case "agentMessage":
+      return createAgentActivityRawEnvelope({
+        response: { phase: item.phase, text: item.text },
+        metadata,
+      });
+  }
+}
+
 export function normalizeCodexThreadItem(
   item: CodexThreadItem,
   cwd: string,
@@ -2218,6 +2409,7 @@ export function normalizeCodexThreadItem(
   correlation: CodexEventCorrelation,
   telemetry: {
     commandOutput?: CommandOutputBuffer;
+    captureRaw?: boolean;
     completedAtMs?: number | null;
     fileChanges?: FileActivityChange[];
     startedAtMs?: number;
@@ -2236,6 +2428,11 @@ export function normalizeCodexThreadItem(
       ? {}
       : { completedAtMs: telemetry.completedAtMs }),
   };
+  const raw = telemetry.captureRaw
+    ? {
+        raw: createThreadItemRawCapture(item, telemetry.commandOutput),
+      }
+    : {};
   if (item.type === "commandExecution") {
     const output =
       telemetry.commandOutput ?? boundedCommandOutput(item.aggregatedOutput);
@@ -2250,6 +2447,7 @@ export function normalizeCodexThreadItem(
       outputTail: output.output,
       outputTruncated: output.truncated,
       durationMs: item.durationMs ?? null,
+      ...raw,
       ...timestamps,
       ...(telemetry.status === undefined ? {} : { status: telemetry.status }),
       correlation,
@@ -2274,6 +2472,7 @@ export function normalizeCodexThreadItem(
       id: item.id,
       status: activityStatus(item.status),
       changes,
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2286,6 +2485,7 @@ export function normalizeCodexThreadItem(
       text: boundedText(item.text) ?? "",
       explanation: null,
       steps: [],
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2299,6 +2499,7 @@ export function normalizeCodexThreadItem(
         .map((part) => boundedText(part)?.trim() ?? "")
         .filter(Boolean)
         .slice(0, 100),
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2317,6 +2518,7 @@ export function normalizeCodexThreadItem(
       resultText: isCodeGraph ? mcpResultText(item.result) : null,
       error: boundedText(item.error?.message),
       durationMs: item.durationMs,
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2330,6 +2532,7 @@ export function normalizeCodexThreadItem(
       tool: item.tool,
       success: item.success,
       durationMs: item.durationMs,
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2357,6 +2560,7 @@ export function normalizeCodexThreadItem(
             : [],
         )
         .slice(0, 100),
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2374,6 +2578,7 @@ export function normalizeCodexThreadItem(
       kind: item.kind,
       agentThreadId: item.agentThreadId,
       agentPath: item.agentPath || item.agentThreadId,
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2385,6 +2590,7 @@ export function normalizeCodexThreadItem(
       status: lifecycle === "started" ? "running" : "completed",
       query: boundedText(item.query, 4_000) ?? "",
       action: boundedText(webSearchAction(item), 4_000),
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2395,6 +2601,7 @@ export function normalizeCodexThreadItem(
       id: item.id,
       status: lifecycle === "started" ? "running" : "completed",
       path: displayPath(cwd, item.path),
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2406,6 +2613,7 @@ export function normalizeCodexThreadItem(
       status: lifecycle === "started" ? "running" : "completed",
       state: item.type === "enteredReviewMode" ? "entered" : "exited",
       review: boundedText(item.review) ?? "",
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -2415,6 +2623,7 @@ export function normalizeCodexThreadItem(
       type: "contextCompaction",
       id: item.id,
       status: lifecycle === "started" ? "running" : "completed",
+      ...raw,
       ...timestamps,
       correlation,
     });
@@ -3099,6 +3308,10 @@ export class CodexAppServer implements CodexRuntime {
         "Plan Mode is unavailable in the installed Codex runtime.",
       );
     }
+    const turnPolicy = codexWorktreeTurnPolicy({
+      ...options,
+      permissionProfileActive: this.permissionProfilesSupported(),
+    });
 
     if (this.hasActiveThread(threadId)) {
       throw new Error(`Codex thread ${threadId} already has an active turn.`);
@@ -3110,6 +3323,7 @@ export class CodexAppServer implements CodexRuntime {
     >((resolve, reject) => {
       activeTurn = {
         baseline,
+        captureProtectedDiagnostics: options.captureProtectedDiagnostics,
         chatId: options.chatId,
         collaborationMode,
         commandTelemetry: new Map(),
@@ -3169,10 +3383,7 @@ export class CodexAppServer implements CodexRuntime {
       response = (await this.request("turn/start", {
         threadId,
         ...codexWorkspaceContext(options.cwd),
-        ...codexWorktreeTurnPolicy({
-          ...options,
-          permissionProfileActive: this.permissionProfilesSupported(),
-        }),
+        ...turnPolicy,
         clientUserMessageId: `cantrip:${options.clientMessageId}`,
         input: [
           ...(await this.turnAttachmentInputs(
@@ -3200,6 +3411,18 @@ export class CodexAppServer implements CodexRuntime {
       throw error;
     }
     this.bindTurnStartResponse(response.turn.id, activeTurn);
+    if (options.captureProtectedDiagnostics) {
+      activeTurn.onActivity?.(
+        assembledInstructionContextActivity({
+          active: activeTurn,
+          hasGitMetadata: await workspaceHasGitMetadata(options.cwd),
+          options,
+          runtimeVersion: this.compatibility.version?.raw ?? null,
+          turnId: response.turn.id,
+          turnPolicy,
+        }),
+      );
+    }
     workerLogger.event("info", "Codex chat turn started", {
       event: "codex.turn.lifecycle",
       subsystem: "codex",
@@ -3260,6 +3483,7 @@ export class CodexAppServer implements CodexRuntime {
     >((resolve, reject) => {
       activeTurn = {
         baseline,
+        captureProtectedDiagnostics: false,
         chatId: null,
         collaborationMode: null,
         commandTelemetry: new Map(),
@@ -5706,6 +5930,7 @@ export class CodexAppServer implements CodexRuntime {
           params.itemId,
         ),
         {
+          captureRaw: active.captureProtectedDiagnostics,
           startedAtMs,
           updatedAtMs: observedAtMs,
           completedAtMs: null,
@@ -5794,6 +6019,7 @@ export class CodexAppServer implements CodexRuntime {
           "started",
           correlation,
           {
+            captureRaw: active.captureProtectedDiagnostics,
             startedAtMs,
             updatedAtMs: observedAtMs,
             completedAtMs: null,
@@ -5898,6 +6124,7 @@ export class CodexAppServer implements CodexRuntime {
             params.item.id,
           ),
           {
+            captureRaw: active.captureProtectedDiagnostics,
             startedAtMs,
             updatedAtMs: observedAtMs,
             completedAtMs: observedAtMs,
@@ -5918,6 +6145,7 @@ export class CodexAppServer implements CodexRuntime {
             params.item.id,
           ),
           {
+            captureRaw: active.captureProtectedDiagnostics,
             startedAtMs: itemStartedAtMs ?? observedAtMs,
             updatedAtMs: observedAtMs,
             completedAtMs: observedAtMs,

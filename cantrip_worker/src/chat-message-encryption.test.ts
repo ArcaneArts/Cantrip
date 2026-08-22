@@ -154,6 +154,17 @@ describe("worker chat message encryption", () => {
       cwd: "/secret/path",
       exitCode: 0,
       output: null,
+      raw: {
+        schemaVersion: 1,
+        request: {
+          mediaType: "application/json",
+          text: '{"command":"captured request"}',
+          originalBytes: 30,
+          truncated: false,
+        },
+        response: null,
+        metadata: { source: "protected-diagnostic" },
+      },
     });
     expect(commandEvent.telemetry).toEqual({
       kind: "activity",
@@ -161,6 +172,31 @@ describe("worker chat message encryption", () => {
       turnId: null,
     });
     expect(JSON.stringify(commandEvent.telemetry)).not.toContain("secret");
+    expect(JSON.stringify(commandEvent.telemetry)).not.toContain(
+      "captured request",
+    );
+    await expect(
+      decryptChatMessageProtectedContent({
+        ownerId,
+        messageId: commandEvent.message.id,
+        keyRevision: 1,
+        componentKey,
+        encrypted: commandEvent.message.protectedContent,
+        publicClassification: commandEvent.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            raw: {
+              request: { text: '{"command":"captured request"}' },
+            },
+          },
+        },
+      ],
+    });
 
     const result = await encryptChatTurnResult({
       idempotencyKey: "assistant:usage",

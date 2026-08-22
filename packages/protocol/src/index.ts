@@ -6357,6 +6357,47 @@ export const agentActivityStatusSchema = z.enum([
 ]);
 export const agentCommandOutputLimitBytes = 256 * 1_024;
 export const agentFilePreviewLimitCharacters = 8_192;
+export const agentActivityRawRequestLimitBytes = 64 * 1_024;
+export const agentActivityRawResponseLimitBytes = 256 * 1_024;
+
+function encodedTextLimitSchema(limit: number) {
+  return z.string().superRefine((value, context) => {
+    if (new TextEncoder().encode(value).byteLength <= limit) return;
+    context.addIssue({
+      code: "custom",
+      message: `Raw capture text may contain at most ${limit} encoded bytes.`,
+    });
+  });
+}
+
+const agentActivityRawDocumentBaseShape = {
+  mediaType: z.string().min(1).max(200),
+  originalBytes: z.number().int().nonnegative().safe(),
+  truncated: z.boolean(),
+  digest: z.string().min(1).max(200).nullable().optional(),
+  omittedReason: z.string().min(1).max(500).nullable().optional(),
+};
+
+export const agentActivityRawRequestDocumentSchema = z.object({
+  ...agentActivityRawDocumentBaseShape,
+  text: encodedTextLimitSchema(agentActivityRawRequestLimitBytes).nullable(),
+});
+
+export const agentActivityRawResponseDocumentSchema = z.object({
+  ...agentActivityRawDocumentBaseShape,
+  text: encodedTextLimitSchema(agentActivityRawResponseLimitBytes).nullable(),
+});
+
+export const agentActivityRawEnvelopeSchema = z.object({
+  schemaVersion: z.literal(1),
+  request: agentActivityRawRequestDocumentSchema.nullable(),
+  response: agentActivityRawResponseDocumentSchema.nullable(),
+  metadata: z
+    .record(z.string().min(1).max(100), z.string().max(4_000))
+    .refine((value) => Object.keys(value).length <= 32, {
+      message: "Raw capture metadata may contain at most 32 entries.",
+    }),
+});
 
 const agentActivityTimestampSchema = z.number().int().nonnegative().safe();
 const agentCommandOutputSchema = z.string().superRefine((value, context) => {
@@ -6382,6 +6423,7 @@ const agentActivityBaseShape = {
   updatedAtMs: agentActivityTimestampSchema.optional(),
   completedAtMs: agentActivityTimestampSchema.nullable().optional(),
   correlation: codexEventCorrelationSchema.nullable().optional(),
+  raw: agentActivityRawEnvelopeSchema.optional(),
 };
 
 export const agentTokenUsageSchema = z.object({
@@ -6400,6 +6442,19 @@ const rateLimitWindowSchema = z.object({
 });
 
 export const agentActivitySchema = z.discriminatedUnion("type", [
+  z.object({
+    ...agentActivityBaseShape,
+    type: z.literal("instructionContext"),
+    provenance: z.enum(["exact", "assembled", "unavailable"]),
+    text: z.string().max(agentActivityRawRequestLimitBytes).nullable(),
+    sources: z.array(z.string().min(1).max(500)).max(100),
+    model: z.string().max(200).nullable(),
+    provider: z.string().max(200).nullable(),
+    reasoningEffort: z.string().max(100).nullable(),
+    collaborationMode: z.string().max(100).nullable(),
+    permissionProfile: z.string().max(200).nullable(),
+    runtimeVersion: z.string().max(100).nullable(),
+  }),
   z.object({
     ...agentActivityBaseShape,
     type: z.literal("command"),
@@ -14381,6 +14436,9 @@ export type AgentTurnResultMode = z.infer<typeof agentTurnResultModeSchema>;
 export type AgentTokenUsage = z.infer<typeof agentTokenUsageSchema>;
 export type WorkflowNodeExecutionWorkerResult = z.infer<
   typeof workflowNodeExecutionResultSchema
+>;
+export type AgentActivityRawEnvelope = z.infer<
+  typeof agentActivityRawEnvelopeSchema
 >;
 export type AgentActivity = z.infer<typeof agentActivitySchema>;
 export type NormalizedAgentMessage = z.infer<

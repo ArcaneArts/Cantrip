@@ -22,6 +22,7 @@ import {
   type TrajectoryEvent,
   type TrajectoryLane,
 } from "./trajectory-model";
+import { TrajectoryDetails } from "./trajectory-details";
 import {
   TrajectoryTimeline,
   trajectoryEventAtTime,
@@ -193,6 +194,13 @@ export function AgentTrajectory({
       }),
     [hiddenKinds, hiddenLanes, query, turn?.events],
   );
+  const selectedEvent = useMemo(
+    () =>
+      selectedEventId
+        ? (turn?.events.find((event) => event.id === selectedEventId) ?? null)
+        : null,
+    [selectedEventId, turn?.events],
+  );
 
   useEffect(() => {
     setPlayheadMs(turn?.timelineStartMs ?? null);
@@ -200,20 +208,29 @@ export function AgentTrajectory({
   }, [turn?.key]);
 
   useEffect(() => {
-    if (
-      selectedEventId &&
-      turn &&
-      !turn.events.some((event) => event.id === selectedEventId)
-    ) {
-      setSelectedEventId(null);
-    }
-  }, [selectedEventId, turn]);
+    if (!selectedEventId || !turn) return;
+    if (events.some((event) => event.id === selectedEventId)) return;
+    setSelectedEventId(
+      trajectoryEventAtTime(events, playheadMs ?? turn.timelineStartMs)?.id ??
+        null,
+    );
+  }, [events, playheadMs, selectedEventId, turn]);
 
   const selectAndReveal = (event: TrajectoryEvent, nextPlayheadMs: number) => {
+    rowRefs.current.get(event.id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
     setPlayheadMs(nextPlayheadMs);
     setSelectedEventId(event.id);
+  };
+
+  const closeDetails = () => {
+    const restoredEventId = selectedEventId;
+    setSelectedEventId(null);
+    if (!restoredEventId) return;
     window.requestAnimationFrame(() => {
-      rowRefs.current.get(event.id)?.scrollIntoView({
+      rowRefs.current.get(restoredEventId)?.scrollIntoView({
         behavior: "smooth",
         block: "center",
       });
@@ -385,7 +402,9 @@ export function AgentTrajectory({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {events.length > 0 ? (
+        {selectedEvent ? (
+          <TrajectoryDetails event={selectedEvent} onBack={closeDetails} />
+        ) : events.length > 0 ? (
           <ol aria-label="Trajectory events">
             {events.map((event) => (
               <TrajectoryEventRow
