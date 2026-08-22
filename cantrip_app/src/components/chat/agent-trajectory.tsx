@@ -1,5 +1,6 @@
 import type { ChatMessage } from "@cantrip/protocol";
 import {
+  ArrowDown,
   ArrowLeft,
   Check,
   ChevronDown,
@@ -29,8 +30,10 @@ import {
   TrajectoryTimeline,
   trajectoryEventAtTime,
 } from "./trajectory-timeline";
+import { useStickyChatScroll } from "./use-sticky-chat-scroll";
 
 const TRAJECTORY_CLOCK_INTERVAL_MS = 500;
+const TRAJECTORY_FOLLOW_THRESHOLD_PX = 24;
 const lanes = ["input", "model", "tools"] as const;
 const statuses = ["running", "completed", "failed", "declined"] as const;
 const timingQualities = ["exact", "derived", "instant"] as const;
@@ -210,6 +213,16 @@ export function AgentTrajectory({
         targetTurnKey,
       }),
     [active, deferredMessages, nowMs, targetTurnKey],
+  );
+  const {
+    contentRef: eventListContentRef,
+    onScroll: updateEventListScrollState,
+    scrollToBottom: scrollEventsToBottom,
+    showScrollToBottom: showScrollToLatestEvent,
+    viewportRef: eventListViewportRef,
+  } = useStickyChatScroll(
+    turn?.key ?? targetTurnKey ?? "trajectory-empty",
+    TRAJECTORY_FOLLOW_THRESHOLD_PX,
   );
   const trajectoryRunning = Boolean(turn?.nextTransitionAtMs);
 
@@ -561,31 +574,53 @@ export function AgentTrajectory({
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {selectedEvent ? (
-          <TrajectoryDetails event={selectedEvent} onBack={closeDetails} />
-        ) : events.length > 0 ? (
-          <ol aria-label="Trajectory events">
-            {events.map((event) => (
-              <TrajectoryEventRow
-                event={event}
-                key={event.id}
-                onFocus={() => movePlayhead(event.startMs)}
-                onSelect={() => selectAndReveal(event, event.startMs)}
-                rowRef={(node) => {
-                  if (node) rowRefs.current.set(event.id, node);
-                  else rowRefs.current.delete(event.id);
-                }}
-                selected={selectedEventId === event.id}
-                startedAtMs={turn.startedAtMs}
-              />
-            ))}
-          </ol>
-        ) : (
-          <div className="grid min-h-32 place-items-center p-5 text-center text-xs text-muted-foreground">
-            No events match the current filters.
+      <div className="relative min-h-0 flex-1">
+        <div
+          className="h-full overflow-y-auto overscroll-contain"
+          data-slot="trajectory-event-viewport"
+          onScroll={updateEventListScrollState}
+          ref={eventListViewportRef}
+        >
+          <div ref={eventListContentRef}>
+            {selectedEvent ? (
+              <TrajectoryDetails event={selectedEvent} onBack={closeDetails} />
+            ) : events.length > 0 ? (
+              <ol aria-label="Trajectory events">
+                {events.map((event) => (
+                  <TrajectoryEventRow
+                    event={event}
+                    key={event.id}
+                    onFocus={() => movePlayhead(event.startMs)}
+                    onSelect={() => selectAndReveal(event, event.startMs)}
+                    rowRef={(node) => {
+                      if (node) rowRefs.current.set(event.id, node);
+                      else rowRefs.current.delete(event.id);
+                    }}
+                    selected={selectedEventId === event.id}
+                    startedAtMs={turn.startedAtMs}
+                  />
+                ))}
+              </ol>
+            ) : (
+              <div className="grid min-h-32 place-items-center p-5 text-center text-xs text-muted-foreground">
+                No events match the current filters.
+              </div>
+            )}
           </div>
-        )}
+        </div>
+        {showScrollToLatestEvent && !selectedEvent ? (
+          <Button
+            aria-label="Scroll to latest trajectory event"
+            className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full bg-popover text-popover-foreground shadow-lg backdrop-blur-xl"
+            onClick={scrollEventsToBottom}
+            size="icon"
+            title="Scroll to latest trajectory event"
+            type="button"
+            variant="outline"
+          >
+            <ArrowDown className="size-4" />
+          </Button>
+        ) : null}
       </div>
     </div>
   );

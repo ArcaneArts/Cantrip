@@ -66,6 +66,7 @@ describe("AgentTrajectory", () => {
     expect(markup).toContain('aria-label="Search trajectory events"');
     expect(markup).toContain("Filters");
     expect(markup).toContain('aria-label="Trajectory events"');
+    expect(markup).toContain('data-slot="trajectory-event-viewport"');
     expect(markup).toContain('data-event-kind="input"');
     expect(markup).toContain('data-event-kind="command"');
     expect(markup).toContain("mixed timing precision");
