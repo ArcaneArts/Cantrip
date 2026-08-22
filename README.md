@@ -1,6 +1,6 @@
 # Cantrip
 
-Cantrip is a local-first, self-hostable coding-agent workspace powered by the open-source Codex CLI. It combines Codex chats, real and supervised terminals, persistent file editing, an embedded Code workspace, Git and GitHub tooling, automations, and remote browser and desktop surfaces in one interface.
+Cantrip is a local-first, self-hostable coding-agent workspace powered by the open-source Codex CLI. It combines Codex chats, real and supervised terminals, persistent file editing, an embedded Code workspace, Git and GitHub tooling, automations, a global command palette, and remote browser and desktop surfaces across desktop, browser, iOS, and Android clients.
 
 The project is inspired by the Codex desktop experience, but its architecture is designed around a server and independent workers. The local development path runs the app, server, and one worker on the same computer. The hosted path runs an authenticated PostgreSQL-backed control plane with independently enrolled workers and browser, desktop, or mobile clients.
 
@@ -18,7 +18,7 @@ use the explicit conversion flow to become a new or empty GitHub repository;
 an attached user-owned folder stays in folder mode. Every project resolves to a
 source folder on a worker and can contain an ordered mix of:
 
-- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, arbitrary file attachments, large-paste attachments, per-message Default/Plan/Goal modes, model selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
+- Codex chats with phased Markdown responses, normalized plans/reasoning/tools/subagents/usage activity, drag-and-drop, paste, and picker attachments, large-paste attachments, image input for capable providers including Grok, per-message Default/Plan/Goal modes, model and reasoning selection, steering, prompt queues, cooperative pause/resume/stop controls, compaction commands, forking, renaming, duplication, and selectable sandbox/approval profiles. An explicit warning-gated YOLO profile is available when unrestricted, approval-free execution is genuinely intended.
 - Task-backed chats for large jobs. A Task starts as a full Markdown brief with
   attachments, runs strictly read-only planning into a durable Markdown plan
   and structured questions, supports repeated refinements and revision-safe
@@ -31,7 +31,7 @@ source folder on a worker and can contain an ordered mix of:
 - Native macOS and Windows import of compatible local ChatGPT Codex chats as
   resumable Cantrip-managed forks. See
   [the Codex chat import guide](docs/CODEX_CHAT_IMPORT.md).
-- Real PTY terminal tabs that run in the project folder on the worker. A terminal can also become a durable service: the worker starts its saved command at boot, restarts it after an unexpected exit, retains its live PTY for later attachment, and exposes stop, disable, and restart controls.
+- Real PTY terminal tabs that run in the project folder on the worker, recognize clickable links, and expose an Esc/Shift/arrow command bar above the software keyboard on mobile. A terminal can also become a durable service: the worker starts its saved command at boot, restarts it after an unexpected exit, retains its live PTY for later attachment, and exposes stop, disable, and restart controls.
 - Codex-compatible project Run environments with platform-specific saved
   actions, revision-checked CLI/MCP execution, headless worker-owned PTYs,
   encrypted terminal materialization, and durable secondary-worktree setup.
@@ -43,7 +43,7 @@ source folder on a worker and can contain an ordered mix of:
   the selected file, draft, cursor, scroll position, and undo history survive
   ordinary tab changes.
 - Embedded Cantrip Code tabs backed by the selected worker and checkout, with the project pretrusted, Cantrip's chosen theme applied on startup, and unnecessary onboarding/chat surfaces hidden.
-- Worker-streamed Browser tabs for project-related web pages.
+- Worker-streamed Browser tabs for project-related web pages, with server-routed keyboard, mouse, wheel, and mobile touch input while Chromium and its persistent profile remain on the worker.
 - Saved and feature-managed tunnels that expose explicit worker-local services
   on Tauri desktop loopback without opening inbound worker ports. See
   [the tunnels guide](docs/TUNNELS.md).
@@ -85,7 +85,7 @@ worker and path. For a remote worker, the Shift shortcut is intentionally a
 silent no-op. Browser and mobile clients do not show the native reveal action.
 See [the project network-share guide](docs/PROJECT_NETWORK_SHARES.md).
 
-Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
+Server-owned workspaces provide a lightweight project-visibility filter for the sidebar. A project can appear in several workspaces without duplicating its repository, tabs, or state, making it practical to keep personal, organization, and client project sets separate. Pressing Shift twice opens the global command palette at the top of the app: it searches context-aware actions, detected scripts for the selected project, and projects across every workspace. Choosing a project switches to an available containing workspace when needed. Choosing a script sends it to an idle selected terminal or opens an appropriately grouped project terminal. Tabs can be renamed, reordered, grouped, split, popped out on desktop, or closed with the middle mouse button; projects themselves are never removed by middle-click.
 
 Settings are stored by the server for the current Cantrip identity rather than in browser cookies. They include System/Light/Dark appearance, optional high contrast, reusable Agent Policies, model providers, models, and the default model. **Settings → Logs** adds a bounded live console for the current client, the desktop-owned embedded server, and account-linked workers—even when the selected worker is reached remotely through the server. Filter by chat/turn, request, worker, workflow/run, project, or surface IDs to follow an operation without exposing prompts, terminal I/O, or page/desktop contents. See the [service log guide](docs/SERVICE_LOGS.md) for source availability, correlation, redaction, retention, verification, and troubleshooting. Provider support currently includes:
 
@@ -112,6 +112,12 @@ accounts. Each route keeps its provider-specific model name and
 optional reasoning override. Cantrip records the concrete route used for a
 turn and only retries another route automatically when the first attempt fails
 before producing command or file activity.
+
+The chat composer context meter combines context-window consumption with the
+7-day account availability reported by the selected model's primary portable
+provider. ChatGPT and SuperGrok both expose aggregate and per-account details,
+including reset times; an omitted zero-valued SuperGrok reading is treated as
+0% used rather than as missing usage data.
 
 The app can switch between the structured chat view and the linked live Codex console. A newly opened console initializes the Codex CLI with the model selected in the composer, so a conversation can begin in either interface.
 
@@ -156,7 +162,7 @@ flowchart LR
 
 ### `cantrip_app`
 
-The React frontend is the control surface. Vite provides the browser development build, Tauri provides the desktop shell, and Capacitor stubs reserve the mobile path. The app knows the server URL but never connects directly to a worker or assumes project files exist on the client device.
+The React frontend is the control surface. Vite provides the browser development build, Tauri provides the desktop shell, and Capacitor packages the native iOS and Android clients. The app knows the server URL but never connects directly to a worker or assumes project files exist on the client device.
 
 ### `cantrip_server`
 
@@ -773,6 +779,13 @@ See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md#mobile-release-lanes) for the
 required iOS Actions secrets.
 
 Browser-only and mobile clients cannot bootstrap a Node server or worker. They use the same server switcher to select a reachable standalone server. Tauri development keeps the root-orchestrated hot-reload stack, while a production desktop bundle supervises its internal server and worker automatically.
+
+The mobile shell provides bottom navigation for project surfaces, native haptic
+feedback on tab press and long-press reset, safe-area-aware layouts, a terminal
+keyboard command bar, QR-assisted sign-in, and touch-correct Browser input and
+scrolling. These clients still operate entirely through the selected Cantrip
+server; camera access is used only for the sign-in scanner, and no local server
+option is presented outside Tauri.
 
 ## Further design
 
