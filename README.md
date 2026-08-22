@@ -793,4 +793,4 @@ See [docs/PLAN.md](docs/PLAN.md) for the security model, durable chat design,
 worker protocol, account and pairing flows, and phased roadmap. The accepted
 [multi-worker architecture contract](docs/MULTI_WORKER_ARCHITECTURE.md) defines
 project replicas, execution placement, synchronization, and safe chat
-relocation.
+relocation
