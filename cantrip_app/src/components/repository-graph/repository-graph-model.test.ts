@@ -131,6 +131,40 @@ describe("repository graph model", () => {
     ).toBeGreaterThan(1);
   });
 
+  it("fans every directory's child branches across its full local circle", () => {
+    const nodes: RepositoryGraphInputNode[] = [
+      node("root", null, "directory"),
+      node("trunk", "root", "directory"),
+    ];
+    for (let index = 0; index < 8; index += 1)
+      nodes.push(node(`branch-${index}`, "trunk", "directory"));
+
+    const scene = buildRepositoryGraphScene(nodes);
+    const root = scene.nodesById.get("root")!;
+    const trunk = scene.nodesById.get("trunk")!;
+    const outward = { x: trunk.x - root.x, y: trunk.y - root.y };
+    const branches = nodes
+      .filter(({ parentId }) => parentId === "trunk")
+      .map(({ id }) => scene.nodesById.get(id)!);
+    const relativeAngles = branches.map((branch) => {
+      const offset = { x: branch.x - trunk.x, y: branch.y - trunk.y };
+      const cross = outward.x * offset.y - outward.y * offset.x;
+      const dot = outward.x * offset.x + outward.y * offset.y;
+      return (Math.atan2(cross, dot) + Math.PI * 2) % (Math.PI * 2);
+    });
+    const occupiedQuadrants = new Set(
+      relativeAngles.map(
+        (angle) => Math.floor((angle + 0.000_001) / (Math.PI / 2)) % 4,
+      ),
+    );
+
+    expect(relativeAngles[0]).toBeLessThan(0.000_001);
+    expect(occupiedQuadrants.size).toBe(4);
+    expect(
+      relativeAngles.some((angle) => Math.abs(angle - Math.PI) < 0.1),
+    ).toBe(true);
+  });
+
   it("bounds large hierarchies and reports aggregation without dropping the source count", () => {
     const nodes: RepositoryGraphInputNode[] = [node("root", null, "directory")];
     for (let directory = 0; directory < 20; directory += 1) {
