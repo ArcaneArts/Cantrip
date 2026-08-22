@@ -1,4 +1,4 @@
-use std::process::Command;
+use std::{env, ffi::OsString, process::Command};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -6,8 +6,7 @@ use std::os::windows::process::CommandExt;
 #[cfg(target_os = "macos")]
 use std::{
     collections::HashSet,
-    env,
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     path::{Path, PathBuf},
 };
 
@@ -61,12 +60,25 @@ fn augment_path(current: Option<&OsStr>, home: Option<&Path>) -> OsString {
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-pub fn configure_desktop_child(command: &mut Command) {
+pub fn desktop_path() -> Option<OsString> {
     #[cfg(target_os = "macos")]
     {
         let current = env::var_os("PATH");
         let home = env::var_os("HOME").map(PathBuf::from);
-        command.env("PATH", augment_path(current.as_deref(), home.as_deref()));
+        Some(augment_path(current.as_deref(), home.as_deref()))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        env::var_os("PATH")
+    }
+}
+
+pub fn configure_desktop_child(command: &mut Command) {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(path) = desktop_path() {
+            command.env("PATH", path);
+        }
         if env::var_os("SHELL").is_none() {
             command.env("SHELL", "/bin/zsh");
         }

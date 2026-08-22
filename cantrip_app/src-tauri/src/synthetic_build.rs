@@ -16,6 +16,7 @@ use crate::process_environment::configure_desktop_child;
 
 pub(crate) mod artifact;
 pub(crate) mod job;
+pub(crate) mod toolchain;
 
 const COMMITS_URL: &str = "https://api.github.com/repos/ArcaneArts/Cantrip/commits";
 const REPOSITORY_URL: &str = "https://github.com/ArcaneArts/Cantrip.git";
@@ -26,6 +27,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct SyntheticBuildCoordinator {
     root: PathBuf,
     source_lock: Arc<Mutex<()>>,
+    toolchain_lock: Arc<tokio::sync::Mutex<()>>,
     jobs: job::JobRuntime,
 }
 
@@ -58,6 +60,7 @@ impl SyntheticBuildCoordinator {
         Ok(Self {
             root,
             source_lock: Arc::new(Mutex::new(())),
+            toolchain_lock: Arc::new(tokio::sync::Mutex::new(())),
             jobs,
         })
     }
@@ -129,6 +132,14 @@ impl SyntheticBuildCoordinator {
             )
         })?
     }
+
+    async fn ensure_toolchain(
+        &self,
+        package_manager: &str,
+    ) -> Result<toolchain::SyntheticBuildToolchain, SyntheticBuildError> {
+        let _guard = self.toolchain_lock.lock().await;
+        toolchain::ensure(&self.root, package_manager).await
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -177,7 +188,6 @@ pub struct SyntheticPrerequisite {
     detected_version: Option<String>,
     required_version: String,
     installation: &'static str,
-    install_url: Option<&'static str>,
     message: Option<String>,
 }
 
@@ -625,7 +635,6 @@ fn prerequisite(
     required_version: impl Into<String>,
     ready: impl FnOnce(&str) -> bool,
     installation: &'static str,
-    install_url: Option<&'static str>,
 ) -> SyntheticPrerequisite {
     let status = match detected_version.as_deref() {
         None => SyntheticPrerequisiteStatus::Missing,
@@ -646,12 +655,14 @@ fn prerequisite(
         detected_version,
         required_version: required_version.into(),
         installation,
-        install_url,
         message,
     }
 }
 
-fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
+fn scan_prerequisites(
+    package_manager: &str,
+    toolchain: Option<&toolchain::SyntheticBuildToolchain>,
+) -> Vec<SyntheticPrerequisite> {
     let pnpm_version = package_manager.trim_start_matches("pnpm@").to_string();
     let mut prerequisites = vec![
         prerequisite(
@@ -660,26 +671,20 @@ fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
             probe(&["git", "--version"]),
             "Git 2.x",
             |version| first_version(version).is_some_and(|(major, _, _)| major >= 2),
-            if cfg!(target_os = "windows") {
-                "managed"
-            } else {
-                "system"
-            },
-            Some("https://git-scm.com/downloads"),
+            "system",
         ),
         prerequisite(
             "node",
             "Node.js",
-            probe(&["node", "--version"]),
+            toolchain.map(|toolchain| toolchain.node_version.clone()),
             "Node.js 24.x",
             |version| first_version(version).is_some_and(|(major, _, _)| major == 24),
             "managed",
-            Some("https://nodejs.org/en/download"),
         ),
         prerequisite(
             "pnpm",
             "pnpm",
-            probe(&["pnpm", "--version"]),
+            toolchain.map(|toolchain| toolchain.pnpm_version.clone()),
             format!("pnpm {pnpm_version}"),
             |version| {
                 version
@@ -688,18 +693,16 @@ fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
                     .is_some_and(|line| line.trim() == pnpm_version)
             },
             "managed",
-            Some("https://pnpm.io/installation"),
         ),
         prerequisite(
             "rust",
             "Rust",
-            probe(&["rustc", "--version"]),
+            toolchain.map(|toolchain| toolchain.rust_version.clone()),
             "Rust 1.95.x",
             |version| {
                 first_version(version).is_some_and(|(major, minor, _)| major == 1 && minor == 95)
             },
             "managed",
-            Some("https://rustup.rs"),
         ),
     ];
 
@@ -711,7 +714,6 @@ fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
         "A selected Xcode developer directory",
         |value| !value.trim().is_empty(),
         "system",
-        Some("https://developer.apple.com/xcode/resources/"),
     ));
 
     #[cfg(target_os = "windows")]
@@ -739,7 +741,6 @@ fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
             "Visual Studio 2022 C++ tools, Windows SDK, and Spectre libraries",
             |value| !value.trim().is_empty(),
             "system",
-            Some("https://visualstudio.microsoft.com/visual-cpp-build-tools/"),
         ));
         prerequisites.push(prerequisite(
             "cmake",
@@ -747,8 +748,7 @@ fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
             probe(&["cmake", "--version"]),
             "CMake 3.x or newer",
             |version| first_version(version).is_some_and(|(major, _, _)| major >= 3),
-            "managed",
-            Some("https://cmake.org/download/"),
+            "system",
         ));
         prerequisites.push(prerequisite(
             "nasm",
@@ -756,8 +756,7 @@ fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
             probe(&["nasm", "-v"]),
             "NASM 2.x",
             |version| first_version(version).is_some_and(|(major, _, _)| major >= 2),
-            "managed",
-            Some("https://www.nasm.us/"),
+            "system",
         ));
     }
 
@@ -805,15 +804,23 @@ pub async fn scan_synthetic_build_prerequisites(
     sha: String,
     coordinator: State<'_, SyntheticBuildCoordinator>,
 ) -> Result<SyntheticPrerequisiteScan, SyntheticBuildError> {
+    prepare_synthetic_build_prerequisites(sha, &coordinator).await
+}
+
+async fn prepare_synthetic_build_prerequisites(
+    sha: String,
+    coordinator: &SyntheticBuildCoordinator,
+) -> Result<SyntheticPrerequisiteScan, SyntheticBuildError> {
     if !synthetic_build_available() {
         return Err(SyntheticBuildError::unavailable());
     }
     validate_full_sha(&sha)?;
-    let preliminary = scan_prerequisites("pnpm@11.15.1");
-    let git_ready = preliminary.iter().any(|prerequisite| {
-        prerequisite.id == "git" && prerequisite.status == SyntheticPrerequisiteStatus::Ready
+    let preliminary = scan_prerequisites("pnpm@11.15.1", None);
+    let system_ready = preliminary.iter().all(|prerequisite| {
+        prerequisite.installation != "system"
+            || prerequisite.status == SyntheticPrerequisiteStatus::Ready
     });
-    if !git_ready {
+    if !system_ready {
         return Ok(SyntheticPrerequisiteScan {
             target_sha: sha,
             ready: false,
@@ -823,74 +830,15 @@ pub async fn scan_synthetic_build_prerequisites(
     }
 
     let source = coordinator.resolve_source(sha.clone()).await?;
-    let prerequisites = scan_prerequisites(&source.package_manager);
+    let package_manager = source.package_manager;
+    let toolchain = coordinator.ensure_toolchain(&package_manager).await?;
+    let prerequisites = scan_prerequisites(&package_manager, Some(&toolchain));
     let ready = prerequisites
         .iter()
         .all(|prerequisite| prerequisite.status == SyntheticPrerequisiteStatus::Ready);
     Ok(SyntheticPrerequisiteScan {
         target_sha: sha,
         ready,
-        package_manager: Some(source.package_manager),
-        prerequisites,
-    })
-}
-
-#[tauri::command]
-pub async fn install_synthetic_build_prerequisites(
-    sha: String,
-    ids: Vec<String>,
-    coordinator: State<'_, SyntheticBuildCoordinator>,
-) -> Result<SyntheticPrerequisiteScan, SyntheticBuildError> {
-    validate_full_sha(&sha)?;
-    let preliminary = scan_prerequisites("pnpm@11.15.1");
-    let package_manager = if preliminary
-        .iter()
-        .any(|item| item.id == "git" && item.status == SyntheticPrerequisiteStatus::Ready)
-    {
-        coordinator
-            .resolve_source(sha.clone())
-            .await?
-            .package_manager
-    } else {
-        "pnpm@11.15.1".into()
-    };
-    let prerequisites = scan_prerequisites(&package_manager);
-    for prerequisite in prerequisites
-        .iter()
-        .filter(|item| ids.iter().any(|id| id == item.id))
-        .filter(|item| item.status != SyntheticPrerequisiteStatus::Ready)
-    {
-        #[cfg(target_os = "macos")]
-        if prerequisite.id == "native-build-tools" {
-            let _ = Command::new("xcode-select").arg("--install").spawn();
-            continue;
-        }
-        let Some(url) = prerequisite.install_url else {
-            continue;
-        };
-        #[cfg(target_os = "macos")]
-        let result = Command::new("open").arg(url).spawn();
-        #[cfg(target_os = "windows")]
-        let result = Command::new("cmd").args(["/C", "start", "", url]).spawn();
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let result: std::io::Result<std::process::Child> =
-            Err(std::io::Error::other("unsupported platform"));
-        result.map_err(|error| {
-            SyntheticBuildError::new(
-                "synthetic_prerequisite_installer_failed",
-                format!(
-                    "The {} installer could not be opened: {error}",
-                    prerequisite.label
-                ),
-                true,
-            )
-        })?;
-    }
-    Ok(SyntheticPrerequisiteScan {
-        target_sha: sha,
-        ready: prerequisites
-            .iter()
-            .all(|item| item.status == SyntheticPrerequisiteStatus::Ready),
         package_manager: Some(package_manager),
         prerequisites,
     })
