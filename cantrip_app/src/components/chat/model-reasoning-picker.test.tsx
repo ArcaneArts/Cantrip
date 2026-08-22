@@ -10,6 +10,7 @@ import {
   filterConfiguredModels,
   ModelReasoningPicker,
   modelReasoningChoices,
+  nextReasoningTriggerState,
 } from "./model-reasoning-picker";
 
 const now = "2026-08-15T12:00:00.000Z";
@@ -95,6 +96,21 @@ describe("model reasoning picker", () => {
       "GPT 5.6 Sol",
     );
     expect(markup.slice(reasoningTrigger)).toContain("lucide-brain");
+  });
+
+  it("toggles the reasoning panel closed when its trigger is clicked again", () => {
+    expect(nextReasoningTriggerState(false, "models")).toEqual({
+      open: true,
+      panel: "reasoning",
+    });
+    expect(nextReasoningTriggerState(true, "models")).toEqual({
+      open: true,
+      panel: "reasoning",
+    });
+    expect(nextReasoningTriggerState(true, "reasoning")).toEqual({
+      open: false,
+      panel: "reasoning",
+    });
   });
 
   it("filters by display name, provider, and provider model name", () => {
