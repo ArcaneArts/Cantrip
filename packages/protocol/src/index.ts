@@ -1035,6 +1035,7 @@ export const skillSettingsLocationSchema = z.enum([
   "project",
   "account",
   "user",
+  "codexUser",
   "system",
   "admin",
 ]);

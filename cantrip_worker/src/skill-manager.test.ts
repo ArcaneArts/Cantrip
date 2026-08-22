@@ -93,6 +93,18 @@ describe("skill manager", () => {
       "Write documentation.",
     );
     await createSkill(
+      path.join(homeDirectory, ".codex", "skills"),
+      "legacy-review",
+      "legacy-review",
+      "Review using the worker's Codex skill.",
+    );
+    await createSkill(
+      path.join(homeDirectory, ".codex", "skills", ".system"),
+      "legacy-bundled-copy",
+      "legacy-bundled-copy",
+      "Must remain hidden from the editable user root.",
+    );
+    await createSkill(
       path.join(accountSkills, ".system"),
       "skill-installer",
       "skill-installer",
@@ -113,9 +125,40 @@ describe("skill manager", () => {
     expect(inventory.global.map(({ location }) => location)).toEqual([
       "account",
       "user",
+      "codexUser",
       "system",
       "admin",
     ]);
+    const codexUserSkill = inventory.global.find(
+      ({ location }) => location === "codexUser",
+    )!;
+    expect(codexUserSkill).toMatchObject({
+      name: "legacy-review",
+      editable: true,
+      deletable: true,
+    });
+    await manager.write(
+      context,
+      codexUserSkill.id,
+      "references/notes.md",
+      "Updated worker Codex notes.\n",
+    );
+    expect(
+      await readFile(
+        path.join(
+          homeDirectory,
+          ".codex",
+          "skills",
+          "legacy-review",
+          "references",
+          "notes.md",
+        ),
+        "utf8",
+      ),
+    ).toBe("Updated worker Codex notes.\n");
+    expect(
+      inventory.global.some(({ name }) => name === "legacy-bundled-copy"),
+    ).toBe(false);
     expect(
       inventory.global.find(({ location }) => location === "system"),
     ).toMatchObject({

@@ -74,6 +74,8 @@ function locationLabel(item: SkillSettingsItem): string {
       return "Cantrip account";
     case "user":
       return "Worker user";
+    case "codexUser":
+      return "Worker Codex home";
     case "system":
       return "Bundled";
     case "admin":
@@ -459,8 +461,8 @@ export function SkillsSettings({ project }: { project?: ProjectSummary }) {
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             Available from {currentProvider?.name ?? "the selected provider"},
-            the worker user profile, bundled Codex skills, and administrator
-            policy.
+            the worker user profile and Codex home, bundled Codex skills, and
+            administrator policy.
           </p>
         </div>
         <SkillRows

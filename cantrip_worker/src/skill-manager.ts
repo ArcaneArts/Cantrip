@@ -27,6 +27,7 @@ import {
 } from "@cantrip/protocol";
 
 import { codexAccountHome } from "./codex/account-home.js";
+import { workerGlobalCodexSkillsRoot } from "./codex/global-skills.js";
 
 const MAX_DISCOVERY_DEPTH = 6;
 const MAX_SKILLS_PER_ROOT = 1_000;
@@ -57,6 +58,10 @@ function pathWithin(root: string, candidate: string): boolean {
 
 function displayError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function rootContainsBundledSkills(root: SkillRoot): boolean {
+  return root.location === "account" || root.location === "codexUser";
 }
 
 function stripYamlString(value: string): string {
@@ -118,7 +123,11 @@ function decodeSkillId(id: string): {
   const separator = id.indexOf(":");
   if (separator < 1) throw new Error("The requested skill id is invalid.");
   const location = id.slice(0, separator);
-  if (!["project", "account", "user", "system", "admin"].includes(location)) {
+  if (
+    !["project", "account", "user", "codexUser", "system", "admin"].includes(
+      location,
+    )
+  ) {
     throw new Error("The requested skill location is invalid.");
   }
   let relativePath: string;
@@ -172,15 +181,18 @@ export class SkillManager {
   readonly #adminSkillsDirectory: string;
   readonly #dataDirectory: string;
   readonly #homeDirectory: string;
+  readonly #workerCodexSkillsDirectory: string;
 
   constructor(
     dataDirectory: string,
     homeDirectory = os.homedir(),
     adminSkillsDirectory = "/etc/codex/skills",
+    workerCodexSkillsDirectory = workerGlobalCodexSkillsRoot(homeDirectory),
   ) {
     this.#dataDirectory = path.resolve(dataDirectory);
     this.#homeDirectory = path.resolve(homeDirectory);
     this.#adminSkillsDirectory = path.resolve(adminSkillsDirectory);
+    this.#workerCodexSkillsDirectory = path.resolve(workerCodexSkillsDirectory);
   }
 
   async list(context: SkillContext): Promise<SkillSettingsInventory> {
@@ -208,7 +220,7 @@ export class SkillManager {
       );
     inventory.project.sort(compare);
     inventory.global.sort((left, right) => {
-      const locationOrder = ["account", "user", "system", "admin"];
+      const locationOrder = ["account", "user", "codexUser", "system", "admin"];
       return (
         locationOrder.indexOf(left.location) -
           locationOrder.indexOf(right.location) || compare(left, right)
@@ -343,6 +355,12 @@ export class SkillManager {
         editable: true,
       },
       {
+        path: this.#workerCodexSkillsDirectory,
+        location: "codexUser",
+        scope: "user",
+        editable: true,
+      },
+      {
         path: path.join(accountHome, "skills", ".system"),
         location: "system",
         scope: "system",
@@ -384,7 +402,7 @@ export class SkillManager {
         if (
           relativePath &&
           !(
-            root.location === "account" &&
+            rootContainsBundledSkills(root) &&
             relativePath.split(path.sep)[0] === ".system"
           )
         ) {
@@ -418,7 +436,7 @@ export class SkillManager {
       for (const entry of entries) {
         if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
         if (
-          root.location === "account" &&
+          rootContainsBundledSkills(root) &&
           current.depth === 0 &&
           entry.name === ".system"
         ) {

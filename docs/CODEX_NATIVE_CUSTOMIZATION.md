@@ -146,6 +146,14 @@ repository skills from `.agents/skills` shown before a separately labeled
 Global Skills inventory. This keeps project-owned workflows visibly distinct
 from Cantrip-account, worker-user, bundled, and administrator skills.
 
+Worker-user discovery includes both the current `~/.agents/skills` location
+and the backward-compatible `$CODEX_HOME/skills` location (normally
+`~/.codex/skills`). Cantrip registers the latter as a native runtime skill root
+because provider runtimes use isolated Codex homes for credentials and state.
+The root is registered before any thread starts, so its skills appear in the
+native catalog and remain eligible for automatic invocation. Project-specific
+extra roots are merged with this worker-global root instead of replacing it.
+
 The app talks only to the server. `GET /api/skills` resolves the requested
 provider and optional project source, verifies the project's owning worker, and
 asks that worker for a bounded inventory. Supporting files can be browsed and

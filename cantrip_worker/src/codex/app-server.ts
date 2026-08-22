@@ -115,6 +115,7 @@ import {
   type ExternalChatGptAuthSession,
   type RuntimeProvider,
 } from "./external-chatgpt-auth.js";
+import { mergeCodexSkillRoots } from "./global-skills.js";
 import {
   quotaSnapshotFromRateLimits,
   type AccountRateLimitsResult,
@@ -2756,7 +2757,12 @@ export class CodexAppServer implements CodexRuntime {
       "get"
     >,
     private readonly launchCodex: CodexProcessLauncher = launchCodexProcess,
+    private readonly globalSkillRoots: readonly string[] = [],
   ) {}
+
+  private effectiveSkillRoots(): string[] {
+    return mergeCodexSkillRoots(this.globalSkillRoots, this.#skillRoots);
+  }
 
   diagnostics(): CodexRuntimeDiagnostic[] {
     return [...this.#runtimeDiagnostics];
@@ -3493,7 +3499,7 @@ export class CodexAppServer implements CodexRuntime {
     const result = await resolveProjectSkillRoots(options.cwd, options.roots);
     await this.ensureStarted(options.model, options.provider);
     await this.request("skills/extraRoots/set", {
-      extraRoots: result.roots,
+      extraRoots: mergeCodexSkillRoots(this.globalSkillRoots, result.roots),
     });
     this.#skillRoots = result.roots;
     return result;
@@ -5081,6 +5087,14 @@ export class CodexAppServer implements CodexRuntime {
       },
     });
     this.send({ method: "initialized", params: {} });
+    if (
+      this.globalSkillRoots.length > 0 &&
+      this.methodAvailable("skills/extraRoots/set")
+    ) {
+      await this.request("skills/extraRoots/set", {
+        extraRoots: this.effectiveSkillRoots(),
+      });
+    }
     if (externalChatGptLease) {
       this.#diagnosticSecrets.add(externalChatGptLease.accessToken);
       const result = (await this.request(
