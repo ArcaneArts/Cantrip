@@ -43,6 +43,8 @@ describe("server administration page", () => {
     expect(markup).toContain("Server overview");
     expect(markup).toContain("admin@cantrip.art");
     expect(markup).not.toContain('role="dialog"');
+    expect(markup).not.toContain("max-w-6xl");
+    expect(markup).not.toContain("mx-auto");
   });
 
   it("renders licensed account management as a dense page section", () => {
