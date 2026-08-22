@@ -26,7 +26,10 @@ describe("shared settings controls", () => {
     expect(markup).toContain('aria-selected="true"');
     expect(markup).toContain("overflow-x-auto");
     expect(markup).toContain("overflow-y-hidden");
-    expect(markup).toContain("[scrollbar-width:none]");
+    expect(markup).toContain("[scrollbar-width:thin]");
+    expect(markup).toContain("[&amp;::-webkit-scrollbar]:h-1");
+    expect(markup).not.toContain("[scrollbar-width:none]");
+    expect(markup).not.toContain("[&amp;::-webkit-scrollbar]:hidden");
     expect(markup).toContain("shrink-0");
     expect(markup).toContain("General");
     expect(markup).toContain("MCP");

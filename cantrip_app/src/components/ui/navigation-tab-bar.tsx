@@ -30,7 +30,7 @@ export function NavigationTabBar<TabId extends string>({
     <div
       aria-label={ariaLabel}
       className={cn(
-        "flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+        "flex min-w-0 shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1",
         className,
       )}
       role="tablist"
