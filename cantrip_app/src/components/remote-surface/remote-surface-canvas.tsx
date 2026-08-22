@@ -6,7 +6,6 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
-  type TouchEvent,
   type WheelEvent,
 } from "react";
 
@@ -15,8 +14,10 @@ import {
   remoteSurfacePointerInput,
   remoteSurfaceTouchInput,
   remoteSurfaceWheelInput,
+  type RemoteSurfaceBounds,
   type RemoteSurfaceCoordinateLimit,
   type RemoteSurfaceKeyInput,
+  type RemoteSurfaceModifierState,
   type RemoteSurfacePointerInput,
   type RemoteSurfaceSize,
   type RemoteSurfaceTouchInput,
@@ -219,6 +220,73 @@ export interface RemoteSurfaceCanvasProps {
   style?: CSSProperties;
 }
 
+export interface RemoteSurfaceTouchPointerEvent extends RemoteSurfaceModifierState {
+  clientX: number;
+  clientY: number;
+  height: number;
+  pointerId: number;
+  pressure: number;
+  width: number;
+}
+
+type RemoteSurfaceTouchPointerPhase = "cancel" | "down" | "move" | "up";
+
+export class RemoteSurfaceTouchPointerTracker {
+  readonly #active = new Map<
+    number,
+    {
+      clientX: number;
+      clientY: number;
+      force: number;
+      identifier: number;
+      radiusX: number;
+      radiusY: number;
+    }
+  >();
+
+  input(
+    event: RemoteSurfaceTouchPointerEvent,
+    phase: RemoteSurfaceTouchPointerPhase,
+    bounds: RemoteSurfaceBounds,
+    target: RemoteSurfaceSize,
+  ): RemoteSurfaceTouchInput | null {
+    if (phase === "move" && !this.#active.has(event.pointerId)) return null;
+    if (phase === "up" && !this.#active.has(event.pointerId)) return null;
+    if (phase === "cancel") {
+      this.#active.clear();
+    } else if (phase === "up") {
+      this.#active.delete(event.pointerId);
+    } else {
+      this.#active.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        force: event.pressure,
+        identifier: event.pointerId,
+        radiusX: event.width / 2,
+        radiusY: event.height / 2,
+      });
+    }
+    const eventType =
+      phase === "down"
+        ? "start"
+        : phase === "up" && this.#active.size > 0
+          ? "move"
+          : phase === "up"
+            ? "end"
+            : phase;
+    return remoteSurfaceTouchInput(
+      { ...event, touches: [...this.#active.values()] },
+      eventType,
+      bounds,
+      target,
+    );
+  }
+
+  reset(): void {
+    this.#active.clear();
+  }
+}
+
 export const RemoteSurfaceCanvas = forwardRef<
   RemoteSurfaceCanvasHandle,
   RemoteSurfaceCanvasProps
@@ -248,6 +316,7 @@ export const RemoteSurfaceCanvas = forwardRef<
   const rendererRef = useRef<RemoteSurfaceFrameRenderer | null>(null);
   const callbacksRef = useRef({ onFrameError, onRendered });
   const lastPointerMoveAtRef = useRef(0);
+  const touchPointersRef = useRef(new RemoteSurfaceTouchPointerTracker());
   callbacksRef.current = { onFrameError, onRendered };
 
   useEffect(() => {
@@ -268,7 +337,10 @@ export const RemoteSurfaceCanvas = forwardRef<
     ref,
     () => ({
       pushFrame: (frame) => rendererRef.current?.push(frame),
-      reset: () => rendererRef.current?.reset(),
+      reset: () => {
+        rendererRef.current?.reset();
+        touchPointersRef.current.reset();
+      },
       takeFrameFeedback: () =>
         rendererRef.current?.takeFeedback() ?? {
           averageDecodeMs: 0,
@@ -283,9 +355,27 @@ export const RemoteSurfaceCanvas = forwardRef<
 
   const pointer = (
     event: PointerEvent<HTMLCanvasElement>,
-    type: "down" | "move" | "up",
+    type: RemoteSurfaceTouchPointerPhase,
   ) => {
-    if (event.pointerType === "touch" && onTouch) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (event.pointerType === "touch" && onTouch) {
+      // WKWebView can stop delivering the parallel legacy touch stream once
+      // pointer handling owns the gesture, so capture and forward this stream.
+      event.preventDefault();
+      if (type === "down") {
+        canvas.focus();
+        canvas.setPointerCapture(event.pointerId);
+      }
+      const input = touchPointersRef.current.input(
+        event,
+        type,
+        canvas.getBoundingClientRect(),
+        getCoordinateSpace(),
+      );
+      if (input) onTouch(input);
+      return;
+    }
     if (
       type === "move" &&
       pointerMoveThrottleMs > 0 &&
@@ -294,8 +384,6 @@ export const RemoteSurfaceCanvas = forwardRef<
       return;
     }
     if (type === "move") lastPointerMoveAtRef.current = performance.now();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
     if (type === "down") {
       canvas.focus();
       canvas.setPointerCapture(event.pointerId);
@@ -303,7 +391,7 @@ export const RemoteSurfaceCanvas = forwardRef<
     onPointer(
       remoteSurfacePointerInput(
         event,
-        type,
+        type === "cancel" ? "up" : type,
         canvas.getBoundingClientRect(),
         getCoordinateSpace(),
         coordinateLimit,
@@ -338,25 +426,6 @@ export const RemoteSurfaceCanvas = forwardRef<
     );
   };
 
-  const touch = (
-    event: TouchEvent<HTMLCanvasElement>,
-    type: "cancel" | "end" | "move" | "start",
-  ) => {
-    if (!onTouch) return;
-    event.preventDefault();
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.focus();
-    onTouch(
-      remoteSurfaceTouchInput(
-        event,
-        type,
-        canvas.getBoundingClientRect(),
-        getCoordinateSpace(),
-      ),
-    );
-  };
-
   return (
     <canvas
       ref={canvasRef}
@@ -371,12 +440,8 @@ export const RemoteSurfaceCanvas = forwardRef<
       onPointerDown={(event) => pointer(event, "down")}
       onPointerMove={(event) => pointer(event, "move")}
       onPointerUp={(event) => pointer(event, "up")}
-      onPointerCancel={(event) => pointer(event, "up")}
+      onPointerCancel={(event) => pointer(event, "cancel")}
       onWheel={wheel}
-      onTouchStart={onTouch ? (event) => touch(event, "start") : undefined}
-      onTouchMove={onTouch ? (event) => touch(event, "move") : undefined}
-      onTouchEnd={onTouch ? (event) => touch(event, "end") : undefined}
-      onTouchCancel={onTouch ? (event) => touch(event, "cancel") : undefined}
       onKeyDown={(event) => key(event, "down")}
       onKeyUp={(event) => key(event, "up")}
     />
