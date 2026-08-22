@@ -42,6 +42,13 @@ describe("repository graph model", () => {
       "test",
     ]);
     expect(scene.edges).toHaveLength(4);
+    expect(scene.edges.find(({ childId }) => childId === "app")).toMatchObject({
+      childId: "app",
+      parentId: "src",
+    });
+    expect(
+      scene.edgesByNodeId.get("src")?.map(({ childId }) => childId),
+    ).toEqual(["src", "app", "test"]);
     expect(scene.nodesById.get("src")?.depth).toBe(1);
     expect(scene.nodesById.get("app")?.depth).toBe(2);
     expect(scene.nodesById.get("root")?.x).toBe(0);
