@@ -114,6 +114,26 @@ test("embeds the official version in every Tauri build", () => {
   ]);
 });
 
+test("keeps the macOS bundle number numeric for synthetic versions", () => {
+  assert.deepEqual(
+    tauriBuildArguments({
+      platform: "darwin",
+      environment: {},
+      version: { ...version, version: "1.1.314-x", synthetic: true },
+    }),
+    [
+      "exec",
+      "tauri",
+      "build",
+      "--config",
+      JSON.stringify({
+        version: "1.1.314-x",
+        bundle: { macOS: { bundleVersion: "314" } },
+      }),
+    ],
+  );
+});
+
 test("the app build command uses the version-stamping wrapper", async () => {
   const packageJson = JSON.parse(
     await readFile(path.join(rootDir, "cantrip_app", "package.json"), "utf8"),
