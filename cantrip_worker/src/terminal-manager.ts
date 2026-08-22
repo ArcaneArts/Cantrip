@@ -20,7 +20,7 @@ const MAX_SCROLLBACK_CHARS = 2_000_000;
 let spawnHelperChecked = false;
 const require = createRequire(import.meta.url);
 
-function ensureSpawnHelperExecutable(): void {
+export function ensureSpawnHelperExecutable(): void {
   if (spawnHelperChecked || process.platform === "win32") return;
   spawnHelperChecked = true;
   const unixTerminal = require.resolve("node-pty/lib/unixTerminal.js");

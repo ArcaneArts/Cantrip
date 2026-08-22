@@ -37,6 +37,7 @@ import type {
   ProjectReplicaJobProgress,
   ProjectReplicaJobState,
   ProjectRootKind,
+  RunInstanceState,
   ProjectSourceKind,
   RemoteSurfaceCapabilities,
   RemoteSurfaceConfiguration,
@@ -2106,6 +2107,66 @@ export const gitOperations = pgTable(
       .where(
         sql`${table.state} in ('queued', 'running', 'conflicted', 'awaiting-user-action')`,
       ),
+  ],
+);
+
+export const runInstances = pgTable(
+  "run_instances",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    worktreeId: text("worktree_id")
+      .notNull()
+      .references(() => projectWorktrees.id, { onDelete: "cascade" }),
+    workerId: text("worker_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    actionId: text("action_id").notNull(),
+    configurationRevision: text("configuration_revision").notNull(),
+    state: text("state").$type<RunInstanceState>().notNull().default("queued"),
+    terminalId: text("terminal_id"),
+    exitCode: integer("exit_code"),
+    signal: text("signal"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("run_instances_owner_idempotency_unique").on(
+      table.ownerId,
+      table.idempotencyKey,
+    ),
+    index("run_instances_project_worktree_updated_index").on(
+      table.projectId,
+      table.worktreeId,
+      table.updatedAt,
+    ),
+    index("run_instances_worker_active_index").on(
+      table.workerId,
+      table.state,
+      table.updatedAt,
+    ),
+    check(
+      "run_instances_state_check",
+      sql`${table.state} IN ('queued', 'starting', 'running', 'exited', 'failed', 'stopping', 'stopped', 'lost')`,
+    ),
+    check(
+      "run_instances_action_id_check",
+      sql`${table.actionId} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      "run_instances_configuration_revision_check",
+      sql`${table.configurationRevision} ~ '^[0-9a-f]{64}$'`,
+    ),
   ],
 );
 

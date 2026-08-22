@@ -253,6 +253,7 @@ import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { inspectRunConfigurations } from "./run-configuration-discovery.js";
+import { ManagedRunSupervisor } from "./managed-run-supervisor.js";
 import {
   TerminalManager,
   type TerminalRuntimeEvent,
@@ -701,6 +702,40 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     ((notification: WorkerNotification) => boolean) | null = null;
   let workerNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
+  const managedRuns = new ManagedRunSupervisor({
+    authorize: async (input) => {
+      if (input.rootKind === "folder-root") {
+        const sourceRoot = await realpath(input.sourcePath);
+        const worktreeRoot = await realpath(input.worktreePath);
+        const sourceEntry = await lstat(sourceRoot);
+        const worktreeEntry = await lstat(worktreeRoot);
+        if (
+          !sourceEntry.isDirectory() ||
+          !worktreeEntry.isDirectory() ||
+          sourceRoot !== worktreeRoot
+        ) {
+          throw new Error(
+            "The requested folder Run root does not match its registered project source.",
+          );
+        }
+        return { sourceRoot, worktreeRoot };
+      }
+      const [authorized] = await worktrees.authorizeTargets(input.sourcePath, [
+        input.worktreePath,
+      ]);
+      if (!authorized)
+        throw new Error("The requested Run worktree is unavailable.");
+      return {
+        sourceRoot: authorized.inventory.sourcePath,
+        worktreeRoot: authorized.worktree.path,
+      };
+    },
+    notify: (run) =>
+      workerNotificationEmitter?.({
+        type: "project.run.state.observed",
+        run,
+      }),
+  });
   const providerAuthObserver = new ProviderAuthObserver({
     emit: (notification) => workerNotificationEmitter?.(notification) ?? false,
   });
@@ -1469,8 +1504,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return github.cloneRepository(command.repository.nameWithOwner);
       case "project.folder.materialize":
         return managedFolders.materialize(command);
-      case "project.folder.delete":
+      case "project.folder.delete": {
+        await managedRuns.stopProject(command.projectId);
         return managedFolders.delete(command.projectId);
+      }
       case "project.folder-conversion.preflight":
         return projectGithubConverter.preflight(command);
       case "project.folder-conversion.execute":
@@ -1527,6 +1564,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             }),
         );
       case "project.files.delete":
+        await managedRuns.stopForPath(command.path);
         return github.deleteRepository(command.path);
       case "project.script-commands":
         try {
@@ -1546,6 +1584,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       case "project.run-configurations.inspect":
         return inspectRunConfigurations(command.sourcePath);
+      case "project.run.start":
+        return managedRuns.start(command);
+      case "project.run.status":
+        return managedRuns.status(command.runId);
+      case "project.run.logs":
+        return managedRuns.logs(command.runId, command.maxChars);
+      case "project.run.stop":
+        return managedRuns.stop(command.runId);
+      case "project.run.reconcile":
+        return managedRuns.reconcile(command.runs);
       case "project.repository-stats":
         return readProjectRepositoryStats(command.cwd);
       case "project.folder-stats":
@@ -2142,6 +2190,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           {
             allowExternal: command.allowExternal,
             force: command.force,
+            beforeRemove: async (worktreePath) => {
+              await managedRuns.stopForPath(worktreePath);
+            },
           },
         );
         codegraphProjects?.detach(command.worktreePath);
@@ -3855,6 +3906,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codegraphProjects?.close();
     worktrees.close();
     providerAuthObserver.close();
+    await managedRuns.closeAll();
     commandConnection.close();
     await directBroker.close();
     terminalDirectEndpoints.close();

@@ -359,6 +359,9 @@ import {
   scriptCommandListSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
+  runInstanceResultSchema,
+  runInstanceSchema,
+  runLogResultSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -411,6 +414,10 @@ import {
   workerCliCommandCallSchema,
   workerRestartAcknowledgementSchema,
   workerRestartResultSchema,
+  workerRunLogSnapshotSchema,
+  workerRunLookupSchema,
+  workerRunReconciliationSchema,
+  workerRunSnapshotSchema,
   workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
@@ -1732,6 +1739,46 @@ export async function buildApp({
     timer.unref();
     worktreeObservationTimers.set(workerId, timer);
   };
+  const reconcileRunInstancesForWorker = async (
+    ownerId: string,
+    workerId: string,
+  ): Promise<void> => {
+    if (!bridge.isConnected(workerId)) return;
+    const active = await repository.listActiveRunIdentitiesForWorker(
+      ownerId,
+      workerId,
+    );
+    if (active.length === 0) return;
+    const observations = workerRunReconciliationSchema.parse(
+      await bridge.request(workerId, {
+        type: "project.run.reconcile",
+        runs: active,
+      }),
+    );
+    await Promise.all(
+      observations.map(async (observation) => {
+        if (observation.found) {
+          await repository.applyRunInstanceObservation(
+            ownerId,
+            workerId,
+            observation.run,
+          );
+          return;
+        }
+        const identity = active.find(
+          ({ runId }) => runId === observation.runId,
+        );
+        if (!identity) return;
+        await repository.transitionRunInstance(
+          ownerId,
+          identity.projectId,
+          identity.worktreeId,
+          identity.runId,
+          "lost",
+        );
+      }),
+    );
+  };
   const scheduleProjectWorktreeObservation = async (
     projectId: string,
   ): Promise<void> => {
@@ -2066,6 +2113,14 @@ export async function buildApp({
     }
     if (notification.type === "git.operation.observed") {
       scheduleGitOperationObservation(ownerId, workerId, notification);
+      return;
+    }
+    if (notification.type === "project.run.state.observed") {
+      await repository.applyRunInstanceObservation(
+        ownerId,
+        workerId,
+        notification.run,
+      );
       return;
     }
     if (notification.type === "provider.auth.status.observed") {
@@ -4854,6 +4909,72 @@ export async function buildApp({
         }),
       );
     };
+    const requireRunMutation = () => {
+      if (context.permissionProfileId === ":read-only") {
+        throw new CliCommandRequestError(
+          "conflict",
+          409,
+          "Run mutations are unavailable in a read-only execution context.",
+        );
+      }
+    };
+    const runInstance = async (runId: string | null) => {
+      const run = runId
+        ? await repository.getRunInstance(
+            applicationOwnerId(),
+            context.projectId,
+            context.worktreeId,
+            runId,
+          )
+        : await repository.getLatestRunInstance(
+            applicationOwnerId(),
+            context.projectId,
+            context.worktreeId,
+          );
+      if (!run) {
+        throw new CliCommandRequestError(
+          "not-found",
+          404,
+          runId
+            ? "That Run does not exist in the current worktree."
+            : "The current worktree has no Runs yet.",
+        );
+      }
+      return run;
+    };
+    const refreshRunInstance = async (runId: string | null) => {
+      const current = await runInstance(runId);
+      if (
+        ["exited", "failed", "stopped", "lost"].includes(current.state) ||
+        !bridge.isConnected(current.workerId)
+      ) {
+        return current;
+      }
+      const observed = workerRunLookupSchema.parse(
+        await bridge.request(current.workerId, {
+          type: "project.run.status",
+          runId: current.id,
+        }),
+      );
+      if (!observed.found) {
+        return (
+          (await repository.transitionRunInstance(
+            applicationOwnerId(),
+            current.projectId,
+            current.worktreeId,
+            current.id,
+            "lost",
+          )) ?? current
+        );
+      }
+      return (
+        (await repository.applyRunInstanceObservation(
+          applicationOwnerId(),
+          current.workerId,
+          observed.run,
+        )) ?? current
+      );
+    };
     const resolveTarget = (
       target: Parameters<typeof repository.resolveExecutionTarget>[2],
       allowUnavailable = false,
@@ -5010,6 +5131,218 @@ export async function buildApp({
           worktreeId: context.worktreeId,
           data: runConfigurationSelectionSchema.parse(selected),
         });
+      }
+      case "run.start": {
+        requireRunMutation();
+        const target = await worktreeContext(context.worktreeId);
+        if (target.workerId !== context.workerId) {
+          throw new ExecutionLaneConflictError(
+            "The Run placement changed before it could start.",
+          );
+        }
+        const requestId = requiredToolString(call.arguments, "requestId");
+        const actionId = requiredToolString(call.arguments, "actionId");
+        const configurationRevision = requiredToolString(
+          call.arguments,
+          "configRevision",
+        );
+        const durable = await repository.createOrGetRunInstance(
+          applicationOwnerId(),
+          {
+            projectId: context.projectId,
+            worktreeId: context.worktreeId,
+            workerId: target.workerId,
+            idempotencyKey: requestId,
+            actionId,
+            configurationRevision,
+          },
+        );
+        if (
+          ["exited", "failed", "stopped", "lost"].includes(durable.run.state)
+        ) {
+          return cantripCliCommandResultSchema.parse({
+            summary: `Run ${durable.run.id} is already ${durable.run.state}.`,
+            worktreeId: context.worktreeId,
+            mutated: false,
+            data: runInstanceResultSchema.parse({ run: durable.run }),
+          });
+        }
+        await repository.transitionRunInstance(
+          applicationOwnerId(),
+          context.projectId,
+          context.worktreeId,
+          durable.run.id,
+          "starting",
+        );
+        try {
+          const observation = workerRunSnapshotSchema.parse(
+            await bridge.request(target.workerId, {
+              type: "project.run.start",
+              requestId,
+              runId: durable.run.id,
+              projectId: context.projectId,
+              worktreeId: context.worktreeId,
+              rootKind: target.worktree.rootKind,
+              sourcePath: target.sourcePath,
+              worktreePath: target.worktree.path,
+              actionId,
+              configurationRevision,
+            }),
+          );
+          const run =
+            (await repository.applyRunInstanceObservation(
+              applicationOwnerId(),
+              target.workerId,
+              observation,
+            )) ?? durable.run;
+          return cantripCliCommandResultSchema.parse({
+            summary:
+              run.state === "failed"
+                ? `Run ${run.id} failed to start.`
+                : `Started Run ${run.id}.`,
+            worktreeId: context.worktreeId,
+            mutated: durable.created || durable.run.state !== run.state,
+            data: runInstanceResultSchema.parse({ run }),
+          });
+        } catch (error) {
+          await repository.transitionRunInstance(
+            applicationOwnerId(),
+            context.projectId,
+            context.worktreeId,
+            durable.run.id,
+            error instanceof WorkerUnavailableError ? "lost" : "failed",
+          );
+          throw error;
+        }
+      }
+      case "run.status": {
+        const run = await refreshRunInstance(
+          optionalToolString(call.arguments, "runId"),
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: `Run ${run.id} is ${run.state}.`,
+          worktreeId: context.worktreeId,
+          data: runInstanceResultSchema.parse({ run }),
+        });
+      }
+      case "run.read": {
+        const run = await refreshRunInstance(
+          requiredToolString(call.arguments, "runId"),
+        );
+        const maximum = call.arguments.maxChars;
+        if (
+          typeof maximum !== "number" ||
+          !Number.isInteger(maximum) ||
+          maximum < 1 ||
+          maximum > 100_000
+        ) {
+          throw new CliCommandRequestError(
+            "invalid",
+            400,
+            "maxChars must be an integer from 1 to 100000.",
+          );
+        }
+        if (!bridge.isConnected(run.workerId)) {
+          throw new CliCommandRequestError(
+            "unavailable",
+            503,
+            "The Run worker is offline, so its in-memory logs are unavailable.",
+          );
+        }
+        if (run.state === "lost") {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            "The Run was lost and its in-memory logs are no longer available.",
+          );
+        }
+        const snapshot = workerRunLogSnapshotSchema.parse(
+          await bridge.request(run.workerId, {
+            type: "project.run.logs",
+            runId: run.id,
+            maxChars: maximum,
+          }),
+        );
+        const observed =
+          (await repository.applyRunInstanceObservation(
+            applicationOwnerId(),
+            run.workerId,
+            snapshot.run,
+          )) ?? run;
+        return cantripCliCommandResultSchema.parse({
+          summary: `Read the last ${snapshot.data.length} characters from Run ${run.id}.`,
+          worktreeId: context.worktreeId,
+          data: runLogResultSchema.parse({
+            run: observed,
+            data: snapshot.data,
+            truncated: snapshot.truncated,
+          }),
+        });
+      }
+      case "run.stop": {
+        requireRunMutation();
+        const current = await runInstance(
+          requiredToolString(call.arguments, "runId"),
+        );
+        if (["exited", "failed", "stopped", "lost"].includes(current.state)) {
+          return cantripCliCommandResultSchema.parse({
+            summary: `Run ${current.id} is already ${current.state}.`,
+            worktreeId: context.worktreeId,
+            data: runInstanceResultSchema.parse({ run: current }),
+          });
+        }
+        if (!bridge.isConnected(current.workerId)) {
+          throw new CliCommandRequestError(
+            "unavailable",
+            503,
+            "The Run worker is offline and cannot be stopped safely.",
+          );
+        }
+        await repository.transitionRunInstance(
+          applicationOwnerId(),
+          current.projectId,
+          current.worktreeId,
+          current.id,
+          "stopping",
+        );
+        try {
+          const stopped = workerRunLookupSchema.parse(
+            await bridge.request(current.workerId, {
+              type: "project.run.stop",
+              runId: current.id,
+            }),
+          );
+          const run = stopped.found
+            ? ((await repository.applyRunInstanceObservation(
+                applicationOwnerId(),
+                current.workerId,
+                stopped.run,
+              )) ?? current)
+            : ((await repository.transitionRunInstance(
+                applicationOwnerId(),
+                current.projectId,
+                current.worktreeId,
+                current.id,
+                "lost",
+              )) ?? current);
+          return cantripCliCommandResultSchema.parse({
+            summary: stopped.found
+              ? `Stopped Run ${run.id}.`
+              : `Run ${run.id} was no longer available on its worker and is lost.`,
+            worktreeId: context.worktreeId,
+            mutated: stopped.found,
+            data: runInstanceResultSchema.parse({ run }),
+          });
+        } catch (error) {
+          await repository.transitionRunInstance(
+            applicationOwnerId(),
+            current.projectId,
+            current.worktreeId,
+            current.id,
+            "lost",
+          );
+          throw error;
+        }
       }
       case "target.list": {
         const catalog = await repository.listProjectExecutionTargets(
@@ -6328,6 +6661,47 @@ export async function buildApp({
           },
         });
       }
+      case "run.start": {
+        const selected = await selectCliRunAction(
+          context,
+          requiredToolString(call.arguments, "action"),
+        );
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "run.start",
+            arguments: {
+              requestId: call.requestId,
+              actionId: selected.action.id,
+              configRevision: selected.configuration.revision,
+              focus: call.arguments.focus !== false,
+            },
+          }),
+        );
+      }
+      case "run.status":
+        return agentOperationExecutor.execute(context, {
+          operation: "run.status",
+          arguments: {
+            runId: optionalToolString(call.arguments, "runId"),
+          },
+        });
+      case "run.logs":
+        return agentOperationExecutor.execute(context, {
+          operation: "run.read",
+          arguments: {
+            runId: requiredToolString(call.arguments, "runId"),
+            maxChars: call.arguments.tail,
+          },
+        });
+      case "run.stop":
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "run.stop",
+            arguments: {
+              runId: requiredToolString(call.arguments, "runId"),
+            },
+          }),
+        );
       case "worktree.list":
         return agentOperationExecutor.execute(context, {
           operation: "worktree.list",
@@ -25884,6 +26258,8 @@ export async function buildApp({
           "worktree.switch",
           "worktree.release",
           "worktree.remove",
+          "run.start",
+          "run.stop",
           "explorer.write",
           "terminal.send",
           "terminal.restart",
@@ -25892,13 +26268,25 @@ export async function buildApp({
         try {
           const result = await executeCliCommand(input.data);
           if (mutation) {
+            const runResult =
+              input.data.command === "run.start" ||
+              input.data.command === "run.stop"
+                ? runInstanceResultSchema.safeParse(result.data)
+                : null;
             await appendAudit(request, {
-              action: "cli.command.mutated",
+              action:
+                input.data.command === "run.start"
+                  ? "run.cli.started"
+                  : input.data.command === "run.stop"
+                    ? "run.cli.stopped"
+                    : "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
               ownerId: workerAuth.ownerId,
-              resourceId: input.data.requestId,
-              resourceType: "cli-command",
+              resourceId: runResult?.success
+                ? runResult.data.run.id
+                : input.data.requestId,
+              resourceType: runResult?.success ? "run-instance" : "cli-command",
               result: "succeeded",
             });
           }
@@ -25950,7 +26338,12 @@ export async function buildApp({
                         );
           if (mutation) {
             await appendAudit(request, {
-              action: "cli.command.mutated",
+              action:
+                input.data.command === "run.start"
+                  ? "run.cli.start-failed"
+                  : input.data.command === "run.stop"
+                    ? "run.cli.stop-failed"
+                    : "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
               ownerId: workerAuth.ownerId,
@@ -26308,6 +26701,14 @@ export async function buildApp({
       void synchronizeTerminalServicesForWorker(workerId).catch(() => {
         app.log.error({ workerId }, "Could not reconcile terminal services");
       });
+      void reconcileRunInstancesForWorker(workerAuth.ownerId, workerId).catch(
+        (error) => {
+          app.log.error(
+            { err: error, workerId },
+            "Could not reconcile managed Runs",
+          );
+        },
+      );
       scheduleWorkerWorktreeObservation(workerId);
       void resumePendingWorktreeTransitionsForWorker(
         workerAuth.ownerId,

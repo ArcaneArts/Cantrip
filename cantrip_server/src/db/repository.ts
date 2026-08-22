@@ -112,6 +112,8 @@ import type {
   EncryptedRemoteSurfaceCreate,
   RemoteSurfaceStatus,
   RemoteSurfaceWireSummary,
+  RunInstance,
+  RunInstanceState,
   SurfacePrivateStateOpaque,
   EncryptedRemoteSurfaceUpdate,
   ProjectCloneResult,
@@ -167,6 +169,8 @@ import type {
   WorkerManagementSource,
   WorkerSummary,
   WorkerWorktreeSummary,
+  WorkerRunIdentity,
+  WorkerRunSnapshot,
   WorktreeInventory,
   WorktreePolicy,
   WorktreeSelection,
@@ -310,6 +314,7 @@ type ProjectWorktreeRow = typeof schema.projectWorktrees.$inferSelect;
 type WorkerRow = typeof schema.workers.$inferSelect;
 type McpServerRow = typeof schema.mcpServers.$inferSelect;
 type GitOperationRow = typeof schema.gitOperations.$inferSelect;
+type RunInstanceRow = typeof schema.runInstances.$inferSelect;
 type ProjectWorkspaceRow = typeof schema.projectWorkspaces.$inferSelect;
 type UserRow = typeof schema.users.$inferSelect;
 type UserSessionRow = typeof schema.userSessions.$inferSelect;
@@ -1201,6 +1206,25 @@ function toGitManagedOperationRecord(
   };
 }
 
+function toRunInstance(run: RunInstanceRow): RunInstance {
+  return {
+    id: run.id,
+    projectId: run.projectId,
+    worktreeId: run.worktreeId,
+    workerId: run.workerId,
+    actionId: run.actionId,
+    configurationRevision: run.configurationRevision,
+    state: run.state,
+    terminalId: run.terminalId,
+    exitCode: run.exitCode,
+    signal: run.signal,
+    createdAt: toISOString(run.createdAt),
+    startedAt: run.startedAt ? toISOString(run.startedAt) : null,
+    endedAt: run.endedAt ? toISOString(run.endedAt) : null,
+    updatedAt: toISOString(run.updatedAt),
+  };
+}
+
 function toChatExecutionLaneSummary(
   lane: typeof schema.chatExecutionLanes.$inferSelect,
 ): ChatExecutionLaneSummary {
@@ -2082,6 +2106,7 @@ export class ServerRepository {
       chatImportJobs,
       projectAutomationRuns,
       gitOperations,
+      runInstances,
     ] = await Promise.all([
       this.database
         .select({ count })
@@ -2213,6 +2238,20 @@ export class ServerRepository {
             ]),
           ),
         ),
+      this.database
+        .select({ count })
+        .from(schema.runInstances)
+        .where(
+          and(
+            eq(schema.runInstances.ownerId, ownerId),
+            inArray(schema.runInstances.state, [
+              "queued",
+              "starting",
+              "running",
+              "stopping",
+            ]),
+          ),
+        ),
     ]);
 
     const maximum = 4_294_967_295;
@@ -2224,7 +2263,8 @@ export class ServerRepository {
       value(chatRelocationJobs) +
       value(chatImportJobs) +
       value(projectAutomationRuns) +
-      value(gitOperations);
+      value(gitOperations) +
+      value(runInstances);
     return {
       activeChats: value(activeChats),
       queuedPrompts: value(queuedPrompts),
@@ -9469,6 +9509,288 @@ export class ServerRepository {
       .where(eq(schema.gitOperations.id, operationId))
       .returning();
     return rows[0] ? toGitManagedOperationRecord(rows[0]) : null;
+  }
+
+  async createOrGetRunInstance(
+    ownerId: string,
+    input: {
+      projectId: string;
+      worktreeId: string;
+      workerId: string;
+      idempotencyKey: string;
+      actionId: string;
+      configurationRevision: string;
+    },
+  ): Promise<{ created: boolean; run: RunInstance }> {
+    const existingRows = await this.database
+      .select()
+      .from(schema.runInstances)
+      .where(
+        and(
+          eq(schema.runInstances.ownerId, ownerId),
+          eq(schema.runInstances.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    const validateIdentity = (row: RunInstanceRow) => {
+      if (
+        row.projectId !== input.projectId ||
+        row.worktreeId !== input.worktreeId ||
+        row.workerId !== input.workerId ||
+        row.actionId !== input.actionId ||
+        row.configurationRevision !== input.configurationRevision
+      ) {
+        throw new Error(
+          "The Run request identity is already associated with another action.",
+        );
+      }
+      return toRunInstance(row);
+    };
+    if (existingRows[0]) {
+      return { created: false, run: validateIdentity(existingRows[0]) };
+    }
+
+    const inserted = await this.database
+      .insert(schema.runInstances)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        projectId: input.projectId,
+        worktreeId: input.worktreeId,
+        workerId: input.workerId,
+        idempotencyKey: input.idempotencyKey,
+        actionId: input.actionId,
+        configurationRevision: input.configurationRevision,
+        state: "queued",
+      })
+      .onConflictDoNothing({
+        target: [
+          schema.runInstances.ownerId,
+          schema.runInstances.idempotencyKey,
+        ],
+      })
+      .returning();
+    if (inserted[0]) {
+      return { created: true, run: toRunInstance(inserted[0]) };
+    }
+    const raced = await this.database
+      .select()
+      .from(schema.runInstances)
+      .where(
+        and(
+          eq(schema.runInstances.ownerId, ownerId),
+          eq(schema.runInstances.idempotencyKey, input.idempotencyKey),
+        ),
+      )
+      .limit(1);
+    if (!raced[0]) throw new Error("Could not recover the Run request.");
+    return { created: false, run: validateIdentity(raced[0]) };
+  }
+
+  async getRunInstance(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    runId: string,
+  ): Promise<RunInstance | null> {
+    const rows = await this.database
+      .select({ run: schema.runInstances })
+      .from(schema.runInstances)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.runInstances.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.runInstances.id, runId),
+          eq(schema.runInstances.projectId, projectId),
+          eq(schema.runInstances.worktreeId, worktreeId),
+        ),
+      )
+      .limit(1);
+    return rows[0] ? toRunInstance(rows[0].run) : null;
+  }
+
+  async getLatestRunInstance(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+  ): Promise<RunInstance | null> {
+    const rows = await this.database
+      .select({ run: schema.runInstances })
+      .from(schema.runInstances)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.runInstances.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.runInstances.projectId, projectId),
+          eq(schema.runInstances.worktreeId, worktreeId),
+        ),
+      )
+      .orderBy(
+        desc(schema.runInstances.createdAt),
+        desc(schema.runInstances.id),
+      )
+      .limit(1);
+    return rows[0] ? toRunInstance(rows[0].run) : null;
+  }
+
+  async listActiveRunIdentitiesForWorker(
+    ownerId: string,
+    workerId: string,
+  ): Promise<WorkerRunIdentity[]> {
+    const rows = await this.database
+      .select({ run: schema.runInstances })
+      .from(schema.runInstances)
+      .where(
+        and(
+          eq(schema.runInstances.ownerId, ownerId),
+          eq(schema.runInstances.workerId, workerId),
+          inArray(schema.runInstances.state, [
+            "queued",
+            "starting",
+            "running",
+            "stopping",
+          ]),
+        ),
+      )
+      .orderBy(asc(schema.runInstances.createdAt))
+      .limit(256);
+    return rows.map(({ run }) => ({
+      runId: run.id,
+      projectId: run.projectId,
+      worktreeId: run.worktreeId,
+      actionId: run.actionId,
+      configurationRevision: run.configurationRevision,
+    }));
+  }
+
+  async transitionRunInstance(
+    ownerId: string,
+    projectId: string,
+    worktreeId: string,
+    runId: string,
+    state: Extract<
+      RunInstanceState,
+      "starting" | "stopping" | "failed" | "lost"
+    >,
+  ): Promise<RunInstance | null> {
+    const current = await this.getRunInstance(
+      ownerId,
+      projectId,
+      worktreeId,
+      runId,
+    );
+    if (!current) return null;
+    if (["exited", "failed", "stopped", "lost"].includes(current.state)) {
+      return current;
+    }
+    if (state === "starting" && current.state !== "queued") return current;
+    if (
+      state === "stopping" &&
+      !["queued", "starting", "running"].includes(current.state)
+    ) {
+      return current;
+    }
+    const ended = state === "failed" || state === "lost";
+    const rows = await this.database
+      .update(schema.runInstances)
+      .set({
+        state,
+        endedAt: ended ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.runInstances.id, runId),
+          eq(schema.runInstances.ownerId, ownerId),
+          eq(schema.runInstances.state, current.state),
+        ),
+      )
+      .returning();
+    return rows[0]
+      ? toRunInstance(rows[0])
+      : this.getRunInstance(ownerId, projectId, worktreeId, runId);
+  }
+
+  async applyRunInstanceObservation(
+    ownerId: string,
+    workerId: string,
+    observation: WorkerRunSnapshot,
+  ): Promise<RunInstance | null> {
+    const current = await this.getRunInstance(
+      ownerId,
+      observation.projectId,
+      observation.worktreeId,
+      observation.runId,
+    );
+    if (!current || current.workerId !== workerId) return null;
+    if (
+      current.actionId !== observation.actionId ||
+      current.configurationRevision !== observation.configurationRevision
+    ) {
+      throw new Error("Worker Run state does not match its durable record.");
+    }
+    const terminal = ["exited", "failed", "stopped", "lost"];
+    if (terminal.includes(current.state)) return current;
+    const allowed: Record<RunInstanceState, RunInstanceState[]> = {
+      queued: [
+        "starting",
+        "running",
+        "exited",
+        "failed",
+        "stopping",
+        "stopped",
+        "lost",
+      ],
+      starting: ["running", "exited", "failed", "stopping", "stopped", "lost"],
+      running: ["exited", "failed", "stopping", "stopped", "lost"],
+      stopping: ["exited", "failed", "stopped", "lost"],
+      exited: [],
+      failed: [],
+      stopped: [],
+      lost: [],
+    };
+    if (!allowed[current.state].includes(observation.state)) return current;
+    const rows = await this.database
+      .update(schema.runInstances)
+      .set({
+        state: observation.state,
+        startedAt: observation.startedAt
+          ? new Date(observation.startedAt)
+          : current.startedAt
+            ? new Date(current.startedAt)
+            : null,
+        endedAt: observation.endedAt ? new Date(observation.endedAt) : null,
+        exitCode: observation.exitCode,
+        signal: observation.signal,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.runInstances.id, observation.runId),
+          eq(schema.runInstances.ownerId, ownerId),
+          eq(schema.runInstances.workerId, workerId),
+          eq(schema.runInstances.state, current.state),
+        ),
+      )
+      .returning();
+    return rows[0]
+      ? toRunInstance(rows[0])
+      : this.getRunInstance(
+          ownerId,
+          observation.projectId,
+          observation.worktreeId,
+          observation.runId,
+        );
   }
 
   async reconcileProjectWorktrees(

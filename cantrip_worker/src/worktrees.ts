@@ -933,7 +933,11 @@ export class WorktreeManager {
   async remove(
     sourcePath: string,
     worktreePath: string,
-    options: { allowExternal: boolean; force: boolean },
+    options: {
+      allowExternal: boolean;
+      force: boolean;
+      beforeRemove?(worktreePath: string): Promise<void>;
+    },
   ): Promise<WorktreeRemoveResult> {
     return this.serialize(sourcePath, async () => {
       const { inventory, worktree } = await this.resolveTarget(
@@ -966,6 +970,7 @@ export class WorktreeManager {
       if (dirty && !options.force) {
         throw new Error("The worktree has uncommitted changes.");
       }
+      await options.beforeRemove?.(worktree.path);
       await gitOutput(inventory.sourcePath, [
         "worktree",
         "remove",

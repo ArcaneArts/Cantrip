@@ -83,6 +83,23 @@ enum RunCommand {
     List,
     /// Show one action selected by its exact name or ID.
     Show { action: String },
+    /// Start an action as a worker-managed Run.
+    Start {
+        action: String,
+        /// Do not ask a connected desktop client to focus the Run terminal.
+        #[arg(long)]
+        no_focus: bool,
+    },
+    /// Show the latest Run or one exact Run ID.
+    Status { run_id: Option<String> },
+    /// Read the bounded in-memory tail of a Run terminal.
+    Logs {
+        run_id: String,
+        #[arg(long, default_value_t = 10_000)]
+        tail: usize,
+    },
+    /// Stop a worker-managed Run and its process tree.
+    Stop { run_id: String },
     /// Validate project Run configuration files for the current worker.
     Validate,
     /// Inspect the canonical Run configuration location.
@@ -436,6 +453,27 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 command: "run.show",
                 arguments: json!({ "action": action }),
             },
+            RunCommand::Start { action, no_focus } => Invocation {
+                command: "run.start",
+                arguments: json!({ "action": action, "focus": !no_focus }),
+            },
+            RunCommand::Status { run_id } => Invocation {
+                command: "run.status",
+                arguments: json!({ "runId": run_id }),
+            },
+            RunCommand::Logs { run_id, tail } => {
+                if !(1..=100_000).contains(&tail) {
+                    return Err("--tail must be from 1 to 100000 characters.".to_string());
+                }
+                Invocation {
+                    command: "run.logs",
+                    arguments: json!({ "runId": run_id, "tail": tail }),
+                }
+            }
+            RunCommand::Stop { run_id } => Invocation {
+                command: "run.stop",
+                arguments: json!({ "runId": run_id }),
+            },
             RunCommand::Validate => Invocation {
                 command: "run.validate",
                 arguments: json!({}),
@@ -551,6 +589,20 @@ mod tests {
             &["cantrip", "browser", "services"][..],
             &["cantrip", "run", "list"][..],
             &["cantrip", "run", "show", "Run app"][..],
+            &["cantrip", "run", "start", "Run app", "--no-focus"][..],
+            &["cantrip", "run", "status"][..],
+            &[
+                "cantrip",
+                "run",
+                "logs",
+                "00000000-0000-0000-0000-000000000001",
+            ][..],
+            &[
+                "cantrip",
+                "run",
+                "stop",
+                "00000000-0000-0000-0000-000000000001",
+            ][..],
             &["cantrip", "run", "validate"][..],
             &["cantrip", "run", "config", "path"][..],
         ] {
@@ -570,6 +622,29 @@ mod tests {
             ),
             (&["cantrip", "run", "validate"][..], "run.validate"),
             (&["cantrip", "run", "config", "path"][..], "run.config-path"),
+            (
+                &["cantrip", "run", "start", "Run Spectral Lab"][..],
+                "run.start",
+            ),
+            (&["cantrip", "run", "status"][..], "run.status"),
+            (
+                &[
+                    "cantrip",
+                    "run",
+                    "logs",
+                    "00000000-0000-0000-0000-000000000001",
+                ][..],
+                "run.logs",
+            ),
+            (
+                &[
+                    "cantrip",
+                    "run",
+                    "stop",
+                    "00000000-0000-0000-0000-000000000001",
+                ][..],
+                "run.stop",
+            ),
         ] {
             let cli = Cli::try_parse_from(arguments).expect("parse run command");
             let invocation =
