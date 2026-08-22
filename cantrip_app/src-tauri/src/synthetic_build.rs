@@ -72,6 +72,10 @@ impl SyntheticBuildCoordinator {
         self.jobs.cancel_active();
     }
 
+    pub(crate) fn build_active(&self) -> bool {
+        self.jobs.active()
+    }
+
     pub(super) async fn resolve_source(
         &self,
         sha: String,
