@@ -76,6 +76,73 @@ fn print_rows(items: &[Value], columns: &[(&str, &str)]) {
     }
 }
 
+fn run_action_rows(data: Option<&Value>) -> Vec<Value> {
+    data.and_then(|value| value.get("configurations"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .flat_map(|configuration| {
+            let environment = configuration
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+                .to_string();
+            let revision = configuration
+                .get("revision")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+                .chars()
+                .take(12)
+                .collect::<String>();
+            configuration
+                .get("actions")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(move |action| {
+                    let mut action = action.clone();
+                    let platform = action
+                        .get("platform")
+                        .cloned()
+                        .filter(|value| !value.is_null())
+                        .unwrap_or_else(|| Value::String("all".to_string()));
+                    if let Some(object) = action.as_object_mut() {
+                        object.insert(
+                            "environment".to_string(),
+                            Value::String(environment.clone()),
+                        );
+                        object.insert("revisionShort".to_string(), Value::String(revision.clone()));
+                        object.insert("platformLabel".to_string(), platform);
+                    }
+                    action
+                })
+        })
+        .collect()
+}
+
+fn run_diagnostics(data: Option<&Value>) -> Vec<Value> {
+    let mut diagnostics = data
+        .and_then(|value| value.get("diagnostics"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for configuration in data
+        .and_then(|value| value.get("configurations"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        diagnostics.extend(
+            configuration
+                .get("diagnostics")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default(),
+        );
+    }
+    diagnostics
+}
+
 pub fn render(command: &str, result: &CommandResult, json: bool) {
     if json {
         let value = serde_json::json!({
@@ -219,6 +286,57 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
                 return;
             }
         }
+        "run.list" => {
+            let rows = run_action_rows(result.data.as_ref());
+            if !rows.is_empty() {
+                print_rows(
+                    &rows,
+                    &[
+                        ("ENVIRONMENT", "environment"),
+                        ("ACTION", "name"),
+                        ("PLATFORM", "platformLabel"),
+                        ("SOURCE", "configurationPath"),
+                        ("REVISION", "revisionShort"),
+                        ("ID", "id"),
+                    ],
+                );
+                return;
+            }
+        }
+        "run.show" => {
+            if let Some(data) = &result.data {
+                println!("{}", result.summary);
+                if let Some(action) = data.get("action") {
+                    println!("ID: {}", string(Some(action), "id"));
+                    println!("Source: {}", string(Some(action), "configurationPath"));
+                    println!("Platform: {}", string(Some(action), "platform"));
+                    if let Some(command) = action.get("command").and_then(Value::as_str) {
+                        println!("Command:\n{command}");
+                    }
+                }
+                return;
+            }
+        }
+        "run.validate" => {
+            println!("{}", result.summary);
+            let diagnostics = run_diagnostics(result.data.as_ref());
+            if !diagnostics.is_empty() {
+                print_rows(
+                    &diagnostics,
+                    &[
+                        ("SEVERITY", "severity"),
+                        ("CODE", "code"),
+                        ("SOURCE", "configurationPath"),
+                        ("MESSAGE", "message"),
+                    ],
+                );
+            }
+            return;
+        }
+        "run.config-path" => {
+            println!("{}", result.summary);
+            return;
+        }
         _ => {}
     }
 
@@ -239,7 +357,7 @@ pub fn render(command: &str, result: &CommandResult, json: bool) {
 mod tests {
     use serde_json::json;
 
-    use super::{policy_source_labels, string};
+    use super::{policy_source_labels, run_action_rows, string};
 
     #[test]
     fn renders_policy_flags_and_source_labels() {
@@ -256,5 +374,25 @@ mod tests {
             policy_source_labels(&policy),
             "mandatory, workspace:Company, project"
         );
+    }
+
+    #[test]
+    fn flattens_run_actions_with_environment_context() {
+        let data = json!({
+            "configurations": [{
+                "name": "Spectral Lab",
+                "revision": "0123456789abcdef",
+                "actions": [{
+                    "id": "action-id",
+                    "name": "Run Spectral Lab",
+                    "platform": "win32",
+                    "configurationPath": ".codex/environments/environment.toml"
+                }]
+            }]
+        });
+        let rows = run_action_rows(Some(&data));
+        assert_eq!(rows[0]["environment"], "Spectral Lab");
+        assert_eq!(rows[0]["revisionShort"], "0123456789ab");
+        assert_eq!(rows[0]["platformLabel"], "win32");
     }
 }

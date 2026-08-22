@@ -70,6 +70,32 @@ enum Command {
         #[command(subcommand)]
         command: BrowserCommand,
     },
+    /// Inspect Codex-compatible project Run configurations.
+    Run {
+        #[command(subcommand)]
+        command: RunCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RunCommand {
+    /// List actions available on the current project worker.
+    List,
+    /// Show one action selected by its exact name or ID.
+    Show { action: String },
+    /// Validate project Run configuration files for the current worker.
+    Validate,
+    /// Inspect the canonical Run configuration location.
+    Config {
+        #[command(subcommand)]
+        command: RunConfigCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum RunConfigCommand {
+    /// Show the canonical repository-relative configuration path and Git state.
+    Path,
 }
 
 #[derive(Debug, Subcommand)]
@@ -401,6 +427,26 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 }
             }
         },
+        Command::Run { command } => match command {
+            RunCommand::List => Invocation {
+                command: "run.list",
+                arguments: json!({}),
+            },
+            RunCommand::Show { action } => Invocation {
+                command: "run.show",
+                arguments: json!({ "action": action }),
+            },
+            RunCommand::Validate => Invocation {
+                command: "run.validate",
+                arguments: json!({}),
+            },
+            RunCommand::Config { command } => match command {
+                RunConfigCommand::Path => Invocation {
+                    command: "run.config-path",
+                    arguments: json!({}),
+                },
+            },
+        },
     })
 }
 
@@ -420,8 +466,19 @@ fn main() -> ExitCode {
     };
     match client::execute(invocation.command, invocation.arguments) {
         Ok(result) => {
+            let validation_failed = invocation.command == "run.validate"
+                && result
+                    .data
+                    .as_ref()
+                    .and_then(|value| value.get("valid"))
+                    .and_then(Value::as_bool)
+                    == Some(false);
             output::render(invocation.command, &result, cli.json);
-            ExitCode::SUCCESS
+            if validation_failed {
+                ExitCode::from(2)
+            } else {
+                ExitCode::SUCCESS
+            }
         }
         Err(error) => {
             eprintln!("cantrip: {error}");
@@ -447,6 +504,7 @@ mod tests {
         assert!(help.contains("worktree"));
         assert!(help.contains("policy"));
         assert!(help.contains("explorer"));
+        assert!(help.contains("run"));
         assert!(help.contains("-v, --version"));
         assert!(!help.contains("-V, --version"));
         assert!(!help.contains("--existing"));
@@ -491,10 +549,32 @@ mod tests {
             &["cantrip", "explorer", "list"][..],
             &["cantrip", "terminal", "read"][..],
             &["cantrip", "browser", "services"][..],
+            &["cantrip", "run", "list"][..],
+            &["cantrip", "run", "show", "Run app"][..],
+            &["cantrip", "run", "validate"][..],
+            &["cantrip", "run", "config", "path"][..],
         ] {
             Cli::try_parse_from(arguments).unwrap_or_else(|error| {
                 panic!("failed to parse {arguments:?} without -v: {error}")
             });
+        }
+    }
+
+    #[test]
+    fn run_commands_use_stable_wire_names() {
+        for (arguments, expected) in [
+            (&["cantrip", "run", "list"][..], "run.list"),
+            (
+                &["cantrip", "run", "show", "Run Spectral Lab"][..],
+                "run.show",
+            ),
+            (&["cantrip", "run", "validate"][..], "run.validate"),
+            (&["cantrip", "run", "config", "path"][..], "run.config-path"),
+        ] {
+            let cli = Cli::try_parse_from(arguments).expect("parse run command");
+            let invocation =
+                invocation(cli.command.expect("run command")).expect("build run invocation");
+            assert_eq!(invocation.command, expected);
         }
     }
 

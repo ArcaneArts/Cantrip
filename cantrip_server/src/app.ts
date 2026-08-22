@@ -357,6 +357,8 @@ import {
   serverBootstrapSchema,
   settingsBundleWireSchema,
   scriptCommandListSchema,
+  runConfigurationInspectionSchema,
+  runConfigurationSelectionSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -4838,6 +4840,20 @@ export async function buildApp({
       if (!target) throw new Error("Worktree not found.");
       return target;
     };
+    const runConfigurationInspection = async () => {
+      const target = await worktreeContext(context.worktreeId);
+      if (target.workerId !== context.workerId) {
+        throw new ExecutionLaneConflictError(
+          "The run configuration placement changed before inspection.",
+        );
+      }
+      return runConfigurationInspectionSchema.parse(
+        await bridge.request(target.workerId, {
+          type: "project.run-configurations.inspect",
+          sourcePath: target.sourcePath,
+        }),
+      );
+    };
     const resolveTarget = (
       target: Parameters<typeof repository.resolveExecutionTarget>[2],
       allowUnavailable = false,
@@ -4943,6 +4959,56 @@ export async function buildApp({
           summary: "Returned opaque policy content.",
           worktreeId: context.worktreeId,
           data: policyCliWireReadResultSchema.parse({ policy: current }),
+        });
+      }
+      case "run-config.list": {
+        const inspection = await runConfigurationInspection();
+        const actionCount = inspection.configurations.reduce(
+          (total, configuration) => total + configuration.actions.length,
+          0,
+        );
+        return cantripCliCommandResultSchema.parse({
+          summary: inspection.configured
+            ? `Found ${actionCount} run action${actionCount === 1 ? "" : "s"} for ${inspection.platform}.`
+            : "No Codex-compatible run configuration is present for this project source.",
+          worktreeId: context.worktreeId,
+          data: inspection,
+        });
+      }
+      case "run-config.read": {
+        const actionId = requiredToolString(call.arguments, "actionId");
+        const expectedRevision = optionalToolString(
+          call.arguments,
+          "configRevision",
+        );
+        const inspection = await runConfigurationInspection();
+        const matches = inspection.configurations.flatMap((configuration) =>
+          configuration.actions
+            .filter((action) => action.id === actionId)
+            .map((action) => ({ action, configuration })),
+        );
+        if (matches.length !== 1) {
+          throw new CliCommandRequestError(
+            "not-found",
+            404,
+            "That run action is not available on the current worker platform.",
+          );
+        }
+        const selected = matches[0]!;
+        if (
+          expectedRevision &&
+          selected.configuration.revision !== expectedRevision
+        ) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            "The run configuration changed. List its actions again before continuing.",
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: `Read run action ${selected.action.name}.`,
+          worktreeId: context.worktreeId,
+          data: runConfigurationSelectionSchema.parse(selected),
         });
       }
       case "target.list": {
@@ -5893,6 +5959,51 @@ export async function buildApp({
     }
   };
 
+  const inspectCliRunConfigurations = async (
+    context: ExecutionOperationContext,
+  ) => {
+    const result = await agentOperationExecutor.execute(context, {
+      operation: "run-config.list",
+      arguments: {},
+    });
+    return {
+      result,
+      inspection: runConfigurationInspectionSchema.parse(result.data),
+    };
+  };
+
+  const selectCliRunAction = async (
+    context: ExecutionOperationContext,
+    selector: string,
+  ) => {
+    const { inspection } = await inspectCliRunConfigurations(context);
+    const candidates = inspection.configurations.flatMap((configuration) =>
+      configuration.actions.map((action) => ({ action, configuration })),
+    );
+    const matches = candidates.filter(
+      ({ action }) => action.id === selector || action.name === selector,
+    );
+    if (matches.length === 1) return matches[0]!;
+    if (matches.length > 1) {
+      throw new CliCommandRequestError(
+        "ambiguous",
+        409,
+        `Multiple Run configurations contain an action named ${JSON.stringify(selector)}: ${matches
+          .slice(0, 8)
+          .map(
+            ({ action, configuration }) =>
+              `${configuration.relativePath} action ${action.sourceIndex + 1} (${action.id})`,
+          )
+          .join(", ")}. Retry with the full action ID.`,
+      );
+    }
+    throw new CliCommandRequestError(
+      "not-found",
+      404,
+      `Run action ${selector} was not found for ${inspection.platform}. Run \`cantrip run list\` to see available actions.`,
+    );
+  };
+
   const selectWorktree = async (
     context: ExecutionOperationContext,
     selector: string | null,
@@ -6167,6 +6278,56 @@ export async function buildApp({
             policyId: requiredToolString(call.arguments, "policyId"),
           },
         });
+      case "run.list":
+        return agentOperationExecutor.execute(context, {
+          operation: "run-config.list",
+          arguments: {},
+        });
+      case "run.show": {
+        const selected = await selectCliRunAction(
+          context,
+          requiredToolString(call.arguments, "action"),
+        );
+        return agentOperationExecutor.execute(context, {
+          operation: "run-config.read",
+          arguments: {
+            actionId: selected.action.id,
+            configRevision: selected.configuration.revision,
+          },
+        });
+      }
+      case "run.validate": {
+        const { inspection, result } =
+          await inspectCliRunConfigurations(context);
+        const errorCount = [
+          ...inspection.diagnostics,
+          ...inspection.configurations.flatMap(
+            (configuration) => configuration.diagnostics,
+          ),
+        ].filter(({ severity }) => severity === "error").length;
+        return cantripCliCommandResultSchema.parse({
+          ...result,
+          summary: inspection.valid
+            ? inspection.configured
+              ? "Run configuration is valid for this worker."
+              : "No Run configuration is present; the project is valid but unconfigured."
+            : `Run configuration has ${errorCount} validation error${errorCount === 1 ? "" : "s"}.`,
+        });
+      }
+      case "run.config-path": {
+        const { inspection, result } =
+          await inspectCliRunConfigurations(context);
+        return cantripCliCommandResultSchema.parse({
+          ...result,
+          summary: `${inspection.canonical.relativePath} is ${inspection.canonical.sourceControlState}.`,
+          data: {
+            platform: inspection.platform,
+            canonical: inspection.canonical,
+            configured: inspection.configured,
+            valid: inspection.valid,
+          },
+        });
+      }
       case "worktree.list":
         return agentOperationExecutor.execute(context, {
           operation: "worktree.list",
