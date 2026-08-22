@@ -7,6 +7,7 @@ import {
   desktopPopoutTitlebarLeftInset,
   desktopPopoutGroupSearch,
   desktopPopoutGroupWindowLabel,
+  desktopWindowThemeOverride,
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
   observeDesktopWindowFocus,
@@ -231,5 +232,13 @@ describe("desktop title bar layout", () => {
     expect(desktopPopoutTitlebarLeftInset(true, true)).toBe("5.5rem");
     expect(desktopPopoutTitlebarLeftInset(false, true)).toBeUndefined();
     expect(desktopPopoutTitlebarLeftInset(true, false)).toBeUndefined();
+  });
+});
+
+describe("desktop window theme", () => {
+  it("clears the native override when brightness follows the system", () => {
+    expect(desktopWindowThemeOverride("system")).toBeNull();
+    expect(desktopWindowThemeOverride("light")).toBe("light");
+    expect(desktopWindowThemeOverride("dark")).toBe("dark");
   });
 });

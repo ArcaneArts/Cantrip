@@ -392,6 +392,7 @@ import { createGithubProject, getProjects } from "@/lib/project-encryption";
 import {
   closeCurrentDesktopWindow,
   desktopPopoutTitlebarLeftInset,
+  desktopWindowThemeOverride,
   focusDesktopPopoutGroup,
   isDesktopRuntime,
   isMacosDesktopRuntime,
@@ -5567,6 +5568,7 @@ export function App() {
   useEffect(() => {
     const preference = settings.data?.preferences.theme ?? "system";
     const media = window.matchMedia("(prefers-color-scheme: dark)");
+    let active = true;
     const apply = () => {
       const dark =
         preference === "dark" || (preference === "system" && media.matches);
@@ -5583,24 +5585,31 @@ export function App() {
         ),
       );
       document.documentElement.style.colorScheme = dark ? "dark" : "light";
-      void updateDesktopWindowTheme(dark ? "dark" : "light").catch(
-        (error: unknown) => {
-          clientLogger.warn("Desktop window theme update failed", {
-            ...operationalErrorMetadata(error),
-            event: "window.theme.failed",
-            operation: "set-theme",
-            reasonCode: "native-window-error",
-            status: "failed",
-            subsystem: "desktop-window",
-          });
-        },
-      );
     };
     apply();
     if (preference === "system") {
       media.addEventListener("change", apply);
-      return () => media.removeEventListener("change", apply);
     }
+    void updateDesktopWindowTheme(desktopWindowThemeOverride(preference))
+      .then(() => {
+        if (active && preference === "system") apply();
+      })
+      .catch((error: unknown) => {
+        clientLogger.warn("Desktop window theme update failed", {
+          ...operationalErrorMetadata(error),
+          event: "window.theme.failed",
+          operation: "set-theme",
+          reasonCode: "native-window-error",
+          status: "failed",
+          subsystem: "desktop-window",
+        });
+      });
+    return () => {
+      active = false;
+      if (preference === "system") {
+        media.removeEventListener("change", apply);
+      }
+    };
   }, [
     settings.data?.preferences.highContrast,
     settings.data?.preferences.theme,
