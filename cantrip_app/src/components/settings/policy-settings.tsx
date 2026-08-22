@@ -17,15 +17,20 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   POLICY_BODY_LIMIT,
+  POLICY_LIMIT,
   POLICY_SUMMARY_LIMIT,
   type PolicyCreate,
   type PolicyDetail,
   type PolicyList,
   type PolicySummary,
 } from "@cantrip/protocol/policies";
+import { Capacitor } from "@capacitor/core";
+import { Directory, Filesystem } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
+  Download,
   Eye,
   FilePlus2,
   GripVertical,
@@ -36,9 +41,11 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  Upload,
 } from "lucide-react";
 import {
   useEffect,
+  useRef,
   useState,
   type CSSProperties,
   type FormEvent,
@@ -71,6 +78,12 @@ import {
   updatePolicy,
 } from "@/lib/api";
 import { errorMessage } from "@/lib/error-message";
+import {
+  createPolicyBundle,
+  parsePolicyImport,
+  preparePolicyImports,
+  serializePolicyFile,
+} from "@/lib/policy-transfer";
 import { cn } from "@/lib/utils";
 import { SettingsSearchField } from "./settings-controls";
 
@@ -147,13 +160,17 @@ const inputClass =
 
 function SortablePolicyRow({
   disabled,
+  exportPending,
   onDelete,
   onEdit,
+  onExport,
   policy,
 }: {
   disabled: boolean;
+  exportPending: boolean;
   onDelete(): void;
   onEdit(): void;
+  onExport(): void;
   policy: PolicySummary;
 }) {
   const sortable = useSortable({ id: policy.id, disabled });
@@ -240,6 +257,20 @@ function SortablePolicyRow({
         className="flex items-center justify-end"
         onClick={(event) => event.stopPropagation()}
       >
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          disabled={exportPending}
+          onClick={onExport}
+        >
+          {exportPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Download className="size-3.5" />
+          )}
+          <span className="sr-only">Export {policy.name}</span>
+        </Button>
         <Button size="icon" variant="ghost" className="size-7" onClick={onEdit}>
           <Pencil className="size-3.5" />
           <span className="sr-only">Edit {policy.name}</span>
@@ -269,6 +300,77 @@ function draftFromPolicy(policy: PolicyDetail): PolicyDraft {
   };
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let offset = 0; offset < bytes.byteLength; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return btoa(binary);
+}
+
+function isMobilePolicyExportRuntime(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Capacitor.isNativePlatform() &&
+    !("__TAURI_INTERNALS__" in window)
+  );
+}
+
+async function downloadPolicyFile(
+  name: string,
+  contents: string | Uint8Array,
+  type: string,
+): Promise<void> {
+  if (isMobilePolicyExportRuntime()) {
+    const bytes =
+      typeof contents === "string"
+        ? new TextEncoder().encode(contents)
+        : contents;
+    const path = `cantrip-policy-exports/${name}`;
+    await Filesystem.writeFile({
+      data: bytesToBase64(bytes),
+      directory: Directory.Cache,
+      path,
+      recursive: true,
+    });
+    const { uri } = await Filesystem.getUri({
+      directory: Directory.Cache,
+      path,
+    });
+    await Share.share({
+      dialogTitle: "Export Cantrip policies",
+      files: [uri],
+      title: "Cantrip policies",
+    });
+    return;
+  }
+  const blobPart =
+    typeof contents === "string" ? contents : new Uint8Array(contents);
+  const url = URL.createObjectURL(new Blob([blobPart], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function loadPolicyDetails(
+  policies: readonly PolicySummary[],
+): Promise<PolicyDetail[]> {
+  const details: PolicyDetail[] = [];
+  const concurrency = 8;
+  for (let offset = 0; offset < policies.length; offset += concurrency) {
+    details.push(
+      ...(await Promise.all(
+        policies
+          .slice(offset, offset + concurrency)
+          .map(({ id }) => getPolicy(id)),
+      )),
+    );
+  }
+  return details;
+}
+
 export function PolicySettings({
   initialPolicyId = null,
   onInitialPolicyHandled,
@@ -292,6 +394,8 @@ export function PolicySettings({
   const [bodyMode, setBodyMode] = useState<"edit" | "preview">("edit");
   const [deleteTarget, setDeleteTarget] = useState<PolicySummary | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const policies = useQuery({ queryFn: getPolicies, queryKey: ["policies"] });
   const templates = useQuery({
     queryFn: getPolicyTemplates,
@@ -421,6 +525,83 @@ export function PolicySettings({
   });
 
   const currentPolicies = policies.data?.policies ?? [];
+  const exportOne = useMutation({
+    mutationFn: async (policy: PolicySummary) => {
+      const policyDetail = await getPolicy(policy.id);
+      queryClient.setQueryData(["policy", policy.id], policyDetail);
+      await downloadPolicyFile(
+        `${policyDetail.key}.json`,
+        serializePolicyFile(policyDetail),
+        "application/json",
+      );
+      return policyDetail.name;
+    },
+    onMutate: () => setTransferMessage(null),
+    onSuccess: (name) => setTransferMessage(`Exported ${name}.`),
+  });
+  const exportAll = useMutation({
+    mutationFn: async () => {
+      const details = await loadPolicyDetails(currentPolicies);
+      for (const policy of details) {
+        queryClient.setQueryData(["policy", policy.id], policy);
+      }
+      const archive = await createPolicyBundle(details);
+      await downloadPolicyFile(
+        `cantrip-policies-${new Date().toISOString().slice(0, 10)}.zip`,
+        new Uint8Array(archive),
+        "application/zip",
+      );
+      return details.length;
+    },
+    onMutate: () => setTransferMessage(null),
+    onSuccess: (count) =>
+      setTransferMessage(
+        `Exported ${count} polic${count === 1 ? "y" : "ies"}.`,
+      ),
+  });
+  const importFiles = useMutation({
+    mutationFn: async (files: File[]) => {
+      const decoded: PolicyCreate[] = [];
+      for (const file of files) {
+        decoded.push(
+          ...(await parsePolicyImport(
+            file.name,
+            new Uint8Array(await file.arrayBuffer()),
+          )),
+        );
+        if (decoded.length > POLICY_LIMIT) {
+          throw new Error(
+            `A single import cannot contain more than ${POLICY_LIMIT} policies.`,
+          );
+        }
+      }
+      const prepared = preparePolicyImports(decoded, currentPolicies);
+      let importedCount = 0;
+      try {
+        for (const policy of prepared.policies) {
+          await createPolicy(policy);
+          importedCount += 1;
+        }
+      } catch (error) {
+        throw new Error(
+          `Imported ${importedCount} of ${prepared.policies.length} policies before the server stopped the import: ${errorMessage(error)}`,
+        );
+      }
+      return { importedCount, renamedCount: prepared.renamedCount };
+    },
+    onMutate: () => setTransferMessage(null),
+    onSuccess: async ({ importedCount, renamedCount }) => {
+      setTransferMessage(
+        `Imported ${importedCount} polic${importedCount === 1 ? "y" : "ies"}.${
+          renamedCount
+            ? ` Renamed ${renamedCount} duplicate key${renamedCount === 1 ? "" : "s"}.`
+            : ""
+        }`,
+      );
+      await invalidatePolicies();
+    },
+    onError: invalidatePolicies,
+  });
   const query = searchQuery.trim().toLowerCase();
   const visiblePolicies = query
     ? currentPolicies.filter((policy) =>
@@ -446,7 +627,10 @@ export function PolicySettings({
     save.error ??
     reorder.error ??
     loadTemplate.error ??
-    reset.error;
+    reset.error ??
+    exportOne.error ??
+    exportAll.error ??
+    importFiles.error;
 
   const openBlank = () => {
     setDraft({
@@ -501,11 +685,49 @@ export function PolicySettings({
           value={searchQuery}
           onValueChange={setSearchQuery}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <span className="text-xs tabular-nums text-muted-foreground">
             {currentPolicies.length} polic
             {currentPolicies.length === 1 ? "y" : "ies"}
           </span>
+          <input
+            ref={importInputRef}
+            type="file"
+            className="hidden"
+            accept=".json,.zip,application/json,application/zip"
+            multiple
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              event.target.value = "";
+              if (files.length) importFiles.mutate(files);
+            }}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!policies.data || importFiles.isPending}
+            onClick={() => importInputRef.current?.click()}
+          >
+            {importFiles.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Upload className="size-3.5" />
+            )}
+            Import
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!currentPolicies.length || exportAll.isPending}
+            onClick={() => exportAll.mutate()}
+          >
+            {exportAll.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Download className="size-3.5" />
+            )}
+            Export all
+          </Button>
           <Button size="sm" onClick={() => setChooserOpen(true)}>
             <Plus className="size-3.5" /> Policy
           </Button>
@@ -536,7 +758,11 @@ export function PolicySettings({
                   key={policy.id}
                   policy={policy}
                   disabled={Boolean(query) || reorder.isPending}
+                  exportPending={
+                    exportOne.isPending && exportOne.variables?.id === policy.id
+                  }
                   onEdit={() => openExisting(policy)}
+                  onExport={() => exportOne.mutate(policy)}
                   onDelete={() => setDeleteTarget(policy)}
                 />
               ))}
@@ -561,9 +787,15 @@ export function PolicySettings({
           {errorMessage(error)}
         </p>
       ) : null}
+      {transferMessage ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {transferMessage}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         Enabled mandatory policies apply to every project. Other policy
-        assignments are managed from workspace and project settings.
+        assignments are managed from workspace and project settings. JSON and
+        ZIP exports contain policy content and settings, but not assignments.
       </p>
 
       <Dialog open={chooserOpen} onOpenChange={setChooserOpen}>
