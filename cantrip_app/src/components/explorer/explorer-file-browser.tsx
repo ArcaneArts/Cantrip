@@ -24,6 +24,8 @@ export function ExplorerFileBrowser({
   explorer,
   gitStatus,
   onOpenFile,
+  onRevealFolder,
+  revealLabel,
   onShowInGraph,
   onOpenTerminal,
   replayKey,
@@ -32,6 +34,8 @@ export function ExplorerFileBrowser({
   explorer: ExplorerSummary;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
+  onRevealFolder?(entry: ExplorerEntry, localFolder: boolean): void;
+  revealLabel?: string;
   onShowInGraph?(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
   replayKey: number;
@@ -128,6 +132,8 @@ export function ExplorerFileBrowser({
                 gitStatus={gitStatus}
                 key={entry.path}
                 onOpenFile={onOpenFile}
+                onReveal={onRevealFolder}
+                revealLabel={revealLabel}
                 onShowInGraph={onShowInGraph}
                 onOpenTerminal={onOpenTerminal}
                 onToggle={toggle}

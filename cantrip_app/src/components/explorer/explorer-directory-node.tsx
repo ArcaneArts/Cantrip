@@ -19,6 +19,8 @@ export function ExplorerDirectoryNode({
   explorerId,
   gitStatus,
   onOpenFile,
+  onReveal,
+  revealLabel,
   onShowInGraph,
   onOpenTerminal,
   onToggle,
@@ -32,6 +34,8 @@ export function ExplorerDirectoryNode({
   explorerId: string;
   gitStatus: GitStatus | undefined;
   onOpenFile(entry: ExplorerEntry): void;
+  onReveal?(entry: ExplorerEntry, localFolder: boolean): void;
+  revealLabel?: string;
   onShowInGraph?(rootPath: string | null): void;
   onOpenTerminal(entry: ExplorerEntry): void;
   onToggle(path: string): void;
@@ -53,6 +57,10 @@ export function ExplorerDirectoryNode({
         entry={entry}
         expanded={expanded}
         onOpen={() => onToggle(entry.path)}
+        onReveal={
+          onReveal ? (localFolder) => onReveal(entry, localFolder) : undefined
+        }
+        revealLabel={revealLabel}
         onShowInGraph={
           onShowInGraph
             ? () => onShowInGraph(explorerGraphRootForEntry(entry))
@@ -99,6 +107,8 @@ export function ExplorerDirectoryNode({
                     gitStatus={gitStatus}
                     key={child.path}
                     onOpenFile={onOpenFile}
+                    onReveal={onReveal}
+                    revealLabel={revealLabel}
                     onShowInGraph={onShowInGraph}
                     onOpenTerminal={onOpenTerminal}
                     onToggle={onToggle}

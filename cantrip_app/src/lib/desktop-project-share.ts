@@ -15,6 +15,18 @@ import { getActiveServerUrl } from "@/lib/server-connections";
 
 export type DesktopProjectRevealLabel =
   "Reveal in File Explorer" | "Reveal in Finder";
+export type DesktopFolderRevealLabel =
+  "Show in File Explorer" | "Show in Finder";
+
+function desktopFileManagerName(
+  desktopRuntime: boolean,
+  userAgent: string,
+): "File Explorer" | "Finder" | null {
+  if (!desktopRuntime) return null;
+  if (/Macintosh|Mac OS X/u.test(userAgent)) return "Finder";
+  if (/Windows/u.test(userAgent)) return "File Explorer";
+  return null;
+}
 
 export interface DesktopProjectRevealOperations {
   createAttachment(projectId: string): Promise<ProjectShareAttachment>;
@@ -29,16 +41,23 @@ export function desktopProjectRevealLabel(
   desktopRuntime: boolean,
   userAgent: string,
 ): DesktopProjectRevealLabel | null {
-  if (!desktopRuntime) return null;
-  if (/Macintosh|Mac OS X/u.test(userAgent)) return "Reveal in Finder";
-  if (/Windows/u.test(userAgent)) return "Reveal in File Explorer";
-  return null;
+  const fileManager = desktopFileManagerName(desktopRuntime, userAgent);
+  return fileManager ? `Reveal in ${fileManager}` : null;
+}
+
+export function desktopFolderRevealLabel(
+  desktopRuntime: boolean,
+  userAgent: string,
+): DesktopFolderRevealLabel | null {
+  const fileManager = desktopFileManagerName(desktopRuntime, userAgent);
+  return fileManager ? `Show in ${fileManager}` : null;
 }
 
 export function nativeProjectShareRequest(
   attachment: ProjectShareAttachment,
   project: ProjectSummary,
   direct?: { fallbackUrl: string; tunnelId: string },
+  relativePath = "",
 ) {
   return {
     attachmentId: attachment.attachmentId,
@@ -48,6 +67,7 @@ export function nativeProjectShareRequest(
     password: attachment.password,
     projectId: attachment.projectId,
     projectName: project.name,
+    relativePath,
     url: attachment.url,
     username: attachment.username,
   };
@@ -56,12 +76,14 @@ export function nativeProjectShareRequest(
 export function nativeLocalProjectFolderRequest(
   project: ProjectSummary,
   serverUrl: string,
+  relativePath = "",
 ) {
   const source = project.source;
   if (!source) return null;
   return {
     folderManagement: project.folderManagement ?? null,
     path: source.path,
+    relativePath,
     serverUrl,
     sourceKind: source.sourceKind,
     workerId: source.workerId,
@@ -97,11 +119,13 @@ export async function coordinateDesktopProjectReveal(
 export async function revealProjectInNativeFileManager(
   project: ProjectSummary,
   localFolder = false,
+  relativePath = "",
 ): Promise<void> {
   if (localFolder) {
     const request = nativeLocalProjectFolderRequest(
       project,
       getActiveServerUrl(),
+      relativePath,
     );
     if (!request) return;
     const { invoke } = await import("@tauri-apps/api/core");
@@ -134,6 +158,7 @@ export async function revealProjectInNativeFileManager(
                 fallbackUrl: attachment.url,
                 tunnelId: direct.route.tunnelId,
               },
+              relativePath,
             ),
           });
           return;
@@ -146,7 +171,12 @@ export async function revealProjectInNativeFileManager(
         }
       }
       await invoke("reveal_project_share", {
-        request: nativeProjectShareRequest(attachment, target),
+        request: nativeProjectShareRequest(
+          attachment,
+          target,
+          undefined,
+          relativePath,
+        ),
       });
     },
     revokeAttachment: deleteProjectNetworkShare,

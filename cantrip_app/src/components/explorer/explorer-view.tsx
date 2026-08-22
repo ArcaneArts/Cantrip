@@ -277,6 +277,8 @@ export function ExplorerView({
   onHeaderChange,
   onLifecycleChange,
   onOpenFile,
+  onRevealFolder,
+  revealLabel,
   onOpenTerminal,
   repositoryGraphAvailable,
   transientFile,
@@ -294,6 +296,12 @@ export function ExplorerView({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
   ): void | Promise<void>;
+  onRevealFolder?(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    localFolder: boolean,
+  ): void | Promise<void>;
+  revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   repositoryGraphAvailable: boolean;
   transientFile?: TransientExplorerFile;
@@ -863,6 +871,21 @@ export function ExplorerView({
     });
   };
 
+  const revealFolder = (entry: ExplorerEntry, localFolder: boolean) => {
+    if (!onRevealFolder) return;
+    setViewStateError(null);
+    void Promise.resolve(onRevealFolder(explorer, entry, localFolder)).catch(
+      (error: unknown) => {
+        if (!mountedRef.current) return;
+        setViewStateError(
+          error instanceof Error
+            ? error.message
+            : "The folder could not be revealed.",
+        );
+      },
+    );
+  };
+
   const openGraph = (rootPath: string | null) => {
     setGraphStatus(null);
     setRevealedPath(null);
@@ -1001,6 +1024,8 @@ export function ExplorerView({
             explorer={explorer}
             gitStatus={gitStatus}
             onOpenFile={openEntry}
+            onRevealFolder={onRevealFolder ? revealFolder : undefined}
+            revealLabel={revealLabel}
             onShowInGraph={repositoryGraphAvailable ? openGraph : undefined}
             onOpenTerminal={(entry) => onOpenTerminal?.(explorer, entry)}
             replayKey={entryReplayKey}

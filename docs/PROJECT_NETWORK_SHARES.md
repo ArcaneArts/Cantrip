@@ -76,6 +76,11 @@ mounts the WebDAV volume using the host operating system, and opens the mounted
 project in Finder or Explorer. Credentials must be passed without placing them
 in a URL, log line, or shell-expanded command string.
 
+Explorer folder context menus reuse the same whole-project mount and open the
+selected relative directory inside it. Holding Shift selects the verified
+same-host project directory instead; remote-worker projects intentionally do
+nothing because their physical paths are not local to the desktop client.
+
 Windows passes credentials in memory to the WebDAV Redirector with
 `WNetAddConnection2W`, establishes a temporary deviceless UNC connection, and
 opens that UNC path in Explorer. Avoiding a drive letter means the reveal does

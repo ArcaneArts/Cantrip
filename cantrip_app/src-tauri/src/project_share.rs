@@ -31,6 +31,8 @@ pub struct RevealProjectShareRequest {
     password: String,
     project_id: String,
     project_name: String,
+    #[serde(default)]
+    relative_path: String,
     url: String,
     username: String,
 }
@@ -40,6 +42,8 @@ pub struct RevealProjectShareRequest {
 pub struct RevealLocalProjectFolderRequest {
     folder_management: Option<LocalProjectFolderManagement>,
     path: String,
+    #[serde(default)]
+    relative_path: String,
     server_url: String,
     source_kind: LocalProjectSourceKind,
     worker_id: String,
@@ -157,7 +161,8 @@ pub async fn reveal_local_project_folder(
     let Some(project_directory) = project_directory else {
         return Ok(false);
     };
-    tauri::async_runtime::spawn_blocking(move || open_local_project_folder(&project_directory))
+    let reveal_directory = resolve_reveal_directory(&project_directory, &request.relative_path)?;
+    tauri::async_runtime::spawn_blocking(move || open_local_project_folder(&reveal_directory))
         .await
         .map_err(|error| format!("Could not join the local project reveal task: {error}"))??;
     Ok(true)
@@ -219,7 +224,7 @@ fn reveal_project_share_blocking(
                 if reschedule {
                     existing.expires_at = expires_at;
                 }
-                let opened = open_native_mount(&existing.location);
+                let opened = open_native_mount(&existing.location, &request.relative_path);
                 drop(mounts);
                 if reschedule {
                     schedule_native_mount_expiration(
@@ -238,7 +243,7 @@ fn reveal_project_share_blocking(
         }
 
         let location = create_native_mount(app, &request, &url)?;
-        if let Err(error) = open_native_mount(&location) {
+        if let Err(error) = open_native_mount(&location, &request.relative_path) {
             let _ = release_native_mount(&location);
             return Err(error);
         }
@@ -314,6 +319,7 @@ fn fallback_project_share_blocking(
         password: fallback.password.as_str().to_owned(),
         project_id: fallback.project_id.clone(),
         project_name: fallback.project_name.clone(),
+        relative_path: String::new(),
         url: fallback.url.clone(),
         username: fallback.username.clone(),
     };
@@ -435,6 +441,7 @@ fn validate_request(request: &RevealProjectShareRequest) -> Result<Url, String> 
     if request.project_name.len() > 512 {
         return Err("The project name is too long to reveal.".into());
     }
+    validate_relative_reveal_path(&request.relative_path)?;
 
     if request.direct_tunnel_id.as_ref().is_some_and(|tunnel_id| {
         tunnel_id.is_empty() || tunnel_id.len() > 200 || tunnel_id.chars().any(char::is_control)
@@ -456,6 +463,50 @@ fn validate_request(request: &RevealProjectShareRequest) -> Result<Url, String> 
         return Err("The direct project share omitted its server fallback.".into());
     }
     Ok(url)
+}
+
+fn validate_relative_reveal_path(relative_path: &str) -> Result<Vec<&str>, String> {
+    if relative_path.len() > 8_192
+        || relative_path.contains('\0')
+        || relative_path.starts_with('/')
+        || relative_path.contains('\\')
+        || matches!(
+            relative_path.as_bytes(),
+            [drive, b':', ..] if drive.is_ascii_alphabetic()
+        )
+    {
+        return Err("The requested project folder path is invalid.".into());
+    }
+    let segments = relative_path
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if segments
+        .iter()
+        .any(|segment| matches!(*segment, "." | ".."))
+    {
+        return Err("The requested project folder path is invalid.".into());
+    }
+    Ok(segments)
+}
+
+fn resolve_reveal_directory(
+    root: &std::path::Path,
+    relative_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let directory = validate_relative_reveal_path(relative_path)?
+        .into_iter()
+        .fold(root.to_path_buf(), |path, segment| path.join(segment));
+    let metadata = std::fs::metadata(&directory).map_err(|error| {
+        format!(
+            "The requested project folder is unavailable ({}): {error}",
+            directory.display()
+        )
+    })?;
+    if !metadata.is_dir() {
+        return Err("The requested project path is not a folder.".into());
+    }
+    Ok(directory)
 }
 
 fn validate_share_url(value: &str) -> Result<Url, String> {
@@ -618,12 +669,13 @@ fn native_mount_is_active(location: &NativeMount) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn open_native_mount(location: &NativeMount) -> Result<(), String> {
+fn open_native_mount(location: &NativeMount, relative_path: &str) -> Result<(), String> {
     use std::process::{Command, Stdio};
 
     let NativeMount::MacOs(path) = location;
+    let reveal_directory = resolve_reveal_directory(path, relative_path)?;
     let output = Command::new("/usr/bin/open")
-        .arg(path)
+        .arg(&reveal_directory)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
@@ -757,12 +809,13 @@ fn native_mount_is_active(location: &NativeMount) -> bool {
 }
 
 #[cfg(windows)]
-fn open_native_mount(location: &NativeMount) -> Result<(), String> {
+fn open_native_mount(location: &NativeMount, relative_path: &str) -> Result<(), String> {
     use std::process::{Command, Stdio};
 
     let NativeMount::Windows { remote } = location;
+    let reveal_directory = resolve_reveal_directory(std::path::Path::new(remote), relative_path)?;
     let output = Command::new("explorer.exe")
-        .arg(remote)
+        .arg(&reveal_directory)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .output()
@@ -823,7 +876,7 @@ fn native_mount_is_active(_location: &NativeMount) -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-fn open_native_mount(_location: &NativeMount) -> Result<(), String> {
+fn open_native_mount(_location: &NativeMount, _relative_path: &str) -> Result<(), String> {
     Err("Project reveal is available only in Cantrip for macOS and Windows.".into())
 }
 
@@ -899,6 +952,7 @@ mod tests {
             password: "p".repeat(32),
             project_id: "project-1".into(),
             project_name: "Cantrip".into(),
+            relative_path: String::new(),
             url: url.into(),
             username: "cantrip".into(),
         }
@@ -917,6 +971,24 @@ mod tests {
         assert!(
             validate_request(&request("https://cantrip.example/project-shares/short/")).is_err()
         );
+    }
+
+    #[test]
+    fn accepts_only_relative_project_folder_paths() {
+        assert_eq!(
+            validate_relative_reveal_path("src/components/explorer").unwrap(),
+            vec!["src", "components", "explorer"]
+        );
+        assert!(validate_relative_reveal_path("").unwrap().is_empty());
+        for path in [
+            "/Users/example/project",
+            "../outside",
+            "src/../outside",
+            "C:/project",
+            r"src\\outside",
+        ] {
+            assert!(validate_relative_reveal_path(path).is_err(), "{path}");
+        }
     }
 
     #[test]

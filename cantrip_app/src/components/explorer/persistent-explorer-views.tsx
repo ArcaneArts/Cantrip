@@ -41,6 +41,8 @@ export function PersistentExplorerViews({
   onHeaderChange,
   onLifecycleChange,
   onOpenFile,
+  onRevealFolder,
+  revealLabel,
   onOpenTerminal,
   repositoryGraphAvailable,
 }: {
@@ -56,6 +58,12 @@ export function PersistentExplorerViews({
     explorer: ExplorerSummary,
     entry: ExplorerEntry,
   ): void | Promise<void>;
+  onRevealFolder?(
+    explorer: ExplorerSummary,
+    entry: ExplorerEntry,
+    localFolder: boolean,
+  ): void | Promise<void>;
+  revealLabel?: string;
   onOpenTerminal?(explorer: ExplorerSummary, entry: ExplorerEntry): void;
   repositoryGraphAvailable: boolean;
 }) {
@@ -108,6 +116,8 @@ export function PersistentExplorerViews({
         onHeaderChange={active ? onHeaderChange : undefined}
         onLifecycleChange={handleLifecycleChange}
         onOpenFile={onOpenFile}
+        onRevealFolder={onRevealFolder}
+        revealLabel={revealLabel}
         onOpenTerminal={onOpenTerminal}
         repositoryGraphAvailable={repositoryGraphAvailable}
       />
