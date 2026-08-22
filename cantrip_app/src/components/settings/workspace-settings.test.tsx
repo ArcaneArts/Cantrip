@@ -1,4 +1,7 @@
-import { projectWorkspaceSummarySchema } from "@cantrip/protocol";
+import {
+  projectSummarySchema,
+  projectWorkspaceSummarySchema,
+} from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -6,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   WorkspaceSettings,
   promoteDefaultWorkspace,
+  toggleWorkspaceProject,
 } from "./workspace-settings";
 
 const now = "2026-08-16T12:00:00.000Z";
@@ -24,8 +28,20 @@ const personalWorkspace = projectWorkspaceSummarySchema.parse({
   name: "Personal",
   position: 1,
   isDefault: false,
-  projectIds: [],
+  projectIds: ["project-cantrip"],
   revision: 1,
+  createdAt: now,
+  updatedAt: now,
+});
+const cantripProject = projectSummarySchema.parse({
+  id: "project-cantrip",
+  name: "Cantrip",
+  position: 0,
+  setupStatus: "ready",
+  setupError: null,
+  worktreePolicy: "agent-managed",
+  source: null,
+  github: null,
   createdAt: now,
   updatedAt: now,
 });
@@ -39,11 +55,28 @@ describe("workspace settings", () => {
     ).toEqual([{ ...mainWorkspace, isDefault: false }, promoted]);
   });
 
+  it("adds and removes project memberships without duplicating ids", () => {
+    expect(
+      toggleWorkspaceProject(
+        ["project-one", "project-two"],
+        "project-two",
+        true,
+      ),
+    ).toEqual(["project-one", "project-two"]);
+    expect(
+      toggleWorkspaceProject(
+        ["project-one", "project-two"],
+        "project-one",
+        false,
+      ),
+    ).toEqual(["project-two"]);
+  });
+
   it("allows every workspace to be renamed and only non-defaults promoted", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     });
-    queryClient.setQueryData(["projects"], []);
+    queryClient.setQueryData(["projects"], [cantripProject]);
     queryClient.setQueryData(
       ["project-workspaces"],
       [mainWorkspace, personalWorkspace],
@@ -61,6 +94,10 @@ describe("workspace settings", () => {
     expect(markup).not.toContain("Make Main Workspace the default workspace");
     expect(markup).not.toContain("Delete Main Workspace");
     expect(markup).toContain("Delete Personal");
+    expect(markup).toContain("Workspace management");
+    expect(markup).toContain("Project membership");
+    expect(markup).toContain("Show Cantrip in Main Workspace");
+    expect(markup).toContain("Show Cantrip in Personal");
     expect(markup).toContain("Policies");
   });
 });
