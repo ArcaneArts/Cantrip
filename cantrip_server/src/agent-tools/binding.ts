@@ -2,7 +2,10 @@ import type {
   CantripAgentOperationName,
   CantripMcpBinding,
 } from "@cantrip/protocol";
-import { cantripMcpOperationsForPermissionProfile } from "@cantrip/protocol";
+import {
+  cantripMcpOperationsForPermissionProfile,
+  isCantripMcpMutationOperation,
+} from "@cantrip/protocol";
 
 import {
   chatIsExecuting,
@@ -80,13 +83,15 @@ export function assertCantripMcpBinding(options: {
   }
   const currentPermissionProfile =
     effectivePermissionProfile(context).effectiveId;
-  const staleClaims = [
+  const staleIdentityClaims = [
     binding.chatId !== context.chatId ? "chat" : null,
     binding.projectId !== context.projectId ? "project" : null,
+    binding.workerId !== context.workerId ? "worker" : null,
+  ].filter((claim): claim is string => claim !== null);
+  const staleScopeClaims = [
     binding.executionLaneId !== context.executionLaneId
       ? "execution lane"
       : null,
-    binding.workerId !== context.workerId ? "worker" : null,
     binding.worktreeId !== context.worktreeId ? "worktree" : null,
     binding.rootKind !== context.rootKind ? "root kind" : null,
     binding.permissionProfileId !== currentPermissionProfile
@@ -97,6 +102,14 @@ export function assertCantripMcpBinding(options: {
       ? "working directory"
       : null,
   ].filter((claim): claim is string => claim !== null);
+  const staleClaims = [
+    ...staleIdentityClaims,
+    ...(isCantripMcpMutationOperation(operation) ? staleScopeClaims : []),
+  ];
+  // Read-only discovery follows the active lane after a safe Cantrip
+  // transition. The request remains bound to the same owner, chat, project,
+  // and worker, and the current permission profile is independently checked
+  // below. Mutations retain exact lane, worktree, root, and permission claims.
   // A linked Codex console can call the read-only context probe while the
   // Cantrip chat row is between turns. Keep every durable binding claim
   // authoritative, but do not reject that harmless probe solely because the
