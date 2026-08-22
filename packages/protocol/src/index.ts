@@ -8320,6 +8320,10 @@ export const chatInterruptAcceptedSchema = z.object({
   interrupted: z.boolean(),
 });
 
+export const chatTurnRollbackAcceptedSchema = z.object({
+  rolledBack: z.literal(true),
+});
+
 export const chatPauseUpdateSchema = z.object({
   paused: z.boolean(),
 });
@@ -12588,6 +12592,16 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     threadId: z.string().min(1).nullable(),
     model: workerRuntimeModelSchema,
     provider: workerRuntimeProviderSchema,
+  }),
+  z.object({
+    type: z.literal("chat.turn.rollback"),
+    chatId: z.string().min(1),
+    clientMessageId: z.string().min(1).max(200),
+    cwd: z.string().min(1),
+    threadId: z.string().min(1),
+    model: workerRuntimeModelSchema,
+    provider: workerRuntimeProviderSchema,
+    permissionProfileId: permissionProfileIdSchema,
   }),
   z.object({
     type: z.literal("chat.goal.get"),

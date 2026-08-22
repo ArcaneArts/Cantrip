@@ -175,6 +175,15 @@ export interface CodexRuntime {
     chatId: string,
     threadId: string | null,
   ): Promise<{ interrupted: boolean }>;
+  rollbackLatestChatTurn(
+    options: Pick<
+      RunAgentTurnOptions,
+      "cwd" | "model" | "permissionProfileId" | "provider"
+    > & {
+      clientMessageId: string;
+      threadId: string;
+    },
+  ): Promise<{ rolledBack: true }>;
   interruptThread(threadId: string): Promise<{ interrupted: boolean }>;
   steerThread(
     chatId: string,

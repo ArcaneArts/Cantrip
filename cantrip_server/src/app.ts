@@ -95,6 +95,7 @@ import {
   chatImportJobRetrySchema,
   chatImportJobSummarySchema,
   chatInterruptAcceptedSchema,
+  chatTurnRollbackAcceptedSchema,
   encryptedChatPlanWireStateSchema,
   chatPlanUpdateSchema,
   chatRelocationCreateSchema,
@@ -7785,6 +7786,7 @@ export async function buildApp({
       durationMs?: number | null;
       turnId?: string | null;
       userInterrupted?: boolean;
+      userRetryRegeneration?: boolean;
       immediateCorrectiveFollowup?: boolean;
       codexVersion?: string | null;
     },
@@ -7809,6 +7811,7 @@ export async function buildApp({
         durationMs: attribution.durationMs,
         turnId: attribution.turnId,
         userInterrupted: attribution.userInterrupted,
+        userRetryRegeneration: attribution.userRetryRegeneration,
         immediateCorrectiveFollowup: attribution.immediateCorrectiveFollowup,
         workerVersion: null,
         serverVersion: cantripVersion.version,
@@ -7817,7 +7820,7 @@ export async function buildApp({
           fork: true,
           copy: false,
           rating: false,
-          userRetryRegeneration: false,
+          userRetryRegeneration: true,
           immediateCorrectiveFollowup: true,
         },
         ...tracker.snapshot(),
@@ -8650,6 +8653,7 @@ export async function buildApp({
       };
       messageRole?: "system" | "user";
       purpose?: string;
+      retryMessageId?: string;
       runtimes?: ModelRuntime[];
       structuredResult?: {
         outputSchema?: WorkflowJsonObject;
@@ -8794,6 +8798,43 @@ export async function buildApp({
     let userMessage: ChatMessage;
     let immediateCorrectiveFollowup = false;
     try {
+      if (options.retryMessageId) {
+        const retryRuntime = runtimes[0]!;
+        if (
+          !execution.threadId ||
+          !runtimeCanResumeContext(execution, retryRuntime)
+        ) {
+          throw new Error(
+            "The original Codex runtime is unavailable for this message.",
+          );
+        }
+        const rollback = chatTurnRollbackAcceptedSchema.parse(
+          await bridge.request(execution.workerId, {
+            type: "chat.turn.rollback",
+            chatId: execution.chatId,
+            clientMessageId: options.retryMessageId,
+            cwd: execution.cwd,
+            threadId: execution.threadId,
+            model: retryRuntime.model,
+            provider: retryRuntime.provider,
+            permissionProfileId:
+              effectivePermissionProfile(execution).effectiveId,
+          }),
+        );
+        if (!rollback.rolledBack) {
+          throw new Error("The previous Codex turn could not be rolled back.");
+        }
+        const trimmed = await repository.trimLatestEncryptedTurn(
+          ownerId,
+          execution.chatId,
+          options.retryMessageId,
+        );
+        if (!trimmed) {
+          throw new Error(
+            "Only the latest user message can be edited and sent again.",
+          );
+        }
+      }
       await updateLiveChatPlanMode(ownerId, execution.chatId, turnPlanMode);
       const priorHeaders = await repository.listMessageHeaders(
         ownerId,
@@ -9009,6 +9050,7 @@ export async function buildApp({
               retryFailoverCount: index,
               startedAt: attemptStartedAt,
               immediateCorrectiveFollowup,
+              userRetryRegeneration: Boolean(options.retryMessageId),
               codexVersion: attributedWorker?.codexVersion ?? null,
             },
           );
@@ -9495,6 +9537,7 @@ export async function buildApp({
                 durationMs: completedAt.getTime() - attemptStartedAtMs,
                 turnId: behaviorTurnId,
                 immediateCorrectiveFollowup,
+                userRetryRegeneration: Boolean(options.retryMessageId),
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
             );
@@ -9706,6 +9749,7 @@ export async function buildApp({
                   attemptStatus === "interrupted" ||
                   attemptStatus === "cancelled",
                 immediateCorrectiveFollowup,
+                userRetryRegeneration: Boolean(options.retryMessageId),
                 codexVersion: attributedWorker?.codexVersion ?? null,
               },
             );
@@ -26664,6 +26708,145 @@ export async function buildApp({
             ? 409
             : 400;
         return reply.code(status).send({ error: message });
+      }
+    },
+  );
+
+  app.post<{ Params: { chatId: string; messageId: string } }>(
+    "/api/chats/:chatId/turns/:messageId/retry",
+    async (request, reply) => {
+      const input = encryptedChatTurnCreateSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const ownerId = applicationOwnerId();
+      const context = await repository.getChatExecutionContext(
+        ownerId,
+        request.params.chatId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Chat source not found." });
+      }
+      if (context.experience === "task") {
+        return reply.code(409).send({
+          error: "Task messages cannot be edited from the agent transcript.",
+        });
+      }
+      const existing = await repository.getEncryptedMessageByIdempotencyKey(
+        ownerId,
+        context.chatId,
+        input.data.message.idempotencyKey,
+      );
+      if (existing) {
+        return reply.send(
+          encryptedChatPromptSubmitResultSchema.parse({
+            status: "started",
+            message: existing,
+          }),
+        );
+      }
+      if (context.automationPaused) {
+        return reply.code(409).send({
+          error: "Resume the chat before editing its latest message.",
+        });
+      }
+      if (chatIsExecuting(context.status)) {
+        return reply.code(409).send({
+          error: "Interrupt or finish the active turn before editing it.",
+        });
+      }
+      if (!context.threadId) {
+        return reply.code(409).send({
+          error: "This chat does not have a Codex turn to edit.",
+        });
+      }
+      const [latest, queuedPrompts] = await Promise.all([
+        repository.getLatestEncryptedUserMessage(ownerId, context.chatId),
+        repository.listEncryptedQueuedPrompts(ownerId, context.chatId),
+      ]);
+      if (!latest || latest.id !== request.params.messageId) {
+        return reply.code(409).send({
+          error: "Only the latest user message can be edited and sent again.",
+        });
+      }
+      if (queuedPrompts.length > 0) {
+        return reply.code(409).send({
+          error: "Remove queued prompts before editing the latest message.",
+        });
+      }
+      const replacement = input.data.message;
+      if (
+        replacement.classification.role !== "user" ||
+        replacement.classification.mode !== latest.mode ||
+        replacement.reasoningEffort !== latest.reasoningEffort ||
+        JSON.stringify(replacement.classification.attachmentIds) !==
+          JSON.stringify(latest.attachmentIds) ||
+        input.data.modelId !== latest.modelId
+      ) {
+        return reply.code(409).send({
+          error:
+            "An edited message must keep its original mode, model, reasoning, and attachments.",
+        });
+      }
+      if (!bridge.isConnected(context.workerId)) {
+        return reply.code(503).send({ error: "Project worker is offline." });
+      }
+      let runtime: ModelRuntime | null;
+      try {
+        runtime = await runtimeForContext(context);
+      } catch (error) {
+        return reply.code(409).send({ error: errorMessage(error) });
+      }
+      if (
+        !runtime ||
+        runtime.model.id !== latest.modelId ||
+        runtime.routeId !== latest.modelRouteId
+      ) {
+        return reply.code(409).send({
+          error: "The original model route is unavailable for this message.",
+        });
+      }
+
+      try {
+        await beginTurn(
+          context,
+          {
+            text: "Edited encrypted prompt.",
+            attachmentIds: replacement.classification.attachmentIds,
+            mode: replacement.classification.mode,
+            modelId: input.data.modelId,
+            reasoningEffort: replacement.reasoningEffort,
+            idempotencyKey: replacement.idempotencyKey,
+          },
+          {
+            encryptedChatMessages: {
+              userMessage: replacement,
+              response: {
+                id: randomUUID(),
+                idempotencyKey: `assistant:${replacement.id}`,
+              },
+            },
+            retryMessageId: latest.id,
+            runtimes: [runtime],
+          },
+        );
+        const message = await repository.getEncryptedMessageByIdempotencyKey(
+          ownerId,
+          context.chatId,
+          replacement.idempotencyKey,
+        );
+        if (!message) throw new Error("Encrypted chat message was not saved.");
+        return reply.code(202).send(
+          encryptedChatPromptSubmitResultSchema.parse({
+            status: "started",
+            message,
+          }),
+        );
+      } catch (error) {
+        const message = errorMessage(error);
+        return reply
+          .code(message.includes("offline") ? 503 : 409)
+          .send({ error: message });
       }
     },
   );
