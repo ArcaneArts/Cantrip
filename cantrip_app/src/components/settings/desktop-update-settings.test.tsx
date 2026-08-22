@@ -8,9 +8,11 @@ import {
   DesktopUpdateSettings,
   DesktopUpdateStatusMessage,
   desktopUpdateFlowReducer,
+  desktopUpdateAutoRefreshDue,
   initialDesktopUpdateFlowState,
   type DesktopUpdateFlowState,
 } from "./desktop-update-settings";
+import { DesktopUpdateHistory } from "./desktop-update-history";
 
 const release = {
   currentVersion: "1.2.3",
@@ -48,9 +50,11 @@ function mockClient(): DesktopUpdateClient {
       release,
     })),
     getActiveWork: vi.fn(async () => activeWork),
+    history: vi.fn(async () => [release]),
     install: vi.fn(async () => ({ version: "1.3.0" })),
     isSupportedEnvironment: vi.fn(() => true),
     listen: vi.fn(async () => () => undefined),
+    select: vi.fn(async () => release),
     status: vi.fn(async () => ({
       phase: "idle" as const,
       release: null,
@@ -59,6 +63,12 @@ function mockClient(): DesktopUpdateClient {
 }
 
 describe("desktop update settings", () => {
+  it("throttles automatic General-tab checks to once every 30 seconds", () => {
+    expect(desktopUpdateAutoRefreshDue(null, 100_000)).toBe(true);
+    expect(desktopUpdateAutoRefreshDue(100_000, 129_999)).toBe(false);
+    expect(desktopUpdateAutoRefreshDue(100_000, 130_000)).toBe(true);
+  });
+
   it("does not check or download while rendering the manual control", () => {
     const client = mockClient();
     const markup = renderToStaticMarkup(
@@ -75,8 +85,39 @@ describe("desktop update settings", () => {
     expect(markup).toContain("Check for updates");
     expect(markup).toContain("Installed version 1.2.3");
     expect(client.check).not.toHaveBeenCalled();
+    expect(client.history).not.toHaveBeenCalled();
     expect(client.getActiveWork).not.toHaveBeenCalled();
     expect(client.install).not.toHaveBeenCalled();
+  });
+
+  it("renders version history as a flat sectioned list", () => {
+    const markup = renderToStaticMarkup(
+      <DesktopUpdateHistory
+        error={null}
+        installedVersion="1.2.3"
+        loading={false}
+        releases={[
+          release,
+          {
+            ...release,
+            version: "1.2.3",
+            publishedAt: "2026-06-01T12:00:00.000Z",
+          },
+        ]}
+        onOpenRelease={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('data-slot="desktop-update-history"');
+    expect(
+      markup.match(/data-slot="desktop-update-history-row"/gu),
+    ).toHaveLength(2);
+    expect(markup).toContain("Version history");
+    expect(markup).toContain("1.3.0");
+    expect(markup).toContain("1.2.3");
+    expect(markup).toContain("Latest");
+    expect(markup).toContain("Installed");
+    expect(markup).not.toContain("rounded-xl");
   });
 
   it("shows a concise up-to-date result", () => {
