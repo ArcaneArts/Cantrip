@@ -55,6 +55,7 @@ describe("ChatPlanProgress", () => {
     const markup = renderToStaticMarkup(
       <ChatPlanProgress
         explanation="Ship the composer progress UI."
+        loading
         steps={[
           { step: "Inspect", status: "completed" },
           { step: "Implement", status: "inProgress" },
@@ -66,13 +67,31 @@ describe("ChatPlanProgress", () => {
     expect(markup).toContain("Step 2 / 3");
     expect(markup).toContain("1 complete");
     expect(markup).toContain('aria-expanded="false"');
+    expect(markup).toContain("animate-spin");
     expect(markup).not.toContain("Ship the composer progress UI.");
+  });
+
+  it("stops animating an in-progress step after the model stops", () => {
+    const markup = renderToStaticMarkup(
+      <ChatPlanProgress
+        explanation={null}
+        loading={false}
+        steps={[
+          { step: "Interrupted work", status: "inProgress" },
+          { step: "Verify", status: "pending" },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain("Step 1 / 2");
+    expect(markup).not.toContain("animate-spin");
   });
 
   it("shows the explanation and every status in the expanded details", () => {
     const markup = renderToStaticMarkup(
       <PlanProgressDetails
         explanation="Ship the composer progress UI."
+        loading
         summary={{
           completedCount: 1,
           currentStepNumber: 2,
