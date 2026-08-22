@@ -141,6 +141,29 @@ export function recoverableDesktopWorkerId(input: {
   );
 }
 
+export function staleDesktopWorkerIds(input: {
+  candidates: Array<{ workerId: string }>;
+  selectedWorkerId: string;
+  workers: Array<{
+    online: boolean;
+    sources: readonly unknown[];
+    workerId: string;
+  }>;
+}): string[] {
+  const candidates = new Set(
+    input.candidates.map((candidate) => candidate.workerId),
+  );
+  return input.workers
+    .filter(
+      (worker) =>
+        worker.workerId !== input.selectedWorkerId &&
+        candidates.has(worker.workerId) &&
+        !worker.online &&
+        worker.sources.length === 0,
+    )
+    .map((worker) => worker.workerId);
+}
+
 export function resolveDesktopWorkerPairingId(input: {
   serverSelectedWorkerId: string | null;
 }): string | null {
@@ -531,6 +554,17 @@ export function WorkerSettings() {
         serverUrl,
         workerId,
       });
+      const staleWorkerIds = staleDesktopWorkerIds({
+        candidates,
+        selectedWorkerId: desktopWorker.workerId,
+        workers: workers.data ?? [],
+      });
+      await Promise.allSettled(
+        staleWorkerIds.map(async (staleWorkerId) => {
+          await unlinkWorker(staleWorkerId);
+          await forgetDesktopWorker(staleWorkerId);
+        }),
+      );
       return { desktopWorker, enrollment };
     },
     onSuccess: ({ desktopWorker, enrollment }) => {

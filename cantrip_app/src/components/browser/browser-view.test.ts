@@ -244,7 +244,7 @@ describe("browserSurfaceStartupState", () => {
       runtimeStatus: "error" as const,
       surfaceReady: false,
     };
-    expect(BROWSER_STARTUP_FAILURE_GRACE_MS).toBe(1_000);
+    expect(BROWSER_STARTUP_FAILURE_GRACE_MS).toBe(30_000);
     expect(
       browserSurfaceStartupState({
         ...failure,
