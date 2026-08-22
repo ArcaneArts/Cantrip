@@ -33,6 +33,7 @@ export type RepositoryGraphSceneNode = RepositoryGraphInputNode & {
 };
 
 export type RepositoryGraphSceneEdge = {
+  childId: string;
   from: RepositoryGraphPoint;
   id: string;
   parentId: string;
@@ -47,6 +48,7 @@ export type RepositoryGraphSpatialIndex = {
 export type RepositoryGraphScene = {
   bounds: RepositoryGraphBounds;
   edges: readonly RepositoryGraphSceneEdge[];
+  edgesByNodeId: ReadonlyMap<string, readonly RepositoryGraphSceneEdge[]>;
   hiddenNodeCount: number;
   nodes: readonly RepositoryGraphSceneNode[];
   nodesById: ReadonlyMap<string, RepositoryGraphSceneNode>;
@@ -180,6 +182,7 @@ function emptyScene(totalNodeCount = 0): RepositoryGraphScene {
   return {
     bounds: { maxX: 1, maxY: 1, minX: -1, minY: -1 },
     edges: [],
+    edgesByNodeId: new Map(),
     hiddenNodeCount: totalNodeCount,
     nodes: [],
     nodesById: new Map(),
@@ -532,16 +535,24 @@ export function buildRepositoryGraphScene(
   }
 
   const edges: RepositoryGraphSceneEdge[] = [];
+  const edgesByNodeId = new Map<string, RepositoryGraphSceneEdge[]>();
   for (const node of sceneNodes) {
     if (!node.parentId) continue;
     const parent = nodesById.get(node.parentId);
     if (!parent) continue;
-    edges.push({
+    const edge = {
+      childId: node.id,
       from: { x: parent.x, y: parent.y },
       id: `${parent.id}->${node.id}`,
       parentId: parent.id,
       to: { x: node.x, y: node.y },
-    });
+    };
+    edges.push(edge);
+    for (const endpointId of [edge.parentId, edge.childId]) {
+      const endpointEdges = edgesByNodeId.get(endpointId) ?? [];
+      endpointEdges.push(edge);
+      edgesByNodeId.set(endpointId, endpointEdges);
+    }
   }
 
   let minX = Number.POSITIVE_INFINITY;
@@ -559,6 +570,7 @@ export function buildRepositoryGraphScene(
   return {
     bounds: { maxX, maxY, minX, minY },
     edges,
+    edgesByNodeId,
     hiddenNodeCount: Math.max(
       0,
       (descendants.get(root.id) ?? 0) + 1 - sceneNodes.length,

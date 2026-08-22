@@ -45,51 +45,219 @@ export interface RepositoryGraphRenderingAdapter {
   ): void;
 }
 
+type RepositoryGraphPlanOptions = Pick<
+  RepositoryGraphRenderOptions,
+  "hoveredNodeId" | "maxLabels" | "selectedNodeId"
+>;
+
+function normalizedLabelLimit(maxLabels: number | undefined): number {
+  const requested = maxLabels ?? 120;
+  if (Number.isNaN(requested) || requested <= 0) return 0;
+  if (!Number.isFinite(requested)) return Number.MAX_SAFE_INTEGER;
+  return Math.floor(requested);
+}
+
+function compareLabelNodes(
+  left: RepositoryGraphSceneNode,
+  right: RepositoryGraphSceneNode,
+  selectedNodeId: string | null | undefined,
+  hoveredNodeId: string | null | undefined,
+): number {
+  const leftSelected = left.id === selectedNodeId || left.id === hoveredNodeId;
+  const rightSelected =
+    right.id === selectedNodeId || right.id === hoveredNodeId;
+  if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+  if (left.kind !== right.kind)
+    return left.kind === "directory" ? -1 : right.kind === "directory" ? 1 : 0;
+  return right.radius - left.radius;
+}
+
+function selectRepositoryGraphLabels(
+  visible: readonly RepositoryGraphSceneNode[],
+  cameraScale: number,
+  options: RepositoryGraphPlanOptions,
+): RepositoryGraphSceneNode[] {
+  const limit = normalizedLabelLimit(options.maxLabels);
+  if (limit === 0) return [];
+  const labels: RepositoryGraphSceneNode[] = [];
+  for (const node of visible) {
+    if (
+      node.id !== options.selectedNodeId &&
+      node.id !== options.hoveredNodeId &&
+      node.kind !== "directory" &&
+      !node.aggregated &&
+      node.radius * cameraScale < 7
+    ) {
+      continue;
+    }
+    let low = 0;
+    let high = labels.length;
+    // Upper-bound insertion retains Array.sort's stable ordering for ties.
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (
+        compareLabelNodes(
+          node,
+          labels[middle]!,
+          options.selectedNodeId,
+          options.hoveredNodeId,
+        ) < 0
+      ) {
+        high = middle;
+      } else {
+        low = middle + 1;
+      }
+    }
+    if (low >= limit && labels.length >= limit) continue;
+    labels.splice(low, 0, node);
+    if (labels.length > limit) labels.pop();
+  }
+  return labels;
+}
+
+function selectRepositoryGraphEdges(
+  scene: RepositoryGraphScene,
+  visible: readonly RepositoryGraphSceneNode[],
+): RepositoryGraphSceneEdge[] {
+  const edges: RepositoryGraphSceneEdge[] = [];
+  const included = new Set<RepositoryGraphSceneEdge>();
+  for (const node of visible) {
+    for (const edge of scene.edgesByNodeId.get(node.id) ?? []) {
+      if (included.has(edge)) continue;
+      included.add(edge);
+      edges.push(edge);
+    }
+  }
+  return edges;
+}
+
+function planRepositoryGraphVisibleNodes(
+  scene: RepositoryGraphScene,
+  visible: readonly RepositoryGraphSceneNode[],
+  cameraScale: number,
+  options: RepositoryGraphPlanOptions,
+): RepositoryGraphRenderPlan {
+  return {
+    edges: selectRepositoryGraphEdges(scene, visible),
+    labels: selectRepositoryGraphLabels(visible, cameraScale, options),
+    nodes: visible,
+  };
+}
+
 export function createRepositoryGraphRenderPlan(
   scene: RepositoryGraphScene,
   camera: RepositoryGraphCamera,
   viewport: RepositoryGraphViewport,
-  options: Pick<
-    RepositoryGraphRenderOptions,
-    "hoveredNodeId" | "maxLabels" | "selectedNodeId"
-  > = {},
+  options: RepositoryGraphPlanOptions = {},
 ): RepositoryGraphRenderPlan {
   const visible = queryRepositoryGraphNodes(
     scene,
     repositoryGraphViewportWorldBounds(camera, viewport),
   );
-  const visibleIds = new Set(visible.map((node) => node.id));
-  const edges = scene.edges.filter(
-    (edge) =>
-      visibleIds.has(edge.parentId) ||
-      visibleIds.has(edge.id.split("->")[1] ?? ""),
+  return planRepositoryGraphVisibleNodes(scene, visible, camera.scale, options);
+}
+
+function sameCamera(
+  left: RepositoryGraphCamera | null,
+  right: RepositoryGraphCamera,
+): boolean {
+  return (
+    left?.centerX === right.centerX &&
+    left.centerY === right.centerY &&
+    left.rotation === right.rotation &&
+    left.scale === right.scale
   );
-  const maxLabels = Math.max(0, options.maxLabels ?? 120);
-  const prioritized = visible
-    .filter(
-      (node) =>
-        node.id === options.selectedNodeId ||
-        node.id === options.hoveredNodeId ||
-        node.kind === "directory" ||
-        node.aggregated ||
-        node.radius * camera.scale >= 7,
-    )
-    .sort((left, right) => {
-      const leftSelected =
-        left.id === options.selectedNodeId || left.id === options.hoveredNodeId;
-      const rightSelected =
-        right.id === options.selectedNodeId ||
-        right.id === options.hoveredNodeId;
-      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-      if (left.kind !== right.kind)
-        return left.kind === "directory"
-          ? -1
-          : right.kind === "directory"
-            ? 1
-            : 0;
-      return right.radius - left.radius;
-    });
-  return { edges, labels: prioritized.slice(0, maxLabels), nodes: visible };
+}
+
+function sameViewport(
+  left: RepositoryGraphViewport | null,
+  right: RepositoryGraphViewport,
+): boolean {
+  return left?.height === right.height && left.width === right.width;
+}
+
+function sameNodes(
+  left: readonly RepositoryGraphSceneNode[],
+  right: readonly RepositoryGraphSceneNode[],
+): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+export class RepositoryGraphRenderPlanner {
+  private camera: RepositoryGraphCamera | null = null;
+  private hoveredNodeId: string | null = null;
+  private maxLabels = 120;
+  private plan: RepositoryGraphRenderPlan | null = null;
+  private scale = Number.NaN;
+  private scene: RepositoryGraphScene | null = null;
+  private selectedNodeId: string | null = null;
+  private viewport: RepositoryGraphViewport | null = null;
+
+  create(
+    scene: RepositoryGraphScene,
+    camera: RepositoryGraphCamera,
+    viewport: RepositoryGraphViewport,
+    options: RepositoryGraphPlanOptions = {},
+  ): RepositoryGraphRenderPlan {
+    const geometryUnchanged =
+      this.scene === scene &&
+      sameCamera(this.camera, camera) &&
+      sameViewport(this.viewport, viewport);
+    let nodes: readonly RepositoryGraphSceneNode[];
+    let edges: readonly RepositoryGraphSceneEdge[];
+    if (geometryUnchanged && this.plan) {
+      nodes = this.plan.nodes;
+      edges = this.plan.edges;
+    } else {
+      const visible = queryRepositoryGraphNodes(
+        scene,
+        repositoryGraphViewportWorldBounds(camera, viewport),
+      );
+      if (
+        this.scene === scene &&
+        this.plan &&
+        sameNodes(this.plan.nodes, visible)
+      ) {
+        nodes = this.plan.nodes;
+        edges = this.plan.edges;
+      } else {
+        nodes = visible;
+        edges = selectRepositoryGraphEdges(scene, visible);
+      }
+    }
+
+    const hoveredNodeId = options.hoveredNodeId ?? null;
+    const selectedNodeId = options.selectedNodeId ?? null;
+    const maxLabels = normalizedLabelLimit(options.maxLabels);
+    const labelsUnchanged =
+      this.plan?.nodes === nodes &&
+      this.scale === camera.scale &&
+      this.hoveredNodeId === hoveredNodeId &&
+      this.selectedNodeId === selectedNodeId &&
+      this.maxLabels === maxLabels;
+    const labels = labelsUnchanged
+      ? this.plan!.labels
+      : selectRepositoryGraphLabels(nodes, camera.scale, options);
+    const plan =
+      this.plan?.nodes === nodes &&
+      this.plan.edges === edges &&
+      this.plan.labels === labels
+        ? this.plan
+        : { edges, labels, nodes };
+    this.camera = { ...camera };
+    this.hoveredNodeId = hoveredNodeId;
+    this.maxLabels = maxLabels;
+    this.plan = plan;
+    this.scale = camera.scale;
+    this.scene = scene;
+    this.selectedNodeId = selectedNodeId;
+    this.viewport = { ...viewport };
+    return plan;
+  }
 }
 
 function setCanvasResolution(
@@ -109,6 +277,8 @@ function setCanvasResolution(
 }
 
 export class Canvas2DRepositoryGraphAdapter implements RepositoryGraphRenderingAdapter {
+  private readonly planner = new RepositoryGraphRenderPlanner();
+
   isSupported(canvas: HTMLCanvasElement): boolean {
     return canvas.getContext("2d") !== null;
   }
@@ -129,12 +299,7 @@ export class Canvas2DRepositoryGraphAdapter implements RepositoryGraphRenderingA
       context.fillRect(0, 0, viewport.width, viewport.height);
     }
 
-    const plan = createRepositoryGraphRenderPlan(
-      scene,
-      camera,
-      viewport,
-      options,
-    );
+    const plan = this.planner.create(scene, camera, viewport, options);
     context.lineCap = "round";
     context.lineJoin = "round";
     context.strokeStyle = options.theme.edge;
