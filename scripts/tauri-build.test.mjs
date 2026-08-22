@@ -128,8 +128,33 @@ test("keeps the macOS bundle number numeric for synthetic versions", () => {
       "--config",
       JSON.stringify({
         version: "1.1.314-x",
-        bundle: { macOS: { bundleVersion: "314" } },
+        bundle: {
+          createUpdaterArtifacts: false,
+          macOS: { bundleVersion: "314", signingIdentity: "-" },
+        },
       }),
+    ],
+  );
+});
+
+test("disables official updater artifacts for synthetic Windows builds", () => {
+  assert.deepEqual(
+    tauriBuildArguments({
+      platform: "win32",
+      environment: { CANTRIP_WINDOWS_BUNDLE: "nsis" },
+      version: { ...version, version: "1.1.314-x", synthetic: true },
+    }),
+    [
+      "exec",
+      "tauri",
+      "build",
+      "--config",
+      JSON.stringify({
+        version: "1.1.314-x",
+        bundle: { createUpdaterArtifacts: false },
+      }),
+      "--bundles",
+      "nsis",
     ],
   );
 });

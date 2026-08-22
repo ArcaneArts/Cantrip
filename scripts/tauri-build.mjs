@@ -47,12 +47,21 @@ export function tauriBuildArguments({
 } = {}) {
   const arguments_ = ["exec", "tauri", "build"];
   const config = { version: version.version };
+  if (version.synthetic) {
+    config.bundle = { createUpdaterArtifacts: false };
+  }
   if (platform === "darwin") {
     const bundleVersion = resolveMacBundleVersion({
       environment,
       version,
     });
-    config.bundle = { macOS: { bundleVersion } };
+    config.bundle = {
+      ...config.bundle,
+      macOS: {
+        bundleVersion,
+        ...(version.synthetic ? { signingIdentity: "-" } : {}),
+      },
+    };
   }
   arguments_.push("--config", JSON.stringify(config));
   if (platform === "win32") {

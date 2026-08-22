@@ -14,6 +14,8 @@ use tauri::{App, Manager, State};
 
 use crate::process_environment::configure_desktop_child;
 
+pub(crate) mod job;
+
 const COMMITS_URL: &str = "https://api.github.com/repos/ArcaneArts/Cantrip/commits";
 const REPOSITORY_URL: &str = "https://github.com/ArcaneArts/Cantrip.git";
 const COMMIT_PAGE_SIZE: usize = 50;
@@ -23,6 +25,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct SyntheticBuildCoordinator {
     root: PathBuf,
     source_lock: Arc<Mutex<()>>,
+    jobs: job::JobRuntime,
 }
 
 impl SyntheticBuildCoordinator {
@@ -49,13 +52,30 @@ impl SyntheticBuildCoordinator {
                 )
             })?;
         }
+        let jobs = job::JobRuntime::load(&root)?;
         Ok(Self {
             root,
             source_lock: Arc::new(Mutex::new(())),
+            jobs,
         })
     }
 
-    async fn resolve_source(&self, sha: String) -> Result<SourceMetadata, SyntheticBuildError> {
+    pub(super) fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub(super) fn jobs(&self) -> &job::JobRuntime {
+        &self.jobs
+    }
+
+    pub(crate) fn cancel_active(&self) {
+        self.jobs.cancel_active();
+    }
+
+    pub(super) async fn resolve_source(
+        &self,
+        sha: String,
+    ) -> Result<SourceMetadata, SyntheticBuildError> {
         let root = self.root.clone();
         let source_lock = Arc::clone(&self.source_lock);
         tokio::task::spawn_blocking(move || {
@@ -73,6 +93,32 @@ impl SyntheticBuildCoordinator {
             SyntheticBuildError::new(
                 "synthetic_source_failed",
                 format!("The synthetic source task could not be completed: {error}"),
+                true,
+            )
+        })?
+    }
+
+    pub(super) async fn prepare_worktree(
+        &self,
+        sha: String,
+    ) -> Result<PathBuf, SyntheticBuildError> {
+        let root = self.root.clone();
+        let source_lock = Arc::clone(&self.source_lock);
+        tokio::task::spawn_blocking(move || {
+            let _guard = source_lock.lock().map_err(|_| {
+                SyntheticBuildError::new(
+                    "synthetic_source_busy",
+                    "The synthetic source cache is busy.",
+                    true,
+                )
+            })?;
+            prepare_source_worktree(&root, &sha)
+        })
+        .await
+        .map_err(|error| {
+            SyntheticBuildError::new(
+                "synthetic_source_failed",
+                format!("The synthetic worktree task could not be completed: {error}"),
                 true,
             )
         })?
@@ -185,9 +231,9 @@ struct GithubCommit {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct VersionConfig {
-    major: u64,
-    minor: u64,
+pub(crate) struct VersionConfig {
+    pub(crate) major: u64,
+    pub(crate) minor: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -196,10 +242,10 @@ struct PackageConfig {
     package_manager: String,
 }
 
-struct SourceMetadata {
-    commit_count: u64,
-    package_manager: String,
-    version: VersionConfig,
+pub(super) struct SourceMetadata {
+    pub(super) commit_count: u64,
+    pub(super) package_manager: String,
+    pub(super) version: VersionConfig,
 }
 
 fn command_output(mut command: Command, description: &str) -> Result<Output, SyntheticBuildError> {
@@ -394,6 +440,37 @@ fn resolve_source_from_mirror(
         "read package.json from the selected commit",
     )?;
     parse_source_metadata(&commit_count, &version_json, &package_json)
+}
+
+fn prepare_source_worktree(root: &Path, sha: &str) -> Result<PathBuf, SyntheticBuildError> {
+    validate_full_sha(sha)?;
+    let mirror = ensure_mirror(root)?;
+    let worktree = root.join("worktrees").join(sha);
+    let worktree_value = worktree.to_string_lossy();
+    let _ = mirror_git_output(
+        &mirror,
+        &["worktree", "remove", "--force", worktree_value.as_ref()],
+        "remove a previous synthetic worktree",
+    );
+    if worktree.exists() {
+        fs::remove_dir_all(&worktree).map_err(|error| {
+            SyntheticBuildError::new(
+                "synthetic_source_failed",
+                format!(
+                    "Could not clean previous synthetic worktree {}: {error}",
+                    worktree.display()
+                ),
+                true,
+            )
+        })?;
+    }
+    mirror_git_output(&mirror, &["worktree", "prune"], "prune synthetic worktrees")?;
+    mirror_git_output(
+        &mirror,
+        &["worktree", "add", "--detach", worktree_value.as_ref(), sha],
+        "prepare the selected synthetic worktree",
+    )?;
+    Ok(worktree)
 }
 
 fn supported_platform() -> Option<&'static str> {
