@@ -433,11 +433,15 @@ function ThemeSettings({
   );
 }
 
+function GlintMark() {
+  return <span aria-hidden="true" className="glint-mark" />;
+}
+
 function Brand() {
   return (
     <a aria-label="Cantrip home" className="brand" href="#top">
       <span className="brand-mark" aria-hidden="true">
-        <Sparkles size={19} />
+        <GlintMark />
       </span>
       <span>CANTRIP</span>
     </a>
@@ -572,7 +576,7 @@ function ProductDemo() {
       <div className="product-body">
         <aside className="demo-sidebar">
           <div className="sidebar-logo">
-            <Sparkles size={16} />
+            <GlintMark />
           </div>
           <button aria-label="Workspace" type="button">
             <PanelLeft size={16} />
@@ -1201,7 +1205,7 @@ function App() {
 
         <section className="closing-section section-wrap">
           <div className="closing-mark">
-            <Sparkles size={29} />
+            <GlintMark />
           </div>
           <SectionLabel>THE WORKSPACE IS THE INTERFACE</SectionLabel>
           <h2>
