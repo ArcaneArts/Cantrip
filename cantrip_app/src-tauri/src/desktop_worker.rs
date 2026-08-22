@@ -72,17 +72,19 @@ pub struct DesktopWorkers {
     profiles_path: PathBuf,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DesktopWorkerProjectStorage {
+    ExternalFolder,
     Folders,
     Repositories,
 }
 
 impl DesktopWorkerProjectStorage {
-    fn directory_name(self) -> &'static str {
+    fn directory_name(self) -> Option<&'static str> {
         match self {
-            Self::Folders => "folders",
-            Self::Repositories => "repositories",
+            Self::ExternalFolder => None,
+            Self::Folders => Some("folders"),
+            Self::Repositories => Some("repositories"),
         }
     }
 }
@@ -319,7 +321,7 @@ impl DesktopWorkers {
             return Ok(None);
         }
 
-        Ok(resolve_project_directory_under_root(
+        Ok(resolve_project_directory(
             &self.profile_directory(worker_id),
             storage,
             requested_path,
@@ -552,7 +554,7 @@ pub(crate) fn resolve_project_directory_under_root(
     requested_path: &Path,
 ) -> Option<PathBuf> {
     let profile_root = fs::canonicalize(worker_data_directory).ok()?;
-    let storage_root = fs::canonicalize(profile_root.join(storage.directory_name())).ok()?;
+    let storage_root = fs::canonicalize(profile_root.join(storage.directory_name()?)).ok()?;
     if storage_root == profile_root || !storage_root.starts_with(&profile_root) {
         return None;
     }
@@ -564,6 +566,22 @@ pub(crate) fn resolve_project_directory_under_root(
         return None;
     }
     Some(project_directory)
+}
+
+pub(crate) fn resolve_project_directory(
+    worker_data_directory: &Path,
+    storage: DesktopWorkerProjectStorage,
+    requested_path: &Path,
+) -> Option<PathBuf> {
+    if storage != DesktopWorkerProjectStorage::ExternalFolder {
+        return resolve_project_directory_under_root(
+            worker_data_directory,
+            storage,
+            requested_path,
+        );
+    }
+    let project_directory = fs::canonicalize(requested_path).ok()?;
+    project_directory.is_dir().then_some(project_directory)
 }
 
 pub fn build(app: &App, active_local_server_url: &str) -> Result<DesktopWorkers, String> {
@@ -1076,10 +1094,32 @@ mod tests {
         assert_eq!(
             manager
                 .resolve_project_directory(
+                    "https://cantrip.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::ExternalFolder,
+                    &outside,
+                )
+                .unwrap(),
+            Some(fs::canonicalize(&outside).unwrap())
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
                     "https://other.example",
                     worker_id,
                     DesktopWorkerProjectStorage::Repositories,
                     &repository,
+                )
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            manager
+                .resolve_project_directory(
+                    "https://other.example",
+                    worker_id,
+                    DesktopWorkerProjectStorage::ExternalFolder,
+                    &outside,
                 )
                 .unwrap(),
             None
