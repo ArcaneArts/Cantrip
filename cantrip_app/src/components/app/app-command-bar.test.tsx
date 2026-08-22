@@ -3,7 +3,7 @@ import type {
   ProjectWorkspaceSummary,
 } from "@cantrip/protocol";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { PropsWithChildren } from "react";
+import type { ComponentProps, PropsWithChildren } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -14,8 +14,12 @@ vi.mock("@/components/ui/dialog", () => ({
   DialogContent: ({
     children,
     className,
-  }: PropsWithChildren<{ className?: string }>) => (
-    <div className={className}>{children}</div>
+    showClose: _showClose,
+    ...props
+  }: PropsWithChildren<ComponentProps<"div"> & { showClose?: boolean }>) => (
+    <div className={className} {...props}>
+      {children}
+    </div>
   ),
   DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
@@ -106,6 +110,7 @@ describe("app command bar", () => {
 
     expect(markup).toContain("Search actions, scripts, or projects…");
     expect(markup).toContain("self-start");
+    expect(markup).toContain('data-elite-ignore=""');
     expect(markup).not.toContain("top-[15vh]");
     expect(markup).toContain("Projects");
     expect(markup).toContain("Project scripts");

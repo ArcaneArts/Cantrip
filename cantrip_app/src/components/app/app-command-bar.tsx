@@ -488,6 +488,7 @@ export function AppCommandBar({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        data-elite-ignore=""
         className="self-start flex max-h-[70vh] max-w-2xl flex-col gap-0 overflow-hidden p-0"
         showClose={false}
       >
