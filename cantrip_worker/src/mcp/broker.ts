@@ -58,7 +58,12 @@ interface StoredBinding {
   connection: CantripMcpConnectionDocument;
   connectionPath: string;
   credential: string;
+  staleContextRejected: boolean;
+  staleRejection: string | null;
 }
+
+const STALE_BINDING_RECOVERY =
+  "Do not retry this operation on the same attachment. Start or resume a turn in the active Cantrip chat so the worker can refresh it.";
 
 export interface CantripMcpAttachment {
   binding: CantripMcpBinding;
@@ -210,6 +215,8 @@ export class CantripMcpBroker {
             issuedAt: stored.binding.issuedAt,
             expiresAt: stored.binding.expiresAt,
           });
+          stored.staleContextRejected = false;
+          stored.staleRejection = null;
           workerLogger.event("debug", "Cantrip MCP binding refreshed", {
             event: "mcp.binding.refreshed",
             subsystem: "mcp-broker",
@@ -264,6 +271,8 @@ export class CantripMcpBroker {
       connection,
       connectionPath,
       credential,
+      staleContextRejected: false,
+      staleRejection: null,
     });
     workerLogger.event("debug", "Cantrip MCP binding created", {
       event: "mcp.binding.created",
@@ -358,6 +367,17 @@ export class CantripMcpBroker {
             });
             return;
           }
+          if (
+            stored.staleRejection &&
+            (stored.staleContextRejected ||
+              parsed.request.operation !== "context.get")
+          ) {
+            sendJson(response, 409, {
+              code: "stale-binding",
+              error: stored.staleRejection,
+            });
+            return;
+          }
           if (stored.activeRequests >= CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS) {
             sendJson(response, 429, {
               code: "busy",
@@ -420,15 +440,23 @@ export class CantripMcpBroker {
             });
             // A stale claim can be a short race between server lane state and
             // worker dispatch. Keep this authenticated local endpoint alive so
-            // the next turn can refresh its trusted claims in place. The
-            // server rejects every stale request independently, so retaining
-            // the endpoint cannot authorize an operation with stale claims.
+            // the next turn can refresh its trusted claims in place, but latch
+            // the rejection below so the current attachment cannot amplify the
+            // same doomed request.
             if (bindingId && error.code === "expired") {
               this.revokeBinding(bindingId);
             }
+            const staleMessage =
+              error.code === "stale-binding"
+                ? `${error.message} ${STALE_BINDING_RECOVERY}`.slice(0, 2_000)
+                : null;
+            if (stored && staleMessage) {
+              stored.staleContextRejected = operation === "context.get";
+              stored.staleRejection = staleMessage;
+            }
             sendJson(response, error.status, {
               ...(error.code ? { code: error.code } : {}),
-              error: error.message,
+              error: staleMessage ?? error.message,
             });
             return;
           }

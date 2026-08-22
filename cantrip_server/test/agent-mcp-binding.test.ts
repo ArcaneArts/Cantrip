@@ -6,7 +6,10 @@ import {
   type CantripMcpBinding,
 } from "@cantrip/protocol";
 
-import { assertCantripMcpBinding } from "../src/agent-tools/binding.js";
+import {
+  assertCantripMcpBinding,
+  cantripMcpBindingReadiness,
+} from "../src/agent-tools/binding.js";
 import type { ChatExecutionContext } from "../src/db/repository.js";
 
 const now = Date.parse("2026-08-21T12:00:00.000Z");
@@ -50,6 +53,58 @@ const binding: CantripMcpBinding = {
 const serverAllowedOperations = new Set(CANTRIP_MCP_READ_OPERATIONS);
 
 describe("Cantrip MCP server binding", () => {
+  it("reports authoritative mutation readiness and bounded recovery claims", () => {
+    expect(
+      cantripMcpBindingReadiness({
+        binding: {
+          ...binding,
+          allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+        },
+        context,
+        serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
+      }),
+    ).toMatchObject({
+      status: "ready",
+      mutationReady: true,
+      staleClaims: [],
+      recoveryInstruction: null,
+    });
+    expect(
+      cantripMcpBindingReadiness({
+        binding: {
+          ...binding,
+          allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+        },
+        context: { ...context, worktreeId: "worktree-two" },
+        serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
+      }),
+    ).toMatchObject({
+      status: "refresh-required",
+      mutationReady: false,
+      staleClaims: ["worktree"],
+      recoveryInstruction: expect.stringContaining("Do not retry"),
+    });
+    expect(
+      cantripMcpBindingReadiness({
+        binding: {
+          ...binding,
+          permissionProfileId: ":read-only",
+        },
+        context: {
+          ...context,
+          defaultPermissionProfileId: ":read-only",
+          permissionProfileId: ":read-only",
+        },
+        serverAllowedOperations,
+      }),
+    ).toMatchObject({
+      status: "read-only",
+      mutationReady: false,
+      staleClaims: [],
+      recoveryInstruction: expect.stringContaining("read-only"),
+    });
+  });
+
   it("accepts only the exact live lane and server-approved operation", () => {
     expect(() =>
       assertCantripMcpBinding({

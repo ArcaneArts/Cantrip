@@ -7500,6 +7500,25 @@ const cantripMcpReadResultBaseSchema = z
   .strict();
 
 export const cantripMcpContextGetInputSchema = z.object({}).strict();
+export const cantripMcpBindingStaleClaimSchema = z.enum([
+  "chat",
+  "project",
+  "worker",
+  "execution-lane",
+  "worktree",
+  "root-kind",
+  "permission-profile",
+  "chat-status",
+]);
+export const cantripMcpBindingReadinessSchema = z
+  .object({
+    status: z.enum(["ready", "read-only", "refresh-required"]),
+    mutationReady: z.boolean(),
+    staleClaims: z.array(cantripMcpBindingStaleClaimSchema).max(8),
+    recoveryInstruction: z.string().min(1).max(500).nullable(),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict();
 export const cantripMcpPolicyListInputSchema = z.object({}).strict();
 export const cantripMcpPolicyReadInputSchema = z
   .object({ key: policyKeySchema })
@@ -7763,6 +7782,7 @@ export const cantripMcpContextGetResultSchema =
             worktreeMode: z.enum(["agent-managed", "pinned"]).nullable(),
           })
           .strict(),
+        binding: cantripMcpBindingReadinessSchema,
       })
       .strict(),
   });
