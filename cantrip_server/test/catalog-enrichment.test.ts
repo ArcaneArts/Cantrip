@@ -340,4 +340,178 @@ describe("provider catalog enrichment", () => {
       await client.close();
     }
   });
+
+  it("batches reconciliation statements and chunks catalogs above 500 models", async () => {
+    const client = new PGlite();
+    const statements: string[] = [];
+    const database = drizzle(client, {
+      schema,
+      logger: {
+        logQuery(query) {
+          statements.push(query);
+        },
+      },
+    });
+    try {
+      await migrate(database, { migrationsFolder });
+      const repository = new ServerRepository(
+        database,
+        new SecretVault({
+          activeKeyId: "test",
+          keys: [{ id: "test", key: Buffer.alloc(32, 13) }],
+        }),
+      );
+      await repository.ensureLocalIdentity();
+
+      const metrics: Array<{
+        elapsedMs: number;
+        modelCount: number;
+        statementCount: number;
+      }> = [];
+      for (const modelCount of [25, 100, 500]) {
+        const provider = await repository.createModelProvider(LOCAL_USER_ID, {
+          name: `Batch provider ${modelCount}`,
+          kind: "openai-compatible",
+          baseUrl: `https://batch-${modelCount}.example.test/v1`,
+        });
+        const modelPrefix = `batch-${modelCount}`;
+        const legacyProfileId = `legacy-profile:${modelPrefix}`;
+        await database.insert(schema.modelProfiles).values({
+          id: legacyProfileId,
+          ownerId: LOCAL_USER_ID,
+          name: `${modelPrefix}-0`,
+        });
+        await database.insert(schema.modelRoutes).values({
+          id: `legacy-route:${modelPrefix}`,
+          modelId: legacyProfileId,
+          providerId: provider.id,
+          providerModelId: null,
+          modelName: `${modelPrefix}-0`,
+          position: 0,
+          enabled: true,
+        });
+        const models = Array.from({ length: modelCount }, (_, index) =>
+          catalogWrite(`${modelPrefix}-${index}`),
+        );
+
+        statements.length = 0;
+        const startedAt = performance.now();
+        expect(
+          await repository.reconcileProviderModelCatalog(
+            LOCAL_USER_ID,
+            provider.id,
+            {
+              models,
+              availabilityScope: `batch:${modelCount}`,
+              availableNativeModelIds: new Set(
+                models.map(({ nativeModelId }) => nativeModelId),
+              ),
+              autoCreateLogicalModels: true,
+            },
+          ),
+        ).toBe(true);
+        const elapsedMs = performance.now() - startedAt;
+        const reconciliationStatements = [...statements];
+        metrics.push({
+          elapsedMs,
+          modelCount,
+          statementCount: reconciliationStatements.length,
+        });
+
+        const statementsFor = (prefix: string) =>
+          reconciliationStatements.filter((query) => query.startsWith(prefix));
+        expect(
+          statementsFor('insert into "provider_model_catalog_snapshots"'),
+        ).toHaveLength(1);
+        expect(statementsFor('insert into "provider_models"')).toHaveLength(1);
+        expect(
+          statementsFor('insert into "provider_model_availability"'),
+        ).toHaveLength(1);
+        expect(statementsFor('update "model_routes"')).toHaveLength(1);
+        expect(statementsFor('insert into "model_profiles"')).toHaveLength(1);
+        expect(statementsFor('insert into "model_routes"')).toHaveLength(1);
+
+        const routes = await client.query<{
+          discovered_count: number;
+          resolved_count: number;
+          route_count: number;
+        }>(`
+          SELECT
+            count(*)::int AS route_count,
+            count(*) FILTER (WHERE provider_model_id IS NOT NULL)::int
+              AS resolved_count,
+            count(*) FILTER (WHERE discovery_managed)::int
+              AS discovered_count
+          FROM model_routes
+          WHERE provider_id = '${provider.id}'
+        `);
+        expect(routes.rows[0]).toEqual({
+          discovered_count: modelCount - 1,
+          resolved_count: modelCount,
+          route_count: modelCount,
+        });
+      }
+
+      if (process.env.CANTRIP_BENCHMARK_PROVIDER_CATALOG === "1") {
+        console.info("Provider catalog reconciliation metrics", metrics);
+      }
+      expect(metrics.map(({ statementCount }) => statementCount)).toEqual([
+        10, 10, 10,
+      ]);
+
+      const chunkedProvider = await repository.createModelProvider(
+        LOCAL_USER_ID,
+        {
+          name: "Chunked batch provider",
+          kind: "openai-compatible",
+          baseUrl: "https://chunked-batch.example.test/v1",
+        },
+      );
+      const chunkedModels = Array.from({ length: 501 }, (_, index) =>
+        catalogWrite(`chunked-batch-${index}`),
+      );
+      statements.length = 0;
+      expect(
+        await repository.reconcileProviderModelCatalog(
+          LOCAL_USER_ID,
+          chunkedProvider.id,
+          {
+            models: chunkedModels,
+            availabilityScope: "batch:chunked",
+            availableNativeModelIds: new Set(
+              chunkedModels.map(({ nativeModelId }) => nativeModelId),
+            ),
+            autoCreateLogicalModels: true,
+          },
+        ),
+      ).toBe(true);
+      const chunkedStatementsFor = (prefix: string) =>
+        statements.filter((query) => query.startsWith(prefix));
+      expect(
+        chunkedStatementsFor('insert into "provider_model_catalog_snapshots"'),
+      ).toHaveLength(2);
+      expect(
+        chunkedStatementsFor('insert into "provider_models"'),
+      ).toHaveLength(2);
+      expect(
+        chunkedStatementsFor('insert into "provider_model_availability"'),
+      ).toHaveLength(2);
+      expect(chunkedStatementsFor('update "model_routes"')).toHaveLength(2);
+      expect(chunkedStatementsFor('insert into "model_profiles"')).toHaveLength(
+        2,
+      );
+      expect(chunkedStatementsFor('insert into "model_routes"')).toHaveLength(
+        2,
+      );
+      const chunkedRoutes = await client.query<{ count: number }>(`
+        SELECT count(*)::int AS count
+        FROM model_routes
+        WHERE provider_id = '${chunkedProvider.id}'
+          AND provider_model_id IS NOT NULL
+      `);
+      expect(chunkedRoutes.rows[0]?.count).toBe(501);
+    } finally {
+      await client.close();
+    }
+  });
 });

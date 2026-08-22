@@ -278,6 +278,21 @@ export const DEFAULT_MODEL_ROUTE_ID = "00000000-0000-0000-0000-000000000021";
 export const ARCHIVED_CHAT_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000;
 const SERVER_ID_STATE_KEY = "server-id";
 export const WORKER_ONLINE_WINDOW_MS = 30_000;
+// Provider model rows bind roughly 30 values each, so this stays well below
+// PostgreSQL's per-statement parameter limit while keeping catalog chatter low.
+const PROVIDER_CATALOG_BATCH_SIZE = 500;
+
+function providerCatalogBatches<T>(values: readonly T[]): T[][] {
+  const batches: T[][] = [];
+  for (
+    let offset = 0;
+    offset < values.length;
+    offset += PROVIDER_CATALOG_BATCH_SIZE
+  ) {
+    batches.push(values.slice(offset, offset + PROVIDER_CATALOG_BATCH_SIZE));
+  }
+  return batches;
+}
 
 export interface ModelProviderCatalogRuntime {
   id: string;
@@ -5167,69 +5182,75 @@ export class ServerRepository {
     const now = new Date();
     await this.database.transaction(async (transaction) => {
       if (input.models.length > 0) {
-        await transaction
-          .insert(schema.providerModelCatalogSnapshots)
-          .values(
-            input.models.map((model) => {
-              return {
+        const modelBatches = providerCatalogBatches(input.models);
+        for (const models of modelBatches) {
+          await transaction
+            .insert(schema.providerModelCatalogSnapshots)
+            .values(
+              models.map((model) => {
+                return {
+                  id: randomUUID(),
+                  ownerId,
+                  providerId,
+                  providerAccountId:
+                    input.availabilityProviderAccountId ?? null,
+                  workerId: input.availabilityWorkerId ?? null,
+                  availabilityScope: input.availabilityScope,
+                  metadataSource: model.metadataSource,
+                  metadataHash: catalogMetadataSnapshot(model),
+                  observedAt: now,
+                };
+              }),
+            )
+            .onConflictDoNothing();
+        }
+        for (const models of modelBatches) {
+          await transaction
+            .insert(schema.providerModels)
+            .values(
+              models.map((model) => ({
                 id: randomUUID(),
-                ownerId,
                 providerId,
-                providerAccountId: input.availabilityProviderAccountId ?? null,
-                workerId: input.availabilityWorkerId ?? null,
-                availabilityScope: input.availabilityScope,
-                metadataSource: model.metadataSource,
-                metadataHash: catalogMetadataSnapshot(model),
-                observedAt: now,
-              };
-            }),
-          )
-          .onConflictDoNothing();
-        await transaction
-          .insert(schema.providerModels)
-          .values(
-            input.models.map((model) => ({
-              id: randomUUID(),
-              providerId,
-              ...model,
-              lastSeenAt: now,
-              updatedAt: now,
-            })),
-          )
-          .onConflictDoUpdate({
-            target: [
-              schema.providerModels.providerId,
-              schema.providerModels.nativeModelId,
-            ],
-            set: {
-              canonicalModelId: sql`excluded.canonical_model_id`,
-              displayName: sql`excluded.display_name`,
-              description: sql`excluded.description`,
-              contextWindow: sql`excluded.context_window`,
-              maxOutputTokens: sql`excluded.max_output_tokens`,
-              inputModalities: sql`excluded.input_modalities`,
-              outputModalities: sql`excluded.output_modalities`,
-              supportsTools: sql`excluded.supports_tools`,
-              supportsParallelTools: sql`excluded.supports_parallel_tools`,
-              supportsStructuredOutput: sql`excluded.supports_structured_output`,
-              supportsVision: sql`excluded.supports_vision`,
-              supportsReasoning: sql`excluded.supports_reasoning`,
-              supportedReasoningEfforts: sql`excluded.supported_reasoning_efforts`,
-              defaultReasoningEffort: sql`excluded.default_reasoning_effort`,
-              reasoningMandatory: sql`excluded.reasoning_mandatory`,
-              family: sql`excluded.family`,
-              parameterSize: sql`excluded.parameter_size`,
-              quantization: sql`excluded.quantization`,
-              digest: sql`excluded.digest`,
-              metadataSource: sql`excluded.metadata_source`,
-              matchConfidenceBasisPoints: sql`excluded.match_confidence_basis_points`,
-              hidden: sql`excluded.hidden`,
-              isDefault: sql`excluded.is_default`,
-              rawMetadata: sql`excluded.raw_metadata`,
-              lastSeenAt: now,
-              updatedAt: now,
-            },
-          });
+                ...model,
+                lastSeenAt: now,
+                updatedAt: now,
+              })),
+            )
+            .onConflictDoUpdate({
+              target: [
+                schema.providerModels.providerId,
+                schema.providerModels.nativeModelId,
+              ],
+              set: {
+                canonicalModelId: sql`excluded.canonical_model_id`,
+                displayName: sql`excluded.display_name`,
+                description: sql`excluded.description`,
+                contextWindow: sql`excluded.context_window`,
+                maxOutputTokens: sql`excluded.max_output_tokens`,
+                inputModalities: sql`excluded.input_modalities`,
+                outputModalities: sql`excluded.output_modalities`,
+                supportsTools: sql`excluded.supports_tools`,
+                supportsParallelTools: sql`excluded.supports_parallel_tools`,
+                supportsStructuredOutput: sql`excluded.supports_structured_output`,
+                supportsVision: sql`excluded.supports_vision`,
+                supportsReasoning: sql`excluded.supports_reasoning`,
+                supportedReasoningEfforts: sql`excluded.supported_reasoning_efforts`,
+                defaultReasoningEffort: sql`excluded.default_reasoning_effort`,
+                reasoningMandatory: sql`excluded.reasoning_mandatory`,
+                family: sql`excluded.family`,
+                parameterSize: sql`excluded.parameter_size`,
+                quantization: sql`excluded.quantization`,
+                digest: sql`excluded.digest`,
+                metadataSource: sql`excluded.metadata_source`,
+                matchConfidenceBasisPoints: sql`excluded.match_confidence_basis_points`,
+                hidden: sql`excluded.hidden`,
+                isDefault: sql`excluded.is_default`,
+                rawMetadata: sql`excluded.raw_metadata`,
+                lastSeenAt: now,
+                updatedAt: now,
+              },
+            });
+        }
       }
 
       const providerModelRows = await transaction
@@ -5241,49 +5262,65 @@ export class ServerRepository {
         .where(eq(schema.providerModels.providerId, providerId));
       if (providerModelRows.length === 0) return;
 
-      for (const model of providerModelRows) {
-        if (!input.availableNativeModelIds.has(model.nativeModelId)) continue;
+      const availableProviderModels = providerModelRows.filter((model) =>
+        input.availableNativeModelIds.has(model.nativeModelId),
+      );
+      for (const models of providerCatalogBatches(availableProviderModels)) {
         await transaction
           .update(schema.modelRoutes)
-          .set({ providerModelId: model.id, updatedAt: now })
+          .set({
+            providerModelId: schema.providerModels.id,
+            updatedAt: now,
+          })
+          .from(schema.providerModels)
           .where(
             and(
               eq(schema.modelRoutes.providerId, providerId),
-              eq(schema.modelRoutes.modelName, model.nativeModelId),
+              eq(schema.providerModels.providerId, providerId),
+              inArray(
+                schema.providerModels.id,
+                models.map(({ id }) => id),
+              ),
+              eq(
+                schema.modelRoutes.modelName,
+                schema.providerModels.nativeModelId,
+              ),
               isNull(schema.modelRoutes.providerModelId),
             ),
           );
       }
 
-      await transaction
-        .insert(schema.providerModelAvailability)
-        .values(
-          providerModelRows.map((model) => ({
-            id: randomUUID(),
-            providerModelId: model.id,
-            scopeKey: input.availabilityScope,
-            workerId: input.availabilityWorkerId ?? null,
-            providerAccountId: input.availabilityProviderAccountId ?? null,
-            state: input.availableNativeModelIds.has(model.nativeModelId)
-              ? "available"
-              : "unavailable",
-            lastSeenAt: now,
-            updatedAt: now,
-          })),
-        )
-        .onConflictDoUpdate({
-          target: [
-            schema.providerModelAvailability.providerModelId,
-            schema.providerModelAvailability.scopeKey,
-          ],
-          set: {
-            state: sql`excluded.state`,
-            workerId: sql`excluded.worker_id`,
-            providerAccountId: sql`excluded.provider_account_id`,
-            lastSeenAt: now,
-            updatedAt: now,
-          },
-        });
+      for (const models of providerCatalogBatches(providerModelRows)) {
+        await transaction
+          .insert(schema.providerModelAvailability)
+          .values(
+            models.map((model) => ({
+              id: randomUUID(),
+              providerModelId: model.id,
+              scopeKey: input.availabilityScope,
+              workerId: input.availabilityWorkerId ?? null,
+              providerAccountId: input.availabilityProviderAccountId ?? null,
+              state: input.availableNativeModelIds.has(model.nativeModelId)
+                ? "available"
+                : "unavailable",
+              lastSeenAt: now,
+              updatedAt: now,
+            })),
+          )
+          .onConflictDoUpdate({
+            target: [
+              schema.providerModelAvailability.providerModelId,
+              schema.providerModelAvailability.scopeKey,
+            ],
+            set: {
+              state: sql`excluded.state`,
+              workerId: sql`excluded.worker_id`,
+              providerAccountId: sql`excluded.provider_account_id`,
+              lastSeenAt: now,
+              updatedAt: now,
+            },
+          });
+      }
 
       if (input.autoCreateLogicalModels) {
         const [suppressions, existingRoutes] = await Promise.all([
@@ -5322,33 +5359,43 @@ export class ServerRepository {
             !suppressed.has(model.id) &&
             !routedNames.has(model.nativeModelId),
         );
-        for (const model of discovered) {
-          const profileId = `discovered:model:${model.id}`;
-          const routeId = `discovered:route:${model.id}`;
+        const discoveredModels = discovered.map((model) => ({
+          model,
+          profileId: `discovered:model:${model.id}`,
+          routeId: `discovered:route:${model.id}`,
+        }));
+        const discoveredModelBatches = providerCatalogBatches(discoveredModels);
+        for (const models of discoveredModelBatches) {
           await transaction
             .insert(schema.modelProfiles)
-            .values({
-              id: profileId,
-              ownerId,
-              name: model.nativeModelId,
-              canonicalModelId:
-                catalogByName.get(model.nativeModelId)?.canonicalModelId ??
-                null,
-              discoveryManaged: true,
-            })
+            .values(
+              models.map(({ model, profileId }) => ({
+                id: profileId,
+                ownerId,
+                name: model.nativeModelId,
+                canonicalModelId:
+                  catalogByName.get(model.nativeModelId)?.canonicalModelId ??
+                  null,
+                discoveryManaged: true,
+              })),
+            )
             .onConflictDoNothing({ target: schema.modelProfiles.id });
+        }
+        for (const models of discoveredModelBatches) {
           await transaction
             .insert(schema.modelRoutes)
-            .values({
-              id: routeId,
-              modelId: profileId,
-              providerId,
-              providerModelId: model.id,
-              modelName: model.nativeModelId,
-              position: 0,
-              enabled: true,
-              discoveryManaged: true,
-            })
+            .values(
+              models.map(({ model, profileId, routeId }) => ({
+                id: routeId,
+                modelId: profileId,
+                providerId,
+                providerModelId: model.id,
+                modelName: model.nativeModelId,
+                position: 0,
+                enabled: true,
+                discoveryManaged: true,
+              })),
+            )
             .onConflictDoNothing({ target: schema.modelRoutes.id });
         }
         if (input.defaultNativeModelId) {
