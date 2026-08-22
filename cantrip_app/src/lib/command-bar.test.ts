@@ -16,9 +16,9 @@ const shift: DoubleShiftKeyInput = {
 };
 
 describe("command bar gesture", () => {
-  it("opens when Shift is pressed twice within one second", () => {
+  it("opens when Shift is pressed twice within 250 milliseconds", () => {
     const first = advanceDoubleShiftGesture(null, shift, 2_000);
-    const second = advanceDoubleShiftGesture(first.lastShiftAt, shift, 2_999);
+    const second = advanceDoubleShiftGesture(first.lastShiftAt, shift, 2_250);
 
     expect(first.triggered).toBe(false);
     expect(second).toEqual({ lastShiftAt: null, triggered: true });
@@ -37,14 +37,21 @@ describe("command bar gesture", () => {
     });
   });
 
-  it("cancels the sequence when another key is pressed", () => {
-    const result = advanceDoubleShiftGesture(
-      2_000,
+  it("makes Shift start a new sequence after an intervening letter", () => {
+    const first = advanceDoubleShiftGesture(null, shift, 2_000);
+    const letter = advanceDoubleShiftGesture(
+      first.lastShiftAt,
       { ...shift, key: "A" },
       2_100,
     );
+    const nextShift = advanceDoubleShiftGesture(
+      letter.lastShiftAt,
+      shift,
+      2_200,
+    );
 
-    expect(result).toEqual({ lastShiftAt: null, triggered: false });
+    expect(letter).toEqual({ lastShiftAt: null, triggered: false });
+    expect(nextShift).toEqual({ lastShiftAt: 2_200, triggered: false });
   });
 
   it("ignores key repeats and modified Shift presses", () => {
