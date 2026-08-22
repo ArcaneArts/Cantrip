@@ -157,14 +157,7 @@ try {
     renderOpaque(appIconSource, output, 180);
   }
 
-  const trayPng = join(iconDirectory, "tray-icon-macos.png");
-  render(trayIconSource, trayPng, 36);
-  run("magick", [
-    trayPng,
-    "-depth",
-    "8",
-    `RGBA:${join(iconDirectory, "tray-icon-macos.rgba")}`,
-  ]);
+  render(trayIconSource, join(iconDirectory, "tray-icon-macos.png"), 18);
 } finally {
   rmSync(temporaryDirectory, { recursive: true, force: true });
 }

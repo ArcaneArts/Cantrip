@@ -5,7 +5,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const iconDirectory = join(repositoryRoot, "cantrip_app", "src-tauri", "icons");
 
 function read(path) {
   return readFileSync(join(repositoryRoot, path));
@@ -21,10 +20,10 @@ function circleCenters(source) {
   );
 }
 
-function trayCellCenters(source) {
+function trayCells(source) {
   return [
-    ...source.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="2" height="2"/g),
-  ].map(([, x, y]) => [Number(x) + 1, Number(y) + 1]);
+    ...source.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="1" height="1"/g),
+  ].map(([, x, y]) => [Number(x), Number(y)]);
 }
 
 function pngDimensions(path) {
@@ -41,15 +40,11 @@ function assertOpaquePng(path) {
   );
 }
 
-test("app and tray variants preserve the canonical glint geometry", () => {
+test("app icon artwork preserves the canonical glint geometry", () => {
   const canonical = circleCenters(svg("cantrip_app/src-tauri/icons/glint.svg"));
   assert.equal(canonical.length, 35);
   assert.deepEqual(
     circleCenters(svg("cantrip_app/src-tauri/icons/source.svg")),
-    canonical,
-  );
-  assert.deepEqual(
-    trayCellCenters(svg("cantrip_app/src-tauri/icons/tray-icon-macos.svg")),
     canonical,
   );
 });
@@ -74,24 +69,29 @@ test("app artwork keeps the tall glint inside a five-unit safe area", () => {
   assert.ok(top >= 5 && 36 - bottom >= 5);
 });
 
-test("tray raster is an exact 2x, binary-alpha template image", () => {
+test("macOS tray renders a pixel-snapped SVG as an unscaled native template", () => {
+  const rust = svg("cantrip_app/src-tauri/src/lib.rs");
+  const tray = svg("cantrip_app/src-tauri/icons/tray-icon-macos.svg");
+  const expectedCells = circleCenters(
+    svg("cantrip_app/src-tauri/icons/glint.svg"),
+  ).map(([x, y]) => [Math.floor((x + 2) / 2), Math.floor((y + 1) / 2)]);
+  assert.deepEqual(
+    trayCells(tray),
+    expectedCells,
+    "tray cells must remain a pixel-snapped projection of the canonical glint",
+  );
+  assert.match(tray, /viewBox="0 0 18 18"/);
+  assert.match(tray, /shape-rendering="crispEdges"/);
+  assert.match(rust, /include_bytes!\("\.\.\/icons\/tray-icon-macos\.svg"\)/);
+  assert.match(rust, /include_bytes!\("\.\.\/icons\/tray-icon-macos\.png"\)/);
+  assert.match(rust, /NSImage::initWithData/);
+  assert.match(rust, /image\.setTemplate\(true\)/);
+  assert.match(rust, /NSImageScaling::ScaleNone/);
   assert.deepEqual(
     pngDimensions("cantrip_app/src-tauri/icons/tray-icon-macos.png"),
-    [36, 36],
+    [18, 18],
   );
-  const rgba = readFileSync(join(iconDirectory, "tray-icon-macos.rgba"));
-  assert.equal(rgba.length, 36 * 36 * 4);
-  const alpha = new Set();
-  let opaquePixels = 0;
-  for (let index = 3; index < rgba.length; index += 4) {
-    alpha.add(rgba[index]);
-    if (rgba[index] === 255) opaquePixels += 1;
-  }
-  assert.deepEqual(
-    [...alpha].sort((a, b) => a - b),
-    [0, 255],
-  );
-  assert.equal(opaquePixels, 35 * 2 * 2);
+  assert.doesNotMatch(rust, /tray-icon-macos\.rgba/);
 });
 
 test("generated Apple touch and app icons have their platform dimensions", () => {
