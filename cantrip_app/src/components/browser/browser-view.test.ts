@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BROWSER_STARTUP_FAILURE_GRACE_MS,
+  BROWSER_FRAME_POLICY,
   browserAddressRequiresTunnel,
   browserPointerCoordinates,
   browserServiceDisplayName,
@@ -12,6 +13,12 @@ import {
   filterBrowserServices,
   normalizeBrowserAddress,
 } from "./browser-view";
+
+describe("browser frame rendering", () => {
+  it("keeps the browser surface current under interactive frame bursts", () => {
+    expect(BROWSER_FRAME_POLICY).toBe("latest");
+  });
+});
 
 describe("browserServiceDisplayName", () => {
   const service = {

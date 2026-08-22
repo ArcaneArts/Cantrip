@@ -4,6 +4,7 @@ import {
   useImperativeHandle,
   useRef,
   type CSSProperties,
+  type FormEvent,
   type KeyboardEvent,
   type PointerEvent,
   type WheelEvent,
@@ -195,6 +196,7 @@ export class RemoteSurfaceFrameRenderer {
 }
 
 export interface RemoteSurfaceCanvasHandle {
+  confirmMobileInputFocus(editable: boolean): void;
   pushFrame(frame: Uint8Array): void;
   reset(): void;
   takeFrameFeedback(): RemoteSurfaceFrameFeedback;
@@ -212,6 +214,7 @@ export interface RemoteSurfaceCanvasProps {
   onFocus(): void;
   onFrameError(): void;
   onKey(input: RemoteSurfaceKeyInput): void;
+  onMobileText?(text: string): void;
   onPointer(input: RemoteSurfacePointerInput): void;
   onRendered(): void;
   onTouch?(input: RemoteSurfaceTouchInput): void;
@@ -230,6 +233,82 @@ export interface RemoteSurfaceTouchPointerEvent extends RemoteSurfaceModifierSta
 }
 
 type RemoteSurfaceTouchPointerPhase = "cancel" | "down" | "move" | "up";
+
+const MAX_TAP_TRAVEL_PX = 10;
+export const REMOTE_SURFACE_MOBILE_INPUT_SENTINEL = "\u200b";
+
+export type RemoteSurfaceMobileInputAction =
+  | { code: "Backspace" | "Delete" | "Enter"; key: string; type: "key" }
+  | { text: string; type: "text" };
+
+export function remoteSurfaceMobileInputAction(
+  inputType: string,
+  value: string,
+): RemoteSurfaceMobileInputAction | null {
+  if (inputType === "deleteContentBackward") {
+    return { code: "Backspace", key: "Backspace", type: "key" };
+  }
+  if (inputType === "deleteContentForward") {
+    return { code: "Delete", key: "Delete", type: "key" };
+  }
+  if (inputType === "insertLineBreak" || inputType === "insertParagraph") {
+    return { code: "Enter", key: "Enter", type: "key" };
+  }
+  const text = value.replaceAll(REMOTE_SURFACE_MOBILE_INPUT_SENTINEL, "");
+  return text ? { text, type: "text" } : null;
+}
+
+export class RemoteSurfaceTouchTapTracker {
+  readonly #active = new Map<
+    number,
+    { dragged: boolean; startX: number; startY: number }
+  >();
+
+  input(
+    event: Pick<
+      RemoteSurfaceTouchPointerEvent,
+      "clientX" | "clientY" | "pointerId"
+    >,
+    phase: RemoteSurfaceTouchPointerPhase,
+  ): boolean {
+    if (phase === "cancel") {
+      this.#active.clear();
+      return false;
+    }
+    if (phase === "down") {
+      const multiplePointers = this.#active.size > 0;
+      if (multiplePointers) {
+        for (const gesture of this.#active.values()) gesture.dragged = true;
+      }
+      this.#active.set(event.pointerId, {
+        dragged: multiplePointers,
+        startX: event.clientX,
+        startY: event.clientY,
+      });
+      return false;
+    }
+    const gesture = this.#active.get(event.pointerId);
+    if (!gesture) return false;
+    if (phase === "move") {
+      const deltaX = event.clientX - gesture.startX;
+      const deltaY = event.clientY - gesture.startY;
+      if (
+        deltaX * deltaX + deltaY * deltaY >
+        MAX_TAP_TRAVEL_PX * MAX_TAP_TRAVEL_PX
+      ) {
+        gesture.dragged = true;
+      }
+      return false;
+    }
+    const tapped = !gesture.dragged && this.#active.size === 1;
+    this.#active.delete(event.pointerId);
+    return tapped;
+  }
+
+  reset(): void {
+    this.#active.clear();
+  }
+}
 
 export class RemoteSurfaceTouchPointerTracker {
   readonly #active = new Map<
@@ -303,6 +382,7 @@ export const RemoteSurfaceCanvas = forwardRef<
     onFocus,
     onFrameError,
     onKey,
+    onMobileText,
     onPointer,
     onRendered,
     onTouch,
@@ -313,10 +393,12 @@ export const RemoteSurfaceCanvas = forwardRef<
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mobileInputRef = useRef<HTMLTextAreaElement>(null);
   const rendererRef = useRef<RemoteSurfaceFrameRenderer | null>(null);
   const callbacksRef = useRef({ onFrameError, onRendered });
   const lastPointerMoveAtRef = useRef(0);
   const touchPointersRef = useRef(new RemoteSurfaceTouchPointerTracker());
+  const touchTapsRef = useRef(new RemoteSurfaceTouchTapTracker());
   callbacksRef.current = { onFrameError, onRendered };
 
   useEffect(() => {
@@ -336,10 +418,17 @@ export const RemoteSurfaceCanvas = forwardRef<
   useImperativeHandle(
     ref,
     () => ({
+      confirmMobileInputFocus: (editable) => {
+        if (!editable && document.activeElement === mobileInputRef.current) {
+          mobileInputRef.current?.blur();
+        }
+      },
       pushFrame: (frame) => rendererRef.current?.push(frame),
       reset: () => {
         rendererRef.current?.reset();
         touchPointersRef.current.reset();
+        touchTapsRef.current.reset();
+        mobileInputRef.current?.blur();
       },
       takeFrameFeedback: () =>
         rendererRef.current?.takeFeedback() ?? {
@@ -367,6 +456,7 @@ export const RemoteSurfaceCanvas = forwardRef<
         canvas.focus();
         canvas.setPointerCapture(event.pointerId);
       }
+      const tapped = touchTapsRef.current.input(event, type);
       const input = touchPointersRef.current.input(
         event,
         type,
@@ -374,6 +464,9 @@ export const RemoteSurfaceCanvas = forwardRef<
         getCoordinateSpace(),
       );
       if (input) onTouch(input);
+      if (tapped && onMobileText) {
+        mobileInputRef.current?.focus({ preventScroll: true });
+      }
       return;
     }
     if (
@@ -413,10 +506,7 @@ export const RemoteSurfaceCanvas = forwardRef<
     );
   };
 
-  const key = (
-    event: KeyboardEvent<HTMLCanvasElement>,
-    type: "down" | "up",
-  ) => {
+  const key = (event: KeyboardEvent<HTMLElement>, type: "down" | "up") => {
     event.preventDefault();
     if (type === "down" && ignoreRepeatedKeyDown && event.repeat) return;
     onKey(
@@ -426,24 +516,100 @@ export const RemoteSurfaceCanvas = forwardRef<
     );
   };
 
+  const mobileKey = (
+    event: KeyboardEvent<HTMLTextAreaElement>,
+    type: "down" | "up",
+  ) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Backspace" || event.key === "Delete") return;
+    if (
+      event.key.length === 1 &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
+      return;
+    }
+    key(event, type);
+  };
+
+  const resetMobileInput = (target: HTMLTextAreaElement) => {
+    target.value = REMOTE_SURFACE_MOBILE_INPUT_SENTINEL;
+    target.setSelectionRange(target.value.length, target.value.length);
+  };
+
+  const sendMobileControlKey = (
+    action: Extract<RemoteSurfaceMobileInputAction, { type: "key" }>,
+  ) => {
+    for (const event of ["down", "up"] as const) {
+      onKey({
+        type: "key",
+        event,
+        key: action.key,
+        code: action.code,
+        text: "",
+        modifiers: 0,
+      });
+    }
+  };
+
+  const flushMobileText = (target: HTMLTextAreaElement, inputType = "") => {
+    const action = remoteSurfaceMobileInputAction(inputType, target.value);
+    resetMobileInput(target);
+    if (action?.type === "key") sendMobileControlKey(action);
+    else if (action?.type === "text") onMobileText?.(action.text);
+  };
+
+  const mobileText = (event: FormEvent<HTMLTextAreaElement>) => {
+    const input = event.nativeEvent as InputEvent;
+    if (input.isComposing) return;
+    flushMobileText(event.currentTarget, input.inputType);
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label={ariaLabel}
-      className={className}
-      style={{ ...style, cursor }}
-      tabIndex={0}
-      onFocus={onFocus}
-      onContextMenu={
-        preventContextMenu ? (event) => event.preventDefault() : undefined
-      }
-      onPointerDown={(event) => pointer(event, "down")}
-      onPointerMove={(event) => pointer(event, "move")}
-      onPointerUp={(event) => pointer(event, "up")}
-      onPointerCancel={(event) => pointer(event, "cancel")}
-      onWheel={wheel}
-      onKeyDown={(event) => key(event, "down")}
-      onKeyUp={(event) => key(event, "up")}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-label={ariaLabel}
+        className={className}
+        style={{ ...style, cursor }}
+        tabIndex={0}
+        onFocus={onFocus}
+        onContextMenu={
+          preventContextMenu ? (event) => event.preventDefault() : undefined
+        }
+        onPointerDown={(event) => pointer(event, "down")}
+        onPointerMove={(event) => pointer(event, "move")}
+        onPointerUp={(event) => pointer(event, "up")}
+        onPointerCancel={(event) => pointer(event, "cancel")}
+        onWheel={wheel}
+        onKeyDown={(event) => key(event, "down")}
+        onKeyUp={(event) => key(event, "up")}
+      />
+      {onMobileText ? (
+        <textarea
+          ref={mobileInputRef}
+          aria-label={`${ariaLabel} mobile keyboard input`}
+          autoCapitalize="none"
+          autoComplete="off"
+          autoCorrect="off"
+          className="pointer-events-none fixed left-0 top-0 size-px resize-none text-base opacity-0"
+          defaultValue={REMOTE_SURFACE_MOBILE_INPUT_SENTINEL}
+          spellCheck={false}
+          tabIndex={-1}
+          onCompositionEnd={(event) => {
+            const target = event.currentTarget;
+            queueMicrotask(() => flushMobileText(target));
+          }}
+          onFocus={(event) => {
+            resetMobileInput(event.currentTarget);
+            onFocus();
+          }}
+          onInput={mobileText}
+          onKeyDown={(event) => mobileKey(event, "down")}
+          onKeyUp={(event) => mobileKey(event, "up")}
+        />
+      ) : null}
+    </>
   );
 });
