@@ -424,6 +424,9 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       await this.key(message);
     } else if (message.type === "touch") {
       await this.touch(message);
+      if (message.event === "end") {
+        await this.publishInputFocus(attachmentId);
+      }
     } else if (message.type === "clipboard") {
       await this.clipboard(attachmentId, message);
     } else {
@@ -713,6 +716,41 @@ class BrowserRemoteSurfaceSession implements RemoteSurfaceSession {
       })),
       modifiers: message.modifiers,
     });
+  }
+
+  private async publishInputFocus(attachmentId: string): Promise<void> {
+    const editable =
+      (await this.#cdp
+        .evaluate<boolean>(
+          `(() => {
+        const element = document.activeElement;
+        if (!(element instanceof HTMLElement)) return false;
+        if (element instanceof HTMLTextAreaElement) {
+          return !element.disabled && !element.readOnly;
+        }
+        if (element instanceof HTMLInputElement) {
+          const nonTextTypes = new Set([
+            "button", "checkbox", "color", "file", "hidden", "image",
+            "radio", "range", "reset", "submit"
+          ]);
+          return !element.disabled && !element.readOnly && !nonTextTypes.has(element.type);
+        }
+        return element.isContentEditable;
+      })()`,
+        )
+        .catch(() => false)) ?? false;
+    this.#emit(
+      attachmentId,
+      "control",
+      encoder.encode(
+        JSON.stringify(
+          remoteBrowserServerMessageSchema.parse({
+            type: "browser-input-focus",
+            editable,
+          }),
+        ),
+      ),
+    );
   }
 
   private async clipboard(

@@ -5822,6 +5822,10 @@ export const remoteBrowserServerMessageSchema = z.discriminatedUnion("type", [
     status: z.enum(["ready", "recovering", "error"]),
     message: z.string().max(2_000).nullable().default(null),
   }),
+  z.object({
+    type: z.literal("browser-input-focus"),
+    editable: z.boolean(),
+  }),
 ]);
 
 export const remoteBrowserCursorMessageSchema = z.object({

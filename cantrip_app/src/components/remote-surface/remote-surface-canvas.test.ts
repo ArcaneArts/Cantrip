@@ -2,9 +2,45 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   RemoteSurfaceFrameRenderer,
+  REMOTE_SURFACE_MOBILE_INPUT_SENTINEL,
   RemoteSurfaceTouchPointerTracker,
+  RemoteSurfaceTouchTapTracker,
+  remoteSurfaceMobileInputAction,
   type RemoteSurfaceTouchPointerEvent,
 } from "./remote-surface-canvas";
+
+describe("remoteSurfaceMobileInputAction", () => {
+  it("extracts inserted text without leaking the input sentinel", () => {
+    expect(
+      remoteSurfaceMobileInputAction(
+        "insertText",
+        `${REMOTE_SURFACE_MOBILE_INPUT_SENTINEL}hello`,
+      ),
+    ).toEqual({ type: "text", text: "hello" });
+    expect(
+      remoteSurfaceMobileInputAction(
+        "insertText",
+        REMOTE_SURFACE_MOBILE_INPUT_SENTINEL,
+      ),
+    ).toBeNull();
+  });
+
+  it("maps mobile editing operations to remote control keys", () => {
+    expect(remoteSurfaceMobileInputAction("deleteContentBackward", "")).toEqual(
+      { type: "key", key: "Backspace", code: "Backspace" },
+    );
+    expect(remoteSurfaceMobileInputAction("deleteContentForward", "")).toEqual({
+      type: "key",
+      key: "Delete",
+      code: "Delete",
+    });
+    expect(remoteSurfaceMobileInputAction("insertLineBreak", "\n")).toEqual({
+      type: "key",
+      key: "Enter",
+      code: "Enter",
+    });
+  });
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -146,6 +182,30 @@ describe("RemoteSurfaceFrameRenderer", () => {
     renderer.push(new Uint8Array([2]));
     await vi.waitFor(() => expect(onRendered).toHaveBeenCalledOnce());
     expect(onError).toHaveBeenCalledOnce();
+  });
+});
+
+describe("RemoteSurfaceTouchTapTracker", () => {
+  it("accepts a stationary single-pointer tap", () => {
+    const tracker = new RemoteSurfaceTouchTapTracker();
+    expect(tracker.input(touchPointer(7, 60, 170), "down")).toBe(false);
+    expect(tracker.input(touchPointer(7, 66, 176), "move")).toBe(false);
+    expect(tracker.input(touchPointer(7, 66, 176), "up")).toBe(true);
+  });
+
+  it("rejects drag, cancellation, and multi-pointer gestures", () => {
+    const tracker = new RemoteSurfaceTouchTapTracker();
+    tracker.input(touchPointer(1, 10, 10), "down");
+    tracker.input(touchPointer(1, 30, 10), "move");
+    expect(tracker.input(touchPointer(1, 30, 10), "up")).toBe(false);
+
+    tracker.input(touchPointer(2, 10, 10), "down");
+    expect(tracker.input(touchPointer(2, 10, 10), "cancel")).toBe(false);
+
+    tracker.input(touchPointer(3, 10, 10), "down");
+    tracker.input(touchPointer(4, 20, 20), "down");
+    expect(tracker.input(touchPointer(3, 10, 10), "up")).toBe(false);
+    expect(tracker.input(touchPointer(4, 20, 20), "up")).toBe(false);
   });
 });
 

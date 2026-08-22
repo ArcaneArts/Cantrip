@@ -40,6 +40,7 @@ import {
 import {
   RemoteSurfaceCanvas,
   type RemoteSurfaceCanvasHandle,
+  type RemoteSurfaceFramePolicy,
 } from "@/components/remote-surface/remote-surface-canvas";
 import { Button } from "@/components/ui/button";
 import { SurfaceLoadingVeil } from "@/components/ui/surface-loading-veil";
@@ -77,6 +78,7 @@ const decoder = new TextDecoder();
 // a slow Chromium launch (especially on Windows) is not presented as a terminal
 // failure while the transport is already retrying successfully.
 export const BROWSER_STARTUP_FAILURE_GRACE_MS = 30_000;
+export const BROWSER_FRAME_POLICY = "latest" satisfies RemoteSurfaceFramePolicy;
 const browserTransportMessages = {
   closeReason: "Browser view closed",
   congestionReason: "Remote Surface connection is congested",
@@ -334,6 +336,8 @@ export function BrowserView({
           setRuntimeStatus(state.status);
           setRuntimeMessage(state.message);
           if (state.status === "ready") context.reportError(null);
+        } else if (state.type === "browser-input-focus") {
+          remoteCanvasRef.current?.confirmMobileInputFocus(state.editable);
         } else {
           if (seenStateOperationsRef.current.has(state.operationId)) return;
           seenStateOperationsRef.current.add(state.operationId);
@@ -1017,13 +1021,16 @@ export function BrowserView({
           className="absolute inset-0 size-full touch-none object-fill outline-none"
           coordinateLimit="edge"
           cursor={cursor}
-          framePolicy="ordered"
+          framePolicy={BROWSER_FRAME_POLICY}
           getCoordinateSpace={() => viewportRef.current}
           onFocus={() => send({ type: "focus" })}
           onFrameError={() =>
             setError("The worker sent an unreadable browser frame.")
           }
           onKey={send}
+          onMobileText={(text) =>
+            send({ type: "clipboard", operation: "paste-text", text })
+          }
           onPointer={send}
           onRendered={() => setRenderedSurfaceId(browser.id)}
           onTouch={send}

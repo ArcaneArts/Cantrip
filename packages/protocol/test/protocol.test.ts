@@ -5555,6 +5555,12 @@ describe("Cantrip protocol", () => {
     });
     expect(
       remoteBrowserServerMessageSchema.parse({
+        type: "browser-input-focus",
+        editable: true,
+      }),
+    ).toEqual({ type: "browser-input-focus", editable: true });
+    expect(
+      remoteBrowserServerMessageSchema.parse({
         type: "browser-runtime",
         status: "recovering",
       }),

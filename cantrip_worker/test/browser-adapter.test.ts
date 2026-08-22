@@ -566,6 +566,49 @@ describe("BrowserRemoteSurfaceAdapter", () => {
             ?.evaluate("document.querySelector('#input').value"),
         ).resolves.toBe("pasted");
 
+        const inputCenter = JSON.parse(
+          String(
+            await adapter
+              .session("browser-test")
+              ?.evaluate(
+                `(() => { const input = document.querySelector('#input'); input.blur(); const bounds = input.getBoundingClientRect(); return JSON.stringify({ x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 }); })()`,
+              ),
+          ),
+        ) as { x: number; y: number };
+        for (const message of [
+          {
+            type: "touch",
+            event: "start",
+            points: [{ id: 1, ...inputCenter }],
+          },
+          { type: "touch", event: "end", points: [] },
+        ]) {
+          await session.handleFrame(
+            "attachment-test",
+            "control",
+            new TextEncoder().encode(JSON.stringify(message)),
+          );
+        }
+        await expect(
+          adapter
+            .session("browser-test")
+            ?.evaluate("document.activeElement?.id"),
+        ).resolves.toBe("input");
+        await eventually(() =>
+          emissions
+            .filter(({ channel }) => channel === "control")
+            .some(({ payload }) => {
+              const message = remoteBrowserServerMessageSchema.safeParse(
+                JSON.parse(new TextDecoder().decode(payload)),
+              );
+              return (
+                message.success &&
+                message.data.type === "browser-input-focus" &&
+                message.data.editable
+              );
+            }),
+        );
+
         await expect(
           session.handleFrame(
             "attachment-test",
