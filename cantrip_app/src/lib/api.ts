@@ -246,6 +246,8 @@ import {
   serverBootstrapSchema,
   settingsBundleSchema,
   scriptCommandListSchema,
+  runConfigurationAuthoringSnapshotSchema,
+  runConfigurationWriteRequestSchema,
   runEnvironmentSummarySchema,
   runInstanceResultSchema,
   runStartResultSchema,
@@ -413,6 +415,7 @@ import type {
   RemoteDesktopSummary,
   RemoteDesktopTarget,
   ReasoningEffort,
+  RunConfigurationWriteRequest,
   SkillSettingsContext,
   SkillSettingsDeleteRequest,
   SkillSettingsFileRequest,
@@ -4127,6 +4130,29 @@ export async function getRunEnvironment(
   return runEnvironmentSummarySchema.parse(
     await request(
       `/api/projects/${encodeURIComponent(projectId)}/run-environment${runEnvironmentQuery(worktreeId)}`,
+    ),
+  );
+}
+
+export async function getRunConfigurationAuthoring(projectId: string) {
+  return runConfigurationAuthoringSnapshotSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
+    ),
+  );
+}
+
+export async function updateRunConfiguration(
+  projectId: string,
+  input: RunConfigurationWriteRequest,
+) {
+  return runConfigurationAuthoringSnapshotSchema.parse(
+    await request(
+      `/api/projects/${encodeURIComponent(projectId)}/run-environment/configuration`,
+      {
+        method: "PUT",
+        body: JSON.stringify(runConfigurationWriteRequestSchema.parse(input)),
+      },
     ),
   );
 }

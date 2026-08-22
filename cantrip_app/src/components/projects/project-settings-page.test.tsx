@@ -73,6 +73,7 @@ describe("project settings", () => {
     expect(tabs.map(({ id }) => id)).not.toContain("replicas");
     expect(tabs.map(({ id }) => id)).toEqual([
       "general",
+      "environment",
       "archive",
       "automations",
       "workflows",
@@ -325,6 +326,7 @@ describe("project settings", () => {
     expect(markup).toContain("ArcaneArts/Cantrip");
     expect(markup).toContain("~/repos/cantrip");
     expect(markup).toContain("Workflows");
+    expect(markup).toContain("Environment");
     expect(markup).toContain("Archive");
     expect(markup).toContain("Worktrees");
     expect(markup).toContain("Replicas");

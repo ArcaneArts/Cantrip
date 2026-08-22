@@ -1,13 +1,28 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { lstat, readFile, readdir, realpath, stat } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import {
   RUN_CONFIGURATION_CANONICAL_PATH,
   RUN_CONFIGURATION_DIRECTORY,
+  runConfigurationAuthoringDocumentSchema,
+  runConfigurationAuthoringSnapshotSchema,
   runConfigurationInspectionSchema,
+  workerRunConfigurationWriteResultSchema,
+  type RunConfigurationAuthoringDocument,
+  type RunConfigurationAuthoringSnapshot,
   type RunConfigurationAction,
   type RunConfigurationDefinition,
   type RunConfigurationDiagnostic,
@@ -16,6 +31,7 @@ import {
   type RunConfigurationSetup,
   type RunConfigurationSelection,
   type RunConfigurationSourceControlState,
+  type WorkerRunConfigurationWriteResult,
 } from "@cantrip/protocol";
 import { parse as parseToml } from "smol-toml";
 
@@ -25,6 +41,14 @@ const MAX_CONFIGURATIONS = 64;
 const MAX_ACTIONS = 200;
 const MAX_DIAGNOSTICS = 200;
 const DISPLAY_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/u;
+const AUTHORING_ROOT_FIELDS = new Set(["version", "name", "setup", "actions"]);
+const AUTHORING_SETUP_FIELDS = new Set(["script", "win32", "darwin", "linux"]);
+const AUTHORING_ACTION_FIELDS = new Set([
+  "name",
+  "icon",
+  "command",
+  "platform",
+]);
 
 function platformName(platform: NodeJS.Platform): RunConfigurationPlatform {
   if (platform === "win32" || platform === "darwin") return platform;
@@ -134,6 +158,222 @@ function parsePlatform(
   return value === "win32" || value === "darwin" || value === "linux"
     ? value
     : undefined;
+}
+
+function assertKnownFields(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  label: string,
+): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length > 0) {
+    throw new Error(
+      `${label} contains fields the Environment editor cannot preserve: ${unknown.join(", ")}. Edit this file with repository tools instead.`,
+    );
+  }
+}
+
+function authoringDocument(value: unknown): RunConfigurationAuthoringDocument {
+  const root = record(value);
+  if (!root) throw new Error("The canonical environment must be a TOML table.");
+  assertKnownFields(root, AUTHORING_ROOT_FIELDS, "The environment");
+  if (root.version !== 1) {
+    throw new Error(
+      "The Environment editor supports only configuration version 1.",
+    );
+  }
+  const name = displayString(root.name, 200);
+  if (!name) throw new Error("The environment name is invalid.");
+
+  const setup = {
+    default: null as string | null,
+    win32: null as string | null,
+    darwin: null as string | null,
+    linux: null as string | null,
+  };
+  if (root.setup !== undefined) {
+    const setupTable = record(root.setup);
+    if (!setupTable) throw new Error("setup must be a TOML table.");
+    assertKnownFields(setupTable, AUTHORING_SETUP_FIELDS, "setup");
+    if (setupTable.script !== undefined) {
+      setup.default = script(setupTable.script);
+      if (!setup.default) throw new Error("setup.script is invalid.");
+    }
+    for (const platform of ["win32", "darwin", "linux"] as const) {
+      if (setupTable[platform] === undefined) continue;
+      const platformTable = record(setupTable[platform]);
+      if (!platformTable) {
+        throw new Error(`setup.${platform} must be a TOML table.`);
+      }
+      assertKnownFields(
+        platformTable,
+        new Set(["script"]),
+        `setup.${platform}`,
+      );
+      const command = script(platformTable.script);
+      if (!command) throw new Error(`setup.${platform}.script is invalid.`);
+      setup[platform] = command;
+    }
+  }
+
+  const actionValues = root.actions === undefined ? [] : root.actions;
+  if (!Array.isArray(actionValues) || actionValues.length > MAX_ACTIONS) {
+    throw new Error(`actions must contain at most ${MAX_ACTIONS} TOML tables.`);
+  }
+  const actions = actionValues.map((value, index) => {
+    const action = record(value);
+    if (!action) throw new Error(`Action ${index + 1} must be a TOML table.`);
+    assertKnownFields(action, AUTHORING_ACTION_FIELDS, `Action ${index + 1}`);
+    const actionName = displayString(action.name, 200);
+    const icon = displayString(action.icon, 100);
+    const command = script(action.command);
+    const platform = parsePlatform(action.platform);
+    if (!actionName || !icon || !command || platform === undefined) {
+      throw new Error(`Action ${index + 1} contains invalid fields.`);
+    }
+    return { name: actionName, icon, command, platform };
+  });
+  return runConfigurationAuthoringDocumentSchema.parse({
+    version: 1,
+    name,
+    setup,
+    actions,
+  });
+}
+
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+export function serializeRunConfiguration(
+  input: RunConfigurationAuthoringDocument,
+): string {
+  const document = runConfigurationAuthoringDocumentSchema.parse(input);
+  const lines = [
+    "# Generated by Cantrip Environment settings.",
+    "# This file is compatible with Codex local environments.",
+    "version = 1",
+    `name = ${tomlString(document.name)}`,
+  ];
+  const setupEntries = [
+    ["default", document.setup.default],
+    ["win32", document.setup.win32],
+    ["darwin", document.setup.darwin],
+    ["linux", document.setup.linux],
+  ] as const;
+  for (const [platform, command] of setupEntries) {
+    if (!command) continue;
+    lines.push(
+      "",
+      platform === "default" ? "[setup]" : `[setup.${platform}]`,
+      `script = ${tomlString(command)}`,
+    );
+  }
+  for (const action of document.actions) {
+    lines.push(
+      "",
+      "[[actions]]",
+      `name = ${tomlString(action.name)}`,
+      `icon = ${tomlString(action.icon)}`,
+      `command = ${tomlString(action.command)}`,
+    );
+    if (action.platform) {
+      lines.push(`platform = ${tomlString(action.platform)}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+interface CanonicalFileState {
+  directoryPath: string;
+  exists: boolean;
+  contents: string | null;
+  revision: string | null;
+  sourceRoot: string;
+}
+
+async function canonicalFileState(
+  sourcePath: string,
+): Promise<CanonicalFileState> {
+  const sourceRoot = await realpath(sourcePath);
+  if (!(await stat(sourceRoot)).isDirectory()) {
+    throw new Error("The registered project source is not a directory.");
+  }
+  const directoryPath = path.join(sourceRoot, RUN_CONFIGURATION_DIRECTORY);
+  try {
+    const directoryMetadata = await lstat(directoryPath);
+    if (!directoryMetadata.isDirectory()) {
+      throw new Error(
+        "The Run configuration directory must not be a symbolic link.",
+      );
+    }
+    if (!isWithin(sourceRoot, await realpath(directoryPath))) {
+      throw new Error(
+        "The Run configuration directory escapes the project source.",
+      );
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        directoryPath,
+        exists: false,
+        contents: null,
+        revision: null,
+        sourceRoot,
+      };
+    }
+    throw error;
+  }
+  const configurationPath = path.join(
+    sourceRoot,
+    RUN_CONFIGURATION_CANONICAL_PATH,
+  );
+  try {
+    const metadata = await lstat(configurationPath);
+    if (!metadata.isFile()) {
+      throw new Error(
+        "The canonical Run configuration must be a regular file.",
+      );
+    }
+    if (metadata.size > MAX_CONFIGURATION_BYTES) {
+      throw new Error(
+        `Run configuration files cannot exceed ${MAX_CONFIGURATION_BYTES} bytes.`,
+      );
+    }
+    if (!isWithin(sourceRoot, await realpath(configurationPath))) {
+      throw new Error(
+        "The canonical Run configuration escapes the project source.",
+      );
+    }
+    const contents = await readFile(configurationPath, "utf8");
+    return {
+      directoryPath,
+      exists: true,
+      contents,
+      revision: createHash("sha256").update(contents).digest("hex"),
+      sourceRoot,
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        directoryPath,
+        exists: false,
+        contents: null,
+        revision: null,
+        sourceRoot,
+      };
+    }
+    throw error;
+  }
+}
+
+function compactError(error: unknown): string {
+  return (
+    error instanceof Error ? error.message : "The environment cannot be edited."
+  )
+    .replace(/\s+/gu, " ")
+    .trim()
+    .slice(0, 1_000);
 }
 
 function parseSetup(
@@ -577,6 +817,134 @@ export async function inspectRunConfigurations(
     valid: !hasErrors,
     configurations,
     diagnostics,
+  });
+}
+
+export async function readRunConfigurationAuthoring(
+  sourcePath: string,
+  hostPlatform: NodeJS.Platform = process.platform,
+): Promise<RunConfigurationAuthoringSnapshot> {
+  const inspection = await inspectRunConfigurations(sourcePath, hostPlatform);
+  try {
+    const state = await canonicalFileState(sourcePath);
+    if (!state.exists || !state.contents) {
+      return runConfigurationAuthoringSnapshotSchema.parse({
+        relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
+        sourceControlState: "absent",
+        revision: null,
+        document: null,
+        editingError: null,
+        inspection,
+      });
+    }
+    return runConfigurationAuthoringSnapshotSchema.parse({
+      relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
+      sourceControlState: inspection.canonical.sourceControlState,
+      revision: state.revision,
+      document: authoringDocument(parseToml(state.contents)),
+      editingError: null,
+      inspection,
+    });
+  } catch (error) {
+    const canonical = inspection.configurations.find(
+      ({ relativePath }) => relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+    );
+    return runConfigurationAuthoringSnapshotSchema.parse({
+      relativePath: RUN_CONFIGURATION_CANONICAL_PATH,
+      sourceControlState: inspection.canonical.sourceControlState,
+      revision: canonical?.revision ?? null,
+      document: null,
+      editingError: compactError(error),
+      inspection,
+    });
+  }
+}
+
+async function ensureAuthoringDirectory(
+  sourceRoot: string,
+  directoryPath: string,
+): Promise<void> {
+  const codexPath = path.join(sourceRoot, ".codex");
+  for (const candidate of [codexPath, directoryPath]) {
+    try {
+      await mkdir(candidate, { mode: 0o700 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const metadata = await lstat(candidate);
+    if (
+      !metadata.isDirectory() ||
+      !isWithin(sourceRoot, await realpath(candidate))
+    ) {
+      throw new Error(
+        "The Run configuration directory must be a real directory inside the project source.",
+      );
+    }
+  }
+}
+
+export async function writeRunConfiguration(
+  sourcePath: string,
+  expectedRevision: string | null,
+  input: RunConfigurationAuthoringDocument,
+  hostPlatform: NodeJS.Platform = process.platform,
+): Promise<WorkerRunConfigurationWriteResult> {
+  const document = runConfigurationAuthoringDocumentSchema.parse(input);
+  const contents = serializeRunConfiguration(document);
+  if (Buffer.byteLength(contents, "utf8") > MAX_CONFIGURATION_BYTES) {
+    throw new Error(
+      `Run configuration files cannot exceed ${MAX_CONFIGURATION_BYTES} bytes.`,
+    );
+  }
+  let current = await canonicalFileState(sourcePath);
+  if (current.revision !== expectedRevision) {
+    return workerRunConfigurationWriteResultSchema.parse({
+      written: false,
+      reason: "revision-mismatch",
+      snapshot: await readRunConfigurationAuthoring(sourcePath, hostPlatform),
+    });
+  }
+  await ensureAuthoringDirectory(current.sourceRoot, current.directoryPath);
+  current = await canonicalFileState(sourcePath);
+  if (current.revision !== expectedRevision) {
+    return workerRunConfigurationWriteResultSchema.parse({
+      written: false,
+      reason: "revision-mismatch",
+      snapshot: await readRunConfigurationAuthoring(sourcePath, hostPlatform),
+    });
+  }
+
+  const configurationPath = path.join(
+    current.sourceRoot,
+    RUN_CONFIGURATION_CANONICAL_PATH,
+  );
+  const temporaryPath = path.join(
+    current.directoryPath,
+    `.environment.toml.${randomUUID()}.tmp`,
+  );
+  try {
+    const file = await open(temporaryPath, "wx", 0o600);
+    try {
+      await file.writeFile(contents, "utf8");
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    const beforeRename = await canonicalFileState(sourcePath);
+    if (beforeRename.revision !== expectedRevision) {
+      return workerRunConfigurationWriteResultSchema.parse({
+        written: false,
+        reason: "revision-mismatch",
+        snapshot: await readRunConfigurationAuthoring(sourcePath, hostPlatform),
+      });
+    }
+    await rename(temporaryPath, configurationPath);
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+  }
+  return workerRunConfigurationWriteResultSchema.parse({
+    written: true,
+    snapshot: await readRunConfigurationAuthoring(sourcePath, hostPlatform),
   });
 }
 

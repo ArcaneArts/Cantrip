@@ -120,6 +120,15 @@ enum RunCommand {
 enum RunConfigCommand {
     /// Show the canonical repository-relative configuration path and Git state.
     Path,
+    /// Create a minimal canonical environment configuration.
+    Init {
+        /// Replace an existing canonical configuration after revision checking.
+        #[arg(long)]
+        overwrite: bool,
+        /// Environment name written to the generated configuration.
+        #[arg(long)]
+        name: Option<String>,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -512,6 +521,10 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                     command: "run.config-path",
                     arguments: json!({}),
                 },
+                RunConfigCommand::Init { overwrite, name } => Invocation {
+                    command: "run.config-init",
+                    arguments: json!({ "overwrite": overwrite, "name": name }),
+                },
             },
         },
     })
@@ -640,6 +653,7 @@ mod tests {
             ][..],
             &["cantrip", "run", "validate"][..],
             &["cantrip", "run", "config", "path"][..],
+            &["cantrip", "run", "config", "init"][..],
         ] {
             Cli::try_parse_from(arguments).unwrap_or_else(|error| {
                 panic!("failed to parse {arguments:?} without -v: {error}")
@@ -662,6 +676,7 @@ mod tests {
             ),
             (&["cantrip", "run", "setup", "retry"][..], "run.setup-retry"),
             (&["cantrip", "run", "config", "path"][..], "run.config-path"),
+            (&["cantrip", "run", "config", "init"][..], "run.config-init"),
             (
                 &["cantrip", "run", "start", "Run Spectral Lab"][..],
                 "run.start",
@@ -700,6 +715,22 @@ mod tests {
                 invocation(cli.command.expect("run command")).expect("build run invocation");
             assert_eq!(invocation.command, expected);
         }
+
+        let initialized = Cli::try_parse_from([
+            "cantrip",
+            "run",
+            "config",
+            "init",
+            "--overwrite",
+            "--name",
+            "Spectral Lab",
+        ])
+        .expect("parse config init");
+        let invocation = invocation(initialized.command.expect("run config init"))
+            .expect("build config init invocation");
+        assert_eq!(invocation.command, "run.config-init");
+        assert_eq!(invocation.arguments["overwrite"], true);
+        assert_eq!(invocation.arguments["name"], "Spectral Lab");
     }
 
     #[test]

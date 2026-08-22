@@ -45,6 +45,59 @@ const configurationRevision = "b".repeat(64);
 const routedCommands: WorkerCommand[] = [];
 const routedWorkers: string[] = [];
 const runs = new Map<string, WorkerRunSnapshot>();
+const runInspection = {
+  platform: "linux",
+  canonical: {
+    relativePath: ".codex/environments/environment.toml" as const,
+    sourceControlState: "ignored" as const,
+  },
+  configured: true,
+  valid: true,
+  configurations: [
+    {
+      relativePath: ".codex/environments/environment.toml" as const,
+      revision: configurationRevision,
+      version: 1,
+      name: "Spectral Lab",
+      sourceControlState: "ignored" as const,
+      setup: null,
+      actions: [
+        {
+          id: actionId,
+          name: "Run Spectral Lab",
+          icon: "run",
+          command: "dotnet run --project ./src/SpectralLab.App",
+          platform: "linux" as const,
+          configurationPath: ".codex/environments/environment.toml",
+          sourceIndex: 1,
+        },
+      ],
+      diagnostics: [],
+    },
+  ],
+  diagnostics: [],
+};
+const authoringDocument = {
+  version: 1 as const,
+  name: "Spectral Lab",
+  setup: { default: null, win32: null, darwin: null, linux: null },
+  actions: [
+    {
+      name: "Run Spectral Lab",
+      icon: "run",
+      command: "dotnet run --project ./src/SpectralLab.App",
+      platform: "linux" as const,
+    },
+  ],
+};
+const authoringSnapshot = (revision = configurationRevision) => ({
+  relativePath: ".codex/environments/environment.toml" as const,
+  sourceControlState: "ignored" as const,
+  revision,
+  document: authoringDocument,
+  editingError: null,
+  inspection: runInspection,
+});
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
@@ -66,37 +119,23 @@ const workerBridge: WorkerCommandBus = {
     switch (command.type) {
       case "project.run-configurations.inspect":
         expect(workerId).toBe("run-worker");
+        return runInspection;
+      case "project.run-configurations.read-authoring":
+        return authoringSnapshot();
+      case "project.run-configurations.write":
+        if (command.expectedRevision !== configurationRevision) {
+          return {
+            written: false,
+            reason: "revision-mismatch",
+            snapshot: authoringSnapshot(),
+          };
+        }
         return {
-          platform: "linux",
-          canonical: {
-            relativePath: ".codex/environments/environment.toml",
-            sourceControlState: "ignored",
+          written: true,
+          snapshot: {
+            ...authoringSnapshot("c".repeat(64)),
+            document: command.document,
           },
-          configured: true,
-          valid: true,
-          configurations: [
-            {
-              relativePath: ".codex/environments/environment.toml",
-              revision: configurationRevision,
-              version: 1,
-              name: "Spectral Lab",
-              sourceControlState: "ignored",
-              setup: null,
-              actions: [
-                {
-                  id: actionId,
-                  name: "Run Spectral Lab",
-                  icon: "run",
-                  command: "dotnet run --project ./src/SpectralLab.App",
-                  platform: "linux",
-                  configurationPath: ".codex/environments/environment.toml",
-                  sourceIndex: 1,
-                },
-              ],
-              diagnostics: [],
-            },
-          ],
-          diagnostics: [],
         };
       case "project.run.start": {
         expect(workerId).toBe("run-worker");
@@ -157,6 +196,7 @@ async function cli(
     | "run.open"
     | "run.setup-status"
     | "run.setup-retry"
+    | "run.config-init"
     | "run.status"
     | "run.logs"
     | "run.stop",
@@ -269,6 +309,108 @@ afterAll(async () => {
 });
 
 describe("Run CLI execution", () => {
+  it("reads and revision-checks Environment settings through the app route", async () => {
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/run-environment/configuration`,
+    });
+    expect(read.statusCode, read.body).toBe(200);
+    expect(read.json()).toMatchObject({
+      sourceControlState: "ignored",
+      revision: configurationRevision,
+      document: { name: "Spectral Lab" },
+    });
+
+    const stale = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-environment/configuration`,
+      payload: {
+        expectedRevision: "d".repeat(64),
+        document: authoringDocument,
+      },
+    });
+    expect(stale.statusCode, stale.body).toBe(409);
+    expect(stale.json()).toMatchObject({
+      code: "conflict",
+      error: expect.stringContaining("changed"),
+    });
+
+    const saved = await app.inject({
+      method: "PUT",
+      url: `/api/projects/${projectId}/run-environment/configuration`,
+      payload: {
+        expectedRevision: configurationRevision,
+        document: authoringDocument,
+      },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    expect(saved.json()).toMatchObject({ revision: "c".repeat(64) });
+    const audits = await database.repository.listAuditEvents(
+      { limit: 20 },
+      LOCAL_USER_ID,
+    );
+    expect(audits.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "run.configuration.app.updated",
+          resource: { type: "run-configuration", id: projectId },
+        }),
+      ]),
+    );
+  });
+
+  it("requires explicit overwrite before initializing an existing environment", async () => {
+    const refused = await cli(
+      "run.config-init",
+      { overwrite: false, name: null },
+      "run-config-init-refused",
+    );
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toMatchObject({
+      code: "conflict",
+      error: expect.stringContaining("--overwrite"),
+    });
+
+    const replaced = await cli(
+      "run.config-init",
+      { overwrite: true, name: "Generated environment" },
+      "run-config-init-overwrite",
+    );
+    expect(replaced.statusCode, replaced.body).toBe(200);
+    expect(cantripCliCommandResultSchema.parse(replaced.json())).toMatchObject({
+      mutated: true,
+      data: {
+        revision: "c".repeat(64),
+        document: {
+          version: 1,
+          name: "Generated environment",
+          actions: [],
+        },
+      },
+    });
+    expect(routedCommands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "project.run-configurations.write",
+          expectedRevision: configurationRevision,
+        }),
+      ]),
+    );
+    const audits = await database.repository.listAuditEvents(
+      { limit: 20 },
+      LOCAL_USER_ID,
+    );
+    expect(audits.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "run.configuration.cli.updated",
+          result: "succeeded",
+          resource: { type: "cli-command", id: "run-config-init-overwrite" },
+        }),
+      ]),
+    );
+  });
+
   it("reports setup independently and rejects retry for Primary", async () => {
     const status = await cli("run.setup-status", {}, "setup-status-one");
     expect(status.statusCode, status.body).toBe(200);

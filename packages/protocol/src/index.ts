@@ -58,9 +58,11 @@ import {
 } from "./repository-operation.js";
 import {
   runConfigurationActionSchema,
+  runConfigurationAuthoringDocumentSchema,
   runConfigurationDefinitionSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
+  runConfigurationWriteRequestSchema,
   runInstanceResultSchema,
   runInstanceSchema,
   runLogResultSchema,
@@ -7081,6 +7083,8 @@ export const cantripAgentOperationNameSchema = z.enum([
   "target.inspect",
   "run-config.list",
   "run-config.read",
+  "run-config.authoring",
+  "run-config.write",
   "run.start",
   "run.open",
   "run.setup-status",
@@ -7893,6 +7897,7 @@ export const cantripCliCommandNameSchema = z.enum([
   "run.show",
   "run.validate",
   "run.config-path",
+  "run.config-init",
   "run.start",
   "run.open",
   "run.setup-status",
@@ -11301,6 +11306,21 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("project.run-configurations.inspect"),
       sourcePath: z.string().min(1).max(8_192),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run-configurations.read-authoring"),
+      sourcePath: z.string().min(1).max(8_192),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run-configurations.write"),
+      sourcePath: z.string().min(1).max(8_192),
+      expectedRevision:
+        runConfigurationWriteRequestSchema.shape.expectedRevision,
+      document: runConfigurationAuthoringDocumentSchema,
     })
     .strict(),
   z
