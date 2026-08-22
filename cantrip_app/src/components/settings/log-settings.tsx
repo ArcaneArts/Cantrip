@@ -260,7 +260,7 @@ function downloadText(name: string, value: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function VirtualLogConsole({
+export function VirtualLogConsole({
   followTail,
   records,
 }: {
@@ -326,7 +326,6 @@ function VirtualLogConsole({
                 height: ROW_HEIGHT,
                 transform: `translateY(${(start + index) * ROW_HEIGHT}px)`,
               }}
-              title={formatServiceLogRecord(record)}
             >
               {formatServiceLogRecord(record)}
             </div>
