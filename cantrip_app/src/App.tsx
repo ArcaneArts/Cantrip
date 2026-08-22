@@ -269,7 +269,7 @@ import { useChatMessageHistory } from "@/lib/use-chat-message-history";
 import { codeGraphChatRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { InlineAlert } from "@/components/ui/inline-alert";
+import { AppToast, type AppToastInput } from "@/components/ui/app-toast";
 import {
   Card,
   CardContent,
@@ -1078,6 +1078,7 @@ function ChatTranscript({
   onOpenWorkflow,
   onRename,
   onOpenRelocation,
+  onToast,
   relocationJob,
   refocusOnWindowActivation,
   settings,
@@ -1095,6 +1096,7 @@ function ChatTranscript({
   onOpenWorkflow(workflowId: string): void;
   onRename(title: string): void;
   onOpenRelocation(): void;
+  onToast(toast: AppToastInput): void;
   relocationJob: ChatRelocationJobSummary | null;
   refocusOnWindowActivation: boolean;
   settings: SettingsBundle | undefined;
@@ -2272,7 +2274,11 @@ function ChatTranscript({
         });
         onOpenWorkflow(suggestion.trigger.workflowId);
       } catch (error) {
-        setCommandNotice(errorText(error));
+        onToast({
+          message: errorText(error),
+          title: "Command failed",
+          tone: "error",
+        });
       }
       return;
     }
@@ -2284,6 +2290,27 @@ function ChatTranscript({
       composerRef.current?.setSelectionRange(text.length, text.length);
     });
   };
+
+  const chatActionError =
+    send.error ??
+    selectModel.error ??
+    selectReasoning.error ??
+    selectPermissionProfile.error ??
+    compact.error ??
+    updatePrompt.error ??
+    removePrompt.error ??
+    steerPrompt.error ??
+    reorderPrompts.error ??
+    setAutomationPaused.error ??
+    interrupt.error;
+  useEffect(() => {
+    if (!chatActionError) return;
+    onToast({
+      message: errorText(chatActionError),
+      title: "Chat action failed",
+      tone: "error",
+    });
+  }, [chatActionError, onToast]);
 
   return (
     <div
@@ -3204,33 +3231,7 @@ function ChatTranscript({
               {attachmentNotice}
             </p>
           ) : null}
-          {send.isError ||
-          selectModel.isError ||
-          selectReasoning.isError ||
-          selectPermissionProfile.isError ||
-          compact.isError ||
-          updatePrompt.isError ||
-          removePrompt.isError ||
-          steerPrompt.isError ||
-          reorderPrompts.isError ||
-          setAutomationPaused.isError ||
-          interrupt.isError ? (
-            <p className="mt-2 text-xs text-destructive">
-              {errorText(
-                send.error ??
-                  selectModel.error ??
-                  selectReasoning.error ??
-                  selectPermissionProfile.error ??
-                  compact.error ??
-                  updatePrompt.error ??
-                  removePrompt.error ??
-                  steerPrompt.error ??
-                  reorderPrompts.error ??
-                  setAutomationPaused.error ??
-                  interrupt.error,
-              )}
-            </p>
-          ) : editingPrompt ? (
+          {editingPrompt ? (
             <p className="mt-2 text-center text-[11px] text-muted-foreground">
               Enter re-queues this prompt in its original position
             </p>
@@ -3349,16 +3350,12 @@ export function App() {
   const [workspaceDragError, setWorkspaceDragError] = useState<string | null>(
     null,
   );
-  const [clientControlNotice, setClientControlNotice] = useState<{
-    level: "info" | "warning" | "error";
-    title: string;
-    message: string;
-  } | null>(null);
-  useEffect(() => {
-    if (!clientControlNotice) return;
-    const timer = window.setTimeout(() => setClientControlNotice(null), 8_000);
-    return () => window.clearTimeout(timer);
-  }, [clientControlNotice]);
+  const [appToast, setAppToast] = useState<
+    (AppToastInput & { id: string }) | null
+  >(null);
+  const showAppToast = useCallback((toast: AppToastInput) => {
+    setAppToast({ ...toast, id: crypto.randomUUID() });
+  }, []);
   const selectedTabKey = selectedWorkspaceTabKey(workspaceSelection);
   const selectedChatId = projectSurfaceTabId(selectedTabKey, "chat");
   const selectedTerminalId = projectSurfaceTabId(selectedTabKey, "terminal");
@@ -6083,8 +6080,8 @@ export function App() {
       }
       switch (command.kind) {
         case "notify":
-          setClientControlNotice({
-            level: command.level,
+          showAppToast({
+            tone: command.level,
             title: command.title,
             message: command.message,
           });
@@ -6152,6 +6149,7 @@ export function App() {
       projectWorkspaces.data,
       projects.data,
       queryClient,
+      showAppToast,
     ],
   );
   useAppLiveClientControl(handleClientControl);
@@ -6648,6 +6646,39 @@ export function App() {
         }
         enabled={settings.data?.preferences.eliteMode ?? false}
       />
+      <div
+        aria-label="Notifications"
+        className="pointer-events-none fixed right-3 top-3 z-[100] flex max-h-[calc(100vh-1.5rem)] flex-col items-end gap-2 overflow-hidden"
+        data-slot="app-toast-viewport"
+      >
+        {appToast ? (
+          <AppToast
+            key={appToast.id}
+            message={appToast.message}
+            onDismiss={() => setAppToast(null)}
+            title={appToast.title}
+            tone={appToast.tone}
+          />
+        ) : null}
+        {workspaceDragError ? (
+          <AppToast
+            dismissLabel="Dismiss workspace error"
+            message={workspaceDragError}
+            onDismiss={() => setWorkspaceDragError(null)}
+            title="Workspace action failed"
+            tone="error"
+          />
+        ) : null}
+        {surfaceCreationFailure ? (
+          <AppToast
+            dismissLabel="Dismiss surface creation error"
+            message={errorText(surfaceCreationFailure.error)}
+            onDismiss={surfaceCreationFailure.dismiss}
+            title={`Could not create ${surfaceCreationFailure.label}`}
+            tone="error"
+          />
+        ) : null}
+      </div>
       {!isPopout ? (
         <div
           data-slot="app-sidebar-shell"
@@ -6938,42 +6969,6 @@ export function App() {
         ref={contentRootRef}
         className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
       >
-        {clientControlNotice ? (
-          <button
-            type="button"
-            className={cn(
-              "absolute right-3 top-3 z-50 flex max-w-sm items-start gap-2 rounded-lg border bg-background/95 px-3 py-2 text-left text-xs shadow-lg backdrop-blur-xl",
-              clientControlNotice.level === "error"
-                ? "border-destructive/40 text-destructive"
-                : clientControlNotice.level === "warning"
-                  ? "border-amber-500/40 text-amber-700 dark:text-amber-300"
-                  : "border-primary/30 text-foreground",
-            )}
-            onClick={() => setClientControlNotice(null)}
-            title="Dismiss"
-          >
-            <CircleAlert className="mt-0.5 size-4 shrink-0" />
-            <span className="min-w-0">
-              <span className="block font-medium">
-                {clientControlNotice.title}
-              </span>
-              <span className="mt-0.5 block break-words text-muted-foreground">
-                {clientControlNotice.message}
-              </span>
-            </span>
-          </button>
-        ) : null}
-        {workspaceDragError ? (
-          <button
-            type="button"
-            className="absolute right-3 top-3 z-50 flex max-w-sm items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-left text-xs text-destructive shadow-lg backdrop-blur-xl"
-            onClick={() => setWorkspaceDragError(null)}
-            title="Dismiss"
-          >
-            <CircleAlert className="size-4 shrink-0" />
-            <span className="truncate">{workspaceDragError}</span>
-          </button>
-        ) : null}
         {compactShell && showImporter ? (
           <MobileProjectHeader
             context={activeProjectWorkspace?.name ?? "Choose a repository"}
@@ -7833,6 +7828,7 @@ export function App() {
               openProjectSettings(selectedChat.projectId, workflowId)
             }
             onOpenRelocation={() => setChatRelocationOpen(true)}
+            onToast={showAppToast}
             onRename={(title) =>
               renameChatMutation.mutate({ chatId: selectedChat.id, title })
             }
@@ -8074,11 +8070,6 @@ export function App() {
                     Code
                   </Button>
                 </EmptyStateActions>
-                {newChat.isError ? (
-                  <p className="mt-3 text-xs text-destructive">
-                    {errorText(newChat.error)}
-                  </p>
-                ) : null}
               </EmptyStateContent>
             </EmptyState>
           )
@@ -8242,19 +8233,6 @@ export function App() {
           }
         }}
       />
-
-      {surfaceCreationFailure ? (
-        <InlineAlert
-          tone="error"
-          className="fixed bottom-5 right-5 z-50 max-w-md border-destructive bg-destructive px-4 py-3 text-destructive-foreground shadow-xl"
-          dismissLabel="Dismiss surface creation error"
-          icon={false}
-          onDismiss={surfaceCreationFailure.dismiss}
-        >
-          Could not create {surfaceCreationFailure.label}:{" "}
-          {errorText(surfaceCreationFailure.error)}
-        </InlineAlert>
-      ) : null}
     </WorkspaceDndProvider>
   );
 }
