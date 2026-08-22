@@ -13,13 +13,31 @@ import {
 } from "@/lib/tab-middle-click";
 import { cn } from "@/lib/utils";
 
+export function dispatchSidebarActionsMenu(
+  trigger: Pick<HTMLButtonElement, "dispatchEvent">,
+): void {
+  trigger.dispatchEvent(
+    new PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      buttons: 1,
+      cancelable: true,
+      isPrimary: true,
+      pointerType: "mouse",
+    }),
+  );
+}
+
 export function openSidebarActionsMenu(event: ReactMouseEvent<HTMLElement>) {
   const trigger = event.currentTarget.querySelector<HTMLButtonElement>(
     "[data-actions-trigger]",
   );
   if (!trigger) return;
   event.preventDefault();
-  trigger.click();
+  // Radix dropdown triggers toggle on pointerdown, not click. Re-dispatch the
+  // context-menu gesture as a primary pointer press on the dedicated actions
+  // trigger so the existing menu opens without activating the drag handle.
+  dispatchSidebarActionsMenu(trigger);
 }
 
 export function SortableSidebarSurfaceRow({

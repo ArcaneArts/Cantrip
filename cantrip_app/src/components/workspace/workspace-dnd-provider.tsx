@@ -10,13 +10,18 @@ import {
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type PointerSensorOptions,
 } from "@dnd-kit/core";
 import type {
   ProjectSummary,
   ProjectTabLayoutSummary,
 } from "@cantrip/protocol";
 import { Ban, FolderGit2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import {
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 
 import { ProjectSurfaceIcon } from "./project-surface-icon";
 import {
@@ -27,6 +32,30 @@ import {
   type WorkspaceDropOperation,
   type WorkspaceDropTarget,
 } from "@/lib/workspace-dnd-model";
+
+export function canStartWorkspacePointerDrag(event: {
+  button: number;
+  ctrlKey: boolean;
+  isPrimary: boolean;
+}): boolean {
+  return event.isPrimary && event.button === 0 && !event.ctrlKey;
+}
+
+class WorkspacePointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: "onPointerDown" as const,
+      handler: (
+        { nativeEvent: event }: ReactPointerEvent,
+        { onActivation }: PointerSensorOptions,
+      ) => {
+        if (!canStartWorkspacePointerDrag(event)) return false;
+        onActivation?.({ event });
+        return true;
+      },
+    },
+  ];
+}
 
 export function filterWorkspacePointerCollisions(
   pointerCollisions: Collision[],
@@ -152,7 +181,9 @@ export function WorkspaceDndProvider({
   tauriTitlebar?: string;
 }) {
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(WorkspacePointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
   );
   const [activeDrag, setActiveDrag] = useState<WorkspaceDragItem | null>(null);
   const [decision, setDecision] = useState<WorkspaceDropDecision | null>(null);
