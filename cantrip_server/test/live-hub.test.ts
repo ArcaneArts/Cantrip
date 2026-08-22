@@ -73,6 +73,18 @@ class FakeSocket implements AppLiveSocket {
   }
 }
 
+class CountingSocket extends FakeSocket {
+  sentCount = 0;
+
+  override send(_data: string): void {
+    this.sentCount += 1;
+  }
+
+  resetSent(): void {
+    this.sentCount = 0;
+  }
+}
+
 const initialize = (
   resume: { serverEpoch: string; cursor: number } | null = null,
   controlCapabilities: ClientControlCapability[] = [],
@@ -546,6 +558,177 @@ describe("AppLiveHub", () => {
     hub.close();
   });
 
+  it("encodes one publication once and visits only its indexed subscribers", async () => {
+    const hub = new AppLiveHub({ epoch: "indexed-fanout" });
+    const targetScope: AppLiveScope = {
+      kind: "project",
+      projectId: "target-project",
+    };
+    const otherScope: AppLiveScope = {
+      kind: "project",
+      projectId: "other-project",
+    };
+    const sockets = Array.from({ length: 1_000 }, () => new CountingSocket());
+    const targetSockets: CountingSocket[] = [];
+    for (const [index, socket] of sockets.entries()) {
+      const subscribesToTargetScope = index % 50 === 0;
+      const isTarget = index % 100 === 0;
+      if (isTarget) targetSockets.push(socket);
+      hub.attach(socket, {
+        ownerId:
+          subscribesToTargetScope && !isTarget ? "owner-two" : "owner-one",
+        authorizeScope: () => true,
+      });
+      socket.receive(initialize());
+      socket.receive({
+        type: "subscribe",
+        requestId: `indexed-scope-${index}`,
+        scopes: [subscribesToTargetScope ? targetScope : otherScope],
+      });
+    }
+    await settle();
+    for (const socket of sockets) socket.resetSent();
+
+    const stringify = vi.spyOn(JSON, "stringify");
+    try {
+      hub.publish({
+        ownerId: "owner-one",
+        scope: targetScope,
+        resource: "project",
+        action: "updated",
+        entityId: "target-project",
+        revision: 1,
+        payload: null,
+      });
+      expect(stringify).toHaveBeenCalledTimes(1);
+    } finally {
+      stringify.mockRestore();
+    }
+
+    expect(targetSockets).toHaveLength(10);
+    expect(targetSockets.every(({ sentCount }) => sentCount === 1)).toBe(true);
+    expect(
+      sockets
+        .filter((socket) => !targetSockets.includes(socket))
+        .every(({ sentCount }) => sentCount === 0),
+    ).toBe(true);
+    expect(hub.stats()).toMatchObject({
+      connectionCount: 1_000,
+      deliveredEventCount: 10,
+      publicationCount: 1,
+    });
+    hub.close();
+  });
+
+  it("keeps the subscriber index aligned with duplicate, replacement, unsubscribe, and disconnect changes", async () => {
+    const hub = new AppLiveHub({ epoch: "indexed-lifecycle" });
+    const socket = new FakeSocket();
+    const firstScope: AppLiveScope = {
+      kind: "project",
+      projectId: "project-one",
+    };
+    const secondScope: AppLiveScope = {
+      kind: "project",
+      projectId: "project-two",
+    };
+    hub.attach(socket, { ownerId: "owner-one", authorizeScope: () => true });
+    socket.receive(initialize());
+    socket.receive({
+      type: "subscribe",
+      requestId: "first-subscription",
+      scopes: [firstScope],
+    });
+    socket.receive({
+      type: "subscribe",
+      requestId: "duplicate-scope-subscription",
+      scopes: [firstScope],
+    });
+    await settle();
+
+    hub.publish({
+      ownerId: "owner-one",
+      scope: firstScope,
+      resource: "project",
+      action: "updated",
+      entityId: "project-one",
+      revision: 1,
+      payload: null,
+    });
+    expect(socket.sent.filter(({ type }) => type === "event")).toHaveLength(1);
+
+    socket.receive({
+      type: "resync-ack",
+      requestId: "replace-subscription",
+      cursor: 1,
+      scopes: [secondScope],
+    });
+    await settle();
+    hub.publish({
+      ownerId: "owner-one",
+      scope: firstScope,
+      resource: "project",
+      action: "updated",
+      entityId: "project-one",
+      revision: 2,
+      payload: null,
+    });
+    hub.publish({
+      ownerId: "owner-one",
+      scope: secondScope,
+      resource: "project",
+      action: "updated",
+      entityId: "project-two",
+      revision: 1,
+      payload: null,
+    });
+    expect(socket.sent.filter(({ type }) => type === "event")).toEqual([
+      expect.objectContaining({ cursor: 1, scope: firstScope }),
+      expect.objectContaining({ cursor: 3, scope: secondScope }),
+    ]);
+
+    socket.receive({
+      type: "unsubscribe",
+      requestId: "remove-second-scope",
+      scopes: [secondScope],
+    });
+    await settle();
+    hub.publish({
+      ownerId: "owner-one",
+      scope: secondScope,
+      resource: "project",
+      action: "updated",
+      entityId: "project-two",
+      revision: 2,
+      payload: null,
+    });
+    expect(socket.sent.filter(({ type }) => type === "event")).toHaveLength(2);
+
+    socket.receive({
+      type: "subscribe",
+      requestId: "restore-second-scope",
+      scopes: [secondScope],
+    });
+    await settle();
+    socket.close(1006, "network lost");
+    hub.publish({
+      ownerId: "owner-one",
+      scope: secondScope,
+      resource: "project",
+      action: "updated",
+      entityId: "project-two",
+      revision: 3,
+      payload: null,
+    });
+    expect(socket.sent.filter(({ type }) => type === "event")).toHaveLength(2);
+    expect(hub.stats()).toMatchObject({
+      connectionCount: 0,
+      deliveredEventCount: 2,
+      disconnectedConnectionCount: 1,
+      publicationCount: 5,
+    });
+    hub.close();
+  });
+
   it("dispatches one-shot client controls only to capable project-active clients", async () => {
     const hub = new AppLiveHub({ epoch: "client-control" });
     const inactive = new FakeSocket();
@@ -799,6 +982,105 @@ describe("AppLiveHub", () => {
     expect(third.closeCode).toBe(1008);
     hub.close();
   });
+
+  it.skipIf(process.env.CANTRIP_BENCHMARK_LIVE_FANOUT !== "1")(
+    "benchmarks indexed fanout across socket counts and subscription densities",
+    async () => {
+      const publicationCount = 50;
+      const results: Array<{
+        cpuMs: number;
+        density: number;
+        eventLoopLagMs: number;
+        heapDeltaBytes: number;
+        p95PublishMs: number;
+        socketCount: number;
+        subscriberCount: number;
+      }> = [];
+      for (const socketCount of [100, 1_000, 5_000]) {
+        for (const density of [0.01, 0.1, 1]) {
+          const hub = new AppLiveHub({
+            epoch: `benchmark-${socketCount}-${density}`,
+          });
+          const targetScope: AppLiveScope = {
+            kind: "project",
+            projectId: "benchmark-target",
+          };
+          const otherScope: AppLiveScope = {
+            kind: "project",
+            projectId: "benchmark-other",
+          };
+          const subscriberCount = Math.max(
+            1,
+            Math.floor(socketCount * density),
+          );
+          const sockets = Array.from(
+            { length: socketCount },
+            () => new CountingSocket(),
+          );
+          for (const [index, socket] of sockets.entries()) {
+            hub.attach(socket, {
+              ownerId: "benchmark-owner",
+              authorizeScope: () => true,
+            });
+            socket.receive(initialize());
+            socket.receive({
+              type: "subscribe",
+              requestId: `benchmark-${socketCount}-${density}-${index}`,
+              scopes: [index < subscriberCount ? targetScope : otherScope],
+            });
+          }
+          await settle();
+          for (const socket of sockets) socket.resetSent();
+
+          const heapBefore = process.memoryUsage().heapUsed;
+          const cpuBefore = process.cpuUsage();
+          const eventLoopLagStartedAt = performance.now();
+          const eventLoopLag = new Promise<number>((resolve) => {
+            setImmediate(() =>
+              resolve(performance.now() - eventLoopLagStartedAt),
+            );
+          });
+          const publishDurations: number[] = [];
+          for (let index = 0; index < publicationCount; index += 1) {
+            const startedAt = performance.now();
+            hub.publish({
+              ownerId: "benchmark-owner",
+              scope: targetScope,
+              resource: "project",
+              action: "updated",
+              entityId: "benchmark-target",
+              revision: index,
+              payload: null,
+            });
+            publishDurations.push(performance.now() - startedAt);
+          }
+          const eventLoopLagMs = await eventLoopLag;
+          const cpu = process.cpuUsage(cpuBefore);
+          const heapDeltaBytes = process.memoryUsage().heapUsed - heapBefore;
+          publishDurations.sort((left, right) => left - right);
+          const p95PublishMs =
+            publishDurations[
+              Math.max(0, Math.ceil(publishDurations.length * 0.95) - 1)
+            ] ?? 0;
+          expect(
+            sockets.reduce((total, socket) => total + socket.sentCount, 0),
+          ).toBe(subscriberCount * publicationCount);
+          results.push({
+            cpuMs: (cpu.user + cpu.system) / 1_000,
+            density,
+            eventLoopLagMs,
+            heapDeltaBytes,
+            p95PublishMs,
+            socketCount,
+            subscriberCount,
+          });
+          hub.close();
+        }
+      }
+      console.info("Indexed live fanout benchmark", results);
+    },
+    60_000,
+  );
 
   it("times out missing heartbeats and cleans up remaining sockets on shutdown", async () => {
     vi.useFakeTimers();
