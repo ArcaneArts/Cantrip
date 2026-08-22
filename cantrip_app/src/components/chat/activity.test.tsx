@@ -133,19 +133,28 @@ describe("rich Codex activity", () => {
       <ActivityGroup
         startedAt="2026-08-07T12:00:00.000Z"
         endedAt="2026-08-07T12:00:37.000Z"
+        turnId="turn-1"
+        turnKey="runtime:turn-1"
       >
         <span>Grouped command</span>
       </ActivityGroup>,
     );
     expect(completed).toContain("Worked for 37s");
+    expect(completed).toContain('data-turn-key="runtime:turn-1"');
     expect(completed).not.toContain("Grouped command");
 
     const running = renderToStaticMarkup(
-      <ActivityGroup startedAt="2026-08-07T12:00:00.000Z" endedAt={null}>
+      <ActivityGroup
+        startedAt="2026-08-07T12:00:00.000Z"
+        endedAt={null}
+        turnId={null}
+        turnKey="legacy:user-1"
+      >
         <span>Running command</span>
       </ActivityGroup>,
     );
     expect(running).toContain("Running command");
+    expect(running).toContain('data-turn-key="legacy:user-1"');
     expect(running).not.toContain("Worked for");
   });
 });

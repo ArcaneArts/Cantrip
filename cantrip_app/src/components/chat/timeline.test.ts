@@ -113,6 +113,77 @@ describe("chat activity timeline", () => {
     });
   });
 
+  it("uses correlated turn identities and stable legacy fallbacks", () => {
+    const correlated = buildChatTimeline([
+      message("user-correlated", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the turn" },
+      ]),
+      message("command-correlated", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-correlated",
+            command: "git status",
+            cwd: ".",
+            status: "running",
+            exitCode: null,
+            output: null,
+            correlation: {
+              sourceMethod: "item/started",
+              diagnosticId: null,
+              threadId: "thread-1",
+              turnId: "turn-runtime",
+              itemId: "command-correlated",
+            },
+          },
+        },
+      ]),
+    ]);
+    expect(correlated[1]).toMatchObject({
+      type: "activityGroup",
+      turnId: "turn-runtime",
+      turnKey: "runtime:turn-runtime",
+    });
+
+    const legacyMessages = [
+      message("user-legacy", "user", "2026-08-07T12:00:00.000Z", [
+        { type: "text", text: "Inspect the legacy turn" },
+      ]),
+      message("command-legacy", "assistant", "2026-08-07T12:00:01.000Z", [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            id: "command-legacy",
+            command: "git status",
+            cwd: ".",
+            status: "completed",
+            exitCode: 0,
+            output: null,
+          },
+        },
+      ]),
+    ];
+    const activeLegacy = buildChatTimeline(legacyMessages);
+    const completedLegacy = buildChatTimeline([
+      ...legacyMessages,
+      message("answer-legacy", "assistant", "2026-08-07T12:00:02.000Z", [
+        { type: "text", text: "Done", phase: "final_answer" },
+      ]),
+    ]);
+    expect(activeLegacy[1]).toMatchObject({
+      type: "activityGroup",
+      turnId: null,
+      turnKey: "legacy:user-legacy",
+    });
+    expect(completedLegacy[1]).toMatchObject({
+      type: "activityGroup",
+      turnId: null,
+      turnKey: "legacy:user-legacy",
+    });
+  });
+
   it("preserves commentary inside a recovered work group", () => {
     const timeline = buildChatTimeline([
       message("commentary", "assistant", "2026-08-07T12:00:01.000Z", [

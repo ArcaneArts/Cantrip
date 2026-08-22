@@ -578,10 +578,14 @@ export function ActivityGroup({
   children,
   endedAt,
   startedAt,
+  turnId,
+  turnKey,
 }: {
   children: ReactNode;
   endedAt: string | null;
   startedAt: string;
+  turnId: string | null;
+  turnKey: string;
 }) {
   const completed = endedAt !== null;
   const [open, setOpen] = useState(!completed);
@@ -591,11 +595,23 @@ export function ActivityGroup({
   }, [completed]);
 
   if (!completed) {
-    return <div className="grid min-w-0 gap-0">{children}</div>;
+    return (
+      <div
+        className="grid min-w-0 gap-0"
+        data-turn-id={turnId ?? undefined}
+        data-turn-key={turnKey}
+      >
+        {children}
+      </div>
+    );
   }
 
   return (
-    <div className="min-w-0">
+    <div
+      className="min-w-0"
+      data-turn-id={turnId ?? undefined}
+      data-turn-key={turnKey}
+    >
       <button
         type="button"
         aria-expanded={open}

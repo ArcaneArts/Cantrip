@@ -5,6 +5,11 @@ export interface ChatTurnMetadata {
   totalTokens: number | null;
 }
 
+export interface ChatTurnIdentity {
+  turnId: string | null;
+  turnKey: string;
+}
+
 export type ChatTimelineEntry =
   | {
       type: "message";
@@ -17,6 +22,8 @@ export type ChatTimelineEntry =
       messages: ChatMessage[];
       startedAt: string;
       endedAt: string | null;
+      turnId: string | null;
+      turnKey: string;
     };
 
 function activities(message: ChatMessage): AgentActivity[] | null {
@@ -41,6 +48,52 @@ function precedingTurnStart(messages: ChatMessage[], index: number): string {
     if (message?.role === "user") return message.createdAt;
   }
   return messages[index]?.createdAt ?? new Date(0).toISOString();
+}
+
+function messageTurnId(message: ChatMessage | null | undefined): string | null {
+  if (!message) return null;
+  for (const content of message.content) {
+    const turnId =
+      content.type === "activity"
+        ? content.activity.correlation?.turnId
+        : content.type === "text"
+          ? content.correlation?.turnId
+          : null;
+    if (turnId) return turnId;
+  }
+  return null;
+}
+
+function precedingTurnAnchor(
+  messages: readonly ChatMessage[],
+  index: number,
+): ChatMessage | null {
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const message = messages[cursor];
+    if (message?.role === "user") return message;
+  }
+  return null;
+}
+
+export function resolveChatTurnIdentity(input: {
+  messages: readonly ChatMessage[];
+  startIndex: number;
+  terminalMessage?: ChatMessage;
+  turnMessages: readonly ChatMessage[];
+}): ChatTurnIdentity {
+  const openingMessage = precedingTurnAnchor(input.messages, input.startIndex);
+  const turnId =
+    input.turnMessages.map(messageTurnId).find(Boolean) ??
+    messageTurnId(input.terminalMessage) ??
+    messageTurnId(openingMessage);
+  if (turnId) return { turnId, turnKey: `runtime:${turnId}` };
+
+  const anchorId =
+    openingMessage?.id ??
+    input.turnMessages[0]?.id ??
+    input.terminalMessage?.id ??
+    "empty";
+  return { turnId: null, turnKey: `legacy:${anchorId}` };
 }
 
 function terminalMessage(message: ChatMessage | undefined): boolean {
@@ -158,6 +211,12 @@ export function buildChatTimeline(
       : turnSummary?.type === "turnSummary" && turnSummary.completedAt !== null
         ? new Date(turnSummary.completedAt * 1_000).toISOString()
         : null;
+    const identity = resolveChatTurnIdentity({
+      messages,
+      startIndex: index,
+      terminalMessage: followingMessage,
+      turnMessages: groupedMessages,
+    });
 
     const previousMessageEntry = entries.at(-1);
     const previousActivityEntry = entries.at(-2);
@@ -175,6 +234,16 @@ export function buildChatTimeline(
         previousMessageEntry.turnMetadata,
         metadata,
       );
+      if (previousActivityEntry?.type === "activityGroup") {
+        const trailingIdentity = resolveChatTurnIdentity({
+          messages,
+          startIndex: index,
+          terminalMessage: previousMessageEntry.message,
+          turnMessages: [...previousActivityEntry.messages, ...groupedMessages],
+        });
+        previousActivityEntry.turnId = trailingIdentity.turnId;
+        previousActivityEntry.turnKey = trailingIdentity.turnKey;
+      }
       if (
         displayedMessages.length > 0 &&
         previousActivityEntry?.type === "activityGroup"
@@ -187,6 +256,8 @@ export function buildChatTimeline(
           messages: displayedMessages,
           startedAt: precedingTurnStart(messages, index),
           endedAt: previousMessageEntry.message.createdAt,
+          turnId: identity.turnId,
+          turnKey: identity.turnKey,
         });
       }
       index = endIndex;
@@ -209,6 +280,8 @@ export function buildChatTimeline(
         messages: displayedMessages,
         startedAt: precedingTurnStart(messages, index),
         endedAt,
+        turnId: identity.turnId,
+        turnKey: identity.turnKey,
       });
     }
     index = endIndex;
