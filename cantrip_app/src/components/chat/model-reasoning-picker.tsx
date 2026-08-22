@@ -26,6 +26,8 @@ interface ReasoningChoice {
   label: string;
 }
 
+type ModelReasoningPanel = "models" | "reasoning";
+
 const REASONING_EFFORT_ORDER = [
   "none",
   "minimal",
@@ -105,6 +107,15 @@ export function filterConfiguredModels(
     : models;
 }
 
+export function nextReasoningTriggerState(
+  open: boolean,
+  panel: ModelReasoningPanel,
+): { open: boolean; panel: ModelReasoningPanel } {
+  return open && panel === "reasoning"
+    ? { open: false, panel }
+    : { open: true, panel: "reasoning" };
+}
+
 export function ModelReasoningPicker({
   disabled = false,
   models,
@@ -118,10 +129,11 @@ export function ModelReasoningPicker({
   selectedModelId,
 }: ModelReasoningPickerProps) {
   const [open, setOpen] = useState(false);
-  const [panel, setPanel] = useState<"models" | "reasoning">("models");
+  const [panel, setPanel] = useState<ModelReasoningPanel>("models");
   const [query, setQuery] = useState("");
   const [reasoningDraftIndex, setReasoningDraftIndex] = useState(0);
   const searchRef = useRef<HTMLInputElement>(null);
+  const reasoningTriggerRef = useRef<HTMLButtonElement>(null);
   const reasoningDraggingRef = useRef(false);
   const pendingReasoningEffortRef = useRef<ReasoningEffort | null>(
     reasoningEffort,
@@ -199,6 +211,11 @@ export function ModelReasoningPicker({
           sideOffset={8}
           className="w-[min(22rem,calc(100vw-2rem))] p-1.5"
           onCloseAutoFocus={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => {
+            if (reasoningTriggerRef.current?.contains(event.target as Node)) {
+              event.preventDefault();
+            }
+          }}
         >
           <div className="mb-1 flex min-w-0 items-center gap-1">
             {panel === "models" ? (
@@ -342,6 +359,7 @@ export function ModelReasoningPicker({
       </DropdownMenuPrimitive.Portal>
       {canSelectReasoning ? (
         <Button
+          ref={reasoningTriggerRef}
           type="button"
           size="icon"
           variant="ghost"
@@ -352,9 +370,10 @@ export function ModelReasoningPicker({
           aria-expanded={open && panel === "reasoning"}
           title="Configure reasoning effort"
           onClick={() => {
-            setPanel("reasoning");
-            setQuery("");
-            setOpen(true);
+            const nextState = nextReasoningTriggerState(open, panel);
+            setPanel(nextState.panel);
+            setOpen(nextState.open);
+            if (nextState.open) setQuery("");
           }}
         >
           <Brain className="size-4" />
