@@ -8714,12 +8714,33 @@ export const projectReplicaRemoveReadySchema = z.object({
   attempt: z.number().int().positive(),
   path: z.string().min(1),
   localFilesDeleted: z.boolean(),
+  linkRemoved: z.boolean().default(false),
+  ownershipReleased: z.boolean().default(false),
+  warning: z.string().min(1).max(1_000).nullable().default(null),
 });
 
 export const projectReplicaRemoveResultSchema = z.discriminatedUnion("status", [
   projectReplicaProvisionBlockedSchema,
   projectReplicaRemoveReadySchema,
 ]);
+
+export const projectReplicaLinkRepairReadySchema = z.object({
+  status: z.literal("ready"),
+  projectId: z.string().uuid(),
+  path: z.string().min(1).max(8_192),
+  linkPath: z.string().min(1).max(8_192),
+  repaired: z.boolean(),
+});
+
+export const projectReplicaLinkRepairBlockedSchema = z.object({
+  status: z.literal("blocked"),
+  error: projectReplicaJobErrorSchema,
+});
+
+export const projectReplicaLinkRepairResultSchema = z.discriminatedUnion(
+  "status",
+  [projectReplicaLinkRepairReadySchema, projectReplicaLinkRepairBlockedSchema],
+);
 
 export const projectRemoveSchema = z.object({
   deleteLocalFiles: z.boolean().default(false),
@@ -11441,10 +11462,16 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.replica.synchronize"),
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
+    projectId: z.string().uuid().optional(),
     repository: z.object({
       nameWithOwner: workerRepositoryNameSchema,
     }),
     sourcePath: z.string().min(1).max(8_192),
+    placement: projectReplicaPlacementResultSchema.optional(),
+    repositoryFingerprint: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/u)
+      .optional(),
     expectedRevision: gitObjectRevisionSchema,
     policy: projectReplicaSynchronizationPolicySchema,
   }),
@@ -11452,11 +11479,27 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.replica.remove"),
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
+    projectId: z.string().uuid().optional(),
     repository: z.object({
       nameWithOwner: workerRepositoryNameSchema,
     }),
     sourcePath: z.string().min(1).max(8_192),
+    placement: projectReplicaPlacementResultSchema.optional(),
+    repositoryFingerprint: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/u)
+      .optional(),
     deleteLocalFiles: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("project.replica.link.repair"),
+    projectId: z.string().uuid(),
+    repository: z.object({
+      nameWithOwner: workerRepositoryNameSchema,
+    }),
+    sourcePath: z.string().min(1).max(8_192),
+    linkPath: z.string().min(1).max(8_192),
+    repositoryFingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
   }),
   z.object({
     type: z.literal("project.files.delete"),
@@ -13627,6 +13670,9 @@ export type ProjectReplicaSynchronizeResult = z.infer<
 >;
 export type ProjectReplicaRemoveResult = z.infer<
   typeof projectReplicaRemoveResultSchema
+>;
+export type ProjectReplicaLinkRepairResult = z.infer<
+  typeof projectReplicaLinkRepairResultSchema
 >;
 export type ProjectRemove = z.infer<typeof projectRemoveSchema>;
 export type GitRef = z.infer<typeof gitRefSchema>;

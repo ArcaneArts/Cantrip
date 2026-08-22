@@ -40,6 +40,18 @@ describe("WorkerRoutingRegistry", () => {
     expect(protectedResult.worktree.path).toMatch(/^ctrr_/u);
     expect(protectedResult.worktree.branch).toMatch(/^ctrr_/u);
     expect(protectedResult.status.files[0]?.path).toMatch(/^ctrr_/u);
+    const protectedRepair = (await registry.protectResult(
+      "project.replica.link.repair",
+      {
+        status: "ready",
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb349",
+        path: "/Users/example/private-repository",
+        linkPath: "/Users/example/private-link",
+        repaired: true,
+      },
+    )) as { path: string; linkPath: string };
+    expect(protectedRepair.path).toMatch(/^ctrr_/u);
+    expect(protectedRepair.linkPath).toMatch(/^ctrr_/u);
     expect(
       await readFile(
         path.join(dataDirectory, "repository-routing.json"),

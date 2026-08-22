@@ -5,6 +5,7 @@ import {
   type CodeGraphWorkerStatus,
   type CodexRuntimeReport,
   type DirectBrokerAdvertisement,
+  type ProjectReplicaCapabilities,
   type RemoteSurfaceCapabilities,
   type WorkerHeartbeat,
   type WorkerEncryptionStatus,
@@ -33,6 +34,16 @@ export function createHeartbeat(
   directBroker: DirectBrokerAdvertisement = { available: false },
   codegraph: CodeGraphWorkerStatus = unavailableCodeGraphWorkerStatus,
   encryption: WorkerEncryptionStatus = unavailableWorkerEncryptionStatus,
+  projectReplicas: ProjectReplicaCapabilities = {
+    provision: true,
+    synchronize: true,
+    remove: true,
+    exactRevision: true,
+    directPlacement: true,
+    managedLinkPlacement: false,
+    attachExisting: true,
+    recursiveParentCreation: true,
+  },
 ): WorkerHeartbeat {
   return workerHeartbeatSchema.parse({
     workerId: config.workerId,
@@ -44,12 +55,7 @@ export function createHeartbeat(
     remoteSurfaces,
     code,
     directBroker,
-    projectReplicas: {
-      provision: true,
-      synchronize: true,
-      remove: true,
-      exactRevision: true,
-    },
+    projectReplicas,
     managedFolders: {
       create: true,
       attachExisting: true,

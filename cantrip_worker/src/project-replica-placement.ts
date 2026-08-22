@@ -1,12 +1,16 @@
 import { randomUUID } from "node:crypto";
 import {
   lstat,
+  mkdtemp,
   mkdir,
+  readlink,
   readFile,
   realpath,
   rename,
   rm,
   stat,
+  symlink,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import path from "node:path";
@@ -24,9 +28,11 @@ const MAX_PATH_LENGTH = 8_192;
 interface PlacementRecord {
   canonicalPath: string;
   createdAt: string;
+  linkPath: string | null;
   mode: ProjectReplicaPlacementMode;
   ownership: ProjectReplicaOwnershipKind;
   projectId: string;
+  releasedAt?: string | null;
   repositoryFingerprint: string;
   requestedPath: string;
   workerId: string;
@@ -54,6 +60,7 @@ interface StagingMarker {
 
 export interface PreparedReplicaPlacement {
   exists: boolean;
+  linkPath: string | null;
   mode: ProjectReplicaPlacementMode;
   requestedPath: string | null;
   stagingPath: string;
@@ -69,6 +76,8 @@ export class ProjectReplicaPlacementError extends Error {
       | "parent-creation-failed"
       | "target-type-mismatch"
       | "target-owned-by-another-project"
+      | "link-unsupported"
+      | "link-target-mismatch"
       | "ownership-proof-missing",
     message: string,
     readonly retryable = false,
@@ -104,8 +113,16 @@ function parseRecord(value: unknown): PlacementRecord {
     typeof record.requestedPath !== "string" ||
     !record.requestedPath ||
     record.requestedPath.length > MAX_PATH_LENGTH ||
+    (record.linkPath !== undefined &&
+      record.linkPath !== null &&
+      (typeof record.linkPath !== "string" ||
+        !record.linkPath ||
+        record.linkPath.length > MAX_PATH_LENGTH)) ||
     (record.mode !== "direct" && record.mode !== "managed-link") ||
     (record.ownership !== "cantrip" && record.ownership !== "user") ||
+    (record.releasedAt !== undefined &&
+      record.releasedAt !== null &&
+      typeof record.releasedAt !== "string") ||
     typeof record.createdAt !== "string"
   ) {
     throw new Error("Invalid project replica placement record.");
@@ -113,9 +130,12 @@ function parseRecord(value: unknown): PlacementRecord {
   return {
     canonicalPath: record.canonicalPath,
     createdAt: record.createdAt,
+    linkPath: typeof record.linkPath === "string" ? record.linkPath : null,
     mode: record.mode,
     ownership: record.ownership,
     projectId: record.projectId,
+    releasedAt:
+      typeof record.releasedAt === "string" ? record.releasedAt : null,
     repositoryFingerprint: record.repositoryFingerprint,
     requestedPath: record.requestedPath,
     workerId: record.workerId,
@@ -167,6 +187,59 @@ async function existingStats(target: string) {
   }
 }
 
+function pathsEqual(left: string, right: string): boolean {
+  const comparable = (value: string) => {
+    const normalized = path.normalize(value);
+    if (process.platform !== "win32") return normalized;
+    const withoutNamespace = normalized.startsWith("\\\\?\\UNC\\")
+      ? `\\\\${normalized.slice(8)}`
+      : normalized.startsWith("\\\\?\\")
+        ? normalized.slice(4)
+        : normalized;
+    return withoutNamespace.toLowerCase();
+  };
+  return comparable(left) === comparable(right);
+}
+
+function pathIsWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
+  );
+}
+
+export async function probeManagedLinkPlacement(
+  dataDirectory: string,
+): Promise<boolean> {
+  let probeDirectory: string | null = null;
+  try {
+    await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+    probeDirectory = await mkdtemp(
+      path.join(dataDirectory, ".project-link-capability-"),
+    );
+    const target = path.join(probeDirectory, "target");
+    const link = path.join(probeDirectory, "link");
+    await mkdir(target, { mode: 0o700 });
+    await symlink(
+      target,
+      link,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    return pathsEqual(await realpath(target), await realpath(link));
+  } catch {
+    return false;
+  } finally {
+    if (probeDirectory) {
+      await rm(probeDirectory, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
+    }
+  }
+}
+
 export class ProjectReplicaPlacementManager {
   readonly #registryPath: string;
   #writeQueue: Promise<void> = Promise.resolve();
@@ -192,19 +265,92 @@ export class ProjectReplicaPlacementManager {
         recursive: true,
         mode: 0o700,
       });
+      const managedTarget = path.resolve(input.managedTarget);
+      const placementRecord = (await this.#readRegistry()).records.find(
+        (record) => pathsEqual(record.canonicalPath, managedTarget),
+      );
+      if (placementRecord) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          placementRecord.releasedAt == null
+            ? "The managed repository source is already assigned to a custom-placement project."
+            : "The managed repository source was retained as user-managed storage and cannot be reclaimed automatically.",
+        );
+      }
       return {
-        exists: (await existingStats(input.managedTarget)) !== null,
+        exists: (await existingStats(managedTarget)) !== null,
+        linkPath: null,
         mode: "managed",
         requestedPath: null,
-        stagingPath: `${input.managedTarget}.cantrip-provision-${input.jobId}`,
-        targetPath: input.managedTarget,
+        stagingPath: `${managedTarget}.cantrip-provision-${input.jobId}`,
+        targetPath: managedTarget,
       };
     }
-    if (input.placement.mode !== "direct") {
-      throw new ProjectReplicaPlacementError(
-        "placement-unsupported",
-        "Managed-link placement is not available on this worker yet.",
+    if (input.placement.mode === "managed-link") {
+      await mkdir(path.dirname(input.managedTarget), {
+        recursive: true,
+        mode: 0o700,
+      });
+      const requestedPath = this.#validateRequestedPath(input.placement.path);
+      const canonicalParent = await this.#ensureParents(
+        path.dirname(requestedPath),
       );
+      const linkPath = path.join(canonicalParent, path.basename(requestedPath));
+      const managedTarget = path.resolve(input.managedTarget);
+      if (pathIsWithin(managedTarget, linkPath)) {
+        throw new ProjectReplicaPlacementError(
+          "link-target-mismatch",
+          "The managed link must be outside its canonical repository source.",
+        );
+      }
+      const registry = await this.#readRegistry();
+      const retainedSource = registry.records.find(
+        (record) =>
+          record.releasedAt != null &&
+          pathsEqual(record.canonicalPath, managedTarget),
+      );
+      if (retainedSource) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The managed repository source was retained as user-managed storage and cannot be reclaimed automatically.",
+        );
+      }
+      const collision = registry.records.find(
+        (record) =>
+          record.releasedAt == null &&
+          (pathsEqual(record.canonicalPath, managedTarget) ||
+            (record.linkPath !== null &&
+              pathsEqual(record.linkPath, linkPath))),
+      );
+      if (collision && collision.projectId !== input.projectId) {
+        throw new ProjectReplicaPlacementError(
+          "target-owned-by-another-project",
+          "The requested managed link is already assigned to another Cantrip project.",
+        );
+      }
+      const linkStats = await existingStats(linkPath);
+      if (linkStats) {
+        if (!linkStats.isSymbolicLink()) {
+          throw new ProjectReplicaPlacementError(
+            "link-target-mismatch",
+            "The requested managed-link path is occupied by another filesystem entry.",
+          );
+        }
+        if (!collision || collision.projectId !== input.projectId) {
+          throw new ProjectReplicaPlacementError(
+            "ownership-proof-missing",
+            "The existing repository link is not owned by this Cantrip project.",
+          );
+        }
+      }
+      return {
+        exists: (await existingStats(managedTarget)) !== null,
+        linkPath,
+        mode: "managed-link",
+        requestedPath,
+        stagingPath: `${managedTarget}.cantrip-provision-${input.jobId}`,
+        targetPath: managedTarget,
+      };
     }
 
     const requestedPath = this.#validateRequestedPath(input.placement.path);
@@ -245,7 +391,9 @@ export class ProjectReplicaPlacementManager {
     }
 
     const collision = (await this.#readRegistry()).records.find(
-      (record) => record.canonicalPath === targetPath,
+      (record) =>
+        record.releasedAt == null &&
+        pathsEqual(record.canonicalPath, targetPath),
     );
     if (collision && collision.projectId !== input.projectId) {
       throw new ProjectReplicaPlacementError(
@@ -256,6 +404,7 @@ export class ProjectReplicaPlacementManager {
 
     return {
       exists,
+      linkPath: null,
       mode: "direct",
       requestedPath,
       stagingPath: `${targetPath}.cantrip-provision-${input.jobId}`,
@@ -356,7 +505,9 @@ export class ProjectReplicaPlacementManager {
   }): Promise<ProjectReplicaOwnershipKind> {
     const registry = await this.#readRegistry();
     const record = registry.records.find(
-      (candidate) => candidate.canonicalPath === input.canonicalPath,
+      (candidate) =>
+        candidate.releasedAt == null &&
+        pathsEqual(candidate.canonicalPath, input.canonicalPath),
     );
     if (record && record.projectId !== input.projectId) {
       throw new ProjectReplicaPlacementError(
@@ -406,7 +557,12 @@ export class ProjectReplicaPlacementManager {
     await this.#serializeWrite(async () => {
       const registry = await this.#readRegistry();
       const collision = registry.records.find(
-        (candidate) => candidate.canonicalPath === input.canonicalPath,
+        (candidate) =>
+          candidate.releasedAt == null &&
+          (pathsEqual(candidate.canonicalPath, input.canonicalPath) ||
+            (candidate.linkPath !== null &&
+              input.linkPath !== null &&
+              pathsEqual(candidate.linkPath, input.linkPath))),
       );
       if (collision && collision.projectId !== input.projectId) {
         throw new ProjectReplicaPlacementError(
@@ -420,6 +576,338 @@ export class ProjectReplicaPlacementManager {
       records.push({ ...input, workerId: this.workerId });
       await this.#writeRegistry({ version: REGISTRY_VERSION, records });
     });
+  }
+
+  async materializeManagedLink(input: {
+    canonicalPath: string;
+    linkPath: string;
+    projectId: string;
+    repositoryFingerprint: string;
+    requestedPath: string;
+    requireExistingClaim?: boolean;
+  }): Promise<{ changed: boolean }> {
+    let changed = false;
+    await this.#serializeWrite(async () => {
+      const registry = await this.#readRegistry();
+      const retainedSource = registry.records.find(
+        (candidate) =>
+          candidate.releasedAt != null &&
+          pathsEqual(candidate.canonicalPath, input.canonicalPath),
+      );
+      if (retainedSource) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The managed repository source was retained as user-managed storage and cannot be reclaimed automatically.",
+        );
+      }
+      const projectRecord = registry.records.find(
+        (candidate) =>
+          candidate.projectId === input.projectId &&
+          candidate.releasedAt == null,
+      );
+      const matchingClaim =
+        projectRecord?.workerId === this.workerId &&
+        projectRecord.mode === "managed-link" &&
+        projectRecord.ownership === "cantrip" &&
+        pathsEqual(projectRecord.canonicalPath, input.canonicalPath) &&
+        projectRecord.linkPath !== null &&
+        pathsEqual(projectRecord.linkPath, input.linkPath) &&
+        projectRecord.repositoryFingerprint === input.repositoryFingerprint;
+      if (projectRecord && !matchingClaim) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The managed-link ownership record does not match this repository.",
+        );
+      }
+      const collision = registry.records.find(
+        (candidate) =>
+          candidate.projectId !== input.projectId &&
+          candidate.releasedAt == null &&
+          (pathsEqual(candidate.canonicalPath, input.canonicalPath) ||
+            (candidate.linkPath !== null &&
+              pathsEqual(candidate.linkPath, input.linkPath))),
+      );
+      if (collision) {
+        throw new ProjectReplicaPlacementError(
+          "target-owned-by-another-project",
+          "The managed source or link is already assigned to another Cantrip project.",
+        );
+      }
+
+      const linkStats = await existingStats(input.linkPath);
+      if (linkStats) {
+        if (!matchingClaim) {
+          throw new ProjectReplicaPlacementError(
+            "ownership-proof-missing",
+            "The existing repository link is not owned by this Cantrip project.",
+          );
+        }
+        await this.#verifyManagedLink(input.linkPath, input.canonicalPath);
+        return;
+      }
+      if (input.requireExistingClaim && !matchingClaim) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The managed link cannot be repaired without its worker ownership record.",
+        );
+      }
+      if (!matchingClaim) {
+        const records = registry.records.filter(
+          (candidate) => candidate.projectId !== input.projectId,
+        );
+        records.push({
+          canonicalPath: input.canonicalPath,
+          createdAt: new Date().toISOString(),
+          linkPath: input.linkPath,
+          mode: "managed-link",
+          ownership: "cantrip",
+          projectId: input.projectId,
+          repositoryFingerprint: input.repositoryFingerprint,
+          requestedPath: input.requestedPath,
+          workerId: this.workerId,
+        });
+        await this.#writeRegistry({ version: REGISTRY_VERSION, records });
+      }
+      try {
+        await symlink(
+          input.canonicalPath,
+          input.linkPath,
+          process.platform === "win32" ? "junction" : "dir",
+        );
+        changed = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+          throw new ProjectReplicaPlacementError(
+            isPermissionFailure(error)
+              ? "path-permission-denied"
+              : "link-unsupported",
+            "The worker could not create the requested managed repository link.",
+            isPermissionFailure(error),
+          );
+        }
+      }
+      await this.#verifyManagedLink(input.linkPath, input.canonicalPath);
+    });
+    return { changed };
+  }
+
+  async verifyPlacementOwnership(input: {
+    canonicalPath: string;
+    gitCommonDir: string;
+    linkPath: string | null;
+    mode: "direct" | "managed-link";
+    ownership: ProjectReplicaOwnershipKind;
+    projectId: string;
+    repositoryFingerprint: string;
+  }): Promise<void> {
+    const registry = await this.#readRegistry();
+    const record = registry.records.find(
+      (candidate) =>
+        candidate.projectId === input.projectId && candidate.releasedAt == null,
+    );
+    if (
+      !record ||
+      record.workerId !== this.workerId ||
+      record.mode !== input.mode ||
+      record.ownership !== input.ownership ||
+      !pathsEqual(record.canonicalPath, input.canonicalPath) ||
+      record.repositoryFingerprint !== input.repositoryFingerprint ||
+      (input.linkPath === null
+        ? record.linkPath !== null
+        : record.linkPath === null ||
+          !pathsEqual(record.linkPath, input.linkPath))
+    ) {
+      throw new ProjectReplicaPlacementError(
+        "ownership-proof-missing",
+        "The worker ownership record does not match this project replica.",
+      );
+    }
+    if (input.mode === "direct" && input.ownership === "cantrip") {
+      const marker = await this.#readOwnershipMarker(input.gitCommonDir);
+      if (
+        marker?.projectId !== input.projectId ||
+        marker.workerId !== this.workerId ||
+        marker.repositoryFingerprint !== input.repositoryFingerprint
+      ) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The direct checkout no longer has matching Cantrip ownership proof.",
+        );
+      }
+    }
+  }
+
+  async releasePlacement(input: {
+    canonicalPath: string;
+    gitCommonDir: string | null;
+    mode: "direct" | "managed-link";
+    ownership: ProjectReplicaOwnershipKind;
+    projectId: string;
+    repositoryFingerprint: string;
+  }): Promise<void> {
+    await this.#serializeWrite(async () => {
+      const registry = await this.#readRegistry();
+      const index = registry.records.findIndex(
+        (candidate) =>
+          candidate.projectId === input.projectId &&
+          pathsEqual(candidate.canonicalPath, input.canonicalPath) &&
+          candidate.mode === input.mode &&
+          candidate.ownership === input.ownership &&
+          candidate.repositoryFingerprint === input.repositoryFingerprint,
+      );
+      if (index < 0) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The repository placement ownership record cannot be released safely.",
+        );
+      }
+      const record = registry.records[index]!;
+      if (record.workerId !== this.workerId) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The repository placement belongs to another worker.",
+        );
+      }
+      if (record.releasedAt == null) {
+        registry.records[index] = {
+          ...record,
+          releasedAt: new Date().toISOString(),
+        };
+        await this.#writeRegistry(registry);
+      }
+    });
+    if (
+      input.mode === "direct" &&
+      input.ownership === "cantrip" &&
+      input.gitCommonDir
+    ) {
+      const marker = await this.#readOwnershipMarker(input.gitCommonDir);
+      const markerPath = path.join(input.gitCommonDir, OWNER_MARKER_NAME);
+      if (!marker && !(await existingStats(markerPath))) return;
+      if (
+        marker?.projectId !== input.projectId ||
+        marker.workerId !== this.workerId ||
+        marker.repositoryFingerprint !== input.repositoryFingerprint
+      ) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The direct checkout ownership marker cannot be released safely.",
+        );
+      }
+      const markerStats = await lstat(markerPath);
+      if (!markerStats.isFile() || markerStats.isSymbolicLink()) {
+        throw new ProjectReplicaPlacementError(
+          "ownership-proof-missing",
+          "The direct checkout ownership marker changed unexpectedly.",
+        );
+      }
+      await unlink(markerPath);
+    }
+  }
+
+  async isPlacementReleased(input: {
+    canonicalPath: string;
+    mode: "direct" | "managed-link";
+    projectId: string;
+    repositoryFingerprint: string;
+  }): Promise<boolean> {
+    const registry = await this.#readRegistry();
+    return registry.records.some(
+      (candidate) =>
+        candidate.projectId === input.projectId &&
+        candidate.workerId === this.workerId &&
+        candidate.mode === input.mode &&
+        pathsEqual(candidate.canonicalPath, input.canonicalPath) &&
+        candidate.repositoryFingerprint === input.repositoryFingerprint &&
+        candidate.releasedAt != null,
+    );
+  }
+
+  async forgetPlacement(
+    projectId: string,
+    canonicalPath: string,
+  ): Promise<void> {
+    await this.#serializeWrite(async () => {
+      const registry = await this.#readRegistry();
+      const records = registry.records.filter(
+        (candidate) =>
+          !(
+            candidate.projectId === projectId &&
+            pathsEqual(candidate.canonicalPath, canonicalPath)
+          ),
+      );
+      if (records.length !== registry.records.length) {
+        await this.#writeRegistry({ version: REGISTRY_VERSION, records });
+      }
+    });
+  }
+
+  async removeManagedLinkIfMatching(input: {
+    canonicalPath: string;
+    linkPath: string;
+  }): Promise<{ removed: boolean; warning: string | null }> {
+    const linkStats = await existingStats(input.linkPath);
+    if (!linkStats) return { removed: false, warning: null };
+    if (!linkStats.isSymbolicLink()) {
+      return {
+        removed: false,
+        warning:
+          "The original managed-link path now contains another entry and was left untouched.",
+      };
+    }
+    let matches = false;
+    try {
+      matches = pathsEqual(
+        await realpath(input.linkPath),
+        await realpath(input.canonicalPath),
+      );
+    } catch {
+      const destination = await readlink(input.linkPath).catch(() => null);
+      if (destination !== null) {
+        matches = pathsEqual(
+          path.resolve(path.dirname(input.linkPath), destination),
+          input.canonicalPath,
+        );
+      }
+    }
+    if (!matches) {
+      return {
+        removed: false,
+        warning:
+          "The original managed-link path no longer points to this checkout and was left untouched.",
+      };
+    }
+    await unlink(input.linkPath);
+    return { removed: true, warning: null };
+  }
+
+  async #verifyManagedLink(
+    linkPath: string,
+    canonicalPath: string,
+  ): Promise<void> {
+    const metadata = await existingStats(linkPath);
+    if (!metadata?.isSymbolicLink()) {
+      throw new ProjectReplicaPlacementError(
+        "link-target-mismatch",
+        "The managed repository link is missing or has been replaced.",
+      );
+    }
+    try {
+      if (
+        !pathsEqual(await realpath(linkPath), await realpath(canonicalPath))
+      ) {
+        throw new ProjectReplicaPlacementError(
+          "link-target-mismatch",
+          "The managed repository link points to a different checkout.",
+        );
+      }
+    } catch (error) {
+      if (error instanceof ProjectReplicaPlacementError) throw error;
+      throw new ProjectReplicaPlacementError(
+        "link-target-mismatch",
+        "The managed repository link could not be verified.",
+      );
+    }
   }
 
   #validateRequestedPath(value: string): string {

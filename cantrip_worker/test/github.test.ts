@@ -2,12 +2,14 @@ import { execFile } from "node:child_process";
 import {
   access,
   chmod,
+  lstat,
   mkdtemp,
   mkdir,
   readFile,
   realpath,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -197,6 +199,99 @@ describe("GitHub project files", () => {
         retryable: false,
       },
     });
+    const recovered = await new GithubClient(
+      dataDirectory,
+      "worker-direct",
+    ).provisionReplica({ ...request, attempt: 5 });
+    if (recovered.status !== "ready" || !recovered.placement) {
+      throw new Error("Direct ownership recovery did not complete.");
+    }
+    if (!recovered.resolvedRevision) {
+      throw new Error("Direct repository has no resolved revision.");
+    }
+    await expect(
+      github.synchronizeReplica({
+        jobId: request.jobId,
+        attempt: 6,
+        projectId: request.projectId,
+        nameWithOwner: request.nameWithOwner,
+        sourcePath: recovered.path,
+        placement: recovered.placement,
+        repositoryFingerprint: recovered.repositoryFingerprint,
+        expectedRevision: recovered.resolvedRevision,
+        policy: "verify-only",
+      }),
+    ).resolves.toMatchObject({
+      status: "ready",
+      changed: false,
+    });
+    await expect(
+      github.removeReplica({
+        jobId: request.jobId,
+        attempt: 7,
+        projectId: request.projectId,
+        nameWithOwner: request.nameWithOwner,
+        sourcePath: recovered.path,
+        placement: recovered.placement,
+        repositoryFingerprint: recovered.repositoryFingerprint,
+        deleteLocalFiles: false,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: false,
+      ownershipReleased: true,
+    });
+    await expect(access(target)).resolves.toBeUndefined();
+    await expect(
+      access(path.join(target, ".git", "cantrip-project-owner.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      github.removeReplica({
+        jobId: request.jobId,
+        attempt: 8,
+        projectId: request.projectId,
+        nameWithOwner: request.nameWithOwner,
+        sourcePath: recovered.path,
+        placement: recovered.placement,
+        repositoryFingerprint: recovered.repositoryFingerprint,
+        deleteLocalFiles: false,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: false,
+      ownershipReleased: true,
+    });
+
+    const deleteTarget = path.join(dataDirectory, "delete", "Cantrip");
+    const deleteRequest = {
+      ...request,
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb347",
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb348",
+      placement: { mode: "direct" as const, path: deleteTarget },
+    };
+    const deletion = await github.provisionReplica(deleteRequest);
+    if (deletion.status !== "ready" || !deletion.placement) {
+      throw new Error("Direct deletion fixture did not provision.");
+    }
+    await expect(
+      github.removeReplica({
+        jobId: deleteRequest.jobId,
+        attempt: 2,
+        projectId: deleteRequest.projectId,
+        nameWithOwner: deleteRequest.nameWithOwner,
+        sourcePath: deletion.path,
+        placement: deletion.placement,
+        repositoryFingerprint: deletion.repositoryFingerprint,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: true,
+      ownershipReleased: true,
+    });
+    await expect(access(deleteTarget)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 
   it("attaches an existing dirty Primary checkout without mutating it", async () => {
@@ -271,7 +366,8 @@ describe("GitHub project files", () => {
       placement: { mode: "direct" as const, path: target },
       expectedRevision: null,
     };
-    await expect(github.provisionReplica(request)).resolves.toMatchObject({
+    const attached = await github.provisionReplica(request);
+    expect(attached).toMatchObject({
       status: "ready",
       resolvedRevision: revision,
       placement: {
@@ -279,6 +375,9 @@ describe("GitHub project files", () => {
         ownership: "user",
       },
     });
+    if (attached.status !== "ready" || !attached.placement) {
+      throw new Error("Existing checkout attachment did not complete.");
+    }
     expect(
       (
         await execFileAsync("git", [
@@ -304,6 +403,40 @@ describe("GitHub project files", () => {
       status: "blocked",
       error: { code: "worktree-dirty", retryable: false },
     });
+    await expect(
+      github.removeReplica({
+        jobId: request.jobId,
+        attempt: 3,
+        projectId: request.projectId,
+        nameWithOwner: request.nameWithOwner,
+        sourcePath: attached.path,
+        placement: attached.placement,
+        repositoryFingerprint: attached.repositoryFingerprint,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "policy-denied", retryable: false },
+    });
+    await expect(
+      github.removeReplica({
+        jobId: request.jobId,
+        attempt: 4,
+        projectId: request.projectId,
+        nameWithOwner: request.nameWithOwner,
+        sourcePath: attached.path,
+        placement: attached.placement,
+        repositoryFingerprint: attached.repositoryFingerprint,
+        deleteLocalFiles: false,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: false,
+      ownershipReleased: true,
+    });
+    await expect(
+      readFile(path.join(target, "LOCAL.txt"), "utf8"),
+    ).resolves.toBe("keep me\n");
   });
 
   it("rejects unsafe direct targets before invoking GitHub clone", async () => {
@@ -341,6 +474,273 @@ describe("GitHub project files", () => {
       error: { code: "target-type-mismatch", retryable: false },
     });
     expect(await readFile(existingFile, "utf8")).toBe("do not replace\n");
+  });
+
+  it("creates, repairs, retains, and safely removes managed repository links", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-managed-link-test-"),
+    );
+    directories.push(dataDirectory);
+    const bareRepository = path.join(
+      dataDirectory,
+      "remotes",
+      "ArcaneArts",
+      "Cantrip.git",
+    );
+    const anotherBareRepository = path.join(
+      dataDirectory,
+      "remotes",
+      "ArcaneArts",
+      "Another.git",
+    );
+    const seed = path.join(dataDirectory, "seed");
+    const managed = path.join(
+      dataDirectory,
+      "repositories",
+      "ArcaneArts",
+      "Cantrip",
+    );
+    const anotherManaged = path.join(
+      dataDirectory,
+      "repositories",
+      "ArcaneArts",
+      "Another",
+    );
+    const firstLink = path.join(dataDirectory, "links", "first", "Cantrip");
+    const secondLink = path.join(dataDirectory, "links", "second", "Cantrip");
+    const thirdLink = path.join(dataDirectory, "links", "third", "Cantrip");
+    await mkdir(path.dirname(bareRepository), { recursive: true });
+    await execFileAsync("git", ["init", "--bare", bareRepository]);
+    await execFileAsync("git", ["init", "--bare", anotherBareRepository]);
+    await execFileAsync("git", ["init", "--initial-branch=main", seed]);
+    await writeFile(path.join(seed, "README.md"), "managed link\n");
+    await execFileAsync("git", ["-C", seed, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Initial",
+    ]);
+    await execFileAsync("git", ["-C", seed, "push", bareRepository, "main"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "push",
+      anotherBareRepository,
+      "main",
+    ]);
+    await execFileAsync("git", [
+      "--git-dir",
+      bareRepository,
+      "symbolic-ref",
+      "HEAD",
+      "refs/heads/main",
+    ]);
+    await execFileAsync("git", [
+      "--git-dir",
+      anotherBareRepository,
+      "symbolic-ref",
+      "HEAD",
+      "refs/heads/main",
+    ]);
+    await mkdir(path.dirname(managed), { recursive: true });
+    await execFileAsync("git", ["clone", bareRepository, managed]);
+    await execFileAsync("git", [
+      "clone",
+      anotherBareRepository,
+      anotherManaged,
+    ]);
+
+    const github = new GithubClient(dataDirectory, "worker-link");
+    const firstRequest = {
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb340",
+      attempt: 1,
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb341",
+      nameWithOwner: "ArcaneArts/Cantrip",
+      placement: { mode: "managed-link" as const, path: firstLink },
+      expectedRevision: null,
+    };
+    const first = await github.provisionReplica(firstRequest);
+    expect(first).toMatchObject({
+      status: "ready",
+      placement: {
+        mode: "managed-link",
+        materialization: "reused",
+        ownership: "cantrip",
+      },
+    });
+    if (first.status !== "ready" || !first.placement) {
+      throw new Error("Managed-link setup did not complete.");
+    }
+    expect((await lstat(first.placement.linkPath!)).isSymbolicLink()).toBe(
+      true,
+    );
+    expect(await realpath(first.placement.linkPath!)).toBe(first.path);
+
+    await rm(first.placement.linkPath!);
+    await expect(
+      github.repairReplicaLink({
+        projectId: firstRequest.projectId,
+        nameWithOwner: firstRequest.nameWithOwner,
+        sourcePath: first.path,
+        linkPath: first.placement.linkPath!,
+        repositoryFingerprint: first.repositoryFingerprint,
+      }),
+    ).resolves.toMatchObject({ status: "ready", repaired: true });
+    const repaired = await github.provisionReplica({
+      ...firstRequest,
+      attempt: 2,
+    });
+    expect(repaired).toMatchObject({ status: "ready", reused: true });
+    if (repaired.status !== "ready" || !repaired.placement) {
+      throw new Error("Managed-link repair did not complete.");
+    }
+    expect(await realpath(repaired.placement.linkPath!)).toBe(repaired.path);
+
+    await expect(
+      github.removeReplica({
+        jobId: firstRequest.jobId,
+        attempt: 3,
+        projectId: firstRequest.projectId,
+        nameWithOwner: firstRequest.nameWithOwner,
+        sourcePath: repaired.path,
+        placement: repaired.placement,
+        repositoryFingerprint: repaired.repositoryFingerprint,
+        deleteLocalFiles: false,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: false,
+      linkRemoved: false,
+      ownershipReleased: true,
+    });
+    await expect(
+      github.removeReplica({
+        jobId: firstRequest.jobId,
+        attempt: 4,
+        projectId: firstRequest.projectId,
+        nameWithOwner: firstRequest.nameWithOwner,
+        sourcePath: repaired.path,
+        placement: repaired.placement,
+        repositoryFingerprint: repaired.repositoryFingerprint,
+        deleteLocalFiles: false,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: false,
+      ownershipReleased: true,
+    });
+    await expect(access(managed)).resolves.toBeUndefined();
+    expect(await realpath(repaired.placement.linkPath!)).toBe(repaired.path);
+    await expect(
+      github.provisionReplica({
+        ...firstRequest,
+        attempt: 5,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb342",
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "ownership-proof-missing" },
+    });
+    await expect(
+      github.provisionReplica({
+        ...firstRequest,
+        attempt: 6,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb342",
+        placement: { mode: "managed-link", path: secondLink },
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "ownership-proof-missing" },
+    });
+
+    const secondRequest = {
+      ...firstRequest,
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb343",
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb344",
+      nameWithOwner: "ArcaneArts/Another",
+      placement: { mode: "managed-link" as const, path: secondLink },
+    };
+    const second = await github.provisionReplica(secondRequest);
+    if (second.status !== "ready" || !second.placement) {
+      throw new Error("Second managed-link setup did not complete.");
+    }
+    await expect(
+      github.removeReplica({
+        jobId: secondRequest.jobId,
+        attempt: 2,
+        projectId: secondRequest.projectId,
+        nameWithOwner: secondRequest.nameWithOwner,
+        sourcePath: second.path,
+        placement: second.placement,
+        repositoryFingerprint: second.repositoryFingerprint,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: true,
+      linkRemoved: true,
+      ownershipReleased: true,
+      warning: null,
+    });
+    await expect(access(anotherManaged)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await expect(access(secondLink)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await lstat(firstLink)).isSymbolicLink()).toBe(true);
+
+    await execFileAsync("git", [
+      "clone",
+      anotherBareRepository,
+      anotherManaged,
+    ]);
+    const thirdRequest = {
+      ...firstRequest,
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb345",
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb346",
+      nameWithOwner: "ArcaneArts/Another",
+      placement: { mode: "managed-link" as const, path: thirdLink },
+    };
+    const third = await github.provisionReplica(thirdRequest);
+    if (third.status !== "ready" || !third.placement) {
+      throw new Error("Third managed-link setup did not complete.");
+    }
+    const unrelatedTarget = path.join(dataDirectory, "unrelated-target");
+    await rm(third.placement.linkPath!);
+    await mkdir(unrelatedTarget);
+    await symlink(
+      unrelatedTarget,
+      third.placement.linkPath!,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    await expect(
+      github.removeReplica({
+        jobId: thirdRequest.jobId,
+        attempt: 2,
+        projectId: thirdRequest.projectId,
+        nameWithOwner: thirdRequest.nameWithOwner,
+        sourcePath: third.path,
+        placement: third.placement,
+        repositoryFingerprint: third.repositoryFingerprint,
+        deleteLocalFiles: true,
+      }),
+    ).resolves.toMatchObject({
+      status: "removed",
+      localFilesDeleted: true,
+      linkRemoved: false,
+      ownershipReleased: true,
+      warning: expect.stringContaining("left untouched"),
+    });
+    expect(await realpath(third.placement.linkPath!)).toBe(
+      await realpath(unrelatedTarget),
+    );
+    await expect(access(managed)).resolves.toBeUndefined();
+    expect(await realpath(firstLink)).toBe(await realpath(managed));
   });
 
   it("provisions an exact revision without mutating dirty or diverged replicas", async () => {

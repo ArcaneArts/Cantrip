@@ -119,6 +119,7 @@ import {
   writeExplorerFile,
 } from "./explorer.js";
 import { GithubClient } from "./github.js";
+import { probeManagedLinkPlacement } from "./project-replica-placement.js";
 import { ManagedFolderManager } from "./managed-folders.js";
 import { ProjectGithubConverter } from "./project-github-conversion.js";
 import { ProviderAuthObserver } from "./provider-auth-observer.js";
@@ -601,6 +602,21 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const repositoryManagedOperations = new RepositoryManagedOperationStore(
     config.dataDirectory,
   );
+  const managedLinkPlacement = await workerStartupPhase(
+    "probe-project-repository-links",
+    () => probeManagedLinkPlacement(config.dataDirectory),
+    { workerId: config.workerId },
+  );
+  const projectReplicaCapabilities = {
+    provision: true,
+    synchronize: true,
+    remove: true,
+    exactRevision: true,
+    directPlacement: true,
+    managedLinkPlacement,
+    attachExisting: true,
+    recursiveParentCreation: true,
+  } as const;
   const terminalStreamContexts = new Map<
     string,
     {
@@ -626,6 +642,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     directBroker.advertisement,
     codeGraphWorkerStatus(codegraphRuntime, null, codegraphPreparationError),
     workerEncryption.status(),
+    projectReplicaCapabilities,
   );
   await workerStartupPhase(
     "establish-worker-credential",
@@ -1576,8 +1593,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           {
             jobId: command.jobId,
             attempt: command.attempt,
+            projectId: command.projectId ?? command.jobId,
             nameWithOwner: command.repository.nameWithOwner,
             sourcePath: command.sourcePath,
+            placement: command.placement,
+            repositoryFingerprint: command.repositoryFingerprint,
             expectedRevision: command.expectedRevision,
             policy: command.policy,
           },
@@ -1594,8 +1614,11 @@ async function start(): Promise<WorkerRuntimeOutcome> {
           {
             jobId: command.jobId,
             attempt: command.attempt,
+            projectId: command.projectId ?? command.jobId,
             nameWithOwner: command.repository.nameWithOwner,
             sourcePath: command.sourcePath,
+            placement: command.placement,
+            repositoryFingerprint: command.repositoryFingerprint,
             deleteLocalFiles: command.deleteLocalFiles,
           },
           (progress) =>
@@ -1606,6 +1629,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               progress,
             }),
         );
+      case "project.replica.link.repair":
+        return github.repairReplicaLink({
+          projectId: command.projectId,
+          nameWithOwner: command.repository.nameWithOwner,
+          sourcePath: command.sourcePath,
+          linkPath: command.linkPath,
+          repositoryFingerprint: command.repositoryFingerprint,
+        });
       case "project.files.delete":
         await managedRuns.stopForPath(command.path);
         return github.deleteRepository(command.path);
@@ -3937,6 +3968,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             codegraphPreparationError,
           ),
           workerEncryption.status(),
+          heartbeat.projectReplicas,
         ),
       );
       if (!connected) {
