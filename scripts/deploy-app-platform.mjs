@@ -95,6 +95,7 @@ export function deployAppPlatform({
   commit,
   root = scriptRoot,
   run = command,
+  waitForActivation = true,
 } = {}) {
   if (!/^[0-9a-f]{40}$/u.test(commit ?? "")) {
     throw new Error("App Platform deployment requires a full Git commit SHA.");
@@ -107,11 +108,27 @@ export function deployAppPlatform({
     cwd: root,
     inherit: true,
   });
-  run(
-    "doctl",
-    ["apps", "update", appId, "--spec", specPath, "--update-sources", "--wait"],
-    { cwd: root, inherit: true },
-  );
+  const updateArguments = [
+    "apps",
+    "update",
+    appId,
+    "--spec",
+    specPath,
+    "--update-sources",
+  ];
+  if (waitForActivation) updateArguments.push("--wait");
+  run("doctl", updateArguments, { cwd: root, inherit: true });
+  if (!waitForActivation) {
+    console.log(
+      `Triggered DigitalOcean App Platform deployment for ${commit.slice(0, 12)}; continuing without waiting for activation.`,
+    );
+    return {
+      appId,
+      commit,
+      components: [...appPlatformComponents],
+      pending: true,
+    };
+  }
   const app = parseAppPlatformApp(
     run("doctl", ["apps", "get", appId, "--output", "json"], {
       cwd: root,

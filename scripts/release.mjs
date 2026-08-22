@@ -111,6 +111,7 @@ export async function releaseCantrip({
   const appPlatformDeployment = await deployWeb({
     root,
     commit: promotion.commit,
+    waitForActivation: false,
   });
   const deployment = await deploy({ root, commit: promotion.commit });
   return { appPlatformDeployment, deployment, promotion };
