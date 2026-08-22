@@ -547,50 +547,76 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-// tray-icon displays the NSImage at 18 points. Use an exact 2x representation
-// so Retina displays do not resample the pixel-hinted status-item artwork.
-const MACOS_TRAY_ICON_SIZE: u32 = 36;
+const MACOS_TRAY_ICON_SVG: &[u8] = include_bytes!("../icons/tray-icon-macos.svg");
 #[cfg(target_os = "macos")]
-const MACOS_TRAY_ICON_RGBA: &[u8; (MACOS_TRAY_ICON_SIZE * MACOS_TRAY_ICON_SIZE * 4) as usize] =
-    include_bytes!("../icons/tray-icon-macos.rgba");
+const MACOS_TRAY_ICON_PNG: &[u8] = include_bytes!("../icons/tray-icon-macos.png");
+
+#[cfg(target_os = "macos")]
+fn install_macos_vector_tray_icon(tray: &tauri::tray::TrayIcon) -> tauri::Result<()> {
+    use objc2::AllocAnyThread;
+    use objc2_app_kit::{NSCellImagePosition, NSImage, NSImageScaling};
+    use objc2_foundation::{MainThreadMarker, NSData, NSSize};
+
+    tray.with_inner_tray_icon(|inner| -> std::io::Result<()> {
+        let mtm = MainThreadMarker::new().ok_or_else(|| {
+            std::io::Error::other("tray icon must be configured on the main thread")
+        })?;
+        let status_item = inner
+            .ns_status_item()
+            .ok_or_else(|| std::io::Error::other("macOS tray status item is unavailable"))?;
+        let svg_data = NSData::with_bytes(MACOS_TRAY_ICON_SVG);
+
+        let button = status_item
+            .button(mtm)
+            .ok_or_else(|| std::io::Error::other("macOS tray button is unavailable"))?;
+        let image = NSImage::initWithData(NSImage::alloc(), &svg_data)
+            .or_else(|| {
+                let png_data = NSData::with_bytes(MACOS_TRAY_ICON_PNG);
+                NSImage::initWithData(NSImage::alloc(), &png_data)
+            })
+            .ok_or_else(|| std::io::Error::other("macOS could not decode the tray icon"))?;
+        image.setSize(NSSize::new(18.0, 18.0));
+        image.setTemplate(true);
+        button.setImage(Some(&image));
+        button.setImagePosition(NSCellImagePosition::ImageOnly);
+        button.setImageScaling(NSImageScaling::ScaleNone);
+        Ok(())
+    })??;
+    Ok(())
+}
 
 #[cfg(desktop)]
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "Open Cantrip", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cantrip", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &quit])?;
-    let mut tray = TrayIconBuilder::new().menu(&menu).tooltip("Cantrip");
-    #[cfg(target_os = "macos")]
-    {
-        let icon = tauri::image::Image::new(
-            MACOS_TRAY_ICON_RGBA,
-            MACOS_TRAY_ICON_SIZE,
-            MACOS_TRAY_ICON_SIZE,
-        );
-        tray = tray.icon(icon).icon_as_template(true);
-    }
+    let tray = TrayIconBuilder::new().menu(&menu).tooltip("Cantrip");
     #[cfg(not(target_os = "macos"))]
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
-    tray.on_menu_event(|app, event| match event.id.as_ref() {
-        "show" => show_main_window(app),
-        "quit" => request_quit_confirmation(app),
-        _ => {}
-    })
-    .on_tray_icon_event(|tray, event| {
-        if matches!(
-            event,
-            TrayIconEvent::Click {
-                button: MouseButton::Left,
-                button_state: MouseButtonState::Up,
-                ..
+    let tray = match app.default_window_icon() {
+        Some(icon) => tray.icon(icon.clone()),
+        None => tray,
+    };
+    let tray = tray
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_main_window(app),
+            "quit" => request_quit_confirmation(app),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if matches!(
+                event,
+                TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                }
+            ) {
+                show_main_window(tray.app_handle());
             }
-        ) {
-            show_main_window(tray.app_handle());
-        }
-    })
-    .build(app)?;
+        })
+        .build(app)?;
+    #[cfg(target_os = "macos")]
+    install_macos_vector_tray_icon(&tray)?;
     Ok(())
 }
 
