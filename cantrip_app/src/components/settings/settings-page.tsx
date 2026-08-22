@@ -232,9 +232,10 @@ export function changedAccountLabel(
 export function EliteModeButton({ onOpen }: { onOpen(): void }) {
   return (
     <Button
-      aria-label="Open Elite Mode"
-      className="sm:mr-auto"
+      aria-label="Configure Elite Mode"
+      className="h-7 px-2.5 text-xs"
       onClick={onOpen}
+      size="sm"
       type="button"
       variant="ghost"
     >
@@ -957,7 +958,7 @@ export function SettingsPage({
     !generalSearch ||
     matchesSearch(
       generalSearch,
-      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system",
+      "appearance theme system light dark high contrast pro mode opacity transparency vibrancy blur macos operating system elite experimental reveal effects configure",
     );
   const desktopStreamingMatches =
     !generalSearch ||
@@ -1127,6 +1128,12 @@ export function SettingsPage({
                         />
                         High contrast
                       </label>
+                      <EliteModeButton
+                        onOpen={() => {
+                          setSection("elite");
+                          onEliteOpen?.();
+                        }}
+                      />
                       {macosDesktopRuntime ? (
                         <label
                           className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/50 has-disabled:cursor-not-allowed has-disabled:opacity-50"
@@ -1625,13 +1632,6 @@ export function SettingsPage({
                 </p>
               ) : null}
               <DialogFooter>
-                <EliteModeButton
-                  onOpen={() => {
-                    setProModeOpacityDialogOpen(false);
-                    setSection("elite");
-                    onEliteOpen?.();
-                  }}
-                />
                 <DialogClose asChild>
                   <Button type="button" variant="outline">
                     Cancel
