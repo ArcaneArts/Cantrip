@@ -579,6 +579,7 @@ export function TerminalView({
     >
       <div
         className="relative flex min-h-0 min-w-0 flex-1"
+        data-elite-global={hasLoaded ? "" : undefined}
         style={{
           paddingBottom: mobileCommandBarVisible
             ? `${mobileKeyboard.contentInset}px`
@@ -591,6 +592,7 @@ export function TerminalView({
           data-selectable-text="true"
         />
         <SurfaceLoadingVeil
+          fade={false}
           label={
             terminal.linkedChatId
               ? "Starting Codex console…"

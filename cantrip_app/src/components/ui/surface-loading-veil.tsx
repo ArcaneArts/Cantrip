@@ -4,10 +4,12 @@ import { cn } from "@/lib/utils";
 
 export function SurfaceLoadingVeil({
   className,
+  fade = true,
   label,
   visible,
 }: {
   className?: string;
+  fade?: boolean;
   label: string;
   visible: boolean;
 }) {
@@ -15,7 +17,8 @@ export function SurfaceLoadingVeil({
     <div
       aria-hidden={!visible}
       className={cn(
-        "pointer-events-none absolute inset-0 z-30 grid place-items-center bg-background transition-opacity duration-500 ease-out",
+        "pointer-events-none absolute inset-0 z-30 grid place-items-center bg-background",
+        fade && "transition-opacity duration-500 ease-out",
         visible ? "opacity-100" : "opacity-0",
         className,
       )}

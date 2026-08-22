@@ -608,6 +608,7 @@ export function CodeView({
     <div
       aria-hidden={!active}
       className={`relative min-h-0 flex-1 overflow-hidden bg-background ${active ? "flex" : "hidden"}`}
+      data-elite-global={active && workbenchReady ? "" : undefined}
       data-slot="code-view"
     >
       {attachment ? (

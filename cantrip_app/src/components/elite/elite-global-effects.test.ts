@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ELITE_GLOBAL_BOUNDARY_SELECTOR,
   ELITE_GLOBAL_CANDIDATE_SELECTOR,
+  ELITE_GLOBAL_OBSERVER_OPTIONS,
   isEligibleEliteGlobalElement,
   shouldAnimateEliteGlobalElement,
 } from "./elite-global-effects";
@@ -33,6 +34,18 @@ describe("Elite global effects", () => {
     );
     expect(ELITE_GLOBAL_CANDIDATE_SELECTOR).not.toContain("div,");
     expect(ELITE_GLOBAL_CANDIDATE_SELECTOR).not.toContain("span,");
+  });
+
+  it("observes reveal boundaries that activate when a surface becomes ready", () => {
+    expect(ELITE_GLOBAL_OBSERVER_OPTIONS).toMatchObject({
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
+    expect(ELITE_GLOBAL_OBSERVER_OPTIONS.attributeFilter).toEqual([
+      "data-elite-global",
+      "data-elite-global-key",
+    ]);
   });
 
   it("reveals a stable semantic key only once across DOM replacements", () => {
