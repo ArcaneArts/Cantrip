@@ -86,7 +86,7 @@ test("builds mobile releases in parallel and gates publication on them", async (
   );
   assert.equal(
     workflow.match(/pnpm --filter @cantrip\/version build/gmu)?.length,
-    2,
+    3,
   );
   const androidJob =
     workflow.match(/^ {2}android:[\s\S]*?(?=^ {2}\w+:)/mu)?.[0] ?? "";
@@ -278,6 +278,10 @@ test("builds generated desktop dependencies before packaging installers", async 
     "- name: Package signed Windows NSIS updater and installer",
   );
   assert.ok(protocolBuild >= 0);
+  assert.match(
+    workflow.slice(protocolBuild, macosPackage),
+    /pnpm --filter @cantrip\/version build/u,
+  );
   assert.match(
     workflow.slice(protocolBuild, macosPackage),
     /pnpm --filter @cantrip\/logging build/u,
