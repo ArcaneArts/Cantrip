@@ -160,27 +160,78 @@ describe("Cantrip MCP server binding", () => {
 
   it.each([
     ["chat", "chat", { ...context, chatId: "chat-two" }],
-    ["lane", "execution lane", { ...context, executionLaneId: "lane-two" }],
+    ["project", "project", { ...context, projectId: "project-two" }],
     ["worker", "worker", { ...context, workerId: "worker-two" }],
+  ])(
+    "rejects a stale %s identity claim",
+    (_name, changedClaim, changedContext) => {
+      expect(() =>
+        assertCantripMcpBinding({
+          binding,
+          context: changedContext,
+          operation: "context.get",
+          ownerId: "owner-one",
+          serverAllowedOperations,
+          now,
+        }),
+      ).toThrow(`changed: ${changedClaim}`);
+    },
+  );
+
+  it.each([
+    ["lane", { ...context, executionLaneId: "lane-two" }],
+    ["worktree", { ...context, worktreeId: "worktree-two" }],
+    ["root kind", { ...context, rootKind: "project-root" as const }],
+    ["working directory", { ...context, cwd: "/worktrees/two" }],
+    ["permission", { ...context, permissionProfileId: ":read-only" }],
+  ])(
+    "allows read-only discovery to follow a changed %s scope",
+    (_name, changedContext) => {
+      expect(() =>
+        assertCantripMcpBinding({
+          binding,
+          context: changedContext,
+          operation: "context.get",
+          ownerId: "owner-one",
+          serverAllowedOperations,
+          now,
+        }),
+      ).not.toThrow();
+    },
+  );
+
+  it.each([
+    ["lane", "execution lane", { ...context, executionLaneId: "lane-two" }],
     ["worktree", "worktree", { ...context, worktreeId: "worktree-two" }],
+    [
+      "root kind",
+      "root kind",
+      { ...context, rootKind: "project-root" as const },
+    ],
     ["root", "working directory", { ...context, cwd: "/worktrees/two" }],
     [
       "permission",
       "permission profile",
       { ...context, permissionProfileId: ":read-only" },
     ],
-  ])("rejects a stale %s claim", (_name, changedClaim, changedContext) => {
-    expect(() =>
-      assertCantripMcpBinding({
-        binding,
-        context: changedContext,
-        operation: "context.get",
-        ownerId: "owner-one",
-        serverAllowedOperations,
-        now,
-      }),
-    ).toThrow(`changed: ${changedClaim}`);
-  });
+  ])(
+    "keeps mutations pinned to the original %s scope",
+    (_name, changedClaim, changedContext) => {
+      expect(() =>
+        assertCantripMcpBinding({
+          binding: {
+            ...binding,
+            allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+          },
+          context: changedContext,
+          operation: "explorer.write",
+          ownerId: "owner-one",
+          serverAllowedOperations: new Set(CANTRIP_MCP_OPERATIONS),
+          now,
+        }),
+      ).toThrow(`changed: ${changedClaim}`);
+    },
+  );
 
   it("rejects expiry, owner mismatch, and server-side operation denial", () => {
     expect(() =>
