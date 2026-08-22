@@ -1,5 +1,5 @@
 import type { ChatMessage } from "@cantrip/protocol";
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -14,6 +14,23 @@ export interface ChatHistoryLandmark {
   summary: string;
   title: string;
 }
+
+export interface ChatHistoryAnchorOffset {
+  messageId: string;
+  offsetTop: number;
+}
+
+interface ChatHistoryAnchorLayout {
+  offsets: ChatHistoryAnchorOffset[];
+  offsetByMessageId: ReadonlyMap<string, number>;
+  viewportHeight: number;
+}
+
+const emptyAnchorLayout: ChatHistoryAnchorLayout = {
+  offsets: [],
+  offsetByMessageId: new Map(),
+  viewportHeight: 0,
+};
 
 function compactText(value: string): string {
   return value
@@ -159,6 +176,27 @@ function tooltipPosition(position: number): string {
   return "top-1/2 -translate-y-1/2";
 }
 
+export function activeChatHistoryLandmarkId(
+  offsets: readonly ChatHistoryAnchorOffset[],
+  activationOffset: number,
+): string | null {
+  if (offsets.length === 0) return null;
+
+  let activeIndex = 0;
+  let low = 0;
+  let high = offsets.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if (offsets[middle]!.offsetTop <= activationOffset) {
+      activeIndex = middle;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return offsets[activeIndex]!.messageId;
+}
+
 export function ChatHistoryRail({
   messages,
   viewportRef,
@@ -174,46 +212,78 @@ export function ChatHistoryRail({
   );
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const anchorLayoutRef = useRef<ChatHistoryAnchorLayout>(emptyAnchorLayout);
 
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport || landmarks.length === 0) return;
-    let frame: number | null = null;
+    const landmarkIds = new Set(
+      landmarks.map((landmark) => landmark.messageId),
+    );
+    anchorLayoutRef.current = emptyAnchorLayout;
+    let activeFrame: number | null = null;
+    let layoutFrame: number | null = null;
 
     const updateActiveLandmark = () => {
-      frame = null;
+      const layout = anchorLayoutRef.current;
       const activationOffset =
-        viewport.scrollTop + viewport.clientHeight * 0.28;
-      let active = landmarks[0]!.messageId;
-      const landmarkIds = new Set(
-        landmarks.map((landmark) => landmark.messageId),
+        viewport.scrollTop + layout.viewportHeight * 0.28;
+      const active = activeChatHistoryLandmarkId(
+        layout.offsets,
+        activationOffset,
       );
+      if (!active) return;
+      setActiveMessageId((current) => (current === active ? current : active));
+    };
+    const measureAnchorLayout = () => {
+      layoutFrame = null;
+      const offsets: ChatHistoryAnchorOffset[] = [];
       const anchors = viewport.querySelectorAll<HTMLElement>(
         "[data-chat-history-anchor]",
       );
       for (const anchor of anchors) {
-        if (anchor.offsetTop > activationOffset) break;
         const messageId = anchor.dataset.chatHistoryAnchor;
-        if (messageId && landmarkIds.has(messageId)) active = messageId;
+        if (messageId && landmarkIds.has(messageId)) {
+          offsets.push({ messageId, offsetTop: anchor.offsetTop });
+        }
       }
-      setActiveMessageId((current) => (current === active ? current : active));
+      offsets.sort((left, right) => left.offsetTop - right.offsetTop);
+      anchorLayoutRef.current = {
+        offsets,
+        offsetByMessageId: new Map(
+          offsets.map(({ messageId, offsetTop }) => [messageId, offsetTop]),
+        ),
+        viewportHeight: viewport.clientHeight,
+      };
+      updateActiveLandmark();
     };
-    const scheduleUpdate = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(updateActiveLandmark);
+    const runActiveUpdate = () => {
+      activeFrame = null;
+      updateActiveLandmark();
+    };
+    const scheduleActiveUpdate = () => {
+      if (activeFrame !== null) return;
+      activeFrame = window.requestAnimationFrame(runActiveUpdate);
+    };
+    const scheduleLayoutMeasurement = () => {
+      if (layoutFrame !== null) return;
+      layoutFrame = window.requestAnimationFrame(measureAnchorLayout);
     };
 
-    viewport.addEventListener("scroll", scheduleUpdate, { passive: true });
-    const observer = new ResizeObserver(scheduleUpdate);
+    viewport.addEventListener("scroll", scheduleActiveUpdate, {
+      passive: true,
+    });
+    const observer = new ResizeObserver(scheduleLayoutMeasurement);
     observer.observe(viewport);
     if (viewport.firstElementChild instanceof HTMLElement) {
       observer.observe(viewport.firstElementChild);
     }
-    scheduleUpdate();
+    scheduleLayoutMeasurement();
     return () => {
-      viewport.removeEventListener("scroll", scheduleUpdate);
+      viewport.removeEventListener("scroll", scheduleActiveUpdate);
       observer.disconnect();
-      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (activeFrame !== null) window.cancelAnimationFrame(activeFrame);
+      if (layoutFrame !== null) window.cancelAnimationFrame(layoutFrame);
     };
   }, [landmarks, viewportRef]);
 
@@ -222,16 +292,14 @@ export function ChatHistoryRail({
   const jumpTo = (messageId: string) => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const anchor = [
-      ...viewport.querySelectorAll<HTMLElement>("[data-chat-history-anchor]"),
-    ].find((candidate) => candidate.dataset.chatHistoryAnchor === messageId);
-    if (!anchor) return;
+    const offsetTop = anchorLayoutRef.current.offsetByMessageId.get(messageId);
+    if (offsetTop === undefined) return;
     const reducedMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
     viewport.scrollTo({
       behavior: reducedMotion ? "auto" : "smooth",
-      top: Math.max(0, anchor.offsetTop - 24),
+      top: Math.max(0, offsetTop - 24),
     });
   };
 

@@ -4,11 +4,58 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  activeChatHistoryLandmarkId,
   buildChatHistoryLandmarks,
   CHAT_HISTORY_RAIL_MAX_LANDMARKS,
   CHAT_HISTORY_RAIL_MIN_TURNS,
   ChatHistoryRail,
 } from "./chat-history-rail";
+
+describe("active chat history landmark", () => {
+  const offsets = [
+    { messageId: "user-0", offsetTop: 100 },
+    { messageId: "user-1", offsetTop: 260 },
+    { messageId: "user-2", offsetTop: 610 },
+    { messageId: "user-3", offsetTop: 900 },
+  ];
+
+  it("finds the last landmark at or before the activation offset", () => {
+    expect(activeChatHistoryLandmarkId(offsets, 99)).toBe("user-0");
+    expect(activeChatHistoryLandmarkId(offsets, 100)).toBe("user-0");
+    expect(activeChatHistoryLandmarkId(offsets, 259)).toBe("user-0");
+    expect(activeChatHistoryLandmarkId(offsets, 260)).toBe("user-1");
+    expect(activeChatHistoryLandmarkId(offsets, 899)).toBe("user-2");
+    expect(activeChatHistoryLandmarkId(offsets, 1_500)).toBe("user-3");
+  });
+
+  it("handles an empty layout cache", () => {
+    expect(activeChatHistoryLandmarkId([], 500)).toBeNull();
+  });
+
+  it("uses logarithmic reads for long histories", () => {
+    const longOffsets = Array.from({ length: 10_000 }, (_, index) => ({
+      messageId: `user-${index}`,
+      offsetTop: index * 100,
+    }));
+    let indexedReads = 0;
+    const observedOffsets = new Proxy(longOffsets, {
+      get(target, property, receiver) {
+        if (
+          typeof property === "string" &&
+          Number.isInteger(Number(property))
+        ) {
+          indexedReads += 1;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    expect(activeChatHistoryLandmarkId(observedOffsets, 777_750)).toBe(
+      "user-7777",
+    );
+    expect(indexedReads).toBeLessThan(20);
+  });
+});
 
 function message(
   id: string,
