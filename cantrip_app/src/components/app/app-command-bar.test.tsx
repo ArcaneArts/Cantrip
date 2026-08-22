@@ -11,7 +11,12 @@ import { AppCommandBar } from "./app-command-bar";
 
 vi.mock("@/components/ui/dialog", () => ({
   Dialog: ({ children }: PropsWithChildren) => <>{children}</>,
-  DialogContent: ({ children }: PropsWithChildren) => <div>{children}</div>,
+  DialogContent: ({
+    children,
+    className,
+  }: PropsWithChildren<{ className?: string }>) => (
+    <div className={className}>{children}</div>
+  ),
   DialogDescription: ({ children }: PropsWithChildren) => <p>{children}</p>,
   DialogTitle: ({ children }: PropsWithChildren) => <h2>{children}</h2>,
 }));
@@ -80,6 +85,8 @@ describe("app command bar", () => {
     );
 
     expect(markup).toContain("Search actions or projects…");
+    expect(markup).toContain("self-start");
+    expect(markup).not.toContain("top-[15vh]");
     expect(markup).toContain("Projects");
     expect(markup).toContain("ArcaneArts/Cantrip · Primary");
     expect(markup).toContain("ArcaneArts/CareMap · Other Workspace");

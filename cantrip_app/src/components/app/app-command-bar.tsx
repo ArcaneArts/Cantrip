@@ -430,7 +430,7 @@ export function AppCommandBar({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="top-[15vh] flex max-h-[70vh] max-w-2xl -translate-y-0 flex-col gap-0 overflow-hidden p-0"
+        className="self-start flex max-h-[70vh] max-w-2xl flex-col gap-0 overflow-hidden p-0"
         showClose={false}
       >
         <DialogTitle className="sr-only">Cantrip command bar</DialogTitle>
