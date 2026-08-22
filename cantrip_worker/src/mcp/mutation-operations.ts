@@ -6,6 +6,10 @@ import {
   cantripMcpBrowserNavigateResultSchema,
   cantripMcpExplorerWriteInputSchema,
   cantripMcpExplorerWriteResultSchema,
+  cantripMcpRunStartInputSchema,
+  cantripMcpRunStartResultSchema,
+  cantripMcpRunStopInputSchema,
+  cantripMcpRunStopResultSchema,
   cantripMcpTerminalRestartInputSchema,
   cantripMcpTerminalRestartResultSchema,
   cantripMcpTerminalSendInputSchema,
@@ -22,6 +26,7 @@ import {
   executionTargetResolutionSchema,
   executionTargetSchema,
   projectWorktreeSummarySchema,
+  runInstanceResultSchema,
   worktreeRemoveResultSchema,
   type CantripAgentOperationResult,
 } from "@cantrip/protocol";
@@ -40,6 +45,8 @@ import {
 } from "../surface-stream-encryption.js";
 import {
   dataRecord,
+  assertBoundRun,
+  assertBoundRunResult,
   resolveSurfaceContext,
   safeWorktree,
   type CantripMcpOperationOptions,
@@ -206,6 +213,54 @@ async function executeWorktreeOperation(options: CantripMcpOperationOptions) {
     default:
       throw new Error("The requested operation is not a worktree mutation.");
   }
+}
+
+async function executeRunMutation(options: CantripMcpOperationOptions) {
+  const target = exactWorktreeTarget(
+    options.binding.projectId,
+    options.binding.worktreeId,
+  );
+  if (options.request.operation === "run.start") {
+    const arguments_ = cantripMcpRunStartInputSchema.parse(
+      options.request.arguments,
+    );
+    const result = await options.execute(
+      options.binding,
+      {
+        operation: "run.start",
+        arguments: { requestId: options.requestId, ...arguments_ },
+      },
+      options.requestId,
+    );
+    assertBoundRunResult(options, result);
+    const data = runInstanceResultSchema.parse(result.data);
+    assertBoundRun(options, data.run);
+    return cantripMcpRunStartResultSchema.parse({
+      ...result,
+      target,
+      worktreeId: target.worktreeId,
+      continuationScheduled: false,
+      data,
+    });
+  }
+  const arguments_ = cantripMcpRunStopInputSchema.parse(
+    options.request.arguments,
+  );
+  const result = await options.execute(
+    options.binding,
+    { operation: "run.stop", arguments: arguments_ },
+    options.requestId,
+  );
+  assertBoundRunResult(options, result);
+  const data = runInstanceResultSchema.parse(result.data);
+  assertBoundRun(options, data.run);
+  return cantripMcpRunStopResultSchema.parse({
+    ...result,
+    target,
+    worktreeId: target.worktreeId,
+    continuationScheduled: false,
+    data,
+  });
 }
 
 async function executeExplorerWrite(options: CantripMcpOperationOptions) {
@@ -428,6 +483,9 @@ export async function executeCantripMcpMutationOperation(
     throw new Error("Worker encryption belongs to a different MCP owner.");
   }
   switch (options.request.operation) {
+    case "run.start":
+    case "run.stop":
+      return executeRunMutation(options);
     case "worktree.create":
     case "worktree.switch":
     case "worktree.release":

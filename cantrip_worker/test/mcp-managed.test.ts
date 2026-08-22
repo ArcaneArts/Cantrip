@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CANTRIP_MCP_TOOL_NAMES } from "@cantrip/protocol";
 
 import {
   cantripMcpHostInvocation,
@@ -29,6 +30,7 @@ describe("managed worker MCP servers", () => {
         "/worker/data/binding.json",
       ],
       environment: {},
+      managedToolNames: [...CANTRIP_MCP_TOOL_NAMES],
     });
   });
 

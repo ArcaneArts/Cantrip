@@ -26144,15 +26144,27 @@ export async function buildApp({
             chatOperationContext(context),
             input.data.request,
           );
+          const runResult =
+            input.data.request.operation === "run.start" ||
+            input.data.request.operation === "run.stop"
+              ? runInstanceResultSchema.safeParse(result.data)
+              : null;
           await appendAudit(request, {
-            action: isCantripMcpMutationOperation(input.data.request.operation)
-              ? "mcp.operation.mutated"
-              : "mcp.operation.executed",
+            action:
+              input.data.request.operation === "run.start"
+                ? "run.mcp.started"
+                : input.data.request.operation === "run.stop"
+                  ? "run.mcp.stopped"
+                  : isCantripMcpMutationOperation(input.data.request.operation)
+                    ? "mcp.operation.mutated"
+                    : "mcp.operation.executed",
             actorSessionId: null,
             actorUserId: null,
             ownerId: workerAuth.ownerId,
-            resourceId: input.data.binding.bindingId,
-            resourceType: "mcp-binding",
+            resourceId: runResult?.success
+              ? runResult.data.run.id
+              : input.data.binding.bindingId,
+            resourceType: runResult?.success ? "run-instance" : "mcp-binding",
             result: "succeeded",
           });
           return reply.send(cantripAgentOperationResultSchema.parse(result));
@@ -26160,43 +26172,49 @@ export async function buildApp({
           const operationError =
             error instanceof CantripMcpBindingError
               ? error
-              : error instanceof WorkerUnavailableError
+              : error instanceof CliCommandRequestError
                 ? new CantripMcpBindingError(
-                    "unavailable",
-                    503,
-                    errorMessage(error),
+                    error.code,
+                    error.status,
+                    error.message,
                   )
-                : error instanceof ExecutionPlacementUnavailableError
+                : error instanceof WorkerUnavailableError
                   ? new CantripMcpBindingError(
-                      error.code === "worker-offline" ||
-                        error.code === "capability-unavailable"
-                        ? "unavailable"
-                        : "conflict",
-                      error.code === "worker-offline" ||
-                        error.code === "capability-unavailable"
-                        ? 503
-                        : 409,
+                      "unavailable",
+                      503,
                       errorMessage(error),
                     )
-                  : error instanceof ExecutionLaneConflictError
+                  : error instanceof ExecutionPlacementUnavailableError
                     ? new CantripMcpBindingError(
-                        "stale-binding",
-                        409,
+                        error.code === "worker-offline" ||
+                          error.code === "capability-unavailable"
+                          ? "unavailable"
+                          : "conflict",
+                        error.code === "worker-offline" ||
+                          error.code === "capability-unavailable"
+                          ? 503
+                          : 409,
                         errorMessage(error),
                       )
-                    : error instanceof SurfacePrivateStateConflictError
+                    : error instanceof ExecutionLaneConflictError
                       ? new CantripMcpBindingError(
-                          "conflict",
+                          "stale-binding",
                           409,
-                          "Browser state changed before this operation.",
+                          errorMessage(error),
                         )
-                      : new CantripMcpBindingError(
-                          "invalid",
-                          400,
-                          error instanceof Error && error.name === "ZodError"
-                            ? "Cantrip MCP operation validation failed on the server."
-                            : errorMessage(error).slice(0, 2_000),
-                        );
+                      : error instanceof SurfacePrivateStateConflictError
+                        ? new CantripMcpBindingError(
+                            "conflict",
+                            409,
+                            "Browser state changed before this operation.",
+                          )
+                        : new CantripMcpBindingError(
+                            "invalid",
+                            400,
+                            error instanceof Error && error.name === "ZodError"
+                              ? "Cantrip MCP operation validation failed on the server."
+                              : errorMessage(error).slice(0, 2_000),
+                          );
           await appendAudit(request, {
             action: "mcp.operation.rejected",
             actorSessionId: null,

@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
+  CANTRIP_MCP_OPERATIONS,
+  cantripAgentOperationResultSchema,
   cantripCliCommandResultSchema,
   unprobedCodexRuntimeReport,
   type WorkerCommand,
@@ -16,7 +18,10 @@ import { connectDatabase, type DatabaseConnection } from "../src/db/index.js";
 import { LOCAL_USER_ID } from "../src/db/repository.js";
 import type { WorkerCommandBus } from "../src/workers/bridge.js";
 
-import { protectedProjectFields } from "./private-label-fixture.js";
+import {
+  protectedChatFields,
+  protectedProjectFields,
+} from "./private-label-fixture.js";
 
 const dataDirectory = await mkdtemp(path.join(tmpdir(), "cantrip-run-cli-"));
 const projectPath = path.join(dataDirectory, "project");
@@ -37,12 +42,13 @@ const config: ServerConfig = {
 const actionId = "a".repeat(64);
 const configurationRevision = "b".repeat(64);
 const routedCommands: WorkerCommand[] = [];
+const routedWorkers: string[] = [];
 const runs = new Map<string, WorkerRunSnapshot>();
 const workerBridge: WorkerCommandBus = {
   attach() {},
   close() {},
   isConnected(workerId) {
-    return workerId === "run-worker";
+    return workerId === "run-worker" || workerId === "run-worker-beta";
   },
   sendSurfaceFrame() {
     return false;
@@ -54,10 +60,11 @@ const workerBridge: WorkerCommandBus = {
     return () => undefined;
   },
   async request(workerId, command) {
-    expect(workerId).toBe("run-worker");
+    routedWorkers.push(workerId);
     routedCommands.push(command);
     switch (command.type) {
       case "project.run-configurations.inspect":
+        expect(workerId).toBe("run-worker");
         return {
           platform: "linux",
           canonical: {
@@ -91,6 +98,7 @@ const workerBridge: WorkerCommandBus = {
           diagnostics: [],
         };
       case "project.run.start": {
+        expect(workerId).toBe("run-worker");
         const existing = runs.get(command.runId);
         if (existing) return existing;
         const started: WorkerRunSnapshot = {
@@ -139,6 +147,8 @@ const workerBridge: WorkerCommandBus = {
 
 let app: Awaited<ReturnType<typeof buildApp>>;
 let database: DatabaseConnection;
+let projectId: string;
+let worktreeId: string;
 
 async function cli(
   command: "run.start" | "run.status" | "run.logs" | "run.stop",
@@ -193,6 +203,27 @@ beforeAll(async () => {
     },
     startedAt: new Date().toISOString(),
   });
+  await database.repository.recordWorker(LOCAL_USER_ID, {
+    workerId: "run-worker-beta",
+    name: "Run Worker Beta",
+    platform: "win32",
+    architecture: "x64",
+    codexVersion: null,
+    codexRuntime: unprobedCodexRuntimeReport,
+    managedFolders: {
+      create: true,
+      attachExisting: true,
+      convertToGithub: true,
+      remove: true,
+    },
+    remoteSurfaces: {
+      browser: false,
+      desktop: false,
+      transports: ["websocket"],
+      maxSessions: 1,
+    },
+    startedAt: new Date().toISOString(),
+  });
   const created = await database.repository.createManagedFolderProject(
     LOCAL_USER_ID,
     {
@@ -215,6 +246,12 @@ beforeAll(async () => {
     },
   );
   expect(created.project.id).toBe(claimed.job.projectId);
+  projectId = created.project.id;
+  const worktrees = await database.repository.listProjectWorktrees(
+    LOCAL_USER_ID,
+    projectId,
+  );
+  worktreeId = worktrees[0]!.id;
   app = await buildApp({ config, database, logger: false, workerBridge });
 });
 
@@ -320,5 +357,136 @@ describe("Run CLI execution", () => {
         }),
       ]),
     );
+  });
+
+  it("revalidates MCP revisions, routes Run state cross-worker, and audits mutations", async () => {
+    const chat = await database.repository.createChat(
+      LOCAL_USER_ID,
+      projectId,
+      {
+        ...protectedChatFields(),
+        worktreeId,
+        worktreeMode: "pinned",
+      },
+    );
+    if (!chat) throw new Error("Expected an MCP Run test chat.");
+    const context = await database.repository.startChatExecutionLane(
+      LOCAL_USER_ID,
+      chat.id,
+      "agent",
+      "Exercise managed Run MCP operations",
+    );
+    if (!context?.executionLaneId) {
+      throw new Error("Expected an active MCP Run execution lane.");
+    }
+    const bindingId = "00000000-0000-4000-8000-000000000399";
+    const binding = {
+      bindingId,
+      ownerId: LOCAL_USER_ID,
+      projectId,
+      chatId: chat.id,
+      executionLaneId: context.executionLaneId,
+      workerId: context.workerId,
+      worktreeId: context.worktreeId,
+      canonicalRoot: context.cwd,
+      rootKind: context.rootKind,
+      permissionProfileId:
+        context.permissionProfileId ??
+        context.defaultPermissionProfileId ??
+        ":workspace-write",
+      allowedOperations: [...CANTRIP_MCP_OPERATIONS],
+      issuedAt: new Date(Date.now() - 1_000).toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    const mcp = (
+      operation: "run-config.read" | "run.status" | "run.stop",
+      arguments_: Record<string, unknown>,
+      requestId: string,
+    ) =>
+      app.inject({
+        method: "POST",
+        url: "/api/internal/agent-operations",
+        headers: { authorization: `Bearer ${config.workerToken}` },
+        payload: {
+          requestId,
+          binding,
+          request: { operation, arguments: arguments_ },
+        },
+      });
+
+    const stale = await mcp(
+      "run-config.read",
+      { actionId, configRevision: "c".repeat(64) },
+      "mcp-run-stale",
+    );
+    expect(stale.statusCode, stale.body).toBe(409);
+    expect(stale.json()).toMatchObject({ code: "conflict" });
+
+    const durable = await database.repository.createOrGetRunInstance(
+      LOCAL_USER_ID,
+      {
+        projectId,
+        worktreeId,
+        workerId: "run-worker-beta",
+        idempotencyKey: "mcp-cross-worker-run",
+        actionId,
+        configurationRevision,
+      },
+    );
+    runs.set(durable.run.id, {
+      runId: durable.run.id,
+      projectId,
+      worktreeId,
+      actionId,
+      configurationRevision,
+      state: "running",
+      startedAt: "2026-08-21T12:10:00.000Z",
+      endedAt: null,
+      exitCode: null,
+      signal: null,
+    });
+
+    const status = await mcp(
+      "run.status",
+      { runId: durable.run.id },
+      "mcp-run-status",
+    );
+    expect(status.statusCode, status.body).toBe(200);
+    expect(
+      cantripAgentOperationResultSchema.parse(status.json()).data,
+    ).toMatchObject({
+      run: {
+        id: durable.run.id,
+        workerId: "run-worker-beta",
+        state: "running",
+      },
+    });
+    expect(routedWorkers.at(-1)).toBe("run-worker-beta");
+
+    const stopped = await mcp(
+      "run.stop",
+      { runId: durable.run.id },
+      "mcp-run-stop",
+    );
+    expect(stopped.statusCode, stopped.body).toBe(200);
+    expect(
+      cantripAgentOperationResultSchema.parse(stopped.json()).data,
+    ).toMatchObject({ run: { id: durable.run.id, state: "stopped" } });
+    expect(routedWorkers.at(-1)).toBe("run-worker-beta");
+
+    const audits = await database.repository.listAuditEvents(
+      { limit: 50 },
+      LOCAL_USER_ID,
+    );
+    expect(audits.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "run.mcp.stopped",
+          result: "succeeded",
+          resource: { type: "run-instance", id: durable.run.id },
+        }),
+      ]),
+    );
+    expect(JSON.stringify(audits.items)).not.toContain("dotnet run --project");
   });
 });

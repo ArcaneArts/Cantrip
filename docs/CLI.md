@@ -91,6 +91,12 @@ ignored local environment remains local to that worker and still applies when
 the active chat uses a secondary worktree; a tracked file follows normal Git
 replication.
 
+This intentionally follows OpenAI's
+[local environments](https://learn.chatgpt.com/docs/environments/local-environment)
+contract: setup prepares newly created worktrees, while actions are ordinary
+integrated-terminal commands. Cantrip adds distributed routing and supervision
+without inventing a second project configuration format.
+
 `cantrip run list` returns actions compatible with the current worker.
 `cantrip run show` accepts an exact action name or the opaque ID returned by
 the list. Duplicate compatible names are rejected as ambiguous instead of
@@ -165,11 +171,13 @@ commands can run from a normal project terminal.
 ## Codex integration
 
 For applicable new and resumed chat threads, the worker injects a required
-native MCP server named `cantrip`. Its 23 read, worker-mutation, and ephemeral
+native MCP server named `cantrip`. Its 29 read, worker-mutation, and ephemeral
 client-control tools appear in Codex's runtime inventory as **Managed by
 Cantrip**. The developer instruction directs Codex to prefer MCP, start with
-`context_get`, read required Policies, and use normal command-line tools for
-repository work. It retains `cantrip -h` as the fallback.
+`context_get`, read required Policies, use normal repository tools to edit
+`environment.toml`, validate with `cantrip run validate`, and use exact action
+IDs plus configuration revisions with the managed Run tools. Read-only profiles
+receive only the read catalog. The CLI and `cantrip -h` remain the fallback.
 
 Both thread paths still send `dynamicTools: []`. The pinned runtime's resume
 compatibility patch distinguishes that explicit empty override from an omitted

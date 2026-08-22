@@ -163,7 +163,7 @@ describe("Run runtime schemas", () => {
     ).toMatchObject({ type: "project.run.state.observed" });
   });
 
-  it("registers exact CLI and worker operations without exposing MCP early", () => {
+  it("registers exact CLI, MCP, and worker operations", () => {
     for (const operation of [
       "run.start",
       "run.status",
@@ -175,8 +175,16 @@ describe("Run runtime schemas", () => {
     for (const command of ["run.start", "run.status", "run.logs", "run.stop"]) {
       expect(cantripCliCommandNameSchema.parse(command)).toBe(command);
     }
-    expect(CANTRIP_MCP_OPERATIONS).not.toContain("run.start");
-    expect(CANTRIP_MCP_OPERATIONS).not.toContain("run.status");
+    expect(CANTRIP_MCP_OPERATIONS).toEqual(
+      expect.arrayContaining([
+        "run-config.list",
+        "run-config.read",
+        "run.start",
+        "run.status",
+        "run.read",
+        "run.stop",
+      ]),
+    );
 
     const start = {
       type: "project.run.start" as const,

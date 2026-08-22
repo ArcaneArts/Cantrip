@@ -33,6 +33,11 @@ import {
   cantripMcpExplorerReadResultSchema,
   cantripMcpExplorerWriteInputSchema,
   cantripMcpExplorerWriteResultSchema,
+  cantripMcpRunConfigReadInputSchema,
+  cantripMcpRunReadInputSchema,
+  cantripMcpRunStartInputSchema,
+  cantripMcpRunStatusInputSchema,
+  cantripMcpRunStopInputSchema,
   cantripMcpTargetListInputSchema,
   cantripMcpTerminalReadInputSchema,
   cantripMcpWorktreeSwitchResultSchema,
@@ -47,6 +52,7 @@ import {
   CANTRIP_MCP_OPERATIONS,
   CANTRIP_MCP_TOOL_NAMES,
   cantripMcpOperationsForPermissionProfile,
+  cantripMcpToolNamesForOperations,
   isCantripMcpMutationOperation,
   chatAttachmentSummarySchema,
   chatGptModelInventorySchema,
@@ -708,6 +714,29 @@ describe("Cantrip protocol", () => {
         maxChars: 100_001,
       }).success,
     ).toBe(false);
+    const actionId = "a".repeat(64);
+    const configRevision = "b".repeat(64);
+    expect(
+      cantripMcpRunConfigReadInputSchema.parse({
+        actionId,
+        configRevision,
+      }),
+    ).toEqual({ actionId, configRevision });
+    expect(
+      cantripMcpRunConfigReadInputSchema.safeParse({ actionId }).success,
+    ).toBe(false);
+    expect(cantripMcpRunStatusInputSchema.parse({})).toEqual({});
+    expect(
+      cantripMcpRunReadInputSchema.parse({
+        runId: "00000000-0000-4000-8000-000000000099",
+      }),
+    ).toMatchObject({ maxChars: 20_000 });
+    expect(
+      cantripMcpRunReadInputSchema.safeParse({
+        runId: "00000000-0000-4000-8000-000000000099",
+        maxChars: 100_001,
+      }).success,
+    ).toBe(false);
     expect(
       cantripMcpContextGetResultSchema.safeParse({
         summary: "Context is current.",
@@ -764,9 +793,49 @@ describe("Cantrip protocol", () => {
       CANTRIP_MCP_OPERATIONS,
     );
     expect(
+      cantripMcpToolNamesForOperations(
+        cantripMcpOperationsForPermissionProfile(":read-only"),
+      ),
+    ).toEqual(CANTRIP_MCP_READ_TOOL_NAMES);
+    expect(cantripMcpToolNamesForOperations(CANTRIP_MCP_OPERATIONS)).toEqual(
+      CANTRIP_MCP_TOOL_NAMES,
+    );
+    expect(
       CANTRIP_MCP_MUTATION_OPERATIONS.every(isCantripMcpMutationOperation),
     ).toBe(true);
     expect(isCantripMcpMutationOperation("context.get")).toBe(false);
+    expect(isCantripMcpMutationOperation("run.start")).toBe(true);
+    expect(isCantripMcpMutationOperation("run.stop")).toBe(true);
+    expect(CANTRIP_MCP_READ_OPERATIONS).toEqual(
+      expect.arrayContaining([
+        "run-config.list",
+        "run-config.read",
+        "run.status",
+        "run.read",
+      ]),
+    );
+    expect(CANTRIP_MCP_MUTATION_OPERATIONS).toEqual(
+      expect.arrayContaining(["run.start", "run.stop"]),
+    );
+    expect(cantripMcpOperationsForPermissionProfile(":read-only")).not.toEqual(
+      expect.arrayContaining(["run.start", "run.stop"]),
+    );
+    const actionId = "a".repeat(64);
+    const configRevision = "b".repeat(64);
+    expect(
+      cantripMcpRunStartInputSchema.parse({ actionId, configRevision }),
+    ).toEqual({ actionId, configRevision });
+    expect(
+      cantripMcpRunStartInputSchema.safeParse({
+        action: "Run Spectral Lab",
+        configRevision,
+      }).success,
+    ).toBe(false);
+    expect(
+      cantripMcpRunStopInputSchema.safeParse({
+        runId: "not-a-run-id",
+      }).success,
+    ).toBe(false);
     expect(CANTRIP_MCP_CLIENT_CONTROL_OPERATIONS).toEqual([
       "client.notify",
       "client.focus-project",

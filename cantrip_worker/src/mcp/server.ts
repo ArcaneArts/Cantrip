@@ -31,6 +31,18 @@ import {
   cantripMcpPolicyListResultSchema,
   cantripMcpPolicyReadInputSchema,
   cantripMcpPolicyReadResultSchema,
+  cantripMcpRunConfigListInputSchema,
+  cantripMcpRunConfigListResultSchema,
+  cantripMcpRunConfigReadInputSchema,
+  cantripMcpRunConfigReadResultSchema,
+  cantripMcpRunReadInputSchema,
+  cantripMcpRunReadResultSchema,
+  cantripMcpRunStartInputSchema,
+  cantripMcpRunStartResultSchema,
+  cantripMcpRunStatusInputSchema,
+  cantripMcpRunStatusResultSchema,
+  cantripMcpRunStopInputSchema,
+  cantripMcpRunStopResultSchema,
   cantripMcpTargetInspectInputSchema,
   cantripMcpTargetInspectResultSchema,
   cantripMcpTargetListInputSchema,
@@ -56,7 +68,7 @@ import {
 } from "@cantrip/protocol";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools for repository work. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -243,6 +255,97 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     },
   );
   server.registerTool(
+    "run_config_list",
+    {
+      title: "List Cantrip Run actions",
+      description:
+        "Read the Codex-compatible environment configuration from the registered project source and list platform-compatible actions with exact IDs and revisions.",
+      inputSchema: cantripMcpRunConfigListInputSchema,
+      outputSchema: cantripMcpRunConfigListResultSchema,
+      annotations: readAnnotations,
+    },
+    async (_arguments) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigListResultSchema.parse(
+            await gateway({ operation: "run-config.list", arguments: {} }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_config_read",
+    {
+      title: "Read a Cantrip Run action",
+      description:
+        "Read one exact platform-compatible action using the opaque action ID and configuration revision returned by run_config_list.",
+      inputSchema: cantripMcpRunConfigReadInputSchema,
+      outputSchema: cantripMcpRunConfigReadResultSchema,
+      annotations: readAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunConfigReadResultSchema.parse(
+            await gateway({
+              operation: "run-config.read",
+              arguments: arguments_,
+            }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_status",
+    {
+      title: "Read Cantrip Run status",
+      description:
+        "Read one exact Run or the latest Run in the bound worktree, refreshing its worker-owned process state when available.",
+      inputSchema: cantripMcpRunStatusInputSchema,
+      outputSchema: cantripMcpRunStatusResultSchema,
+      annotations: readAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunStatusResultSchema.parse(
+            await gateway({ operation: "run.status", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_read",
+    {
+      title: "Read Cantrip Run output",
+      description:
+        "Read bounded in-memory PTY output for one exact Run. Output is unavailable after the owning worker loses the Run.",
+      inputSchema: cantripMcpRunReadInputSchema,
+      outputSchema: cantripMcpRunReadResultSchema,
+      annotations: readAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunReadResultSchema.parse(
+            await gateway({ operation: "run.read", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
     "worktree_list",
     {
       title: "List Cantrip worktrees",
@@ -385,6 +488,50 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
               operation: "browser.services",
               arguments: arguments_,
             }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_start",
+    {
+      title: "Start a Cantrip Run",
+      description:
+        "Start one exact Codex-compatible action in the bound worktree using the action ID and configuration revision returned by run_config_list or run_config_read.",
+      inputSchema: cantripMcpRunStartInputSchema,
+      outputSchema: cantripMcpRunStartResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunStartResultSchema.parse(
+            await gateway({ operation: "run.start", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_stop",
+    {
+      title: "Stop a Cantrip Run",
+      description:
+        "Stop one exact Run and its complete worker-owned process group. The action may control external processes or services.",
+      inputSchema: cantripMcpRunStopInputSchema,
+      outputSchema: cantripMcpRunStopResultSchema,
+      annotations: destructiveOpenWorldMutationAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        return operationResult(
+          cantripMcpRunStopResultSchema.parse(
+            await gateway({ operation: "run.stop", arguments: arguments_ }),
           ),
         );
       } catch (error) {

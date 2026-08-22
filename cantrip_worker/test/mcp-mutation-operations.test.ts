@@ -13,6 +13,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { encodePrivateDisplayLabelForWorker } from "../src/private-label-encryption.js";
+import { CantripServerRequestError } from "../src/cli-client.js";
 import { executeCantripMcpMutationOperation } from "../src/mcp/mutation-operations.js";
 import { decodeSurfacePrivateStateForWorker } from "../src/surface-private-state-encryption.js";
 import {
@@ -49,6 +50,30 @@ const commonMutation = {
   continuationScheduled: false as const,
   mutated: true as const,
 };
+
+const actionId = "a".repeat(64);
+const configurationRevision = "b".repeat(64);
+const runId = "00000000-0000-4000-8000-000000000302";
+
+function runFixture(overrides: Record<string, unknown> = {}) {
+  return {
+    id: runId,
+    projectId: binding.projectId,
+    worktreeId: binding.worktreeId,
+    workerId: "worker-two",
+    actionId,
+    configurationRevision,
+    state: "running" as const,
+    terminalId: null,
+    exitCode: null,
+    signal: null,
+    createdAt: "2026-08-21T12:00:00.000Z",
+    startedAt: "2026-08-21T12:00:01.000Z",
+    endedAt: null,
+    updatedAt: "2026-08-21T12:00:01.000Z",
+    ...overrides,
+  };
+}
 
 function worktree(id: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -174,6 +199,120 @@ function removalResult(removedPath: string) {
 }
 
 describe("Cantrip MCP mutation operation normalization", () => {
+  it("starts and stops exact Runs through the shared server operation core", async () => {
+    const service = encryptionService();
+    const calls: unknown[] = [];
+    const started = await executeCantripMcpMutationOperation({
+      binding,
+      service,
+      requestId: "mcp-run-start-one",
+      request: {
+        operation: "run.start",
+        arguments: { actionId, configRevision: configurationRevision },
+      },
+      execute: async (_binding, request, requestId) => {
+        calls.push({ request, requestId });
+        return {
+          ...commonMutation,
+          summary: `Started Run ${runId}.`,
+          target: null,
+          worktreeId: binding.worktreeId,
+          data: { run: runFixture() },
+        };
+      },
+    });
+    expect(started).toMatchObject({
+      target: {
+        kind: "worktree",
+        projectId: binding.projectId,
+        worktreeId: binding.worktreeId,
+      },
+      mutated: true,
+      data: { run: { id: runId, workerId: "worker-two" } },
+    });
+    expect(calls).toEqual([
+      {
+        requestId: "mcp-run-start-one",
+        request: {
+          operation: "run.start",
+          arguments: {
+            requestId: "mcp-run-start-one",
+            actionId,
+            configRevision: configurationRevision,
+          },
+        },
+      },
+    ]);
+
+    const stopped = await executeCantripMcpMutationOperation({
+      binding,
+      service,
+      requestId: "mcp-run-stop-one",
+      request: { operation: "run.stop", arguments: { runId } },
+      execute: async (_binding, request) => {
+        calls.push({ request, requestId: "mcp-run-stop-one" });
+        return {
+          ...commonMutation,
+          summary: `Stopped Run ${runId}.`,
+          target: null,
+          worktreeId: binding.worktreeId,
+          data: {
+            run: runFixture({
+              state: "stopped",
+              endedAt: "2026-08-21T12:00:02.000Z",
+              signal: "SIGTERM",
+            }),
+          },
+        };
+      },
+    });
+    expect(stopped.data).toMatchObject({
+      run: { id: runId, state: "stopped", signal: "SIGTERM" },
+    });
+    expect(calls[1]).toEqual({
+      requestId: "mcp-run-stop-one",
+      request: { operation: "run.stop", arguments: { runId } },
+    });
+  });
+
+  it("propagates stale revisions and rejects Runs outside the bound project", async () => {
+    const service = encryptionService();
+    await expect(
+      executeCantripMcpMutationOperation({
+        binding,
+        service,
+        requestId: "mcp-run-stale",
+        request: {
+          operation: "run.start",
+          arguments: { actionId, configRevision: configurationRevision },
+        },
+        execute: async () => {
+          throw new CantripServerRequestError(
+            "The run configuration changed. List its actions again before continuing.",
+            409,
+            "conflict",
+          );
+        },
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "conflict" });
+
+    await expect(
+      executeCantripMcpMutationOperation({
+        binding,
+        service,
+        requestId: "mcp-run-foreign",
+        request: { operation: "run.stop", arguments: { runId } },
+        execute: async () => ({
+          ...commonMutation,
+          summary: "Stopped a foreign Run.",
+          target: null,
+          worktreeId: binding.worktreeId,
+          data: { run: runFixture({ worktreeId: "worktree-two" }) },
+        }),
+      }),
+    ).rejects.toThrow("outside the MCP binding");
+  });
+
   it("creates and transitions worktrees without exposing private paths or runtime IDs", async () => {
     const service = encryptionService();
     const created = worktree("worktree-two");

@@ -57,7 +57,13 @@ import {
   repositoryRoutingHandleSchema,
 } from "./repository-operation.js";
 import {
+  runConfigurationActionSchema,
+  runConfigurationDefinitionSchema,
+  runConfigurationInspectionSchema,
+  runConfigurationSelectionSchema,
+  runInstanceResultSchema,
   runInstanceSchema,
+  runLogResultSchema,
   workerRunIdentitySchema,
   workerRunSnapshotSchema,
 } from "./run-configurations.js";
@@ -7082,6 +7088,10 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
   "policy.read",
   "target.list",
   "target.inspect",
+  "run-config.list",
+  "run-config.read",
+  "run.status",
+  "run.read",
   "worktree.list",
   "worktree.status",
   "explorer.list",
@@ -7096,6 +7106,10 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "policy_read",
   "target_list",
   "target_inspect",
+  "run_config_list",
+  "run_config_read",
+  "run_status",
+  "run_read",
   "worktree_list",
   "worktree_status",
   "explorer_list",
@@ -7105,6 +7119,8 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 ] as const;
 
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
+  "run.start",
+  "run.stop",
   "worktree.create",
   "worktree.switch",
   "worktree.release",
@@ -7128,6 +7144,8 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 ] as const;
 
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
+  "run_start",
+  "run_stop",
   "worktree_create",
   "worktree_switch",
   "worktree_release",
@@ -7151,6 +7169,15 @@ export const CANTRIP_MCP_TOOL_NAMES = [
   ...CANTRIP_MCP_READ_TOOL_NAMES,
   ...CANTRIP_MCP_MUTATION_TOOL_NAMES,
 ] as const;
+
+export function cantripMcpToolNamesForOperations(
+  operations: readonly z.infer<typeof cantripAgentOperationNameSchema>[],
+): Array<(typeof CANTRIP_MCP_TOOL_NAMES)[number]> {
+  const allowed = new Set<string>(operations);
+  return CANTRIP_MCP_OPERATIONS.flatMap((operation, index) =>
+    allowed.has(operation) ? [CANTRIP_MCP_TOOL_NAMES[index]!] : [],
+  );
+}
 
 export function isCantripMcpMutationOperation(
   operation: z.infer<typeof cantripAgentOperationNameSchema>,
@@ -7282,6 +7309,22 @@ export const cantripMcpTargetListInputSchema = z
 export const cantripMcpTargetInspectInputSchema = z
   .object({ target: executionTargetSchema })
   .strict();
+export const cantripMcpRunConfigListInputSchema = z.object({}).strict();
+export const cantripMcpRunConfigReadInputSchema = z
+  .object({
+    actionId: runConfigurationActionSchema.shape.id,
+    configRevision: runConfigurationDefinitionSchema.shape.revision,
+  })
+  .strict();
+export const cantripMcpRunStatusInputSchema = z
+  .object({ runId: runInstanceSchema.shape.id.optional() })
+  .strict();
+export const cantripMcpRunReadInputSchema = z
+  .object({
+    runId: runInstanceSchema.shape.id,
+    maxChars: z.number().int().min(1).max(100_000).default(20_000),
+  })
+  .strict();
 export const cantripMcpWorktreeListInputSchema = z
   .object({
     cursor: z.number().int().min(0).max(1_999).default(0),
@@ -7388,6 +7431,15 @@ export const cantripMcpWorktreeReleaseInputSchema = z
   .strict();
 export const cantripMcpWorktreeRemoveInputSchema = z
   .object({ target: cantripMcpWorktreeTargetSchema })
+  .strict();
+export const cantripMcpRunStartInputSchema = z
+  .object({
+    actionId: runConfigurationActionSchema.shape.id,
+    configRevision: runConfigurationDefinitionSchema.shape.revision,
+  })
+  .strict();
+export const cantripMcpRunStopInputSchema = z
+  .object({ runId: runInstanceSchema.shape.id })
   .strict();
 export const cantripMcpExplorerWriteInputSchema = z
   .object({
@@ -7533,6 +7585,30 @@ export const cantripMcpTargetInspectResultSchema =
       })
       .strict(),
   });
+export const cantripMcpRunConfigListResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationInspectionSchema,
+  });
+export const cantripMcpRunConfigReadResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    worktreeId: z.string().min(1).max(200),
+    data: runConfigurationSelectionSchema,
+  });
+export const cantripMcpRunStatusResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    worktreeId: z.string().min(1).max(200),
+    data: runInstanceResultSchema,
+  });
+export const cantripMcpRunReadResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    worktreeId: z.string().min(1).max(200),
+    data: runLogResultSchema,
+  });
 
 export const cantripMcpWorktreeSummarySchema = projectWorktreeSummarySchema
   .omit({ path: true, displayPath: true })
@@ -7646,6 +7722,23 @@ export const cantripMcpWorktreeRemoveResultSchema =
         branchRetained: z.literal(true),
       })
       .strict(),
+  });
+const cantripMcpRunMutationResultBaseSchema = z
+  .object({
+    summary: z.string().min(1).max(2_000),
+    target: cantripMcpWorktreeTargetSchema,
+    worktreeId: z.string().min(1).max(200),
+    continuationScheduled: z.literal(false).default(false),
+    mutated: z.boolean(),
+  })
+  .strict();
+export const cantripMcpRunStartResultSchema =
+  cantripMcpRunMutationResultBaseSchema.extend({
+    data: runInstanceResultSchema,
+  });
+export const cantripMcpRunStopResultSchema =
+  cantripMcpRunMutationResultBaseSchema.extend({
+    data: runInstanceResultSchema,
   });
 export const cantripMcpExplorerWriteResultSchema =
   cantripMcpMutationResultBaseSchema.extend({

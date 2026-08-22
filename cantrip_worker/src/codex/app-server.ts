@@ -1359,7 +1359,7 @@ export function goalShouldContinue(
 }
 
 export const CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS =
-  "The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`, list targets instead of guessing identifiers, and use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use standard shell, file, and Git tools for normal repository work. If the managed MCP server is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
+  "The managed `cantrip` MCP server is the preferred interface for Cantrip-owned state and surfaces. Start with `context_get`, list targets instead of guessing identifiers, and use `policy_list` plus `policy_read` whenever an effective policy summary requires its current full body. Use standard shell, file, and Git tools for normal repository work, including creating or editing `.codex/environments/environment.toml`, and use `cantrip run validate` to validate that file. Prefer the managed `run_config_list`, `run_config_read`, `run_start`, `run_status`, `run_read`, and `run_stop` tools when the binding provides them; always use the exact action ID and configuration revision returned by the configuration tools. If the managed MCP server or a required tool is unavailable, use the worker-authenticated `cantrip` CLI as a fallback and run `cantrip -h` for concise help. When a Cantrip tool or command reports that continuation was scheduled, finish the current turn so Cantrip can checkpoint and continue safely.";
 
 export const NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS =
   "The current project path has no local `.git` metadata in it or any parent directory, so treat this project as a non-Git folder. Do not run Git or GitHub commands, inspect branches, remotes, or worktrees, or attempt commits or pull requests. Work directly with its files. Do not initialize Git unless the user explicitly asks.";
@@ -1659,6 +1659,15 @@ export type CompactAgentThreadOptions = Pick<
 
 export { codexModelProviderName } from "./provider-config.js";
 
+function managedCantripEnabledToolNames(server: McpServerConfiguration) {
+  const configured = (
+    server as McpServerConfiguration & { managedToolNames?: unknown }
+  ).managedToolNames;
+  if (!Array.isArray(configured)) return [...CANTRIP_MCP_TOOL_NAMES];
+  const allowed = new Set(configured);
+  return CANTRIP_MCP_TOOL_NAMES.filter((tool) => allowed.has(tool));
+}
+
 export function codexMcpConfigOverride(
   servers: NonNullable<RunAgentTurnOptions["mcpServers"]>,
 ): Record<string, unknown> {
@@ -1669,13 +1678,14 @@ export function codexMcpConfigOverride(
         .map((server) => {
           const isManagedCodeGraph = isManagedCodeGraphMcpName(server.name);
           const isManagedCantrip = isManagedCantripMcpName(server.name);
+          const managedCantripTools = managedCantripEnabledToolNames(server);
           const managedOverrides =
             isManagedCodeGraph || isManagedCantrip
               ? {
                   required: true,
                   enabled_tools: isManagedCodeGraph
                     ? ["codegraph_explore"]
-                    : [...CANTRIP_MCP_TOOL_NAMES],
+                    : managedCantripTools,
                 }
               : {};
           return [
@@ -1712,7 +1722,8 @@ export function managedMcpToolRequirements(
       return [{ name: "codegraph", tool: "codegraph_explore" }];
     }
     if (isManagedCantripMcpName(server.name)) {
-      return CANTRIP_MCP_TOOL_NAMES.map((tool) => ({
+      const tools = managedCantripEnabledToolNames(server);
+      return tools.map((tool) => ({
         name: "cantrip",
         tool,
       }));

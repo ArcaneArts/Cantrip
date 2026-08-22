@@ -13,11 +13,15 @@ import type { ChatExecutionContext } from "../db/repository.js";
 export class CantripMcpBindingError extends Error {
   constructor(
     readonly code:
+      | "ambiguous"
       | "conflict"
+      | "context-not-found"
       | "expired"
       | "forbidden"
       | "invalid"
+      | "not-found"
       | "stale-binding"
+      | "unsupported-capability"
       | "unavailable",
     readonly status: number,
     message: string,
