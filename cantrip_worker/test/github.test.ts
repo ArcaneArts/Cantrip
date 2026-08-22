@@ -5,7 +5,9 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  realpath,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -40,6 +42,307 @@ afterEach(async () => {
 });
 
 describe("GitHub project files", () => {
+  it("clones direct placements through owned staging and recovers ownership", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-direct-replica-test-"),
+    );
+    directories.push(dataDirectory);
+    const fakeGithub = path.join(dataDirectory, "github");
+    const bareRepository = path.join(fakeGithub, "ArcaneArts", "Cantrip.git");
+    const seed = path.join(dataDirectory, "seed");
+    const binDirectory = path.join(dataDirectory, "bin");
+    const target = path.join(
+      dataDirectory,
+      "external",
+      "nested",
+      "ArcaneArts",
+      "Cantrip",
+    );
+    await mkdir(path.dirname(bareRepository), { recursive: true });
+    await execFileAsync("git", ["init", "--bare", bareRepository]);
+    await execFileAsync("git", ["init", "--initial-branch=main", seed]);
+    await writeFile(path.join(seed, "README.md"), "direct\n");
+    await execFileAsync("git", ["-C", seed, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Initial",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "remote",
+      "add",
+      "origin",
+      bareRepository,
+    ]);
+    await execFileAsync("git", ["-C", seed, "push", "-u", "origin", "main"]);
+    await execFileAsync("git", [
+      "--git-dir",
+      bareRepository,
+      "symbolic-ref",
+      "HEAD",
+      "refs/heads/main",
+    ]);
+
+    process.env.GIT_CONFIG_COUNT = "1";
+    process.env.GIT_CONFIG_KEY_0 = `url.${fakeGithub}${path.sep}.insteadOf`;
+    process.env.GIT_CONFIG_VALUE_0 = "https://github.com/";
+    await mkdir(binDirectory);
+    const fakeGh = path.join(binDirectory, "gh");
+    await writeFile(
+      fakeGh,
+      [
+        "#!/usr/bin/env node",
+        'const { spawnSync } = require("node:child_process");',
+        "const args = process.argv.slice(2);",
+        'if (args[0] !== "repo" || args[1] !== "clone") process.exit(2);',
+        'const result = spawnSync("git", ["clone", `https://github.com/${args[2]}.git`, args[3]], { stdio: "inherit" });',
+        "process.exit(result.status ?? 1);",
+      ].join("\n"),
+    );
+    await chmod(fakeGh, 0o755);
+    process.env.PATH = [binDirectory, originalPath ?? ""].join(path.delimiter);
+
+    const github = new GithubClient(dataDirectory, "worker-direct");
+    const request = {
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb330",
+      attempt: 1,
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb331",
+      nameWithOwner: "ArcaneArts/Cantrip",
+      placement: { mode: "direct" as const, path: target },
+      expectedRevision: null,
+    };
+    const canonicalTarget = path.join(
+      await realpath(dataDirectory),
+      path.relative(dataDirectory, target),
+    );
+    await expect(github.provisionReplica(request)).resolves.toMatchObject({
+      status: "ready",
+      path: canonicalTarget,
+      displayPath: target,
+      reused: false,
+      placement: {
+        mode: "direct",
+        materialization: "cloned",
+        ownership: "cantrip",
+        canonicalPath: canonicalTarget,
+        requestedPath: target,
+        linkPath: null,
+      },
+    });
+    expect((await stat(path.dirname(target))).isDirectory()).toBe(true);
+    const marker = JSON.parse(
+      await readFile(
+        path.join(target, ".git", "cantrip-project-owner.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(marker).toMatchObject({
+      createdBy: "cantrip",
+      projectId: request.projectId,
+      workerId: "worker-direct",
+    });
+    await execFileAsync("git", [
+      "-C",
+      target,
+      "remote",
+      "set-url",
+      "origin",
+      "https://github.com/ArcaneArts/Cantrip.git",
+    ]);
+
+    const retryResult = await github.provisionReplica({
+      ...request,
+      attempt: 2,
+    });
+    expect(retryResult, JSON.stringify(retryResult)).toMatchObject({
+      status: "ready",
+      reused: true,
+      placement: {
+        materialization: "reused",
+        ownership: "cantrip",
+      },
+    });
+    await expect(
+      github.provisionReplica({
+        ...request,
+        attempt: 3,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb336",
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: {
+        code: "target-owned-by-another-project",
+        retryable: false,
+      },
+    });
+    await rm(path.join(dataDirectory, "project-replica-placements.json"));
+    await expect(
+      new GithubClient(dataDirectory, "worker-direct").provisionReplica({
+        ...request,
+        attempt: 4,
+        projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb336",
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: {
+        code: "target-owned-by-another-project",
+        retryable: false,
+      },
+    });
+  });
+
+  it("attaches an existing dirty Primary checkout without mutating it", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-direct-attach-test-"),
+    );
+    directories.push(dataDirectory);
+    const bareRepository = path.join(dataDirectory, "Cantrip.git");
+    const seed = path.join(dataDirectory, "seed");
+    const target = path.join(dataDirectory, "existing", "Cantrip");
+    await execFileAsync("git", ["init", "--bare", bareRepository]);
+    await execFileAsync("git", ["init", "--initial-branch=main", seed]);
+    await writeFile(path.join(seed, "README.md"), "attached\n");
+    await execFileAsync("git", ["-C", seed, "add", "README.md"]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "-c",
+      "user.name=Cantrip Test",
+      "-c",
+      "user.email=cantrip@example.test",
+      "commit",
+      "-m",
+      "Initial",
+    ]);
+    await execFileAsync("git", [
+      "-C",
+      seed,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/ArcaneArts/Cantrip.git",
+    ]);
+    await execFileAsync("git", ["-C", seed, "push", bareRepository, "main"]);
+    await execFileAsync("git", [
+      "--git-dir",
+      bareRepository,
+      "symbolic-ref",
+      "HEAD",
+      "refs/heads/main",
+    ]);
+    await mkdir(path.dirname(target), { recursive: true });
+    await execFileAsync("git", ["clone", bareRepository, target]);
+    await execFileAsync("git", [
+      "-C",
+      target,
+      "remote",
+      "set-url",
+      "origin",
+      "git@github.com:ArcaneArts/Cantrip.git",
+    ]);
+    await writeFile(path.join(target, "LOCAL.txt"), "keep me\n");
+    const revision = (
+      await execFileAsync("git", ["-C", target, "rev-parse", "HEAD"])
+    ).stdout.trim();
+    const before = (
+      await execFileAsync("git", [
+        "-C",
+        target,
+        "status",
+        "--porcelain=v1",
+        "--untracked-files=all",
+      ])
+    ).stdout;
+
+    const github = new GithubClient(dataDirectory, "worker-attach");
+    const request = {
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb332",
+      attempt: 1,
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb333",
+      nameWithOwner: "ArcaneArts/Cantrip",
+      placement: { mode: "direct" as const, path: target },
+      expectedRevision: null,
+    };
+    await expect(github.provisionReplica(request)).resolves.toMatchObject({
+      status: "ready",
+      resolvedRevision: revision,
+      placement: {
+        materialization: "attached",
+        ownership: "user",
+      },
+    });
+    expect(
+      (
+        await execFileAsync("git", [
+          "-C",
+          target,
+          "status",
+          "--porcelain=v1",
+          "--untracked-files=all",
+        ])
+      ).stdout,
+    ).toBe(before);
+    await expect(
+      access(path.join(target, ".git", "cantrip-project-owner.json")),
+    ).rejects.toMatchObject({ code: "ENOENT" });
+
+    await expect(
+      github.provisionReplica({
+        ...request,
+        attempt: 2,
+        expectedRevision: revision,
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "worktree-dirty", retryable: false },
+    });
+  });
+
+  it("rejects unsafe direct targets before invoking GitHub clone", async () => {
+    const dataDirectory = await mkdtemp(
+      path.join(tmpdir(), "cantrip-direct-path-guard-test-"),
+    );
+    directories.push(dataDirectory);
+    const github = new GithubClient(dataDirectory, "worker-guard");
+    const base = {
+      jobId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb334",
+      attempt: 1,
+      projectId: "019fe8aa-a7a3-7404-8a96-d3be7f0fb335",
+      nameWithOwner: "ArcaneArts/Cantrip",
+      expectedRevision: null,
+    };
+    await expect(
+      github.provisionReplica({
+        ...base,
+        placement: { mode: "direct", path: "relative/Cantrip" },
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "path-invalid", retryable: false },
+    });
+
+    const existingFile = path.join(dataDirectory, "existing-file");
+    await writeFile(existingFile, "do not replace\n");
+    await expect(
+      github.provisionReplica({
+        ...base,
+        placement: { mode: "direct", path: existingFile },
+      }),
+    ).resolves.toMatchObject({
+      status: "blocked",
+      error: { code: "target-type-mismatch", retryable: false },
+    });
+    expect(await readFile(existingFile, "utf8")).toBe("do not replace\n");
+  });
+
   it("provisions an exact revision without mutating dirty or diverged replicas", async () => {
     const dataDirectory = await mkdtemp(
       path.join(tmpdir(), "cantrip-replica-provision-test-"),

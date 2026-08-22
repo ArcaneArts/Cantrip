@@ -11430,9 +11430,11 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("project.replica.provision"),
     jobId: z.string().uuid(),
     attempt: z.number().int().positive(),
+    projectId: z.string().uuid().optional(),
     repository: z.object({
       nameWithOwner: workerRepositoryNameSchema,
     }),
+    placement: projectReplicaPlacementRequestSchema.optional(),
     expectedRevision: gitObjectRevisionSchema.nullable(),
   }),
   z.object({
