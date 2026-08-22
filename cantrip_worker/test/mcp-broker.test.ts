@@ -50,6 +50,84 @@ function bindingInput() {
 }
 
 describe("Cantrip MCP worker broker", () => {
+  it("reuses an unchanged live binding instead of invalidating its stdio host", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker({
+      dataDirectory,
+      serverUrl: "https://cantrip.example",
+      token: "worker-token",
+      workerId: "worker-one",
+    });
+    await broker.start();
+    try {
+      const first = broker.createBinding(bindingInput());
+      const reused = broker.createBinding(bindingInput());
+
+      expect(reused).toEqual(first);
+      await expect(access(first.connectionPath)).resolves.toBeUndefined();
+      const handshake = await fetch(
+        `${broker.endpoint}/v1/bindings/${first.binding.bindingId}`,
+        {
+          headers: {
+            authorization: `Bearer ${first.connection.credential}`,
+          },
+        },
+      );
+      expect(handshake.status).toBe(200);
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("reuses a live binding across equivalent Windows path forms", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker({
+      dataDirectory,
+      serverUrl: "https://cantrip.example",
+      token: "worker-token",
+      workerId: "worker-one",
+    });
+    await broker.start();
+    try {
+      const first = broker.createBinding({
+        ...bindingInput(),
+        canonicalRoot: "C:\\Users\\Cantrip\\project\\",
+      });
+      const reused = broker.createBinding({
+        ...bindingInput(),
+        canonicalRoot: "c:/users/cantrip/project",
+      });
+
+      expect(reused.binding.bindingId).toBe(first.binding.bindingId);
+      await expect(access(first.connectionPath)).resolves.toBeUndefined();
+    } finally {
+      await broker.close();
+    }
+  });
+
+  it("rotates a binding when its lane claims change", async () => {
+    const dataDirectory = await temporaryDirectory();
+    const broker = new CantripMcpBroker({
+      dataDirectory,
+      serverUrl: "https://cantrip.example",
+      token: "worker-token",
+      workerId: "worker-one",
+    });
+    await broker.start();
+    try {
+      const first = broker.createBinding(bindingInput());
+      const rotated = broker.createBinding({
+        ...bindingInput(),
+        executionLaneId: "lane-two",
+      });
+
+      expect(rotated.binding.bindingId).not.toBe(first.binding.bindingId);
+      await expect(access(first.connectionPath)).rejects.toThrow();
+    } finally {
+      await broker.close();
+    }
+  });
+
   it("creates, authenticates, expires, and revokes protected bindings", async () => {
     const dataDirectory = await temporaryDirectory();
     let now = Date.parse("2026-08-21T12:00:00.000Z");
