@@ -7,6 +7,8 @@ import {
   type ProjectReplicaJobProgress,
   type ProjectReplicaJobProgressEvent,
   type ProjectReplicaJobSummary,
+  type ProjectReplicaOwnershipKind,
+  type ProjectReplicaPlacementMode,
   type EncryptedProjectReplicaProvisionCreate,
   type ProjectReplicaProvisionResult,
   type EncryptedProjectReplicaRemoveCreate,
@@ -38,8 +40,24 @@ export interface ClaimedProjectReplicaJob {
 }
 
 export interface ProjectReplicaOperationContext {
+  linkPath: string | null;
+  ownershipKind: ProjectReplicaOwnershipKind;
+  placementMode: ProjectReplicaPlacementMode;
   primaryWorktreeId: string;
+  repositoryFingerprint: string | null;
+  requestedPath: string | null;
   sourcePath: string;
+}
+
+export interface ProjectReplicaLinkRepairContext {
+  linkPath: string | null;
+  ownershipKind: ProjectReplicaOwnershipKind;
+  placementMode: ProjectReplicaPlacementMode;
+  repository: string | null;
+  repositoryFingerprint: string | null;
+  sourcePath: string;
+  workerId: string;
+  workerSupportsRepair: boolean;
 }
 
 function toISOString(value: Date): string {
@@ -412,6 +430,15 @@ export class ProjectReplicaJobRepository {
             "Only GitHub-backed project replicas support this operation.",
           );
         }
+        if (
+          kind === "remove" &&
+          target.source.ownershipKind === "user" &&
+          (input as EncryptedProjectReplicaRemoveCreate).deleteLocalFiles
+        ) {
+          throw new ProjectReplicaJobConflictError(
+            "This checkout existed before Cantrip and cannot be deleted.",
+          );
+        }
         if (kind === "remove") {
           const activeReplicas = await transaction
             .select({ id: schema.projectSources.id })
@@ -478,6 +505,8 @@ export class ProjectReplicaJobRepository {
             idempotencyKey: input.idempotencyKey,
             payloadFingerprint: fingerprint,
             repository: input.repository,
+            placementMode: target.source.placementMode,
+            placementPath: target.source.requestedPath,
             expectedRevision: synchronizeInput?.expectedRevision ?? null,
             synchronizationPolicy: synchronizeInput?.policy ?? null,
             deleteLocalFiles: removeInput?.deleteLocalFiles ?? null,
@@ -566,7 +595,12 @@ export class ProjectReplicaJobRepository {
   ): Promise<ProjectReplicaOperationContext | null> {
     const rows = await this.database
       .select({
+        linkPath: schema.projectSources.linkPath,
+        ownershipKind: schema.projectSources.ownershipKind,
+        placementMode: schema.projectSources.placementMode,
         primaryWorktreeId: schema.projectWorktrees.id,
+        repositoryFingerprint: schema.projectSources.repositoryFingerprint,
+        requestedPath: schema.projectSources.requestedPath,
         sourcePath: schema.projectSources.absolutePath,
       })
       .from(schema.projectReplicaJobs)
@@ -596,6 +630,60 @@ export class ProjectReplicaJobRepository {
       )
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async linkRepairContext(
+    ownerId: string,
+    projectId: string,
+    projectReplicaId: string,
+  ): Promise<ProjectReplicaLinkRepairContext | null> {
+    const rows = await this.database
+      .select({
+        capabilities: schema.workers.projectReplicaCapabilities,
+        linkPath: schema.projectSources.linkPath,
+        ownershipKind: schema.projectSources.ownershipKind,
+        placementMode: schema.projectSources.placementMode,
+        repository: schema.projects.githubRepositoryFullName,
+        repositoryFingerprint: schema.projectSources.repositoryFingerprint,
+        sourcePath: schema.projectSources.absolutePath,
+        workerId: schema.projectSources.workerId,
+      })
+      .from(schema.projectSources)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .innerJoin(
+        schema.workers,
+        and(
+          eq(schema.workers.id, schema.projectSources.workerId),
+          isNull(schema.workers.unlinkedAt),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projectSources.id, projectReplicaId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row
+      ? {
+          linkPath: row.linkPath,
+          ownershipKind: row.ownershipKind,
+          placementMode: row.placementMode,
+          repository: row.repository,
+          repositoryFingerprint: row.repositoryFingerprint,
+          sourcePath: row.sourcePath,
+          workerId: row.workerId,
+          workerSupportsRepair: row.capabilities.managedLinkPlacement === true,
+        }
+      : null;
   }
 
   async removalBlocker(
@@ -970,6 +1058,42 @@ export class ProjectReplicaJobRepository {
           "The worker completed a different replica job.",
         );
       }
+      const placement =
+        result.placement ??
+        (job.placementMode === "managed"
+          ? {
+              mode: "managed" as const,
+              materialization: result.reused
+                ? ("reused" as const)
+                : ("cloned" as const),
+              ownership: "cantrip" as const,
+              canonicalPath: result.path,
+              requestedPath: null,
+              linkPath: null,
+            }
+          : null);
+      if (
+        !placement ||
+        placement.mode !== job.placementMode ||
+        result.reused !== (placement.materialization !== "cloned") ||
+        (placement.mode === "managed" &&
+          (placement.ownership !== "cantrip" ||
+            placement.requestedPath !== null ||
+            placement.linkPath !== null)) ||
+        (placement.mode === "managed-link" &&
+          (placement.ownership !== "cantrip" ||
+            placement.requestedPath === null ||
+            placement.linkPath === null)) ||
+        (placement.mode === "direct" &&
+          (placement.requestedPath === null ||
+            placement.linkPath !== null ||
+            (placement.ownership === "user") !==
+              (placement.materialization === "attached")))
+      ) {
+        throw new ProjectReplicaJobConflictError(
+          "The worker returned placement facts that do not match the provision request.",
+        );
+      }
       let sources = await transaction
         .select()
         .from(schema.projectSources)
@@ -984,7 +1108,11 @@ export class ProjectReplicaJobRepository {
       if (
         sources[0] &&
         (sources[0].absolutePath !== result.path ||
-          sources[0].repositoryFingerprint !== result.repositoryFingerprint)
+          sources[0].repositoryFingerprint !== result.repositoryFingerprint ||
+          sources[0].placementMode !== placement.mode ||
+          sources[0].ownershipKind !== placement.ownership ||
+          sources[0].requestedPath !== placement.requestedPath ||
+          sources[0].linkPath !== placement.linkPath)
       ) {
         throw new ProjectReplicaJobConflictError(
           "The worker already has a different replica record for this project.",
@@ -999,6 +1127,10 @@ export class ProjectReplicaJobRepository {
             workerId: job.workerId,
             absolutePath: result.path,
             displayPath: result.displayPath,
+            placementMode: placement.mode,
+            ownershipKind: placement.ownership,
+            requestedPath: placement.requestedPath,
+            linkPath: placement.linkPath,
             repositoryFingerprint: result.repositoryFingerprint,
             createdAt: now,
             updatedAt: now,
@@ -1053,6 +1185,8 @@ export class ProjectReplicaJobRepository {
           state: "succeeded",
           stateRevision: job.stateRevision + 1,
           resolvedRevision: result.resolvedRevision,
+          resolvedMaterialization: placement.materialization,
+          resolvedOwnership: placement.ownership,
           commandId: null,
           leaseExpiresAt: null,
           cancellationUnsafeAt: null,

@@ -305,6 +305,7 @@ import {
   projectReplicaJobListSchema,
   projectReplicaJobRetrySchema,
   projectReplicaJobSummarySchema,
+  projectReplicaLinkRepairResultSchema,
   projectReplicaListSchema,
   encryptedProjectReplicaProvisionCreateSchema,
   encryptedProjectReplicaRemoveCreateSchema,
@@ -14587,6 +14588,57 @@ export async function buildApp({
           return reply.code(409).send({ error: error.message });
         }
         throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: { projectId: string; replicaId: string } }>(
+    "/api/projects/:projectId/replicas/:replicaId/repair-link",
+    async (request, reply) => {
+      const context = await repository.projectReplicaJobs.linkRepairContext(
+        applicationOwnerId(),
+        request.params.projectId,
+        request.params.replicaId,
+      );
+      if (!context) {
+        return reply.code(404).send({ error: "Project replica not found." });
+      }
+      if (
+        context.placementMode !== "managed-link" ||
+        context.ownershipKind !== "cantrip" ||
+        !context.repository ||
+        !context.repositoryFingerprint ||
+        !context.linkPath
+      ) {
+        return reply.code(409).send({
+          code: "link-unsupported",
+          error: "This replica does not have a repairable managed link.",
+        });
+      }
+      if (!context.workerSupportsRepair) {
+        return reply.code(409).send({
+          code: "capability-missing",
+          error: "The replica worker does not support managed-link repair.",
+        });
+      }
+      try {
+        const result = projectReplicaLinkRepairResultSchema.parse(
+          await bridge.request(context.workerId, {
+            type: "project.replica.link.repair",
+            projectId: request.params.projectId,
+            repository: { nameWithOwner: context.repository },
+            sourcePath: context.sourcePath,
+            linkPath: context.linkPath,
+            repositoryFingerprint: context.repositoryFingerprint,
+          }),
+        );
+        return result.status === "blocked"
+          ? reply
+              .code(409)
+              .send({ code: result.error.code, error: result.error.message })
+          : reply.send(result);
+      } catch (error) {
+        return sendWorkerRequestFailure(reply, error);
       }
     },
   );

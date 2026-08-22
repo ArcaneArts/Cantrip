@@ -190,16 +190,29 @@ export class ProjectReplicaJobExecutor {
               job.projectReplicaId,
             )
           : false;
+      const placementMode = job.placementMode ?? "managed";
+      const placementCapable =
+        placementMode === "managed" ||
+        (placementMode === "managed-link"
+          ? worker.projectReplicas.managedLinkPlacement &&
+            (job.kind !== "provision" ||
+              worker.projectReplicas.recursiveParentCreation)
+          : worker.projectReplicas.directPlacement &&
+            (job.kind !== "provision" ||
+              (worker.projectReplicas.attachExisting &&
+                worker.projectReplicas.recursiveParentCreation)));
       const capable =
         job.kind === "provision"
           ? worker.projectReplicas.provision &&
-            worker.projectReplicas.exactRevision
+            worker.projectReplicas.exactRevision &&
+            placementCapable
           : job.kind === "synchronize"
             ? worker.projectReplicas.synchronize &&
-              worker.projectReplicas.exactRevision
+              worker.projectReplicas.exactRevision &&
+              placementCapable
             : convertedManagedFolderSource
               ? !(job.deleteLocalFiles ?? true) || worker.managedFolders.remove
-              : worker.projectReplicas.remove;
+              : worker.projectReplicas.remove && placementCapable;
       if (!capable) {
         const blocked = await this.repository.projectReplicaJobs.block(
           job.id,
@@ -252,7 +265,15 @@ export class ProjectReplicaJobExecutor {
               type: "project.replica.provision",
               jobId: job.id,
               attempt: job.attempt,
+              projectId: job.projectId,
               repository: { nameWithOwner: job.repository },
+              placement:
+                placementMode === "managed"
+                  ? { mode: "managed" }
+                  : {
+                      mode: placementMode,
+                      path: job.placementPath!,
+                    },
               expectedRevision: job.expectedRevision,
             },
             options,
@@ -287,6 +308,21 @@ export class ProjectReplicaJobExecutor {
               retryable: false,
             },
           );
+        } else if (
+          (context.placementMode ?? "managed") !== placementMode ||
+          ((context.placementMode ?? "managed") !== "managed" &&
+            !context.repositoryFingerprint)
+        ) {
+          settled = await this.repository.projectReplicaJobs.block(
+            job.id,
+            claimed.commandId,
+            {
+              code: "replica-not-ready",
+              message:
+                "The replica placement identity is incomplete or changed.",
+              retryable: false,
+            },
+          );
         } else if (job.kind === "synchronize") {
           if (!job.expectedRevision || !job.synchronizationPolicy) {
             throw new Error("Synchronization job payload is incomplete.");
@@ -298,8 +334,19 @@ export class ProjectReplicaJobExecutor {
                 type: "project.replica.synchronize",
                 jobId: job.id,
                 attempt: job.attempt,
+                projectId: job.projectId,
                 repository: { nameWithOwner: job.repository },
                 sourcePath: context.sourcePath,
+                placement: {
+                  mode: context.placementMode ?? "managed",
+                  materialization: "reused",
+                  ownership: context.ownershipKind ?? "cantrip",
+                  canonicalPath: context.sourcePath,
+                  requestedPath: context.requestedPath ?? null,
+                  linkPath: context.linkPath ?? null,
+                },
+                repositoryFingerprint:
+                  context.repositoryFingerprint ?? undefined,
                 expectedRevision: job.expectedRevision,
                 policy: job.synchronizationPolicy,
               },
@@ -378,8 +425,19 @@ export class ProjectReplicaJobExecutor {
                       type: "project.replica.remove",
                       jobId: job.id,
                       attempt: job.attempt,
+                      projectId: job.projectId,
                       repository: { nameWithOwner: job.repository },
                       sourcePath: context.sourcePath,
+                      placement: {
+                        mode: context.placementMode ?? "managed",
+                        materialization: "reused",
+                        ownership: context.ownershipKind ?? "cantrip",
+                        canonicalPath: context.sourcePath,
+                        requestedPath: context.requestedPath ?? null,
+                        linkPath: context.linkPath ?? null,
+                      },
+                      repositoryFingerprint:
+                        context.repositoryFingerprint ?? undefined,
                       deleteLocalFiles,
                     },
                     options,
