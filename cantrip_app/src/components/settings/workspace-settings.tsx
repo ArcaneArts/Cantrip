@@ -54,6 +54,17 @@ export function promoteDefaultWorkspace(
   );
 }
 
+export function toggleWorkspaceProject(
+  projectIds: string[],
+  projectId: string,
+  checked: boolean,
+): string[] {
+  const next = new Set(projectIds);
+  if (checked) next.add(projectId);
+  else next.delete(projectId);
+  return [...next];
+}
+
 export function WorkspaceSettings({
   onOpenPolicySettings,
 }: {
@@ -70,9 +81,9 @@ export function WorkspaceSettings({
   const [name, setName] = useState("");
   const [deleteTarget, setDeleteTarget] =
     useState<ProjectWorkspaceSummary | null>(null);
-  const [workspaceSections, setWorkspaceSections] = useState<
-    Record<string, "policies" | "projects">
-  >({});
+  const [policyWorkspaceId, setPolicyWorkspaceId] = useState<string | null>(
+    null,
+  );
 
   const replaceWorkspace = (workspace: ProjectWorkspaceSummary) => {
     queryClient.setQueryData<ProjectWorkspaceSummary[]>(
@@ -128,6 +139,9 @@ export function WorkspaceSettings({
         (current = []) => current.filter(({ id }) => id !== workspaceId),
       );
       void queryClient.invalidateQueries({ queryKey: ["effective-policies"] });
+      setPolicyWorkspaceId((current) =>
+        current === workspaceId ? null : current,
+      );
       setDeleteTarget(null);
     },
   });
@@ -173,157 +187,195 @@ export function WorkspaceSettings({
           </p>
         ) : null}
 
-        <div className="divide-y border-y">
-          {(workspaces.data ?? []).map((workspace) => (
-            <section key={workspace.id}>
-              <div className="flex items-center gap-3 px-3 py-3">
-                <span className="grid size-8 place-items-center text-muted-foreground">
-                  <Layers3 className="size-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="truncate text-sm font-semibold">
-                      {workspace.name}
-                    </h2>
-                    {workspace.isDefault ? (
-                      <Badge variant="secondary">Default</Badge>
+        <section className="grid gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Workspace management</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Rename workspaces, choose the default, and configure policies.
+            </p>
+          </div>
+          <div className="divide-y border-y">
+            {(workspaces.data ?? []).map((workspace) => (
+              <div key={workspace.id}>
+                <div className="flex flex-wrap items-center gap-3 px-3 py-3">
+                  <span className="grid size-8 place-items-center text-muted-foreground">
+                    <Layers3 className="size-4" />
+                  </span>
+                  <div className="min-w-40 flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="truncate text-sm font-semibold">
+                        {workspace.name}
+                      </h3>
+                      {workspace.isDefault ? (
+                        <Badge variant="secondary">Default</Badge>
+                      ) : null}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {workspace.projectIds.length} project
+                      {workspace.projectIds.length === 1 ? "" : "s"}
+                    </p>
+                  </div>
+                  <div className="ml-auto flex flex-wrap items-center justify-end gap-1">
+                    <Button
+                      size="sm"
+                      variant={
+                        policyWorkspaceId === workspace.id ? "outline" : "ghost"
+                      }
+                      aria-expanded={policyWorkspaceId === workspace.id}
+                      onClick={() =>
+                        setPolicyWorkspaceId((current) =>
+                          current === workspace.id ? null : workspace.id,
+                        )
+                      }
+                    >
+                      <ShieldCheck className="size-3.5" /> Policies
+                    </Button>
+                    {!workspace.isDefault ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={makeDefault.isPending}
+                        onClick={() => makeDefault.mutate(workspace.id)}
+                        title={`Make ${workspace.name} the default workspace`}
+                      >
+                        <Star className="size-3.5" />
+                        <span className="hidden sm:inline">Make default</span>
+                      </Button>
+                    ) : null}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="size-8"
+                      onClick={() => openEditor(workspace)}
+                    >
+                      <Pencil className="size-3.5" />
+                      <span className="sr-only">Rename {workspace.name}</span>
+                    </Button>
+                    {!workspace.isDefault ? (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        onClick={() => setDeleteTarget(workspace)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span className="sr-only">Delete {workspace.name}</span>
+                      </Button>
                     ) : null}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {workspace.projectIds.length} project
-                    {workspace.projectIds.length === 1 ? "" : "s"}
-                  </p>
                 </div>
-                {!workspace.isDefault ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={makeDefault.isPending}
-                    onClick={() => makeDefault.mutate(workspace.id)}
-                    title={`Make ${workspace.name} the default workspace`}
-                  >
-                    <Star className="size-3.5" />
-                    <span className="hidden sm:inline">Make default</span>
-                  </Button>
-                ) : null}
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8"
-                  onClick={() => openEditor(workspace)}
-                >
-                  <Pencil className="size-3.5" />
-                  <span className="sr-only">Rename {workspace.name}</span>
-                </Button>
-                {!workspace.isDefault ? (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-8"
-                    onClick={() => setDeleteTarget(workspace)}
-                  >
-                    <Trash2 className="size-3.5" />
-                    <span className="sr-only">Delete {workspace.name}</span>
-                  </Button>
+                {policyWorkspaceId === workspace.id ? (
+                  <div className="border-t bg-muted/[0.025] p-3">
+                    <PolicyAssignmentControls
+                      scope={{
+                        kind: "workspace",
+                        id: workspace.id,
+                        name: workspace.name,
+                      }}
+                      onEditPolicy={onOpenPolicySettings}
+                      onManagePolicies={onOpenPolicySettings}
+                    />
+                  </div>
                 ) : null}
               </div>
-              <div className="flex items-center gap-1 border-t px-3 py-1.5">
-                <Button
-                  size="sm"
-                  variant={
-                    (workspaceSections[workspace.id] ?? "projects") ===
-                    "projects"
-                      ? "outline"
-                      : "ghost"
-                  }
-                  aria-pressed={
-                    (workspaceSections[workspace.id] ?? "projects") ===
-                    "projects"
-                  }
-                  onClick={() =>
-                    setWorkspaceSections((current) => ({
-                      ...current,
-                      [workspace.id]: "projects",
-                    }))
-                  }
-                >
-                  <FolderGit2 className="size-3.5" /> Projects
-                </Button>
-                <Button
-                  size="sm"
-                  variant={
-                    workspaceSections[workspace.id] === "policies"
-                      ? "outline"
-                      : "ghost"
-                  }
-                  aria-pressed={workspaceSections[workspace.id] === "policies"}
-                  onClick={() =>
-                    setWorkspaceSections((current) => ({
-                      ...current,
-                      [workspace.id]: "policies",
-                    }))
-                  }
-                >
-                  <ShieldCheck className="size-3.5" /> Policies
-                </Button>
-              </div>
-              {(workspaceSections[workspace.id] ?? "projects") ===
-              "projects" ? (
-                <div className="border-t p-2">
-                  {(projects.data ?? []).length ? (
-                    <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-                      {(projects.data ?? []).map((project: ProjectSummary) => {
+            ))}
+          </div>
+        </section>
+
+        <section className="grid gap-3 pt-2">
+          <div>
+            <h2 className="text-sm font-semibold">Project membership</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Check which workspaces should show each project in the sidebar.
+            </p>
+          </div>
+          {(projects.data ?? []).length ? (
+            <div className="overflow-x-auto border-y">
+              <table className="min-w-full border-collapse text-left text-sm">
+                <thead className="bg-background text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th
+                      scope="col"
+                      className="sticky left-0 z-10 min-w-56 bg-background px-3 py-2 font-medium"
+                    >
+                      Project
+                    </th>
+                    {(workspaces.data ?? []).map((workspace) => (
+                      <th
+                        key={workspace.id}
+                        scope="col"
+                        className="min-w-40 px-3 py-2 text-center font-medium"
+                      >
+                        <span className="inline-flex max-w-36 items-center gap-1.5">
+                          <span className="truncate">{workspace.name}</span>
+                          {workspace.isDefault ? (
+                            <Star
+                              aria-label="Default workspace"
+                              className="size-3 shrink-0 fill-current"
+                            />
+                          ) : null}
+                        </span>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(projects.data ?? []).map((project: ProjectSummary) => (
+                    <tr
+                      key={project.id}
+                      className="group border-b last:border-0"
+                    >
+                      <th
+                        scope="row"
+                        className="sticky left-0 z-[1] bg-background px-3 py-2.5 font-medium group-hover:bg-muted/30"
+                      >
+                        <span className="flex min-w-0 items-center gap-2">
+                          <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{project.name}</span>
+                        </span>
+                      </th>
+                      {(workspaces.data ?? []).map((workspace) => {
                         const checked = workspace.projectIds.includes(
                           project.id,
                         );
                         return (
-                          <label
-                            key={project.id}
-                            className="flex cursor-pointer items-center gap-2 px-2 py-2 text-sm hover:bg-muted/50"
+                          <td
+                            key={workspace.id}
+                            className="p-0 text-center group-hover:bg-muted/30"
                           >
-                            <input
-                              type="checkbox"
-                              className="size-3.5 accent-primary"
-                              checked={checked}
-                              disabled={membership.isPending}
-                              onChange={(event) => {
-                                const ids = new Set(workspace.projectIds);
-                                if (event.target.checked) ids.add(project.id);
-                                else ids.delete(project.id);
-                                membership.mutate({
-                                  workspaceId: workspace.id,
-                                  projectIds: [...ids],
-                                });
-                              }}
-                            />
-                            <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{project.name}</span>
-                          </label>
+                            <label className="flex cursor-pointer justify-center px-3 py-3">
+                              <input
+                                type="checkbox"
+                                className="size-4 accent-primary"
+                                checked={checked}
+                                disabled={membership.isPending}
+                                aria-label={`Show ${project.name} in ${workspace.name}`}
+                                onChange={(event) =>
+                                  membership.mutate({
+                                    workspaceId: workspace.id,
+                                    projectIds: toggleWorkspaceProject(
+                                      workspace.projectIds,
+                                      project.id,
+                                      event.target.checked,
+                                    ),
+                                  })
+                                }
+                              />
+                            </label>
+                          </td>
                         );
                       })}
-                    </div>
-                  ) : (
-                    <p className="px-2 py-4 text-center text-sm text-muted-foreground">
-                      Import a project before assigning workspace visibility.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="border-t p-3">
-                  <PolicyAssignmentControls
-                    scope={{
-                      kind: "workspace",
-                      id: workspace.id,
-                      name: workspace.name,
-                    }}
-                    onEditPolicy={onOpenPolicySettings}
-                    onManagePolicies={onOpenPolicySettings}
-                  />
-                </div>
-              )}
-            </section>
-          ))}
-        </div>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="border-y px-3 py-8 text-center text-sm text-muted-foreground">
+              Import a project before assigning workspace visibility.
+            </p>
+          )}
+        </section>
 
         {membership.isError || makeDefault.isError || remove.isError ? (
           <p className="text-sm text-destructive">
