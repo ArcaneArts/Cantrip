@@ -117,6 +117,11 @@ import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
 import { scheduleChatComposerFocus } from "@/components/chat/chat-composer-focus";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
+import {
+  ChatComposerNotice,
+  scheduleChatComposerNoticeDismiss,
+  type ChatComposerNoticeTone,
+} from "@/components/chat/chat-composer-notice";
 import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
@@ -1919,7 +1924,6 @@ function ChatTranscript({
   });
   const compact = useMutation({
     mutationFn: () => compactChat(chat.id),
-    onSuccess: () => setCommandNotice("Conversation context compacted."),
   });
   const updateGoal = useMutation({
     mutationFn: (status: "active" | "paused") =>
@@ -2317,6 +2321,48 @@ function ChatTranscript({
     });
   }, [chatActionError, onToast]);
 
+  useEffect(() => {
+    if (!commandNotice) return;
+    return scheduleChatComposerNoticeDismiss(() => setCommandNotice(null));
+  }, [commandNotice]);
+
+  useEffect(() => {
+    if (!attachmentNotice) return;
+    return scheduleChatComposerNoticeDismiss(() => setAttachmentNotice(null));
+  }, [attachmentNotice]);
+
+  let composerNotice:
+    | {
+        loading?: boolean;
+        message: string;
+        tone?: ChatComposerNoticeTone;
+      }
+    | undefined;
+  if (compact.isPending) {
+    composerNotice = {
+      loading: true,
+      message: "Compacting conversation context…",
+    };
+  } else if (attachmentNotice) {
+    composerNotice = { message: attachmentNotice, tone: "error" };
+  } else if (editingPrompt) {
+    composerNotice = {
+      message: "Enter re-queues this prompt in its original position",
+    };
+  } else if (imageCapabilityLoading && selectedModel) {
+    composerNotice = {
+      loading: true,
+      message: `Checking whether ${selectedModel.name} accepts image input…`,
+    };
+  } else if (imageCapability && selectedModel) {
+    composerNotice = {
+      message: imageInputCapabilityMessage(selectedModel.name, imageCapability),
+      tone: imageCapability.state === "supported" ? "success" : "warning",
+    };
+  } else if (commandNotice) {
+    composerNotice = { message: commandNotice };
+  }
+
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden transition-[padding-right] duration-150 ease-out motion-reduce:transition-none"
@@ -2569,6 +2615,7 @@ function ChatTranscript({
         style={{ right: inspectOpen && !inspectOverlay ? inspectWidth : 0 }}
       >
         <div className="pointer-events-auto relative w-full">
+          {composerNotice ? <ChatComposerNotice {...composerNotice} /> : null}
           {showScrollToBottom ? (
             <Button
               type="button"
@@ -3215,36 +3262,6 @@ function ChatTranscript({
               if (!open) setViewingAttachment(null);
             }}
           />
-          {imageCapabilityLoading && selectedModel ? (
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              Checking whether {selectedModel.name} accepts image input…
-            </p>
-          ) : imageCapability && selectedModel ? (
-            <p
-              className={cn(
-                "mt-2 text-center text-[11px]",
-                imageCapability.state === "supported"
-                  ? "text-emerald-700 dark:text-emerald-300"
-                  : "text-amber-700 dark:text-amber-300",
-              )}
-            >
-              {imageInputCapabilityMessage(selectedModel.name, imageCapability)}
-            </p>
-          ) : null}
-          {attachmentNotice ? (
-            <p className="mt-2 text-center text-[11px] text-destructive">
-              {attachmentNotice}
-            </p>
-          ) : null}
-          {editingPrompt ? (
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              Enter re-queues this prompt in its original position
-            </p>
-          ) : commandNotice ? (
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">
-              {commandNotice}
-            </p>
-          ) : null}
         </div>
       </form>
       {effectiveInspectOnly ? (
