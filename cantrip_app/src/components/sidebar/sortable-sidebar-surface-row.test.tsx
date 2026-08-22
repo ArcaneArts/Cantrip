@@ -3,7 +3,10 @@ import { SortableContext } from "@dnd-kit/sortable";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { SortableSidebarSurfaceRow } from "./sortable-sidebar-surface-row";
+import {
+  dispatchSidebarActionsMenu,
+  SortableSidebarSurfaceRow,
+} from "./sortable-sidebar-surface-row";
 
 function renderRow(editing: boolean) {
   const sortId = "terminal:one";
@@ -32,6 +35,42 @@ function renderRow(editing: boolean) {
 }
 
 describe("sortable sidebar surface row", () => {
+  it("opens its actions trigger with the pointer event Radix listens for", () => {
+    const dispatchEvent = vi.fn<(event: Event) => boolean>(() => true);
+    class TestPointerEvent extends Event {
+      readonly button: number;
+      readonly buttons: number;
+      readonly isPrimary: boolean;
+      readonly pointerType: string;
+
+      constructor(type: string, init: PointerEventInit) {
+        super(type, init);
+        this.button = init.button ?? 0;
+        this.buttons = init.buttons ?? 0;
+        this.isPrimary = init.isPrimary ?? false;
+        this.pointerType = init.pointerType ?? "";
+      }
+    }
+    vi.stubGlobal("PointerEvent", TestPointerEvent);
+
+    try {
+      dispatchSidebarActionsMenu({ dispatchEvent });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(dispatchEvent).toHaveBeenCalledOnce();
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({
+      type: "pointerdown",
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      buttons: 1,
+      isPrimary: true,
+      pointerType: "mouse",
+    });
+  });
+
   it("renders shared surface slots in the normal state", () => {
     const markup = renderRow(false);
 

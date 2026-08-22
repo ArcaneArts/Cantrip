@@ -3,9 +3,39 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  canStartWorkspacePointerDrag,
   filterWorkspacePointerCollisions,
   WorkspaceDragPreview,
 } from "./workspace-dnd-provider";
+
+describe("workspace pointer drag activation", () => {
+  it("keeps plain primary presses draggable", () => {
+    expect(
+      canStartWorkspacePointerDrag({
+        button: 0,
+        ctrlKey: false,
+        isPrimary: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves right-click and Control-click available to context menus", () => {
+    expect(
+      canStartWorkspacePointerDrag({
+        button: 2,
+        ctrlKey: false,
+        isPrimary: true,
+      }),
+    ).toBe(false);
+    expect(
+      canStartWorkspacePointerDrag({
+        button: 0,
+        ctrlKey: true,
+        isPrimary: true,
+      }),
+    ).toBe(false);
+  });
+});
 
 function collision(
   id: string,
