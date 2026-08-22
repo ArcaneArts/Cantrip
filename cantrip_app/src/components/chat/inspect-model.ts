@@ -66,10 +66,18 @@ export interface AgentInspectorSnapshot {
 }
 
 export interface AgentInspectorProjectionSource {
-  readonly records: readonly ActivityRecord[];
+  readonly commands: readonly AgentInspectorCommandSource[];
+  readonly files: readonly AgentInspectorFile[];
+  readonly recentCommands: readonly AgentInspectorRecentCommand[];
   readonly thought: AgentInspectorThought | null;
+  readonly transitionTimesMs: readonly number[];
   readonly turnId: string | null;
 }
+
+export type AgentInspectorCommandSource = Omit<
+  AgentInspectorCommand,
+  "elapsedMs" | "presentation"
+>;
 
 interface ActivityRecord<T extends AgentActivity = AgentActivity> {
   activity: T;
@@ -273,10 +281,7 @@ function latestThought(
   );
 }
 
-function projectFiles(
-  records: Iterable<ActivityRecord>,
-  nowMs: number,
-): AgentInspectorFile[] {
+function indexFiles(records: Iterable<ActivityRecord>): AgentInspectorFile[] {
   const files = new Map<string, AgentInspectorFile>();
   for (const record of records) {
     if (record.activity.type !== "fileChange") continue;
@@ -302,13 +307,11 @@ function projectFiles(
       }
     }
   }
-  return [...files.values()]
-    .filter((file) => nowMs < file.expiresAtMs)
-    .sort(
-      (left, right) =>
-        right.updatedAtMs - left.updatedAtMs ||
-        left.path.localeCompare(right.path),
-    );
+  return [...files.values()].sort(
+    (left, right) =>
+      right.updatedAtMs - left.updatedAtMs ||
+      left.path.localeCompare(right.path),
+  );
 }
 
 function completedAt(record: ActivityRecord<CommandActivity>): number | null {
@@ -316,14 +319,11 @@ function completedAt(record: ActivityRecord<CommandActivity>): number | null {
   return record.activity.completedAtMs ?? record.observedAtMs;
 }
 
-function projectCommands(
-  records: Iterable<ActivityRecord>,
-  nowMs: number,
-): {
-  commands: AgentInspectorCommand[];
+function indexCommands(records: Iterable<ActivityRecord>): {
+  commands: AgentInspectorCommandSource[];
   recentCommands: AgentInspectorRecentCommand[];
 } {
-  const commands: AgentInspectorCommand[] = [];
+  const commands: AgentInspectorCommandSource[] = [];
   const recentCommands: AgentInspectorRecentCommand[] = [];
   for (const untypedRecord of records) {
     if (untypedRecord.activity.type !== "command") continue;
@@ -332,40 +332,27 @@ function projectCommands(
     const startedAtMs =
       activity.startedAtMs ?? parsedTime(record.message.createdAt);
     const completedAtMs = completedAt(record);
-    const elapsedMs = Math.max(0, (completedAtMs ?? nowMs) - startedAtMs);
-    let presentation: AgentInspectorCommandPresentation | null = null;
-    if (completedAtMs === null) {
-      presentation =
-        nowMs - startedAtMs >= INSPECT_COMMAND_CARD_DELAY_MS
-          ? "visible"
-          : "hidden";
-    } else if (
-      elapsedMs >= INSPECT_COMMAND_CARD_DELAY_MS &&
-      nowMs < completedAtMs + INSPECT_COMMAND_CARD_EXIT_MS
+    const completedElapsedMs =
+      completedAtMs === null ? null : Math.max(0, completedAtMs - startedAtMs);
+    if (
+      completedElapsedMs === null ||
+      completedElapsedMs >= INSPECT_COMMAND_CARD_DELAY_MS
     ) {
-      presentation = "exiting";
-    }
-    if (presentation) {
       commands.push({
         id: activity.id,
         command: activity.command,
         completedAtMs,
         cwd: activity.cwd,
-        elapsedMs,
         exitCode: activity.exitCode,
         output: activity.outputTail ?? activity.output ?? "",
         outputTruncated: activity.outputTruncated ?? false,
-        presentation,
         startedAtMs,
         status: activity.status,
         turnId: record.turnId,
         updatedAtMs: record.observedAtMs,
       });
     }
-    if (
-      completedAtMs !== null &&
-      nowMs < completedAtMs + INSPECT_COMPLETED_COMMAND_LIFETIME_MS
-    ) {
+    if (completedAtMs !== null) {
       recentCommands.push({
         id: activity.id,
         command: activity.command,
@@ -388,29 +375,58 @@ function projectCommands(
   return { commands, recentCommands };
 }
 
-function nextTransition(
-  nowMs: number,
-  commands: AgentInspectorCommand[],
-  files: AgentInspectorFile[],
-  recentCommands: AgentInspectorRecentCommand[],
-): number | null {
-  const transitions = [
+function transitionTimes(
+  commands: readonly AgentInspectorCommandSource[],
+  files: readonly AgentInspectorFile[],
+  recentCommands: readonly AgentInspectorRecentCommand[],
+): number[] {
+  return [
     ...files.map((file) => file.expiresAtMs),
     ...recentCommands.map((command) => command.expiresAtMs),
-    ...commands.flatMap((command) => {
-      if (command.presentation === "hidden") {
-        return [command.startedAtMs + INSPECT_COMMAND_CARD_DELAY_MS];
-      }
-      if (
-        command.presentation === "exiting" &&
-        command.completedAtMs !== null
-      ) {
-        return [command.completedAtMs + INSPECT_COMMAND_CARD_EXIT_MS];
-      }
-      return [];
-    }),
-  ].filter((transition) => transition > nowMs);
-  return transitions.length > 0 ? Math.min(...transitions) : null;
+    ...commands.map((command) =>
+      command.completedAtMs === null
+        ? command.startedAtMs + INSPECT_COMMAND_CARD_DELAY_MS
+        : command.completedAtMs + INSPECT_COMMAND_CARD_EXIT_MS,
+    ),
+  ].sort((left, right) => left - right);
+}
+
+function firstTransitionAfter(
+  transitionTimesMs: readonly number[],
+  nowMs: number,
+): number | null {
+  let lower = 0;
+  let upper = transitionTimesMs.length;
+  while (lower < upper) {
+    const middle = lower + ((upper - lower) >> 1);
+    if (transitionTimesMs[middle]! <= nowMs) lower = middle + 1;
+    else upper = middle;
+  }
+  return transitionTimesMs[lower] ?? null;
+}
+
+function projectCommands(
+  commandSources: readonly AgentInspectorCommandSource[],
+  nowMs: number,
+): AgentInspectorCommand[] {
+  const commands: AgentInspectorCommand[] = [];
+  for (const command of commandSources) {
+    const elapsedMs = Math.max(
+      0,
+      (command.completedAtMs ?? nowMs) - command.startedAtMs,
+    );
+    let presentation: AgentInspectorCommandPresentation | null = null;
+    if (command.completedAtMs === null) {
+      presentation =
+        nowMs - command.startedAtMs >= INSPECT_COMMAND_CARD_DELAY_MS
+          ? "visible"
+          : "hidden";
+    } else if (nowMs < command.completedAtMs + INSPECT_COMMAND_CARD_EXIT_MS) {
+      presentation = "exiting";
+    }
+    if (presentation) commands.push({ ...command, elapsedMs, presentation });
+  }
+  return commands;
 }
 
 export function buildAgentInspectorProjectionSource(
@@ -419,9 +435,16 @@ export function buildAgentInspectorProjectionSource(
   const afterSequence = boundarySequence(messages);
   const turnId = latestTurnId(messages, afterSequence);
   const records = collectProjectionRecords(messages, afterSequence, turnId);
+  const files = indexFiles(records.activities.values());
+  const { commands, recentCommands } = indexCommands(
+    records.activities.values(),
+  );
   return {
-    records: [...records.activities.values()],
+    commands,
+    files,
+    recentCommands,
     thought: latestThought([...records.thoughts.values()]),
+    transitionTimesMs: transitionTimes(commands, files, recentCommands),
     turnId,
   };
 }
@@ -442,20 +465,20 @@ export function projectAgentInspector(input: {
       turnId: null,
     };
   }
-  const files = projectFiles(input.source.records, input.nowMs);
-  const { commands, recentCommands } = projectCommands(
-    input.source.records,
-    input.nowMs,
+  const commands = projectCommands(input.source.commands, input.nowMs);
+  const files = input.source.files.filter(
+    (file) => input.nowMs < file.expiresAtMs,
+  );
+  const recentCommands = input.source.recentCommands.filter(
+    (command) => input.nowMs < command.expiresAtMs,
   );
   return {
     active: true,
     commands,
     files,
-    nextTransitionAtMs: nextTransition(
+    nextTransitionAtMs: firstTransitionAfter(
+      input.source.transitionTimesMs,
       input.nowMs,
-      commands,
-      files,
-      recentCommands,
     ),
     recentCommands,
     thought: input.source.thought,
