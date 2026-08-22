@@ -1,7 +1,8 @@
 # Synthetic desktop builds
 
-Status: proposed implementation plan. This document does not change runtime
-behavior.
+Status: implemented in staged pull requests. Packaged macOS and Windows
+acceptance remains part of release qualification; this document is also the
+design contract for that validation.
 
 ## Objective
 

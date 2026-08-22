@@ -190,6 +190,9 @@ export function SyntheticBuildSettings({
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<SyntheticCommit | null>(null);
   const [scan, setScan] = useState<SyntheticPrerequisiteScan | null>(null);
+  const [cachedTarget, setCachedTarget] = useState<CachedSyntheticBuild | null>(
+    null,
+  );
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +257,15 @@ export function SyntheticBuildSettings({
     try {
       const target = await client.resolveTarget(selected.sha);
       setSelected(target);
+      const cached = (await client.cached()).find(
+        (build) => build.commitSha === target.sha,
+      );
+      if (cached) {
+        setCachedTarget(cached);
+        setStage("warning");
+        return;
+      }
+      setCachedTarget(null);
       const nextScan = await client.scanPrerequisites(target.sha);
       setScan(nextScan);
       setStage(nextScan.ready ? "warning" : "prerequisites");
@@ -301,6 +313,25 @@ export function SyntheticBuildSettings({
     if (!selected) return;
     setBusy(true);
     try {
+      if (cachedTarget) {
+        const activeWork = await desktopUpdateClient.getActiveWork();
+        const total = Object.values(activeWork).reduce(
+          (sum, value) => sum + value,
+          0,
+        );
+        if (
+          total > 0 &&
+          !window.confirm(
+            `Installing will stop ${total} active Cantrip operation(s). Continue?`,
+          )
+        ) {
+          setBusy(false);
+          return;
+        }
+        await client.install(cachedTarget.id, activeWork, true);
+        setOpen(false);
+        return;
+      }
       await client.start(selected.sha);
       setActiveBuild(true);
       setOpen(false);
@@ -425,10 +456,9 @@ export function SyntheticBuildSettings({
                 minutes
               </div>
               <p className="mt-2 text-muted-foreground">
-                The build downloads source and dependencies, uses the selected
-                commit's build scripts, and may consume substantial disk and
-                network bandwidth. It is a local synthetic build, not an
-                official signed or notarized Cantrip release.
+                {cachedTarget
+                  ? "A verified local artifact already exists, so Cantrip will install it without rebuilding. It is a local synthetic build, not an official signed or notarized release."
+                  : "The build downloads source and dependencies, uses the selected commit's build scripts, and may consume substantial disk and network bandwidth. It is a local synthetic build, not an official signed or notarized Cantrip release."}
               </p>
               <dl className="mt-3 grid grid-cols-[7rem_1fr] gap-1 text-xs">
                 <dt>Version</dt>
@@ -494,10 +524,12 @@ export function SyntheticBuildSettings({
             ) : (
               <Button
                 pending={busy}
-                pendingLabel="Starting build…"
+                pendingLabel={
+                  cachedTarget ? "Opening installer…" : "Starting build…"
+                }
                 onClick={() => void start()}
               >
-                Confirm and build
+                {cachedTarget ? "Install cached build" : "Build and install"}
               </Button>
             )}
           </DialogFooter>

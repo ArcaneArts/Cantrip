@@ -11,7 +11,9 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Emitter, State};
 use uuid::Uuid;
 
-use super::{SyntheticBuildCoordinator, SyntheticBuildError};
+use super::{
+    supported_platform, validate_full_sha, SyntheticBuildCoordinator, SyntheticBuildError,
+};
 use crate::desktop_update::ActiveWorkSummary;
 
 #[derive(Clone, Debug, Deserialize)]
@@ -54,6 +56,7 @@ pub struct CachedSyntheticBuild {
 #[serde(rename_all = "camelCase")]
 pub struct SyntheticBuildIdentity {
     install_id: String,
+    artifact_id: String,
     version: String,
     commit_sha: String,
     build_id: String,
@@ -155,6 +158,10 @@ fn verify_artifact(
     if manifest.schema_version != 1
         || manifest.component != "cantrip-synthetic-desktop"
         || manifest.files.is_empty()
+        || Some(manifest.target.as_str()) != supported_platform()
+        || !manifest.version.ends_with("-x")
+        || manifest.build_id.is_empty()
+        || validate_full_sha(&manifest.commit_sha).is_err()
     {
         return Err(SyntheticBuildError::new(
             "synthetic_artifact_invalid",
@@ -338,6 +345,7 @@ pub fn install_cached_synthetic_build(
     let installer = find_installer(Path::new(&artifact.artifact_path))?;
     let identity = SyntheticBuildIdentity {
         install_id: Uuid::new_v4().to_string(),
+        artifact_id: artifact.id,
         version: artifact.version,
         commit_sha: artifact.commit_sha,
         build_id: artifact.build_id,
@@ -377,6 +385,17 @@ pub fn delete_cached_synthetic_build(
     artifact_id: String,
     coordinator: State<'_, SyntheticBuildCoordinator>,
 ) -> Result<bool, SyntheticBuildError> {
+    let active_id = fs::read(coordinator.root().join("installs/active.json"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<SyntheticBuildIdentity>(&bytes).ok())
+        .map(|identity| identity.artifact_id);
+    if active_id.as_deref() == Some(&artifact_id) {
+        return Err(SyntheticBuildError::new(
+            "synthetic_artifact_active",
+            "The currently installed synthetic build cannot be deleted.",
+            false,
+        ));
+    }
     let Some(artifact) = list_verified(coordinator.root())
         .into_iter()
         .find(|item| item.id == artifact_id)
