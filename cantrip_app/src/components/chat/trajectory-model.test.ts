@@ -196,7 +196,7 @@ describe("trajectory projection", () => {
         label: "Model commentary",
         preview: "The configuration is ready.",
       },
-      { kind: "input", label: "Steer input", preview: "I could hear it" },
+      { kind: "input", label: "User input", preview: "I could hear it" },
       {
         kind: "command",
         label: "git status --short",
