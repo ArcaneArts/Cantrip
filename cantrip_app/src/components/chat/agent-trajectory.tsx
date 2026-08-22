@@ -6,9 +6,10 @@ import {
   CircleX,
   Filter,
   Loader2,
+  RotateCcw,
   Search,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   type TrajectoryLane,
 } from "./trajectory-model";
 import { TrajectoryDetails } from "./trajectory-details";
+import type { TrajectoryTimingQuality } from "./trajectory-timing";
 import {
   TrajectoryTimeline,
   trajectoryEventAtTime,
@@ -30,6 +32,8 @@ import {
 
 const TRAJECTORY_CLOCK_INTERVAL_MS = 500;
 const lanes = ["input", "model", "tools"] as const;
+const statuses = ["running", "completed", "failed", "declined"] as const;
+const timingQualities = ["exact", "derived", "instant"] as const;
 
 function formatElapsed(elapsedMs: number): string {
   const seconds = Math.max(0, Math.round(elapsedMs / 1_000));
@@ -41,6 +45,31 @@ function formatElapsed(elapsedMs: number): string {
 
 function formatOffset(event: TrajectoryEvent, startedAtMs: number): string {
   return `+${formatElapsed(Math.max(0, event.startMs - startedAtMs))}`;
+}
+
+function formatEventDuration(event: TrajectoryEvent): string {
+  if (event.timingQuality === "instant") return "instant";
+  return formatElapsed(Math.max(0, event.updatedAtMs - event.startMs));
+}
+
+function trajectoryStatus(turn: {
+  completed: boolean;
+  events: readonly TrajectoryEvent[];
+}): string {
+  const terminal = [...turn.events]
+    .reverse()
+    .find((event) => event.kind === "turnSummary");
+  if (terminal?.status === "failed") return "Failed";
+  if (terminal?.status === "declined") return "Declined";
+  return turn.completed ? "Completed" : "Live";
+}
+
+function preferredScrollBehavior(): ScrollBehavior {
+  return typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
 }
 
 function toggleSet<T>(current: ReadonlySet<T>, value: T): Set<T> {
@@ -69,12 +98,14 @@ function laneColor(lane: TrajectoryLane): string {
 function TrajectoryEventRow({
   event,
   onSelect,
+  onFocus,
   rowRef,
   selected,
   startedAtMs,
 }: {
   event: TrajectoryEvent;
   onSelect(): void;
+  onFocus(): void;
   rowRef(node: HTMLLIElement | null): void;
   selected: boolean;
   startedAtMs: number;
@@ -94,6 +125,7 @@ function TrajectoryEventRow({
           selected && "bg-muted/50",
         )}
         onClick={onSelect}
+        onFocus={onFocus}
         type="button"
       >
         <span
@@ -112,6 +144,7 @@ function TrajectoryEventRow({
               {formatOffset(event, startedAtMs)}
             </time>
             <EventStatus event={event} />
+            <span className="sr-only">{event.status}</span>
           </div>
           {event.preview ? (
             <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
@@ -121,6 +154,7 @@ function TrajectoryEventRow({
           <div className="mt-1 flex gap-2 font-mono text-[9px] uppercase tracking-wide text-muted-foreground/70">
             <span>{event.lane}</span>
             <span>{trajectoryKindLabel(event.kind)}</span>
+            <span>{formatEventDuration(event)}</span>
             {event.timingQuality !== "exact" ? (
               <span>{event.timingQuality} timing</span>
             ) : null}
@@ -147,53 +181,80 @@ export function AgentTrajectory({
   const [clockMs, setClockMs] = useState(() => Date.now());
   const [query, setQuery] = useState("");
   const [playheadMs, setPlayheadMs] = useState<number | null>(null);
+  const [followingLive, setFollowingLive] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const [hiddenLanes, setHiddenLanes] = useState<Set<TrajectoryLane>>(
     () => new Set(),
   );
   const [hiddenKinds, setHiddenKinds] = useState<Set<string>>(() => new Set());
+  const [hiddenStatuses, setHiddenStatuses] = useState<
+    Set<TrajectoryEvent["status"]>
+  >(() => new Set());
+  const [hiddenTimingQualities, setHiddenTimingQualities] = useState<
+    Set<TrajectoryTimingQuality>
+  >(() => new Set());
+  const deferredMessages = useDeferredValue(messages);
 
   useEffect(() => {
     setClockMs(Date.now());
   }, [active, messages, targetTurnKey, visible]);
-
-  useEffect(() => {
-    if (!active || !visible) return;
-    const interval = window.setInterval(
-      () => setClockMs(Date.now()),
-      TRAJECTORY_CLOCK_INTERVAL_MS,
-    );
-    return () => window.clearInterval(interval);
-  }, [active, visible]);
 
   const nowMs = visible ? Math.max(clockMs, Date.now()) : clockMs;
   const turn = useMemo(
     () =>
       projectTrajectory({
         active,
-        messages,
+        messages: deferredMessages,
         nowMs,
         targetTurnKey,
       }),
-    [active, messages, nowMs, targetTurnKey],
+    [active, deferredMessages, nowMs, targetTurnKey],
   );
+  const trajectoryRunning = Boolean(turn?.nextTransitionAtMs);
+
+  useEffect(() => {
+    if (!active || !visible || !trajectoryRunning) return;
+    const interval = window.setInterval(
+      () => setClockMs(Date.now()),
+      TRAJECTORY_CLOCK_INTERVAL_MS,
+    );
+    return () => window.clearInterval(interval);
+  }, [active, trajectoryRunning, visible]);
+
+  useEffect(() => {
+    if (followingLive && turn && !turn.completed) {
+      setPlayheadMs(turn.timelineEndMs);
+    }
+  }, [followingLive, turn?.completed, turn?.timelineEndMs]);
   const kinds = useMemo(
     () => trajectoryEventKinds(turn?.events ?? []),
     [turn?.events],
   );
-  const visibleKindCount = kinds.filter(
-    (kind) => !hiddenKinds.has(kind),
-  ).length;
   const events = useMemo(
     () =>
       filterTrajectoryEvents(turn?.events ?? [], {
         hiddenKinds,
         hiddenLanes,
+        hiddenStatuses,
+        hiddenTimingQualities,
         query,
       }),
-    [hiddenKinds, hiddenLanes, query, turn?.events],
+    [
+      hiddenKinds,
+      hiddenLanes,
+      hiddenStatuses,
+      hiddenTimingQualities,
+      query,
+      turn?.events,
+    ],
   );
+  const activeFilterCount =
+    hiddenLanes.size +
+    hiddenKinds.size +
+    hiddenStatuses.size +
+    hiddenTimingQualities.size +
+    (query.trim() ? 1 : 0);
   const selectedEvent = useMemo(
     () =>
       selectedEventId
@@ -204,6 +265,7 @@ export function AgentTrajectory({
 
   useEffect(() => {
     setPlayheadMs(turn?.timelineStartMs ?? null);
+    setFollowingLive(false);
     setSelectedEventId(null);
   }, [turn?.key]);
 
@@ -218,9 +280,10 @@ export function AgentTrajectory({
 
   const selectAndReveal = (event: TrajectoryEvent, nextPlayheadMs: number) => {
     rowRefs.current.get(event.id)?.scrollIntoView({
-      behavior: "smooth",
+      behavior: preferredScrollBehavior(),
       block: "center",
     });
+    setFollowingLive(false);
     setPlayheadMs(nextPlayheadMs);
     setSelectedEventId(event.id);
   };
@@ -231,24 +294,28 @@ export function AgentTrajectory({
     if (!restoredEventId) return;
     window.requestAnimationFrame(() => {
       rowRefs.current.get(restoredEventId)?.scrollIntoView({
-        behavior: "smooth",
+        behavior: preferredScrollBehavior(),
         block: "center",
       });
     });
   };
 
-  const seekTimeline = (timeMs: number) => {
+  const movePlayhead = (timeMs: number) => {
     if (!turn) return;
     const nextTimeMs = Math.min(
       turn.timelineEndMs,
       Math.max(turn.timelineStartMs, timeMs),
     );
-    const event = trajectoryEventAtTime(events, nextTimeMs);
-    if (event) selectAndReveal(event, nextTimeMs);
-    else {
-      setPlayheadMs(nextTimeMs);
-      setSelectedEventId(null);
-    }
+    setFollowingLive(false);
+    setPlayheadMs(nextTimeMs);
+  };
+
+  const resetFilters = () => {
+    setHiddenLanes(new Set());
+    setHiddenKinds(new Set());
+    setHiddenStatuses(new Set());
+    setHiddenTimingQualities(new Set());
+    setQuery("");
   };
 
   if (!turn) {
@@ -258,10 +325,27 @@ export function AgentTrajectory({
         data-slot="agent-trajectory-empty"
       >
         <div>
-          <p className="text-sm font-medium">No turn available</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Start a turn to inspect its input, model, and tool activity.
+          <p className="text-sm font-medium">
+            {targetTurnKey
+              ? "Historical turn unavailable"
+              : "No turn available"}
           </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {targetTurnKey
+              ? "This turn is no longer present in the loaded chat history."
+              : "Start a turn to inspect its input, model, and tool activity."}
+          </p>
+          {targetTurnKey && onBackToCurrent ? (
+            <Button
+              className="mt-3"
+              onClick={onBackToCurrent}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              <ArrowLeft className="size-3.5" /> Back to current
+            </Button>
+          ) : null}
         </div>
       </div>
     );
@@ -281,10 +365,8 @@ export function AgentTrajectory({
             </p>
             <p className="mt-0.5 text-[10px] text-muted-foreground">
               {targetTurnKey
-                ? `Historical turn ${turn.ordinal}`
-                : turn.completed
-                  ? "Completed"
-                  : "Live"}{" "}
+                ? `Historical turn ${turn.ordinal} · ${trajectoryStatus(turn)}`
+                : trajectoryStatus(turn)}{" "}
               · {formatElapsed(turn.elapsedMs)}
               {!turn.exactTimingComplete ? " · mixed timing precision" : ""}
             </p>
@@ -301,9 +383,30 @@ export function AgentTrajectory({
               <ArrowLeft className="size-3" /> Back to current
             </Button>
           ) : null}
+        </div>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5">
           <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
             {turn.events.length} events
           </span>
+          <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-[10px] tabular-nums text-muted-foreground">
+            {turn.laneCounts.tools} tools
+          </span>
+          {!turn.completed ? (
+            <Button
+              aria-pressed={followingLive}
+              className="ml-auto h-6 px-2 text-[10px]"
+              onClick={() => {
+                setFollowingLive(true);
+                setSelectedEventId(null);
+                setPlayheadMs(turn.timelineEndMs);
+              }}
+              size="sm"
+              type="button"
+              variant={followingLive ? "outline" : "ghost"}
+            >
+              Follow live
+            </Button>
+          ) : null}
         </div>
         <div className="mt-3 grid grid-cols-3 gap-1.5 text-[10px]">
           {lanes.map((lane) => (
@@ -333,7 +436,8 @@ export function AgentTrajectory({
       <div className="shrink-0 border-b bg-muted/10 px-2 py-1">
         <TrajectoryTimeline
           events={events}
-          onSeek={seekTimeline}
+          onMovePlayhead={movePlayhead}
+          onSelectEvent={selectAndReveal}
           playheadMs={playheadMs ?? turn.timelineStartMs}
           turn={turn}
         />
@@ -353,34 +457,39 @@ export function AgentTrajectory({
         </div>
         <details className="group relative">
           <summary className="flex h-8 cursor-pointer list-none items-center gap-1.5 rounded-md border px-2 text-xs outline-none hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-            <Filter className="size-3.5" /> Types
-            {visibleKindCount < kinds.length ? (
+            <Filter className="size-3.5" /> Filters
+            {activeFilterCount > 0 ? (
               <span className="tabular-nums text-muted-foreground">
-                {visibleKindCount}/{kinds.length}
+                {activeFilterCount}
               </span>
             ) : null}
             <ChevronDown className="size-3 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
           </summary>
-          <div className="absolute right-0 z-20 mt-1 max-h-72 min-w-52 overflow-y-auto rounded-md border bg-popover p-2 text-popover-foreground shadow-lg">
-            <div className="mb-1 flex items-center justify-end gap-1">
-              <Button
-                className="h-6 px-2 text-[10px]"
-                onClick={() => setHiddenKinds(new Set())}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                All
-              </Button>
-              <Button
-                className="h-6 px-2 text-[10px]"
-                onClick={() => setHiddenKinds(new Set(kinds))}
-                size="sm"
-                type="button"
-                variant="ghost"
-              >
-                None
-              </Button>
+          <div className="absolute right-0 z-20 mt-1 max-h-80 min-w-56 overflow-y-auto rounded-md border bg-popover p-2 text-popover-foreground shadow-lg">
+            <div className="mb-1 flex items-center justify-between gap-1">
+              <p className="px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Event types
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => setHiddenKinds(new Set())}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  All
+                </Button>
+                <Button
+                  className="h-6 px-2 text-[10px]"
+                  onClick={() => setHiddenKinds(new Set(kinds))}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  None
+                </Button>
+              </div>
             </div>
             {kinds.map((kind) => (
               <label
@@ -397,8 +506,59 @@ export function AgentTrajectory({
                 <span>{trajectoryKindLabel(kind)}</span>
               </label>
             ))}
+            <p className="mt-2 border-t px-2 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Status
+            </p>
+            {statuses.map((status) => (
+              <label
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50"
+                key={status}
+              >
+                <input
+                  checked={!hiddenStatuses.has(status)}
+                  onChange={() =>
+                    setHiddenStatuses((current) => toggleSet(current, status))
+                  }
+                  type="checkbox"
+                />
+                <span className="capitalize">{status}</span>
+              </label>
+            ))}
+            <p className="mt-2 border-t px-2 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              Timing
+            </p>
+            {timingQualities.map((quality) => (
+              <label
+                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-muted/50"
+                key={quality}
+              >
+                <input
+                  checked={!hiddenTimingQualities.has(quality)}
+                  onChange={() =>
+                    setHiddenTimingQualities((current) =>
+                      toggleSet(current, quality),
+                    )
+                  }
+                  type="checkbox"
+                />
+                <span className="capitalize">{quality}</span>
+              </label>
+            ))}
           </div>
         </details>
+        {activeFilterCount > 0 ? (
+          <Button
+            aria-label={`Clear ${activeFilterCount} active trajectory filters`}
+            className="size-8 shrink-0"
+            onClick={resetFilters}
+            size="icon"
+            title="Clear trajectory filters"
+            type="button"
+            variant="ghost"
+          >
+            <RotateCcw className="size-3.5" />
+          </Button>
+        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
@@ -410,6 +570,7 @@ export function AgentTrajectory({
               <TrajectoryEventRow
                 event={event}
                 key={event.id}
+                onFocus={() => movePlayhead(event.startMs)}
                 onSelect={() => selectAndReveal(event, event.startMs)}
                 rowRef={(node) => {
                   if (node) rowRefs.current.set(event.id, node);

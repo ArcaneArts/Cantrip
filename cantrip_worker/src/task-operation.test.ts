@@ -1,5 +1,6 @@
 import {
   createTaskOperationRelayRequest,
+  decryptTaskMessageProtectedContent,
   decryptTaskGoalObjective,
   encryptTaskMessageProtectedContent,
   encryptTaskProtectedContent,
@@ -15,11 +16,13 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  EncryptedTaskEventSealer,
   executeEncryptedTaskOperation,
   openTaskRelocationPayload,
   openEncryptedTaskGoalObjective,
   protectTaskGoalResult,
 } from "./task-operation.js";
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 const ownerId = "owner-worker-task-relay";
 const chatId = "chat-worker-task-relay";
@@ -101,6 +104,75 @@ function taskContent(
 }
 
 describe("worker encrypted Task operations", () => {
+  it("seals raw trajectory activity inside Task message content", async () => {
+    const componentKey = randomBytes(32);
+    const service = {
+      ownerId: () => ownerId,
+      componentKey: () => ({
+        key: new Uint8Array(componentKey),
+        keyRevision,
+      }),
+    } as unknown as WorkerEncryptionService;
+    const event = await new EncryptedTaskEventSealer(service).activity({
+      type: "command",
+      id: "command-1",
+      status: "completed",
+      command: "pnpm test",
+      cwd: "/workspace",
+      exitCode: 0,
+      output: null,
+      correlation: {
+        sourceMethod: "item/completed",
+        diagnosticId: null,
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "command-1",
+      },
+      raw: {
+        schemaVersion: 1,
+        request: {
+          mediaType: "application/json",
+          text: '{"command":"protected task request"}',
+          originalBytes: 36,
+          truncated: false,
+        },
+        response: null,
+        metadata: {},
+      },
+    });
+
+    expect(event.telemetry).toEqual({
+      kind: "activity",
+      activityType: "command",
+      turnId: "turn-1",
+    });
+    expect(JSON.stringify(event.telemetry)).not.toContain(
+      "protected task request",
+    );
+    await expect(
+      decryptTaskMessageProtectedContent({
+        ownerId,
+        messageId: event.message.id,
+        keyRevision,
+        componentKey,
+        encrypted: event.message.protectedContent,
+        publicClassification: event.message.classification,
+      }),
+    ).resolves.toMatchObject({
+      content: [
+        {
+          type: "activity",
+          activity: {
+            type: "command",
+            raw: {
+              request: { text: '{"command":"protected task request"}' },
+            },
+          },
+        },
+      ],
+    });
+  });
+
   it("decrypts only at execution and returns an opaque validated planner result", async () => {
     const componentKey = randomBytes(32);
     const request = await createTaskOperationRelayRequest({

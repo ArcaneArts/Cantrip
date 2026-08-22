@@ -2700,6 +2700,21 @@ export async function buildApp({
     if (saved) publishTaskMessage(saved);
     return saved;
   };
+  const upsertLiveTaskMessage = async (
+    ownerId: string,
+    chatId: string,
+    message: TaskMessageOpaqueContent,
+    attribution?: { executionLaneId: string; worktreeId: string },
+  ) => {
+    const saved = await repository.upsertTaskMessage(
+      ownerId,
+      chatId,
+      message,
+      attribution,
+    );
+    if (saved) publishTaskMessage(saved);
+    return saved;
+  };
   const setLiveTaskMessageModelRoute = async (
     ...input: Parameters<typeof repository.setTaskMessageModelRoute>
   ) => {
@@ -9257,6 +9272,66 @@ export async function buildApp({
                           ? "expired"
                           : "interrupted",
                       );
+                      return;
+                    }
+                    if (event.type === "agent.protected-task-message") {
+                      if (!encryptedTaskRelay && !encryptedTaskMessages) {
+                        throw new Error(
+                          "Received a protected Task event for a non-Task turn.",
+                        );
+                      }
+                      behaviorTurnId = event.telemetry.turnId ?? behaviorTurnId;
+                      if (event.telemetry.kind === "usage") {
+                        behaviorTracker.observeUsage(
+                          {
+                            inputTokens: event.telemetry.usage.inputTokens,
+                            cachedInputTokens:
+                              event.telemetry.usage.cachedInputTokens,
+                            cacheWriteInputTokens:
+                              event.telemetry.usage.cacheWriteInputTokens,
+                            outputTokens: event.telemetry.usage.outputTokens,
+                            reasoningOutputTokens:
+                              event.telemetry.usage.reasoningOutputTokens,
+                            modelContextWindow:
+                              event.telemetry.modelContextWindow,
+                            contextUsedPercent:
+                              event.telemetry.contextUsedPercent,
+                          },
+                          observedAt,
+                        );
+                        await recordRuntimeTokenUsage(
+                          tokenUsageSourceKey,
+                          execution.projectId,
+                          execution.chatId,
+                          runtime,
+                          event.telemetry.usage,
+                          {
+                            workerId: execution.workerId,
+                            turnId:
+                              event.telemetry.turnId ??
+                              behaviorTurnId ??
+                              event.message.id,
+                            executionAttemptId,
+                            attemptKind: "chat-turn",
+                            attemptStatus: "running",
+                            codexVersion:
+                              attributedWorker?.codexVersion ?? null,
+                          },
+                        );
+                      } else {
+                        behaviorTracker.markActivity(observedAt);
+                      }
+                      const saved = await upsertLiveTaskMessage(
+                        ownerId,
+                        execution.chatId,
+                        event.message,
+                        attribution,
+                      );
+                      if (!saved) {
+                        throw new Error(
+                          "Encrypted Task activity message was rejected.",
+                        );
+                      }
                       return;
                     }
                     if (event.type === "agent.protected-message") {

@@ -64,6 +64,7 @@ describe("AgentTrajectory", () => {
     expect(markup).toContain("2 events");
     expect(markup).toContain('aria-pressed="true"');
     expect(markup).toContain('aria-label="Search trajectory events"');
+    expect(markup).toContain("Filters");
     expect(markup).toContain('aria-label="Trajectory events"');
     expect(markup).toContain('data-event-kind="input"');
     expect(markup).toContain('data-event-kind="command"');
@@ -86,5 +87,19 @@ describe("AgentTrajectory", () => {
     );
     expect(markup).toContain("Historical turn 1");
     expect(markup).toContain('aria-label="Back to current trajectory"');
+  });
+
+  it("offers a return action when a pinned target leaves loaded history", () => {
+    const markup = renderToStaticMarkup(
+      <AgentTrajectory
+        active={false}
+        messages={[]}
+        onBackToCurrent={() => undefined}
+        targetTurnKey="runtime:missing-turn"
+        visible
+      />,
+    );
+    expect(markup).toContain("Historical turn unavailable");
+    expect(markup).toContain("Back to current");
   });
 });

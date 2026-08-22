@@ -18,6 +18,13 @@ const laneY: Record<TrajectoryLane, number> = {
   tools: 78,
 };
 
+interface TimelineMark {
+  count: number;
+  event: TrajectoryEvent;
+  width: number;
+  x: number;
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
 }
@@ -85,7 +92,7 @@ export function trajectoryEventAtTime(
 function eventPosition(
   event: TrajectoryEvent,
   turn: TrajectoryTurn,
-): { width: number; x: number } {
+): { naturalWidth: number; width: number; x: number } {
   const duration = Math.max(1, turn.timelineEndMs - turn.timelineStartMs);
   const plotWidth = SVG_WIDTH - PLOT_LEFT - PLOT_RIGHT;
   const x =
@@ -94,9 +101,82 @@ function eventPosition(
     PLOT_LEFT +
     ((event.updatedAtMs - turn.timelineStartMs) / duration) * plotWidth;
   return {
-    width: Math.max(3, endX - x),
+    naturalWidth: Math.max(0, endX - x),
+    width: Math.max(event.timingQuality === "instant" ? 2 : 3, endX - x),
     x: clamp(x, PLOT_LEFT, SVG_WIDTH - PLOT_RIGHT),
   };
+}
+
+export function trajectoryTimelineMarks(
+  events: readonly TrajectoryEvent[],
+  turn: TrajectoryTurn,
+): TimelineMark[] {
+  const marks: TimelineMark[] = [];
+  const denseBuckets = new Map<string, TimelineMark>();
+  for (const event of events) {
+    const position = eventPosition(event, turn);
+    if (position.naturalWidth >= 1) {
+      marks.push({ count: 1, event, width: position.width, x: position.x });
+      continue;
+    }
+    const bucketKey = `${event.lane}:${Math.floor(position.x)}`;
+    const existing = denseBuckets.get(bucketKey);
+    if (existing) {
+      existing.count += 1;
+      existing.width = Math.max(existing.width, position.width);
+      continue;
+    }
+    const mark = { count: 1, event, width: position.width, x: position.x };
+    denseBuckets.set(bucketKey, mark);
+    marks.push(mark);
+  }
+  return marks;
+}
+
+export function trajectoryKeyboardAction(input: {
+  durationMs: number;
+  key: string;
+  playheadMs: number;
+  shiftKey: boolean;
+  timelineEndMs: number;
+  timelineStartMs: number;
+}): { select: boolean; timeMs: number } | null {
+  const smallStep = Math.max(1, input.durationMs / 50);
+  const largeStep = Math.max(smallStep, input.durationMs / 10);
+  if (input.key === "ArrowLeft" || input.key === "ArrowRight") {
+    const direction = input.key === "ArrowLeft" ? -1 : 1;
+    return {
+      select: false,
+      timeMs: clamp(
+        input.playheadMs + direction * (input.shiftKey ? largeStep : smallStep),
+        input.timelineStartMs,
+        input.timelineEndMs,
+      ),
+    };
+  }
+  if (input.key === "Home" || input.key === "End") {
+    return {
+      select: false,
+      timeMs:
+        input.key === "Home" ? input.timelineStartMs : input.timelineEndMs,
+    };
+  }
+  if (input.key === "Enter") {
+    return {
+      select: true,
+      timeMs: clamp(
+        input.playheadMs,
+        input.timelineStartMs,
+        input.timelineEndMs,
+      ),
+    };
+  }
+  return null;
+}
+
+function accessibleDuration(durationMs: number): string {
+  if (durationMs < 1_000) return `${Math.round(durationMs)} milliseconds`;
+  return `${(durationMs / 1_000).toFixed(1)} seconds`;
 }
 
 function laneClass(lane: TrajectoryLane): string {
@@ -107,12 +187,14 @@ function laneClass(lane: TrajectoryLane): string {
 
 export function TrajectoryTimeline({
   events,
-  onSeek,
+  onMovePlayhead,
+  onSelectEvent,
   playheadMs,
   turn,
 }: {
   events: readonly TrajectoryEvent[];
-  onSeek(timeMs: number): void;
+  onMovePlayhead(timeMs: number): void;
+  onSelectEvent(event: TrajectoryEvent, timeMs: number): void;
   playheadMs: number;
   turn: TrajectoryTurn;
 }) {
@@ -124,9 +206,15 @@ export function TrajectoryTimeline({
       turn.timelineStartMs) /
       duration) *
       plotWidth;
+  const marks = trajectoryTimelineMarks(events, turn);
+  const selectAtTime = (timeMs: number) => {
+    onMovePlayhead(timeMs);
+    const event = trajectoryEventAtTime(events, timeMs);
+    if (event) onSelectEvent(event, timeMs);
+  };
   const seekFromPointer = (event: PointerEvent<SVGSVGElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
-    onSeek(
+    selectAtTime(
       trajectoryTimeAtClientX({
         clientX: event.clientX,
         left: bounds.left,
@@ -137,17 +225,18 @@ export function TrajectoryTimeline({
     );
   };
   const seekFromKeyboard = (event: KeyboardEvent<SVGSVGElement>) => {
-    const step = Math.max(1, duration / 50);
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      event.preventDefault();
-      onSeek(playheadMs + (event.key === "ArrowLeft" ? -step : step));
-    } else if (event.key === "Home") {
-      event.preventDefault();
-      onSeek(turn.timelineStartMs);
-    } else if (event.key === "End") {
-      event.preventDefault();
-      onSeek(turn.timelineEndMs);
-    }
+    const action = trajectoryKeyboardAction({
+      durationMs: duration,
+      key: event.key,
+      playheadMs,
+      shiftKey: event.shiftKey,
+      timelineEndMs: turn.timelineEndMs,
+      timelineStartMs: turn.timelineStartMs,
+    });
+    if (!action) return;
+    event.preventDefault();
+    if (action.select) selectAtTime(action.timeMs);
+    else onMovePlayhead(action.timeMs);
   };
 
   return (
@@ -156,6 +245,7 @@ export function TrajectoryTimeline({
       aria-valuemax={turn.timelineEndMs}
       aria-valuemin={turn.timelineStartMs}
       aria-valuenow={Math.round(playheadMs)}
+      aria-valuetext={`${accessibleDuration(playheadMs - turn.timelineStartMs)} of ${accessibleDuration(duration)}`}
       className="h-24 w-full cursor-crosshair select-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       onKeyDown={seekFromKeyboard}
       onPointerDown={seekFromPointer}
@@ -182,22 +272,53 @@ export function TrajectoryTimeline({
           />
         </g>
       ))}
-      {events.map((event) => {
-        const position = eventPosition(event, turn);
+      {marks.map((mark) => {
+        const { event } = mark;
+        const label =
+          mark.count === 1
+            ? `${event.label}, ${event.status}, ${event.timingQuality} timing`
+            : `${mark.count} ${event.lane} events near ${accessibleDuration(event.startMs - turn.timelineStartMs)}`;
         return (
           <rect
-            aria-label={event.label}
+            aria-label={label}
             className={cn(
               laneClass(event.lane),
-              event.status === "running" ? "opacity-100" : "opacity-80",
+              "outline-none focus-visible:stroke-foreground",
+              event.status === "running"
+                ? "opacity-100 motion-safe:animate-pulse"
+                : "opacity-80",
+              (event.status === "failed" || event.status === "declined") &&
+                "stroke-destructive",
             )}
+            data-aggregate-count={mark.count}
             data-event-id={event.id}
-            height="10"
-            key={event.id}
+            data-timing-quality={event.timingQuality}
+            height={event.timingQuality === "instant" ? 14 : 10}
+            key={`${event.id}:${mark.count}`}
+            onFocus={() => onMovePlayhead(event.startMs)}
+            onKeyDown={(keyboardEvent) => {
+              if (keyboardEvent.key !== "Enter" && keyboardEvent.key !== " ") {
+                return;
+              }
+              keyboardEvent.preventDefault();
+              onMovePlayhead(event.startMs);
+              onSelectEvent(event, event.startMs);
+            }}
+            onPointerDown={(pointerEvent) => {
+              pointerEvent.stopPropagation();
+              onMovePlayhead(event.startMs);
+              onSelectEvent(event, event.startMs);
+            }}
+            role="button"
             rx="2"
-            width={position.width}
-            x={position.x}
-            y={laneY[event.lane] - 5}
+            strokeDasharray={
+              event.timingQuality === "derived" ? "3 2" : undefined
+            }
+            strokeWidth={event.timingQuality === "derived" ? 1 : undefined}
+            tabIndex={0}
+            width={mark.width}
+            x={mark.x}
+            y={laneY[event.lane] - (event.timingQuality === "instant" ? 7 : 5)}
           />
         );
       })}

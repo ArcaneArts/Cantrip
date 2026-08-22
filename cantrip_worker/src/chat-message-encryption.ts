@@ -36,13 +36,17 @@ import {
 } from "./chat-plan-encryption.js";
 
 function activitySummary(activity: AgentActivity): string {
+  if (activity.type === "instructionContext") {
+    return `[effective instructions: ${activity.provenance}]`;
+  }
   if (activity.type === "usage") {
     return `[usage: ${activity.last.totalTokens} tokens]`;
   }
   if (activity.type === "rateLimit") {
     return `[rate limit: ${activity.primary?.usedPercent ?? "unknown"}% used]`;
   }
-  return `[${activity.type}: ${JSON.stringify(activity)}]`;
+  const { raw: _raw, ...normalized } = activity;
+  return `[${activity.type}: ${JSON.stringify(normalized)}]`;
 }
 
 function continuationPrompt(messages: ChatMessage[], prompt: string): string {

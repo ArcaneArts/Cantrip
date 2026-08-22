@@ -2,8 +2,8 @@
 
 ## Status
 
-This document is the implementation plan and product contract for adding a
-turn-scoped Trajectory view to Cantrip's existing agent Inspect surfaces.
+This document is the implemented product and technical contract for Cantrip's
+turn-scoped Trajectory view in agent Inspect surfaces.
 
 Trajectory is a time-lane visualization of one agent turn. It is not a causal
 node graph and it is not a whole-conversation analytics view.

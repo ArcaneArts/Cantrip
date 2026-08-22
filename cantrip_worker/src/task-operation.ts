@@ -13,9 +13,11 @@ import {
   openTaskOperationRelayRequest,
 } from "@cantrip/crypto";
 import {
+  chatMessageContentSchema,
   agentTurnResultSchema,
   chatGoalResponseSchema,
   chatRelocationContextPayloadSchema,
+  type AgentActivity,
   type AgentTurnResult,
   type ChatRelocationContextPayload,
 } from "@cantrip/protocol";
@@ -26,6 +28,7 @@ import {
   taskGoalSyncContextSchema,
   taskGoalWorkerResultSchema,
   taskMessageRelayResultSchema,
+  taskMessageOpaqueContentSchema,
   taskOperationRelayRequestSchema,
   taskPlannerOutputJsonSchema,
   taskPlannerResultSchema,
@@ -35,9 +38,12 @@ import {
   type TaskOperationRelayRequest,
   type TaskOperationRelayGoal,
   type TaskMessageProtectedClassification,
+  type TaskMessageOpaqueContent,
   type TaskPlanningRoundProtectedContent,
   type TaskProtectedContent,
 } from "@cantrip/protocol/tasks";
+
+import type { WorkerEncryptionService } from "./worker-encryption.js";
 
 const PLANNER_RULES = `You are planning a Cantrip Task. Investigate the repository and its effective Policies before proposing architecture. This turn is strictly read-only: do not edit files, mutate Git or GitHub, call side-effecting tools, or implement any part of the plan.
 
@@ -55,6 +61,87 @@ Effective Cantrip Policy summaries are supplied as application context. Prefer t
 
 const FALLBACK_TASK_GOAL_PROMPT =
   "Implement the complete final plan, validate the finished result, and continue until every acceptance criterion is satisfied.";
+
+export class EncryptedTaskEventSealer {
+  readonly #ids = new Map<string, string>();
+  readonly #service: WorkerEncryptionService;
+
+  constructor(service: WorkerEncryptionService) {
+    this.#service = service;
+  }
+
+  #id(key: string): string {
+    const existing = this.#ids.get(key);
+    if (existing) return existing;
+    const created = randomUUID();
+    this.#ids.set(key, created);
+    return created;
+  }
+
+  async activity(activity: AgentActivity) {
+    const turnId = activity.correlation?.turnId ?? null;
+    const key =
+      activity.type === "worktree"
+        ? activity.id
+        : `activity:${turnId ?? "turn"}:${activity.id}`;
+    const message = await this.#protectActivity(this.#id(key), key, activity);
+    return {
+      type: "agent.protected-task-message" as const,
+      message,
+      telemetry:
+        activity.type === "usage"
+          ? {
+              kind: "usage" as const,
+              usage: activity.last,
+              modelContextWindow: activity.modelContextWindow,
+              contextUsedPercent: activity.contextUsedPercent,
+              turnId,
+            }
+          : {
+              kind: "activity" as const,
+              activityType: activity.type,
+              turnId,
+            },
+    };
+  }
+
+  async #protectActivity(
+    id: string,
+    idempotencyKey: string,
+    activity: AgentActivity,
+  ): Promise<TaskMessageOpaqueContent> {
+    const component = this.#service.componentKey("task-content");
+    const ownerId = this.#service.ownerId();
+    const classification: TaskMessageProtectedClassification = {
+      role: "assistant",
+      mode: "goal",
+      attachmentIds: [],
+    };
+    try {
+      return taskMessageOpaqueContentSchema.parse({
+        id,
+        classification,
+        protectedContent: await encryptTaskMessageProtectedContent({
+          ownerId,
+          messageId: id,
+          keyRevision: component.keyRevision,
+          componentKey: component.key,
+          content: {
+            version: 1,
+            classification,
+            content: chatMessageContentSchema.parse([
+              { type: "activity", activity },
+            ]),
+          },
+        }),
+        reasoningEffort: null,
+        idempotencyKey,
+      });
+    } finally {
+      clearSensitiveBytes(component.key);
+    }
+  }
+}
 
 function answersMarkdown(content: TaskPlanningRoundProtectedContent): string {
   if (!content.inputAnswers.length) return "No answers were supplied.";

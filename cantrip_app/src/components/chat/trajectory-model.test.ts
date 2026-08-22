@@ -226,6 +226,17 @@ describe("trajectory projection", () => {
           query: "needle docs",
           action: "searched",
           correlation: correlation("turn-1", "search-1"),
+          raw: {
+            schemaVersion: 1,
+            request: null,
+            response: {
+              mediaType: "text/plain",
+              text: "protected-only phrase",
+              originalBytes: 21,
+              truncated: false,
+            },
+            metadata: {},
+          },
         }),
       ],
       nowMs: 1_200,
@@ -238,6 +249,8 @@ describe("trajectory projection", () => {
       filterTrajectoryEvents(turn?.events ?? [], {
         hiddenKinds: new Set(),
         hiddenLanes: new Set(["input"]),
+        hiddenStatuses: new Set(),
+        hiddenTimingQualities: new Set(),
         query: "needle",
       }).map((event) => event.kind),
     ).toEqual(["webSearch"]);
@@ -245,8 +258,37 @@ describe("trajectory projection", () => {
       filterTrajectoryEvents(turn?.events ?? [], {
         hiddenKinds: new Set(["webSearch"]),
         hiddenLanes: new Set(),
+        hiddenStatuses: new Set(),
+        hiddenTimingQualities: new Set(),
         query: "",
       }).map((event) => event.kind),
     ).toEqual(["input"]);
+    expect(
+      filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenKinds: new Set(),
+        hiddenLanes: new Set(),
+        hiddenStatuses: new Set(),
+        hiddenTimingQualities: new Set(),
+        query: "protected-only",
+      }).map((event) => event.kind),
+    ).toEqual(["webSearch"]);
+    expect(
+      filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenKinds: new Set(),
+        hiddenLanes: new Set(),
+        hiddenStatuses: new Set(["completed"]),
+        hiddenTimingQualities: new Set(),
+        query: "",
+      }),
+    ).toEqual([]);
+    expect(
+      filterTrajectoryEvents(turn?.events ?? [], {
+        hiddenKinds: new Set(),
+        hiddenLanes: new Set(),
+        hiddenStatuses: new Set(),
+        hiddenTimingQualities: new Set(["exact"]),
+        query: "",
+      }).map((event) => event.kind),
+    ).toEqual(["webSearch"]);
   });
 });

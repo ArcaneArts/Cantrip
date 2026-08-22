@@ -165,6 +165,7 @@ import {
   protectAgentInteractionRequest,
 } from "./interaction-encryption.js";
 import {
+  EncryptedTaskEventSealer,
   encryptTaskTurnResult,
   executeEncryptedTaskOperation,
   openTaskRelocationPayload,
@@ -3159,6 +3160,9 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               }),
             )
           : null;
+        const encryptedTaskSealer = encryptedTask
+          ? new EncryptedTaskEventSealer(workerEncryption)
+          : null;
         const policyContext = await buildEncryptedAgentPolicyContext({
           policies: command.policies,
           projectId: command.policyProjectId,
@@ -3206,7 +3210,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
               ),
             })),
             chatId: command.chatId,
-            captureProtectedDiagnostics: encryptedChat,
+            captureProtectedDiagnostics: encryptedChat || encryptedTask,
             clientMessageId: command.clientMessageId,
             cwd: command.cwd,
             isPrimary: command.isPrimary,
@@ -3228,7 +3232,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             worktreeMode: command.worktreeMode,
             worktreePolicy: command.worktreePolicy,
             ...(encryptedTaskOperation
-              ? {}
+              ? encryptedTaskSealer
+                ? {
+                    onActivity: (activity) =>
+                      emitProtected(() =>
+                        encryptedTaskSealer.activity(activity),
+                      ),
+                  }
+                : {}
               : {
                   onInteractionRequest: (request) =>
                     encryptedChat
@@ -3254,8 +3265,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
                     emit({ type: "agent.interaction.cleared", requestKey }),
                   onInteractionExpired: (requestKey) =>
                     emit({ type: "agent.interaction.expired", requestKey }),
-                  ...(encryptedTask
-                    ? {}
+                  ...(encryptedTaskSealer
+                    ? {
+                        onActivity: (activity) =>
+                          emitProtected(() =>
+                            encryptedTaskSealer.activity(activity),
+                          ),
+                      }
                     : encryptedChatSealer
                       ? {
                           onActivity: (activity) =>
@@ -3320,7 +3336,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             },
           });
         if (command.resultMode.kind === "task-encrypted") {
-          return executeEncryptedTaskOperation({
+          const result = await executeEncryptedTaskOperation({
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),
             ownerId: workerEncryption.ownerId(),
@@ -3328,9 +3344,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             run: ({ outputSchema, prompt }) =>
               runTurn(prompt, { kind: "structured", outputSchema }),
           });
+          await protectedEventQueue;
+          if (protectedEventFailure) throw protectedEventFailure;
+          return result;
         }
         if (command.resultMode.kind === "task-message-encrypted") {
           const result = await runTurn(command.prompt!, { kind: "visible" });
+          await protectedEventQueue;
+          if (protectedEventFailure) throw protectedEventFailure;
           return encryptTaskTurnResult({
             getComponentKey: () =>
               workerEncryption.componentKey("task-content"),

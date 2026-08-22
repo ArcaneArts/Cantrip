@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   TrajectoryTimeline,
   trajectoryEventAtTime,
+  trajectoryKeyboardAction,
+  trajectoryTimelineMarks,
   trajectoryTimeAtClientX,
 } from "./trajectory-timeline";
 
@@ -90,6 +92,47 @@ describe("trajectory timeline navigation", () => {
     ).toBe(2_000);
   });
 
+  it("supports small and shifted keyboard steps plus explicit selection", () => {
+    expect(
+      trajectoryKeyboardAction({
+        durationMs: 1_000,
+        key: "ArrowRight",
+        playheadMs: 1_000,
+        shiftKey: false,
+        timelineEndMs: 2_000,
+        timelineStartMs: 1_000,
+      }),
+    ).toEqual({ select: false, timeMs: 1_020 });
+    expect(
+      trajectoryKeyboardAction({
+        durationMs: 1_000,
+        key: "ArrowRight",
+        playheadMs: 1_000,
+        shiftKey: true,
+        timelineEndMs: 2_000,
+        timelineStartMs: 1_000,
+      }),
+    ).toEqual({ select: false, timeMs: 1_100 });
+    expect(
+      trajectoryKeyboardAction({
+        durationMs: 1_000,
+        key: "Enter",
+        playheadMs: 1_500,
+        shiftKey: false,
+        timelineEndMs: 2_000,
+        timelineStartMs: 1_000,
+      }),
+    ).toEqual({ select: true, timeMs: 1_500 });
+  });
+
+  it("aggregates dense sub-pixel events by lane and position", () => {
+    const dense = Array.from({ length: 4 }, (_, index) =>
+      event(`dense-${index}`, 1_100, 1_100, index),
+    );
+    expect(trajectoryTimelineMarks(dense, turn)).toHaveLength(1);
+    expect(trajectoryTimelineMarks(dense, turn)[0]?.count).toBe(4);
+  });
+
   it("renders all lanes, event spans, and a visible playhead", () => {
     const markup = renderToStaticMarkup(
       <TrajectoryTimeline
@@ -98,17 +141,20 @@ describe("trajectory timeline navigation", () => {
           event("model", 1_200, 1_400, 2),
           { ...event("tools", 1_500, 1_900, 3), lane: "tools" },
         ]}
-        onSeek={vi.fn()}
+        onMovePlayhead={vi.fn()}
+        onSelectEvent={vi.fn()}
         playheadMs={1_500}
         turn={turn}
       />,
     );
     expect(markup).toContain('role="slider"');
     expect(markup).toContain('aria-label="Turn trajectory timeline"');
+    expect(markup).toContain("milliseconds of 1.0 seconds");
     expect(markup).toContain(">input</text>");
     expect(markup).toContain(">model</text>");
     expect(markup).toContain(">tools</text>");
     expect(markup).toContain('data-slot="trajectory-playhead"');
     expect(markup).toContain('data-event-id="tools"');
+    expect(markup).toContain('data-timing-quality="exact"');
   });
 });

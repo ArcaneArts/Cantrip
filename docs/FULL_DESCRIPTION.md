@@ -321,8 +321,21 @@ approved.
 
 Each chat has an optional resizable right-side **Inspect** panel. New chats start
 collapsed and the open/width state is remembered per chat for the application
-session. When inactive it says that activity will appear while the agent works.
-While active it shows a live operational view:
+session. Inspect has two shared views, **Trajectory** first and **State**
+second; Trajectory is the default in chats and Task activity surfaces.
+
+Trajectory visualizes exactly one turn across Input, Model, and Tools lanes. It
+follows the current live turn or the most recently completed turn, while each
+completed **Worked for** group can pin Inspect to that historical turn. Its
+playhead supports pointer and keyboard seeking, synchronizes with a searchable
+event history, and can filter by lane, event type, status, and timing quality.
+Selecting an event opens Summary, Preview, and Raw diagnostic views inside the
+same panel. Exact intervals, derived intervals, and instantaneous markers are
+visually distinguished; dense sub-pixel events aggregate only in the overview
+and remain individually discoverable in history.
+
+State preserves the live operational view. When inactive it says that activity
+will appear while the agent works. While active it shows:
 
 - the most recent agent thought/commentary, retained while commands/files change;
 - files changed in roughly the last ten seconds;
@@ -338,7 +351,11 @@ While active it shows a live operational view:
   seconds before fading away.
 
 This is observation of events Codex/worker already emits, not invasive
-token-by-token filesystem interception.
+token-by-token filesystem interception. Future encrypted turns can also retain
+bounded, redacted raw request/response envelopes and an explicitly
+**assembled** effective-instruction snapshot for Trajectory diagnosis. Those
+details travel only inside the normal encrypted message content; they are not
+plaintext logs, routing metadata, or a server-search index.
 
 #### Lifecycle, forks, and consoles
 
