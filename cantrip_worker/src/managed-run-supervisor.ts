@@ -307,8 +307,9 @@ export class ManagedRunSupervisor {
     session.rows = rows;
     if (session.process) session.process.resize(cols, rows);
     session.subscribers.set(attachmentId, emit);
-    emit({ type: "terminal.ready" });
+    // Match regular terminals: scrollback must render before input is enabled.
     if (session.buffer) emit({ type: "terminal.output", data: session.buffer });
+    emit({ type: "terminal.ready" });
     if (!session.process) {
       session.subscribers.delete(attachmentId);
       return Promise.resolve(this.#terminalExitResult(session));

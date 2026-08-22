@@ -18,6 +18,53 @@ afterEach(async () => {
 });
 
 describe("TerminalManager", () => {
+  it("replays buffered output before signaling that a reattached view is ready", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "cantrip-terminal-"));
+    directories.push(directory);
+    const manager = new TerminalManager();
+    let initialOutput = "";
+    const initialAttachment = manager.open(
+      "terminal-replay",
+      "attachment-initial",
+      directory,
+      80,
+      24,
+      { type: "shell" },
+      (event) => {
+        if (event.type === "terminal.output") initialOutput += event.data;
+      },
+    );
+    manager.input(
+      "terminal-replay",
+      process.platform === "win32"
+        ? "echo CANTRIP_REPLAY_MARKER\r"
+        : "printf 'CANTRIP_REPLAY_MARKER\\n'\r",
+    );
+    await expect
+      .poll(() => initialOutput, { timeout: 5_000 })
+      .toContain("CANTRIP_REPLAY_MARKER");
+    manager.detach("terminal-replay", "attachment-initial");
+    await expect(initialAttachment).resolves.toEqual({ status: "detached" });
+
+    const replayEvents: Array<{ type: string; data?: string }> = [];
+    const reattached = manager.attachExisting(
+      "terminal-replay",
+      "attachment-replay",
+      80,
+      24,
+      (event) => replayEvents.push(event),
+    );
+
+    expect(replayEvents[0]).toMatchObject({
+      type: "terminal.output",
+      data: expect.stringContaining("CANTRIP_REPLAY_MARKER"),
+    });
+    expect(replayEvents[1]).toEqual({ type: "terminal.ready" });
+    manager.detach("terminal-replay", "attachment-replay");
+    await expect(reattached).resolves.toEqual({ status: "detached" });
+    manager.close("terminal-replay");
+  });
+
   it("runs an interactive shell in the requested source folder", async () => {
     const afterCursor = readWorkerLogs({
       afterCursor: 0,

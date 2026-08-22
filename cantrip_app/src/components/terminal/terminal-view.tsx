@@ -300,29 +300,39 @@ export function TerminalView({
           return;
         }
         if (message.type === "ready") {
-          ready = true;
-          reconnectAttemptRef.current = 0;
-          loadedTerminalIds.add(terminal.id);
-          setLoadedTerminalId(terminal.id);
-          setState("ready");
-          const queuedInput = pendingInputRef.current;
-          if (queuedInput && sendInput(queuedInput.data)) {
-            pendingInputRef.current = null;
-            onPendingInputSentRef.current?.(queuedInput.id);
-          }
-          clientLogger.info("Terminal surface is ready", {
-            attempt: reconnectAttemptRef.current + 1,
-            durationMs: Math.round(performance.now() - connectionStartedAt),
-            event: "surface.terminal.ready",
-            operation: "connect",
-            status: "ready",
-            subsystem: "terminal",
-            surfaceId: terminal.id,
-            transport: direct ? "direct" : "relay",
-          });
-          requestAnimationFrame(() => {
-            resize();
-            xterm.focus();
+          // xterm can answer capability queries while parsing scrollback. Keep
+          // input closed until every replay write ahead of ready has finished.
+          outputQueue = outputQueue.then(() => {
+            if (
+              disposed ||
+              socket !== nextSocket ||
+              nextSocket.readyState !== WebSocket.OPEN
+            )
+              return;
+            ready = true;
+            reconnectAttemptRef.current = 0;
+            loadedTerminalIds.add(terminal.id);
+            setLoadedTerminalId(terminal.id);
+            setState("ready");
+            const queuedInput = pendingInputRef.current;
+            if (queuedInput && sendInput(queuedInput.data)) {
+              pendingInputRef.current = null;
+              onPendingInputSentRef.current?.(queuedInput.id);
+            }
+            clientLogger.info("Terminal surface is ready", {
+              attempt: reconnectAttemptRef.current + 1,
+              durationMs: Math.round(performance.now() - connectionStartedAt),
+              event: "surface.terminal.ready",
+              operation: "connect",
+              status: "ready",
+              subsystem: "terminal",
+              surfaceId: terminal.id,
+              transport: direct ? "direct" : "relay",
+            });
+            requestAnimationFrame(() => {
+              resize();
+              xterm.focus();
+            });
           });
         } else if (message.type === "output") {
           if (
@@ -348,7 +358,11 @@ export function TerminalView({
                 opaque: message.protectedData,
                 schema: terminalOutputContentSchema,
               });
-              if (!disposed) xterm.write(content.data);
+              if (!disposed) {
+                await new Promise<void>((resolve) => {
+                  xterm.write(content.data, resolve);
+                });
+              }
             })
             .catch(() => {
               if (!disposed) {
