@@ -80,8 +80,10 @@ cantrip run setup retry
 ```
 
 Worktree creation defaults to a new `cantrip/<name>` branch based on the
-current revision. Use `--from`, `--existing`, or `--detach` only when that
-default is not appropriate. Removal deliberately reuses Cantrip's existing
+current revision. Use `--base-revision`, `--existing`, or `--detach` only when
+that default is not appropriate. `--from` remains a compatibility alias for
+`--base-revision`; the canonical name matches the MCP `baseRevision` field.
+Removal deliberately reuses Cantrip's existing
 safety policy: Primary, dirty, externally created, leased, or actively bound
 worktrees cannot be removed through this command.
 

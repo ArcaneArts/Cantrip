@@ -59,6 +59,8 @@ import {
   cantripMcpTerminalRestartResultSchema,
   cantripMcpTerminalSendInputSchema,
   cantripMcpTerminalSendResultSchema,
+  cantripMcpToolHelpInputSchema,
+  cantripMcpToolHelpResultSchema,
   cantripMcpWorktreeCreateInputSchema,
   cantripMcpWorktreeCreateResultSchema,
   cantripMcpWorktreeListInputSchema,
@@ -73,8 +75,10 @@ import {
   cantripMcpWorktreeSwitchResultSchema,
 } from "@cantrip/protocol";
 
+import { cantripMcpToolHelp } from "./tool-catalog.js";
+
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Setup runs only while a new secondary worktree is prepared or through explicit run_setup_retry; inspect run_setup_status instead of running setup before an action. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Call tool_help with a tool name before guessing arguments; it returns exact schema generated from the live authoritative validator. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Setup runs only while a new secondary worktree is prepared or through explicit run_setup_retry; inspect run_setup_status instead of running setup before an action. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -146,7 +150,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     {
       title: "Get Cantrip context",
       description:
-        "Return the server-validated project, chat lane, worker, worktree, root, and permission context for this task.",
+        "Return the server-validated project, chat lane, worker, worktree, root, permission, and mutation readiness for this task. Arguments: {}.",
       inputSchema: cantripMcpContextGetInputSchema,
       outputSchema: cantripMcpContextGetResultSchema,
       annotations: readAnnotations,
@@ -158,6 +162,25 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
             await gateway({ operation: "context.get", arguments: {} }),
           ),
         );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "tool_help",
+    {
+      title: "Get exact Cantrip tool arguments",
+      description:
+        'Return the exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool. Arguments: {"tool":"worktree_create"}. Use this before guessing a field name.',
+      inputSchema: cantripMcpToolHelpInputSchema,
+      outputSchema: cantripMcpToolHelpResultSchema,
+      annotations: readAnnotations,
+    },
+    async (arguments_) => {
+      try {
+        const { tool } = cantripMcpToolHelpInputSchema.parse(arguments_);
+        return operationResult(cantripMcpToolHelp(tool));
       } catch (error) {
         return operationError(error);
       }
@@ -528,7 +551,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     {
       title: "Start a Cantrip Run",
       description:
-        "Start one exact Codex-compatible action in the bound worktree using the action ID and configuration revision returned by run_config_list or run_config_read.",
+        'Start one exact Codex-compatible action in the bound worktree. Arguments: {"actionId":"<from run_config_list>","configRevision":"<same result>","focus":true}. Call tool_help({"tool":"run_start"}) for the exact schema.',
       inputSchema: cantripMcpRunStartInputSchema,
       outputSchema: cantripMcpRunStartResultSchema,
       annotations: openWorldMutationAnnotations,
@@ -616,7 +639,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     {
       title: "Create a Cantrip worktree",
       description:
-        "Create an agent-owned worktree in the bound project. Use worktree_switch separately to schedule continuation there.",
+        'Create an agent-owned worktree. New branch arguments: {"intent":"newBranch","name":"Fix name","branch":"codex/fix-name","baseRevision":"main"}; baseRevision is optional. Existing and detached variants differ; call tool_help({"tool":"worktree_create"}) for exact schemas. MCP uses baseRevision, matching CLI --base-revision (legacy --from alias).',
       inputSchema: cantripMcpWorktreeCreateInputSchema,
       outputSchema: cantripMcpWorktreeCreateResultSchema,
       annotations: mutationAnnotations,
@@ -641,7 +664,7 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
     {
       title: "Switch the Cantrip worktree",
       description:
-        "Schedule continuation in an exact authorized worktree. End the current turn immediately when continuation is scheduled.",
+        'Schedule continuation in an exact authorized worktree. Arguments: {"target":{"kind":"worktree","projectId":"<context>","worktreeId":"<worktree_list>"},"purpose":"why"}. End the current turn immediately when continuation is scheduled.',
       inputSchema: cantripMcpWorktreeSwitchInputSchema,
       outputSchema: cantripMcpWorktreeSwitchResultSchema,
       annotations: mutationAnnotations,

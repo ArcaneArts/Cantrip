@@ -44,6 +44,7 @@ import {
   cantripMcpRunStopInputSchema,
   cantripMcpTargetListInputSchema,
   cantripMcpTerminalReadInputSchema,
+  cantripMcpToolHelpInputSchema,
   cantripMcpWorktreeSwitchResultSchema,
   cantripCliCommandRequestSchema,
   cantripCliCommandResultSchema,
@@ -710,6 +711,12 @@ describe("Cantrip protocol", () => {
     expect(CANTRIP_MCP_READ_OPERATIONS).toHaveLength(
       CANTRIP_MCP_READ_TOOL_NAMES.length,
     );
+    expect(
+      cantripMcpToolHelpInputSchema.parse({ tool: "worktree_create" }),
+    ).toEqual({ tool: "worktree_create" });
+    expect(
+      cantripMcpToolHelpInputSchema.safeParse({ tool: "shell" }).success,
+    ).toBe(false);
     expect(cantripMcpTargetListInputSchema.parse({})).toEqual({
       cursor: 0,
       limit: 100,

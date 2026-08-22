@@ -192,14 +192,18 @@ struct WorktreeCreateArgs {
     #[arg(long, conflicts_with_all = ["existing", "detach"])]
     branch: Option<String>,
     /// Check out an existing branch.
-    #[arg(long, value_name = "BRANCH", conflicts_with_all = ["branch", "detach", "from"])]
+    #[arg(long, value_name = "BRANCH", conflicts_with_all = ["branch", "detach", "base_revision"])]
     existing: Option<String>,
     /// Create a detached worktree at this revision.
-    #[arg(long, value_name = "REVISION", conflicts_with_all = ["branch", "existing", "from"])]
+    #[arg(long, value_name = "REVISION", conflicts_with_all = ["branch", "existing", "base_revision"])]
     detach: Option<String>,
     /// Start a new branch from this revision instead of the current revision.
-    #[arg(long, value_name = "REVISION")]
-    from: Option<String>,
+    #[arg(
+        long = "base-revision",
+        visible_alias = "from",
+        value_name = "REVISION"
+    )]
+    base_revision: Option<String>,
     /// Continue the current chat in the new worktree after creation.
     #[arg(long)]
     switch: bool,
@@ -372,7 +376,7 @@ fn invocation(command: Command) -> Result<Invocation, String> {
                 } else if let Some(existing) = args.existing {
                     ("existingBranch", Some(existing), None)
                 } else {
-                    ("newBranch", args.branch, args.from)
+                    ("newBranch", args.branch, args.base_revision)
                 };
                 Invocation {
                     command: "worktree.create",
@@ -627,6 +631,33 @@ mod tests {
         assert!(help.contains("create"));
         assert!(help.contains("release"));
         assert!(!help.contains("browser services"));
+    }
+
+    #[test]
+    fn worktree_base_revision_matches_the_mcp_field_name() {
+        for flag in ["--base-revision", "--from"] {
+            let parsed = Cli::try_parse_from([
+                "cantrip",
+                "worktree",
+                "create",
+                "Schema parity",
+                flag,
+                "main",
+            ])
+            .expect("parse worktree base revision");
+            let request =
+                invocation(parsed.command.expect("worktree command")).expect("build invocation");
+            assert_eq!(request.arguments["baseRevision"], "main");
+        }
+        let mut root = Cli::command();
+        let create = root
+            .find_subcommand_mut("worktree")
+            .expect("worktree command")
+            .find_subcommand_mut("create")
+            .expect("worktree create command");
+        let help = create.render_long_help().to_string();
+        assert!(help.contains("--base-revision <REVISION>"));
+        assert!(help.contains("[alias: --from]"));
     }
 
     #[test]

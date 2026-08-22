@@ -70,22 +70,25 @@ the raw command or volatile PTY output to the audit log.
    permission, and binding-readiness information as authoritative. If it reports
    `refresh-required`, follow its recovery instruction instead of attempting a
    mutation on the same attachment.
-2. Use `policy_list`, then `policy_read` for each summary that requires the
+2. Before guessing an argument, call `tool_help` with the known MCP tool name.
+   It returns JSON Schema generated from the same Zod validator used at runtime,
+   plus bounded examples and terminology notes.
+3. Use `policy_list`, then `policy_read` for each summary that requires the
    current full policy.
-3. Use `target_list` and `target_inspect`; never guess, cache across bindings,
+4. Use `target_list` and `target_inspect`; never guess, cache across bindings,
    or reconstruct opaque target identifiers.
-4. Use the target-specific tool. Normal filesystem and Git work stays in normal
+5. Use the target-specific tool. Normal filesystem and Git work stays in normal
    repository tools.
-5. Create or edit `.codex/environments/environment.toml` with normal repository
+6. Create or edit `.codex/environments/environment.toml` with normal repository
    tools, and validate it with `cantrip run validate`. Use `run_config_list` or
    `run_config_read` to obtain the exact action ID and configuration revision,
    then prefer `run_start`, `run_status`, `run_read`, `run_open`, and
    `run_stop` over copied shell commands. MCP never invokes the CLI internally.
    A headless start is successful even when its surface status is unavailable;
    use `run_open` after a compatible client reconnects.
-6. If a result has `continuationScheduled: true`, end the current turn
+7. If a result has `continuationScheduled: true`, end the current turn
    immediately so Cantrip can checkpoint and resume in the selected lane.
-7. If managed MCP is unavailable, use `cantrip -h` and the corresponding CLI
+8. If managed MCP is unavailable, use `cantrip -h` and the corresponding CLI
    command. Do not retry an expired, stale, or denied binding without refreshed
    chat context.
 
@@ -98,7 +101,7 @@ only. CodeGraph remains separately labeled **Read only**.
 
 ## Tool catalog
 
-The catalog contains 30 tools. Read-only and mutation annotations are attached
+The catalog contains 33 tools. Read-only and mutation annotations are attached
 per tool. Cantrip narrows Codex's enabled tool list to the current permission
 profile, so read-only bindings receive the Run read tools but not `run_start`,
 `run_open`, or `run_stop`; the broker and server independently enforce the same
@@ -107,6 +110,7 @@ boundary.
 | Tool                      | Kind                            | Purpose                                                                                         |
 | ------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `context_get`             | Read                            | Return the validated project, chat lane, worker, root, worktree, and permission context.        |
+| `tool_help`               | Read                            | Return exact generated input JSON Schema, examples, and notes for one Cantrip MCP tool.         |
 | `policy_list`             | Read                            | List bounded summaries of effective Policies in configured order.                               |
 | `policy_read`             | Read                            | Read the current full body for a key returned by `policy_list`.                                 |
 | `target_list`             | Read                            | Page through exact authorized execution targets for the bound project.                          |
