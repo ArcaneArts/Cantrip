@@ -97,6 +97,7 @@ test("deploys the exact commit promoted to release", async () => {
     assert.deepEqual(calls, ["web", "server"]);
     assert.equal(deployed.root, fixture.repository);
     assert.equal(webDeployed.root, fixture.repository);
+    assert.equal(webDeployed.waitForActivation, false);
     assert.equal(
       deployed.commit,
       git(fixture.repository, "rev-parse", "refs/heads/main"),

@@ -90,3 +90,39 @@ test("updates App Platform sources, waits, and verifies the active deployment", 
     ],
   );
 });
+
+test("can trigger an App Platform deployment without waiting for activation", () => {
+  const calls = [];
+  const deployment = deployAppPlatform({
+    appId: defaultAppPlatformAppId,
+    commit,
+    root: "/workspace/cantrip",
+    waitForActivation: false,
+    run(commandName, arguments_, options) {
+      calls.push({ arguments_, commandName, options });
+      return { stderr: "", stdout: "" };
+    },
+  });
+
+  assert.deepEqual(deployment, {
+    appId: defaultAppPlatformAppId,
+    commit,
+    components: ["app", "site"],
+    pending: true,
+  });
+  assert.deepEqual(
+    calls.map(({ commandName, arguments_ }) => [commandName, ...arguments_]),
+    [
+      ["doctl", "apps", "spec", "validate", "/workspace/cantrip/.do/app.yaml"],
+      [
+        "doctl",
+        "apps",
+        "update",
+        defaultAppPlatformAppId,
+        "--spec",
+        "/workspace/cantrip/.do/app.yaml",
+        "--update-sources",
+      ],
+    ],
+  );
+});
