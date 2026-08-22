@@ -3043,6 +3043,18 @@ export async function buildApp({
           revision: null,
           payload: null,
         });
+        // A newly imported repository may not be selected yet, so its client
+        // only retains the current-user scope. Notify that scope as well or
+        // the global project list can remain stuck on "cloning" until reload.
+        liveHub.publish({
+          ownerId: change.ownerId,
+          scope: { kind: "current-user" },
+          resource: "project",
+          action: "invalidated",
+          entityId: change.job.projectId,
+          revision: null,
+          payload: null,
+        });
       }
       if (change.job.state === "succeeded") {
         liveHub.publish({

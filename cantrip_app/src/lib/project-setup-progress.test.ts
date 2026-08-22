@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import {
   isWindowsLongPathSetupFailure,
   latestProjectProvisionJob,
+  projectListRefreshInterval,
   projectOwningWorkerId,
   projectSetupFailureKey,
+  projectSetupJobRefreshInterval,
   projectSetupPercent,
 } from "./project-setup-progress";
 
@@ -24,6 +26,28 @@ function job(
 }
 
 describe("project setup progress", () => {
+  it("keeps bounded project polling active while durable setup is pending", () => {
+    expect(projectListRefreshInterval(true, [{ setupStatus: "cloning" }])).toBe(
+      3_000,
+    );
+    expect(
+      projectListRefreshInterval(true, [{ setupStatus: "preparing" }]),
+    ).toBe(3_000);
+    expect(projectListRefreshInterval(true, [{ setupStatus: "ready" }])).toBe(
+      false,
+    );
+    expect(projectListRefreshInterval(false, [{ setupStatus: "ready" }])).toBe(
+      15_000,
+    );
+  });
+
+  it("polls active setup jobs even while live updates are healthy", () => {
+    expect(projectSetupJobRefreshInterval("cloning")).toBe(2_000);
+    expect(projectSetupJobRefreshInterval("preparing")).toBe(2_000);
+    expect(projectSetupJobRefreshInterval("failed")).toBe(false);
+    expect(projectSetupJobRefreshInterval("ready")).toBe(false);
+  });
+
   it("selects the newest provision job and provides a startup fallback", () => {
     const latest = latestProjectProvisionJob([
       job("old", "2026-08-16T01:00:00.000Z", "provision", 30),

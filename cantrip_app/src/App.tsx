@@ -458,8 +458,10 @@ import {
 import {
   isWindowsLongPathSetupFailure,
   latestProjectProvisionJob,
+  projectListRefreshInterval,
   projectOwningWorkerId,
   projectSetupFailureKey,
+  projectSetupJobRefreshInterval,
   projectSetupPercent,
 } from "@/lib/project-setup-progress";
 import type {
@@ -3737,15 +3739,7 @@ export function App() {
     queryFn: getProjects,
     queryKey: ["projects"],
     refetchInterval: (query) =>
-      projectResourcesLive
-        ? false
-        : query.state.data?.some(
-              (project) =>
-                project.setupStatus === "cloning" ||
-                project.setupStatus === "preparing",
-            )
-          ? 3_000
-          : 15_000,
+      projectListRefreshInterval(projectResourcesLive, query.state.data),
   });
   useEffect(() => {
     if (
@@ -3785,10 +3779,7 @@ export function App() {
     queries: repositorySetupProjects.map((project) => ({
       queryFn: () => getProjectReplicaJobs(project.id),
       queryKey: ["project-replica-jobs", project.id],
-      refetchInterval:
-        projectResourcesLive || project.setupStatus === "failed"
-          ? false
-          : 2_000,
+      refetchInterval: projectSetupJobRefreshInterval(project.setupStatus),
     })),
   });
   const projectSetupJobs = new Map<string, ProjectReplicaJobSummary>();
@@ -3805,10 +3796,7 @@ export function App() {
     queries: folderSetupProjects.map((project) => ({
       queryFn: () => getProjectFolderSetupJob(project.id),
       queryKey: ["project-folder-setup", project.id],
-      refetchInterval:
-        projectResourcesLive || project.setupStatus === "failed"
-          ? false
-          : 2_000,
+      refetchInterval: projectSetupJobRefreshInterval(project.setupStatus),
       retry: false,
     })),
   });
