@@ -20,12 +20,6 @@ function circleCenters(source) {
   );
 }
 
-function trayCells(source) {
-  return [
-    ...source.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="2" height="2"/g),
-  ].map(([, x, y]) => [Number(x), Number(y)]);
-}
-
 function pngDimensions(path) {
   const image = read(path);
   assert.equal(image.subarray(1, 4).toString("ascii"), "PNG");
@@ -69,20 +63,13 @@ test("app artwork keeps the tall glint inside a five-unit safe area", () => {
   assert.ok(top >= 5 && 36 - bottom >= 5);
 });
 
-test("macOS tray renders a bold pixel-snapped SVG as an unscaled native template", () => {
+test("macOS tray renders the supplied bolt SVG as an unscaled native template", () => {
   const rust = svg("cantrip_app/src-tauri/src/lib.rs");
-  const tray = svg("cantrip_app/src-tauri/icons/tray-icon-macos.svg");
-  const expectedCells = circleCenters(
-    svg("cantrip_app/src-tauri/icons/glint.svg"),
-  ).map(([x, y]) => [Math.floor((x + 2) / 2), Math.floor((y + 1) / 2)]);
-  assert.deepEqual(
-    trayCells(tray),
-    expectedCells,
-    "tray cells must remain a pixel-snapped projection of the canonical glint",
-  );
-  assert.match(tray, /viewBox="0 0 18 18"/);
-  assert.match(tray, /shape-rendering="crispEdges"/);
-  assert.match(rust, /include_bytes!\("\.\.\/icons\/tray-icon-macos\.svg"\)/);
+  const tray = svg("cantrip_app/src-tauri/icons/icons8-bolt.svg");
+  assert.match(tray, /viewBox="0 0 24 24"/);
+  assert.match(tray, /id="sharp"/);
+  assert.match(tray, /polygon points="19,10 13,10 13,1 6,14 12,14 12,23 "/);
+  assert.match(rust, /include_bytes!\("\.\.\/icons\/icons8-bolt\.svg"\)/);
   assert.match(rust, /include_bytes!\("\.\.\/icons\/tray-icon-macos\.png"\)/);
   assert.match(rust, /NSImage::initWithData/);
   assert.match(rust, /image\.setTemplate\(true\)/);

@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const iconDirectory = join(repositoryRoot, "cantrip_app", "src-tauri", "icons");
 const appIconSource = join(iconDirectory, "source.svg");
-const trayIconSource = join(iconDirectory, "tray-icon-macos.svg");
+const trayIconSource = join(iconDirectory, "icons8-bolt.svg");
 const temporaryDirectory = mkdtempSync(join(tmpdir(), "cantrip-glint-icons-"));
 let opaqueRenderSequence = 0;
 

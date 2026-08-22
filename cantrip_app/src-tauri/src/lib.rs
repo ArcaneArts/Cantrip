@@ -547,7 +547,7 @@ fn request_quit_confirmation(app: &tauri::AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-const MACOS_TRAY_ICON_SVG: &[u8] = include_bytes!("../icons/tray-icon-macos.svg");
+const MACOS_TRAY_ICON_SVG: &[u8] = include_bytes!("../icons/icons8-bolt.svg");
 #[cfg(target_os = "macos")]
 const MACOS_TRAY_ICON_PNG: &[u8] = include_bytes!("../icons/tray-icon-macos.png");
 
