@@ -34,6 +34,8 @@ import {
   type DesktopUpdateProgress,
   type DesktopUpdateRelease,
 } from "@/lib/desktop-update";
+import { openExternalUrl } from "@/lib/external-url";
+import { clientLogger, operationalErrorMetadata } from "@/lib/client-log-relay";
 
 export type DesktopUpdateFlowStage =
   | "idle"
@@ -298,7 +300,25 @@ function ReleaseDetails({ release }: { release: DesktopUpdateRelease }) {
       >
         <h3 className="mb-2 text-sm font-semibold">What changed</h3>
         {release.releaseNotes ? (
-          <Markdown>{release.releaseNotes}</Markdown>
+          <Markdown
+            onOpenLink={(url) => {
+              void openExternalUrl(url).catch((error: unknown) => {
+                clientLogger.warn(
+                  "Desktop update release link failed to open",
+                  {
+                    ...operationalErrorMetadata(error),
+                    event: "desktop.update.release-link.failed",
+                    operation: "open-release-link",
+                    reasonCode: "external-open-failed",
+                    status: "failed",
+                    subsystem: "desktop-update",
+                  },
+                );
+              });
+            }}
+          >
+            {release.releaseNotes}
+          </Markdown>
         ) : (
           <p className="text-sm text-muted-foreground">
             No release notes were provided.
