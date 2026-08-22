@@ -152,7 +152,14 @@ let projectId: string;
 let worktreeId: string;
 
 async function cli(
-  command: "run.start" | "run.open" | "run.status" | "run.logs" | "run.stop",
+  command:
+    | "run.start"
+    | "run.open"
+    | "run.setup-status"
+    | "run.setup-retry"
+    | "run.status"
+    | "run.logs"
+    | "run.stop",
   arguments_: Record<string, unknown>,
   requestId: string,
 ) {
@@ -262,6 +269,28 @@ afterAll(async () => {
 });
 
 describe("Run CLI execution", () => {
+  it("reports setup independently and rejects retry for Primary", async () => {
+    const status = await cli("run.setup-status", {}, "setup-status-one");
+    expect(status.statusCode, status.body).toBe(200);
+    expect(cantripCliCommandResultSchema.parse(status.json())).toMatchObject({
+      summary: "This worktree has no Cantrip setup job.",
+      worktreeId,
+      data: {
+        worktreeId,
+        setup: null,
+        currentConfigurationRevision: configurationRevision,
+        workerStatusAvailable: false,
+      },
+    });
+
+    const retry = await cli("run.setup-retry", {}, "setup-retry-primary");
+    expect(retry.statusCode).toBe(409);
+    expect(retry.json()).toMatchObject({
+      code: "conflict",
+      error: expect.stringContaining("Primary"),
+    });
+  });
+
   it("starts headlessly, retries idempotently, reads status/logs, and stops", async () => {
     const requestId = "run-start-idempotency-fixture";
     const start = await cli(

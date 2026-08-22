@@ -45,6 +45,10 @@ import {
   cantripMcpRunStatusResultSchema,
   cantripMcpRunStopInputSchema,
   cantripMcpRunStopResultSchema,
+  cantripMcpRunSetupRetryInputSchema,
+  cantripMcpRunSetupRetryResultSchema,
+  cantripMcpRunSetupStatusInputSchema,
+  cantripMcpRunSetupStatusResultSchema,
   cantripMcpTargetInspectInputSchema,
   cantripMcpTargetInspectResultSchema,
   cantripMcpTargetListInputSchema,
@@ -70,7 +74,7 @@ import {
 } from "@cantrip/protocol";
 
 export const CANTRIP_MCP_INSTRUCTIONS =
-  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
+  "Use Cantrip MCP only for Cantrip-owned state and surfaces. Use normal shell, file, and Git tools to create or edit .codex/environments/environment.toml, then use the Cantrip CLI to validate it. Call context_get first. Read effective policies when a summary requires the full body. List authorized targets; never guess or reuse IDs. Prefer the managed run tools when they are available: obtain exact action IDs and configuration revisions from run_config_list or run_config_read, and never select an action by display name. Setup runs only while a new secondary worktree is prepared or through explicit run_setup_retry; inspect run_setup_status instead of running setup before an action. A headless Run remains successful when no compatible client can create its encrypted terminal; use run_open after a client reconnects. Use the worker-authenticated Cantrip CLI as the fallback. End the turn immediately if continuationScheduled is true. Treat the binding scope as authoritative. Do not retry denied, expired, or stale calls without refreshed context.";
 
 export type CantripMcpOperationGateway = (
   request: CantripAgentOperationRequest,
@@ -296,6 +300,28 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
               operation: "run-config.read",
               arguments: arguments_,
             }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_setup_status",
+    {
+      title: "Read worktree setup status",
+      description:
+        "Read the durable setup state and bounded worker-owned output for the bound worktree without executing setup.",
+      inputSchema: cantripMcpRunSetupStatusInputSchema,
+      outputSchema: cantripMcpRunSetupStatusResultSchema,
+      annotations: readAnnotations,
+    },
+    async (_arguments) => {
+      try {
+        return operationResult(
+          cantripMcpRunSetupStatusResultSchema.parse(
+            await gateway({ operation: "run.setup-status", arguments: {} }),
           ),
         );
       } catch (error) {
@@ -534,6 +560,28 @@ export function createCantripMcpServer(gateway: CantripMcpOperationGateway) {
         return operationResult(
           cantripMcpRunOpenResultSchema.parse(
             await gateway({ operation: "run.open", arguments: arguments_ }),
+          ),
+        );
+      } catch (error) {
+        return operationError(error);
+      }
+    },
+  );
+  server.registerTool(
+    "run_setup_retry",
+    {
+      title: "Retry worktree setup",
+      description:
+        "Explicitly queue the Codex-compatible setup script for the bound secondary worktree. Setup is an open-world mutation and may execute arbitrary project code.",
+      inputSchema: cantripMcpRunSetupRetryInputSchema,
+      outputSchema: cantripMcpRunSetupRetryResultSchema,
+      annotations: openWorldMutationAnnotations,
+    },
+    async (_arguments) => {
+      try {
+        return operationResult(
+          cantripMcpRunSetupRetryResultSchema.parse(
+            await gateway({ operation: "run.setup-retry", arguments: {} }),
           ),
         );
       } catch (error) {

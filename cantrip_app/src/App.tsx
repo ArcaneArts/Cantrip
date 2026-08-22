@@ -5118,7 +5118,8 @@ export function App() {
         ? false
         : ["queued", "starting", "running", "stopping"].includes(
               query.state.data?.run?.state ?? "",
-            )
+            ) ||
+            ["queued", "running"].includes(query.state.data?.setup?.state ?? "")
           ? 2_000
           : 15_000,
     retry: false,

@@ -472,6 +472,7 @@ describe("Cantrip MCP worker broker", () => {
           const openWorld = new Set([
             "browser_services",
             "run_start",
+            "run_setup_retry",
             "run_stop",
             "terminal_send",
             "browser_navigate",
@@ -497,7 +498,7 @@ describe("Cantrip MCP worker broker", () => {
             worktreeId: "worktree-one",
           },
         });
-        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(15);
+        expect(CANTRIP_MCP_MUTATION_TOOL_NAMES).toHaveLength(16);
       } finally {
         await client.close();
         await broker.close();

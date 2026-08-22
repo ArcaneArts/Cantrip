@@ -176,6 +176,7 @@ function commandLaunch(
 
 export interface TerminalManagerOptions {
   environment?: Record<string, string>;
+  environmentForCwd?(cwd: string): Record<string, string>;
   serviceRestartDelayMs?: number;
 }
 
@@ -189,12 +190,16 @@ export class TerminalManager {
   readonly #sessions = new Map<string, TerminalSession>();
   readonly #services = new Map<string, TerminalServiceRuntime>();
   readonly #environment: Record<string, string>;
+  readonly #environmentForCwd: NonNullable<
+    TerminalManagerOptions["environmentForCwd"]
+  >;
   readonly #serviceRestartDelayMs: number;
   #closing = false;
   #serviceFingerprint = "";
 
   constructor(options: TerminalManagerOptions = {}) {
     this.#environment = { ...options.environment };
+    this.#environmentForCwd = options.environmentForCwd ?? (() => ({}));
     this.#serviceRestartDelayMs = options.serviceRestartDelayMs ?? 5_000;
   }
 
@@ -595,6 +600,7 @@ export class TerminalManager {
     ensureSpawnHelperExecutable();
     const environment = {
       ...terminalEnvironment(this.#environment),
+      ...this.#environmentForCwd(session.cwd),
       CANTRIP_TERMINAL_ID: terminalId,
     };
     const processLaunch =

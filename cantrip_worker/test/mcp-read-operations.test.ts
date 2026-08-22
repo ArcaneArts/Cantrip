@@ -96,6 +96,24 @@ function runConfiguration() {
   };
 }
 
+function setupFixture(state: "running" | "succeeded" = "succeeded") {
+  return {
+    id: "00000000-0000-4000-8000-000000000401",
+    projectId: binding.projectId,
+    worktreeId: binding.worktreeId,
+    workerId: binding.workerId,
+    configurationRevision,
+    state,
+    stateRevision: 2,
+    attempt: 1,
+    error: null,
+    createdAt: "2026-08-21T12:00:00.000Z",
+    updatedAt: "2026-08-21T12:00:02.000Z",
+    startedAt: "2026-08-21T12:00:01.000Z",
+    completedAt: state === "succeeded" ? "2026-08-21T12:00:02.000Z" : null,
+  };
+}
+
 describe("Cantrip MCP read operation normalization", () => {
   it("lists and reads exact revision-checked Run configuration actions", async () => {
     const service = encryptionService(randomBytes(32));
@@ -224,6 +242,41 @@ describe("Cantrip MCP read operation normalization", () => {
         }),
       }),
     ).rejects.toThrow("outside the MCP binding");
+  });
+
+  it("reads durable setup status without exposing the worker environment", async () => {
+    const service = encryptionService(randomBytes(32));
+    const calls: unknown[] = [];
+    const result = await executeCantripMcpReadOperation({
+      binding,
+      service,
+      requestId: "run-setup-status-one",
+      request: { operation: "run.setup-status", arguments: {} },
+      execute: async (_binding, request) => {
+        calls.push(request);
+        return {
+          ...commonResult,
+          summary: "Worktree setup succeeded.",
+          data: {
+            worktreeId: binding.worktreeId,
+            setup: setupFixture(),
+            currentConfigurationRevision: configurationRevision,
+            output: "restored\r\n",
+            outputTruncated: false,
+            exitCode: 0,
+            signal: null,
+            workerStatusAvailable: true,
+          },
+        };
+      },
+    });
+    expect(result.data).toMatchObject({
+      worktreeId: binding.worktreeId,
+      setup: { state: "succeeded", attempt: 1 },
+      output: "restored\r\n",
+    });
+    expect(result.data).not.toHaveProperty("environmentDelta");
+    expect(calls).toEqual([{ operation: "run.setup-status", arguments: {} }]);
   });
 
   it("opens effective policy summaries and bodies only on the worker", async () => {

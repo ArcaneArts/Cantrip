@@ -11,7 +11,9 @@ import {
   RUN_CONFIGURATION_CANONICAL_PATH,
   runConfigurationInspectionSchema,
   runInstanceSchema,
+  runSetupStatusResultSchema,
   workerRunLogSnapshotSchema,
+  workerRunSetupStatusSchema,
 } from "./run-configurations.js";
 
 const runIdentity = {
@@ -166,13 +168,22 @@ describe("Run runtime schemas", () => {
   it("registers exact CLI, MCP, and worker operations", () => {
     for (const operation of [
       "run.start",
+      "run.setup-status",
+      "run.setup-retry",
       "run.status",
       "run.read",
       "run.stop",
     ]) {
       expect(cantripAgentOperationNameSchema.parse(operation)).toBe(operation);
     }
-    for (const command of ["run.start", "run.status", "run.logs", "run.stop"]) {
+    for (const command of [
+      "run.start",
+      "run.setup-status",
+      "run.setup-retry",
+      "run.status",
+      "run.logs",
+      "run.stop",
+    ]) {
       expect(cantripCliCommandNameSchema.parse(command)).toBe(command);
     }
     expect(CANTRIP_MCP_OPERATIONS).toEqual(
@@ -180,6 +191,8 @@ describe("Run runtime schemas", () => {
         "run-config.list",
         "run-config.read",
         "run.start",
+        "run.setup-status",
+        "run.setup-retry",
         "run.status",
         "run.read",
         "run.stop",
@@ -205,5 +218,61 @@ describe("Run runtime schemas", () => {
         runs: [runIdentity],
       }),
     ).toMatchObject({ type: "project.run.reconcile" });
+  });
+
+  it("bounds setup observations and excludes worker-private environment", () => {
+    const setup = {
+      jobId: "11111111-1111-4111-8111-111111111112",
+      projectId: runIdentity.projectId,
+      worktreeId: runIdentity.worktreeId,
+      configurationRevision: runIdentity.configurationRevision,
+      attempt: 1,
+      state: "succeeded" as const,
+      output: "prepared\r\n",
+      outputTruncated: false,
+      exitCode: 0,
+      signal: null,
+      error: null,
+      startedAt: "2026-08-21T12:00:00.000Z",
+      completedAt: "2026-08-21T12:00:01.000Z",
+      updatedAt: "2026-08-21T12:00:01.000Z",
+    };
+    expect(workerRunSetupStatusSchema.parse(setup)).toEqual(setup);
+    expect(
+      workerRunSetupStatusSchema.safeParse({
+        ...setup,
+        environmentDelta: { PRIVATE_TOKEN: "secret" },
+      }).success,
+    ).toBe(false);
+    expect(
+      runSetupStatusResultSchema.safeParse({
+        worktreeId: runIdentity.worktreeId,
+        setup: null,
+        currentConfigurationRevision: runIdentity.configurationRevision,
+        output: "x".repeat(100_001),
+        outputTruncated: true,
+        exitCode: null,
+        signal: null,
+        workerStatusAvailable: true,
+      }).success,
+    ).toBe(false);
+
+    const start = {
+      type: "project.run-setup.start" as const,
+      jobId: setup.jobId,
+      attempt: 1,
+      projectId: setup.projectId,
+      worktreeId: setup.worktreeId,
+      sourcePath: "/project/source",
+      worktreePath: "/project/worktree",
+      configurationRevision: setup.configurationRevision,
+    };
+    expect(workerCommandSchema.parse(start)).toEqual(start);
+    expect(
+      workerCommandSchema.safeParse({
+        ...start,
+        environmentDelta: { PRIVATE_TOKEN: "secret" },
+      }).success,
+    ).toBe(false);
   });
 });

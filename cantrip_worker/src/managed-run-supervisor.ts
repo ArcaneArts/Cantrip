@@ -62,6 +62,7 @@ interface ManagedRunSession extends ManagedRunStart {
 export interface ManagedRunSupervisorOptions {
   authorize(input: ManagedRunStart): Promise<AuthorizedRunRoots>;
   environment?: NodeJS.ProcessEnv;
+  environmentForRun?(input: ManagedRunStart): Record<string, string>;
   notify?(run: WorkerRunSnapshot): void;
   platform?: NodeJS.Platform;
 }
@@ -136,6 +137,9 @@ function pathIsAtOrInside(root: string, candidate: string): boolean {
 export class ManagedRunSupervisor {
   readonly #authorize: ManagedRunSupervisorOptions["authorize"];
   readonly #environment: NodeJS.ProcessEnv;
+  readonly #environmentForRun: NonNullable<
+    ManagedRunSupervisorOptions["environmentForRun"]
+  >;
   readonly #notify: NonNullable<ManagedRunSupervisorOptions["notify"]>;
   readonly #platform: NodeJS.Platform;
   readonly #runs = new Map<string, ManagedRunSession>();
@@ -144,6 +148,7 @@ export class ManagedRunSupervisor {
   constructor(options: ManagedRunSupervisorOptions) {
     this.#authorize = options.authorize;
     this.#environment = options.environment ?? process.env;
+    this.#environmentForRun = options.environmentForRun ?? (() => ({}));
     this.#notify = options.notify ?? (() => undefined);
     this.#platform = options.platform ?? process.platform;
   }
@@ -195,7 +200,9 @@ export class ManagedRunSupervisor {
     this.#emit(session);
 
     const environment = {
+      ...stringEnvironment(process.env),
       ...stringEnvironment(this.#environment),
+      ...this.#environmentForRun(input),
       TERM: "xterm-256color",
       COLORTERM: "truecolor",
       CODEX_WORKTREE_PATH: roots.worktreeRoot,
@@ -208,7 +215,7 @@ export class ManagedRunSupervisor {
     const launch = runShellInvocation(
       selection.action.command,
       this.#platform,
-      this.#environment,
+      environment,
     );
     try {
       ensureSpawnHelperExecutable();

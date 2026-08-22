@@ -600,6 +600,18 @@ const workerBridge = {
       case "worktree.list":
       case "worktree.reconcile":
         return inventory();
+      case "project.run-configurations.inspect":
+        return {
+          platform: "darwin",
+          canonical: {
+            relativePath: ".codex/environments/environment.toml",
+            sourceControlState: "absent",
+          },
+          configured: false,
+          valid: true,
+          configurations: [],
+          diagnostics: [],
+        };
       case "worktree.create": {
         activeCreates += 1;
         maximumConcurrentCreates = Math.max(

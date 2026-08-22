@@ -64,7 +64,10 @@ import {
   runInstanceResultSchema,
   runInstanceSchema,
   runLogResultSchema,
+  runSetupStatusResultSchema,
   runStartResultSchema,
+  workerRunSetupLookupSchema,
+  worktreeSetupJobSummarySchema,
   workerRunIdentitySchema,
   workerRunSnapshotSchema,
 } from "./run-configurations.js";
@@ -3247,7 +3250,10 @@ export const worktreeOriginSchema = z.enum([
 ]);
 export const worktreeLifecycleStateSchema = z.enum([
   "creating",
+  "preparing",
   "ready",
+  "setup-failed",
+  "setup-stale",
   "missing",
   "prunable",
   "removing",
@@ -7077,6 +7083,8 @@ export const cantripAgentOperationNameSchema = z.enum([
   "run-config.read",
   "run.start",
   "run.open",
+  "run.setup-status",
+  "run.setup-retry",
   "run.status",
   "run.read",
   "run.stop",
@@ -7109,6 +7117,7 @@ export const CANTRIP_MCP_READ_OPERATIONS = [
   "target.inspect",
   "run-config.list",
   "run-config.read",
+  "run.setup-status",
   "run.status",
   "run.read",
   "worktree.list",
@@ -7127,6 +7136,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
   "target_inspect",
   "run_config_list",
   "run_config_read",
+  "run_setup_status",
   "run_status",
   "run_read",
   "worktree_list",
@@ -7140,6 +7150,7 @@ export const CANTRIP_MCP_READ_TOOL_NAMES = [
 export const CANTRIP_MCP_WORKER_MUTATION_OPERATIONS = [
   "run.start",
   "run.open",
+  "run.setup-retry",
   "run.stop",
   "worktree.create",
   "worktree.switch",
@@ -7166,6 +7177,7 @@ export const CANTRIP_MCP_MUTATION_OPERATIONS = [
 export const CANTRIP_MCP_MUTATION_TOOL_NAMES = [
   "run_start",
   "run_open",
+  "run_setup_retry",
   "run_stop",
   "worktree_create",
   "worktree_switch",
@@ -7337,6 +7349,7 @@ export const cantripMcpRunConfigReadInputSchema = z
     configRevision: runConfigurationDefinitionSchema.shape.revision,
   })
   .strict();
+export const cantripMcpRunSetupStatusInputSchema = z.object({}).strict();
 export const cantripMcpRunStatusInputSchema = z
   .object({ runId: runInstanceSchema.shape.id.optional() })
   .strict();
@@ -7469,6 +7482,7 @@ export const cantripMcpRunOpenInputSchema = z
 export const cantripMcpRunStopInputSchema = z
   .object({ runId: runInstanceSchema.shape.id })
   .strict();
+export const cantripMcpRunSetupRetryInputSchema = z.object({}).strict();
 export const cantripMcpExplorerWriteInputSchema = z
   .object({
     target: cantripMcpSurfaceTargetSchema("explorer"),
@@ -7625,6 +7639,12 @@ export const cantripMcpRunConfigReadResultSchema =
     worktreeId: z.string().min(1).max(200),
     data: runConfigurationSelectionSchema,
   });
+export const cantripMcpRunSetupStatusResultSchema =
+  cantripMcpReadResultBaseSchema.extend({
+    target: z.null().default(null),
+    worktreeId: z.string().min(1).max(200),
+    data: runSetupStatusResultSchema,
+  });
 export const cantripMcpRunStatusResultSchema =
   cantripMcpReadResultBaseSchema.extend({
     target: z.null().default(null),
@@ -7772,6 +7792,10 @@ export const cantripMcpRunStopResultSchema =
   cantripMcpRunMutationResultBaseSchema.extend({
     data: runInstanceResultSchema,
   });
+export const cantripMcpRunSetupRetryResultSchema =
+  cantripMcpRunMutationResultBaseSchema.extend({
+    data: runSetupStatusResultSchema,
+  });
 export const cantripMcpExplorerWriteResultSchema =
   cantripMcpMutationResultBaseSchema.extend({
     target: cantripMcpSurfaceTargetSchema("explorer"),
@@ -7871,6 +7895,8 @@ export const cantripCliCommandNameSchema = z.enum([
   "run.config-path",
   "run.start",
   "run.open",
+  "run.setup-status",
+  "run.setup-retry",
   "run.status",
   "run.logs",
   "run.stop",
@@ -11275,6 +11301,27 @@ export const workerCommandSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("project.run-configurations.inspect"),
       sourcePath: z.string().min(1).max(8_192),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run-setup.start"),
+      jobId: worktreeSetupJobSummarySchema.shape.id,
+      attempt: z.number().int().positive().safe(),
+      projectId: runInstanceSchema.shape.projectId,
+      worktreeId: runInstanceSchema.shape.worktreeId,
+      sourcePath: z.string().min(1).max(8_192),
+      worktreePath: z.string().min(1).max(8_192),
+      configurationRevision:
+        runConfigurationDefinitionSchema.shape.revision.nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("project.run-setup.status"),
+      jobId: worktreeSetupJobSummarySchema.shape.id,
+      projectId: runInstanceSchema.shape.projectId,
+      worktreeId: runInstanceSchema.shape.worktreeId,
     })
     .strict(),
   z

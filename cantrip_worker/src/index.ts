@@ -255,6 +255,7 @@ import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
 import { inspectRunConfigurations } from "./run-configuration-discovery.js";
 import { ManagedRunSupervisor } from "./managed-run-supervisor.js";
+import { RunSetupManager } from "./run-setup-manager.js";
 import {
   TerminalManager,
   type TerminalRuntimeEvent,
@@ -536,8 +537,10 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   const cliBroker = new CantripCliBroker(config);
   const mcpBroker = new CantripMcpBroker(config);
   const mcpHost = cantripMcpHostInvocation();
+  let runSetups: RunSetupManager | null = null;
   const terminals = new TerminalManager({
     environment: cliBroker.childEnvironment(),
+    environmentForCwd: (cwd) => runSetups?.environmentForPath(cwd) ?? {},
   });
   const terminalDirectEndpoints = new TerminalDirectEndpointManager(terminals);
   const directBroker = new DirectBroker();
@@ -700,6 +703,27 @@ async function start(): Promise<WorkerRuntimeOutcome> {
   });
   remoteSurfaces.setEncryptionService(workerEncryption);
   const worktrees = new WorktreeManager(config.dataDirectory);
+  runSetups = new RunSetupManager({
+    authorize: async (input) => {
+      const [authorized] = await worktrees.authorizeTargets(input.sourcePath, [
+        input.worktreePath,
+      ]);
+      if (!authorized) {
+        throw new Error("The requested setup worktree is unavailable.");
+      }
+      return {
+        sourceRoot: authorized.inventory.sourcePath,
+        worktreeRoot: authorized.worktree.path,
+      };
+    },
+    dataDirectory: config.dataDirectory,
+    environment: cliBroker.childEnvironment(),
+  });
+  await workerStartupPhase(
+    "initialize-run-setup",
+    () => runSetups!.initialize(),
+    { workerId: config.workerId },
+  );
   let codegraphNotificationEmitter:
     ((notification: WorkerNotification) => boolean) | null = null;
   let workerNotificationEmitter:
@@ -732,6 +756,13 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         worktreeRoot: authorized.worktree.path,
       };
     },
+    environment: cliBroker.childEnvironment(),
+    environmentForRun: (input) =>
+      runSetups!.environmentFor(
+        input.projectId,
+        input.worktreeId,
+        input.configurationRevision,
+      ),
     notify: (run) =>
       workerNotificationEmitter?.({
         type: "project.run.state.observed",
@@ -1590,6 +1621,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       case "project.run-configurations.inspect":
         return inspectRunConfigurations(command.sourcePath);
+      case "project.run-setup.start":
+        return runSetups!.start(command);
+      case "project.run-setup.status":
+        return runSetups!.status(
+          command.jobId,
+          command.projectId,
+          command.worktreeId,
+        );
       case "project.run.start":
         return managedRuns.start(command);
       case "project.run.status":
@@ -2180,8 +2219,16 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         return applyGitForcePush(command.cwd, command.token);
       case "worktree.list":
         return worktrees.list(command.sourcePath);
-      case "worktree.reconcile":
-        return worktrees.reconcile(command.sourcePath);
+      case "worktree.reconcile": {
+        const inventory = await worktrees.reconcile(command.sourcePath);
+        await runSetups!.reconcile(
+          inventory.sourcePath,
+          inventory.worktrees
+            .filter(({ missing }) => !missing)
+            .map(({ path: worktreePath }) => worktreePath),
+        );
+        return inventory;
+      }
       case "worktree.create":
         return worktrees.create(
           command.sourcePath,
@@ -2198,6 +2245,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
             force: command.force,
             beforeRemove: async (worktreePath) => {
               await managedRuns.stopForPath(worktreePath);
+              await runSetups!.removeForPath(worktreePath);
             },
           },
         );
@@ -2212,8 +2260,19 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         );
       case "worktree.unlock":
         return worktrees.unlock(command.sourcePath, command.worktreePath);
-      case "worktree.prune":
-        return worktrees.prune(command.sourcePath, command.allowExternal);
+      case "worktree.prune": {
+        const result = await worktrees.prune(
+          command.sourcePath,
+          command.allowExternal,
+        );
+        await runSetups!.reconcile(
+          result.inventory.sourcePath,
+          result.inventory.worktrees
+            .filter(({ missing }) => !missing)
+            .map(({ path: worktreePath }) => worktreePath),
+        );
+        return result;
+      }
       case "worktree.status":
         return worktrees.status(command.sourcePath, command.worktreePath);
       case "worktree.observation.configure":
@@ -3940,6 +3999,7 @@ async function start(): Promise<WorkerRuntimeOutcome> {
     codegraphProjects?.close();
     worktrees.close();
     providerAuthObserver.close();
+    await runSetups!.closeAll();
     await managedRuns.closeAll();
     commandConnection.close();
     await directBroker.close();

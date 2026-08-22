@@ -244,6 +244,7 @@ import {
 } from "./logical-branch-leases.js";
 import { ProjectAutomationRepository } from "./project-automations.js";
 import { ProjectFolderSetupJobRepository } from "./project-folder-setup-jobs.js";
+import { WorktreeSetupJobRepository } from "./worktree-setup-jobs.js";
 import { ProjectGithubConversionJobRepository } from "./project-github-conversion-jobs.js";
 import { EncryptionRegistryRepository } from "./encryption-registry.js";
 import { PolicyRepository } from "./policies.js";
@@ -1175,6 +1176,19 @@ function toProjectWorktreeSummary(
   };
 }
 
+function observedWorktreeLifecycle(
+  current: ProjectWorktreeSummary["lifecycleState"] | null,
+  observed: { missing: boolean; prunable: boolean },
+): ProjectWorktreeSummary["lifecycleState"] {
+  if (observed.missing) return "missing";
+  if (observed.prunable) return "prunable";
+  return current === "preparing" ||
+    current === "setup-failed" ||
+    current === "setup-stale"
+    ? current
+    : "ready";
+}
+
 function toGitManagedOperationRecord(
   operation: GitOperationRow,
 ): GitManagedOperationRecord {
@@ -2012,6 +2026,7 @@ export class ServerRepository {
   readonly tasks: TaskRepository;
   readonly projectReplicaJobs: ProjectReplicaJobRepository;
   readonly projectFolderSetupJobs: ProjectFolderSetupJobRepository;
+  readonly worktreeSetupJobs: WorktreeSetupJobRepository;
   readonly projectGithubConversionJobs: ProjectGithubConversionJobRepository;
   readonly tabLayouts: ProjectTabLayoutRepository;
   readonly workflows: WorkflowRepository;
@@ -2034,6 +2049,7 @@ export class ServerRepository {
     this.tasks = new TaskRepository(database);
     this.projectReplicaJobs = new ProjectReplicaJobRepository(database);
     this.projectFolderSetupJobs = new ProjectFolderSetupJobRepository(database);
+    this.worktreeSetupJobs = new WorktreeSetupJobRepository(database);
     this.projectGithubConversionJobs = new ProjectGithubConversionJobRepository(
       database,
     );
@@ -8277,6 +8293,7 @@ export class ServerRepository {
     ownerId: string,
     projectId: string,
     worktreeId: string,
+    options: { allowSetupStates?: boolean } = {},
   ): Promise<ProjectWorktreeExecutionContext | null> {
     const rows = await this.database
       .select({
@@ -8301,7 +8318,14 @@ export class ServerRepository {
           eq(schema.projects.id, projectId),
           eq(schema.projectWorktrees.id, worktreeId),
           isNull(schema.projectSources.removedAt),
-          eq(schema.projectWorktrees.lifecycleState, "ready"),
+          options.allowSetupStates
+            ? inArray(schema.projectWorktrees.lifecycleState, [
+                "ready",
+                "preparing",
+                "setup-failed",
+                "setup-stale",
+              ])
+            : eq(schema.projectWorktrees.lifecycleState, "ready"),
         ),
       )
       .limit(1);
@@ -9110,6 +9134,7 @@ export class ServerRepository {
     ownerId: string,
     workerId: string,
     limit = 128,
+    includeSetupStates = false,
   ): Promise<ProjectWorktreeObservationContext[]> {
     return this.database
       .select({
@@ -9135,7 +9160,14 @@ export class ServerRepository {
       .where(
         and(
           eq(schema.projectWorktrees.workerId, workerId),
-          eq(schema.projectWorktrees.lifecycleState, "ready"),
+          includeSetupStates
+            ? inArray(schema.projectWorktrees.lifecycleState, [
+                "ready",
+                "preparing",
+                "setup-failed",
+                "setup-stale",
+              ])
+            : eq(schema.projectWorktrees.lifecycleState, "ready"),
           isNull(schema.projectSources.removedAt),
         ),
       )
@@ -9236,11 +9268,10 @@ export class ServerRepository {
       .limit(1);
     const current = currentRows[0];
     if (!current) return null;
-    const lifecycleState = status.worktree.missing
-      ? "missing"
-      : status.worktree.prunable
-        ? "prunable"
-        : "ready";
+    const lifecycleState = observedWorktreeLifecycle(
+      current.lifecycleState as ProjectWorktreeSummary["lifecycleState"],
+      status.worktree,
+    );
     const metadataChanged =
       current.branch !== status.worktree.branch ||
       current.detached !== status.worktree.detached ||
@@ -9927,6 +9958,7 @@ export class ServerRepository {
     inventory: WorktreeInventory,
     created?: {
       id: string;
+      lifecycleState?: ProjectWorktreeSummary["lifecycleState"];
       name: string;
       origin: ProjectWorktreeSummary["origin"];
       path: string;
@@ -10010,11 +10042,14 @@ export class ServerRepository {
           matched?.id ??
           (created?.path === observed.path ? created.id : randomUUID());
         observedIds.add(id);
-        const lifecycleState = observed.missing
-          ? "missing"
-          : observed.prunable
-            ? "prunable"
-            : "ready";
+        const lifecycleState = observedWorktreeLifecycle(
+          matched
+            ? (matched.lifecycleState as ProjectWorktreeSummary["lifecycleState"])
+            : created?.path === observed.path
+              ? (created.lifecycleState ?? null)
+              : null,
+          observed,
+        );
         const displayPath =
           matched?.displayPath ??
           (observed.isPrimary ? source.displayPath : observed.path);
@@ -10057,6 +10092,9 @@ export class ServerRepository {
 
       for (const missing of existing) {
         if (!observedIds.has(missing.id) && !missing.isPrimary) {
+          await transaction
+            .delete(schema.worktreeSetupJobs)
+            .where(eq(schema.worktreeSetupJobs.worktreeId, missing.id));
           await transaction
             .update(schema.projectWorktrees)
             .set({
@@ -10107,11 +10145,10 @@ export class ServerRepository {
       throw new Error("Worker status referred to a different worktree path.");
     }
     const now = new Date();
-    const lifecycleState = observed.missing
-      ? "missing"
-      : observed.prunable
-        ? "prunable"
-        : "ready";
+    const lifecycleState = observedWorktreeLifecycle(
+      context.worktree.lifecycleState,
+      observed,
+    );
     const rows = await this.database
       .update(schema.projectWorktrees)
       .set({

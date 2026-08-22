@@ -12,6 +12,8 @@ import {
   cantripMcpRunOpenResultSchema,
   cantripMcpRunStopInputSchema,
   cantripMcpRunStopResultSchema,
+  cantripMcpRunSetupRetryInputSchema,
+  cantripMcpRunSetupRetryResultSchema,
   cantripMcpTerminalRestartInputSchema,
   cantripMcpTerminalRestartResultSchema,
   cantripMcpTerminalSendInputSchema,
@@ -30,6 +32,7 @@ import {
   projectWorktreeSummarySchema,
   runInstanceResultSchema,
   runStartResultSchema,
+  runSetupStatusResultSchema,
   worktreeRemoveResultSchema,
   type CantripAgentOperationResult,
 } from "@cantrip/protocol";
@@ -259,6 +262,23 @@ async function executeRunMutation(options: CantripMcpOperationOptions) {
     const data = runStartResultSchema.parse(result.data);
     assertBoundRun(options, data.run);
     return cantripMcpRunOpenResultSchema.parse({
+      ...result,
+      target,
+      worktreeId: target.worktreeId,
+      continuationScheduled: false,
+      data,
+    });
+  }
+  if (options.request.operation === "run.setup-retry") {
+    cantripMcpRunSetupRetryInputSchema.parse(options.request.arguments);
+    const result = await options.execute(
+      options.binding,
+      { operation: "run.setup-retry", arguments: {} },
+      options.requestId,
+    );
+    assertBoundRunResult(options, result);
+    const data = runSetupStatusResultSchema.parse(result.data);
+    return cantripMcpRunSetupRetryResultSchema.parse({
       ...result,
       target,
       worktreeId: target.worktreeId,
@@ -508,6 +528,7 @@ export async function executeCantripMcpMutationOperation(
   switch (options.request.operation) {
     case "run.start":
     case "run.open":
+    case "run.setup-retry":
     case "run.stop":
       return executeRunMutation(options);
     case "worktree.create":

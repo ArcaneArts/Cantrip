@@ -357,6 +357,7 @@ import {
   serverBootstrapSchema,
   settingsBundleWireSchema,
   scriptCommandListSchema,
+  RUN_CONFIGURATION_CANONICAL_PATH,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
   runEnvironmentSummarySchema,
@@ -364,9 +365,11 @@ import {
   runInstanceResultSchema,
   runInstanceSchema,
   runLogResultSchema,
+  runSetupStatusResultSchema,
   runStartResultSchema,
   runStartRequestSchema,
   runOpenRequestSchema,
+  workerRunSetupLookupSchema,
   skillListSchema,
   skillSettingsContextSchema,
   skillSettingsDeleteRequestSchema,
@@ -491,6 +494,7 @@ import type {
   ProviderQuotaSnapshot,
   ProviderAuthLiveStatus,
   ReasoningEffort,
+  RunConfigurationInspection,
   RunInstance,
   WorkerNotification,
   WorkerCommand,
@@ -746,6 +750,10 @@ import {
   triggerDeliveryIdempotencyKey,
 } from "./workflows/trigger-helpers.js";
 import { ProjectWorktreeCoordinator } from "./worktrees/coordinator.js";
+import {
+  WorktreeSetupJobExecutor,
+  type WorktreeSetupLiveChange,
+} from "./worktrees/setup-executor.js";
 import {
   errorMessage,
   invalidBody,
@@ -2933,6 +2941,7 @@ export async function buildApp({
     if (reordered) publishChatInvalidation(input[1], "chat-queue");
     return reordered;
   };
+  let worktreeSetupExecutor: WorktreeSetupJobExecutor | null = null;
   const worktreeCoordinator = new ProjectWorktreeCoordinator(
     repository,
     bridge,
@@ -2940,6 +2949,7 @@ export async function buildApp({
       publishLiveInvalidation("worktree", { projectId });
       void scheduleProjectWorktreeObservation(projectId);
     },
+    () => worktreeSetupExecutor?.queueAvailable(),
   );
   const publishWorkflowRunChange = (
     change: Omit<WorkflowRunLiveChange, "ownerId"> & { ownerId?: string },
@@ -3119,6 +3129,42 @@ export async function buildApp({
     app.log,
     publishProjectFolderSetupChange,
   );
+  const publishWorktreeSetupChange = (
+    change: WorktreeSetupLiveChange,
+  ): void => {
+    if (change.job.state === "failed") {
+      app.log.error(
+        {
+          event: "run.setup.transitioned",
+          subsystem: "run-setup",
+          operation: "setup",
+          status: change.job.state,
+          runId: change.job.id,
+          projectId: change.job.projectId,
+          worktreeId: change.job.worktreeId,
+          workerId: change.job.workerId,
+          attempt: change.job.attempt,
+        },
+        "Worktree setup failed",
+      );
+    }
+    if (!livePublishingEnabled) return;
+    publishLiveInvalidation("worktree", {
+      projectId: change.job.projectId,
+      entityId: change.job.worktreeId,
+    });
+    publishLiveInvalidation("run", {
+      projectId: change.job.projectId,
+      entityId: change.job.worktreeId,
+    });
+  };
+  const worktreeSetupJobExecutor = new WorktreeSetupJobExecutor(
+    repository,
+    bridge,
+    app.log,
+    publishWorktreeSetupChange,
+  );
+  worktreeSetupExecutor = worktreeSetupJobExecutor;
   const publishProjectGithubConversionChange = (
     change: ProjectGithubConversionLiveChange,
   ): void => {
@@ -3387,6 +3433,9 @@ export async function buildApp({
   await projectFolderSetupJobExecutor.recoverAfterRestart(!coordinator);
   projectFolderSetupJobExecutor.queueAvailable();
   projectFolderSetupJobExecutor.startRecoverySweep();
+  await worktreeSetupJobExecutor.recoverAfterRestart(!coordinator);
+  worktreeSetupJobExecutor.queueAvailable();
+  worktreeSetupJobExecutor.startRecoverySweep();
   await projectGithubConversionJobExecutor.recoverAfterRestart(!coordinator);
   projectGithubConversionJobExecutor.queueAvailable();
   projectGithubConversionJobExecutor.startRecoverySweep();
@@ -4909,17 +4958,21 @@ export async function buildApp({
     }
     const worktrees = () =>
       repository.listProjectWorktrees(applicationOwnerId(), context.projectId);
-    const worktreeContext = async (worktreeId: string) => {
+    const worktreeContext = async (
+      worktreeId: string,
+      allowSetupStates = false,
+    ) => {
       const target = await repository.getProjectWorktreeContext(
         applicationOwnerId(),
         context.projectId,
         worktreeId,
+        { allowSetupStates },
       );
       if (!target) throw new Error("Worktree not found.");
       return target;
     };
     const runConfigurationInspection = async () => {
-      const target = await worktreeContext(context.worktreeId);
+      const target = await worktreeContext(context.worktreeId, true);
       if (target.workerId !== context.workerId) {
         throw new ExecutionLaneConflictError(
           "The run configuration placement changed before inspection.",
@@ -4931,6 +4984,94 @@ export async function buildApp({
           sourcePath: target.sourcePath,
         }),
       );
+    };
+    const canonicalRunConfigurationRevision = (
+      inspection: RunConfigurationInspection,
+    ) =>
+      inspection.configurations.find(
+        ({ relativePath }) => relativePath === RUN_CONFIGURATION_CANONICAL_PATH,
+      )?.revision ?? null;
+    const readRunSetupStatus = async () => {
+      const target = await worktreeContext(context.worktreeId, true);
+      const inspection = await runConfigurationInspection();
+      const currentConfigurationRevision =
+        canonicalRunConfigurationRevision(inspection);
+      let setup = await repository.worktreeSetupJobs.get(
+        applicationOwnerId(),
+        context.projectId,
+        context.worktreeId,
+      );
+      if (
+        setup &&
+        setup.configurationRevision !== currentConfigurationRevision &&
+        setup.state !== "queued" &&
+        setup.state !== "running"
+      ) {
+        const stale = await repository.worktreeSetupJobs.markStale(
+          applicationOwnerId(),
+          context.projectId,
+          context.worktreeId,
+          setup.stateRevision,
+        );
+        if (stale) {
+          setup = stale;
+          publishWorktreeSetupChange({
+            ownerId: applicationOwnerId(),
+            job: setup,
+          });
+        } else {
+          setup = await repository.worktreeSetupJobs.get(
+            applicationOwnerId(),
+            context.projectId,
+            context.worktreeId,
+          );
+        }
+      }
+      let output: string | null = null;
+      let outputTruncated = false;
+      let exitCode: number | null = null;
+      let signal: string | null = null;
+      let workerStatusAvailable = false;
+      if (
+        setup &&
+        setup.attempt > 0 &&
+        setup.state !== "queued" &&
+        bridge.isConnected(target.workerId)
+      ) {
+        try {
+          const lookup = workerRunSetupLookupSchema.parse(
+            await bridge.request(target.workerId, {
+              type: "project.run-setup.status",
+              jobId: setup.id,
+              projectId: setup.projectId,
+              worktreeId: setup.worktreeId,
+            }),
+          );
+          if (
+            lookup.found &&
+            lookup.status.attempt === setup.attempt &&
+            lookup.status.configurationRevision === setup.configurationRevision
+          ) {
+            workerStatusAvailable = true;
+            output = lookup.status.output;
+            outputTruncated = lookup.status.outputTruncated;
+            exitCode = lookup.status.exitCode;
+            signal = lookup.status.signal;
+          }
+        } catch (error) {
+          if (!(error instanceof WorkerUnavailableError)) throw error;
+        }
+      }
+      return runSetupStatusResultSchema.parse({
+        worktreeId: context.worktreeId,
+        setup,
+        currentConfigurationRevision,
+        output,
+        outputTruncated,
+        exitCode,
+        signal,
+        workerStatusAvailable,
+      });
     };
     const requireRunMutation = () => {
       if (context.permissionProfileId === ":read-only") {
@@ -5195,12 +5336,109 @@ export async function buildApp({
           data: runConfigurationSelectionSchema.parse(selected),
         });
       }
+      case "run.setup-status": {
+        const data = await readRunSetupStatus();
+        return cantripCliCommandResultSchema.parse({
+          summary: data.setup
+            ? `Worktree setup is ${data.setup.state}.`
+            : "This worktree has no Cantrip setup job.",
+          worktreeId: context.worktreeId,
+          data,
+        });
+      }
+      case "run.setup-retry": {
+        requireRunMutation();
+        const target = await worktreeContext(context.worktreeId, true);
+        if (target.worktree.isPrimary) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            "Primary is not prepared by the secondary-worktree setup lifecycle.",
+          );
+        }
+        const inspection = await runConfigurationInspection();
+        const configurationRevision =
+          canonicalRunConfigurationRevision(inspection);
+        const configurationError = inspection.valid
+          ? null
+          : {
+              code: "configuration-invalid" as const,
+              message:
+                "The project environment is invalid. Validate it before retrying setup.",
+              retryable: true,
+            };
+        let setup = await repository.worktreeSetupJobs.get(
+          applicationOwnerId(),
+          context.projectId,
+          context.worktreeId,
+        );
+        if (!setup) {
+          setup = (
+            await repository.worktreeSetupJobs.initialize({
+              configurationRevision,
+              ...(configurationError ? { error: configurationError } : {}),
+              ownerId: applicationOwnerId(),
+              projectId: context.projectId,
+              queued: !configurationError,
+              workerId: target.workerId,
+              worktreeId: context.worktreeId,
+            })
+          ).job;
+        } else {
+          const retried = await repository.worktreeSetupJobs.retry(
+            applicationOwnerId(),
+            context.projectId,
+            context.worktreeId,
+            setup.stateRevision,
+            configurationRevision,
+            configurationError,
+          );
+          if (!retried) {
+            throw new CliCommandRequestError(
+              "conflict",
+              409,
+              "Worktree setup changed or is already in progress.",
+            );
+          }
+          setup = retried;
+        }
+        publishWorktreeSetupChange({
+          ownerId: applicationOwnerId(),
+          job: setup,
+        });
+        if (setup.state === "queued") {
+          worktreeSetupJobExecutor.queueAvailable();
+        }
+        const data = await readRunSetupStatus();
+        return cantripCliCommandResultSchema.parse({
+          summary:
+            setup.state === "queued"
+              ? "Queued worktree setup retry."
+              : "Worktree setup retry was rejected by configuration validation.",
+          worktreeId: context.worktreeId,
+          mutated: true,
+          data,
+        });
+      }
       case "run.start": {
         requireRunMutation();
-        const target = await worktreeContext(context.worktreeId);
+        const target = await worktreeContext(context.worktreeId, true);
         if (target.workerId !== context.workerId) {
           throw new ExecutionLaneConflictError(
             "The Run placement changed before it could start.",
+          );
+        }
+        const setupStatus = await readRunSetupStatus();
+        if (
+          setupStatus.setup &&
+          (setupStatus.setup.state !== "succeeded" ||
+            setupStatus.setup.configurationRevision !==
+              setupStatus.currentConfigurationRevision)
+        ) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            `Worktree setup is ${setupStatus.setup.state}. Run \`cantrip run setup status\` and retry setup before starting an action.`,
           );
         }
         const requestId = requiredToolString(call.arguments, "requestId");
@@ -6200,13 +6438,38 @@ export async function buildApp({
     projectId: string,
     requestedWorktreeId?: string,
   ): Promise<ExecutionOperationContext> => {
-    const target = requestedWorktreeId
-      ? ({
-          kind: "worktree",
-          projectId,
-          worktreeId: requestedWorktreeId,
-        } as const)
-      : ({ kind: "project", projectId } as const);
+    if (requestedWorktreeId) {
+      const selected = await repository.getProjectWorktreeContext(
+        applicationOwnerId(),
+        projectId,
+        requestedWorktreeId,
+        { allowSetupStates: true },
+      );
+      if (!selected) {
+        throw new ExecutionPlacementUnavailableError(
+          "target-not-found",
+          "The requested Run worktree was not found.",
+        );
+      }
+      if (!bridge.isConnected(selected.workerId)) {
+        throw new ExecutionPlacementUnavailableError(
+          "worker-offline",
+          "The requested Run worktree worker is offline.",
+        );
+      }
+      return {
+        chatId: null,
+        executionLaneId: null,
+        permissionProfileId: null,
+        projectId,
+        rootKind: selected.worktree.rootKind,
+        terminalId: null,
+        workerId: selected.workerId,
+        worktreeId: selected.worktree.id,
+        worktreeMode: null,
+      };
+    }
+    const target = { kind: "project", projectId } as const;
     const resolution = await repository.resolveProjectExecutionPlacement(
       applicationOwnerId(),
       projectId,
@@ -6368,6 +6631,9 @@ export async function buildApp({
         await repository.listWorkerExecutionRootContexts(
           applicationOwnerId(),
           call.workerId,
+          128,
+          call.command === "run.setup-status" ||
+            call.command === "run.setup-retry",
         )
       )
         .filter(({ worktreePath }) =>
@@ -6826,6 +7092,18 @@ export async function buildApp({
           },
         });
       }
+      case "run.setup-status":
+        return agentOperationExecutor.execute(context, {
+          operation: "run.setup-status",
+          arguments: {},
+        });
+      case "run.setup-retry":
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "run.setup-retry",
+            arguments: {},
+          }),
+        );
       case "run.start": {
         const selected = await selectCliRunAction(
           context,
@@ -20627,6 +20905,10 @@ export async function buildApp({
         operation: "run-config.list",
         arguments: {},
       });
+      const setupStatus = await agentOperationExecutor.execute(context, {
+        operation: "run.setup-status",
+        arguments: {},
+      });
       let run: RunInstance | null = null;
       try {
         const status = await agentOperationExecutor.execute(context, {
@@ -20648,6 +20930,7 @@ export async function buildApp({
           inspection: runConfigurationInspectionSchema.parse(
             configuration.data,
           ),
+          setup: runSetupStatusResultSchema.parse(setupStatus.data).setup,
           run,
         }),
       );
@@ -26686,6 +26969,7 @@ export async function buildApp({
           "worktree.remove",
           "run.start",
           "run.open",
+          "run.setup-retry",
           "run.stop",
           "explorer.write",
           "terminal.send",
@@ -27109,6 +27393,12 @@ export async function buildApp({
             "Could not resume project folder setup jobs",
           );
         });
+      void worktreeSetupJobExecutor.workerConnected(workerId).catch((error) => {
+        app.log.error(
+          { err: error, workerId },
+          "Could not resume worktree setup jobs",
+        );
+      });
       void projectGithubConversionJobExecutor
         .workerConnected(workerId)
         .catch((error) => {
@@ -27586,6 +27876,7 @@ export async function buildApp({
     workerOfflineTimers.clear();
     projectReplicaJobExecutor.stop();
     projectFolderSetupJobExecutor.stop();
+    worktreeSetupJobExecutor.stop();
     projectGithubConversionJobExecutor.stop();
     chatRelocationJobExecutor.stop();
     chatImportJobExecutor.stop();
@@ -27604,6 +27895,7 @@ export async function buildApp({
     await activeScheduleTick;
     await projectReplicaJobExecutor.drain();
     await projectFolderSetupJobExecutor.drain();
+    await worktreeSetupJobExecutor.drain();
     await projectGithubConversionJobExecutor.drain();
     await chatRelocationJobExecutor.drain();
     await chatImportJobExecutor.drain();
