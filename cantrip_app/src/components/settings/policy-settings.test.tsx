@@ -96,5 +96,8 @@ describe("policy settings", () => {
     expect(markup).toContain("Drag Manual Change Protocol to reorder");
     expect(markup).toContain("Template");
     expect(markup).toContain("Enabled");
+    expect(markup).toContain("Import");
+    expect(markup).toContain("Export all");
+    expect(markup).toContain("Export Manual Change Protocol");
   });
 });
