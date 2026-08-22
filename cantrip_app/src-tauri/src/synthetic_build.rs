@@ -1,16 +1,83 @@
 #![cfg_attr(debug_assertions, allow(dead_code))]
 
-use std::time::Duration;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, Output},
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use reqwest::{header::LINK, Client, Response};
+use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
+use tauri::{App, Manager, State};
+
+use crate::process_environment::configure_desktop_child;
 
 const COMMITS_URL: &str = "https://api.github.com/repos/ArcaneArts/Cantrip/commits";
-const COMPARE_URL: &str = "https://api.github.com/repos/ArcaneArts/Cantrip/compare";
-const RAW_REPOSITORY_URL: &str = "https://raw.githubusercontent.com/ArcaneArts/Cantrip";
+const REPOSITORY_URL: &str = "https://github.com/ArcaneArts/Cantrip.git";
 const COMMIT_PAGE_SIZE: usize = 50;
 const COMMIT_MAX_PAGE: usize = 2_000;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub struct SyntheticBuildCoordinator {
+    root: PathBuf,
+    source_lock: Arc<Mutex<()>>,
+}
+
+impl SyntheticBuildCoordinator {
+    pub fn build(app: &App) -> Result<Self, String> {
+        let root = app
+            .path()
+            .app_data_dir()
+            .map_err(|error| format!("Could not resolve application data: {error}"))?
+            .join("synthetic-builds");
+        for directory in [
+            root.join("mirror"),
+            root.join("worktrees"),
+            root.join("toolchains"),
+            root.join("stores"),
+            root.join("jobs"),
+            root.join("artifacts"),
+            root.join("installs"),
+            root.join("rollback"),
+        ] {
+            fs::create_dir_all(&directory).map_err(|error| {
+                format!(
+                    "Could not create synthetic build cache {}: {error}",
+                    directory.display()
+                )
+            })?;
+        }
+        Ok(Self {
+            root,
+            source_lock: Arc::new(Mutex::new(())),
+        })
+    }
+
+    async fn resolve_source(&self, sha: String) -> Result<SourceMetadata, SyntheticBuildError> {
+        let root = self.root.clone();
+        let source_lock = Arc::clone(&self.source_lock);
+        tokio::task::spawn_blocking(move || {
+            let _guard = source_lock.lock().map_err(|_| {
+                SyntheticBuildError::new(
+                    "synthetic_source_busy",
+                    "The synthetic source cache is busy.",
+                    true,
+                )
+            })?;
+            resolve_source_from_mirror(&root, &sha)
+        })
+        .await
+        .map_err(|error| {
+            SyntheticBuildError::new(
+                "synthetic_source_failed",
+                format!("The synthetic source task could not be completed: {error}"),
+                true,
+            )
+        })?
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +106,36 @@ pub struct SyntheticCommit {
 pub struct SyntheticCommitPage {
     commits: Vec<SyntheticCommit>,
     next_cursor: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum SyntheticPrerequisiteStatus {
+    Ready,
+    Missing,
+    NeedsAttention,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyntheticPrerequisite {
+    id: &'static str,
+    label: &'static str,
+    status: SyntheticPrerequisiteStatus,
+    detected_version: Option<String>,
+    required_version: String,
+    installation: &'static str,
+    install_url: Option<&'static str>,
+    message: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyntheticPrerequisiteScan {
+    target_sha: String,
+    ready: bool,
+    package_manager: Option<String>,
+    prerequisites: Vec<SyntheticPrerequisite>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -87,14 +184,216 @@ struct GithubCommit {
 }
 
 #[derive(Debug, Deserialize)]
-struct GithubComparison {
-    status: String,
-}
-
-#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct VersionConfig {
     major: u64,
     minor: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageConfig {
+    package_manager: String,
+}
+
+struct SourceMetadata {
+    commit_count: u64,
+    package_manager: String,
+    version: VersionConfig,
+}
+
+fn command_output(mut command: Command, description: &str) -> Result<Output, SyntheticBuildError> {
+    configure_desktop_child(&mut command);
+    command.output().map_err(|error| {
+        SyntheticBuildError::new(
+            "synthetic_prerequisite_missing",
+            format!("Could not run {description}: {error}"),
+            true,
+        )
+    })
+}
+
+fn git_output(
+    arguments: &[&str],
+    cwd: Option<&Path>,
+    description: &str,
+) -> Result<Output, SyntheticBuildError> {
+    let mut command = Command::new("git");
+    command.args(arguments);
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    command_output(command, description)
+}
+
+fn require_success(output: Output, description: &str) -> Result<String, SyntheticBuildError> {
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
+    }
+    let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(SyntheticBuildError::new(
+        "synthetic_source_failed",
+        if detail.is_empty() {
+            format!("{description} failed.")
+        } else {
+            format!("{description} failed: {detail}")
+        },
+        true,
+    ))
+}
+
+fn mirror_git_output(
+    mirror: &Path,
+    arguments: &[&str],
+    description: &str,
+) -> Result<String, SyntheticBuildError> {
+    let mirror = mirror.to_string_lossy();
+    let mut complete = vec!["--git-dir", mirror.as_ref()];
+    complete.extend_from_slice(arguments);
+    require_success(git_output(&complete, None, description)?, description)
+}
+
+fn ensure_mirror(root: &Path) -> Result<PathBuf, SyntheticBuildError> {
+    let mirror = root.join("mirror").join("cantrip.git");
+    if !mirror.join("HEAD").is_file() {
+        if mirror.exists() {
+            fs::remove_dir_all(&mirror).map_err(|error| {
+                SyntheticBuildError::new(
+                    "synthetic_source_failed",
+                    format!(
+                        "Could not replace incomplete source mirror {}: {error}",
+                        mirror.display()
+                    ),
+                    true,
+                )
+            })?;
+        }
+        let mirror_path = mirror.to_string_lossy();
+        require_success(
+            git_output(
+                &[
+                    "clone",
+                    "--mirror",
+                    "--filter=blob:none",
+                    "--no-tags",
+                    REPOSITORY_URL,
+                    mirror_path.as_ref(),
+                ],
+                None,
+                "clone the Cantrip source mirror",
+            )?,
+            "Cloning the Cantrip source mirror",
+        )?;
+    }
+    mirror_git_output(
+        &mirror,
+        &["remote", "set-url", "origin", REPOSITORY_URL],
+        "pin the Cantrip source remote",
+    )?;
+    mirror_git_output(
+        &mirror,
+        &[
+            "fetch",
+            "--no-tags",
+            "--prune",
+            "--filter=blob:none",
+            "origin",
+            "+refs/heads/main:refs/remotes/origin/main",
+        ],
+        "refresh Cantrip main",
+    )?;
+    Ok(mirror)
+}
+
+fn parse_source_metadata(
+    commit_count: &str,
+    version_json: &str,
+    package_json: &str,
+) -> Result<SourceMetadata, SyntheticBuildError> {
+    let commit_count = commit_count.parse::<u64>().map_err(|_| {
+        SyntheticBuildError::new(
+            "synthetic_commit_unsupported",
+            "The selected commit did not have a valid commit count.",
+            false,
+        )
+    })?;
+    let version = serde_json::from_str::<VersionConfig>(version_json).map_err(|error| {
+        SyntheticBuildError::new(
+            "synthetic_commit_unsupported",
+            format!("The selected commit has unsupported version metadata: {error}"),
+            false,
+        )
+    })?;
+    let package = serde_json::from_str::<PackageConfig>(package_json).map_err(|error| {
+        SyntheticBuildError::new(
+            "synthetic_commit_unsupported",
+            format!("The selected commit has unsupported package metadata: {error}"),
+            false,
+        )
+    })?;
+    if !package.package_manager.starts_with("pnpm@") {
+        return Err(SyntheticBuildError::new(
+            "synthetic_commit_unsupported",
+            "The selected commit does not declare a supported pnpm package manager.",
+            false,
+        ));
+    }
+    Ok(SourceMetadata {
+        commit_count,
+        package_manager: package.package_manager,
+        version,
+    })
+}
+
+fn resolve_source_from_mirror(
+    root: &Path,
+    sha: &str,
+) -> Result<SourceMetadata, SyntheticBuildError> {
+    validate_full_sha(sha)?;
+    let mirror = ensure_mirror(root)?;
+    mirror_git_output(
+        &mirror,
+        &["cat-file", "-e", &format!("{sha}^{{commit}}")],
+        "resolve the selected commit",
+    )?;
+    let ancestor = {
+        let mirror_path = mirror.to_string_lossy();
+        git_output(
+            &[
+                "--git-dir",
+                mirror_path.as_ref(),
+                "merge-base",
+                "--is-ancestor",
+                sha,
+                "refs/remotes/origin/main",
+            ],
+            None,
+            "verify the selected commit",
+        )?
+    };
+    if !ancestor.status.success() {
+        return Err(SyntheticBuildError::new(
+            "synthetic_commit_not_on_main",
+            "The selected commit is no longer reachable from Cantrip main.",
+            false,
+        ));
+    }
+    let commit_count = mirror_git_output(
+        &mirror,
+        &["rev-list", "--count", sha],
+        "calculate the selected commit version",
+    )?;
+    let version_json = mirror_git_output(
+        &mirror,
+        &["show", &format!("{sha}:version.json")],
+        "read version.json from the selected commit",
+    )?;
+    let package_json = mirror_git_output(
+        &mirror,
+        &["show", &format!("{sha}:package.json")],
+        "read package.json from the selected commit",
+    )?;
+    parse_source_metadata(&commit_count, &version_json, &package_json)
 }
 
 fn supported_platform() -> Option<&'static str> {
@@ -206,6 +505,182 @@ fn commit_subject(message: &str) -> String {
         .collect()
 }
 
+fn probe(arguments: &[&str]) -> Option<String> {
+    let (program, arguments) = arguments.split_first()?;
+    let mut command = Command::new(program);
+    command.args(arguments);
+    configure_desktop_child(&mut command);
+    let output = command.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    (!stdout.is_empty())
+        .then_some(stdout)
+        .or_else(|| (!stderr.is_empty()).then_some(stderr))
+}
+
+fn first_version(value: &str) -> Option<(u64, u64, u64)> {
+    value
+        .split(|character: char| !(character.is_ascii_digit() || character == '.'))
+        .filter(|part| !part.is_empty())
+        .find_map(|part| {
+            let mut values = part.split('.').map(str::parse::<u64>);
+            Some((
+                values.next()?.ok()?,
+                values.next().transpose().ok().flatten().unwrap_or(0),
+                values.next().transpose().ok().flatten().unwrap_or(0),
+            ))
+        })
+}
+
+fn prerequisite(
+    id: &'static str,
+    label: &'static str,
+    detected_version: Option<String>,
+    required_version: impl Into<String>,
+    ready: impl FnOnce(&str) -> bool,
+    installation: &'static str,
+    install_url: Option<&'static str>,
+) -> SyntheticPrerequisite {
+    let status = match detected_version.as_deref() {
+        None => SyntheticPrerequisiteStatus::Missing,
+        Some(version) if ready(version) => SyntheticPrerequisiteStatus::Ready,
+        Some(_) => SyntheticPrerequisiteStatus::NeedsAttention,
+    };
+    let message = match status {
+        SyntheticPrerequisiteStatus::Ready => None,
+        SyntheticPrerequisiteStatus::Missing => Some(format!("{label} was not detected.")),
+        SyntheticPrerequisiteStatus::NeedsAttention => {
+            Some(format!("The detected {label} version is not supported."))
+        }
+    };
+    SyntheticPrerequisite {
+        id,
+        label,
+        status,
+        detected_version,
+        required_version: required_version.into(),
+        installation,
+        install_url,
+        message,
+    }
+}
+
+fn scan_prerequisites(package_manager: &str) -> Vec<SyntheticPrerequisite> {
+    let pnpm_version = package_manager.trim_start_matches("pnpm@").to_string();
+    let mut prerequisites = vec![
+        prerequisite(
+            "git",
+            "Git",
+            probe(&["git", "--version"]),
+            "Git 2.x",
+            |version| first_version(version).is_some_and(|(major, _, _)| major >= 2),
+            if cfg!(target_os = "windows") {
+                "managed"
+            } else {
+                "system"
+            },
+            Some("https://git-scm.com/downloads"),
+        ),
+        prerequisite(
+            "node",
+            "Node.js",
+            probe(&["node", "--version"]),
+            "Node.js 24.x",
+            |version| first_version(version).is_some_and(|(major, _, _)| major == 24),
+            "managed",
+            Some("https://nodejs.org/en/download"),
+        ),
+        prerequisite(
+            "pnpm",
+            "pnpm",
+            probe(&["pnpm", "--version"]),
+            format!("pnpm {pnpm_version}"),
+            |version| {
+                version
+                    .lines()
+                    .next()
+                    .is_some_and(|line| line.trim() == pnpm_version)
+            },
+            "managed",
+            Some("https://pnpm.io/installation"),
+        ),
+        prerequisite(
+            "rust",
+            "Rust",
+            probe(&["rustc", "--version"]),
+            "Rust 1.95.x",
+            |version| {
+                first_version(version).is_some_and(|(major, minor, _)| major == 1 && minor == 95)
+            },
+            "managed",
+            Some("https://rustup.rs"),
+        ),
+    ];
+
+    #[cfg(target_os = "macos")]
+    prerequisites.push(prerequisite(
+        "native-build-tools",
+        "Xcode Command Line Tools",
+        probe(&["xcode-select", "-p"]),
+        "A selected Xcode developer directory",
+        |value| !value.trim().is_empty(),
+        "system",
+        Some("https://developer.apple.com/xcode/resources/"),
+    ));
+
+    #[cfg(target_os = "windows")]
+    {
+        let vswhere = std::env::var_os("ProgramFiles(x86)")
+            .map(PathBuf::from)
+            .map(|root| root.join("Microsoft Visual Studio/Installer/vswhere.exe"));
+        let visual_studio = vswhere.as_ref().and_then(|vswhere| {
+            let program = vswhere.to_string_lossy();
+            probe(&[
+                program.as_ref(),
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ])
+        });
+        prerequisites.push(prerequisite(
+            "native-build-tools",
+            "Visual Studio C++ Build Tools",
+            visual_studio,
+            "Visual Studio 2022 C++ tools, Windows SDK, and Spectre libraries",
+            |value| !value.trim().is_empty(),
+            "system",
+            Some("https://visualstudio.microsoft.com/visual-cpp-build-tools/"),
+        ));
+        prerequisites.push(prerequisite(
+            "cmake",
+            "CMake",
+            probe(&["cmake", "--version"]),
+            "CMake 3.x or newer",
+            |version| first_version(version).is_some_and(|(major, _, _)| major >= 3),
+            "managed",
+            Some("https://cmake.org/download/"),
+        ));
+        prerequisites.push(prerequisite(
+            "nasm",
+            "NASM",
+            probe(&["nasm", "-v"]),
+            "NASM 2.x",
+            |version| first_version(version).is_some_and(|(major, _, _)| major >= 2),
+            "managed",
+            Some("https://www.nasm.us/"),
+        ));
+    }
+
+    prerequisites
+}
+
 fn map_commit(commit: GithubCommit) -> Result<SyntheticCommit, SyntheticBuildError> {
     validate_full_sha(&commit.sha)?;
     let identity = commit
@@ -232,59 +707,6 @@ fn map_commit(commit: GithubCommit) -> Result<SyntheticCommit, SyntheticBuildErr
     })
 }
 
-fn last_page_from_link(value: &str) -> Option<u64> {
-    value.split(',').find_map(|part| {
-        let mut sections = part.trim().split(';');
-        let url = sections
-            .next()?
-            .trim()
-            .trim_start_matches('<')
-            .trim_end_matches('>');
-        let relation = sections.next()?.trim();
-        if relation != r#"rel="last""# {
-            return None;
-        }
-        url::Url::parse(url)
-            .ok()?
-            .query_pairs()
-            .find_map(|(key, value)| (key == "page").then(|| value.parse().ok()).flatten())
-    })
-}
-
-async fn resolve_commit_count(client: &Client, sha: &str) -> Result<u64, SyntheticBuildError> {
-    let response = github_response(
-        client
-            .get(COMMITS_URL)
-            .query(&[("sha", sha), ("per_page", "1"), ("page", "1")]),
-        "Could not calculate the selected Cantrip commit version",
-    )
-    .await?;
-    let count = response
-        .headers()
-        .get(LINK)
-        .and_then(|value| value.to_str().ok())
-        .and_then(last_page_from_link)
-        .unwrap_or(1);
-    let commits = response
-        .json::<Vec<GithubCommit>>()
-        .await
-        .map_err(|error| {
-            SyntheticBuildError::new(
-                "synthetic_commit_invalid",
-                format!("The selected commit-count response was invalid: {error}"),
-                true,
-            )
-        })?;
-    if commits.is_empty() {
-        return Err(SyntheticBuildError::new(
-            "synthetic_commit_invalid",
-            "The selected commit could not be resolved.",
-            false,
-        ));
-    }
-    Ok(count)
-}
-
 #[tauri::command]
 pub fn synthetic_build_capability() -> SyntheticBuildCapability {
     let platform = supported_platform();
@@ -293,6 +715,41 @@ pub fn synthetic_build_capability() -> SyntheticBuildCapability {
         platform,
         reason: (!synthetic_build_available()).then(synthetic_build_unavailable_reason),
     }
+}
+
+#[tauri::command]
+pub async fn scan_synthetic_build_prerequisites(
+    sha: String,
+    coordinator: State<'_, SyntheticBuildCoordinator>,
+) -> Result<SyntheticPrerequisiteScan, SyntheticBuildError> {
+    if !synthetic_build_available() {
+        return Err(SyntheticBuildError::unavailable());
+    }
+    validate_full_sha(&sha)?;
+    let preliminary = scan_prerequisites("pnpm@11.15.1");
+    let git_ready = preliminary.iter().any(|prerequisite| {
+        prerequisite.id == "git" && prerequisite.status == SyntheticPrerequisiteStatus::Ready
+    });
+    if !git_ready {
+        return Ok(SyntheticPrerequisiteScan {
+            target_sha: sha,
+            ready: false,
+            package_manager: None,
+            prerequisites: preliminary,
+        });
+    }
+
+    let source = coordinator.resolve_source(sha.clone()).await?;
+    let prerequisites = scan_prerequisites(&source.package_manager);
+    let ready = prerequisites
+        .iter()
+        .all(|prerequisite| prerequisite.status == SyntheticPrerequisiteStatus::Ready);
+    Ok(SyntheticPrerequisiteScan {
+        target_sha: sha,
+        ready,
+        package_manager: Some(source.package_manager),
+        prerequisites,
+    })
 }
 
 #[tauri::command]
@@ -337,6 +794,7 @@ pub async fn list_synthetic_build_commits(
 #[tauri::command]
 pub async fn resolve_synthetic_build_target(
     sha: String,
+    coordinator: State<'_, SyntheticBuildCoordinator>,
 ) -> Result<SyntheticCommit, SyntheticBuildError> {
     if !synthetic_build_available() {
         return Err(SyntheticBuildError::unavailable());
@@ -358,47 +816,11 @@ pub async fn resolve_synthetic_build_target(
         },
     )?)?;
 
-    let comparison = github_response(
-        client.get(format!("{COMPARE_URL}/{sha}...main")),
-        "Could not verify the selected commit against Cantrip main",
-    )
-    .await?
-    .json::<GithubComparison>()
-    .await
-    .map_err(|error| {
-        SyntheticBuildError::new(
-            "synthetic_commit_invalid",
-            format!("The selected commit comparison was invalid: {error}"),
-            true,
-        )
-    })?;
-    if !matches!(comparison.status.as_str(), "ahead" | "identical") {
-        return Err(SyntheticBuildError::new(
-            "synthetic_commit_not_on_main",
-            "The selected commit is no longer reachable from Cantrip main.",
-            false,
-        ));
-    }
-
-    let version = github_response(
-        client.get(format!("{RAW_REPOSITORY_URL}/{sha}/version.json")),
-        "Could not read version.json from the selected commit",
-    )
-    .await?
-    .json::<VersionConfig>()
-    .await
-    .map_err(|error| {
-        SyntheticBuildError::new(
-            "synthetic_commit_unsupported",
-            format!("The selected commit has unsupported version metadata: {error}"),
-            false,
-        )
-    })?;
-    let commit_count = resolve_commit_count(&client, &sha).await?;
-    commit.commit_count = Some(commit_count);
+    let source = coordinator.resolve_source(sha).await?;
+    commit.commit_count = Some(source.commit_count);
     commit.synthetic_version = Some(format!(
-        "{}.{}.{commit_count}-x",
-        version.major, version.minor
+        "{}.{}.{}-x",
+        source.version.major, source.version.minor, source.commit_count
     ));
     commit.buildable = Some(true);
     Ok(commit)
@@ -436,14 +858,30 @@ mod tests {
     }
 
     #[test]
-    fn extracts_last_page_as_commit_count() {
-        assert_eq!(
-            last_page_from_link(
-                r#"<https://api.github.com/repositories/1/commits?sha=a&per_page=1&page=2>; rel="next", <https://api.github.com/repositories/1/commits?sha=a&per_page=1&page=1375>; rel="last""#,
-            ),
-            Some(1375),
-        );
-        assert_eq!(last_page_from_link(""), None);
+    fn parses_source_build_metadata() {
+        let metadata = parse_source_metadata(
+            "1375",
+            r#"{"major":1,"minor":2}"#,
+            r#"{"packageManager":"pnpm@11.15.1"}"#,
+        )
+        .expect("source metadata should parse");
+        assert_eq!(metadata.commit_count, 1375);
+        assert_eq!(metadata.version.major, 1);
+        assert_eq!(metadata.version.minor, 2);
+        assert_eq!(metadata.package_manager, "pnpm@11.15.1");
+        assert!(parse_source_metadata(
+            "1375",
+            r#"{"major":1,"minor":2}"#,
+            r#"{"packageManager":"npm@11.0.0"}"#,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn parses_tool_versions_without_trusting_labels() {
+        assert_eq!(first_version("git version 2.51.0"), Some((2, 51, 0)));
+        assert_eq!(first_version("v24.4.1"), Some((24, 4, 1)));
+        assert_eq!(first_version("unknown"), None);
     }
 
     #[test]

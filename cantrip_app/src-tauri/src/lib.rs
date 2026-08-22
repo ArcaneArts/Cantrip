@@ -921,6 +921,7 @@ pub fn run() {
             desktop_update::install_desktop_update,
             desktop_update::cancel_desktop_update,
             synthetic_build::synthetic_build_capability,
+            synthetic_build::scan_synthetic_build_prerequisites,
             synthetic_build::list_synthetic_build_commits,
             synthetic_build::resolve_synthetic_build_target,
             desktop_worker::list_desktop_workers,
@@ -996,6 +997,10 @@ pub fn run() {
             app.manage(ProjectShareMounts::default());
             app.manage(TunnelForwards::default());
             app.manage(desktop_update::DesktopUpdateCoordinator::default());
+            app.manage(
+                synthetic_build::SyntheticBuildCoordinator::build(app)
+                    .map_err(std::io::Error::other)?,
+            );
             #[cfg(desktop)]
             {
                 app.manage(DesktopShutdownState::default());

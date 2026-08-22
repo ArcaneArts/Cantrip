@@ -25,6 +25,27 @@ export interface SyntheticCommitPage {
   nextCursor: string | null;
 }
 
+export type SyntheticPrerequisiteStatus =
+  "ready" | "missing" | "needsAttention";
+
+export interface SyntheticPrerequisite {
+  id: string;
+  label: string;
+  status: SyntheticPrerequisiteStatus;
+  detectedVersion: string | null;
+  requiredVersion: string;
+  installation: "managed" | "system" | "guided";
+  installUrl: string | null;
+  message: string | null;
+}
+
+export interface SyntheticPrerequisiteScan {
+  targetSha: string;
+  ready: boolean;
+  packageManager: string | null;
+  prerequisites: SyntheticPrerequisite[];
+}
+
 export interface SyntheticBuildErrorShape {
   code: string;
   message: string;
@@ -36,6 +57,7 @@ export interface SyntheticBuildClient {
   isSupportedEnvironment(): boolean;
   listCommits(cursor?: string): Promise<SyntheticCommitPage>;
   resolveTarget(sha: string): Promise<SyntheticCommit>;
+  scanPrerequisites(sha: string): Promise<SyntheticPrerequisiteScan>;
 }
 
 function messageFromUnknown(error: unknown): string | null {
@@ -66,4 +88,6 @@ export const syntheticBuildClient: SyntheticBuildClient = {
   capability: () => invoke("synthetic_build_capability"),
   listCommits: (cursor) => invoke("list_synthetic_build_commits", { cursor }),
   resolveTarget: (sha) => invoke("resolve_synthetic_build_target", { sha }),
+  scanPrerequisites: (sha) =>
+    invoke("scan_synthetic_build_prerequisites", { sha }),
 };
