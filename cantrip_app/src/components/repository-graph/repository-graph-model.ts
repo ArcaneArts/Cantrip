@@ -71,7 +71,6 @@ const DEFAULT_NODE_GAP = 16;
 const SPATIAL_CELL_SIZE = 96;
 const FULL_CIRCLE = Math.PI * 2;
 const RADIAL_START_ANGLE = -Math.PI / 2;
-const MAX_BRANCH_ANGLE = Math.PI * 0.8;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
 function cellKey(x: number, y: number): string {
@@ -308,9 +307,9 @@ function layoutVisibleNodes(
     );
   }
 
-  // A branch's angular footprint is the larger of its own local cluster and
-  // all child directory branches. This keeps sibling subtrees in separate
-  // sectors without forcing every leaf onto the same global circumference.
+  // A branch's footprint is the larger of its own local cluster and all child
+  // directory branches. It determines how far apart local branch centers must
+  // be without forcing every leaf onto one repository-wide circumference.
   const subtreeFootprints = new Map<string, number>();
   for (let index = traversal.length - 1; index >= 0; index -= 1) {
     const nodeId = traversal[index]!;
@@ -330,50 +329,42 @@ function layoutVisibleNodes(
   const positions = new Map<string, RepositoryGraphPoint & { depth: number }>([
     [rootId, { depth: 0, x: 0, y: 0 }],
   ]);
-  const sectors: Array<{ end: number; nodeId: string; start: number }> = [
-    {
-      end: RADIAL_START_ANGLE + FULL_CIRCLE,
-      nodeId: rootId,
-      start: RADIAL_START_ANGLE,
-    },
+  const placements: Array<{ nodeId: string; outwardAngle: number }> = [
+    { nodeId: rootId, outwardAngle: RADIAL_START_ANGLE },
   ];
-  while (sectors.length > 0) {
-    const sector = sectors.pop()!;
-    const descendants = directoryChildren.get(sector.nodeId) ?? [];
+  while (placements.length > 0) {
+    const placement = placements.pop()!;
+    const descendants = directoryChildren.get(placement.nodeId) ?? [];
     if (descendants.length === 0) continue;
-    const parentPosition = positions.get(sector.nodeId);
+    const parentPosition = positions.get(placement.nodeId);
     if (!parentPosition) continue;
     const childFootprint = descendants.reduce(
       (total, child) => total + (subtreeFootprints.get(child.id) ?? nodeGap),
       0,
     );
-    const originalExtent = sector.end - sector.start;
-    const branchExtent =
-      sector.nodeId === rootId
-        ? originalExtent
-        : Math.min(originalExtent, MAX_BRANCH_ANGLE);
-    const branchMiddle = (sector.start + sector.end) / 2;
-    let cursor = branchMiddle - branchExtent / 2;
-    const childSectors: Array<{
+    const childExtents = descendants.map(
+      (child) =>
+        FULL_CIRCLE *
+        ((subtreeFootprints.get(child.id) ?? nodeGap) / childFootprint),
+    );
+    // Every directory gets a fresh full-circle fan. The first child continues
+    // away from the parent's incoming edge, then its siblings fill the rest of
+    // the local circle instead of inheriting an increasingly narrow wedge.
+    let cursor = placement.outwardAngle - childExtents[0]! / 2;
+    const childPlacements: Array<{
       angle: number;
-      end: number;
       node: RepositoryGraphInputNode;
-      start: number;
     }> = [];
-    for (const child of descendants) {
-      const childExtent =
-        branchExtent *
-        ((subtreeFootprints.get(child.id) ?? nodeGap) / childFootprint);
-      childSectors.push({
+    descendants.forEach((child, index) => {
+      const childExtent = childExtents[index]!;
+      childPlacements.push({
         angle: cursor + childExtent / 2,
-        end: cursor + childExtent,
         node: child,
-        start: cursor,
       });
       cursor += childExtent;
-    }
+    });
     const parentLocalRadius =
-      localPackings.get(sector.nodeId)?.radius ?? nodeGap;
+      localPackings.get(placement.nodeId)?.radius ?? nodeGap;
     const maximumChildLocalRadius = Math.max(
       0,
       ...descendants.map(
@@ -382,16 +373,12 @@ function layoutVisibleNodes(
     );
     let branchRadius = Math.max(
       parentLocalRadius + maximumChildLocalRadius + radialGap,
-      childFootprint / Math.max(0.25, branchExtent),
+      childFootprint / FULL_CIRCLE,
     );
-    if (childSectors.length > 1) {
-      const pairCount =
-        branchExtent >= FULL_CIRCLE - 0.000_001
-          ? childSectors.length
-          : childSectors.length - 1;
-      for (let index = 0; index < pairCount; index += 1) {
-        const current = childSectors[index]!;
-        const next = childSectors[(index + 1) % childSectors.length]!;
+    if (childPlacements.length > 1) {
+      for (let index = 0; index < childPlacements.length; index += 1) {
+        const current = childPlacements[index]!;
+        const next = childPlacements[(index + 1) % childPlacements.length]!;
         const delta =
           (next.angle - current.angle + FULL_CIRCLE) % FULL_CIRCLE ||
           FULL_CIRCLE;
@@ -407,17 +394,17 @@ function layoutVisibleNodes(
       }
     }
 
-    for (let index = childSectors.length - 1; index >= 0; index -= 1) {
-      const childSector = childSectors[index]!;
-      positions.set(childSector.node.id, {
-        depth: depthById.get(childSector.node.id) ?? parentPosition.depth + 1,
-        x: parentPosition.x + Math.cos(childSector.angle) * branchRadius,
-        y: parentPosition.y + Math.sin(childSector.angle) * branchRadius,
+    for (let index = childPlacements.length - 1; index >= 0; index -= 1) {
+      const childPlacement = childPlacements[index]!;
+      positions.set(childPlacement.node.id, {
+        depth:
+          depthById.get(childPlacement.node.id) ?? parentPosition.depth + 1,
+        x: parentPosition.x + Math.cos(childPlacement.angle) * branchRadius,
+        y: parentPosition.y + Math.sin(childPlacement.angle) * branchRadius,
       });
-      sectors.push({
-        end: childSector.end,
-        nodeId: childSector.node.id,
-        start: childSector.start,
+      placements.push({
+        nodeId: childPlacement.node.id,
+        outwardAngle: childPlacement.angle,
       });
     }
   }
