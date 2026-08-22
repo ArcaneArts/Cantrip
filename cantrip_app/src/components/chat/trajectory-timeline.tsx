@@ -9,13 +9,13 @@ import type {
 } from "./trajectory-model";
 
 const SVG_WIDTH = 1_000;
-const SVG_HEIGHT = 96;
-const PLOT_LEFT = 72;
-const PLOT_RIGHT = 12;
+const SVG_HEIGHT = 72;
+const PLOT_LEFT = 0;
+const PLOT_RIGHT = 0;
 const laneY: Record<TrajectoryLane, number> = {
-  input: 18,
-  model: 48,
-  tools: 78,
+  input: 12,
+  model: 36,
+  tools: 60,
 };
 
 interface TimelineMark {
@@ -199,13 +199,6 @@ export function TrajectoryTimeline({
   turn: TrajectoryTurn;
 }) {
   const duration = Math.max(1, turn.timelineEndMs - turn.timelineStartMs);
-  const plotWidth = SVG_WIDTH - PLOT_LEFT - PLOT_RIGHT;
-  const playheadX =
-    PLOT_LEFT +
-    ((clamp(playheadMs, turn.timelineStartMs, turn.timelineEndMs) -
-      turn.timelineStartMs) /
-      duration) *
-      plotWidth;
   const marks = trajectoryTimelineMarks(events, turn);
   const selectAtTime = (timeMs: number) => {
     onMovePlayhead(timeMs);
@@ -246,34 +239,17 @@ export function TrajectoryTimeline({
       aria-valuemin={turn.timelineStartMs}
       aria-valuenow={Math.round(playheadMs)}
       aria-valuetext={`${accessibleDuration(playheadMs - turn.timelineStartMs)} of ${accessibleDuration(duration)}`}
-      className="h-24 w-full cursor-crosshair select-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="block h-[72px] w-full cursor-crosshair select-none outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       onKeyDown={seekFromKeyboard}
       onPointerDown={seekFromPointer}
+      preserveAspectRatio="none"
       role="slider"
       tabIndex={0}
       viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
     >
-      {(["input", "model", "tools"] as const).map((lane) => (
-        <g key={lane}>
-          <text
-            className="fill-muted-foreground text-[11px] capitalize"
-            dominantBaseline="middle"
-            x="8"
-            y={laneY[lane]}
-          >
-            {lane}
-          </text>
-          <line
-            className="stroke-border"
-            x1={PLOT_LEFT}
-            x2={SVG_WIDTH - PLOT_RIGHT}
-            y1={laneY[lane]}
-            y2={laneY[lane]}
-          />
-        </g>
-      ))}
       {marks.map((mark) => {
         const { event } = mark;
+        const height = event.timingQuality === "instant" ? 18 : 16;
         const label =
           mark.count === 1
             ? `${event.label}, ${event.status}, ${event.timingQuality} timing`
@@ -293,7 +269,7 @@ export function TrajectoryTimeline({
             data-aggregate-count={mark.count}
             data-event-id={event.id}
             data-timing-quality={event.timingQuality}
-            height={event.timingQuality === "instant" ? 14 : 10}
+            height={height}
             key={`${event.id}:${mark.count}`}
             onFocus={() => onMovePlayhead(event.startMs)}
             onKeyDown={(keyboardEvent) => {
@@ -318,19 +294,12 @@ export function TrajectoryTimeline({
             tabIndex={0}
             width={mark.width}
             x={mark.x}
-            y={laneY[event.lane] - (event.timingQuality === "instant" ? 7 : 5)}
-          />
+            y={laneY[event.lane] - height / 2}
+          >
+            <title>{label}</title>
+          </rect>
         );
       })}
-      <line
-        className="stroke-foreground"
-        data-slot="trajectory-playhead"
-        strokeWidth="2"
-        x1={playheadX}
-        x2={playheadX}
-        y1="3"
-        y2={SVG_HEIGHT - 3}
-      />
     </svg>
   );
 }

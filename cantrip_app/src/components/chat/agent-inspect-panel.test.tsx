@@ -25,6 +25,8 @@ describe("AgentInspectPanel", () => {
     );
     expect(markup).toContain("Trajectory tabs");
     expect(markup).toContain('aria-label="Close Inspect"');
+    expect(markup).toContain('data-slot="agent-inspect-header"');
+    expect(markup).toContain("absolute");
   });
 
   it("renders live inspection content without gating the shell", () => {

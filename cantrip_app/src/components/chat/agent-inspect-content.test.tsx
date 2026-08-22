@@ -271,4 +271,18 @@ describe("AgentInspectContent", () => {
     expect(markup).toContain('data-slot="agent-inspect-inactive"');
     expect(markup).toContain("Shows activity when agent is working");
   });
+
+  it("reserves the shared panel header space within the tab row", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectContent
+        active={false}
+        integratedPanelHeader
+        messages={[]}
+        visible
+      />,
+    );
+    expect(markup).toContain("h-11");
+    expect(markup).toContain("pl-24");
+    expect(markup).toContain("pr-10");
+  });
 });

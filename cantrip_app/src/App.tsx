@@ -3598,6 +3598,7 @@ function ChatTranscript({
       >
         <AgentInspectContent
           active={inspectActive}
+          integratedPanelHeader
           messages={messages.data ?? []}
           onTabChange={setInspectTab}
           tab={inspectTab}
