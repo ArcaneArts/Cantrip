@@ -502,7 +502,7 @@ export function projectTrajectory(input: {
           message,
           0,
           "input",
-          message === opening ? "User input" : "Steer input",
+          "User input",
           messageText(message),
           "input",
         ),
