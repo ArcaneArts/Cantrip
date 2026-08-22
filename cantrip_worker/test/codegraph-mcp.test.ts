@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  CODEGRAPH_MANAGED_ENVIRONMENT,
   managedCodeGraphMcpServer,
   mergeManagedCodeGraphMcpServer,
 } from "../src/codegraph/mcp.js";
@@ -26,7 +25,13 @@ describe("managed CodeGraph MCP", () => {
         "--path",
         "/worktrees/feature",
       ],
-      environment: CODEGRAPH_MANAGED_ENVIRONMENT,
+      environment: {
+        CODEGRAPH_DIR: ".codegraph-cantrip",
+        CODEGRAPH_NO_DAEMON: "1",
+        CODEGRAPH_NO_UPDATE_CHECK: "1",
+        CODEGRAPH_TELEMETRY: "0",
+        DO_NOT_TRACK: "1",
+      },
     });
   });
 
