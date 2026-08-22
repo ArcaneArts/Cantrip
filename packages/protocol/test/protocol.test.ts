@@ -764,6 +764,32 @@ describe("Cantrip protocol", () => {
       }).success,
     ).toBe(false);
     expect(
+      cantripMcpContextGetResultSchema.parse({
+        summary: "Context is current.",
+        data: {
+          worker: { id: "worker-one", name: "Worker", online: true },
+          context: {
+            chatId: "chat-one",
+            executionLaneId: "lane-one",
+            permissionProfileId: ":workspace-write",
+            projectId: "project-one",
+            rootKind: "git-worktree",
+            terminalId: null,
+            workerId: "worker-one",
+            worktreeId: "worktree-one",
+            worktreeMode: "agent-managed",
+          },
+          binding: {
+            status: "ready",
+            mutationReady: true,
+            staleClaims: [],
+            recoveryInstruction: null,
+            expiresAt: "2026-08-21T18:00:00.000Z",
+          },
+        },
+      }).data.binding,
+    ).toMatchObject({ status: "ready", mutationReady: true });
+    expect(
       cantripMcpContextGetResultSchema.safeParse({
         summary: "Context is current.",
         data: {
@@ -779,6 +805,13 @@ describe("Cantrip protocol", () => {
             worktreeId: "worktree-one",
             worktreeMode: "agent-managed",
             canonicalRoot: "/private/worktree/path",
+          },
+          binding: {
+            status: "ready",
+            mutationReady: true,
+            staleClaims: [],
+            recoveryInstruction: null,
+            expiresAt: "2026-08-21T18:00:00.000Z",
           },
         },
       }).success,

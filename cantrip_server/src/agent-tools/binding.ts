@@ -3,6 +3,8 @@ import type {
   CantripMcpBinding,
 } from "@cantrip/protocol";
 import {
+  CANTRIP_MCP_MUTATION_OPERATIONS,
+  cantripMcpBindingReadinessSchema,
   cantripMcpOperationsForPermissionProfile,
   isCantripMcpMutationOperation,
 } from "@cantrip/protocol";
@@ -31,6 +33,57 @@ export class CantripMcpBindingError extends Error {
   ) {
     super(message);
   }
+}
+
+export function cantripMcpBindingReadiness(options: {
+  binding: CantripMcpBinding;
+  context: ChatExecutionContext;
+  serverAllowedOperations: ReadonlySet<CantripAgentOperationName>;
+}) {
+  const { binding, context } = options;
+  const currentPermissionProfile =
+    effectivePermissionProfile(context).effectiveId;
+  const staleClaims = [
+    binding.chatId !== context.chatId ? "chat" : null,
+    binding.projectId !== context.projectId ? "project" : null,
+    binding.workerId !== context.workerId ? "worker" : null,
+    binding.executionLaneId !== context.executionLaneId
+      ? "execution-lane"
+      : null,
+    binding.worktreeId !== context.worktreeId ? "worktree" : null,
+    binding.rootKind !== context.rootKind ? "root-kind" : null,
+    binding.permissionProfileId !== currentPermissionProfile
+      ? "permission-profile"
+      : null,
+    !chatIsExecuting(context.status) ? "chat-status" : null,
+  ].filter((claim): claim is NonNullable<typeof claim> => claim !== null);
+  const permitted = new Set(
+    cantripMcpOperationsForPermissionProfile(currentPermissionProfile),
+  );
+  const mutationAuthorized = CANTRIP_MCP_MUTATION_OPERATIONS.some(
+    (operation) =>
+      binding.allowedOperations.includes(operation) &&
+      options.serverAllowedOperations.has(operation) &&
+      permitted.has(operation),
+  );
+  const status =
+    staleClaims.length > 0
+      ? "refresh-required"
+      : mutationAuthorized
+        ? "ready"
+        : "read-only";
+  return cantripMcpBindingReadinessSchema.parse({
+    status,
+    mutationReady: status === "ready",
+    staleClaims,
+    recoveryInstruction:
+      status === "refresh-required"
+        ? "Do not retry mutations on this attachment. Start or resume a turn in the active Cantrip chat to refresh it."
+        : status === "read-only"
+          ? "This attachment is read-only. Select a write-capable permission profile and start a new turn to enable mutations."
+          : null,
+    expiresAt: binding.expiresAt,
+  });
 }
 
 export function assertCantripMcpBinding(options: {

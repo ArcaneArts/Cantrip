@@ -821,7 +821,7 @@ describe("Run CLI execution", () => {
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
     };
     const mcp = (
-      operation: "run-config.read" | "run.status" | "run.stop",
+      operation: "context.get" | "run-config.read" | "run.status" | "run.stop",
       arguments_: Record<string, unknown>,
       requestId: string,
     ) =>
@@ -835,6 +835,19 @@ describe("Run CLI execution", () => {
           request: { operation, arguments: arguments_ },
         },
       });
+
+    const readiness = await mcp("context.get", {}, "mcp-context-ready");
+    expect(readiness.statusCode, readiness.body).toBe(200);
+    expect(
+      cantripAgentOperationResultSchema.parse(readiness.json()).data,
+    ).toMatchObject({
+      binding: {
+        status: "ready",
+        mutationReady: true,
+        staleClaims: [],
+        recoveryInstruction: null,
+      },
+    });
 
     const stale = await mcp(
       "run-config.read",

@@ -781,6 +781,7 @@ import { CoalescedInvalidations } from "./live/coalesced-invalidations.js";
 import { createCantripAgentOperationExecutor } from "./agent-tools/executor.js";
 import {
   assertCantripMcpBinding,
+  cantripMcpBindingReadiness,
   CantripMcpBindingError,
 } from "./agent-tools/binding.js";
 import {
@@ -27528,10 +27529,34 @@ export async function buildApp({
             ownerId: workerAuth.ownerId,
             serverAllowedOperations: mcpOperations,
           });
-          const result = await agentOperationExecutor.execute(
+          let result = await agentOperationExecutor.execute(
             chatOperationContext(context),
             input.data.request,
           );
+          if (input.data.request.operation === "context.get") {
+            const readiness = cantripMcpBindingReadiness({
+              binding: input.data.binding,
+              context,
+              serverAllowedOperations: mcpOperations,
+            });
+            const suffix =
+              readiness.status === "ready"
+                ? " Managed MCP mutations are ready."
+                : readiness.status === "read-only"
+                  ? " This managed MCP attachment is read-only."
+                  : " This managed MCP attachment requires a fresh Cantrip turn before mutations.";
+            const data =
+              result.data &&
+              typeof result.data === "object" &&
+              !Array.isArray(result.data)
+                ? result.data
+                : {};
+            result = cantripAgentOperationResultSchema.parse({
+              ...result,
+              summary: `${result.summary.slice(0, 2_000 - suffix.length)}${suffix}`,
+              data: { ...data, binding: readiness },
+            });
+          }
           const runResult =
             input.data.request.operation === "run.start" ||
             input.data.request.operation === "run.open"

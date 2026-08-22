@@ -67,7 +67,9 @@ the raw command or volatile PTY output to the audit log.
 ## Agent use
 
 1. Call `context_get` first and treat its project, lane, worker, root, worktree,
-   and permission information as authoritative.
+   permission, and binding-readiness information as authoritative. If it reports
+   `refresh-required`, follow its recovery instruction instead of attempting a
+   mutation on the same attachment.
 2. Use `policy_list`, then `policy_read` for each summary that requires the
    current full policy.
 3. Use `target_list` and `target_inspect`; never guess, cache across bindings,
@@ -178,8 +180,14 @@ the successful Run result.
 
 - `forbidden` means the binding, current permission profile, or server
   operation allowlist does not permit the call.
+- `context_get.data.binding` reports `ready`, `read-only`, or
+  `refresh-required`, a bounded list of changed claims, expiry, and one recovery
+  instruction. Only `ready` authorizes managed MCP mutations.
 - `expired` or `stale-binding` means the agent must obtain a fresh attachment;
-  a retry using the same connection document cannot restore authority.
+  a retry using the same connection document cannot restore authority. The
+  worker latches a stale rejection so repeated calls fail locally without more
+  server traffic, then clears that latch when a new or resumed Cantrip turn
+  refreshes the binding claims in place.
 - `busy`, rate, size, and concurrency failures are bounded backpressure, not a
   reason to bypass the broker.
 - A missing or unavailable target requires `target_list`/`target_inspect` and
