@@ -217,7 +217,7 @@ export class RemoteSurfaceManager {
           });
         }
       }
-    } catch {
+    } catch (error) {
       managed.attachments.delete(command.attachmentId);
       if (managed.attachments.size === 0) {
         this.#sessions.delete(command.surfaceId);
@@ -237,6 +237,7 @@ export class RemoteSurfaceManager {
         attachmentId: command.attachmentId,
         surfaceKind: command.configuration.kind,
         durationMs: Date.now() - startedAtMs,
+        error: workerLogError(error),
       });
       throw new Error("Remote Surface attachment failed.");
     }

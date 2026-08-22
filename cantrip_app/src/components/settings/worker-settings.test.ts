@@ -7,6 +7,7 @@ import {
   formatWorkerLastSeen,
   recoverableDesktopWorkerId,
   resolveDesktopWorkerPairingId,
+  staleDesktopWorkerIds,
   workerPairingCommands,
 } from "./worker-settings";
 
@@ -103,6 +104,47 @@ describe("worker settings helpers", () => {
         linkedWorkerId: "desktop-current",
       }),
     ).toBeNull();
+  });
+
+  it("retires only offline source-free desktop identities after pairing", () => {
+    expect(
+      staleDesktopWorkerIds({
+        candidates: [
+          { workerId: "desktop-current" },
+          { workerId: "desktop-stale" },
+          { workerId: "desktop-with-projects" },
+          { workerId: "desktop-online" },
+        ],
+        selectedWorkerId: "desktop-current",
+        workers: [
+          {
+            online: true,
+            sources: [],
+            workerId: "desktop-current",
+          },
+          {
+            online: false,
+            sources: [],
+            workerId: "desktop-stale",
+          },
+          {
+            online: false,
+            sources: [{}],
+            workerId: "desktop-with-projects",
+          },
+          {
+            online: true,
+            sources: [],
+            workerId: "desktop-online",
+          },
+          {
+            online: false,
+            sources: [],
+            workerId: "unrecognized-worker",
+          },
+        ],
+      }),
+    ).toEqual(["desktop-stale"]);
   });
 
   it("only reuses a worker identity authorized by the server", () => {

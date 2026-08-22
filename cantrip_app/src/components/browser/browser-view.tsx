@@ -72,7 +72,11 @@ import {
 } from "@/lib/use-remote-surface-transport";
 
 const decoder = new TextDecoder();
-export const BROWSER_STARTUP_FAILURE_GRACE_MS = 1_000;
+// The server permits a worker attachment to spend up to 30 seconds starting.
+// Keep the initial Browser veil in its recovering state for that same window so
+// a slow Chromium launch (especially on Windows) is not presented as a terminal
+// failure while the transport is already retrying successfully.
+export const BROWSER_STARTUP_FAILURE_GRACE_MS = 30_000;
 const browserTransportMessages = {
   closeReason: "Browser view closed",
   congestionReason: "Remote Surface connection is congested",
