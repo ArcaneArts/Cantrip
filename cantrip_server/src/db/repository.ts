@@ -10172,6 +10172,77 @@ export class ServerRepository {
     return this.listProjectWorktrees(ownerId, projectId);
   }
 
+  async rollbackProjectWorktreeCreation(
+    ownerId: string,
+    projectId: string,
+    workerId: string,
+    created: {
+      id: string;
+      origin: ProjectWorktreeSummary["origin"];
+      path: string;
+    },
+  ): Promise<boolean> {
+    if (created.origin !== "agent" && created.origin !== "cantrip") {
+      return false;
+    }
+    const sources = await this.database
+      .select({ id: schema.projectSources.id })
+      .from(schema.projectSources)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.projectSources.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(
+        and(
+          eq(schema.projects.id, projectId),
+          eq(schema.projectSources.workerId, workerId),
+          isNull(schema.projectSources.removedAt),
+        ),
+      )
+      .limit(1);
+    const sourceId = sources[0]?.id;
+    if (!sourceId) return false;
+
+    return this.database.transaction(async (transaction) => {
+      const rows = await transaction
+        .select()
+        .from(schema.projectWorktrees)
+        .where(eq(schema.projectWorktrees.id, created.id))
+        .limit(1);
+      const row = rows[0];
+      if (!row) return true;
+      if (
+        row.projectSourceId !== sourceId ||
+        row.workerId !== workerId ||
+        row.absolutePath !== created.path ||
+        row.isPrimary ||
+        row.origin !== created.origin
+      ) {
+        return false;
+      }
+      await transaction
+        .delete(schema.worktreeSetupJobs)
+        .where(eq(schema.worktreeSetupJobs.worktreeId, created.id));
+      const deleted = await transaction
+        .delete(schema.projectWorktrees)
+        .where(
+          and(
+            eq(schema.projectWorktrees.id, created.id),
+            eq(schema.projectWorktrees.projectSourceId, sourceId),
+            eq(schema.projectWorktrees.workerId, workerId),
+            eq(schema.projectWorktrees.absolutePath, created.path),
+            eq(schema.projectWorktrees.isPrimary, false),
+            eq(schema.projectWorktrees.origin, created.origin),
+          ),
+        )
+        .returning({ id: schema.projectWorktrees.id });
+      return deleted.length === 1;
+    });
+  }
+
   async setProjectWorktreeLifecycle(
     ownerId: string,
     projectId: string,

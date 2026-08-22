@@ -323,6 +323,7 @@ describe("worker Git worktrees", () => {
         startPoint: null,
       },
     );
+    expect(created.created).toBe(true);
     expect(created.worktree).toMatchObject({
       branch: "agent/feature-lane",
       isPrimary: false,
@@ -338,6 +339,7 @@ describe("worker Git worktrees", () => {
         startPoint: null,
       }),
     ).resolves.toMatchObject({
+      created: false,
       worktree: {
         branch: "agent/feature-lane",
         path: created.worktree.path,

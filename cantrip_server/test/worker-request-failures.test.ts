@@ -65,4 +65,24 @@ describe("worker request failure responses", () => {
       statusCode: 503,
     });
   });
+
+  it("preserves structured worktree mutation outcomes", () => {
+    const failure = {
+      code: "worktree-create-rolled-back" as const,
+      error: "Creation failed and was rolled back.",
+      mutation: {
+        outcome: "rolledBack" as const,
+        retryable: true,
+        target: {
+          kind: "worktree" as const,
+          projectId: "project-1",
+          worktreeId: "worktree-1",
+        },
+      },
+    };
+    expect(workerFailureResponse({ failure }, 409)).toEqual({
+      body: failure,
+      statusCode: 409,
+    });
+  });
 });

@@ -208,6 +208,7 @@ import {
   workerCommandSchema,
   workerEventSchema,
   workerProjectShareOpenResultSchema,
+  worktreeCreateMutationFailureSchema,
   worktreeInventorySchema,
   workerEventEnvelopeSchema,
   workerHeartbeatSchema,
@@ -4686,6 +4687,36 @@ describe("Cantrip protocol", () => {
         ],
       }).worktrees[0]?.isPrimary,
     ).toBe(true);
+    expect(
+      worktreeCreateMutationFailureSchema.parse({
+        code: "worktree-create-rolled-back",
+        error: "The newly created worktree was rolled back.",
+        mutation: {
+          outcome: "rolledBack",
+          retryable: true,
+          target: {
+            kind: "worktree",
+            projectId: "project-1",
+            worktreeId: "worktree-1",
+          },
+        },
+      }).mutation.outcome,
+    ).toBe("rolledBack");
+    expect(
+      worktreeCreateMutationFailureSchema.safeParse({
+        code: "worktree-create-not-started",
+        error: "Creation did not start.",
+        mutation: {
+          outcome: "notStarted",
+          retryable: false,
+          target: {
+            kind: "worktree",
+            projectId: "project-1",
+            worktreeId: "worktree-1",
+          },
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("normalizes Responses provider URLs to their API root", () => {

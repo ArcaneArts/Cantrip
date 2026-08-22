@@ -674,6 +674,7 @@ const workerBridge = {
           managed: true,
         };
         return {
+          created: true,
           worktree,
           inventory: {
             sourcePath: command.sourcePath,

@@ -757,7 +757,10 @@ import {
   safeCredentialMatch,
   triggerDeliveryIdempotencyKey,
 } from "./workflows/trigger-helpers.js";
-import { ProjectWorktreeCoordinator } from "./worktrees/coordinator.js";
+import {
+  ProjectWorktreeCoordinator,
+  WorktreeCreateMutationError,
+} from "./worktrees/coordinator.js";
 import {
   WorktreeSetupJobExecutor,
   type WorktreeSetupLiveChange,
@@ -27467,8 +27470,17 @@ export async function buildApp({
           });
           return reply.send(cantripAgentOperationResultSchema.parse(result));
         } catch (error) {
-          const operationError =
-            error instanceof CantripMcpBindingError
+          const mutationFailure =
+            error instanceof WorktreeCreateMutationError ? error.failure : null;
+          const operationError = mutationFailure
+            ? new CantripMcpBindingError(
+                mutationFailure.mutation.outcome === "notStarted"
+                  ? "not-found"
+                  : "conflict",
+                mutationFailure.mutation.outcome === "notStarted" ? 404 : 409,
+                mutationFailure.error,
+              )
+            : error instanceof CantripMcpBindingError
               ? error
               : error instanceof CliCommandRequestError
                 ? new CantripMcpBindingError(
@@ -27527,10 +27539,12 @@ export async function buildApp({
                 ? "denied"
                 : "failed",
           });
-          return reply.code(operationError.status).send({
-            code: operationError.code,
-            error: operationError.message,
-          });
+          return reply.code(operationError.status).send(
+            mutationFailure ?? {
+              code: operationError.code,
+              error: operationError.message,
+            },
+          );
         }
       });
     },
@@ -27617,8 +27631,17 @@ export async function buildApp({
           }
           return reply.send(cantripCliCommandResultSchema.parse(result));
         } catch (error) {
-          const cliError =
-            error instanceof CliCommandRequestError
+          const mutationFailure =
+            error instanceof WorktreeCreateMutationError ? error.failure : null;
+          const cliError = mutationFailure
+            ? new CliCommandRequestError(
+                mutationFailure.mutation.outcome === "notStarted"
+                  ? "not-found"
+                  : "conflict",
+                mutationFailure.mutation.outcome === "notStarted" ? 404 : 409,
+                mutationFailure.error,
+              )
+            : error instanceof CliCommandRequestError
               ? error
               : error instanceof WorkerUnavailableError
                 ? new CliCommandRequestError(
@@ -27684,10 +27707,12 @@ export async function buildApp({
                   : "failed",
             });
           }
-          return reply.code(cliError.status).send({
-            code: cliError.code,
-            error: cliError.message,
-          });
+          return reply.code(cliError.status).send(
+            mutationFailure ?? {
+              code: cliError.code,
+              error: cliError.message,
+            },
+          );
         }
       });
     },

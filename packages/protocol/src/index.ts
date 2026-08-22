@@ -10417,9 +10417,70 @@ export const worktreeCreateModeSchema = z.discriminatedUnion("type", [
 ]);
 
 export const worktreeCreateResultSchema = z.object({
+  created: z.boolean(),
   worktree: workerWorktreeSummarySchema,
   inventory: worktreeInventorySchema,
 });
+
+export const worktreeCreateMutationOutcomeSchema = z.enum([
+  "notStarted",
+  "committed",
+  "rolledBack",
+  "partial",
+]);
+
+export const worktreeCreateMutationFailureSchema = z
+  .object({
+    code: z.enum([
+      "worktree-create-not-started",
+      "worktree-create-committed",
+      "worktree-create-rolled-back",
+      "worktree-create-partial",
+    ]),
+    error: z.string().min(1).max(2_000),
+    mutation: z
+      .object({
+        outcome: worktreeCreateMutationOutcomeSchema,
+        retryable: z.boolean(),
+        target: z
+          .object({
+            kind: z.literal("worktree"),
+            projectId: z.string().min(1).max(200),
+            worktreeId: z.string().min(1).max(200),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((failure, context) => {
+    const expectedCode = `worktree-create-${
+      failure.mutation.outcome === "notStarted"
+        ? "not-started"
+        : failure.mutation.outcome === "rolledBack"
+          ? "rolled-back"
+          : failure.mutation.outcome
+    }`;
+    if (failure.code !== expectedCode) {
+      context.addIssue({
+        code: "custom",
+        message: "Worktree mutation failure code must match its outcome.",
+        path: ["code"],
+      });
+    }
+    if (
+      (failure.mutation.outcome === "notStarted") !==
+      (failure.mutation.target === null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Only a worktree mutation that did not start may omit its recovery target.",
+        path: ["mutation", "target"],
+      });
+    }
+  });
 
 export const worktreeMutationResultSchema = z.object({
   worktree: workerWorktreeSummarySchema,
@@ -13941,6 +14002,12 @@ export type WorkerWorktreeSummary = z.infer<typeof workerWorktreeSummarySchema>;
 export type WorktreeInventory = z.infer<typeof worktreeInventorySchema>;
 export type WorktreeCreateMode = z.infer<typeof worktreeCreateModeSchema>;
 export type WorktreeCreateResult = z.infer<typeof worktreeCreateResultSchema>;
+export type WorktreeCreateMutationFailure = z.infer<
+  typeof worktreeCreateMutationFailureSchema
+>;
+export type WorktreeCreateMutationOutcome = z.infer<
+  typeof worktreeCreateMutationOutcomeSchema
+>;
 export type WorktreeMutationResult = z.infer<
   typeof worktreeMutationResultSchema
 >;

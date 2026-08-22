@@ -907,6 +907,7 @@ export class WorktreeManager {
           );
         }
         return worktreeCreateResultSchema.parse({
+          created: false,
           worktree: existing,
           inventory,
         });
@@ -924,6 +925,7 @@ export class WorktreeManager {
         throw new Error("Git created a worktree outside the managed root.");
       }
       return worktreeCreateResultSchema.parse({
+        created: true,
         worktree: created,
         inventory: next,
       });
