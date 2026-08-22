@@ -1,14 +1,42 @@
 # Project repository placement and attachment
 
-Status: planned. This document is the implementation contract for customizable
-GitHub repository placement on a Cantrip worker. It covers Cantrip-managed
-clones, managed clones with an external filesystem link, direct clones at an
-explicit worker path, and attachment of an existing matching checkout.
+Status: implemented. This document is the implementation contract and delivery
+record for customizable GitHub repository placement on a Cantrip worker. It
+covers Cantrip-managed clones, managed clones with an external filesystem link,
+direct clones at an explicit worker path, and attachment of an existing
+matching checkout. The concise user and operator guide is
+[PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
 
 The feature must preserve Cantrip's authority boundary: the app expresses
 intent, the server authorizes and persists durable state, and only the selected
 worker interprets paths or mutates the filesystem. Raw worker paths must not be
 stored in server plaintext or treated as paths on the client device.
+
+## Delivery record
+
+The implementation landed through the six sequential Manual Change Protocol
+cycles defined below; every cycle used a fresh worktree and an independently
+squash-merged pull request:
+
+1. [PR #816](https://github.com/ArcaneArts/Cantrip/pull/816) — domain,
+   protocol, capability defaults, protected fields, and migration;
+2. [PR #818](https://github.com/ArcaneArts/Cantrip/pull/818) — direct path,
+   recursive parents, staging ownership, cloning, attachment, and canonical
+   results;
+3. [PR #822](https://github.com/ArcaneArts/Cantrip/pull/822) — POSIX/Windows
+   link probing, replay/repair, retention, and placement-aware removal;
+4. [PR #825](https://github.com/ArcaneArts/Cantrip/pull/825) — capability-gated
+   server orchestration, durable facts, repair API, and user-deletion guard;
+5. [PR #827](https://github.com/ArcaneArts/Cantrip/pull/827) — shared desktop,
+   browser, and mobile import UX plus Project Settings; and
+6. final acceptance, privacy/destructive-action audit, compatibility cleanup,
+   and rollout documentation.
+
+The implementation preserves the planned authority model. One adaptation is
+that Windows managed-link availability is established by a real startup
+junction probe rather than inferred from platform name. Windows volumes and
+container mounts therefore remain deployment-specific smoke gates even after
+the shared automated suites pass.
 
 ## Objective
 

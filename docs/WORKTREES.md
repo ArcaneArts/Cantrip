@@ -6,6 +6,13 @@ as one physical checkout belonging to that source. The server owns durable
 identity, policy, leases, and transcript attribution. The worker owns files,
 canonical paths, Git state, PTYs, and Codex runtimes.
 
+The Primary source may be a Cantrip-managed clone, a managed clone with an
+external link, or a direct checkout created/attached at an exact worker path.
+That choice does not change the worktree model: Cantrip always registers the
+canonical Primary checkout, and all secondary worktree targets remain under
+worker control. See
+[PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md).
+
 A worker-managed folder project is intentionally outside this worktree model.
 It has one UUID-derived execution root on one owning worker. Agents and
 write-capable workflows may write there directly according to their permission
@@ -105,8 +112,8 @@ means only that Cantrip does not manufacture a Git isolation lane.
 
 Cantrip enforces these boundaries:
 
-- clients and agents provide intent, branch, name, and base revision, never a
-  target path;
+- after Primary provisioning, clients and agents provide worktree intent,
+  branch, name, and base revision, never a secondary target path;
 - the worker canonicalizes paths and verifies Git common-directory identity;
 - one server coordinator serializes mutating worktree operations per project
   source; user and chat-agent operations use it now, and workflow allocation
@@ -191,6 +198,12 @@ pnpm --filter @cantrip/app test -- worktree-control.test.ts git-history.test.ts 
 pnpm check
 pnpm --filter @cantrip/app build
 ```
+
+Repository-placement changes additionally run the focused direct/link,
+protected-path, durable-job, and shared-dialog suites listed in
+[the placement release acceptance](PROJECT_REPOSITORY_PLACEMENT.md#release-acceptance).
+Custom Primary placement does not relax any secondary worktree validation or
+removal rule in this guide.
 
 Managed-folder changes that touch the compatibility execution-root row or Git
 capability guards also run:

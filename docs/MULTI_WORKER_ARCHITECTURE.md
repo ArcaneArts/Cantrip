@@ -105,6 +105,39 @@ them an unsupported command. Provisioning and synchronization require
 own capability. `capabilities.gitSync` is true only when the server exposes the
 complete guarded synchronization lifecycle.
 
+### Repository placement per replica
+
+Primary repository placement is a property of one source on one worker, not of
+the logical project. Provisioning accepts the compatibility default
+`managed`, a managed clone with one requested link, or an exact direct worker
+path. A missing direct target is cloned through owned sibling staging; a
+matching existing Primary checkout is attached without mutation and classified
+as user-owned. Every resulting source stores the canonical execution path
+separately from requested/link display paths and ownership facts.
+
+Raw paths are protected by the selected worker before an app mutation reaches
+the server. Durable source and job rows contain only opaque routing handles.
+The server authorizes and routes them but never dereferences them; the owning
+worker resolves handles, validates filesystem state, and protects the result
+again. Equal project IDs therefore imply neither equal paths nor equal
+placement/ownership across workers.
+
+Custom choices are independently negotiated with `directPlacement`,
+`managedLinkPlacement`, `attachExisting`, and `recursiveParentCreation`. Missing
+fields default to false. The application gates each choice, the server checks
+before job creation, and the executor checks again at dispatch. Unsupported or
+older workers retain the managed flow and cannot receive custom-placement
+commands. Windows workers advertise managed links only after a successful
+junction probe.
+
+Removal derives placement and ownership exclusively from the persisted source;
+a client cannot supply a deletion path or ownership classification. Attached
+sources are never deleted, retained external clones lose Cantrip's ownership
+claim, and a managed link is removed only when it still resolves to the exact
+managed clone. See
+[PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md) for the full
+user, recovery, container, and backup contract.
+
 ## Current placement-policy controls
 
 The account-scoped Workers settings page persists a nullable Default worker,

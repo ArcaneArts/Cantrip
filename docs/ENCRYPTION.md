@@ -534,16 +534,16 @@ The server stores `projects.protected_label`, validates only its bounded wire
 shape and `project` classification, and never imports the shared crypto
 package. Project list, create, setup, preferred-worker, and worktree-policy
 responses remain opaque until the trusted client adapter opens them.
-Repository identity (`github_repository_id`, repository full name, and URL),
-source and worktree paths, Git state, placement, ordering, and setup status are
-still plaintext operational metadata and remain separate ledger work. Project
-folder materialization and Code launch use project UUIDs and worker-local path
+Repository identity and Git operation content use the separate
+`repository-content` and worker-local opaque-routing boundary. Source,
+worktree, requested-placement, and link path columns contain routing handles,
+not raw worker paths. Public lifecycle classifications, ordering, worker IDs,
+placement mode, and setup status remain operational metadata. Project folder
+materialization and Code launch use project UUIDs and worker-local path
 basenames, so workers do not receive a project-label key grant merely for
 setup. Secondary external-chat-import references no longer copy the project
-display name. A GitHub project's initial visible label is derived from its
-plaintext repository full name, so a database reader can infer that initial
-label even though the dedicated protected field is opaque. The E2EE status
-applies to project-label persistence, not repository-identity confidentiality.
+display name. Project-label E2EE remains a distinct claim from repository
+content protection; neither component key is substituted for the other.
 
 [Migration 0105](../cantrip_server/drizzle/0105_superb_energizer.sql)
 deliberately deletes every project before replacing the required plaintext
@@ -562,7 +562,31 @@ and
 cover encrypted create/list round trips, client-side sorting, locked writes,
 wrong-row and tamper rejection, opaque server and worker commands, and exact
 reset preservation. Project display names therefore earn `E2EE complete`;
-repository names, URLs, and paths do not.
+repository identity and paths are covered by their separate repository-content
+and worker-routing contracts.
+
+### Repository placement paths
+
+Custom Primary placement registers the exact path on the selected worker before
+the project or replica mutation is sent to the server. The app-facing placement
+request contains raw text only until `repository.metadata.register` returns an
+opaque `ctrr_...` handle. Durable project-replica jobs store the handle with a
+public placement-mode classification. On completion, canonical, requested, and
+link paths are protected again before source and Primary worktree persistence.
+
+The server cannot resolve these handles. Resolution is authenticated,
+scope-bound to the project, and performed only by the owning worker for command
+execution or trusted client presentation. Placement progress, stable error
+codes, live events, and audit records contain no path value. Worker-local
+placement registries and checkout ownership markers are filesystem safety
+records outside this server encryption system and must remain owner-only.
+
+The focused project-encryption, routing-registry, replica-job, and executor
+tests cover raw-path absence from project mutation payloads, routing-handle
+restart persistence, attempt fencing, and separate canonical/requested/link
+state. See
+[PROJECT_REPOSITORY_PLACEMENT.md](PROJECT_REPOSITORY_PLACEMENT.md#privacy-and-authority)
+for the runtime and deletion model.
 
 ## Chats and tasks
 
