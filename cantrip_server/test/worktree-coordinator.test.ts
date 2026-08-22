@@ -224,6 +224,7 @@ describe("project worktree coordinator", () => {
           };
         }
         return {
+          created: true,
           worktree: created,
           inventory: {
             sourcePath: primary.path,
@@ -291,6 +292,114 @@ describe("project worktree coordinator", () => {
     });
     expect(setupQueued).toHaveBeenCalledOnce();
     expect(changedProjects).toEqual(["project-1"]);
+  });
+
+  it("rolls back a newly created physical worktree when reconciliation fails", async () => {
+    const created: WorkerWorktreeSummary = {
+      ...primary,
+      path: "/worker-owned/worktrees/agent-rollback",
+      branch: "codex/agent-rollback",
+      isPrimary: false,
+    };
+    let physicalWorktreeExists = false;
+    const rollbackCatalog = vi.fn().mockResolvedValue(true);
+    const repository = {
+      async getProjectSource() {
+        return {
+          cwd: primary.path,
+          workerId: "worker-1",
+          worktreeId: "primary-1",
+        };
+      },
+      async reconcileProjectWorktrees() {
+        throw new Error("induced database failure");
+      },
+      rollbackProjectWorktreeCreation: rollbackCatalog,
+      worktreeSetupJobs: { initialize: vi.fn() },
+    } as unknown as ServerRepository;
+    const commands: WorkerCommand[] = [];
+    const bridge = {
+      async request(_workerId: string, command: WorkerCommand) {
+        commands.push(command);
+        if (command.type === "worktree.create") {
+          physicalWorktreeExists = true;
+          return {
+            created: true,
+            worktree: created,
+            inventory: {
+              sourcePath: primary.path,
+              primaryPath: primary.path,
+              gitCommonDir: `${primary.path}/.git`,
+              managedRoot: "/worker-owned/worktrees",
+              repositoryFingerprint: "a".repeat(64),
+              worktrees: [primary, created],
+            },
+          };
+        }
+        if (command.type === "worktree.remove") {
+          expect(command).toMatchObject({
+            worktreePath: created.path,
+            force: false,
+            allowExternal: false,
+          });
+          physicalWorktreeExists = false;
+          return {
+            removedPath: created.path,
+            inventory: {
+              sourcePath: primary.path,
+              primaryPath: primary.path,
+              gitCommonDir: `${primary.path}/.git`,
+              managedRoot: "/worker-owned/worktrees",
+              repositoryFingerprint: "a".repeat(64),
+              worktrees: [primary],
+            },
+          };
+        }
+        throw new Error(`Unexpected command ${command.type}.`);
+      },
+    } as unknown as WorkerCommandBus;
+    const coordinator = new ProjectWorktreeCoordinator(repository, bridge);
+
+    await expect(
+      coordinator.create("owner-1", "project-1", {
+        worktreeId: "agent-rollback-1",
+        name: "Agent rollback",
+        origin: "agent",
+        mode: {
+          type: "newBranch",
+          branch: "codex/agent-rollback",
+          startPoint: primary.head,
+        },
+      }),
+    ).rejects.toMatchObject({
+      failure: {
+        code: "worktree-create-rolled-back",
+        mutation: {
+          outcome: "rolledBack",
+          retryable: true,
+          target: {
+            kind: "worktree",
+            projectId: "project-1",
+            worktreeId: "agent-rollback-1",
+          },
+        },
+      },
+    });
+    expect(physicalWorktreeExists).toBe(false);
+    expect(commands.map(({ type }) => type)).toEqual([
+      "worktree.create",
+      "worktree.remove",
+    ]);
+    expect(rollbackCatalog).toHaveBeenCalledWith(
+      "owner-1",
+      "project-1",
+      "worker-1",
+      {
+        id: "agent-rollback-1",
+        origin: "agent",
+        path: created.path,
+      },
+    );
   });
 
   it("serializes a project without poisoning its queue after failure", async () => {
@@ -528,6 +637,7 @@ describe("project worktree coordinator", () => {
         if (command.type === "worktree.create") {
           createdExists = true;
           return {
+            created: true,
             worktree: createdWorkerWorktree,
             inventory: {
               sourcePath: primary.path,

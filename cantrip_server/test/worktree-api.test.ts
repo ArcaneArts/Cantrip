@@ -640,7 +640,7 @@ const workerBridge = {
         };
         workerWorktrees.push(worktree);
         activeCreates -= 1;
-        return { worktree, inventory: inventory() };
+        return { created: true, worktree, inventory: inventory() };
       }
       case "worktree.lock":
       case "worktree.unlock": {

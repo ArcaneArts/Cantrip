@@ -4,6 +4,7 @@ import {
   RUN_CONFIGURATION_CANONICAL_PATH,
   githubPullRequestCheckoutPreparedSchema,
   githubPullRequestCheckoutResultSchema,
+  worktreeCreateMutationFailureSchema,
   worktreeCreateResultSchema,
   worktreeInventorySchema,
   worktreeRemoveResultSchema,
@@ -11,7 +12,10 @@ import {
   runConfigurationInspectionSchema,
   type ProjectWorktreeSummary,
   type GithubPullRequestCheckoutResult,
+  type WorktreeCreateMutationFailure,
+  type WorktreeCreateMutationOutcome,
   type WorktreeCreateMode,
+  type WorktreeCreateResult,
 } from "@cantrip/protocol";
 import type {
   WorkflowRunWireDetail,
@@ -33,6 +37,7 @@ type WorktreeRepository = Pick<
   | "listProjectWorktrees"
   | "observeProjectWorktree"
   | "reconcileProjectWorktrees"
+  | "rollbackProjectWorktreeCreation"
   | "workflowRuns"
   | "worktreeSetupJobs"
 >;
@@ -45,6 +50,41 @@ export interface ProjectWorktreeCreateRequest {
 }
 
 class WorktreeSetupPendingError extends Error {}
+
+export class WorktreeCreateMutationError extends Error {
+  readonly failure: WorktreeCreateMutationFailure;
+
+  constructor(
+    outcome: WorktreeCreateMutationOutcome,
+    projectId: string,
+    worktreeId: string | null,
+    message: string,
+    retryable: boolean,
+    options?: { cause?: unknown },
+  ) {
+    const recoverySuffix = worktreeId
+      ? ` Recovery target: project ${projectId}, worktree ${worktreeId}.`
+      : "";
+    const boundedMessage = `${message}${recoverySuffix}`.slice(0, 2_000);
+    super(boundedMessage, options);
+    this.name = "WorktreeCreateMutationError";
+    this.failure = worktreeCreateMutationFailureSchema.parse({
+      code: `worktree-create-${
+        outcome === "notStarted"
+          ? "not-started"
+          : outcome === "rolledBack"
+            ? "rolled-back"
+            : outcome
+      }`,
+      error: boundedMessage,
+      mutation: {
+        outcome,
+        retryable,
+        target: worktreeId ? { kind: "worktree", projectId, worktreeId } : null,
+      },
+    });
+  }
+}
 
 export interface WorkflowWorktreeAllocationRequest {
   runId: string;
@@ -639,33 +679,69 @@ export class ProjectWorktreeCoordinator {
     input: ProjectWorktreeCreateRequest,
   ): Promise<ProjectWorktreeSummary | null> {
     const source = await this.repository.getProjectSource(ownerId, projectId);
-    if (!source) return null;
+    if (!source) {
+      throw new WorktreeCreateMutationError(
+        "notStarted",
+        projectId,
+        null,
+        "Project source not found; worktree creation did not start.",
+        false,
+      );
+    }
     const worktreeId = input.worktreeId ?? randomUUID();
-    const result = worktreeCreateResultSchema.parse(
-      await this.bridge.request(source.workerId, {
-        type: "worktree.create",
-        sourcePath: source.cwd,
+    let result: WorktreeCreateResult;
+    try {
+      result = worktreeCreateResultSchema.parse(
+        await this.bridge.request(source.workerId, {
+          type: "worktree.create",
+          sourcePath: source.cwd,
+          worktreeId,
+          name: input.name,
+          mode: input.mode,
+        }),
+      );
+    } catch (error) {
+      throw new WorktreeCreateMutationError(
+        "partial",
+        projectId,
         worktreeId,
-        name: input.name,
-        mode: input.mode,
-      }),
-    );
-    const reconciled = await this.repository.reconcileProjectWorktrees(
-      ownerId,
-      projectId,
-      source.workerId,
-      result.inventory,
-      {
-        id: worktreeId,
-        lifecycleState: "preparing",
-        name: input.name,
-        origin: input.origin,
-        path: result.worktree.path,
-      },
-    );
-    const created = reconciled?.find(({ id }) => id === worktreeId);
-    if (!created) {
-      throw new Error("Created worktree could not be reconciled.");
+        "The worker did not confirm whether worktree creation completed. Reconcile the exact recovery target before retrying.",
+        true,
+        { cause: error },
+      );
+    }
+    let created: ProjectWorktreeSummary;
+    try {
+      const reconciled = await this.repository.reconcileProjectWorktrees(
+        ownerId,
+        projectId,
+        source.workerId,
+        result.inventory,
+        {
+          id: worktreeId,
+          lifecycleState: "preparing",
+          name: input.name,
+          origin: input.origin,
+          path: result.worktree.path,
+        },
+      );
+      const candidate = reconciled?.find(({ id }) => id === worktreeId);
+      if (!candidate) {
+        throw new Error("Created worktree could not be reconciled.");
+      }
+      created = candidate;
+    } catch (error) {
+      throw await this.rollbackUncommittedCreate({
+        cause: error,
+        createdByRequest: result.created,
+        input,
+        ownerId,
+        projectId,
+        sourcePath: source.cwd,
+        workerId: source.workerId,
+        worktreeId,
+        worktreePath: result.worktree.path,
+      });
     }
     let configurationRevision: string | null = null;
     let setupQueued = false;
@@ -702,26 +778,113 @@ export class ProjectWorktreeCoordinator {
         retryable: true,
       };
     }
-    const initialized = await this.repository.worktreeSetupJobs.initialize({
-      configurationRevision,
-      ...(configurationError ? { error: configurationError } : {}),
-      ownerId,
-      projectId,
-      queued: setupQueued,
-      workerId: source.workerId,
-      worktreeId,
-    });
-    if (initialized.job.state === "queued") this.onSetupQueued?.();
-    return {
-      ...created,
-      lifecycleState:
-        initialized.job.state === "queued"
-          ? "preparing"
-          : initialized.job.state === "failed"
-            ? "setup-failed"
-            : "ready",
-      updatedAt: initialized.job.updatedAt,
-    };
+    try {
+      const initialized = await this.repository.worktreeSetupJobs.initialize({
+        configurationRevision,
+        ...(configurationError ? { error: configurationError } : {}),
+        ownerId,
+        projectId,
+        queued: setupQueued,
+        workerId: source.workerId,
+        worktreeId,
+      });
+      if (initialized.job.state === "queued") this.onSetupQueued?.();
+      return {
+        ...created,
+        lifecycleState:
+          initialized.job.state === "queued"
+            ? "preparing"
+            : initialized.job.state === "failed"
+              ? "setup-failed"
+              : "ready",
+        updatedAt: initialized.job.updatedAt,
+      };
+    } catch (error) {
+      throw new WorktreeCreateMutationError(
+        "committed",
+        projectId,
+        worktreeId,
+        "Worktree creation committed, but setup bookkeeping did not finish. Reconcile the exact target instead of creating another worktree.",
+        true,
+        { cause: error },
+      );
+    }
+  }
+
+  private async rollbackUncommittedCreate(input: {
+    cause: unknown;
+    createdByRequest: boolean;
+    input: ProjectWorktreeCreateRequest;
+    ownerId: string;
+    projectId: string;
+    sourcePath: string;
+    workerId: string;
+    worktreeId: string;
+    worktreePath: string;
+  }): Promise<WorktreeCreateMutationError> {
+    if (
+      !input.createdByRequest ||
+      (input.input.origin !== "agent" && input.input.origin !== "cantrip")
+    ) {
+      return new WorktreeCreateMutationError(
+        "partial",
+        input.projectId,
+        input.worktreeId,
+        "A preexisting or user-owned worktree could not be reconciled and was left untouched. Reconcile the exact recovery target before retrying.",
+        true,
+        { cause: input.cause },
+      );
+    }
+    try {
+      const removed = worktreeRemoveResultSchema.parse(
+        await this.bridge.request(input.workerId, {
+          type: "worktree.remove",
+          sourcePath: input.sourcePath,
+          worktreePath: input.worktreePath,
+          force: false,
+          allowExternal: false,
+        }),
+      );
+      if (
+        removed.removedPath !== input.worktreePath ||
+        removed.inventory.worktrees.some(
+          ({ path }) => path === input.worktreePath,
+        )
+      ) {
+        throw new Error("Worker removal did not match the created worktree.");
+      }
+      const catalogRolledBack =
+        await this.repository.rollbackProjectWorktreeCreation(
+          input.ownerId,
+          input.projectId,
+          input.workerId,
+          {
+            id: input.worktreeId,
+            origin: input.input.origin,
+            path: input.worktreePath,
+          },
+        );
+      if (!catalogRolledBack) {
+        throw new Error("The exact worktree catalog row could not be removed.");
+      }
+      return new WorktreeCreateMutationError(
+        "rolledBack",
+        input.projectId,
+        input.worktreeId,
+        "Worktree reconciliation failed, and the newly created worktree was rolled back. Retrying is safe.",
+        true,
+        { cause: input.cause },
+      );
+    } catch (rollbackError) {
+      return new WorktreeCreateMutationError(
+        "partial",
+        input.projectId,
+        input.worktreeId,
+        "Worktree reconciliation failed, and automatic rollback could not be verified. Reconcile the exact recovery target before retrying.",
+        true,
+        { cause: rollbackError },
+      );
+    }
   }
 
   private async inspectWorktree(
