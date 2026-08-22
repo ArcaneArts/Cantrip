@@ -95,11 +95,9 @@ export function updateAgentInspectOpenChats(
 }
 
 export function AgentInspectPanel({
-  active,
   children,
   onClose,
 }: {
-  active: boolean;
   children?: ReactNode;
   onClose(): void;
 }) {
@@ -123,34 +121,16 @@ export function AgentInspectPanel({
           <X className="size-3.5" />
         </Button>
       </header>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {active ? (
-          children
-        ) : (
-          <div
-            className="grid h-full place-items-center p-6 text-center"
-            data-slot="agent-inspect-inactive"
-          >
-            <div>
-              <p className="text-sm font-medium">Inactive</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Shows activity when agent is working
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </aside>
   );
 }
 
 function AgentInspectMobilePanel({
-  active,
   children,
   onOpenChange,
   open,
 }: {
-  active: boolean;
   children?: ReactNode;
   onOpenChange(open: boolean): void;
   open: boolean;
@@ -167,10 +147,7 @@ function AgentInspectMobilePanel({
           <DialogPrimitive.Title className="sr-only">
             Agent activity inspector
           </DialogPrimitive.Title>
-          <AgentInspectPanel
-            active={active}
-            onClose={() => onOpenChange(false)}
-          >
+          <AgentInspectPanel onClose={() => onOpenChange(false)}>
             {children}
           </AgentInspectPanel>
         </DialogPrimitive.Content>
@@ -180,7 +157,6 @@ function AgentInspectMobilePanel({
 }
 
 export function AgentInspectPanelShell({
-  active,
   children,
   className,
   onOpenChange,
@@ -188,7 +164,6 @@ export function AgentInspectPanelShell({
   open,
   overlay,
 }: {
-  active: boolean;
   children?: ReactNode;
   className?: string;
   onOpenChange(open: boolean): void;
@@ -198,11 +173,7 @@ export function AgentInspectPanelShell({
 }) {
   if (overlay) {
     return (
-      <AgentInspectMobilePanel
-        active={active}
-        onOpenChange={onOpenChange}
-        open={open}
-      >
+      <AgentInspectMobilePanel onOpenChange={onOpenChange} open={open}>
         {children}
       </AgentInspectMobilePanel>
     );
@@ -224,7 +195,7 @@ export function AgentInspectPanelShell({
       surfaceDataSlot="agent-inspect-panel-surface"
       title="Drag to resize Inspect sidebar"
     >
-      <AgentInspectPanel active={active} onClose={() => onOpenChange(false)}>
+      <AgentInspectPanel onClose={() => onOpenChange(false)}>
         {children}
       </AgentInspectPanel>
     </ResizablePanel>

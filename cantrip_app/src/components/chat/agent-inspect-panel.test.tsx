@@ -17,18 +17,19 @@ import {
 } from "./agent-inspect-panel";
 
 describe("AgentInspectPanel", () => {
-  it("renders the exact inactive presentation", () => {
+  it("keeps its child surface mounted independently of agent state", () => {
     const markup = renderToStaticMarkup(
-      <AgentInspectPanel active={false} onClose={vi.fn()} />,
+      <AgentInspectPanel onClose={vi.fn()}>
+        <p>Trajectory tabs</p>
+      </AgentInspectPanel>,
     );
-    expect(markup).toContain("Inactive");
-    expect(markup).toContain("Shows activity when agent is working");
+    expect(markup).toContain("Trajectory tabs");
     expect(markup).toContain('aria-label="Close Inspect"');
   });
 
-  it("reserves the active body for live inspection content", () => {
+  it("renders live inspection content without gating the shell", () => {
     const markup = renderToStaticMarkup(
-      <AgentInspectPanel active onClose={vi.fn()}>
+      <AgentInspectPanel onClose={vi.fn()}>
         <p>Live activity</p>
       </AgentInspectPanel>,
     );
@@ -38,12 +39,7 @@ describe("AgentInspectPanel", () => {
 
   it("marks the desktop shell for accessible resizing and reduced motion", () => {
     const markup = renderToStaticMarkup(
-      <AgentInspectPanelShell
-        active={false}
-        onOpenChange={vi.fn()}
-        open
-        overlay={false}
-      />,
+      <AgentInspectPanelShell onOpenChange={vi.fn()} open overlay={false} />,
     );
     expect(markup).toContain('data-state="open"');
     expect(markup).toContain('aria-label="Resize Inspect sidebar"');

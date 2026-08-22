@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_INSPECT_THOUGHT_LINE_LIMIT,
   AGENT_INSPECT_SCROLLING_CARD_HEIGHT_PX,
+  AgentInspectContent,
   AgentInspectPresentation,
   agentInspectorActive,
   commandOutputIsAtBottom,
@@ -246,5 +247,28 @@ describe("AgentInspectPresentation", () => {
     );
     expect(markup).toContain("Watching live activity");
     expect(markup).not.toContain("Inactive");
+  });
+});
+
+describe("AgentInspectContent", () => {
+  it("renders Trajectory first and selects it by default", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectContent active={false} messages={[]} visible />,
+    );
+    expect(markup.indexOf("Trajectory")).toBeLessThan(markup.indexOf("State"));
+    expect(markup).toContain('aria-label="Inspect view"');
+    expect(markup).toContain('aria-selected="true"');
+    expect(markup).toContain('aria-label="Trajectory view"');
+    expect(markup).toContain('data-slot="agent-trajectory-content"');
+    expect(markup).not.toContain('data-slot="agent-inspect-inactive"');
+  });
+
+  it("moves the inactive gate into the State tab", () => {
+    const markup = renderToStaticMarkup(
+      <AgentInspectContent active={false} messages={[]} tab="state" visible />,
+    );
+    expect(markup).toContain('aria-label="State view"');
+    expect(markup).toContain('data-slot="agent-inspect-inactive"');
+    expect(markup).toContain("Shows activity when agent is working");
   });
 });
