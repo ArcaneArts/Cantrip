@@ -45,6 +45,12 @@ export const ELITE_GLOBAL_BOUNDARY_SELECTOR =
 
 export const ELITE_GLOBAL_SCROLL_SUPPRESSION_MS = 120;
 export const ELITE_GLOBAL_SEEN_KEY_LIMIT = 10_000;
+export const ELITE_GLOBAL_OBSERVER_OPTIONS: MutationObserverInit = {
+  attributeFilter: ["data-elite-global", "data-elite-global-key"],
+  attributes: true,
+  childList: true,
+  subtree: true,
+};
 
 const ELITE_GLOBAL_STYLE_PROPERTIES = [
   "--elite-chromatic-angle",
@@ -314,12 +320,21 @@ export function EliteGlobalEffects({
     });
     const observer = new MutationObserver((records) => {
       records.forEach((record) => {
+        if (record.type === "attributes") {
+          if (
+            record.target instanceof HTMLElement &&
+            record.target.matches(ELITE_GLOBAL_BOUNDARY_SELECTOR)
+          ) {
+            queueRoot(record.target);
+          }
+          return;
+        }
         record.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) queueRoot(node);
         });
       });
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, ELITE_GLOBAL_OBSERVER_OPTIONS);
 
     return () => {
       cancelled = true;

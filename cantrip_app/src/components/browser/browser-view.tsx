@@ -1013,6 +1013,7 @@ export function BrowserView({
       <div
         ref={surfaceRef}
         className="relative min-h-0 flex-1 overflow-hidden bg-black"
+        data-elite-global={surfaceReady ? "" : undefined}
       >
         <RemoteSurfaceCanvas
           ref={remoteCanvasRef}
@@ -1036,6 +1037,7 @@ export function BrowserView({
           onTouch={send}
         />
         <SurfaceLoadingVeil
+          fade={false}
           label={
             runtimeStatus === "recovering"
               ? runtimeMessage || "Restarting browser…"
