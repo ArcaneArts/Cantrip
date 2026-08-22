@@ -1,4 +1,10 @@
-import type { ExplorerEntry } from "@cantrip/protocol";
+import type { ExplorerEntry, ProjectCapabilities } from "@cantrip/protocol";
+
+export function explorerRepositoryGraphAvailable(
+  capabilities: Pick<ProjectCapabilities, "git"> | null | undefined,
+): boolean {
+  return capabilities?.git === true;
+}
 
 export function explorerFileEntryForGraphPath(path: string): ExplorerEntry {
   return {

@@ -177,6 +177,7 @@ import {
 } from "@/components/git/git-history";
 import { ExplorerFilePopout } from "@/components/explorer/explorer-file-popout";
 import { defaultExplorerFileMode } from "@/components/explorer/explorer-file-language";
+import { explorerRepositoryGraphAvailable } from "@/components/explorer/explorer-graph-routing";
 import type {
   ExplorerHeaderState,
   ExplorerLifecycleActions,
@@ -6637,6 +6638,9 @@ export function App() {
         projectTitle={
           selectedProject?.github?.nameWithOwner ?? selectedProject?.name
         }
+        repositoryGraphAvailable={explorerRepositoryGraphAvailable(
+          selectedProject?.capabilities,
+        )}
       />
     );
   }
@@ -7410,6 +7414,9 @@ export function App() {
             onHeaderChange={setExplorerHeader}
             onLifecycleChange={handleExplorerLifecycleChange}
             onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
+            repositoryGraphAvailable={explorerRepositoryGraphAvailable(
+              selectedProject?.capabilities,
+            )}
             onOpenTerminal={(explorer, entry) => {
               if (!selectedSurface || selectedSurface.kind !== "explorer") {
                 return;
