@@ -8,6 +8,7 @@ import {
 
 export const CHAT_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT = 2 * 1_024 * 1_024;
 export const QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT = 512 * 1_024;
+export const CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT = 512 * 1_024;
 export const CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT = 1 * 1_024 * 1_024;
 export const INTERACTION_PROTECTED_CONTENT_BYTES_LIMIT = 1 * 1_024 * 1_024;
 
@@ -75,6 +76,10 @@ export const encryptedChatMessageProtectedContentSchema =
 export const encryptedQueuedPromptProtectedContentSchema =
   boundedCommunicationEnvelopeSchema(
     QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT,
+  );
+export const encryptedChatComposerDraftProtectedContentSchema =
+  boundedCommunicationEnvelopeSchema(
+    CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT,
   );
 export const encryptedChatPlanProtectedContentSchema =
   boundedCommunicationEnvelopeSchema(CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT);
@@ -266,6 +271,33 @@ export const queuedPromptOpaqueContentSchema = z
     }
   });
 
+export const chatComposerDraftProtectedContentSchema = z
+  .object({
+    version: z.literal(1),
+    text: z.string().max(100_000),
+    mode: communicationTurnModeSchema,
+    reasoningEffort: z.string().min(1).max(100).nullable(),
+  })
+  .strict();
+
+export const chatComposerDraftOpaqueStateSchema = z
+  .object({
+    protectedContent: encryptedChatComposerDraftProtectedContentSchema,
+  })
+  .strict();
+
+export const encryptedChatComposerDraftWireStateSchema = z
+  .object({
+    chatId: z.string().min(1).max(200),
+    state: chatComposerDraftOpaqueStateSchema.nullable(),
+    updatedAt: z.iso.datetime().nullable(),
+  })
+  .strict();
+
+export const encryptedChatComposerDraftUpdateSchema = z
+  .object({ state: chatComposerDraftOpaqueStateSchema.nullable() })
+  .strict();
+
 export const interactionProtectedClassificationSchema = z
   .object({ kind: interactionKindSchema })
   .strict();
@@ -306,6 +338,9 @@ export type EncryptedChatMessageProtectedContent = z.infer<
 export type EncryptedQueuedPromptProtectedContent = z.infer<
   typeof encryptedQueuedPromptProtectedContentSchema
 >;
+export type EncryptedChatComposerDraftProtectedContent = z.infer<
+  typeof encryptedChatComposerDraftProtectedContentSchema
+>;
 export type EncryptedChatPlanProtectedContent = z.infer<
   typeof encryptedChatPlanProtectedContentSchema
 >;
@@ -342,6 +377,18 @@ export type QueuedPromptProtectedContent = z.infer<
 >;
 export type QueuedPromptOpaqueContent = z.infer<
   typeof queuedPromptOpaqueContentSchema
+>;
+export type ChatComposerDraftProtectedContent = z.infer<
+  typeof chatComposerDraftProtectedContentSchema
+>;
+export type ChatComposerDraftOpaqueState = z.infer<
+  typeof chatComposerDraftOpaqueStateSchema
+>;
+export type EncryptedChatComposerDraftWireState = z.infer<
+  typeof encryptedChatComposerDraftWireStateSchema
+>;
+export type EncryptedChatComposerDraftUpdate = z.infer<
+  typeof encryptedChatComposerDraftUpdateSchema
 >;
 export type InteractionProtectedClassification = z.infer<
   typeof interactionProtectedClassificationSchema

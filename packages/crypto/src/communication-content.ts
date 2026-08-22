@@ -1,9 +1,11 @@
 import {
   chatMessageProtectedClassificationSchema,
   chatMessageProtectedContentSchema,
+  chatComposerDraftProtectedContentSchema,
   chatPlanProtectedClassificationSchema,
   chatPlanProtectedContentSchema,
   encryptedChatMessageProtectedContentSchema,
+  encryptedChatComposerDraftProtectedContentSchema,
   encryptedChatPlanProtectedContentSchema,
   encryptedInteractionRequestContentSchema,
   encryptedInteractionResponseContentSchema,
@@ -14,14 +16,17 @@ import {
   queuedPromptProtectedClassificationSchema,
   queuedPromptProtectedContentSchema,
   CHAT_MESSAGE_PROTECTED_CONTENT_BYTES_LIMIT,
+  CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT,
   CHAT_PLAN_PROTECTED_CONTENT_BYTES_LIMIT,
   INTERACTION_PROTECTED_CONTENT_BYTES_LIMIT,
   QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT,
   type ChatMessageProtectedClassification,
   type ChatMessageProtectedContent,
+  type ChatComposerDraftProtectedContent,
   type ChatPlanProtectedClassification,
   type ChatPlanProtectedContent,
   type EncryptedChatMessageProtectedContent,
+  type EncryptedChatComposerDraftProtectedContent,
   type EncryptedChatPlanProtectedContent,
   type EncryptedInteractionRequestContent,
   type EncryptedInteractionResponseContent,
@@ -111,6 +116,21 @@ export function queuedPromptContentAssociatedData(input: {
     table: "queued_prompts",
     rowId: input.promptId,
     field: "protected_content",
+    keyRevision: input.keyRevision,
+  });
+}
+
+export function chatComposerDraftContentAssociatedData(input: {
+  ownerId: string;
+  chatId: string;
+  keyRevision: number;
+}): EncryptionAssociatedData {
+  return associatedData({
+    ownerId: input.ownerId,
+    component: "chat-content",
+    table: "chats",
+    rowId: input.chatId,
+    field: "protected_composer_draft",
     keyRevision: input.keyRevision,
   });
 }
@@ -379,6 +399,40 @@ export async function encryptQueuedPromptProtectedContent(input: {
     envelopeSchema: encryptedQueuedPromptProtectedContentSchema,
     associatedData: queuedPromptContentAssociatedData(input),
     maximumBytes: QUEUED_PROMPT_PROTECTED_CONTENT_BYTES_LIMIT,
+  });
+}
+
+export async function encryptChatComposerDraftProtectedContent(input: {
+  ownerId: string;
+  chatId: string;
+  keyRevision: number;
+  componentKey: Uint8Array;
+  content: ChatComposerDraftProtectedContent;
+}): Promise<EncryptedChatComposerDraftProtectedContent> {
+  return encryptProtectedContent({
+    componentKey: input.componentKey,
+    content: input.content,
+    contentSchema: chatComposerDraftProtectedContentSchema,
+    envelopeSchema: encryptedChatComposerDraftProtectedContentSchema,
+    associatedData: chatComposerDraftContentAssociatedData(input),
+    maximumBytes: CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT,
+  });
+}
+
+export async function decryptChatComposerDraftProtectedContent(input: {
+  ownerId: string;
+  chatId: string;
+  keyRevision: number;
+  componentKey: Uint8Array;
+  encrypted: EncryptedChatComposerDraftProtectedContent;
+}): Promise<ChatComposerDraftProtectedContent> {
+  return decryptProtectedContent({
+    componentKey: input.componentKey,
+    encrypted: input.encrypted,
+    envelopeSchema: encryptedChatComposerDraftProtectedContentSchema,
+    contentSchema: chatComposerDraftProtectedContentSchema,
+    associatedData: chatComposerDraftContentAssociatedData(input),
+    maximumBytes: CHAT_COMPOSER_DRAFT_PROTECTED_CONTENT_BYTES_LIMIT,
   });
 }
 

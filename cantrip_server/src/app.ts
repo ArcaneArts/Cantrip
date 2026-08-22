@@ -81,6 +81,8 @@ import {
   codexSkillRootsResultSchema,
   codexSkillRootsUpdateSchema,
   chatCompactAcceptedSchema,
+  encryptedChatComposerDraftUpdateSchema,
+  encryptedChatComposerDraftWireStateSchema,
   archivedChatCleanupResultSchema,
   archivedChatWireListSchema,
   chatGoalClearSchema,
@@ -1031,6 +1033,7 @@ export function mutationLiveResources(
   if (route === "/api/chats/:chatId/console") {
     return ["chat", "terminal", "project-tab-layout"];
   }
+  if (route === "/api/chats/:chatId/composer-draft") return [];
   if (
     route === "/api/projects/:projectId/chats" ||
     route === "/api/chats/:chatId"
@@ -22670,6 +22673,39 @@ export async function buildApp({
       );
       return chat
         ? reply.send(chatWireSummarySchema.parse(chat))
+        : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.get<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/composer-draft",
+    async (request, reply) => {
+      const draft = await repository.getChatComposerDraftWireState(
+        applicationOwnerId(),
+        request.params.chatId,
+      );
+      return draft
+        ? reply.send(encryptedChatComposerDraftWireStateSchema.parse(draft))
+        : reply.code(404).send({ error: "Chat not found." });
+    },
+  );
+
+  app.put<{ Params: { chatId: string } }>(
+    "/api/chats/:chatId/composer-draft",
+    async (request, reply) => {
+      const input = encryptedChatComposerDraftUpdateSchema.safeParse(
+        request.body,
+      );
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      const draft = await repository.updateChatComposerDraft(
+        applicationOwnerId(),
+        request.params.chatId,
+        input.data.state,
+      );
+      return draft
+        ? reply.send(encryptedChatComposerDraftWireStateSchema.parse(draft))
         : reply.code(404).send({ error: "Chat not found." });
     },
   );

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   decryptChatMessageProtectedContent,
+  decryptChatComposerDraftProtectedContent,
   decryptChatPlanProtectedContent,
   decryptInteractionRequestContent,
   decryptInteractionResponseContent,
   decryptQueuedPromptProtectedContent,
   encryptChatMessageProtectedContent,
+  encryptChatComposerDraftProtectedContent,
   encryptChatPlanProtectedContent,
   encryptInteractionRequestContent,
   encryptInteractionResponseContent,
@@ -47,6 +49,12 @@ describe("communication trusted-endpoint encryption codecs", () => {
       classification: promptClassification,
       text: "Sentinel queued prompt",
     };
+    const draftContent = {
+      version: 1 as const,
+      text: "Sentinel unfinished draft",
+      mode: "plan" as const,
+      reasoningEffort: "high",
+    };
     const requestContent = {
       version: 1 as const,
       classification: interactionClassification,
@@ -77,6 +85,13 @@ describe("communication trusted-endpoint encryption codecs", () => {
       keyRevision,
       componentKey: chatKey,
       content: promptContent,
+    });
+    const draft = await encryptChatComposerDraftProtectedContent({
+      ownerId,
+      chatId: "chat-1",
+      keyRevision,
+      componentKey: chatKey,
+      content: draftContent,
     });
     const request = await encryptInteractionRequestContent({
       ownerId,
@@ -113,6 +128,15 @@ describe("communication trusted-endpoint encryption codecs", () => {
         publicClassification: promptClassification,
       }),
     ).resolves.toEqual(promptContent);
+    await expect(
+      decryptChatComposerDraftProtectedContent({
+        ownerId,
+        chatId: "chat-1",
+        keyRevision,
+        componentKey: chatKey,
+        encrypted: draft,
+      }),
+    ).resolves.toEqual(draftContent);
     await expect(
       decryptInteractionRequestContent({
         ownerId,
@@ -162,6 +186,32 @@ describe("communication trusted-endpoint encryption codecs", () => {
         componentKey,
         encrypted,
         publicClassification: classification,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a protected composer draft replayed under another chat", async () => {
+    const componentKey = randomBytes(32);
+    const encrypted = await encryptChatComposerDraftProtectedContent({
+      ownerId,
+      chatId: "chat-1",
+      keyRevision,
+      componentKey,
+      content: {
+        version: 1,
+        text: "Private unfinished message",
+        mode: "default",
+        reasoningEffort: null,
+      },
+    });
+
+    await expect(
+      decryptChatComposerDraftProtectedContent({
+        ownerId,
+        chatId: "chat-2",
+        keyRevision,
+        componentKey,
+        encrypted,
       }),
     ).rejects.toThrow();
   });

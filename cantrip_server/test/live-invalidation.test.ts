@@ -13,4 +13,10 @@ describe("live mutation invalidation", () => {
     expect(mutationLiveResources(workerRoute, "write")).toEqual(["worker"]);
     expect(mutationLiveResources(worktreeRoute, "write")).toEqual(["worktree"]);
   });
+
+  it("does not fan out chat-list invalidations for composer autosaves", () => {
+    expect(mutationLiveResources("/api/chats/:chatId/composer-draft")).toEqual(
+      [],
+    );
+  });
 });

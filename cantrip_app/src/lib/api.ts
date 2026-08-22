@@ -38,6 +38,8 @@ import {
   chatMessageSchema,
   chatMessageWireListSchema,
   chatWireSummarySchema,
+  encryptedChatComposerDraftUpdateSchema,
+  encryptedChatComposerDraftWireStateSchema,
   chatCompactAcceptedSchema,
   chatImportCreateSchema,
   chatImportJobListSchema,
@@ -323,6 +325,7 @@ import type {
   ChatAttachmentSource,
   ChatGoalCreate,
   ChatGoalUpdate,
+  ChatComposerDraft,
   ChatImportCreate,
   ChatPlanAnswer,
   ChatPlanUpdate,
@@ -465,6 +468,10 @@ import {
   openQueuedPromptOpaqueSummary,
   replaceEncryptedQueuedPrompt,
 } from "@/lib/chat-message-encryption";
+import {
+  openChatComposerDraft,
+  protectChatComposerDraft,
+} from "@/lib/chat-composer-draft-encryption";
 import {
   createEncryptedAgentInteractionResponse,
   openEncryptedAgentInteractionRequest,
@@ -5582,6 +5589,31 @@ export async function startTurn(
         status: "queued" as const,
         prompt: await openQueuedPromptOpaqueSummary(result.prompt),
       };
+}
+
+export async function getChatComposerDraft(chatId: string) {
+  return openChatComposerDraft(
+    chatId,
+    encryptedChatComposerDraftWireStateSchema.parse(
+      await request(`/api/chats/${encodeURIComponent(chatId)}/composer-draft`),
+    ),
+  );
+}
+
+export async function saveChatComposerDraft(
+  chatId: string,
+  draft: ChatComposerDraft | null,
+) {
+  const state = draft ? await protectChatComposerDraft(chatId, draft) : null;
+  const wire = encryptedChatComposerDraftWireStateSchema.parse(
+    await request(`/api/chats/${encodeURIComponent(chatId)}/composer-draft`, {
+      method: "PUT",
+      body: JSON.stringify(
+        encryptedChatComposerDraftUpdateSchema.parse({ state }),
+      ),
+    }),
+  );
+  return openChatComposerDraft(chatId, wire);
 }
 
 export async function getQueuedPrompts(chatId: string) {

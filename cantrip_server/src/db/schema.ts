@@ -83,6 +83,7 @@ import type {
 } from "@cantrip/protocol/encryption";
 import type { ProtectedSecretEnvelope } from "@cantrip/protocol/protected-secrets";
 import type {
+  ChatComposerDraftOpaqueState,
   ChatPlanOpaqueState,
   EncryptedInteractionRequestContent,
   EncryptedInteractionResponseContent,
@@ -2136,6 +2137,12 @@ export const chats = pgTable(
     permissionProfileId: text("permission_profile_id"),
     automationPaused: boolean("automation_paused").notNull().default(false),
     planMode: text("plan_mode").notNull().default("default"),
+    protectedComposerDraft: jsonb(
+      "protected_composer_draft",
+    ).$type<ChatComposerDraftOpaqueState>(),
+    composerDraftUpdatedAt: timestamp("composer_draft_updated_at", {
+      withTimezone: true,
+    }),
     protectedPlan: jsonb("protected_plan").$type<ChatPlanOpaqueState>(),
     hasPendingPlanQuestion: boolean("has_pending_plan_question")
       .notNull()
