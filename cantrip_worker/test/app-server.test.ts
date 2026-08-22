@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   CANTRIP_MCP_TOOL_NAMES,
@@ -8,6 +11,7 @@ import {
 import {
   CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
   CANTRIP_DYNAMIC_TOOLS_OVERRIDE,
+  NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS,
   cantripChatThreadParams,
   agentInteractionRequestFromServerRequest,
   appendBoundedCommandOutput,
@@ -52,6 +56,7 @@ import {
   stageAgentMessage,
   workflowMeasuredUsage,
   workflowDeveloperInstructions,
+  workspaceHasGitMetadata,
 } from "../src/codex/app-server.js";
 
 describe("external Codex thread change coalescing", () => {
@@ -905,6 +910,50 @@ describe("managed Cantrip MCP guidance", () => {
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`policy_read`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("`cantrip -h`");
     expect(CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS).toContain("fallback");
+  });
+
+  it("adds non-Git guidance only when local Git metadata is absent", () => {
+    expect(cantripChatThreadParams(true).developerInstructions).toBe(
+      CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS,
+    );
+    expect(cantripChatThreadParams(false).developerInstructions).toBe(
+      `${CANTRIP_AGENT_DEVELOPER_INSTRUCTIONS}\n\n${NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS}`,
+    );
+    expect(NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS).toContain(
+      "Do not run Git or GitHub commands",
+    );
+    expect(NON_GIT_WORKSPACE_DEVELOPER_INSTRUCTIONS).toContain(
+      "Do not initialize Git unless the user explicitly asks",
+    );
+  });
+
+  it("recognizes Git directories, worktree files, and ancestor metadata", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "cantrip-git-context-"));
+    try {
+      const plain = path.join(root, "plain", "nested");
+      const repository = path.join(root, "repository");
+      const repositoryChild = path.join(repository, "nested");
+      const worktree = path.join(root, "worktree");
+      await Promise.all([
+        mkdir(plain, { recursive: true }),
+        mkdir(path.join(repository, ".git"), { recursive: true }),
+        mkdir(repositoryChild, { recursive: true }),
+        mkdir(worktree, { recursive: true }),
+      ]);
+      await writeFile(
+        path.join(worktree, ".git"),
+        "gitdir: ../repository/.git/worktrees/example\n",
+      );
+
+      await expect(workspaceHasGitMetadata(plain)).resolves.toBe(false);
+      await expect(workspaceHasGitMetadata(repository)).resolves.toBe(true);
+      await expect(workspaceHasGitMetadata(repositoryChild)).resolves.toBe(
+        true,
+      );
+      await expect(workspaceHasGitMetadata(worktree)).resolves.toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 });
 
