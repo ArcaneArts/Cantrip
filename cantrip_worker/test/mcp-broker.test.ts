@@ -13,6 +13,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CantripServerRequestError } from "../src/cli-client.js";
+import { readWorkerLogs } from "../src/logger.js";
 import { CantripMcpBroker } from "../src/mcp/broker.js";
 import type { WorkerEncryptionService } from "../src/worker-encryption.js";
 
@@ -706,7 +707,7 @@ describe("Cantrip MCP worker broker", () => {
     }
   });
 
-  it("revokes a binding when the durable server rejects it as stale", async () => {
+  it("refreshes a binding after a transient stale server rejection", async () => {
     const dataDirectory = await temporaryDirectory();
     const broker = new CantripMcpBroker(
       {
@@ -716,12 +717,21 @@ describe("Cantrip MCP worker broker", () => {
         workerId: "worker-one",
       },
       {
-        execute: async () => {
-          throw new CantripServerRequestError(
-            "The lane changed.",
-            409,
-            "stale-binding",
-          );
+        execute: async (binding) => {
+          if (binding.executionLaneId === "lane-one") {
+            throw new CantripServerRequestError(
+              "The lane changed.",
+              409,
+              "stale-binding",
+            );
+          }
+          return {
+            summary: "Current context loaded.",
+            target: null,
+            worktreeId: binding.worktreeId,
+            continuationScheduled: false,
+            mutated: false,
+          };
         },
       },
     );
@@ -740,7 +750,33 @@ describe("Cantrip MCP worker broker", () => {
         }),
       });
       expect(response.status).toBe(409);
-      await expect(access(attachment.connectionPath)).rejects.toThrow();
+      const rejectionLog = readWorkerLogs({
+        afterCursor: 0,
+        limit: 200,
+        minimumLevel: "trace",
+      }).records.find(
+        (record) =>
+          record.context?.event === "mcp.request.rejected" &&
+          record.context.bindingId === attachment.binding.bindingId,
+      );
+      expect(rejectionLog).toMatchObject({
+        level: "warn",
+        context: {
+          operation: "context.get",
+          reasonCode: "stale-binding",
+          errorCode: "stale-binding",
+          executionLaneId: "lane-one",
+          worktreeId: "worktree-one",
+          permissionProfileId: ":workspace-write",
+        },
+      });
+      await expect(access(attachment.connectionPath)).resolves.toBeUndefined();
+      const refreshed = broker.createBinding({
+        ...bindingInput(),
+        executionLaneId: "lane-two",
+      });
+      expect(refreshed.binding.bindingId).toBe(attachment.binding.bindingId);
+      expect(refreshed.connectionPath).toBe(attachment.connectionPath);
       const retry = await fetch(`${broker.endpoint}/v1/execute`, {
         method: "POST",
         headers: {
@@ -752,7 +788,10 @@ describe("Cantrip MCP worker broker", () => {
           request: { operation: "context.get", arguments: {} },
         }),
       });
-      expect(retry.status).toBe(401);
+      expect(retry.status).toBe(200);
+      await expect(retry.json()).resolves.toMatchObject({
+        summary: "Current context loaded.",
+      });
     } finally {
       await broker.close();
     }

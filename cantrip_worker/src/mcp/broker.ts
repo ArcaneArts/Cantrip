@@ -29,7 +29,7 @@ import {
 
 import { CantripServerRequestError } from "../cli-client.js";
 import type { WorkerConfig } from "../config.js";
-import { workerLogger } from "../logger.js";
+import { workerLogError, workerLogger } from "../logger.js";
 import type { WorkerEncryptionService } from "../worker-encryption.js";
 import { invokeCantripMcpOperation } from "./client.js";
 import { CANTRIP_MCP_MAX_RESPONSE_BYTES } from "./http.js";
@@ -210,6 +210,21 @@ export class CantripMcpBroker {
             issuedAt: stored.binding.issuedAt,
             expiresAt: stored.binding.expiresAt,
           });
+          workerLogger.event("debug", "Cantrip MCP binding refreshed", {
+            event: "mcp.binding.refreshed",
+            subsystem: "mcp-broker",
+            operation: "refresh-binding",
+            status: "completed",
+            workerId: stored.binding.workerId,
+            projectId: stored.binding.projectId,
+            chatId: stored.binding.chatId,
+            executionLaneId: stored.binding.executionLaneId,
+            worktreeId: stored.binding.worktreeId,
+            permissionProfileId: stored.binding.permissionProfileId,
+            counts: {
+              allowedOperations: stored.binding.allowedOperations.length,
+            },
+          });
           return {
             binding: stored.binding,
             connection: stored.connection,
@@ -318,11 +333,13 @@ export class CantripMcpBroker {
       void (async () => {
         let requestId = randomUUID();
         let bindingId: string | null = null;
+        let operation: string = "execute";
         try {
           const parsed = cantripMcpBrokerOperationRequestSchema.parse(
             await readJsonBody(request),
           );
           bindingId = parsed.bindingId;
+          operation = parsed.request.operation;
           requestId = randomUUID();
           const stored = this.bindingFor(
             parsed.bindingId,
@@ -380,10 +397,33 @@ export class CantripMcpBroker {
           }
         } catch (error) {
           if (error instanceof CantripServerRequestError) {
-            if (
-              bindingId &&
-              (error.code === "stale-binding" || error.code === "expired")
-            ) {
+            const stored = bindingId ? this.#bindings.get(bindingId) : null;
+            workerLogger.event("warn", "Cantrip MCP operation was rejected", {
+              event: "mcp.request.rejected",
+              subsystem: "mcp-broker",
+              operation,
+              reasonCode: error.code ?? "server-rejected",
+              status: "failed",
+              requestId,
+              ...(bindingId ? { bindingId } : {}),
+              ...(stored
+                ? {
+                    workerId: stored.binding.workerId,
+                    projectId: stored.binding.projectId,
+                    chatId: stored.binding.chatId,
+                    executionLaneId: stored.binding.executionLaneId,
+                    worktreeId: stored.binding.worktreeId,
+                    permissionProfileId: stored.binding.permissionProfileId,
+                  }
+                : {}),
+              error: workerLogError(error),
+            });
+            // A stale claim can be a short race between server lane state and
+            // worker dispatch. Keep this authenticated local endpoint alive so
+            // the next turn can refresh its trusted claims in place. The
+            // server rejects every stale request independently, so retaining
+            // the endpoint cannot authorize an operation with stale claims.
+            if (bindingId && error.code === "expired") {
               this.revokeBinding(bindingId);
             }
             sendJson(response, error.status, {
