@@ -46,7 +46,8 @@ export function GoalPanel({
   return (
     <section
       aria-label="Codex goal"
-      className="mb-2 rounded-xl border border-violet-500/25 bg-violet-500/5 p-3 shadow-sm"
+      data-slot="goal-panel"
+      className="mb-2 rounded-xl border border-violet-500/30 bg-[var(--popover-solid)] p-3 text-popover-foreground shadow-lg"
     >
       <div className="flex items-start gap-3">
         <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-400">

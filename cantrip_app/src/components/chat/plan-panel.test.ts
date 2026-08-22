@@ -1,4 +1,6 @@
-import type { PendingPlanQuestion } from "@cantrip/protocol";
+import type { ChatPlanState, PendingPlanQuestion } from "@cantrip/protocol";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { buildPlanAnswers } from "./plan-panel";
@@ -51,5 +53,30 @@ describe("PlanPanel answers", () => {
         { topology: "Two regional pairs" },
       ),
     ).toEqual({ topology: ["Two regional pairs"], notes: ["None"] });
+  });
+
+  it("bounds long plans inside an opaque scrolling surface", async () => {
+    const { PlanPanel } = await import("./plan-panel");
+    const state: ChatPlanState = {
+      mode: "plan",
+      explanation: "Choose how the work should proceed.",
+      steps: [],
+      question,
+    };
+    const markup = renderToStaticMarkup(
+      createElement(PlanPanel, {
+        error: null,
+        onAnswer: () => undefined,
+        pending: false,
+        state,
+      }),
+    );
+
+    expect(markup).toContain('data-slot="plan-panel"');
+    expect(markup).toContain("max-h-[min(32rem,calc(100svh-12rem))]");
+    expect(markup).toContain("bg-[var(--popover-solid)]");
+    expect(markup).toContain('data-slot="plan-panel-scroll"');
+    expect(markup).toContain("overflow-y-auto");
+    expect(markup).toContain("shrink-0");
   });
 });

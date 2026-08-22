@@ -134,7 +134,8 @@ describe("agent interaction response builders", () => {
       }),
     );
 
-    expect(markup).toContain("bg-popover");
+    expect(markup).toContain('data-slot="agent-interaction-card"');
+    expect(markup).toContain("bg-[var(--popover-solid)]");
     expect(markup).not.toContain("bg-amber-500/5");
   });
 });
