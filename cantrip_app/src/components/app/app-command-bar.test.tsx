@@ -30,6 +30,9 @@ vi.mock("@/lib/project-encryption", () => ({
   createGithubProject: vi.fn(),
   createManagedFolderProject: vi.fn(),
 }));
+vi.mock("@/components/projects/repository-import-options-dialog", () => ({
+  RepositoryImportOptionsDialog: () => null,
+}));
 
 const projects = [
   {

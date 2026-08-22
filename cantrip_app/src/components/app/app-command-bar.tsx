@@ -17,6 +17,7 @@ import {
   GitFork,
   Loader2,
   Lock,
+  MapPin,
   Palette,
   Plus,
   Search,
@@ -60,6 +61,10 @@ import {
   createGithubProject,
   createManagedFolderProject,
 } from "@/lib/project-encryption";
+import {
+  RepositoryImportOptionsDialog,
+  type RepositoryImportOptions,
+} from "@/components/projects/repository-import-options-dialog";
 import { resolveProjectWorkspaceForSelection } from "@/lib/project-workspaces";
 
 const scopeLabels: Record<CommandBarScope, string> = {
@@ -207,6 +212,8 @@ export function AppCommandBar({
   const [pendingRepositoryId, setPendingRepositoryId] = useState<string | null>(
     null,
   );
+  const [customRepository, setCustomRepository] =
+    useState<GithubRepository | null>(null);
   const [pendingScriptCommandId, setPendingScriptCommandId] = useState<
     string | null
   >(null);
@@ -311,7 +318,10 @@ export function AppCommandBar({
     setOperationError(null);
   }, [open]);
 
-  const rememberProject = (project: ProjectSummary, workspaceId: string) => {
+  const rememberProject = (
+    project: ProjectSummary,
+    workspaceIds: ReadonlySet<string>,
+  ) => {
     queryClient.setQueryData<ProjectSummary[]>(["projects"], (current = []) =>
       [...current.filter((item) => item.id !== project.id), project].sort(
         (left, right) => left.position - right.position,
@@ -321,7 +331,7 @@ export function AppCommandBar({
       ["project-workspaces"],
       (current) =>
         current?.map((workspace) =>
-          workspace.id === workspaceId &&
+          workspaceIds.has(workspace.id) &&
           !workspace.projectIds.includes(project.id)
             ? {
                 ...workspace,
@@ -376,7 +386,7 @@ export function AppCommandBar({
         workerId: folderWorker.workerId,
         workspaceIds: [activeWorkspaceId],
       });
-      rememberProject(project, activeWorkspaceId);
+      rememberProject(project, new Set([activeWorkspaceId]));
       onOpenChange(false);
       onCreatedProject(project);
     } catch (error) {
@@ -385,7 +395,10 @@ export function AppCommandBar({
       setFolderSubmitting(false);
     }
   };
-  const importRepository = async (repository: GithubRepository) => {
+  const importRepository = async (
+    repository: GithubRepository,
+    options?: RepositoryImportOptions,
+  ) => {
     if (
       !githubWorkerId ||
       !activeWorkspaceId ||
@@ -397,15 +410,18 @@ export function AppCommandBar({
     }
     setPendingRepositoryId(repository.id);
     setOperationError(null);
+    const workspaceIds = new Set(options?.workspaceIds ?? [activeWorkspaceId]);
+    workspaceIds.add(activeWorkspaceId);
     try {
       const project = await createGithubProject({
         workerId: githubWorkerId,
         repositoryId: repository.id,
         nameWithOwner: repository.nameWithOwner,
         url: repository.url,
-        workspaceIds: [activeWorkspaceId],
+        ...(options?.placement ? { placement: options.placement } : {}),
+        workspaceIds: [...workspaceIds],
       });
-      rememberProject(project, activeWorkspaceId);
+      rememberProject(project, workspaceIds);
       const markImported = (queryKey: readonly unknown[]) =>
         queryClient.setQueryData<GithubRepository[]>(queryKey, (current) =>
           current?.map((item) =>
@@ -424,6 +440,7 @@ export function AppCommandBar({
       onCreatedProject(project);
     } catch (error) {
       setOperationError(errorMessage(error));
+      throw error;
     } finally {
       setPendingRepositoryId(null);
     }
@@ -464,6 +481,9 @@ export function AppCommandBar({
       (github.data && !github.data.authenticated) ||
       (repositories.isError && !hasGithubRepositoryData))
   );
+
+  const githubWorker =
+    workers.find(({ workerId }) => workerId === githubWorkerId) ?? null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -762,7 +782,11 @@ export function AppCommandBar({
                             !activeWorkspaceId,
                           )}
                           className="gap-3 rounded-lg px-3 py-2.5"
-                          onSelect={() => void importRepository(repository)}
+                          onSelect={() =>
+                            void importRepository(repository).catch(
+                              () => undefined,
+                            )
+                          }
                         >
                           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
                             <RepositoryIcon repository={repository} />
@@ -785,7 +809,26 @@ export function AppCommandBar({
                               <Check className="size-3" /> Added
                             </span>
                           ) : (
-                            <Plus className="size-4 shrink-0 text-muted-foreground" />
+                            <span className="flex shrink-0 items-center gap-1">
+                              <Plus className="size-4 text-muted-foreground" />
+                              <button
+                                aria-label={`Add ${repository.nameWithOwner} with location`}
+                                className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                                title="Add with location"
+                                type="button"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  setCustomRepository(repository);
+                                  onOpenChange(false);
+                                }}
+                                onPointerDown={(event) =>
+                                  event.stopPropagation()
+                                }
+                              >
+                                <MapPin className="size-3.5" />
+                              </button>
+                            </span>
                           )}
                         </CommandItem>
                       );
@@ -827,6 +870,24 @@ export function AppCommandBar({
           </span>
         </div>
       </DialogContent>
+      <RepositoryImportOptionsDialog
+        error={operationError}
+        initialWorkspaceIds={
+          activeWorkspaceId ? [activeWorkspaceId] : undefined
+        }
+        open={Boolean(customRepository)}
+        pending={Boolean(pendingRepositoryId)}
+        repositoryName={customRepository?.nameWithOwner ?? "repository"}
+        requiredWorkspaceId={activeWorkspaceId ?? undefined}
+        worker={githubWorker}
+        workspaces={[...workspaces]}
+        onOpenChange={(next) => !next && setCustomRepository(null)}
+        onSubmit={async (options) => {
+          if (!customRepository) return;
+          await importRepository(customRepository, options);
+          setCustomRepository(null);
+        }}
+      />
     </Dialog>
   );
 }

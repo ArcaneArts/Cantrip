@@ -1398,9 +1398,10 @@ export class ProjectReplicaJobRepository {
           progress: progress(
             "succeeded",
             100,
-            result.localFilesDeleted
-              ? "Replica local files were safely removed."
-              : "Replica was removed from Cantrip; local files were retained.",
+            result.warning ??
+              (result.localFilesDeleted
+                ? "Replica local files were safely removed."
+                : "Replica was removed from Cantrip; local files were retained."),
             now,
           ),
           completedAt: now,

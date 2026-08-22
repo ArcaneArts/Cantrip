@@ -85,7 +85,9 @@ class MemoryProjectApi implements ProjectWireApi {
   readonly metadataRegistrations: Record<string, string | string[] | null>[] =
     [];
   readonly rows: ProjectWireSummary[] = [];
+  readonly routingValues = new Map<string, string>();
   readonly worktrees: ProjectWorktreeSummary[] = [];
+  metadataResolutionCalls = 0;
   writes = 0;
 
   protectRepositoryIdentity(): Promise<{
@@ -147,6 +149,25 @@ class MemoryProjectApi implements ProjectWireApi {
         Object.keys(input.values).map((field) => [
           field,
           `ctrr_${field.slice(0, 1).repeat(43)}`,
+        ]),
+      ),
+    });
+  }
+
+  resolveMetadata(input: {
+    values: Record<string, string | string[] | null>;
+  }): Promise<{ values: Record<string, string | string[] | null> }> {
+    this.metadataResolutionCalls += 1;
+    const resolve = (value: string) => this.routingValues.get(value) ?? value;
+    return Promise.resolve({
+      values: Object.fromEntries(
+        Object.entries(input.values).map(([field, value]) => [
+          field,
+          Array.isArray(value)
+            ? value.map(resolve)
+            : typeof value === "string"
+              ? resolve(value)
+              : null,
         ]),
       ),
     });
@@ -289,11 +310,45 @@ describe("encrypted project display names", () => {
       workerId: "worker-a",
       path: `ctrr_${"a".repeat(43)}`,
       displayPath: `ctrr_${"a".repeat(43)}`,
-      placementMode: "managed",
+      placementMode: "managed-link",
       ownershipKind: "cantrip",
-      requestedPath: null,
-      linkPath: null,
+      requestedPath: `ctrr_${"r".repeat(43)}`,
+      linkPath: `ctrr_${"l".repeat(43)}`,
     };
+    row.replicas = [
+      {
+        id: "source-a",
+        projectId: created.id,
+        sourceKind: "git",
+        workerId: "worker-a",
+        workerName: "Worker A",
+        workerOnline: true,
+        path: `ctrr_${"a".repeat(43)}`,
+        displayPath: `ctrr_${"d".repeat(43)}`,
+        placementMode: "managed-link",
+        ownershipKind: "cantrip",
+        requestedPath: `ctrr_${"r".repeat(43)}`,
+        linkPath: `ctrr_${"l".repeat(43)}`,
+        repositoryFingerprint: "f".repeat(64),
+        primaryWorktreeId: "worktree-a",
+        branch: "main",
+        head: "a".repeat(40),
+        dirty: false,
+        ready: true,
+        worktreeCount: 1,
+        lastObservedAt: timestamp,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ];
+    api.routingValues.set(
+      `ctrr_${"r".repeat(43)}`,
+      "/Users/example/linked-repository",
+    );
+    api.routingValues.set(
+      `ctrr_${"l".repeat(43)}`,
+      "/Users/example/linked-repository",
+    );
     api.worktrees.push({
       id: "worktree-a",
       projectSourceId: "source-a",
@@ -319,6 +374,11 @@ describe("encrypted project display names", () => {
 
     const [project] = await adapter.list();
     expect(project?.source?.path).toBe("/Users/example/private-repository");
+    expect(project?.source?.linkPath).toBe("/Users/example/linked-repository");
+    expect(project?.replicas[0]?.requestedPath).toBe(
+      "/Users/example/linked-repository",
+    );
+    expect(api.metadataResolutionCalls).toBe(1);
     expect(JSON.stringify(api.rows)).not.toContain(
       "/Users/example/private-repository",
     );
