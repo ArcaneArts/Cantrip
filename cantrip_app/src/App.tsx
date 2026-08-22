@@ -4,6 +4,7 @@ import type {
   BrowserSummary,
   BrowserFleetService,
   ChatAttachmentSummary,
+  ChatComposerDraft,
   ChatMessage,
   ChatPlanAnswer,
   ChatRelocationJobSummary,
@@ -254,6 +255,7 @@ import {
   chatResourceRefreshIntervalMs,
   chatTranscriptNeedsFastRefresh,
 } from "@/lib/chat-resource-refresh";
+import { scopedChatComposerDraftPersistence } from "@/lib/chat-composer-draft-persistence";
 import { codeGraphChatRefreshIntervalMs } from "@/lib/codegraph-refresh";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -299,6 +301,7 @@ import {
   deleteQueuedPrompt,
   forkChat,
   getChats,
+  getChatComposerDraft,
   getChatGoal,
   getChatPermissionProfiles,
   getChatPlan,
@@ -348,6 +351,7 @@ import {
   reorderProjects,
   reorderQueuedPrompts,
   respondToAgentInteractionRequest,
+  saveChatComposerDraft,
   setChatPaused,
   startTurn,
   steerQueuedPrompt,
@@ -1066,6 +1070,24 @@ function ChatTranscript({
   syncEnabled: boolean;
 }) {
   const queryClient = useQueryClient();
+  const composerDraftQueryKey = useMemo(
+    () => ["chat-composer-draft", chat.id] as const,
+    [chat.id],
+  );
+  const initialComposerDraftRef = useRef<{
+    cached: boolean;
+    draft: ChatComposerDraft | null;
+  } | null>(null);
+  if (!initialComposerDraftRef.current) {
+    const cached = queryClient.getQueryData<ChatComposerDraft | null>(
+      composerDraftQueryKey,
+    );
+    initialComposerDraftRef.current = {
+      cached: cached !== undefined,
+      draft: cached ?? null,
+    };
+  }
+  const initialComposerDraft = initialComposerDraftRef.current;
   const workers = useQuery({
     queryFn: getWorkers,
     queryKey: ["workers"],
@@ -1084,10 +1106,25 @@ function ChatTranscript({
     chat.status,
     chatResourcesLive,
   );
-  const [draft, setDraft] = useState("");
-  const [composerMode, setComposerMode] = useState<ChatTurnMode>("default");
+  const [draft, setDraft] = useState(initialComposerDraft.draft?.text ?? "");
+  const [composerMode, setComposerMode] = useState<ChatTurnMode>(
+    initialComposerDraft.draft?.mode ?? "default",
+  );
   const [composerReasoningEffort, setComposerReasoningEffort] =
-    useState<ReasoningEffort | null>(chat.reasoningEffort);
+    useState<ReasoningEffort | null>(
+      initialComposerDraft.draft?.reasoningEffort ?? chat.reasoningEffort,
+    );
+  const [composerDraftHydrated, setComposerDraftHydrated] = useState(
+    initialComposerDraft.cached,
+  );
+  const composerDraftEditedRef = useRef(false);
+  const composerDraftPersistence = useMemo(
+    () =>
+      scopedChatComposerDraftPersistence(queryClient, chat.id, (nextDraft) =>
+        saveChatComposerDraft(chat.id, nextDraft),
+      ),
+    [chat.id, queryClient],
+  );
   const [editingPrompt, setEditingPrompt] = useState<{
     id: string;
     frozen: boolean;
@@ -1247,6 +1284,13 @@ function ChatTranscript({
         chatTranscriptNeedsFastRefresh(query.state.data),
       ),
   });
+  const composerDraftState = useQuery({
+    enabled: !initialComposerDraft.cached,
+    queryFn: () => getChatComposerDraft(chat.id),
+    queryKey: composerDraftQueryKey,
+    retry: 3,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
   useQuery({
     enabled: syncEnabled,
     queryFn: async () => {
@@ -1303,6 +1347,64 @@ function ChatTranscript({
     retry: false,
     staleTime: 30_000,
   });
+  useEffect(() => {
+    if (composerDraftHydrated || !composerDraftState.isSuccess) return;
+    const restored = composerDraftState.data;
+    if (!composerDraftEditedRef.current) {
+      composerDraftPersistence.markPersisted(restored);
+      if (restored) {
+        setDraft(restored.text);
+        setComposerMode(restored.mode);
+        setComposerReasoningEffort(restored.reasoningEffort);
+      }
+    }
+    setComposerDraftHydrated(true);
+  }, [
+    composerDraftHydrated,
+    composerDraftPersistence,
+    composerDraftState.data,
+    composerDraftState.isSuccess,
+  ]);
+
+  const stagePersistedComposerDraft = useCallback(
+    (nextDraft: ChatComposerDraft | null) => {
+      void queryClient.cancelQueries({ queryKey: composerDraftQueryKey });
+      queryClient.setQueryData(composerDraftQueryKey, nextDraft);
+      composerDraftPersistence.schedule(nextDraft);
+    },
+    [composerDraftPersistence, composerDraftQueryKey, queryClient],
+  );
+
+  useEffect(() => {
+    if (!composerDraftHydrated || editingPrompt) return;
+    const nextDraft: ChatComposerDraft | null = draft
+      ? {
+          text: draft,
+          mode: composerMode,
+          reasoningEffort: composerReasoningEffort,
+        }
+      : null;
+    stagePersistedComposerDraft(nextDraft);
+  }, [
+    composerDraftHydrated,
+    composerMode,
+    composerReasoningEffort,
+    draft,
+    editingPrompt,
+    stagePersistedComposerDraft,
+  ]);
+
+  useEffect(
+    () => () => {
+      void composerDraftPersistence.flush().catch(() => undefined);
+    },
+    [composerDraftPersistence],
+  );
+
+  const clearPersistedComposerDraft = useCallback(() => {
+    stagePersistedComposerDraft(null);
+    return composerDraftPersistence.flush();
+  }, [composerDraftPersistence, stagePersistedComposerDraft]);
   const githubMention = useMemo(
     () => activeGithubMention(draft, composerCaret),
     [composerCaret, draft],
@@ -1631,6 +1733,7 @@ function ChatTranscript({
       setSelectedGithubReferences([]);
       setComposerMode("default");
       clearDraftAttachments();
+      await clearPersistedComposerDraft();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["messages", chat.id] }),
         queryClient.invalidateQueries({ queryKey: ["chats", chat.projectId] }),
@@ -1955,6 +2058,7 @@ function ChatTranscript({
             setComposerMode("default");
             setComposerReasoningEffort(chat.reasoningEffort);
             clearDraftAttachments();
+            void clearPersistedComposerDraft();
           },
         },
       );
@@ -1974,6 +2078,7 @@ function ChatTranscript({
     setSelectedGithubReferences([]);
     setSlashMenuDismissed(true);
     setCommandNotice(null);
+    void clearPersistedComposerDraft();
 
     if (name === "compact") {
       compact.mutate();
@@ -2074,12 +2179,14 @@ function ChatTranscript({
     if (suggestion.kind === "workflow") {
       setDraft("");
       setSelectedGithubReferences([]);
+      void clearPersistedComposerDraft();
       onOpenWorkflow(suggestion.workflow.id);
       return;
     }
     if (suggestion.kind === "saved-command") {
       setDraft("");
       setSelectedGithubReferences([]);
+      void clearPersistedComposerDraft();
       try {
         const result = await invokeSavedWorkflowCommand(suggestion.trigger.id, {
           idempotencyKey: `saved-command-${crypto.randomUUID()}`,
@@ -2718,6 +2825,21 @@ function ChatTranscript({
                   }}
                   onChange={(event) => {
                     const nextDraft = event.target.value;
+                    composerDraftEditedRef.current = true;
+                    if (!editingPrompt) {
+                      stagePersistedComposerDraft(
+                        nextDraft
+                          ? {
+                              text: nextDraft,
+                              mode: composerMode,
+                              reasoningEffort: composerReasoningEffort,
+                            }
+                          : null,
+                      );
+                      if (!composerDraftHydrated) {
+                        setComposerDraftHydrated(true);
+                      }
+                    }
                     setDraft(nextDraft);
                     setComposerCaret(event.target.selectionStart);
                     setSlashMenuDismissed(false);

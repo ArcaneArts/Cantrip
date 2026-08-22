@@ -6415,6 +6415,14 @@ export const chatMessageContentSchema = z.array(
 
 export const chatTurnModeSchema = z.enum(["default", "plan", "goal"]);
 
+export const chatComposerDraftSchema = z
+  .object({
+    text: z.string().max(100_000),
+    mode: chatTurnModeSchema,
+    reasoningEffort: reasoningEffortSchema.nullable(),
+  })
+  .strict();
+
 export const chatMessageCreateSchema = z.object({
   role: chatMessageRoleSchema,
   content: chatMessageContentSchema.min(1),
@@ -13350,6 +13358,7 @@ export type TaskCreateResult = z.infer<typeof taskCreateResultSchema>;
 export type TaskWireCreateResult = z.infer<typeof taskWireCreateResultSchema>;
 export type ChatUpdate = z.infer<typeof chatUpdateSchema>;
 export type EncryptedChatUpdate = z.infer<typeof encryptedChatUpdateSchema>;
+export type ChatComposerDraft = z.infer<typeof chatComposerDraftSchema>;
 export type ChatFork = z.infer<typeof chatForkSchema>;
 export type EncryptedChatFork = z.infer<typeof encryptedChatForkSchema>;
 export type OrderedIds = z.infer<typeof orderedIdsSchema>;

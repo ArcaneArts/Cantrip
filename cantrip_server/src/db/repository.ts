@@ -6,6 +6,8 @@ import {
   agentInteractionRequestSchema,
   chatMessageOpaqueContentSchema,
   chatMessageOpaqueSummarySchema,
+  encryptedChatComposerDraftWireStateSchema,
+  chatComposerDraftOpaqueStateSchema,
   chatPlanOpaqueStateSchema,
   encryptedChatPlanWireStateSchema,
   encryptedQueuedPromptSchema,
@@ -142,6 +144,8 @@ import type {
   TaskMessageOpaqueSummary,
   ChatMessageOpaqueContent,
   ChatMessageOpaqueSummary,
+  ChatComposerDraftOpaqueState,
+  EncryptedChatComposerDraftWireState,
   EncryptedQueuedPrompt,
   QueuedPromptOpaqueContent,
   ThemePreference,
@@ -13105,6 +13109,72 @@ export class ServerRepository {
       .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
       .returning();
     return result[0] ? toChatWireSummary(result[0]) : null;
+  }
+
+  async getChatComposerDraftWireState(
+    ownerId: string,
+    chatId: string,
+  ): Promise<EncryptedChatComposerDraftWireState | null> {
+    const rows = await this.database
+      .select({ chat: schema.chats })
+      .from(schema.chats)
+      .innerJoin(
+        schema.projects,
+        and(
+          eq(schema.projects.id, schema.chats.projectId),
+          eq(schema.projects.ownerId, ownerId),
+        ),
+      )
+      .where(and(eq(schema.chats.id, chatId), isNull(schema.chats.archivedAt)))
+      .limit(1);
+    const chat = rows[0]?.chat;
+    return chat
+      ? encryptedChatComposerDraftWireStateSchema.parse({
+          chatId: chat.id,
+          state: chat.protectedComposerDraft,
+          updatedAt: chat.composerDraftUpdatedAt
+            ? toISOString(chat.composerDraftUpdatedAt)
+            : null,
+        })
+      : null;
+  }
+
+  async updateChatComposerDraft(
+    ownerId: string,
+    chatId: string,
+    state: ChatComposerDraftOpaqueState | null,
+  ): Promise<EncryptedChatComposerDraftWireState | null> {
+    const parsed = state
+      ? chatComposerDraftOpaqueStateSchema.parse(state)
+      : null;
+    const updatedAt = new Date();
+    const rows = await this.database
+      .update(schema.chats)
+      .set({
+        protectedComposerDraft: parsed,
+        composerDraftUpdatedAt: updatedAt,
+      })
+      .where(
+        and(
+          eq(schema.chats.id, chatId),
+          isNull(schema.chats.archivedAt),
+          inArray(
+            schema.chats.projectId,
+            this.database
+              .select({ id: schema.projects.id })
+              .from(schema.projects)
+              .where(eq(schema.projects.ownerId, ownerId)),
+          ),
+        ),
+      )
+      .returning({ id: schema.chats.id });
+    return rows[0]
+      ? encryptedChatComposerDraftWireStateSchema.parse({
+          chatId: rows[0].id,
+          state: parsed,
+          updatedAt: toISOString(updatedAt),
+        })
+      : null;
   }
 
   async setChatAutomationPaused(
