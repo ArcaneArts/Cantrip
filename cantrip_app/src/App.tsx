@@ -122,6 +122,7 @@ import {
   scheduleChatComposerNoticeDismiss,
   type ChatComposerNoticeTone,
 } from "@/components/chat/chat-composer-notice";
+import { updateChatConsoleOpenChats } from "@/components/chat/chat-console-state";
 import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
 import { ChatHistoryRail } from "@/components/chat/chat-history-rail";
@@ -3355,9 +3356,14 @@ export function App() {
         }
       : null,
   );
-  const [chatConsoleChatId, setChatConsoleChatId] = useState<string | null>(
-    null,
-  );
+  const [chatConsoleOpenChats, setChatConsoleOpenChats] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
+  const setChatConsoleOpen = useCallback((chatId: string, open: boolean) => {
+    setChatConsoleOpenChats((current) =>
+      updateChatConsoleOpenChats(current, chatId, open),
+    );
+  }, []);
   const [agentInspectOpenChats, setAgentInspectOpenChats] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -3560,7 +3566,6 @@ export function App() {
       setWorkspaceSelection(emptyWorkspaceSelection());
       resetMobileBottomTabs();
       setPendingSurfaceSelection(null);
-      setChatConsoleChatId(null);
     }
     setShowImporter(source === "github");
     if (source === "folder") setFolderProjectDialogMode("create");
@@ -3575,7 +3580,6 @@ export function App() {
     setWorkspaceSelection(emptyWorkspaceSelection(project.id));
     resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
-    setChatConsoleChatId(null);
     setShowImporter(false);
     setFolderProjectDialogOpen(false);
     setShowSettings(false);
@@ -3599,7 +3603,6 @@ export function App() {
     setSelectedProjectId(projectId);
     setPendingSurfaceSelection({ projectId, tabKey });
     setMobileTabGridOpen(false);
-    setChatConsoleChatId(null);
     void queryClient.invalidateQueries({
       queryKey: ["project-tab-layout", projectId],
     });
@@ -3617,7 +3620,6 @@ export function App() {
   ) => {
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
-    setChatConsoleChatId(null);
     setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);
@@ -4224,7 +4226,7 @@ export function App() {
         subsystem: "codex-console",
       });
     },
-    onSuccess: (terminal) => {
+    onSuccess: (terminal, chatId) => {
       queryClient.setQueryData<TerminalSummary[]>(
         ["terminals", terminal.projectId],
         (current = []) => [
@@ -4232,7 +4234,7 @@ export function App() {
           terminal,
         ],
       );
-      setChatConsoleChatId(terminal.linkedChatId);
+      setChatConsoleOpen(chatId, true);
     },
   });
   const newExplorer = useMutation({
@@ -4646,7 +4648,7 @@ export function App() {
   const deleteChatMutation = useMutation({
     mutationFn: deleteChat,
     onSuccess: async (_value, deletedId) => {
-      if (selectedChatId === deletedId) setChatConsoleChatId(null);
+      setChatConsoleOpen(deletedId, false);
       setTaskChatViewIds((current) => {
         const next = new Set(current);
         next.delete(deletedId);
@@ -4827,7 +4829,6 @@ export function App() {
       const restoreSelection =
         selectedProjectId === projectId
           ? {
-              chatConsoleChatId,
               pendingSurfaceSelection,
               showProjectSettings,
               workspaceSelection,
@@ -4843,7 +4844,6 @@ export function App() {
           setSelectedProjectId(null);
           setWorkspaceSelection(emptyWorkspaceSelection());
           setPendingSurfaceSelection(null);
-          setChatConsoleChatId(null);
           setShowProjectSettings(false);
         }
       });
@@ -4859,7 +4859,6 @@ export function App() {
         setPendingSurfaceSelection(
           context.restoreSelection.pendingSurfaceSelection,
         );
-        setChatConsoleChatId(context.restoreSelection.chatConsoleChatId);
         setShowProjectSettings(context.restoreSelection.showProjectSettings);
       }
     },
@@ -5123,7 +5122,7 @@ export function App() {
   const selectedStandaloneTerminal =
     selectedSurface?.kind === "terminal" ? selectedSurface.entity : undefined;
   const linkedConsoleTerminal =
-    selectedChat && chatConsoleChatId === selectedChat.id
+    selectedChat && chatConsoleOpenChats.has(selectedChat.id)
       ? terminals.data?.find(
           (terminal) => terminal.linkedChatId === selectedChat.id,
         )
@@ -5695,7 +5694,7 @@ export function App() {
       (terminal) => terminal.linkedChatId === chat.id,
     );
     if (existing) {
-      setChatConsoleChatId(chat.id);
+      setChatConsoleOpen(chat.id, true);
     } else {
       openChatConsole.mutate(chat.id);
     }
@@ -5840,7 +5839,6 @@ export function App() {
     setSelectedProjectId(action.projectId);
     setWorkspaceSelection(emptyWorkspaceSelection(action.projectId));
     setPendingSurfaceSelection(null);
-    setChatConsoleChatId(null);
   }, [
     compactShell,
     explorerFileTarget,
@@ -6045,7 +6043,6 @@ export function App() {
       setWorkspaceSelection(emptyWorkspaceSelection());
       resetMobileBottomTabs();
       setPendingSurfaceSelection(null);
-      setChatConsoleChatId(null);
       setShowImporter(false);
       setShowSettings(false);
       setShowServerAdmin(false);
@@ -6059,7 +6056,6 @@ export function App() {
     setSelectedProjectId(nextProjectId);
     setWorkspaceSelection(emptyWorkspaceSelection(nextProjectId));
     setPendingSurfaceSelection(null);
-    setChatConsoleChatId(null);
     setShowImporter(false);
     setShowSettings(false);
     setShowServerAdmin(false);
@@ -6070,7 +6066,6 @@ export function App() {
     setWorkspaceSelection(emptyWorkspaceSelection(projectId));
     resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
-    setChatConsoleChatId(null);
     setDetachedGroupId(null);
     revealWorkspace();
   };
@@ -6182,7 +6177,6 @@ export function App() {
     setWorkspaceSelection(emptyWorkspaceSelection());
     resetMobileBottomTabs();
     setPendingSurfaceSelection(null);
-    setChatConsoleChatId(null);
     setDetachedGroupId(null);
     setShowImporter(false);
     setShowSettings(false);
@@ -6227,13 +6221,11 @@ export function App() {
       setPendingSurfaceSelection({ projectId: selectedProjectId, tabKey });
     }
     setMobileTabGridOpen(false);
-    setChatConsoleChatId(null);
     setDetachedGroupId(null);
     revealWorkspace();
   };
   const selectMobileOverview = () => {
     setMobileTabGridOpen(false);
-    setChatConsoleChatId(null);
     setWorkspaceSelection((current) =>
       selectWorkspaceOverview(current, selectedProjectId),
     );
@@ -6246,7 +6238,6 @@ export function App() {
         selectWorkspaceGroup(current, layout, groupId),
       );
       setDetachedGroupId(null);
-      setChatConsoleChatId(null);
       revealWorkspace();
     };
     if (!desktopRuntime || isPopout) {
@@ -6260,7 +6251,6 @@ export function App() {
             selectWorkspaceGroup(current, layout, groupId),
           );
           setDetachedGroupId(groupId);
-          setChatConsoleChatId(null);
           revealWorkspace();
         } else {
           selectLocally();
@@ -6548,7 +6538,7 @@ export function App() {
             },
             toggleConsole: () =>
               linkedConsoleChat
-                ? setChatConsoleChatId(null)
+                ? setChatConsoleOpen(activeChat.id, false)
                 : showChatConsole(activeChat),
             toggleInspect: () =>
               setAgentInspectOpen(
@@ -7786,7 +7776,7 @@ export function App() {
             {linkedConsoleChat ? (
               <TerminalView
                 terminal={selectedTerminal}
-                onExit={() => setChatConsoleChatId(null)}
+                onExit={() => setChatConsoleOpen(linkedConsoleChat.id, false)}
                 onOpenExternalLink={openTerminalLinkExternally}
                 onOpenLink={openTerminalLink}
               />
