@@ -195,7 +195,10 @@ import { MobileBottomNavigation } from "@/components/mobile/mobile-bottom-naviga
 import { MobileProjectHeader } from "@/components/mobile/mobile-project-header";
 import { MobileProjectSelector } from "@/components/mobile/mobile-project-selector";
 import { MobileProjectTabGrid } from "@/components/mobile/mobile-project-tab-grid";
-import { ProjectSettingsPage } from "@/components/projects/project-settings-page";
+import {
+  ProjectSettingsPage,
+  type ProjectSettingsSection,
+} from "@/components/projects/project-settings-page";
 import { ProjectOverview } from "@/components/projects/project-overview";
 import { EnvironmentRunMenu } from "@/components/run/environment-run-menu";
 import { WindowsLongPathDialog } from "@/components/projects/windows-long-path-dialog";
@@ -3304,6 +3307,8 @@ export function App() {
     useState<SettingsSection>("general");
   const [settingsPolicyId, setSettingsPolicyId] = useState<string | null>(null);
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  const [projectSettingsSection, setProjectSettingsSection] =
+    useState<ProjectSettingsSection>("general");
   const [commandBarOpen, setCommandBarOpen] = useState(false);
   const projectOverviewSelected =
     !isPopout &&
@@ -3507,6 +3512,7 @@ export function App() {
   const openProjectSettings = (
     projectId: string,
     workflowId: string | null = null,
+    section: ProjectSettingsSection = workflowId ? "workflows" : "general",
   ) => {
     setDesktopSidebarDrawerOpen(false);
     setSelectedProjectId(projectId);
@@ -3515,6 +3521,7 @@ export function App() {
     setShowSettings(false);
     setShowServerAdmin(false);
     setShowProjectSettings(true);
+    setProjectSettingsSection(section);
     setSelectedWorkflowIntentId(workflowId);
     setMobileTabGridOpen(false);
   };
@@ -6405,7 +6412,8 @@ export function App() {
             startRunMutation.isPending ||
             openRunMutation.isPending ||
             stopRunMutation.isPending,
-          onConfigure: () => openProjectSettings(selectedProject.id),
+          onConfigure: () =>
+            openProjectSettings(selectedProject.id, null, "environment"),
           onOpen: (runId: string) => openRunMutation.mutate(runId),
           onStart: (action: RunConfigurationAction, configRevision: string) =>
             startRunMutation.mutate({
@@ -7331,6 +7339,7 @@ export function App() {
         ) : showProjectSettings && selectedProject ? (
           <ProjectSettingsPage
             desktopRuntime={desktopRuntime && projectRevealLabel !== null}
+            initialSection={projectSettingsSection}
             initialWorkflowId={selectedWorkflowIntentId}
             project={selectedProject}
             chats={chats.data ?? []}

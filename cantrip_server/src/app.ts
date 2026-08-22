@@ -358,8 +358,11 @@ import {
   settingsBundleWireSchema,
   scriptCommandListSchema,
   RUN_CONFIGURATION_CANONICAL_PATH,
+  runConfigurationAuthoringDocumentSchema,
+  runConfigurationAuthoringSnapshotSchema,
   runConfigurationInspectionSchema,
   runConfigurationSelectionSchema,
+  runConfigurationWriteRequestSchema,
   runEnvironmentSummarySchema,
   runEnvironmentRequestSchema,
   runInstanceResultSchema,
@@ -427,6 +430,7 @@ import {
   workerRunLookupSchema,
   workerRunReconciliationSchema,
   workerRunSnapshotSchema,
+  workerRunConfigurationWriteResultSchema,
   workerUpdateSchema,
   worktreeMutationResultSchema,
   worktreePruneResultSchema,
@@ -4985,6 +4989,20 @@ export async function buildApp({
         }),
       );
     };
+    const runConfigurationAuthoring = async () => {
+      const target = await worktreeContext(context.worktreeId, true);
+      if (target.workerId !== context.workerId) {
+        throw new ExecutionLaneConflictError(
+          "The run configuration placement changed before authoring.",
+        );
+      }
+      return runConfigurationAuthoringSnapshotSchema.parse(
+        await bridge.request(target.workerId, {
+          type: "project.run-configurations.read-authoring",
+          sourcePath: target.sourcePath,
+        }),
+      );
+    };
     const canonicalRunConfigurationRevision = (
       inspection: RunConfigurationInspection,
     ) =>
@@ -5334,6 +5352,57 @@ export async function buildApp({
           summary: `Read run action ${selected.action.name}.`,
           worktreeId: context.worktreeId,
           data: runConfigurationSelectionSchema.parse(selected),
+        });
+      }
+      case "run-config.authoring": {
+        const snapshot = await runConfigurationAuthoring();
+        return cantripCliCommandResultSchema.parse({
+          summary: snapshot.document
+            ? `Read ${snapshot.relativePath} for revision-checked editing.`
+            : snapshot.editingError
+              ? snapshot.editingError
+              : `${snapshot.relativePath} does not exist.`,
+          worktreeId: context.worktreeId,
+          data: snapshot,
+        });
+      }
+      case "run-config.write": {
+        requireRunMutation();
+        const input = runConfigurationWriteRequestSchema.safeParse(
+          call.arguments,
+        );
+        if (!input.success) {
+          throw new CliCommandRequestError(
+            "invalid",
+            400,
+            "The Environment authoring request is invalid.",
+          );
+        }
+        const target = await worktreeContext(context.worktreeId, true);
+        if (target.workerId !== context.workerId) {
+          throw new ExecutionLaneConflictError(
+            "The run configuration placement changed before writing.",
+          );
+        }
+        const result = workerRunConfigurationWriteResultSchema.parse(
+          await bridge.request(target.workerId, {
+            type: "project.run-configurations.write",
+            sourcePath: target.sourcePath,
+            ...input.data,
+          }),
+        );
+        if (!result.written) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            "The Run configuration changed before it could be saved. Reload Environment settings and try again.",
+          );
+        }
+        return cantripCliCommandResultSchema.parse({
+          summary: `Saved ${result.snapshot.relativePath} at revision ${result.snapshot.revision?.slice(0, 12)}.`,
+          worktreeId: context.worktreeId,
+          mutated: true,
+          data: result.snapshot,
         });
       }
       case "run.setup-status": {
@@ -7091,6 +7160,53 @@ export async function buildApp({
             valid: inspection.valid,
           },
         });
+      }
+      case "run.config-init": {
+        const overwrite = call.arguments.overwrite === true;
+        const requestedName = optionalToolString(call.arguments, "name");
+        const currentResult = await agentOperationExecutor.execute(context, {
+          operation: "run-config.authoring",
+          arguments: {},
+        });
+        const current = runConfigurationAuthoringSnapshotSchema.parse(
+          currentResult.data,
+        );
+        if (current.revision && !overwrite) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            `${current.relativePath} already exists. Retry with --overwrite only if replacing it is intentional.`,
+          );
+        }
+        if (!current.revision && current.editingError) {
+          throw new CliCommandRequestError(
+            "conflict",
+            409,
+            current.editingError,
+          );
+        }
+        const document = runConfigurationAuthoringDocumentSchema.safeParse({
+          version: 1,
+          name: requestedName ?? "Project environment",
+          setup: { default: null, win32: null, darwin: null, linux: null },
+          actions: [],
+        });
+        if (!document.success) {
+          throw new CliCommandRequestError(
+            "invalid",
+            400,
+            "The environment name must be non-empty display text no longer than 200 characters.",
+          );
+        }
+        return mutationResult(
+          agentOperationExecutor.execute(context, {
+            operation: "run-config.write",
+            arguments: {
+              expectedRevision: current.revision,
+              document: document.data,
+            },
+          }),
+        );
       }
       case "run.setup-status":
         return agentOperationExecutor.execute(context, {
@@ -20939,6 +21055,56 @@ export async function buildApp({
     }
   });
 
+  app.get<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/run-environment/configuration",
+    async (request, reply) => {
+      try {
+        const context = await resolveAppRunContext(request.params.projectId);
+        const result = await agentOperationExecutor.execute(context, {
+          operation: "run-config.authoring",
+          arguments: {},
+        });
+        return reply.send(
+          runConfigurationAuthoringSnapshotSchema.parse(result.data),
+        );
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string } }>(
+    "/api/projects/:projectId/run-environment/configuration",
+    async (request, reply) => {
+      const input = runConfigurationWriteRequestSchema.safeParse(request.body);
+      if (!input.success) {
+        return reply.code(400).send(invalidBody(input.error.issues));
+      }
+      try {
+        const context = await resolveAppRunContext(request.params.projectId);
+        const result = await agentOperationExecutor.execute(context, {
+          operation: "run-config.write",
+          arguments: input.data,
+        });
+        const snapshot = runConfigurationAuthoringSnapshotSchema.parse(
+          result.data,
+        );
+        publishLiveInvalidation("run", {
+          projectId: request.params.projectId,
+        });
+        await appendAudit(request, {
+          action: "run.configuration.app.updated",
+          resourceId: request.params.projectId,
+          resourceType: "run-configuration",
+          result: "succeeded",
+        });
+        return reply.send(snapshot);
+      } catch (error) {
+        return sendRunApiFailure(reply, error);
+      }
+    },
+  );
+
   app.post<{ Params: { projectId: string } }>(
     "/api/projects/:projectId/runs",
     async (request, reply) => {
@@ -26970,6 +27136,7 @@ export async function buildApp({
           "run.start",
           "run.open",
           "run.setup-retry",
+          "run.config-init",
           "run.stop",
           "explorer.write",
           "terminal.send",
@@ -26990,11 +27157,13 @@ export async function buildApp({
               action:
                 input.data.command === "run.start"
                   ? "run.cli.started"
-                  : input.data.command === "run.open"
-                    ? "run.cli.opened"
-                    : input.data.command === "run.stop"
-                      ? "run.cli.stopped"
-                      : "cli.command.mutated",
+                  : input.data.command === "run.config-init"
+                    ? "run.configuration.cli.updated"
+                    : input.data.command === "run.open"
+                      ? "run.cli.opened"
+                      : input.data.command === "run.stop"
+                        ? "run.cli.stopped"
+                        : "cli.command.mutated",
               actorSessionId: null,
               actorUserId: null,
               ownerId: workerAuth.ownerId,

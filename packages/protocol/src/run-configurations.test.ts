@@ -9,6 +9,7 @@ import {
 } from "./index.js";
 import {
   RUN_CONFIGURATION_CANONICAL_PATH,
+  runConfigurationAuthoringDocumentSchema,
   runConfigurationInspectionSchema,
   runInstanceSchema,
   runSetupStatusResultSchema,
@@ -94,8 +95,17 @@ describe("runConfigurationInspectionSchema", () => {
     expect(cantripAgentOperationNameSchema.parse("run-config.read")).toBe(
       "run-config.read",
     );
+    expect(cantripAgentOperationNameSchema.parse("run-config.authoring")).toBe(
+      "run-config.authoring",
+    );
+    expect(cantripAgentOperationNameSchema.parse("run-config.write")).toBe(
+      "run-config.write",
+    );
     expect(cantripCliCommandNameSchema.parse("run.config-path")).toBe(
       "run.config-path",
+    );
+    expect(cantripCliCommandNameSchema.parse("run.config-init")).toBe(
+      "run.config-init",
     );
     expect(
       workerCommandSchema.parse({
@@ -111,6 +121,41 @@ describe("runConfigurationInspectionSchema", () => {
         type: "project.run-configurations.inspect",
         sourcePath: "/project/source",
         worktreePath: "/untrusted/override",
+      }).success,
+    ).toBe(false);
+    expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.authoring");
+    expect(CANTRIP_MCP_OPERATIONS).not.toContain("run-config.write");
+  });
+
+  it("bounds the complete cross-platform authoring document", () => {
+    expect(
+      runConfigurationAuthoringDocumentSchema.parse({
+        version: 1,
+        name: "Spectral Lab",
+        setup: {
+          default: "dotnet restore",
+          win32: "dotnet restore .\\SpectralLab.slnx",
+          darwin: null,
+          linux: null,
+        },
+        actions: [
+          {
+            name: "Run Spectral Lab",
+            icon: "run",
+            command: "dotnet run",
+            platform: "win32",
+          },
+        ],
+      }),
+    ).toMatchObject({ version: 1, actions: [{ platform: "win32" }] });
+    expect(
+      runConfigurationAuthoringDocumentSchema.safeParse({
+        version: 1,
+        name: "Invalid",
+        setup: { default: null, win32: null, darwin: null, linux: null },
+        actions: [
+          { name: "Run", icon: "run", command: "x\0y", platform: null },
+        ],
       }).success,
     ).toBe(false);
   });

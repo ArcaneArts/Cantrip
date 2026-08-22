@@ -97,6 +97,93 @@ export const runConfigurationSelectionSchema = z
   })
   .strict();
 
+export const runConfigurationAuthoringSetupSchema = z
+  .object({
+    default: runConfigurationScriptSchema.nullable(),
+    win32: runConfigurationScriptSchema.nullable(),
+    darwin: runConfigurationScriptSchema.nullable(),
+    linux: runConfigurationScriptSchema.nullable(),
+  })
+  .strict();
+
+export const runConfigurationAuthoringActionSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200),
+    icon: z.string().trim().min(1).max(100),
+    command: runConfigurationScriptSchema,
+    platform: runConfigurationPlatformSchema.nullable(),
+  })
+  .strict();
+
+export const runConfigurationAuthoringDocumentSchema = z
+  .object({
+    version: z.literal(1),
+    name: z.string().trim().min(1).max(200),
+    setup: runConfigurationAuthoringSetupSchema,
+    actions: z.array(runConfigurationAuthoringActionSchema).max(200),
+  })
+  .strict()
+  .superRefine((document, context) => {
+    const characters =
+      document.name.length +
+      Object.values(document.setup).reduce(
+        (total, command) => total + (command?.length ?? 0),
+        0,
+      ) +
+      document.actions.reduce(
+        (total, action) =>
+          total +
+          action.name.length +
+          action.icon.length +
+          action.command.length,
+        0,
+      );
+    if (characters <= 500_000) return;
+    context.addIssue({
+      code: "custom",
+      message:
+        "Run configuration authoring data cannot exceed 500,000 characters.",
+    });
+  });
+
+export const runConfigurationAuthoringSnapshotSchema = z
+  .object({
+    relativePath: z.literal(RUN_CONFIGURATION_CANONICAL_PATH),
+    sourceControlState: runConfigurationSourceControlStateSchema,
+    revision: runConfigurationDefinitionSchema.shape.revision.nullable(),
+    document: runConfigurationAuthoringDocumentSchema.nullable(),
+    editingError: z.string().trim().min(1).max(1_000).nullable(),
+    inspection: runConfigurationInspectionSchema,
+  })
+  .strict();
+
+export const runConfigurationWriteRequestSchema = z
+  .object({
+    expectedRevision:
+      runConfigurationDefinitionSchema.shape.revision.nullable(),
+    document: runConfigurationAuthoringDocumentSchema,
+  })
+  .strict();
+
+export const workerRunConfigurationWriteResultSchema = z.discriminatedUnion(
+  "written",
+  [
+    z
+      .object({
+        written: z.literal(false),
+        reason: z.literal("revision-mismatch"),
+        snapshot: runConfigurationAuthoringSnapshotSchema,
+      })
+      .strict(),
+    z
+      .object({
+        written: z.literal(true),
+        snapshot: runConfigurationAuthoringSnapshotSchema,
+      })
+      .strict(),
+  ],
+);
+
 export const runInstanceStateSchema = z.enum([
   "queued",
   "starting",
@@ -340,6 +427,24 @@ export type RunConfigurationInspection = z.infer<
 >;
 export type RunConfigurationSelection = z.infer<
   typeof runConfigurationSelectionSchema
+>;
+export type RunConfigurationAuthoringSetup = z.infer<
+  typeof runConfigurationAuthoringSetupSchema
+>;
+export type RunConfigurationAuthoringAction = z.infer<
+  typeof runConfigurationAuthoringActionSchema
+>;
+export type RunConfigurationAuthoringDocument = z.infer<
+  typeof runConfigurationAuthoringDocumentSchema
+>;
+export type RunConfigurationAuthoringSnapshot = z.infer<
+  typeof runConfigurationAuthoringSnapshotSchema
+>;
+export type RunConfigurationWriteRequest = z.infer<
+  typeof runConfigurationWriteRequestSchema
+>;
+export type WorkerRunConfigurationWriteResult = z.infer<
+  typeof workerRunConfigurationWriteResultSchema
 >;
 export type RunInstanceState = z.infer<typeof runInstanceStateSchema>;
 export type RunInstance = z.infer<typeof runInstanceSchema>;

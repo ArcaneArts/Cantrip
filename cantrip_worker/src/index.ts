@@ -253,7 +253,11 @@ import { ProjectShareTunnelDestinationAdapter } from "./project-share-tunnel-ada
 import { readProjectFolderStats } from "./project-folder-stats.js";
 import { readProjectRepositoryStats } from "./project-repository-stats.js";
 import { discoverScriptCommands } from "./script-command-discovery.js";
-import { inspectRunConfigurations } from "./run-configuration-discovery.js";
+import {
+  inspectRunConfigurations,
+  readRunConfigurationAuthoring,
+  writeRunConfiguration,
+} from "./run-configuration-discovery.js";
 import { ManagedRunSupervisor } from "./managed-run-supervisor.js";
 import { RunSetupManager } from "./run-setup-manager.js";
 import {
@@ -1621,6 +1625,14 @@ async function start(): Promise<WorkerRuntimeOutcome> {
         }
       case "project.run-configurations.inspect":
         return inspectRunConfigurations(command.sourcePath);
+      case "project.run-configurations.read-authoring":
+        return readRunConfigurationAuthoring(command.sourcePath);
+      case "project.run-configurations.write":
+        return writeRunConfiguration(
+          command.sourcePath,
+          command.expectedRevision,
+          command.document,
+        );
       case "project.run-setup.start":
         return runSetups!.start(command);
       case "project.run-setup.status":
