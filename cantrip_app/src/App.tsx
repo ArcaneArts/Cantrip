@@ -418,6 +418,7 @@ import {
   watchDesktopWindowFocus,
 } from "@/lib/desktop-popout";
 import {
+  desktopFolderRevealLabel,
   desktopProjectRevealLabel,
   revealProjectInNativeFileManager,
 } from "@/lib/desktop-project-share";
@@ -3303,6 +3304,10 @@ export function App() {
   const desktopRuntime = useMemo(() => isDesktopRuntime(), []);
   const projectRevealLabel = useMemo(
     () => desktopProjectRevealLabel(desktopRuntime, navigator.userAgent),
+    [desktopRuntime],
+  );
+  const folderRevealLabel = useMemo(
+    () => desktopFolderRevealLabel(desktopRuntime, navigator.userAgent),
     [desktopRuntime],
   );
   const overlayTitlebar = useMemo(
@@ -7402,6 +7407,22 @@ export function App() {
             onHeaderChange={setExplorerHeader}
             onLifecycleChange={handleExplorerLifecycleChange}
             onOpenFile={desktopRuntime ? openExplorerFileWindow : undefined}
+            onRevealFolder={
+              folderRevealLabel && selectedProject?.source
+                ? async (explorer, entry, localFolder) => {
+                    const project = projects.data?.find(
+                      (candidate) => candidate.id === explorer.projectId,
+                    );
+                    if (!project?.source) return;
+                    await revealProjectInNativeFileManager(
+                      project,
+                      localFolder,
+                      entry.path,
+                    );
+                  }
+                : undefined
+            }
+            revealLabel={folderRevealLabel ?? undefined}
             repositoryGraphAvailable={explorerRepositoryGraphAvailable(
               selectedProject?.capabilities,
             )}

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   coordinateDesktopProjectReveal,
   directProjectShareUrl,
+  desktopFolderRevealLabel,
   desktopProjectRevealLabel,
   nativeLocalProjectFolderRequest,
   nativeProjectShareRequest,
@@ -43,6 +44,12 @@ describe("desktop project reveal", () => {
     expect(desktopProjectRevealLabel(true, "Windows NT 10.0")).toBe(
       "Reveal in File Explorer",
     );
+    expect(desktopFolderRevealLabel(true, "Macintosh; Mac OS X 15_5")).toBe(
+      "Show in Finder",
+    );
+    expect(desktopFolderRevealLabel(true, "Windows NT 10.0")).toBe(
+      "Show in File Explorer",
+    );
   });
 
   it("mounts the server-issued attachment without revoking a live mount", async () => {
@@ -65,6 +72,7 @@ describe("desktop project reveal", () => {
       mountLeaseMs: 43_200_000,
       projectId: project.id,
       projectName: project.name,
+      relativePath: "",
     });
   });
 
@@ -74,6 +82,7 @@ describe("desktop project reveal", () => {
     ).toEqual({
       folderManagement: null,
       path: "/worker/repositories/ArcaneArts/Cantrip",
+      relativePath: "",
       serverUrl: "https://cantrip.example",
       sourceKind: "git",
       workerId: "desktop-worker-1",
@@ -99,6 +108,7 @@ describe("desktop project reveal", () => {
     ).toEqual({
       folderManagement: "external",
       path: "/Users/example/Documents/notes",
+      relativePath: "",
       serverUrl: "https://cantrip.example",
       sourceKind: "folder",
       workerId: "desktop-worker-1",
@@ -115,6 +125,24 @@ describe("desktop project reveal", () => {
       directTunnelId: "share-tunnel-1",
       fallbackUrl: attachment.url,
     });
+  });
+
+  it("targets a folder beneath the mounted or local project root", () => {
+    expect(
+      nativeProjectShareRequest(
+        attachment,
+        project,
+        undefined,
+        "src/components/explorer",
+      ),
+    ).toMatchObject({ relativePath: "src/components/explorer" });
+    expect(
+      nativeLocalProjectFolderRequest(
+        project,
+        "https://cantrip.example",
+        "src/components/explorer",
+      ),
+    ).toMatchObject({ relativePath: "src/components/explorer" });
   });
 
   it("preserves the capability path when mounting a local direct listener", () => {

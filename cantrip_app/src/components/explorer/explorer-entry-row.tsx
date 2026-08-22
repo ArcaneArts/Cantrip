@@ -52,6 +52,8 @@ export function ExplorerEntryRow({
   entry,
   expanded = false,
   onOpen,
+  onReveal,
+  revealLabel,
   onShowInGraph,
   onOpenTerminal,
   revealed = false,
@@ -62,11 +64,14 @@ export function ExplorerEntryRow({
   entry: ExplorerEntry;
   expanded?: boolean;
   onOpen(): void;
+  onReveal?(localFolder: boolean): void;
+  revealLabel?: string;
   onShowInGraph?(): void;
   onOpenTerminal?(): void;
   revealed?: boolean;
 }) {
   const rowRef = useRef<HTMLButtonElement>(null);
+  const revealLocalFolder = useRef(false);
   const Icon = entryIcon(entry, expanded);
   const metadata = commit ? explorerCommitMetadata(commit) : null;
   const openable = entry.kind === "directory" || entry.viewable;
@@ -162,7 +167,10 @@ export function ExplorerEntryRow({
       </span>
     </button>
   );
-  if (!onShowInGraph && (entry.kind !== "directory" || !onOpenTerminal))
+  if (
+    !onShowInGraph &&
+    (entry.kind !== "directory" || (!onOpenTerminal && !onReveal))
+  )
     return row;
   return (
     <ContextMenu.Root>
@@ -181,6 +189,21 @@ export function ExplorerEntryRow({
             <StyledContextMenuItem onSelect={onOpenTerminal}>
               <SquareTerminal className="size-4" />
               Open in Terminal
+            </StyledContextMenuItem>
+          ) : null}
+          {entry.kind === "directory" && onReveal && revealLabel ? (
+            <StyledContextMenuItem
+              onClick={(event) => {
+                revealLocalFolder.current = event.shiftKey;
+              }}
+              onSelect={() => {
+                const localFolder = revealLocalFolder.current;
+                revealLocalFolder.current = false;
+                onReveal(localFolder);
+              }}
+            >
+              <FolderOpen className="size-4" />
+              {revealLabel}
             </StyledContextMenuItem>
           ) : null}
         </StyledContextMenuContent>
