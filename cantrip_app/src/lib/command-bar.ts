@@ -1,4 +1,4 @@
-export const DOUBLE_SHIFT_WINDOW_MS = 1_000;
+export const DOUBLE_SHIFT_WINDOW_MS = 250;
 
 export type DoubleShiftKeyInput = {
   altKey: boolean;
