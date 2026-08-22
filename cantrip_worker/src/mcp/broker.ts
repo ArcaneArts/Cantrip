@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   renameSync,
   rmSync,
@@ -36,6 +37,7 @@ import { executeCantripMcpOperation } from "./operations.js";
 
 export const CANTRIP_MCP_BINDING_DIRECTORY = "agent-mcp-bindings";
 export const CANTRIP_MCP_BINDING_TTL_MS = 6 * 60 * 60 * 1_000;
+const CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS = 60_000;
 export const CANTRIP_MCP_CONNECTION_FILE = "connection.json";
 export const CANTRIP_MCP_MAX_CONCURRENT_OPERATIONS = 4;
 
@@ -53,6 +55,7 @@ type BindingInput = Omit<
 interface StoredBinding {
   activeRequests: number;
   binding: CantripMcpBinding;
+  connection: CantripMcpConnectionDocument;
   connectionPath: string;
   credential: string;
 }
@@ -68,6 +71,37 @@ function authorized(requestValue: string | undefined, expected: string) {
   const provided = Buffer.from(requestValue.slice("Bearer ".length));
   const wanted = Buffer.from(expected);
   return provided.length === wanted.length && timingSafeEqual(provided, wanted);
+}
+
+function equivalentCanonicalRoot(left: string, right: string): boolean {
+  const normalize = (value: string) => {
+    const normalized = value.replaceAll("\\", "/").replace(/\/+$/u, "");
+    return /^[A-Za-z]:\//u.test(normalized) || normalized.startsWith("//")
+      ? normalized.toLocaleLowerCase()
+      : normalized || "/";
+  };
+  return normalize(left) === normalize(right);
+}
+
+function bindingMatchesInput(
+  binding: CantripMcpBinding,
+  input: BindingInput,
+): boolean {
+  return (
+    binding.ownerId === input.ownerId &&
+    binding.projectId === input.projectId &&
+    binding.chatId === input.chatId &&
+    binding.executionLaneId === input.executionLaneId &&
+    binding.workerId === input.workerId &&
+    binding.worktreeId === input.worktreeId &&
+    equivalentCanonicalRoot(binding.canonicalRoot, input.canonicalRoot) &&
+    binding.rootKind === input.rootKind &&
+    binding.permissionProfileId === input.permissionProfileId &&
+    binding.allowedOperations.length === input.allowedOperations.length &&
+    binding.allowedOperations.every(
+      (operation, index) => operation === input.allowedOperations[index],
+    )
+  );
 }
 
 function sendJson(response: ServerResponse, status: number, payload: unknown) {
@@ -176,12 +210,25 @@ export class CantripMcpBroker {
     if (!this.#server || !this.#endpoint) {
       throw new Error("Cantrip MCP broker is not running.");
     }
+    const now = this.#now();
     for (const stored of this.#bindings.values()) {
       if (stored.binding.chatId === input.chatId) {
+        if (
+          bindingMatchesInput(stored.binding, input) &&
+          existsSync(stored.connectionPath) &&
+          Date.parse(stored.binding.expiresAt) - now >
+            CANTRIP_MCP_BINDING_RENEWAL_WINDOW_MS
+        ) {
+          return {
+            binding: stored.binding,
+            connection: stored.connection,
+            connectionPath: stored.connectionPath,
+          };
+        }
         this.revokeBinding(stored.binding.bindingId);
       }
     }
-    const issuedAtMs = this.#now();
+    const issuedAtMs = now;
     const binding = cantripMcpBindingSchema.parse({
       ...input,
       bindingId: randomUUID(),
@@ -208,6 +255,7 @@ export class CantripMcpBroker {
     this.#bindings.set(binding.bindingId, {
       activeRequests: 0,
       binding,
+      connection,
       connectionPath,
       credential,
     });
