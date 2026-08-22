@@ -111,6 +111,7 @@ import { useStickyChatScroll } from "@/components/chat/use-sticky-chat-scroll";
 import { CustomizationPanel } from "@/components/chat/customization-panel";
 import { GoalPanel } from "@/components/chat/goal-panel";
 import { ChatModeControl } from "@/components/chat/chat-mode-control";
+import { scheduleChatComposerFocus } from "@/components/chat/chat-composer-focus";
 import { ChatComposerPrimaryActions } from "@/components/chat/chat-composer-primary-actions";
 import { ChatPlanProgress } from "@/components/chat/chat-plan-progress";
 import { ContextUsageRing } from "@/components/chat/context-usage-ring";
@@ -388,6 +389,7 @@ import {
   updateMacosProMode,
   updateDesktopWindowTitle,
   watchDesktopPopoutGroup,
+  watchDesktopWindowFocus,
 } from "@/lib/desktop-popout";
 import {
   desktopProjectRevealLabel,
@@ -1042,6 +1044,7 @@ function ChatTranscript({
   onRename,
   onOpenRelocation,
   relocationJob,
+  refocusOnWindowActivation,
   settings,
   syncEnabled,
 }: {
@@ -1058,6 +1061,7 @@ function ChatTranscript({
   onRename(title: string): void;
   onOpenRelocation(): void;
   relocationJob: ChatRelocationJobSummary | null;
+  refocusOnWindowActivation: boolean;
   settings: SettingsBundle | undefined;
   syncEnabled: boolean;
 }) {
@@ -1121,6 +1125,38 @@ function ChatTranscript({
     showScrollToBottom,
     viewportRef: transcriptViewportRef,
   } = useStickyChatScroll(chat.id);
+  useEffect(() => {
+    if (!refocusOnWindowActivation) return;
+    let mounted = true;
+    let stopWatching: (() => void) | null = null;
+    void watchDesktopWindowFocus(() => {
+      if (!mounted) return;
+      scheduleChatComposerFocus(
+        () => (mounted ? composerRef.current : null),
+        (callback) => window.requestAnimationFrame(callback),
+      );
+    })
+      .then((stop) => {
+        if (mounted) stopWatching = stop;
+        else stop();
+      })
+      .catch((error: unknown) => {
+        if (!mounted) return;
+        clientLogger.warn("Desktop chat focus observer failed", {
+          ...operationalErrorMetadata(error),
+          chatId: chat.id,
+          event: "chat.composer.focus-observe.failed",
+          operation: "observe-window-focus",
+          reasonCode: "native-window-error",
+          status: "unavailable",
+          subsystem: "chat",
+        });
+      });
+    return () => {
+      mounted = false;
+      stopWatching?.();
+    };
+  }, [chat.id, refocusOnWindowActivation]);
   const selectedModelId =
     chat.modelId ?? settings?.preferences.defaultModelId ?? "";
   const selectedModel = settings?.models.find(
@@ -7351,6 +7387,7 @@ export function App() {
                 ? currentRelocation
                 : null
             }
+            refocusOnWindowActivation={desktopRuntime}
           />
         ) : selectedProject ? (
           selectedProject.setupStatus !== "ready" ? (

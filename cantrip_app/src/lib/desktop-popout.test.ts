@@ -9,6 +9,7 @@ import {
   desktopPopoutGroupWindowLabel,
   isMacosDesktopRuntime,
   observeDesktopPopoutClosure,
+  observeDesktopWindowFocus,
   parseDesktopExplorerFileTarget,
   parseDesktopPopoutGroupTarget,
   shouldUseOverlayTitlebar,
@@ -115,6 +116,44 @@ describe("desktop pop-out groups", () => {
 
     expect(onClosed).toHaveBeenCalledOnce();
     expect(unlisten).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("desktop window focus", () => {
+  it("notifies only when the native window regains focus", async () => {
+    const onFocused = vi.fn();
+    const unlisten = vi.fn();
+    let focusChanged: (focused: boolean) => void = () => undefined;
+    const currentWindow = {
+      listenFocusChanged: vi
+        .fn()
+        .mockImplementation((listener: (focused: boolean) => void) => {
+          focusChanged = listener;
+          return Promise.resolve(unlisten);
+        }),
+    };
+
+    const stop = await observeDesktopWindowFocus(
+      vi.fn().mockResolvedValue(currentWindow),
+      onFocused,
+    );
+    focusChanged(false);
+    focusChanged(true);
+    stop();
+
+    expect(onFocused).toHaveBeenCalledOnce();
+    expect(unlisten).toHaveBeenCalledOnce();
+  });
+
+  it("is a no-op when no native window is available", async () => {
+    const onFocused = vi.fn();
+    const stop = await observeDesktopWindowFocus(
+      vi.fn().mockResolvedValue(null),
+      onFocused,
+    );
+
+    expect(stop()).toBeUndefined();
+    expect(onFocused).not.toHaveBeenCalled();
   });
 });
 
