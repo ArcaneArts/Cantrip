@@ -33,6 +33,7 @@ mod direct_probe;
 mod local_logs;
 mod process_environment;
 mod project_share;
+mod synthetic_build;
 mod tunnel_forward;
 
 use process_environment::configure_desktop_child;
@@ -919,6 +920,9 @@ pub fn run() {
             desktop_update::select_desktop_update,
             desktop_update::install_desktop_update,
             desktop_update::cancel_desktop_update,
+            synthetic_build::synthetic_build_capability,
+            synthetic_build::list_synthetic_build_commits,
+            synthetic_build::resolve_synthetic_build_target,
             desktop_worker::list_desktop_workers,
             desktop_worker::list_desktop_worker_candidates,
             desktop_worker::pair_desktop_worker,

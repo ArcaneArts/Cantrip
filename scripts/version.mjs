@@ -36,6 +36,72 @@ function nonNegativeInteger(value, name) {
   return value;
 }
 
+function optionalSyntheticValue(environment, name) {
+  const value = environment[name]?.trim();
+  return value || null;
+}
+
+function resolveSyntheticIdentity(environment) {
+  const rawSynthetic = environment.CANTRIP_SYNTHETIC_BUILD?.trim();
+  if (rawSynthetic && rawSynthetic !== "1") {
+    throw new Error("CANTRIP_SYNTHETIC_BUILD must be 1 when enabled.");
+  }
+  if (!rawSynthetic) {
+    return {
+      synthetic: false,
+      commitSha: null,
+      builtAt: null,
+      buildId: null,
+      overlayDigest: null,
+    };
+  }
+
+  const commitSha = optionalSyntheticValue(
+    environment,
+    "CANTRIP_SYNTHETIC_COMMIT_SHA",
+  );
+  if (!commitSha || !/^[a-f0-9]{40,64}$/u.test(commitSha)) {
+    throw new Error(
+      "CANTRIP_SYNTHETIC_COMMIT_SHA must be a full lowercase hexadecimal Git commit SHA.",
+    );
+  }
+  const builtAt = optionalSyntheticValue(
+    environment,
+    "CANTRIP_SYNTHETIC_BUILT_AT",
+  );
+  if (!builtAt || !Number.isFinite(Date.parse(builtAt))) {
+    throw new Error(
+      "CANTRIP_SYNTHETIC_BUILT_AT must be a valid ISO-8601 timestamp.",
+    );
+  }
+  const buildId = optionalSyntheticValue(
+    environment,
+    "CANTRIP_SYNTHETIC_BUILD_ID",
+  );
+  if (!buildId || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u.test(buildId)) {
+    throw new Error(
+      "CANTRIP_SYNTHETIC_BUILD_ID must be a safe non-empty identifier.",
+    );
+  }
+  const overlayDigest = optionalSyntheticValue(
+    environment,
+    "CANTRIP_SYNTHETIC_OVERLAY_DIGEST",
+  );
+  if (!overlayDigest || !/^[a-f0-9]{64}$/u.test(overlayDigest)) {
+    throw new Error(
+      "CANTRIP_SYNTHETIC_OVERLAY_DIGEST must be a lowercase SHA-256 digest.",
+    );
+  }
+
+  return {
+    synthetic: true,
+    commitSha,
+    builtAt: new Date(builtAt).toISOString(),
+    buildId,
+    overlayDigest,
+  };
+}
+
 export function resolveCantripVersion({
   root = repositoryRoot,
   environment = process.env,
@@ -65,11 +131,14 @@ export function resolveCantripVersion({
     patchOverride ? "CANTRIP_VERSION_PATCH" : "Git commit count",
   );
 
+  const syntheticIdentity = resolveSyntheticIdentity(environment);
+
   return Object.freeze({
     major,
     minor,
     patch,
-    version: `${major}.${minor}.${patch}`,
+    version: `${major}.${minor}.${patch}${syntheticIdentity.synthetic ? "-x" : ""}`,
+    ...syntheticIdentity,
   });
 }
 
