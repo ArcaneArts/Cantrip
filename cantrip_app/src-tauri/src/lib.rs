@@ -100,6 +100,8 @@ fn run_shutdown_once(complete: &Mutex<bool>, shutdown: impl FnOnce()) -> bool {
 pub(crate) fn shutdown_owned_runtime(app: &tauri::AppHandle) -> bool {
     let shutdown = app.state::<DesktopShutdownState>();
     run_shutdown_once(&shutdown.complete, || {
+        app.state::<synthetic_build::SyntheticBuildCoordinator>()
+            .cancel_active();
         app.state::<ProjectShareMounts>().cleanup();
         app.state::<TunnelForwards>().cleanup();
         app.state::<desktop_worker::DesktopWorkers>().stop_all();
@@ -924,6 +926,10 @@ pub fn run() {
             synthetic_build::scan_synthetic_build_prerequisites,
             synthetic_build::list_synthetic_build_commits,
             synthetic_build::resolve_synthetic_build_target,
+            synthetic_build::job::start_synthetic_build,
+            synthetic_build::job::synthetic_build_status,
+            synthetic_build::job::synthetic_build_logs,
+            synthetic_build::job::cancel_synthetic_build,
             desktop_worker::list_desktop_workers,
             desktop_worker::list_desktop_worker_candidates,
             desktop_worker::pair_desktop_worker,

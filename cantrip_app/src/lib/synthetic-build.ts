@@ -1,5 +1,8 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
+export const SYNTHETIC_BUILD_STATE_EVENT = "cantrip-synthetic-build-state";
+export const SYNTHETIC_BUILD_LOG_EVENT = "cantrip-synthetic-build-log-batch";
+
 export type SyntheticBuildPlatform = "darwin-arm64" | "win32-x64";
 
 export interface SyntheticBuildCapability {
@@ -46,6 +49,60 @@ export interface SyntheticPrerequisiteScan {
   prerequisites: SyntheticPrerequisite[];
 }
 
+export type SyntheticBuildJobState =
+  "queued" | "running" | "ready-to-install" | "failed" | "cancelled";
+
+export type SyntheticBuildStepState =
+  "pending" | "running" | "complete" | "failed" | "cancelled";
+
+export interface SyntheticBuildStep {
+  id: string;
+  label: string;
+  state: SyntheticBuildStepState;
+  weight: number;
+  message: string | null;
+}
+
+export interface SyntheticBuildJobError {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface SyntheticBuildJob {
+  id: string;
+  targetSha: string;
+  version: string;
+  platform: SyntheticBuildPlatform;
+  state: SyntheticBuildJobState;
+  stepId: string | null;
+  progress: number;
+  steps: SyntheticBuildStep[];
+  startedAt: string;
+  updatedAt: string;
+  artifactPath: string | null;
+  overlayDigest: string;
+  lastLogSequence: number;
+  error: SyntheticBuildJobError | null;
+}
+
+export interface SyntheticBuildStatus {
+  job: SyntheticBuildJob | null;
+}
+
+export interface SyntheticBuildLogEntry {
+  sequence: number;
+  timestamp: string;
+  stream: "stdout" | "stderr";
+  message: string;
+}
+
+export interface SyntheticBuildLogBatch {
+  entries: SyntheticBuildLogEntry[];
+  nextSequence: number;
+  hasMore: boolean;
+}
+
 export interface SyntheticBuildErrorShape {
   code: string;
   message: string;
@@ -58,6 +115,14 @@ export interface SyntheticBuildClient {
   listCommits(cursor?: string): Promise<SyntheticCommitPage>;
   resolveTarget(sha: string): Promise<SyntheticCommit>;
   scanPrerequisites(sha: string): Promise<SyntheticPrerequisiteScan>;
+  start(sha: string): Promise<SyntheticBuildJob>;
+  status(): Promise<SyntheticBuildStatus>;
+  cancel(jobId: string): Promise<boolean>;
+  logs(afterSequence?: number, limit?: number): Promise<SyntheticBuildLogBatch>;
+  listenState(listener: (job: SyntheticBuildJob) => void): Promise<() => void>;
+  listenLogs(
+    listener: (batch: SyntheticBuildLogBatch) => void,
+  ): Promise<() => void>;
 }
 
 function messageFromUnknown(error: unknown): string | null {
@@ -90,4 +155,23 @@ export const syntheticBuildClient: SyntheticBuildClient = {
   resolveTarget: (sha) => invoke("resolve_synthetic_build_target", { sha }),
   scanPrerequisites: (sha) =>
     invoke("scan_synthetic_build_prerequisites", { sha }),
+  start: (sha) => invoke("start_synthetic_build", { sha }),
+  status: () => invoke("synthetic_build_status"),
+  cancel: (jobId) => invoke("cancel_synthetic_build", { jobId }),
+  logs: (afterSequence, limit) =>
+    invoke("synthetic_build_logs", { afterSequence, limit }),
+  async listenState(listener) {
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<SyntheticBuildJob>(
+      SYNTHETIC_BUILD_STATE_EVENT,
+      ({ payload }) => listener(payload),
+    );
+  },
+  async listenLogs(listener) {
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<SyntheticBuildLogBatch>(
+      SYNTHETIC_BUILD_LOG_EVENT,
+      ({ payload }) => listener(payload),
+    );
+  },
 };
